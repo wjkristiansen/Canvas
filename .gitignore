@@ -8,7 +8,7 @@
 *.exe
 *.dll
 *.ilk
-.vs/*
+src/.vs
 *.ipch
 *.filters
 *.user
