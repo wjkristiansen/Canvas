@@ -1,5 +1,5 @@
 # CanvasCore
-Core implementation of Canvas. Takes no direct dependency on D3D12, allowing for alternative graphics implementations.
+Core implementation of Canvas. Takes no direct dependency on D3D version, allowing for alternative graphics implementations.
 
 ## Interfaces
 
