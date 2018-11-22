@@ -150,16 +150,62 @@ TVector<_T, 3> CrossProduct(const TVector<_T, 3> &v0, const TVector<_T, 3> &v1)
 
 //------------------------------------------------------------------------------------------------
 template<class _T, unsigned int _Rows, unsigned int _Columns>
-class TMatrix
+class TMatrix;
+
+//------------------------------------------------------------------------------------------------
+template<class _T, unsigned int _Rows>
+class TMatrix<_T, _Rows, 2>
 {
-    using RowType = TVector<_T, _Columns>;
+    using RowType = TVector<_T, 2>;
     RowType m_Rows[_Rows];
 
 public:
     TMatrix() = default;
+    TMatrix(const RowType &Row0, const RowType &Row1) :
+        m_Rows{ Row0, Row1 } {}
 
     const RowType &operator[](int index) const { return m_Rows[index]; }
     RowType &operator[](int index) { return m_Rows[index]; }
 };
+
+//------------------------------------------------------------------------------------------------
+template<class _T, unsigned int _Rows>
+class TMatrix<_T, _Rows, 3>
+{
+    using RowType = TVector<_T, 3>;
+    RowType m_Rows[_Rows];
+
+public:
+    TMatrix() = default;
+    TMatrix(const RowType &Row0, const RowType &Row1, const RowType &Row2) :
+        m_Rows{ Row0, Row1, Row2 } {}
+
+    const RowType &operator[](int index) const { return m_Rows[index]; }
+    RowType &operator[](int index) { return m_Rows[index]; }
+};
+
+//------------------------------------------------------------------------------------------------
+template<class _T, unsigned int _Rows>
+class TMatrix<_T, _Rows, 4>
+{
+    using RowType = TVector<_T, 4>;
+    RowType m_Rows[_Rows];
+
+public:
+    TMatrix() = default;
+    TMatrix(const RowType &Row0, const RowType &Row1, const RowType &Row2, const RowType &Row3) :
+        m_Rows{ Row0, Row1, Row2, Row3 } {}
+
+    const RowType &operator[](int index) const { return m_Rows[index]; }
+    RowType &operator[](int index) { return m_Rows[index]; }
+};
+
+//------------------------------------------------------------------------------------------------
+using FloatMatrix2x2 = TMatrix<float, 2, 2>;
+using FloatMatrix3x3 = TMatrix<float, 3, 3>;
+using FloatMatrix4x4 = TMatrix<float, 4, 4>;
+using DoubleMatrix2x2 = TMatrix<double, 2, 2>;
+using DoubleMatrix3x3 = TMatrix<double, 3, 3>;
+using DoubleMatrix4x4 = TMatrix<double, 4, 4>;
 
 }
