@@ -26,10 +26,10 @@ public:
     using Type = _T;
     static constexpr unsigned int Dimension = 2UL;
 
-    Type operator[](int index) const { return m_v[index]; }
+    const Type &operator[](int index) const { return m_v[index]; }
     Type &operator[](int index) { return m_v[index]; }
-    Type X() const { return m_v[0]; }
-    Type Y() const { return m_v[1]; }
+    const Type &X() const { return m_v[0]; }
+    const Type &Y() const { return m_v[1]; }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -45,11 +45,11 @@ public:
     using Type = _T;
     static constexpr unsigned int Dimension = 3UL;
 
-    Type operator[](int index) const { return m_v[index]; }
+    const Type &operator[](int index) const { return m_v[index]; }
     Type &operator[](int index) { return m_v[index]; }
-    Type X() const { return m_v[0]; }
-    Type Y() const { return m_v[1]; }
-    Type Z() const { return m_v[2]; }
+    const Type &X() const { return m_v[0]; }
+    const Type &Y() const { return m_v[1]; }
+    const Type &Z() const { return m_v[2]; }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -65,12 +65,12 @@ public:
     using Type = _T;
     static constexpr unsigned int Dimension = 4UL;
 
-    Type operator[](int index) const { return m_v[index]; }
+    const Type &operator[](int index) const { return m_v[index]; }
     Type &operator[](int index) { return m_v[index]; }
-    Type X() const { return m_v[0]; }
-    Type Y() const { return m_v[1]; }
-    Type Z() const { return m_v[2]; }
-    Type W() const { return m_v[3]; }
+    const Type &X() const { return m_v[0]; }
+    const Type &Y() const { return m_v[1]; }
+    const Type &Z() const { return m_v[2]; }
+    const Type &W() const { return m_v[3]; }
 };
 
 using TFloatVector2 = TVector<float, 2>;
@@ -138,19 +138,28 @@ _T DotProduct(const TVector<_T, _D> &A, const TVector<_T, _D> &B)
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows, unsigned int _Columns>
-class TMatrix;
+template<class _T>
+TVector<_T, 3> CrossProduct(const TVector<_T, 3> &v0, const TVector<_T, 3> &v1)
+{
+    return TVector<_T, 3>(
+        v0[1] * v1[2] - v0[2] * v1[1],
+        v0[2] * v1[0] - v0[0] * v1[2],
+        v0[0] * v1[1] - v0[1] * v1[0]
+    );
+}
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows>
-class TMatrix<_T, _Rows, 2>
+template<class _T, unsigned int _Rows, unsigned int _Columns>
+class TMatrix
 {
-    TVector<_T, 2> m_Rows[_Rows];
+    using RowType = TVector<_T, _Columns>;
+    RowType m_Rows[_Rows];
 
 public:
     TMatrix() = default;
-    TMatrix(const TVector<_T, 2> &v0, const TVector<_T, 2> &v1) :
-        m_Rows{ v0, v1 } {}
+
+    const RowType &operator[](int index) const { return m_Rows[index]; }
+    RowType &operator[](int index) { return m_Rows[index]; }
 };
 
 }
