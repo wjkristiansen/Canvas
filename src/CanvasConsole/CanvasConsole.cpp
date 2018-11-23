@@ -30,6 +30,14 @@ int main()
         3.1f, 3.2f, 3.3f, 3.4f,
         4.1f, 4.2f, 4.3f, 4.4f
     );
+    Canvas::TMatrix<float, 4, 4> fm44b(
+        10.1f, 10.2f, 10.3f, 10.4f,
+        20.1f, 20.2f, 20.3f, 20.4f,
+        30.1f, 30.2f, 30.3f, 30.4f,
+        40.1f, 40.2f, 40.3f, 40.4f
+    );
     Canvas::TVector<float, 4> fv4a(3.1f, 4.2f, 5.3f, 6.4f);
     auto fv4b = fv4a * fm44a;
+
+    auto fm44c = fm44a * fm44b;
 }
