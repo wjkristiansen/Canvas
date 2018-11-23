@@ -103,6 +103,13 @@ bool operator==(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
 
 //------------------------------------------------------------------------------------------------
 template<class _T, unsigned int _D>
+bool operator!=(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
+{
+    return !operator==(v0, v1);
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _T, unsigned int _D>
 TVector<_T, _D> operator+(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
 {
     TVector<_T, _D> result;
@@ -196,85 +203,82 @@ struct TMatrix
     static auto constexpr Rows = _Rows;
     static auto constexpr Columns = _Columns;
     using RowType = TVector<_T, Columns>;
+
     RowType M[Rows] = {};
+
+    TMatrix(const TMatrix &o) = default;
+    TMatrix &operator=(const TMatrix &o) = default;
+    const RowType &operator[](int index) const { return M[index]; }
+    RowType &operator[](int index) { return M[index]; }
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows>
-struct TMatrix<_T, _Rows, 2U>
+template<class _T, unsigned int _Columns>
+struct TMatrix<_T, 2U, _Columns>
 {
-    static auto constexpr Rows = _Rows;
-    static auto constexpr Columns = 2U;
+    static auto constexpr Rows = 2U;
+    static auto constexpr Columns = _Columns;
     using RowType = TVector<_T, Columns>;
     RowType M[Rows] = {};
 
     TMatrix() = default;
     TMatrix(
-        const _T &m00, const _T &m01,
-        const _T &m10, const _T &m11
-    ) :
+        const RowType &Row0,
+        const RowType &Row1) :
         M{
-        TVector<_T, Columns>(m00, m01),
-        TVector<_T, Columns>(m10, m11)
+        Row0,
+        Row1
     } {}
-    TMatrix(const RowType &Row0, const RowType &Row1) :
-        M{ Row0, Row1 } {}
 
     const RowType &operator[](int index) const { return M[index]; }
     RowType &operator[](int index) { return M[index]; }
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows>
-struct TMatrix<_T, _Rows, 3U>
+template<class _T, unsigned int _Columns>
+struct TMatrix<_T, 3U, _Columns>
 {
-    static auto constexpr Rows = _Rows;
-    static auto constexpr Columns = 3U;
+    static auto constexpr Rows = 3U;
+    static auto constexpr Columns = _Columns;
     using RowType = TVector<_T, Columns>;
     RowType M[Rows] = {};
 
     TMatrix() = default;
     TMatrix(
-        const _T &m00, const _T &m01, const _T &m02,
-        const _T &m10, const _T &m11, const _T &m12,
-        const _T &m20, const _T &m21, const _T &m22
-        ) :
+        const RowType &Row0,
+        const RowType &Row1,
+        const RowType &Row2) :
         M{
-        TVector<_T, Columns>(m00, m01, m02),
-        TVector<_T, Columns>(m10, m11, m12),
-        TVector<_T, Columns>(m20, m21, m22)
+        Row0,
+        Row1,
+        Row2
     } {}
-    TMatrix(const RowType &Row0, const RowType &Row1, const RowType &Row2) :
-        M{ Row0, Row1, Row2 } {}
 
     const RowType &operator[](int index) const { return M[index]; }
     RowType &operator[](int index) { return M[index]; }
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows>
-struct TMatrix<_T, _Rows, 4U>
+template<class _T, unsigned int _Columns>
+struct TMatrix<_T, 4U, _Columns>
 {
-    static auto constexpr Rows = _Rows;
-    static auto constexpr Columns = 4U;
+    static auto constexpr Rows = 4U;
+    static auto constexpr Columns = _Columns;
     using RowType = TVector<_T, Columns>;
     RowType M[Rows] = {};
 
     TMatrix() = default;
     TMatrix(
-        const _T &m00, const _T &m01, const _T &m02, const _T &m03,
-        const _T &m10, const _T &m11, const _T &m12, const _T &m13,
-        const _T &m20, const _T &m21, const _T &m22, const _T &m23,
-        const _T &m30, const _T &m31, const _T &m32, const _T &m33
-    ) :
-        M{ 
-        TVector<_T, Columns>(m00, m01, m02, m03),
-        TVector<_T, Columns>(m10, m11, m12, m13),
-        TVector<_T, Columns>(m20, m21, m22, m23),
-        TVector<_T, Columns>(m30, m31, m32, m33)
+        const RowType &Row0,
+        const RowType &Row1,
+        const RowType &Row2,
+        const RowType &Row3) :
+        M{
+        Row0,
+        Row1,
+        Row2,
+        Row3
     } {}
-    TMatrix(const RowType &Row0, const RowType &Row1, const RowType &Row2, const RowType &Row3) :
-        M{ Row0, Row1, Row2, Row3 } {}
 
     const RowType &operator[](int index) const { return M[index]; }
     RowType &operator[](int index) { return M[index]; }
@@ -309,6 +313,24 @@ TMatrix<_T, _Rows0, _Columns1> operator*(const TMatrix<_T, _Rows0, _Columns0> &m
     }
 
     return result;
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _T, unsigned int _Rows, unsigned int _Columns>
+bool operator==(TMatrix<_T, _Rows, _Columns> m0, TMatrix<_T, _Rows, _Columns> m1)
+{
+    for (unsigned int Row = 0; Row < _Rows; ++Row)
+    {
+        if (m0[Row] != m1[Row]) return false;
+    }
+    return true;
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _T, unsigned int _Rows, unsigned int _Columns>
+bool operator!=(TMatrix<_T, _Rows, _Columns> m0, TMatrix<_T, _Rows, _Columns> m1)
+{
+    return !operator==(m0, m1);
 }
 
 //------------------------------------------------------------------------------------------------
