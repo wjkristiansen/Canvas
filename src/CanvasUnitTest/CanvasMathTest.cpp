@@ -44,5 +44,32 @@ namespace CanvasUnitTest
             Assert::IsTrue(V8 == V7);
             Assert::IsTrue(V8 == V6);
         }
+
+        TEST_METHOD(SimpleMatrices)
+        {
+            TMatrix<int, 3, 4> M0 = {
+                {1, 1, 2, 3},
+                {5, 8, 13, 21},
+                {34, 55, 89, 144}
+            };
+            Assert::AreEqual(M0.Columns, 4U);
+            Assert::AreEqual(M0.Rows, 3U);
+            TMatrix<int, 4, 4> M1 = {
+                {4, 7, 10, 13 },
+                {5, 8, 11, 14},
+                {6, 9, 12, 15},
+                {7, 10, 13, 16}
+            };
+
+            auto M2 = M0 * M1;
+
+            TMatrix<int, 3, 4> MMulResult = {
+                { 42, 63, 84, 105 },
+                { 285, 426, 567, 708 },
+                { 1953, 2919, 3885, 4851 }
+            };
+
+            Assert::IsTrue(MMulResult == M2);
+        }
 	};
 }
