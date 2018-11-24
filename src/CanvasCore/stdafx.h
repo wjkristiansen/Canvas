@@ -15,4 +15,4 @@
 
 // reference additional headers your program requires here
 #include <CanvasMath.hpp>
-#include <Canvas.h>
+#include <CanvasCore.h>

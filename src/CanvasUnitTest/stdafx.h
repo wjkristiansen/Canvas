@@ -10,7 +10,7 @@
 // Headers for CppUnitTest
 #include "CppUnitTest.h"
 #include "CanvasMath.hpp"
-#include "Canvas.h"
+#include "CanvasCore.h"
 
 #include <d3d12.h>
 
