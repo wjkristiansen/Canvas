@@ -10,5 +10,8 @@
 // Headers for CppUnitTest
 #include "CppUnitTest.h"
 #include "CanvasMath.hpp"
+#include "Canvas.h"
+
+#include <d3d12.h>
 
 // TODO: reference additional headers your program requires here

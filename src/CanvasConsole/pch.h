@@ -12,5 +12,6 @@
 // TODO: add headers that you want to pre-compile here
 
 #include <CanvasMath.hpp>
+#include <Canvas.h>
 
 #endif //PCH_H
