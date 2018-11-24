@@ -8,6 +8,15 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
+template <class _T>
+struct TQuaternion
+{
+    _T Q[4];
+};
+
+using FloatQuaternion = TQuaternion<float>;
+
+//------------------------------------------------------------------------------------------------
 template<class _T, unsigned int _D>
 struct TVector
 {

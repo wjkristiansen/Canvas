@@ -1,0 +1,3 @@
+LIBRARY CanvasCore
+EXPORTS
+	CreateCanvas
