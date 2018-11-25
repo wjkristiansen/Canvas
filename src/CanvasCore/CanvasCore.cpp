@@ -8,57 +8,58 @@ using namespace Canvas;
 template<class _T>
 class CRefCounted : public _T
 {
-public:
-    UINT RefCount = 0;
+    ULONG m_RefCount = 0;
 
-    virtual void AddRef()
+public:
+    virtual ULONG WINAPI AddRef()
     {
-        InterlockedIncrement(&RefCount);
+        return InterlockedIncrement(&m_RefCount);
     }
 
-    virtual UINT Release()
+    virtual ULONG WINAPI Release()
     {
-        if (0 == InterlockedDecrement(&RefCount))
+        ULONG Result = InterlockedDecrement(&m_RefCount);
+        if (0 == Result)
         {
             delete(this);
         }
-        return RefCount;
+        return Result;
     }
 };
 
-class CCanvas : 
-    public CRefCounted<ICanvas>
+class CCanvas
+    : public ICanvas
+    , public CComObjectRoot
 {
+    BEGIN_COM_MAP(CCanvas)
+        COM_INTERFACE_ENTRY(ICanvas)
+    END_COM_MAP()
+
 public:
     CCanvas() = default;
-    virtual CanvasResult CreateScene()
+    virtual HRESULT STDMETHODCALLTYPE CreateScene(REFIID riid, void **ppScene)
     {
-        return Canvas::CanvasResult::NotImplemented;
-    }
-    virtual CanvasResult QueryInterface(UINT iid, void **ppVoid)
-    {
-        switch (iid)
-        {
-        case ICanvas::IID:
-            *ppVoid = reinterpret_cast<IGeneric *>(this);
-            AddRef();
-            break;
-
-        case IGeneric::IID:
-            *ppVoid = this;
-            AddRef();
-            break;
-
-        default:
-            return CanvasResult::NoInterface;
-        }
-        return CanvasResult::Success;
+        return E_NOTIMPL;
     }
 };
 
-CanvasResult CANVASAPI CreateCanvas(unsigned int iid, void **ppCanvas)
+HRESULT CANVASAPI CreateCanvas(REFIID riid, void **ppCanvas)
 {
-    CCanvas *pCanvas = new CCanvas();
+    *ppCanvas = nullptr;
 
-    return CanvasResult::Success;
+    try
+    {
+        if (riid == __uuidof(ICanvas))
+        {
+            CCanvas *pCanvas = new CComObjectNoLock<CCanvas>(); // throw(bad_alloc)
+            *ppCanvas = pCanvas;
+            pCanvas->AddRef();
+        }
+    }
+    catch (std::bad_alloc &)
+    {
+        return E_OUTOFMEMORY;
+    }
+
+    return S_OK;
 }

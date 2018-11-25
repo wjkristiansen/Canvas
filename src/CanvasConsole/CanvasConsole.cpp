@@ -44,6 +44,6 @@ int main()
     auto fm44c = fm44a * fm44b;
 
     ICanvas *pCanvas;
-    auto Result = CreateCanvas(ICanvas::IID, (void **)&pCanvas);
+    HRESULT Result = CreateCanvas(__uuidof(ICanvas), (void **)&pCanvas);
 
 }

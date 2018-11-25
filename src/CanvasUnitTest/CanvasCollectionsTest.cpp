@@ -13,8 +13,8 @@ namespace CanvasUnitTest
 
         TEST_METHOD(SimpleSortedListTest)
         {
-            ICanvas *pCanvas;
-            auto Result = CreateCanvas(ICanvas::IID, (void **) &pCanvas);
+            CComPtr<ICanvas> pCanvas;
+            HRESULT Result = CreateCanvas(__uuidof(ICanvas), (void **) &pCanvas);
         }
     };
 }

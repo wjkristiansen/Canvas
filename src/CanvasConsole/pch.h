@@ -11,6 +11,10 @@
 
 // TODO: add headers that you want to pre-compile here
 
+#include <comdef.h>
+#include <atlbase.h>
+#include <atlcom.h>
+
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
 
