@@ -4,12 +4,23 @@
 
 #pragma once
 
-#include "CanvasMath.hpp"
-
 #define CANVASAPI __stdcall
 
 namespace Canvas
 {
+    interface ICanvas;
+    interface IScene;
+
+    interface IMeshModel;
+    interface IModel;
+
+    interface ICamera;
+    interface ILight;
+
+    interface ITransform;
+    interface IMatrixTransform;
+    interface IQuaternionTransform;
+
 
 enum class CanvasResult
 {
@@ -22,29 +33,17 @@ enum class CanvasResult
     NotImplemented = 6,
 };
 
-enum CANVAS_INTERFACE_IDS
-{
-    CANVAS_INTERFACE_ID_NONE = 0,
-    CANVAS_INTERFACE_ID_GENERIC = 1,
-    CANVAS_INTERFACE_ID_CANVAS = 2,
-
-    CANVAS_INTERFACE_ID_USER_BASE = 0x80000000
-};
-
-class IGeneric
+interface __declspec(uuid("{7ABF521F-4209-4A38-B6D7-741C95772AE0}"))
+ICanvas : public IUnknown
 {
 public:
-    static constexpr unsigned int IID = CANVAS_INTERFACE_ID_GENERIC;
-    virtual void AddRef() = 0;
-    virtual unsigned int Release() = 0;
-    virtual CanvasResult QueryInterface(unsigned int iid, void **ppObject) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CreateScene(REFIID Riid, void **ppScene) = 0;
 };
 
-class ICanvas : public IGeneric
+interface __declspec(uuid("{4EADEFF8-2C3C-4085-A246-C961F877C882}"))
+IScene :public IUnknown
 {
-public:
-    static constexpr unsigned int IID = CANVAS_INTERFACE_ID_CANVAS;
-    virtual CanvasResult CreateScene() = 0;
+
 };
 
 #if 0
@@ -88,15 +87,11 @@ class IModel : pubilc IGeneric
 public:
 };
 
-class IScene
-{
-
-};
 #endif
 
 
 }
 
 
-extern Canvas::CanvasResult CANVASAPI CreateCanvas(unsigned int iid, void **ppCanvas);
+extern HRESULT CANVASAPI CreateCanvas(REFIID riid, void **ppCanvas);
 
