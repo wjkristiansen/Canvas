@@ -43,7 +43,10 @@ int main()
 
     auto fm44c = fm44a * fm44b;
 
-    ICanvas *pCanvas;
-    HRESULT Result = CreateCanvas(__uuidof(ICanvas), (void **)&pCanvas);
+    CComPtr<ICanvas> pCanvas;
+    HRESULT hr = CreateCanvas(__uuidof(ICanvas), (void **)&pCanvas);
+
+    CComPtr<IScene> pScene;
+    hr = pCanvas->CreateScene(IID_PPV_ARGS(&pScene));
 
 }

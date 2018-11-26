@@ -26,9 +26,6 @@ namespace Canvas
     // Scene object
     interface ISceneObject;
 
-    // Object Parts
-    interface IObjectPart;
-
     // Camera interfaces
     interface ICamera; // -> IPart
 
@@ -71,19 +68,15 @@ ICanvas : public IUnknown
 };
 
 interface __declspec(uuid("{4EADEFF8-2C3C-4085-A246-C961F877C882}"))
-IScene : public INamedCollection
+IScene : public IUnknown
 {
 
 };
 
-interface __declspec(uuid("{2E600AEF-81A3-4CAB-B0BA-FBF607A3E741}"))
-IPart : public IUnknown
-{
-};
-
-interface __declspec(uuid("{AE2AC3F3-138E-4B88-B27D-C1567F38F2A1}"))
+interface __declspec(uuid("{92F3F7C3-3470-4D5D-A52F-86A642A7BDAB}"))
 ISceneObject : public IUnknown
 {
+
 };
 
 #if 0
