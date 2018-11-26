@@ -6,21 +6,12 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-class CNamedCollection :
-    public INamedCollection,
-    public CComObjectRoot
+class CNamedCollection
 {
-    BEGIN_COM_MAP(CNamedCollection)
-        COM_INTERFACE_ENTRY(INamedCollection)
-    END_COM_MAP()
-
+public:
     using CollectionType = std::map<std::string, CComPtr<IUnknown>>;
     using IteratorType = CollectionType::iterator;
     CollectionType m_NamedObjects;
-
-    STDMETHOD(Insert)(PCSTR pName, _In_ IUnknown *pUnk);
-    STDMETHOD(Find)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppUnk);
-    STDMETHOD(CreateIterator)(PCSTR pName, _COM_Outptr_ INamedCollectionIterator **ppIterator);
 };
 
 //------------------------------------------------------------------------------------------------
@@ -87,72 +78,76 @@ class CSceneObject :
     END_COM_MAP()
 };
 
-//------------------------------------------------------------------------------------------------
-STDMETHODIMP CNamedCollection::Insert(PCSTR pName, _In_ IUnknown *pUnk)
+
+template<class _Base>
+class CNamedCollectionImpl :
+    public CNamedCollection,
+    public _Base
 {
-    try
+    STDMETHOD(Insert)(PCSTR pName, _In_ IUnknown *pUnk)
     {
-        auto result = m_NamedObjects.emplace(pName, pUnk); // throw(std::bad_alloc)
-        if (!result.second)
+        try
         {
-            // Collision, no insertion
-            return E_FAIL;
+            auto result = m_NamedObjects.emplace(pName, pUnk); // throw(std::bad_alloc)
+            if (!result.second)
+            {
+                // Collision, no insertion
+                return E_FAIL;
+            }
         }
+        catch (std::bad_alloc &)
+        {
+            return E_OUTOFMEMORY;
+        }
+        return S_OK;
     }
-    catch (std::bad_alloc &)
+
+    STDMETHOD(Find)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppUnk)
     {
-        return E_OUTOFMEMORY;
+        *ppUnk = nullptr;
+
+        auto it = m_NamedObjects.find(pName);
+        if (it == m_NamedObjects.end())
+        {
+            // Not found
+            return S_FALSE;
+        }
+
+        return it->second->QueryInterface(riid, ppUnk);
     }
-    return S_OK;
-}
 
-//------------------------------------------------------------------------------------------------
-STDMETHODIMP CNamedCollection::Find(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppUnk)
-{
-    *ppUnk = nullptr;
-
-    auto it = m_NamedObjects.find(pName);
-    if (it == m_NamedObjects.end())
+    STDMETHOD(CreateIterator)(PCSTR pName, _COM_Outptr_ INamedCollectionIterator **ppIterator)
     {
-        // Not found
-        return S_FALSE;
+        *ppIterator = nullptr;
+
+        auto it = pName ? m_NamedObjects.find(pName) : m_NamedObjects.begin();
+
+        try
+        {
+            CNamedCollectionIterator *pIterator = new CComObjectNoLock<CNamedCollectionIterator>(); // throw(std::bad_alloc)
+            pIterator->Init(this, it);
+            pIterator->AddRef();
+            *ppIterator = pIterator;
+        }
+        catch (std::bad_alloc &)
+        {
+            return E_OUTOFMEMORY;
+        }
+
+        if (it == m_NamedObjects.end())
+        {
+            // Valid iterator points to end of collection
+            return S_FALSE;
+        }
+
+        return S_OK;
     }
-
-    return it->second->QueryInterface(riid, ppUnk);
-}
-
-//------------------------------------------------------------------------------------------------
-STDMETHODIMP CNamedCollection::CreateIterator(PCSTR pName, _COM_Outptr_ INamedCollectionIterator **ppIterator)
-{
-    *ppIterator = nullptr;
-
-    auto it = pName ? m_NamedObjects.find(pName) : m_NamedObjects.begin();
-
-    try
-    {
-        CNamedCollectionIterator *pIterator = new CComObjectNoLock<CNamedCollectionIterator>(); // throw(std::bad_alloc)
-        pIterator->Init(this, it);
-        pIterator->AddRef();
-        *ppIterator = pIterator;
-    }
-    catch (std::bad_alloc &)
-    {
-        return E_OUTOFMEMORY;
-    }
-
-    if (it == m_NamedObjects.end())
-    {
-        // Valid iterator points to end of collection
-        return S_FALSE;
-    }
-
-    return S_OK;
-}
+};
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public CNamedCollection,
-    public IScene
+    public CNamedCollectionImpl<IScene>,
+    public CComObjectRoot
 {
     BEGIN_COM_MAP(CScene)
         COM_INTERFACE_ENTRY(IScene)
