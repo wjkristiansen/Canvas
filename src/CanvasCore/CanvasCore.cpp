@@ -24,15 +24,16 @@ class CNamedCollectionIterator :
         COM_INTERFACE_ENTRY(IIterator)
     END_COM_MAP()
 
-    CComPtr<CNamedCollection> m_pNamedCollection = nullptr;
+    CComPtr<INamedCollection> m_pNamedCollection = nullptr;
     CNamedCollection::IteratorType m_it;
+    CNamedCollection::CollectionType *m_pMap;
 
     CNamedCollectionIterator() = default;
 
     STDMETHOD(MoveNext)()
     {
         ++m_it;
-        if (m_it == m_pNamedCollection->m_NamedObjects.end())
+        if (m_it == m_pMap->end())
         {
             return S_FALSE; // Report this is the end of the collection
         }
@@ -52,8 +53,8 @@ class CNamedCollectionIterator :
 
     STDMETHOD(Remove)()
     {
-        m_it = m_pNamedCollection->m_NamedObjects.erase(m_it);
-        if (m_it == m_pNamedCollection->m_NamedObjects.end())
+        m_it = m_pMap->erase(m_it);
+        if (m_it == m_pMap->end())
         {
             return S_FALSE; // Report this is the end of the collection
         }
@@ -61,9 +62,10 @@ class CNamedCollectionIterator :
         return S_OK;
     }
 
-    void Init(CNamedCollection *pNamedCollection, CNamedCollection::IteratorType &it) throw()
+    void Init(INamedCollection *pNamedCollection, CNamedCollection::CollectionType *pMap, CNamedCollection::IteratorType &it) throw()
     {
         m_pNamedCollection = pNamedCollection;
+        m_pMap = pMap;
         m_it = it;
     }
 };
@@ -125,7 +127,7 @@ class CNamedCollectionImpl :
         try
         {
             CNamedCollectionIterator *pIterator = new CComObjectNoLock<CNamedCollectionIterator>(); // throw(std::bad_alloc)
-            pIterator->Init(this, it);
+            pIterator->Init(this, &m_NamedObjects, it);
             pIterator->AddRef();
             *ppIterator = pIterator;
         }
