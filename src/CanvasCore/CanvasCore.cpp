@@ -6,26 +6,36 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-class CNamedCollection
+class CNamedCollection :
+    public INamedCollection,
+    public CComObjectRoot
 {
-public:
+    BEGIN_COM_MAP(CNamedCollection)
+        COM_INTERFACE_ENTRY(INamedCollection)
+    END_COM_MAP()
+
     using CollectionType = std::map<std::string, CComPtr<IUnknown>>;
     using IteratorType = CollectionType::iterator;
     CollectionType m_NamedObjects;
 
-
     STDMETHOD(Insert)(PCSTR pName, _In_ IUnknown *pUnk);
     STDMETHOD(Find)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppUnk);
-    STDMETHOD(CreateIterator)(PCSTR pName);
+    STDMETHOD(CreateIterator)(PCSTR pName, _COM_Outptr_ INamedCollectionIterator **ppIterator);
 };
 
 //------------------------------------------------------------------------------------------------
-class CNamedCollectionIterator
+class CNamedCollectionIterator : 
+    public INamedCollectionIterator,
+    public CComObjectRoot
 {
+    BEGIN_COM_MAP(CNamedCollectionIterator)
+        COM_INTERFACE_ENTRY(INamedCollectionIterator)
+        COM_INTERFACE_ENTRY(IIterator)
+    END_COM_MAP()
+
     CComPtr<CNamedCollection> m_pNamedCollection = nullptr;
     CNamedCollection::IteratorType m_it;
 
-public:
     CNamedCollectionIterator() = default;
 
     STDMETHOD(MoveNext)()
@@ -103,14 +113,18 @@ STDMETHODIMP CNamedCollection::Find(PCSTR pName, REFIID riid, _COM_Outptr_ void 
 }
 
 //------------------------------------------------------------------------------------------------
-STDMETHODIMP CNamedCollection::CreateIterator(PCSTR pName)
+STDMETHODIMP CNamedCollection::CreateIterator(PCSTR pName, _COM_Outptr_ INamedCollectionIterator **ppIterator)
 {
+    *ppIterator = nullptr;
+
     auto it = pName ? m_NamedObjects.find(pName) : m_NamedObjects.begin();
 
     try
     {
         CNamedCollectionIterator *pIterator = new CComObjectNoLock<CNamedCollectionIterator>(); // throw(std::bad_alloc)
         pIterator->Init(this, it);
+        pIterator->AddRef();
+        *ppIterator = pIterator;
     }
     catch (std::bad_alloc &)
     {
@@ -122,12 +136,37 @@ STDMETHODIMP CNamedCollection::CreateIterator(PCSTR pName)
         // Valid iterator points to end of collection
         return S_FALSE;
     }
+
+    return S_OK;
 }
 
 //------------------------------------------------------------------------------------------------
-class CScene
+class CScene :
+    public IScene ,
+    public CComObjectRoot
 {
+    BEGIN_COM_MAP(CScene)
+        COM_INTERFACE_ENTRY(IScene)
+        COM_INTERFACE_ENTRY(INamedCollection)
+    END_COM_MAP()
 
+};
+
+//------------------------------------------------------------------------------------------------
+class CCanvas
+    : public ICanvas
+    , public CComObjectRoot
+{
+    BEGIN_COM_MAP(CCanvas)
+        COM_INTERFACE_ENTRY(ICanvas)
+    END_COM_MAP()
+
+public:
+    CCanvas() = default;
+    virtual HRESULT STDMETHODCALLTYPE CreateScene(REFIID riid, void **ppScene)
+    {
+        return E_NOTIMPL;
+    }
 };
 
 HRESULT STDMETHODCALLTYPE CreateCanvas(REFIID riid, void **ppCanvas)
