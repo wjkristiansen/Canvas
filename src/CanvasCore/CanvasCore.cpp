@@ -5,45 +5,132 @@
 
 using namespace Canvas;
 
-template<class _T>
-class CRefCounted : public _T
+//------------------------------------------------------------------------------------------------
+class CNamedCollection
 {
-    ULONG m_RefCount = 0;
+public:
+    using CollectionType = std::map<std::string, CComPtr<IUnknown>>;
+    using IteratorType = CollectionType::iterator;
+    CollectionType m_NamedObjects;
+
+
+    STDMETHOD(Insert)(PCSTR pName, _In_ IUnknown *pUnk);
+    STDMETHOD(Find)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppUnk);
+    STDMETHOD(CreateIterator)(PCSTR pName);
+};
+
+//------------------------------------------------------------------------------------------------
+class CNamedCollectionIterator
+{
+    CComPtr<CNamedCollection> m_pNamedCollection = nullptr;
+    CNamedCollection::IteratorType m_it;
 
 public:
-    virtual ULONG WINAPI AddRef()
-    {
-        return InterlockedIncrement(&m_RefCount);
-    }
+    CNamedCollectionIterator() = default;
 
-    virtual ULONG WINAPI Release()
+    STDMETHOD(MoveNext)()
     {
-        ULONG Result = InterlockedDecrement(&m_RefCount);
-        if (0 == Result)
+        ++m_it;
+        if (m_it == m_pNamedCollection->m_NamedObjects.end())
         {
-            delete(this);
+            return S_FALSE; // Report this is the end of the collection
         }
-        return Result;
+
+        return S_OK;
     }
-};
 
-class CCanvas
-    : public ICanvas
-    , public CComObjectRoot
-{
-    BEGIN_COM_MAP(CCanvas)
-        COM_INTERFACE_ENTRY(ICanvas)
-    END_COM_MAP()
-
-public:
-    CCanvas() = default;
-    virtual HRESULT STDMETHODCALLTYPE CreateScene(REFIID riid, void **ppScene)
+    STDMETHOD_(PCSTR, GetCurrentName)()
     {
-        return E_NOTIMPL;
+        return m_it->first.c_str();
+    }
+
+    STDMETHOD(GetCurrentObject)(REFIID riid, _COM_Outptr_ void **ppUnk)
+    {
+        return m_it->second->QueryInterface(riid, ppUnk);
+    }
+
+    STDMETHOD(Remove)()
+    {
+        m_it = m_pNamedCollection->m_NamedObjects.erase(m_it);
+        if (m_it == m_pNamedCollection->m_NamedObjects.end())
+        {
+            return S_FALSE; // Report this is the end of the collection
+        }
+
+        return S_OK;
+    }
+
+    void Init(CNamedCollection *pNamedCollection, CNamedCollection::IteratorType &it) throw()
+    {
+        m_pNamedCollection = pNamedCollection;
+        m_it = it;
     }
 };
 
-HRESULT CANVASAPI CreateCanvas(REFIID riid, void **ppCanvas)
+
+//------------------------------------------------------------------------------------------------
+STDMETHODIMP CNamedCollection::Insert(PCSTR pName, _In_ IUnknown *pUnk)
+{
+    try
+    {
+        auto result = m_NamedObjects.emplace(pName, pUnk); // throw(std::bad_alloc)
+        if (!result.second)
+        {
+            // Collision, no insertion
+            return E_FAIL;
+        }
+    }
+    catch (std::bad_alloc &)
+    {
+        return E_OUTOFMEMORY;
+    }
+    return S_OK;
+}
+
+//------------------------------------------------------------------------------------------------
+STDMETHODIMP CNamedCollection::Find(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppUnk)
+{
+    *ppUnk = nullptr;
+
+    auto it = m_NamedObjects.find(pName);
+    if (it == m_NamedObjects.end())
+    {
+        // Not found
+        return S_FALSE;
+    }
+
+    return it->second->QueryInterface(riid, ppUnk);
+}
+
+//------------------------------------------------------------------------------------------------
+STDMETHODIMP CNamedCollection::CreateIterator(PCSTR pName)
+{
+    auto it = pName ? m_NamedObjects.find(pName) : m_NamedObjects.begin();
+
+    try
+    {
+        CNamedCollectionIterator *pIterator = new CComObjectNoLock<CNamedCollectionIterator>(); // throw(std::bad_alloc)
+        pIterator->Init(this, it);
+    }
+    catch (std::bad_alloc &)
+    {
+        return E_OUTOFMEMORY;
+    }
+
+    if (it == m_NamedObjects.end())
+    {
+        // Valid iterator points to end of collection
+        return S_FALSE;
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+class CScene
+{
+
+};
+
+HRESULT STDMETHODCALLTYPE CreateCanvas(REFIID riid, void **ppCanvas)
 {
     *ppCanvas = nullptr;
 
