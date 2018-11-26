@@ -77,6 +77,15 @@ class CNamedCollectionIterator :
     }
 };
 
+//------------------------------------------------------------------------------------------------
+class CSceneObject : 
+    public ISceneObject,
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CSceneObject)
+        COM_INTERFACE_ENTRY(ISceneObject)
+    END_COM_MAP()
+};
 
 //------------------------------------------------------------------------------------------------
 STDMETHODIMP CNamedCollection::Insert(PCSTR pName, _In_ IUnknown *pUnk)
@@ -142,14 +151,13 @@ STDMETHODIMP CNamedCollection::CreateIterator(PCSTR pName, _COM_Outptr_ INamedCo
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public IScene ,
-    public CComObjectRoot
+    public CNamedCollection,
+    public IScene
 {
     BEGIN_COM_MAP(CScene)
         COM_INTERFACE_ENTRY(IScene)
         COM_INTERFACE_ENTRY(INamedCollection)
     END_COM_MAP()
-
 };
 
 //------------------------------------------------------------------------------------------------
@@ -163,9 +171,36 @@ class CCanvas
 
 public:
     CCanvas() = default;
-    virtual HRESULT STDMETHODCALLTYPE CreateScene(REFIID riid, void **ppScene)
+    STDMETHOD(CreateScene)(REFIID riid, void **ppScene)
     {
-        return E_NOTIMPL;
+        ppScene = nullptr;
+        try
+        {
+            CScene *pScene = new CComObjectNoLock<CScene>(); // throw(std::bad_alloc)
+            *ppScene = pScene;
+            pScene->AddRef();
+        }
+        catch (std::bad_alloc&)
+        {
+            return E_OUTOFMEMORY;
+        }
+        return S_OK;
+    }
+
+    STDMETHOD(CreateObject)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneObject)
+    {
+        ppSceneObject = nullptr;
+        try
+        {
+            CSceneObject *pSceneObject = new CComObjectNoLock<CSceneObject>(); // throw(std::bad_alloc)
+            *ppSceneObject = pSceneObject;
+            pSceneObject->AddRef();
+        }
+        catch (std::bad_alloc&)
+        {
+            return E_OUTOFMEMORY;
+        }
+        return S_OK;
     }
 };
 
