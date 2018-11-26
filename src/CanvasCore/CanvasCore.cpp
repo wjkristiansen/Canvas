@@ -170,7 +170,7 @@ public:
     CCanvas() = default;
     STDMETHOD(CreateScene)(REFIID riid, void **ppScene)
     {
-        ppScene = nullptr;
+        *ppScene = nullptr;
         try
         {
             CScene *pScene = new CComObjectNoLock<CScene>(); // throw(std::bad_alloc)
@@ -186,7 +186,7 @@ public:
 
     STDMETHOD(CreateObject)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneObject)
     {
-        ppSceneObject = nullptr;
+        *ppSceneObject = nullptr;
         try
         {
             CSceneObject *pSceneObject = new CComObjectNoLock<CSceneObject>(); // throw(std::bad_alloc)
