@@ -68,7 +68,7 @@ ICanvas : public IUnknown
 };
 
 interface __declspec(uuid("{4EADEFF8-2C3C-4085-A246-C961F877C882}"))
-IScene : public IUnknown
+IScene : public INamedCollection
 {
 
 };
