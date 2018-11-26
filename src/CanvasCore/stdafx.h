@@ -17,7 +17,7 @@
 #include <new>
 #include <vector>
 #include <string>
-
+#include <map>
 
 // reference additional headers your program requires here
 #include <CanvasMath.hpp>
