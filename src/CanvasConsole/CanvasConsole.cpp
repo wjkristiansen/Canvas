@@ -47,6 +47,9 @@ int main()
     HRESULT hr = CreateCanvas(__uuidof(ICanvas), (void **)&pCanvas);
 
     CComPtr<IScene> pScene;
-    hr = pCanvas->CreateScene(IID_PPV_ARGS(&pScene));
+    hr = pCanvas->CreateScene(__uuidof(IScene), (void **) &pScene);
+
+    CComPtr<INamedCollection> pNamedCollection;
+    hr = pScene->QueryInterface(&pNamedCollection);
 
 }
