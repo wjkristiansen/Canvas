@@ -42,36 +42,26 @@ namespace Canvas
     interface IQuaternionTransform; // -> ITransform
 
 
-interface __declspec(uuid("{8573B59B-0C8F-4456-AF0C-D06A2F40496A}"))
-IEnumerable : public IUnknown
-{
-};
-
 interface __declspec(uuid("{521EBB77-A6AC-4F63-BBFD-C5289B23ABDB}"))
-IEnumerator : public IUnknown
+IIterator : public IUnknown
 {
     STDMETHOD(MoveNext)() = 0;
-    STDMETHOD(Current)(REFIID iid, _COM_Outptr_ IEnumerable *ppEnumerable) = 0;
+    STDMETHOD(Remove)() = 0;
+    STDMETHOD(GetCurrentObject)(REFIID riid, _COM_Outptr_ void **ppUnk) = 0;
 };
 
-interface __declspec(uuid("{99BDDD40-9606-4A6A-AAC2-C75973A72CA7}"))
-IStringObjectPair : public IEnumerable
+interface __declspec(uuid("{8573B59B-0C8F-4456-AF0C-D06A2F40496A}"))
+INamedCollectionIterator : public IIterator
 {
-    STDMETHOD_(PCSTR, GetString)() = 0;
-    STDMETHOD(QueryObject)(REFIID riid, _COM_Outptr_opt_ IUnknown **ppUnk) = 0;
+    STDMETHOD_(PCSTR, GetCurrentName)() = 0;
 };
 
 interface __declspec(uuid("{ED514943-2693-4E0F-ABA5-BDC92476F9B1}"))
-IStringObjectPairEnumerator : public IEnumerator
+INamedCollection : public IUnknown
 {
-};
-
-interface __declspec(uuid("{61CC0772-B6D9-42DE-A2E0-0F167EF7BFEB}"))
-ISortedStringObjectPairList : public IUnknown
-{
-    STDMETHOD(AddObject)(PCSTR pString, _In_ IUnknown *pUnknown) = 0;
-    STDMETHOD(FindObject)(PCSTR pString, REFIID riid, _COM_Outptr_opt_ void **ppObj) = 0;
-    STDMETHOD(EnumBegin(_COM_Outptr_ IStringObjectPairEnumerator **ppEnumerator)) = 0;
+    STDMETHOD(Insert)(PCSTR pName, _In_ IUnknown *pUnk) = 0;
+    STDMETHOD(Find)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppUnk) = 0;
+    STDMETHOD(CreateIterator)(PCSTR pName, _COM_Outptr_ INamedCollectionIterator **ppIterator) = 0;
 };
 
 interface __declspec(uuid("{7ABF521F-4209-4A38-B6D7-741C95772AE0}"))
@@ -81,7 +71,7 @@ ICanvas : public IUnknown
 };
 
 interface __declspec(uuid("{4EADEFF8-2C3C-4085-A246-C961F877C882}"))
-IScene :public IUnknown
+IScene : public INamedCollection
 {
 
 };
