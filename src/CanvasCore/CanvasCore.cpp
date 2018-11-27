@@ -71,16 +71,106 @@ class CNamedCollectionIterator :
 };
 
 //------------------------------------------------------------------------------------------------
-class CSceneObject : 
-    public ISceneObject,
+class CMeshInstance :
+    public IMeshInstance
+{
+};
+
+//------------------------------------------------------------------------------------------------
+class CCamera :
+    public ICamera
+{
+};
+
+//------------------------------------------------------------------------------------------------
+class CLight :
+    public ILight
+{
+};
+
+//------------------------------------------------------------------------------------------------
+class CTransform :
+    public ITransform
+{
+};
+
+//------------------------------------------------------------------------------------------------
+class CSceneGraphNode :
+    public ISceneGraphNode
+{
+    CSceneGraphNode *m_pParent = nullptr; // Weak ptr
+    CComPtr<CSceneGraphNode> m_pSibling = nullptr;
+    CComPtr<CSceneGraphNode> m_pFirstChild = nullptr;
+};
+
+//------------------------------------------------------------------------------------------------
+class CSceneGraph :
+    public ISceneGraph,
     public CComObjectRoot
 {
-    BEGIN_COM_MAP(CSceneObject)
-        COM_INTERFACE_ENTRY(ISceneObject)
+    CComPtr<CSceneGraphNode> m_pRoot;
+};
+
+//------------------------------------------------------------------------------------------------
+class CTransformNode :
+    public CTransform,
+    public CSceneGraphNode,
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CTransformNode)
+        COM_INTERFACE_ENTRY(ISceneGraphNode)
+        COM_INTERFACE_ENTRY(ITransform)
+    END_COM_MAP()
+};
+
+//------------------------------------------------------------------------------------------------
+class CMeshNode :
+    public CSceneGraphNode,
+    public CTransform,
+    public CMeshInstance,
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CMeshNode)
+        COM_INTERFACE_ENTRY(ISceneGraphNode)
+        COM_INTERFACE_ENTRY(ITransform)
+        COM_INTERFACE_ENTRY(IMeshInstance)
+    END_COM_MAP()
+};
+
+//------------------------------------------------------------------------------------------------
+class CCameraNode :
+    public CSceneGraphNode,
+    public CTransform,
+    public CCamera,
+    public CMeshInstance, // For debug rendering of the camera
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CCameraNode)
+        COM_INTERFACE_ENTRY(ISceneGraphNode)
+        COM_INTERFACE_ENTRY(ITransform)
+        COM_INTERFACE_ENTRY(IMeshInstance)
+        COM_INTERFACE_ENTRY(ICamera)
+    END_COM_MAP()
+};
+
+//------------------------------------------------------------------------------------------------
+class CLightNode :
+    public CSceneGraphNode,
+    public CTransform,
+    public CLight,
+    public CMeshInstance, // For debug rendering of the light
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CLightNode)
+        COM_INTERFACE_ENTRY(ISceneGraphNode)
+        COM_INTERFACE_ENTRY(ITransform)
+        COM_INTERFACE_ENTRY(IMeshInstance)
+        COM_INTERFACE_ENTRY(ILight)
     END_COM_MAP()
 };
 
 
+//------------------------------------------------------------------------------------------------
 template<class _Base>
 class CNamedCollectionImpl :
     public CNamedCollection,
@@ -184,62 +274,41 @@ public:
         return S_OK;
     }
 
-    STDMETHOD(CreateObject)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneObject)
+    template<class _T>
+    HRESULT CreateNode(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
     {
-        *ppSceneObject = nullptr;
+        *ppSceneGraphNode = nullptr;
         try
         {
-            CSceneObject *pSceneObject = new CComObjectNoLock<CSceneObject>(); // throw(std::bad_alloc)
-            *ppSceneObject = pSceneObject;
-            pSceneObject->AddRef();
+            CComPtr<_T> pSceneGraphNode = new CComObjectNoLock<_T>(); // throw(std::bad_alloc)
+            *ppSceneGraphNode = pSceneGraphNode;
+            return pSceneGraphNode->QueryInterface(riid, ppSceneGraphNode);
         }
         catch (std::bad_alloc&)
         {
             return E_OUTOFMEMORY;
         }
-        return S_OK;
     }
-};
 
-//------------------------------------------------------------------------------------------------
-class CMesh
-{
-};
+    STDMETHOD(CreateTransformNode)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
+    {
+        return CreateNode<CTransformNode>(pName, riid, ppSceneGraphNode);
+    }
 
-//------------------------------------------------------------------------------------------------
-class CMeshComponent
-{
-};
+    STDMETHOD(CreateMeshNode)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
+    {
+        return CreateNode<CMeshNode>(pName, riid, ppSceneGraphNode);
+    }
 
-//------------------------------------------------------------------------------------------------
-class CMeshObject :
-    public CSceneObject,
-    public CMeshComponent
-{
+    STDMETHOD(CreateCameraNode)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
+    {
+        return CreateNode<CCameraNode>(pName, riid, ppSceneGraphNode);
+    }
 
-};
-
-
-//------------------------------------------------------------------------------------------------
-class CCameraComponent :
-    public CSceneObject
-{
-
-};
-
-//------------------------------------------------------------------------------------------------
-class CCameraObject :
-    public CSceneObject,
-    public CCameraComponent
-{
-
-};
-
-//------------------------------------------------------------------------------------------------
-class CLight :
-    public CSceneObject
-{
-
+    STDMETHOD(CreateLightNode)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
+    {
+        return CreateNode<CLightNode>(pName, riid, ppSceneGraphNode);
+    }
 };
 
 HRESULT STDMETHODCALLTYPE CreateCanvas(REFIID riid, void **ppCanvas)

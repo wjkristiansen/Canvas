@@ -24,7 +24,7 @@ namespace Canvas
     interface IScene;
 
     // Scene object
-    interface ISceneObject;
+    interface ISceneGraphNode;
 
     // Camera interfaces
     interface ICamera; // -> IPart
@@ -67,14 +67,38 @@ ICanvas : public IUnknown
     STDMETHOD(CreateScene)(REFIID Riid, _COM_Outptr_ void **ppScene) = 0;
 };
 
+interface __declspec(uuid("{ABDC9885-42C0-45ED-AEA4-E549EE9C5A0F}"))
+IMeshInstance : public IUnknown
+{
+};
+
+interface __declspec(uuid("{1707E5D1-900B-47A9-A372-5401F911A52A}"))
+ICamera : public IUnknown
+{
+};
+
+interface __declspec(uuid("{37A8917B-A007-4A53-A868-52D2C88E09A3}"))
+ILight : public IUnknown
+{
+};
+
+interface __declspec(uuid("{E4BA9961-052C-4819-9FCC-E63E75D81D22}"))
+ITransform : public IUnknown
+{
+};
+
 interface __declspec(uuid("{4EADEFF8-2C3C-4085-A246-C961F877C882}"))
 IScene : public INamedCollection
 {
+};
 
+interface __declspec(uuid("{656FF461-CDBD-4112-AD55-498F3D3BD4E0}"))
+ISceneGraph : public IUnknown
+{
 };
 
 interface __declspec(uuid("{92F3F7C3-3470-4D5D-A52F-86A642A7BDAB}"))
-ISceneObject : public IUnknown
+ISceneGraphNode : public IUnknown
 {
 
 };
