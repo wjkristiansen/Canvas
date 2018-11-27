@@ -8,36 +8,35 @@
 
 namespace Canvas
 {
-    // Canvas core interface
-    interface ICanvas;
+// Canvas core interface
+interface ICanvas;
 
-    // Collection interfaces
-    interface IIterator; // -> IUnknown
-    interface INamedCollectionIterator; // -> IIterator
-    interface INamedCollection; // -> IUnknown
+// Collection interfaces
+interface IIterator; // -> IUnknown
+interface INamedCollectionIterator; // -> IIterator
+interface INamedCollection; // -> IUnknown
 
-    // Model interfaces
-    interface IModel;
-    interface IMeshModel;
+// Scene interface
+interface IScene;
 
-    // Scene interface
-    interface IScene;
+// Scene object
+interface ISceneGraphNode;
 
-    // Scene object
-    interface ISceneGraphNode;
+// Camera interfaces
+interface ICamera;
 
-    // Camera interfaces
-    interface ICamera; // -> IPart
+// Light interfaces
+interface ILight;
 
-    // Light interfaces
-    interface ILight; // -> IPart
+// Transform interfaces
+interface ITransform;
 
-    // Transform interfaces
-    interface ITransform; // -> IPart
-    interface IMatrixTransform; // -> ITransform
-    interface IEulerTransform; // -> ITransform
-    interface IQuaternionTransform; // -> ITransform
-
+// Assets
+interface ITexture;
+interface IMaterial;
+interface IMesh;
+interface IAnimation;
+interface ISkeleton;
 
 interface __declspec(uuid("{521EBB77-A6AC-4F63-BBFD-C5289B23ABDB}"))
 IIterator : public IUnknown
@@ -68,7 +67,7 @@ ICanvas : public IUnknown
 };
 
 interface __declspec(uuid("{ABDC9885-42C0-45ED-AEA4-E549EE9C5A0F}"))
-IMeshInstance : public IUnknown
+IModelInstance : public IUnknown
 {
 };
 
@@ -95,12 +94,18 @@ IScene : public INamedCollection
 interface __declspec(uuid("{656FF461-CDBD-4112-AD55-498F3D3BD4E0}"))
 ISceneGraph : public IUnknown
 {
+    STDMETHOD(InsertNode)(_In_ ISceneGraphNode *pSceneNode, _In_opt_ ISceneGraphNode *pParent) = 0;
+    STDMETHOD_(ISceneGraphNode *, GetFirstRootNode)() = 0;
 };
 
 interface __declspec(uuid("{92F3F7C3-3470-4D5D-A52F-86A642A7BDAB}"))
 ISceneGraphNode : public IUnknown
 {
-
+    STDMETHOD(SetName)(PCSTR pName) = 0;
+    STDMETHOD_(PCSTR, GetName)() = 0;
+    STDMETHOD_(ISceneGraphNode *, GetParent)() = 0;
+    STDMETHOD_(ISceneGraphNode *, GetSibling)() = 0;
+    STDMETHOD_(ISceneGraphNode *, GetFirstChild)() = 0;
 };
 
 #if 0

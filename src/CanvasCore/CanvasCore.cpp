@@ -71,8 +71,8 @@ class CNamedCollectionIterator :
 };
 
 //------------------------------------------------------------------------------------------------
-class CMeshInstance :
-    public IMeshInstance
+class CModelInstance :
+    public IModelInstance
 {
 };
 
@@ -127,13 +127,13 @@ class CTransformNode :
 class CMeshNode :
     public CSceneGraphNode,
     public CTransform,
-    public CMeshInstance,
+    public CModelInstance,
     public CComObjectRoot
 {
     BEGIN_COM_MAP(CMeshNode)
         COM_INTERFACE_ENTRY(ISceneGraphNode)
         COM_INTERFACE_ENTRY(ITransform)
-        COM_INTERFACE_ENTRY(IMeshInstance)
+        COM_INTERFACE_ENTRY(IModelInstance)
     END_COM_MAP()
 };
 
@@ -142,13 +142,13 @@ class CCameraNode :
     public CSceneGraphNode,
     public CTransform,
     public CCamera,
-    public CMeshInstance, // For debug rendering of the camera
+    public CModelInstance, // For debug rendering of the camera
     public CComObjectRoot
 {
     BEGIN_COM_MAP(CCameraNode)
         COM_INTERFACE_ENTRY(ISceneGraphNode)
         COM_INTERFACE_ENTRY(ITransform)
-        COM_INTERFACE_ENTRY(IMeshInstance)
+        COM_INTERFACE_ENTRY(IModelInstance)
         COM_INTERFACE_ENTRY(ICamera)
     END_COM_MAP()
 };
@@ -158,13 +158,13 @@ class CLightNode :
     public CSceneGraphNode,
     public CTransform,
     public CLight,
-    public CMeshInstance, // For debug rendering of the light
+    public CModelInstance, // For debug rendering of the light
     public CComObjectRoot
 {
     BEGIN_COM_MAP(CLightNode)
         COM_INTERFACE_ENTRY(ISceneGraphNode)
         COM_INTERFACE_ENTRY(ITransform)
-        COM_INTERFACE_ENTRY(IMeshInstance)
+        COM_INTERFACE_ENTRY(IModelInstance)
         COM_INTERFACE_ENTRY(ILight)
     END_COM_MAP()
 };
