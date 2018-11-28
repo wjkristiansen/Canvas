@@ -18,6 +18,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <unordered_map>
 
 // reference additional headers your program requires here
 #include <CanvasMath.hpp>

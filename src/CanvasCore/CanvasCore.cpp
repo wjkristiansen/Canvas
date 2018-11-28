@@ -94,19 +94,52 @@ class CTransform :
 {
 };
 
+using SceneGraphNodeMapType = std::unordered_map<std::string, CComPtr<CSceneGraphNode>>;
+
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
     public ISceneGraphNode
 {
-    CSceneGraphNode *m_pParent = nullptr; // Weak ptr
-    CComPtr<CSceneGraphNode> m_pSibling = nullptr;
-    CComPtr<CSceneGraphNode> m_pFirstChild = nullptr;
+public:
+    SceneGraphNodeMapType m_ChildNodes;
+    CSceneGraphNode *m_pParent; // weak pointer
 };
 
 //------------------------------------------------------------------------------------------------
+class CSceneGraphIterator :
+    public ISceneGraphIterator
+{
+    CComPtr<CSceneGraphNode> m_pContainingSceneGraphNode;
+    SceneGraphNodeMapType::iterator m_It;
+
+    STDMETHOD(MoveNextSibling)()
+    {
+        if (m_It != m_pContainingSceneGraphNode->m_ChildNodes.end())
+        {
+            ++m_It;
+            if (m_It != m_pContainingSceneGraphNode->m_ChildNodes.end())
+            {
+                return S_OK;
+            }
+        }
+
+        return S_FALSE;
+    }
+
+    STDMETHOD(MoveFirstChild)()
+    {
+    }
+
+    STDMETHOD(QueryNode(REFIID riid, void **ppNode))
+    {
+    }
+
+}
+
+//------------------------------------------------------------------------------------------------
 class CSceneGraph :
-    public ISceneGraph,
-    public CComObjectRoot
+    public CSceneGraphNode,
+    public ISceneGraph
 {
     CComPtr<CSceneGraphNode> m_pRoot;
 };
@@ -220,6 +253,7 @@ class CNamedCollectionImpl :
             pIterator->Init(this, &m_NamedObjects, it);
             pIterator->AddRef();
             *ppIterator = pIterator;
+        }
         }
         catch (std::bad_alloc &)
         {
