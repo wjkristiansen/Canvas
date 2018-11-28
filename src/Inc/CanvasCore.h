@@ -95,8 +95,6 @@ interface __declspec(uuid("{CA3A2CFD-2648-4371-9A5B-2B51AD057A9F}"))
 ISceneGraphIterator : public IUnknown
 {
     STDMETHOD(MoveNextSibling)() = 0;
-    STDMETHOD(MovePrevSibling)() = 0;
-    STDMETHOD(MoveParent)() = 0;
     STDMETHOD(MoveFirstChild)() = 0;
     STDMETHOD(QueryNode(REFIID riid, void **ppNode)) = 0;
 };
@@ -104,16 +102,13 @@ ISceneGraphIterator : public IUnknown
 interface __declspec(uuid("{656FF461-CDBD-4112-AD55-498F3D3BD4E0}"))
 ISceneGraph : public IUnknown
 {
-    STDMETHOD(InsertNode)(_In_ ISceneGraphNode *pSceneNode, _In_opt_ ISceneGraphNode *pParent) = 0;
+    STDMETHOD(InsertNode)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode, _In_opt_ ISceneGraphNode *pParent) = 0;
     STDMETHOD_(ISceneGraphNode *, GetFirstRootNode)() = 0;
 };
 
 interface __declspec(uuid("{92F3F7C3-3470-4D5D-A52F-86A642A7BDAB}"))
 ISceneGraphNode : public IUnknown
 {
-    STDMETHOD(SetName)(PCSTR pName) = 0;
-    STDMETHOD_(PCSTR, GetName)() = 0;
-    STDMETHOD(GetIterator)(ISceneGraphIterator **ppIterator) = 0;
 };
 
 #if 0
