@@ -86,75 +86,26 @@ ITransform : public IUnknown
 {
 };
 
-interface __declspec(uuid("{4EADEFF8-2C3C-4085-A246-C961F877C882}"))
-IScene : public INamedCollection
-{
-};
-
 interface __declspec(uuid("{CA3A2CFD-2648-4371-9A5B-2B51AD057A9F}"))
 ISceneGraphIterator : public IUnknown
 {
     STDMETHOD(MoveNextSibling)() = 0;
-    STDMETHOD(MoveFirstChild)() = 0;
-    STDMETHOD(QueryNode(REFIID riid, void **ppNode)) = 0;
-};
-
-interface __declspec(uuid("{656FF461-CDBD-4112-AD55-498F3D3BD4E0}"))
-ISceneGraph : public IUnknown
-{
-    STDMETHOD(InsertNode)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode, _In_opt_ ISceneGraphNode *pParent) = 0;
-    STDMETHOD_(ISceneGraphNode *, GetFirstRootNode)() = 0;
+    STDMETHOD(GetNode(REFIID riid, void **ppNode)) = 0;
+    STDMETHOD(Reset)(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName) = 0;
 };
 
 interface __declspec(uuid("{92F3F7C3-3470-4D5D-A52F-86A642A7BDAB}"))
 ISceneGraphNode : public IUnknown
 {
+    STDMETHOD(AddChild)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode) = 0;
 };
 
-#if 0
-class ITransform : public IGeneric
-{
-public:
-    virtual void SetTranslation(const FloatVector3 &Translation) = 0;
-    virtual void SetRotation(const FloatQuaternion &Rotation) = 0;
-    virtual void GetTranslation(FloatVector3 &Translation) const = 0;
-    virtual void GetRotation(FloatQuaternion &Quaternion) const = 0;
-};
-
-class INamed : public IGeneric
-{
-public:
-    virtual const char *GetName() const = 0;
-    virtual CanvasResult SetName(const char *pName) = 0;
-};
-
-class IEnumerable : public IGeneric
+interface __declspec(uuid("{4EADEFF8-2C3C-4085-A246-C961F877C882}"))
+IScene : public IUnknown
 {
 };
 
-class IEnumerator : public IGeneric
-{
-public:
-    virtual CanvasResult GetEnumerable(IEnumerable **ppEnumerable) = 0;
-    virtual void Reset() = 0;
-    virtual void MoveNext() = 0;
-};
-
-class ISortedList : public IGeneric
-{
-    virtual CanvasResult NewEnumerator(IEnumerator **ppEnumerator);
-    virtual CanvasResult Add(const char *pKey, IEnumerable *pEnumerable, IEnumerator *pEnumerator) = 0;
-    virtual CanvasResult Remove(IEnumerator *pEnumerator) = 0;
-};
-
-class IModel : pubilc IGeneric
-{
-public:
-};
-
-#endif
-
-
+//interface __declspec(uuid("{656FF461-CDBD-4112-AD55-498F3D3BD4E0}"))
 }
 
 

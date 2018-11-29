@@ -94,15 +94,21 @@ class CTransform :
 {
 };
 
-using SceneGraphNodeMapType = std::unordered_map<std::string, CComPtr<CSceneGraphNode>>;
-
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
     public ISceneGraphNode
 {
 public:
-    SceneGraphNodeMapType m_ChildNodes;
+    using NodeMapType = std::unordered_map<std::string, CComPtr<typename ISceneGraphNode>>;
+
+    NodeMapType m_ChildNodes;
     CSceneGraphNode *m_pParent; // weak pointer
+
+    STDMETHOD(AddChild)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode)
+    {
+        auto result = m_ChildNodes.emplace(pName, pSceneNode);
+        return result.second ? S_OK : E_FAIL;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -110,7 +116,7 @@ class CSceneGraphIterator :
     public ISceneGraphIterator
 {
     CComPtr<CSceneGraphNode> m_pContainingSceneGraphNode;
-    SceneGraphNodeMapType::iterator m_It;
+    CSceneGraphNode::NodeMapType::iterator m_It;
 
     STDMETHOD(MoveNextSibling)()
     {
@@ -126,22 +132,44 @@ class CSceneGraphIterator :
         return S_FALSE;
     }
 
-    STDMETHOD(MoveFirstChild)()
+    STDMETHOD(Reset)(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName)
     {
+        HRESULT hr = S_OK;
+        CSceneGraphNode *pParentNodeImpl = static_cast<CSceneGraphNode *>(pParentNode);
+        CSceneGraphNode::NodeMapType::iterator it;
+        if(pName)
+        {
+            it = pParentNodeImpl->m_ChildNodes.find(pName);
+        }
+        else
+        {
+            it = pParentNodeImpl->m_ChildNodes.begin();
+        }
+
+        if(it == pParentNodeImpl->m_ChildNodes.end())
+        {
+            hr = S_FALSE;
+        }
+
+        m_It = it;
+
+        m_pContainingSceneGraphNode = pParentNodeImpl;
+
+        return hr;
     }
 
-    STDMETHOD(QueryNode(REFIID riid, void **ppNode))
+    STDMETHOD(GetNode(REFIID riid, void **ppNode))
     {
+        if(m_pContainingSceneGraphNode)
+        {
+            return m_pContainingSceneGraphNode->QueryInterface(riid, ppNode);
+        }
+        else
+        {
+            return E_FAIL;
+        }
     }
 
-}
-
-//------------------------------------------------------------------------------------------------
-class CSceneGraph :
-    public CSceneGraphNode,
-    public ISceneGraph
-{
-    CComPtr<CSceneGraphNode> m_pRoot;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -202,6 +230,16 @@ class CLightNode :
     END_COM_MAP()
 };
 
+//------------------------------------------------------------------------------------------------
+class CNullNode :
+    public CSceneGraphNode,
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CNullNode)
+        COM_INTERFACE_ENTRY(ISceneGraphNode)
+    END_COM_MAP()
+};
+
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
@@ -254,7 +292,6 @@ class CNamedCollectionImpl :
             pIterator->AddRef();
             *ppIterator = pIterator;
         }
-        }
         catch (std::bad_alloc &)
         {
             return E_OUTOFMEMORY;
@@ -272,13 +309,28 @@ class CNamedCollectionImpl :
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public CNamedCollectionImpl<IScene>,
+    public IScene,
     public CComObjectRoot
 {
     BEGIN_COM_MAP(CScene)
         COM_INTERFACE_ENTRY(IScene)
-        COM_INTERFACE_ENTRY(INamedCollection)
     END_COM_MAP()
+    
+    CComPtr<CSceneGraphNode> m_pRootSceneGraphNode;
+    STDMETHOD(FinalConstruct)()
+    {
+        try
+        {
+            CComPtr<CSceneGraphNode> pNode = new CComObjectNoLock<CNullNode>(); // throw(std::bad_alloc)
+            m_pRootSceneGraphNode = pNode;
+        }
+        catch(std::bad_alloc &)
+        {
+            return E_OUTOFMEMORY;
+        }
+
+        return S_OK;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
