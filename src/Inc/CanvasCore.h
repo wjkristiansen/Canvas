@@ -45,6 +45,9 @@ interface __declspec(uuid("{7ABF521F-4209-4A38-B6D7-741C95772AE0}"))
 ICanvas : public IUnknown
 {
     STDMETHOD(CreateScene)(REFIID Riid, _COM_Outptr_ void **ppScene) = 0;
+
+    // Node creation
+    STDMETHOD(CreateNullNode)
 };
 
 interface __declspec(uuid("{ABDC9885-42C0-45ED-AEA4-E549EE9C5A0F}"))
