@@ -48,8 +48,4 @@ int main()
 
     CComPtr<IScene> pScene;
     hr = pCanvas->CreateScene(__uuidof(IScene), (void **) &pScene);
-
-    CComPtr<INamedCollection> pNamedCollection;
-    hr = pScene->QueryInterface(&pNamedCollection);
-
 }

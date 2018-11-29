@@ -11,11 +11,6 @@ namespace Canvas
 // Canvas core interface
 interface ICanvas;
 
-// Collection interfaces
-interface IIterator; // -> IUnknown
-interface INamedCollectionIterator; // -> IIterator
-interface INamedCollection; // -> IUnknown
-
 // Scene interface
 interface IScene;
 
@@ -44,20 +39,6 @@ IIterator : public IUnknown
     STDMETHOD(MoveNext)() = 0;
     STDMETHOD(Remove)() = 0;
     STDMETHOD(GetCurrentObject)(REFIID riid, _COM_Outptr_ void **ppUnk) = 0;
-};
-
-interface __declspec(uuid("{8573B59B-0C8F-4456-AF0C-D06A2F40496A}"))
-INamedCollectionIterator : public IIterator
-{
-    STDMETHOD_(PCSTR, GetCurrentName)() = 0;
-};
-
-interface __declspec(uuid("{ED514943-2693-4E0F-ABA5-BDC92476F9B1}"))
-INamedCollection : public IUnknown
-{
-    STDMETHOD(Insert)(PCSTR pName, _In_ IUnknown *pUnk) = 0;
-    STDMETHOD(Find)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppUnk) = 0;
-    STDMETHOD(CreateIterator)(PCSTR pName, _COM_Outptr_ INamedCollectionIterator **ppIterator) = 0;
 };
 
 interface __declspec(uuid("{7ABF521F-4209-4A38-B6D7-741C95772AE0}"))
