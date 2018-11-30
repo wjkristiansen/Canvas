@@ -6,66 +6,47 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-class CModelInstance :
-    public IModelInstance
+class CSceneGraphNodeBase :
+    public ISceneGraphNode,
+    public CComObjectRoot
 {
-    static HRESULT Create(CModelInstance **ppModelInstance, ISceneGraphNode *pNode)
-    {
-        *ppModelInstance = nullptr;
-        try
-        {
-            CComPtr<CComAggObject<CModelInstance>> pModelInstance;
-            CComAggObject<CModelInstance>::CreateInstance(pNode, &pModelInstance); // throw(std::bad_alloc)
-            *ppModelInstance = pModelInstance;
-            pModelInstance->AddRef();
-        }
-        catch(std::bad_alloc &)
-        {
-            return E_OUTOFMEMORY;
-        }
-        return E_NOTIMPL;
-    }
+    BEGIN_COM_MAP(CSceneGraphNodeBase)
+        COM_INTERFACE_ENTRY(ISceneGraphNode)
+    END_COM_MAP()
+
 };
 
-//------------------------------------------------------------------------------------------------
-class CCamera :
-    public ICamera
+size_t hash(REFIID riid)
 {
-    static HRESULT Create(CCamera **ppModelInstance)
-    {
-        return E_NOTIMPL;
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-class CLight :
-    public ILight
-{
-    static HRESULT Create(CLight **ppModelInstance)
-    {
-        return E_NOTIMPL;
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-class CTransform :
-    public ITransform
-{
-    static HRESULT Create(CTransform **ppModelInstance)
-    {
-        return E_NOTIMPL;
-    }
-};
+    const UINT64 *pData = reinterpret_cast<const UINT64 *>(&riid);
+    UINT64 hash64 = pData[0] ^ pData[1];
+    return hash64;
+}
 
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
-    public ISceneGraphNode
+    public CSceneGraphNodeBase
 {
 public:
     using NodeMapType = std::unordered_map<std::string, CComPtr<typename ISceneGraphNode>>;
+    using ElementMapType = std::unordered_map<IID, CComPtr<typename IUnknown>>;
 
     NodeMapType m_ChildNodes;
     CSceneGraphNode *m_pParent; // weak pointer
+
+    ElementMapType m_Elements;
+
+    STDMETHOD(QueryInterface)(REFIID riid, void **ppUnk)
+    {
+        if (riid == __uuidof(ITransform))
+        {
+            auto it = m_Elements.find(riid);
+            if (it == m_Elements.end())
+            {
+                return E_NOINTERFACE;
+            }
+        }
+    }
 
     STDMETHOD(AddChild)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode)
     {
@@ -74,41 +55,109 @@ public:
     }
 };
 
+template<class _T>
+HRESULT CreateAggregateElement(REFIID riid, _T **ppObj, CSceneGraphNode *pNode)
+{
+    *ppObj = nullptr;
+    try
+    {
+        CComPtr<CComAggObject<_T>> pObj;
+        CComAggObject<_T>::CreateInstance(pNode, &pObj); // throw(std::bad_alloc)
+        pObj->QueryInterface(riid, reinterpret_cast<void **>(ppObj));
+    }
+    catch(std::bad_alloc &)
+    {
+        return E_OUTOFMEMORY;
+    }
+    return E_NOTIMPL;
+}
+
 //------------------------------------------------------------------------------------------------
-class CSceneGraphNodeImpl :
-    public CSceneGraphNode,
+class CModelInstance :
+    public IModelInstance,
     public CComObjectRoot
 {
-    BEGIN_COM_MAP(CSceneGraphNodeImpl)
-        COM_INTERFACE_ENTRY(ISceneGraphNode)
-        COM_INTERFACE_ENTRY_FUNC(__uuidof(ITransform), 0, LocalQueryInterface)
-        COM_INTERFACE_ENTRY_FUNC(__uuidof(IModelInstance), 0, LocalQueryInterface)
-        COM_INTERFACE_ENTRY_FUNC(__uuidof(ICamera), 0, LocalQueryInterface)
-        COM_INTERFACE_ENTRY_FUNC(__uuidof(ILight), 0, LocalQueryInterface)
+    BEGIN_COM_MAP(CModelInstance)
+        COM_INTERFACE_ENTRY(IModelInstance)
     END_COM_MAP()
 
-    static HRESULT WINAPI LocalQueryInterface(void* pThis, REFIID riid, LPVOID* ppv, DWORD_PTR dw)
+    static HRESULT Create(REFIID riid, CModelInstance **ppModelInstance, CSceneGraphNode *pNode)
     {
-        if (__uuidof(ITransform) == riid)
+        try
         {
+            ThrowFailure(CreateAggregateElement<CModelInstance>(riid, ppModelInstance, pNode));
         }
-
-        if (__uuidof(IModelInstance) == riid)
+        catch (_com_error &e)
         {
+            return e.Error();
         }
-
-        if (__uuidof(ICamera) == riid)
-        {
-        }
-
-        if (__uuidof(ILight) == riid)
-        {
-        }
-
-        return E_NOINTERFACE;
     }
+};
 
-    std::map<IID, CComPtr<IUnknown>> m_InnerInterfaceMap;
+//------------------------------------------------------------------------------------------------
+class CCamera :
+    public ICamera,
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CCamera)
+        COM_INTERFACE_ENTRY(ICamera)
+    END_COM_MAP()
+
+    static HRESULT Create(REFIID riid, CCamera **ppCamera, CSceneGraphNode *pNode)
+    {
+        try
+        {
+            ThrowFailure(CreateAggregateElement(riid, ppCamera, pNode));
+        }
+        catch (_com_error &e)
+        {
+            return e.Error();
+        }
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+class CLight :
+    public ILight,
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CLight)
+        COM_INTERFACE_ENTRY(ILight)
+    END_COM_MAP()
+
+    static HRESULT Create(REFIID riid, CLight **ppLight, CSceneGraphNode *pNode)
+    {
+        try
+        {
+            ThrowFailure(CreateAggregateElement(riid, ppLight, pNode));
+        }
+        catch (_com_error &e)
+        {
+            return e.Error();
+        }
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+class CTransform :
+    public ITransform,
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CTransform)
+        COM_INTERFACE_ENTRY(ITransform)
+    END_COM_MAP()
+
+    static HRESULT Create(REFIID riid, CTransform **ppTransform, CSceneGraphNode *pNode)
+    {
+        try
+        {
+            ThrowFailure(CreateAggregateElement(riid, ppTransform, pNode));
+        }
+        catch (_com_error &e)
+        {
+            return e.Error();
+        }
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -173,75 +222,6 @@ class CSceneGraphIterator :
 };
 
 //------------------------------------------------------------------------------------------------
-class CTransformNode :
-    public CTransform,
-    public CSceneGraphNode,
-    public CComObjectRoot
-{
-    BEGIN_COM_MAP(CTransformNode)
-        COM_INTERFACE_ENTRY(ISceneGraphNode)
-        COM_INTERFACE_ENTRY(ITransform)
-    END_COM_MAP()
-};
-
-//------------------------------------------------------------------------------------------------
-class CMeshNode :
-    public CSceneGraphNode,
-    public CTransform,
-    public CModelInstance,
-    public CComObjectRoot
-{
-    BEGIN_COM_MAP(CMeshNode)
-        COM_INTERFACE_ENTRY(ISceneGraphNode)
-        COM_INTERFACE_ENTRY(ITransform)
-        COM_INTERFACE_ENTRY(IModelInstance)
-    END_COM_MAP()
-};
-
-//------------------------------------------------------------------------------------------------
-class CCameraNode :
-    public CSceneGraphNode,
-    public CTransform,
-    public CCamera,
-    public CModelInstance, // For debug rendering of the camera
-    public CComObjectRoot
-{
-    BEGIN_COM_MAP(CCameraNode)
-        COM_INTERFACE_ENTRY(ISceneGraphNode)
-        COM_INTERFACE_ENTRY(ITransform)
-        COM_INTERFACE_ENTRY(IModelInstance)
-        COM_INTERFACE_ENTRY(ICamera)
-    END_COM_MAP()
-};
-
-//------------------------------------------------------------------------------------------------
-class CLightNode :
-    public CSceneGraphNode,
-    public CTransform,
-    public CLight,
-    public CModelInstance, // For debug rendering of the light
-    public CComObjectRoot
-{
-    BEGIN_COM_MAP(CLightNode)
-        COM_INTERFACE_ENTRY(ISceneGraphNode)
-        COM_INTERFACE_ENTRY(ITransform)
-        COM_INTERFACE_ENTRY(IModelInstance)
-        COM_INTERFACE_ENTRY(ILight)
-    END_COM_MAP()
-};
-
-//------------------------------------------------------------------------------------------------
-class CNullNode :
-    public CSceneGraphNode,
-    public CComObjectRoot
-{
-    BEGIN_COM_MAP(CNullNode)
-        COM_INTERFACE_ENTRY(ISceneGraphNode)
-    END_COM_MAP()
-};
-
-
-//------------------------------------------------------------------------------------------------
 class CScene :
     public IScene,
     public CComObjectRoot
@@ -253,16 +233,6 @@ class CScene :
     CComPtr<CSceneGraphNode> m_pRootSceneGraphNode;
     STDMETHOD(FinalConstruct)()
     {
-        try
-        {
-            CComPtr<CSceneGraphNode> pNode = new CComObjectNoLock<CNullNode>(); // throw(std::bad_alloc)
-            m_pRootSceneGraphNode = pNode;
-        }
-        catch(std::bad_alloc &)
-        {
-            return E_OUTOFMEMORY;
-        }
-
         return S_OK;
     }
 };
@@ -308,26 +278,6 @@ public:
         {
             return E_OUTOFMEMORY;
         }
-    }
-
-    STDMETHOD(CreateTransformNode)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
-    {
-        return CreateNode<CTransformNode>(pName, riid, ppSceneGraphNode);
-    }
-
-    STDMETHOD(CreateMeshNode)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
-    {
-        return CreateNode<CMeshNode>(pName, riid, ppSceneGraphNode);
-    }
-
-    STDMETHOD(CreateCameraNode)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
-    {
-        return CreateNode<CCameraNode>(pName, riid, ppSceneGraphNode);
-    }
-
-    STDMETHOD(CreateLightNode)(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
-    {
-        return CreateNode<CLightNode>(pName, riid, ppSceneGraphNode);
     }
 };
 
