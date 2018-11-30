@@ -31,3 +31,5 @@ inline void ThrowFailure(HRESULT hr)
         throw(_com_error(hr));
     }
 }
+
+#include "Scene.h"
