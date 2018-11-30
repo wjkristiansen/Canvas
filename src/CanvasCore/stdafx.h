@@ -23,3 +23,11 @@
 // reference additional headers your program requires here
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
+
+void ThrowFailure(HRESULT hr)
+{
+    if (FAILED(hr))
+    {
+        throw(_com_error(hr));
+    }
+}
