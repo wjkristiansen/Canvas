@@ -9,24 +9,52 @@ using namespace Canvas;
 class CModelInstance :
     public IModelInstance
 {
+    static HRESULT Create(CModelInstance **ppModelInstance, ISceneGraphNode *pNode)
+    {
+        *ppModelInstance = nullptr;
+        try
+        {
+            CComPtr<CComAggObject<CModelInstance>> pModelInstance;
+            CComAggObject<CModelInstance>::CreateInstance(pNode, &pModelInstance); // throw(std::bad_alloc)
+            *ppModelInstance = pModelInstance;
+            pModelInstance->AddRef();
+        }
+        catch(std::bad_alloc &)
+        {
+            return E_OUTOFMEMORY;
+        }
+        return E_NOTIMPL;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
 class CCamera :
     public ICamera
 {
+    static HRESULT Create(CCamera **ppModelInstance)
+    {
+        return E_NOTIMPL;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
 class CLight :
     public ILight
 {
+    static HRESULT Create(CLight **ppModelInstance)
+    {
+        return E_NOTIMPL;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
     public ITransform
 {
+    static HRESULT Create(CTransform **ppModelInstance)
+    {
+        return E_NOTIMPL;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -44,6 +72,43 @@ public:
         auto result = m_ChildNodes.emplace(pName, pSceneNode);
         return result.second ? S_OK : E_FAIL;
     }
+};
+
+//------------------------------------------------------------------------------------------------
+class CSceneGraphNodeImpl :
+    public CSceneGraphNode,
+    public CComObjectRoot
+{
+    BEGIN_COM_MAP(CSceneGraphNodeImpl)
+        COM_INTERFACE_ENTRY(ISceneGraphNode)
+        COM_INTERFACE_ENTRY_FUNC(__uuidof(ITransform), 0, LocalQueryInterface)
+        COM_INTERFACE_ENTRY_FUNC(__uuidof(IModelInstance), 0, LocalQueryInterface)
+        COM_INTERFACE_ENTRY_FUNC(__uuidof(ICamera), 0, LocalQueryInterface)
+        COM_INTERFACE_ENTRY_FUNC(__uuidof(ILight), 0, LocalQueryInterface)
+    END_COM_MAP()
+
+    static HRESULT WINAPI LocalQueryInterface(void* pThis, REFIID riid, LPVOID* ppv, DWORD_PTR dw)
+    {
+        if (__uuidof(ITransform) == riid)
+        {
+        }
+
+        if (__uuidof(IModelInstance) == riid)
+        {
+        }
+
+        if (__uuidof(ICamera) == riid)
+        {
+        }
+
+        if (__uuidof(ILight) == riid)
+        {
+        }
+
+        return E_NOINTERFACE;
+    }
+
+    std::map<IID, CComPtr<IUnknown>> m_InnerInterfaceMap;
 };
 
 //------------------------------------------------------------------------------------------------
