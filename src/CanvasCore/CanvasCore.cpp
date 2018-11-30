@@ -32,11 +32,13 @@ class CSceneGraphNodeBase :
 
 };
 
+
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
-    public CSceneGraphNodeBase
+    public CComObjectNoLock<CSceneGraphNodeBase>
 {
 public:
+    NodeElementFlags m_NodeElementFlags = NodeElementFlags::None;
     using NodeMapType = std::unordered_map<std::string, CComPtr<typename ISceneGraphNode>>;
     using ElementMapType = std::unordered_map<IID, CComPtr<typename IUnknown>>;
 
@@ -44,6 +46,23 @@ public:
     CSceneGraphNode *m_pParent; // weak pointer
 
     ElementMapType m_Elements;
+
+    CSceneGraphNode(NodeElementFlags flags) : CComObjectNoLock<CSceneGraphNodeBase>(),
+        m_NodeElementFlags(flags)
+    {
+    }
+
+    STDMETHOD(FinalConstruct)()
+    {
+        if (m_NodeElementFlags & NodeElementFlags::Transform)
+        {
+            // Add a transform element
+            CComPtr<IUnknown> pTransform;
+            ThrowFailure(CTransform::Create(IID_PPV_ARGS(&pTransform), this));
+            m_Elements.emplace(__uuidof(ITransform), pTransform);
+            return S_OK;
+        }
+    }
 
     STDMETHOD(QueryInterface)(REFIID riid, void **ppUnk)
     {
@@ -54,7 +73,12 @@ public:
             {
                 return E_NOINTERFACE;
             }
+
+            auto pUnk = it->second;
+            return pUnk->QueryInterface(riid, ppUnk);
         }
+
+        return __super::QueryInterface(riid, ppUnk);
     }
 
     STDMETHOD(AddChild)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode)
@@ -156,7 +180,7 @@ class CTransform :
         COM_INTERFACE_ENTRY(ITransform)
     END_COM_MAP()
 
-    static HRESULT Create(REFIID riid, CTransform **ppTransform, CSceneGraphNode *pNode)
+    static HRESULT Create(REFIID riid, void **ppTransform, CSceneGraphNode *pNode)
     {
         try
         {
@@ -273,13 +297,12 @@ public:
         return S_OK;
     }
 
-    template<class _T>
-    HRESULT CreateNode(PCSTR pName, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
+    STDMETHOD(CreateNode)(PCSTR pName, NodeElementFlags flags, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
     {
         *ppSceneGraphNode = nullptr;
         try
         {
-            CComPtr<_T> pSceneGraphNode = new CComObjectNoLock<_T>(); // throw(std::bad_alloc)
+            CComPtr<CSceneGraphNode> pSceneGraphNode = new CSceneGraphNode(flags); // throw(std::bad_alloc)
             *ppSceneGraphNode = pSceneGraphNode;
             return pSceneGraphNode->QueryInterface(riid, ppSceneGraphNode);
         }
@@ -298,7 +321,7 @@ HRESULT STDMETHODCALLTYPE CreateCanvas(REFIID riid, void **ppCanvas)
     {
         if (riid == __uuidof(ICanvas))
         {
-            CCanvas *pCanvas = new CComObjectNoLock<CCanvas>(); // throw(bad_alloc)
+            CCanvas *pCanvas = new CComObjectNoLock<CCanvas>; // throw(bad_alloc)
             *ppCanvas = pCanvas;
             pCanvas->AddRef();
         }
