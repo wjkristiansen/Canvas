@@ -24,7 +24,7 @@
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
 
-void ThrowFailure(HRESULT hr)
+inline void ThrowFailure(HRESULT hr)
 {
     if (FAILED(hr))
     {

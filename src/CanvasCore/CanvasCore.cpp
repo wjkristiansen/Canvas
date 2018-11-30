@@ -5,6 +5,22 @@
 
 using namespace Canvas;
 
+namespace std
+{
+    template<>
+    class hash<IID>
+    {
+    public:
+        size_t operator()(REFIID riid) const
+        {
+            return riid.Data1;
+            //const UINT64 *pData = reinterpret_cast<const UINT64 *>(&riid);
+            //UINT64 hash64 = pData[0] ^ pData[1];
+            //return hash64;
+        }
+    };
+}
+
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNodeBase :
     public ISceneGraphNode,
@@ -15,13 +31,6 @@ class CSceneGraphNodeBase :
     END_COM_MAP()
 
 };
-
-size_t hash(REFIID riid)
-{
-    const UINT64 *pData = reinterpret_cast<const UINT64 *>(&riid);
-    UINT64 hash64 = pData[0] ^ pData[1];
-    return hash64;
-}
 
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
