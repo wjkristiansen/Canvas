@@ -52,13 +52,18 @@ public:
         *ppSceneGraphNode = nullptr;
         try
         {
-            CComPtr<CSceneGraphNode> pSceneGraphNode = new CSceneGraphNode(flags); // throw(std::bad_alloc)
+            CComPtr<CSceneGraphNode> pSceneGraphNode;
+            ThrowFailure(CSceneGraphNode::Create(flags, InterfaceId::ISceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)));
             *ppSceneGraphNode = pSceneGraphNode;
             return pSceneGraphNode->QueryInterface(iid, ppSceneGraphNode);
         }
         catch (std::bad_alloc&)
         {
             return Result::OutOfMemory;
+        }
+        catch (CanvasError &e)
+        {
+            return e.Result();
         }
     }
 };

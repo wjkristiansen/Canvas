@@ -18,21 +18,9 @@ namespace std
 }
 
 //------------------------------------------------------------------------------------------------
-class CSceneGraphNodeBase :
+class CSceneGraphNode :
     public ISceneGraphNode,
     public CCanvasObjectBase
-{
-public:
-    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-    {
-        return CCanvasObjectBase::QueryInterface(iid, ppObj);
-    }
-};
-
-
-//------------------------------------------------------------------------------------------------
-class CSceneGraphNode :
-    public CGeneric<CSceneGraphNodeBase>
 {
 public:
     static Result CANVASAPI Create(NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
