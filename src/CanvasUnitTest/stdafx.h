@@ -6,9 +6,7 @@
 #pragma once
 
 #include "targetver.h"
-#include <comdef.h>
 #include <atlbase.h>
-#include <atlcom.h>
 
 // Headers for CppUnitTest
 #include "CppUnitTest.h"
