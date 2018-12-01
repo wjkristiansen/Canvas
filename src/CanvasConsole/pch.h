@@ -16,6 +16,6 @@
 #include <atlcom.h>
 
 #include <CanvasMath.hpp>
-#include <CanvasCore.h>
+#include <Canvas.h>
 
 #endif //PCH_H

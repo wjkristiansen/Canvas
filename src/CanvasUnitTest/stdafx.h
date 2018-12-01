@@ -13,7 +13,7 @@
 // Headers for CppUnitTest
 #include "CppUnitTest.h"
 #include "CanvasMath.hpp"
-#include "CanvasCore.h"
+#include "Canvas.h"
 
 #include <new>
 #include <vector>

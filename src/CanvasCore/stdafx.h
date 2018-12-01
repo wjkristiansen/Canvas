@@ -20,7 +20,7 @@
 
 // reference additional headers your program requires here
 #include <CanvasMath.hpp>
-#include <CanvasCore.h>
+#include <Canvas.h>
 
 namespace Canvas
 {
