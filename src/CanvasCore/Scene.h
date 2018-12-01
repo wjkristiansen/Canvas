@@ -7,138 +7,115 @@
 namespace std
 {
     template<>
-    class hash<IID>
+    class hash<InterfaceId>
     {
     public:
-        size_t operator()(REFIID riid) const
+        size_t operator()(InterfaceId iid) const
         {
-            return riid.Data1;
+            return static_cast<size_t>(iid);
         }
     };
 }
 
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNodeBase :
-    public Canvas::ISceneGraphNode,
-    public CComObjectRoot
+    public ISceneGraphNode
 {
-    BEGIN_COM_MAP(CSceneGraphNodeBase)
-        COM_INTERFACE_ENTRY(Canvas::ISceneGraphNode)
-    END_COM_MAP()
-
+public:
 };
 
 
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
-    public CComObjectNoLock<CSceneGraphNodeBase>
+    public CGeneric<CSceneGraphNodeBase>
 {
 public:
-    Canvas::NODE_ELEMENT_FLAGS m_NodeElementFlags = Canvas::NODE_ELEMENT_FLAGS_NONE;
-    using NodeMapType = std::unordered_map<std::string, CComPtr<typename Canvas::ISceneGraphNode>>;
-    using ElementMapType = std::unordered_map<IID, CComPtr<typename IUnknown>>;
+    NODE_ELEMENT_FLAGS m_NodeElementFlags = NODE_ELEMENT_FLAGS_NONE;
+    using NodeMapType = std::unordered_map<std::string, CComPtr<typename ISceneGraphNode>>;
+    using ElementMapType = std::unordered_map<InterfaceId, CComPtr<typename IGeneric>>;
 
     NodeMapType m_ChildNodes;
     CSceneGraphNode *m_pParent; // weak pointer
 
     ElementMapType m_Elements;
 
-    CSceneGraphNode(Canvas::NODE_ELEMENT_FLAGS flags) : CComObjectNoLock<CSceneGraphNodeBase>(),
+    CSceneGraphNode(NODE_ELEMENT_FLAGS flags) : CGeneric<CSceneGraphNodeBase>(),
         m_NodeElementFlags(flags)
     {
     }
 
-    STDMETHOD(FinalConstruct)();
-    STDMETHOD(QueryInterface)(REFIID riid, void **ppUnk);
-    STDMETHOD(AddChild)(_In_ PCSTR pName, _In_ Canvas::ISceneGraphNode *pSceneNode);
+//    CANVASMETHOD(FinalConstruct)();
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, void **ppUnk);
+    CANVASMETHOD(AddChild)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode);
 };
 
-template<class _T>
-HRESULT CreateAggregateElement(REFIID riid, void **ppObj, CSceneGraphNode *pNode)
-{
-    *ppObj = nullptr;
-    try
-    {
-        CComPtr<CComAggObject<_T>> pObj;
-        CComAggObject<_T>::CreateInstance(pNode, &pObj); // throw(std::bad_alloc)
-        pObj->QueryInterface(riid, reinterpret_cast<void **>(ppObj));
-    }
-    catch(std::bad_alloc &)
-    {
-        return E_OUTOFMEMORY;
-    }
-    return E_NOTIMPL;
-}
+//template<class _T>
+//Result CreateAggregateElement(InterfaceId iid, void **ppObj, CSceneGraphNode *pNode)
+//{
+//    *ppObj = nullptr;
+//    try
+//    {
+//        CComPtr<CComAggObject<_T>> pObj;
+//        CComAggObject<_T>::CreateInstance(pNode, &pObj); // throw(std::bad_alloc)
+//        pObj->QueryInterface(iid, reinterpret_cast<void **>(ppObj));
+//    }
+//    catch(std::bad_alloc &)
+//    {
+//        return Result::OutOfMemory;
+//    }
+//    return Result::NotImplemented;
+//}
 
 //------------------------------------------------------------------------------------------------
 class CModelInstance :
-    public Canvas::IModelInstance,
-    public CComObjectRoot
+    public IModelInstance
 {
-    BEGIN_COM_MAP(CModelInstance)
-        COM_INTERFACE_ENTRY(IModelInstance)
-    END_COM_MAP()
-
-    static HRESULT Create(REFIID riid, void **ppModelInstance, CSceneGraphNode *pNode);
+public:
+    static Result Create(InterfaceId iid, void **ppModelInstance, CSceneGraphNode *pNode);
 };
 
 //------------------------------------------------------------------------------------------------
 class CCamera :
-    public Canvas::ICamera,
-    public CComObjectRoot
+    public ICamera
 {
-    BEGIN_COM_MAP(CCamera)
-        COM_INTERFACE_ENTRY(Canvas::ICamera)
-    END_COM_MAP()
-
-    static HRESULT Create(REFIID riid, void **ppCamera, CSceneGraphNode *pNode);
+public:
+    static Result Create(InterfaceId iid, void **ppCamera, CSceneGraphNode *pNode);
 };
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public Canvas::ILight,
-    public CComObjectRoot
+    public ILight
 {
-    BEGIN_COM_MAP(CLight)
-        COM_INTERFACE_ENTRY(Canvas::ILight)
-    END_COM_MAP()
-
-    static HRESULT Create(REFIID riid, void **ppLight, CSceneGraphNode *pNode);
+public:
+    static Result Create(InterfaceId iid, void **ppLight, CSceneGraphNode *pNode);
 };
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
-    public Canvas::ITransform,
-    public CComObjectRoot
+    public ITransform
 {
-    BEGIN_COM_MAP(CTransform)
-        COM_INTERFACE_ENTRY(Canvas::ITransform)
-    END_COM_MAP()
-
-    static HRESULT Create(REFIID riid, void **ppTransform, CSceneGraphNode *pNode);
+public:
+    static Result Create(InterfaceId iid, void **ppTransform, CSceneGraphNode *pNode);
 };
 
 //------------------------------------------------------------------------------------------------
 class CSceneGraphIterator :
-    public Canvas::ISceneGraphIterator
+    public ISceneGraphIterator
 {
+public:
     CComPtr<CSceneGraphNode> m_pContainingSceneGraphNode;
     CSceneGraphNode::NodeMapType::iterator m_It;
 
-    STDMETHOD(MoveNextSibling)();
-    STDMETHOD(Reset)(_In_ Canvas::ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName);
-    STDMETHOD(GetNode(REFIID riid, void **ppNode));
+    CANVASMETHOD(MoveNextSibling)();
+    CANVASMETHOD(Reset)(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName);
+    CANVASMETHOD(GetNode(InterfaceId iid, void **ppNode));
 };
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public Canvas::IScene,
-    public CComObjectRoot
+    public IScene
 {
-    BEGIN_COM_MAP(CScene)
-        COM_INTERFACE_ENTRY(Canvas::IScene)
-    END_COM_MAP()
-    
+public:
     CComPtr<CSceneGraphNode> m_pRootSceneGraphNode;
-    STDMETHOD(FinalConstruct)();
+//    CANVASMETHOD(FinalConstruct)();
 };

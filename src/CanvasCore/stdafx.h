@@ -10,9 +10,7 @@
 #define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
 // Windows Header Files
 #include <windows.h>
-#include <comdef.h>
 #include <atlbase.h>
-#include <atlcom.h>
 
 #include <new>
 #include <vector>
@@ -24,12 +22,74 @@
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
 
-inline void ThrowFailure(HRESULT hr)
+namespace Canvas
 {
-    if (FAILED(hr))
+//------------------------------------------------------------------------------------------------
+class CanvasError
+{
+    Result m_result;
+public:
+    operator CanvasError() = delete;
+    CanvasError(Result result) :
+        m_result(result) {}
+
+    Result Result() const { return m_result; }
+};
+
+//------------------------------------------------------------------------------------------------
+inline void ThrowFailure(Result result)
+{
+    if (Failed(result))
     {
-        throw(_com_error(hr));
+        throw(CanvasError(result));
     }
 }
 
+#define BEGIN_CANVAS_MAP(x)
+#define CANVAS_MAP_ENTRY(x)
+#define END_CANVAS_MAP()
+
+//------------------------------------------------------------------------------------------------
+template<class _T>
+class CGeneric : public _T
+{
+    ULONG m_RefCount = 0;
+
+public:
+    CANVASMETHOD_(ULONG,AddRef)()
+    {
+        return InterlockedIncrement(&m_RefCount);
+    }
+
+    CANVASMETHOD_(ULONG, Release)()
+    {
+        auto result = InterlockedDecrement(&m_RefCount);
+
+        if (0 == result)
+        {
+            delete(this);
+        }
+
+        return result;
+    }
+
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        *ppObj = nullptr;
+        switch (iid)
+        {
+        case InterfaceId::IGeneric:
+            *ppObj = this;
+            break;
+
+        default:
+            return Result::NoInterface;
+        }
+
+        return Result::Success;
+    }
+};
+}
+
+using namespace Canvas;
 #include "Scene.h"

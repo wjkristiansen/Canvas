@@ -6,172 +6,171 @@
 
 using namespace Canvas;
 
-STDMETHODIMP CSceneGraphNode::FinalConstruct()
+//CANVASMETHODIMP CSceneGraphNode::FinalConstruct()
+//{
+//    try
+//    {
+//        ThrowFailure(__super::FinalConstruct());
+//
+//        if (m_NodeElementFlags & NODE_ELEMENT_FLAGS_TRANSFORM)
+//        {
+//            // Add a transform element
+//            CComPtr<IGeneric> pTransform;
+//            ThrowFailure(CTransform::Create(IID_PPV_ARGS(&pTransform), this));
+//            m_Elements.emplace(__uuidof(ITransform), pTransform);
+//        }
+//    }
+//    catch (CanvasError &e)
+//    {
+//        return e.Result();
+//    }
+//
+//    return Result::Success;
+//}
+
+CANVASMETHODIMP CSceneGraphNode::QueryInterface(InterfaceId iid, void **ppUnk)
 {
-    try
+    if (iid == ITransform::IId)
     {
-        ThrowFailure(__super::FinalConstruct());
-
-        if (m_NodeElementFlags & NODE_ELEMENT_FLAGS_TRANSFORM)
-        {
-            // Add a transform element
-            CComPtr<IUnknown> pTransform;
-            ThrowFailure(CTransform::Create(IID_PPV_ARGS(&pTransform), this));
-            m_Elements.emplace(__uuidof(ITransform), pTransform);
-        }
-    }
-    catch (_com_error &e)
-    {
-        return e.Error();
-    }
-
-    return S_OK;
-}
-
-STDMETHODIMP CSceneGraphNode::QueryInterface(REFIID riid, void **ppUnk)
-{
-    if (riid == __uuidof(ITransform))
-    {
-        auto it = m_Elements.find(riid);
+        auto it = m_Elements.find(iid);
         if (it == m_Elements.end())
         {
-            return E_NOINTERFACE;
+            return Result::NoInterface;
         }
 
         auto pUnk = it->second;
-        return pUnk->QueryInterface(riid, ppUnk);
+        return pUnk->QueryInterface(iid, ppUnk);
     }
 
-    return __super::QueryInterface(riid, ppUnk);
+    return __super::QueryInterface(iid, ppUnk);
 }
 
-STDMETHODIMP CSceneGraphNode::AddChild(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode)
+CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode)
 {
     auto result = m_ChildNodes.emplace(pName, pSceneNode);
-    return result.second ? S_OK : E_FAIL;
+    return result.second ? Result::Success : Result::DuplicateKey;
 }
 
 
-HRESULT CModelInstance::Create(REFIID riid, void **ppModelInstance, CSceneGraphNode *pNode)
+Result CModelInstance::Create(InterfaceId iid, void **ppModelInstance, CSceneGraphNode *pNode)
 {
     try
     {
-        ThrowFailure(CreateAggregateElement<CModelInstance>(riid, ppModelInstance, pNode));
+//        ThrowFailure(CreateAggregateElement<CModelInstance>(iid, ppModelInstance, pNode));
     }
-    catch (_com_error &e)
+    catch (CanvasError &e)
     {
-        return e.Error();
+        return e.Result();
     }
 
-    return S_OK;
+    return Result::Success;
 }
 
-HRESULT CCamera::Create(REFIID riid, void **ppCamera, CSceneGraphNode *pNode)
+Result CCamera::Create(InterfaceId iid, void **ppCamera, CSceneGraphNode *pNode)
 {
     try
     {
-        ThrowFailure(CreateAggregateElement<CCamera>(riid, ppCamera, pNode));
+//        ThrowFailure(CreateAggregateElement<CCamera>(iid, ppCamera, pNode));
     }
-    catch (_com_error &e)
+    catch (CanvasError &e)
     {
-        return e.Error();
+        return e.Result();
     }
 
-    return S_OK;
+    return Result::Success;
 }
 
-HRESULT CLight::Create(REFIID riid, void **ppLight, CSceneGraphNode *pNode)
+Result CLight::Create(InterfaceId iid, void **ppLight, CSceneGraphNode *pNode)
 {
     try
     {
-        ThrowFailure(CreateAggregateElement<CLight>(riid, ppLight, pNode));
+//        ThrowFailure(CreateAggregateElement<CLight>(iid, ppLight, pNode));
     }
-    catch (_com_error &e)
+    catch (CanvasError &e)
     {
-        return e.Error();
+        return e.Result();
     }
 
-    return S_OK;
+    return Result::Success;
 }
 
-HRESULT CTransform::Create(REFIID riid, void **ppTransform, CSceneGraphNode *pNode)
+Result CTransform::Create(InterfaceId iid, void **ppTransform, CSceneGraphNode *pNode)
 {
     try
     {
-        ThrowFailure(CreateAggregateElement<CTransform>(riid, ppTransform, pNode));
+//        ThrowFailure(CreateAggregateElement<CTransform>(iid, ppTransform, pNode));
     }
-    catch (_com_error &e)
+    catch (CanvasError &e)
     {
-        return e.Error();
+        return e.Result();
     }
 
-    return S_OK;
+    return Result::Success;
 }
 
 
-STDMETHODIMP CSceneGraphIterator::MoveNextSibling()
+CANVASMETHODIMP CSceneGraphIterator::MoveNextSibling()
 {
     if (m_It != m_pContainingSceneGraphNode->m_ChildNodes.end())
     {
         ++m_It;
         if (m_It != m_pContainingSceneGraphNode->m_ChildNodes.end())
         {
-            return S_OK;
+            return Result::Success;
         }
     }
 
-    return S_FALSE;
+    return Result::Finished;
 }
 
-STDMETHODIMP CSceneGraphIterator::Reset(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName)
+CANVASMETHODIMP CSceneGraphIterator::Reset(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName)
 {
-    HRESULT hr = S_OK;
+    Result result = Result::Success;
     CSceneGraphNode *pParentNodeImpl = reinterpret_cast<CSceneGraphNode *>(pParentNode);
     CSceneGraphNode::NodeMapType::iterator it;
     if(pName)
     {
         it = pParentNodeImpl->m_ChildNodes.find(pName);
+        if(it == pParentNodeImpl->m_ChildNodes.end())
+        {
+            result = Result::NotFound;
+        }
     }
     else
     {
         it = pParentNodeImpl->m_ChildNodes.begin();
     }
 
-    if(it == pParentNodeImpl->m_ChildNodes.end())
-    {
-        hr = S_FALSE;
-    }
-
     m_It = it;
 
     m_pContainingSceneGraphNode = pParentNodeImpl;
 
-    return hr;
+    return result;
 }
 
-STDMETHODIMP CSceneGraphIterator::GetNode(REFIID riid, void **ppNode)
+CANVASMETHODIMP CSceneGraphIterator::GetNode(InterfaceId iid, void **ppNode)
 {
     if(m_pContainingSceneGraphNode)
     {
-        return m_pContainingSceneGraphNode->QueryInterface(riid, ppNode);
+        return m_pContainingSceneGraphNode->QueryInterface(iid, ppNode);
     }
     else
     {
-        return E_FAIL;
+        return Result::Uninitialized;
     }
 }
-
-STDMETHODIMP CScene::FinalConstruct()
-{
-    try
-    {
-        CComPtr<CSceneGraphNode> pRootNode = new CSceneGraphNode(NODE_ELEMENT_FLAGS_TRANSFORM); // throw(std::bad_alloc)
-        m_pRootSceneGraphNode = pRootNode;
-    }
-    catch(std::bad_alloc&)
-    {
-        return E_OUTOFMEMORY;
-    }
-
-    return S_OK;
-}
+//
+//CANVASMETHODIMP CScene::FinalConstruct()
+//{
+//    try
+//    {
+//        CComPtr<CSceneGraphNode> pRootNode = new CSceneGraphNode(NODE_ELEMENT_FLAGS_TRANSFORM); // throw(std::bad_alloc)
+//        m_pRootSceneGraphNode = pRootNode;
+//    }
+//    catch(std::bad_alloc&)
+//    {
+//        return E_OUTOFMEMORY;
+//    }
+//
+//    return Result::Success;
+//}
