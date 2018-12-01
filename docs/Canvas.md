@@ -1,10 +1,10 @@
 # Canvas
-An experimental D3D12 engine.  Canvas is comprised of several subprojects.
+An experimental game-like engine.  Canvas is comprised of several subprojects.
 
 [CanvasCore](./CanvasCore/CanvasCore.md)  
-Implementation of core Canvas interfaces.  Takes no direct dependency on D3D12, allowing for alternative graphics implementations.
+High-level implementation of core Canvas interfaces.
 
-CanvasCore loads models and textures and manages the scene graph.  At some point it may implement or incorporate a physics engine.
+CanvasCore manages resources such as materials and mesh geometry.  Implements the scene graph and manages overall state.
 
 CanvasGraphics12  
 D3D12 Canvas graphics implementation.
