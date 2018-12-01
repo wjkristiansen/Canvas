@@ -7,7 +7,7 @@
 using namespace Canvas;
 
 CSceneGraphNode::CSceneGraphNode(NODE_ELEMENT_FLAGS flags) : // throw(std::bad_alloc)
-    CGeneric<CSceneGraphNodeBase>()
+    CCanvasObjectBase()
 {
     if (flags & NODE_ELEMENT_FLAGS_TRANSFORM)
     {
@@ -40,7 +40,7 @@ Result CSceneGraphNode::Create(NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outpt
 {
     try
     {
-        CComPtr<CSceneGraphNode> pNode = new CSceneGraphNode(flags); // throw(std::bad_alloc)
+        CComPtr<CSceneGraphNode> pNode = new CGeneric<CSceneGraphNode>(flags); // throw(std::bad_alloc)
         return pNode->QueryInterface(iid, ppObj);
     }
     catch (std::bad_alloc &)
@@ -63,7 +63,7 @@ CANVASMETHODIMP CSceneGraphNode::QueryInterface(InterfaceId iid, void **ppUnk)
         return pUnk->QueryInterface(iid, ppUnk);
     }
 
-    return __super::QueryInterface(iid, ppUnk);
+    return CCanvasObjectBase::QueryInterface(iid, ppUnk);
 }
 
 CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode)
