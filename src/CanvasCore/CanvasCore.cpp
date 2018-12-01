@@ -35,10 +35,10 @@ public:
         *ppScene = nullptr;
         try
         {
-            CScene *pScene = new CGeneric<CScene>(); // throw(std::bad_alloc)
-//            pScene->FinalConstruct();
-            *ppScene = pScene;
-            pScene->AddRef();
+            // Create a root scene graph node
+            CComPtr<CSceneGraphNode> pRootSceneGraphNode = new CGeneric<CSceneGraphNode>(NODE_ELEMENT_FLAGS_NONE); // throw(bad_alloc)
+            CComPtr<CScene> pScene = new CGeneric<CScene>(pRootSceneGraphNode); // throw(std::bad_alloc)
+            return pScene->QueryInterface(iid, ppScene);
         }
         catch (std::bad_alloc&)
         {

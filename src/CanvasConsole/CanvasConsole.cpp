@@ -46,6 +46,6 @@ int main()
     CComPtr<ICanvas> pCanvas;
     Canvas::Result result = CreateCanvas(ICanvas::IId, (void **) &pCanvas);
 
-    //CComPtr<IScene> pScene;
-    //result = pCanvas->CreateScene(IScene::IId, (void **) &pScene);
+    CComPtr<IScene> pScene;
+    result = pCanvas->CreateScene(IScene::IId, (void **) &pScene);
 }

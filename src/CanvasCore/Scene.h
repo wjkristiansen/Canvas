@@ -35,7 +35,9 @@ class CSceneGraphNode :
     public CGeneric<CSceneGraphNodeBase>
 {
 public:
-    NODE_ELEMENT_FLAGS m_NodeElementFlags = NODE_ELEMENT_FLAGS_NONE;
+    static Result CANVASAPI Create(NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
+
+public:
     using NodeMapType = std::unordered_map<std::string, CComPtr<typename ISceneGraphNode>>;
     using ElementMapType = std::unordered_map<InterfaceId, CComPtr<typename IGeneric>>;
 
@@ -44,10 +46,7 @@ public:
 
     ElementMapType m_Elements;
 
-    CSceneGraphNode(NODE_ELEMENT_FLAGS flags) : CGeneric<CSceneGraphNodeBase>(),
-        m_NodeElementFlags(flags)
-    {
-    }
+    CSceneGraphNode(NODE_ELEMENT_FLAGS flags);
 
 //    CANVASMETHOD(FinalConstruct)();
     CANVASMETHOD(QueryInterface)(InterfaceId iid, void **ppUnk);
@@ -76,8 +75,19 @@ class CModelInstance :
     public IModelInstance,
     public CCanvasObjectBase
 {
+    CSceneGraphNode *m_pNode;
+
 public:
     static Result Create(InterfaceId iid, void **ppModelInstance, CSceneGraphNode *pNode);
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return CCanvasObjectBase::QueryInterface(iid, ppObj);
+    }
+
+public:
+    CModelInstance(CSceneGraphNode *pNode) :
+        m_pNode(pNode)
+    {}
 };
 
 //------------------------------------------------------------------------------------------------
@@ -85,8 +95,19 @@ class CCamera :
     public ICamera,
     public CCanvasObjectBase
 {
+    CSceneGraphNode *m_pNode;
+
 public:
     static Result Create(InterfaceId iid, void **ppCamera, CSceneGraphNode *pNode);
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return CCanvasObjectBase::QueryInterface(iid, ppObj);
+    }
+
+public:
+    CCamera(CSceneGraphNode *pNode) :
+        m_pNode(pNode)
+    {}
 };
 
 //------------------------------------------------------------------------------------------------
@@ -94,8 +115,19 @@ class CLight :
     public ILight,
     public CCanvasObjectBase
 {
+    CSceneGraphNode *m_pNode;
+
 public:
     static Result Create(InterfaceId iid, void **ppLight, CSceneGraphNode *pNode);
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return CCanvasObjectBase::QueryInterface(iid, ppObj);
+    }
+
+public:
+    CLight(CSceneGraphNode *pNode) :
+        m_pNode(pNode)
+    {}
 };
 
 //------------------------------------------------------------------------------------------------
@@ -103,8 +135,19 @@ class CTransform :
     public ITransform,
     public CCanvasObjectBase
 {
+    CSceneGraphNode *m_pNode;
+
 public:
     static Result Create(InterfaceId iid, void **ppTransform, CSceneGraphNode *pNode);
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return CCanvasObjectBase::QueryInterface(iid, ppObj);
+    }
+
+public:
+    CTransform(CSceneGraphNode *pNode) :
+        m_pNode(pNode)
+    {}
 };
 
 //------------------------------------------------------------------------------------------------
@@ -119,6 +162,10 @@ public:
     CANVASMETHOD(MoveNextSibling)();
     CANVASMETHOD(Reset)(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName);
     CANVASMETHOD(GetNode(InterfaceId iid, void **ppNode));
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return CCanvasObjectBase::QueryInterface(iid, ppObj);
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -133,5 +180,9 @@ public:
     {
         return CCanvasObjectBase::QueryInterface(iid, ppObj);
     }
-//    CANVASMETHOD(FinalConstruct)();
+
+    CScene(CSceneGraphNode *pRootSceneGraphNode) :
+        m_pRootSceneGraphNode(pRootSceneGraphNode)
+    {
+    }
 };

@@ -6,27 +6,48 @@
 
 using namespace Canvas;
 
-//CANVASMETHODIMP CSceneGraphNode::FinalConstruct()
-//{
-//    try
-//    {
-//        ThrowFailure(__super::FinalConstruct());
-//
-//        if (m_NodeElementFlags & NODE_ELEMENT_FLAGS_TRANSFORM)
-//        {
-//            // Add a transform element
-//            CComPtr<IGeneric> pTransform;
-//            ThrowFailure(CTransform::Create(IID_PPV_ARGS(&pTransform), this));
-//            m_Elements.emplace(__uuidof(ITransform), pTransform);
-//        }
-//    }
-//    catch (CanvasError &e)
-//    {
-//        return e.Result();
-//    }
-//
-//    return Result::Success;
-//}
+CSceneGraphNode::CSceneGraphNode(NODE_ELEMENT_FLAGS flags) : // throw(std::bad_alloc)
+    CGeneric<CSceneGraphNodeBase>()
+{
+    if (flags & NODE_ELEMENT_FLAGS_TRANSFORM)
+    {
+        CComPtr<IGeneric> pTransform;
+        ThrowFailure(CTransform::Create(ITransform::IId, reinterpret_cast<void **>(&pTransform), this));
+        m_Elements.emplace(ITransform::IId, pTransform); // throw(std::bad_alloc)
+    }
+    if (flags & NODE_ELEMENT_FLAGS_CAMERA)
+    {
+        CComPtr<ICamera> pCamera;
+        ThrowFailure(CCamera::Create(ICamera::IId, reinterpret_cast<void **>(&pCamera), this));
+        m_Elements.emplace(ICamera::IId, pCamera); // throw(std::bad_alloc)
+    }
+    if (flags & NODE_ELEMENT_FLAGS_LIGHT)
+    {
+        CComPtr<IGeneric> pLight;
+        ThrowFailure(CLight::Create(ILight::IId, reinterpret_cast<void **>(&pLight), this));
+        m_Elements.emplace(ILight::IId, pLight); // throw(std::bad_alloc)
+    }
+    if (flags & NODE_ELEMENT_FLAGS_MODELINSTANCE)
+    {
+        CComPtr<IGeneric> pModelInstance;
+        ThrowFailure(CModelInstance::Create(IModelInstance::IId, reinterpret_cast<void **>(&pModelInstance), this));
+        m_Elements.emplace(IModelInstance::IId, pModelInstance); // throw(std::bad_alloc)
+    }
+}
+
+
+Result CSceneGraphNode::Create(NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj)
+{
+    try
+    {
+        CComPtr<CSceneGraphNode> pNode = new CSceneGraphNode(flags); // throw(std::bad_alloc)
+        return pNode->QueryInterface(iid, ppObj);
+    }
+    catch (std::bad_alloc &)
+    {
+        return Result::OutOfMemory;
+    }
+}
 
 CANVASMETHODIMP CSceneGraphNode::QueryInterface(InterfaceId iid, void **ppUnk)
 {
@@ -54,9 +75,17 @@ CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ PCSTR pName, _In_ ISceneGraphNode
 
 Result CModelInstance::Create(InterfaceId iid, void **ppModelInstance, CSceneGraphNode *pNode)
 {
+    if (!ppModelInstance)
+    {
+        return Result::BadPointer;
+    }
+
+    *ppModelInstance = nullptr;
+
     try
     {
-//        ThrowFailure(CreateAggregateElement<CModelInstance>(iid, ppModelInstance, pNode));
+        CComPtr<CModelInstance> pModelInstance = new CGeneric<CModelInstance>(pNode); // throw(std::bad_alloc)
+        return pModelInstance->QueryInterface(iid, ppModelInstance);
     }
     catch (CanvasError &e)
     {
@@ -68,9 +97,17 @@ Result CModelInstance::Create(InterfaceId iid, void **ppModelInstance, CSceneGra
 
 Result CCamera::Create(InterfaceId iid, void **ppCamera, CSceneGraphNode *pNode)
 {
+    if (!ppCamera)
+    {
+        return Result::BadPointer;
+    }
+
+    *ppCamera = nullptr;
+
     try
     {
-//        ThrowFailure(CreateAggregateElement<CCamera>(iid, ppCamera, pNode));
+        CComPtr<CCamera> pCamera = new CGeneric<CCamera>(pNode); // throw(std::bad_alloc)
+        return pCamera->QueryInterface(iid, ppCamera);
     }
     catch (CanvasError &e)
     {
@@ -82,9 +119,17 @@ Result CCamera::Create(InterfaceId iid, void **ppCamera, CSceneGraphNode *pNode)
 
 Result CLight::Create(InterfaceId iid, void **ppLight, CSceneGraphNode *pNode)
 {
+    if (!ppLight)
+    {
+        return Result::BadPointer;
+    }
+
+    *ppLight = nullptr;
+
     try
     {
-//        ThrowFailure(CreateAggregateElement<CLight>(iid, ppLight, pNode));
+        CComPtr<CLight> pLight = new CGeneric<CLight>(pNode); // throw(std::bad_alloc)
+        return pLight->QueryInterface(iid, ppLight);
     }
     catch (CanvasError &e)
     {
@@ -96,9 +141,16 @@ Result CLight::Create(InterfaceId iid, void **ppLight, CSceneGraphNode *pNode)
 
 Result CTransform::Create(InterfaceId iid, void **ppTransform, CSceneGraphNode *pNode)
 {
+    if (!ppTransform)
+    {
+        return Result::BadPointer;
+    }
+
+    *ppTransform = nullptr;
     try
     {
-//        ThrowFailure(CreateAggregateElement<CTransform>(iid, ppTransform, pNode));
+        CComPtr<CTransform> pTransform = new CGeneric<CTransform>(pNode); // throw(std::bad_alloc)
+        return pTransform->QueryInterface(iid, ppTransform);
     }
     catch (CanvasError &e)
     {
@@ -159,18 +211,3 @@ CANVASMETHODIMP CSceneGraphIterator::GetNode(InterfaceId iid, void **ppNode)
         return Result::Uninitialized;
     }
 }
-//
-//CANVASMETHODIMP CScene::FinalConstruct()
-//{
-//    try
-//    {
-//        CComPtr<CSceneGraphNode> pRootNode = new CSceneGraphNode(NODE_ELEMENT_FLAGS_TRANSFORM); // throw(std::bad_alloc)
-//        m_pRootSceneGraphNode = pRootNode;
-//    }
-//    catch(std::bad_alloc&)
-//    {
-//        return E_OUTOFMEMORY;
-//    }
-//
-//    return Result::Success;
-//}
