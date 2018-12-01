@@ -45,9 +45,21 @@ inline void ThrowFailure(Result result)
     }
 }
 
-#define BEGIN_CANVAS_MAP(x)
-#define CANVAS_MAP_ENTRY(x)
-#define END_CANVAS_MAP()
+//------------------------------------------------------------------------------------------------
+class CCanvasObjectBase
+{
+public:
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        if (!ppObj)
+        {
+            return Result::BadPointer;
+        }
+
+        *ppObj = nullptr;
+        return Result::NoInterface;
+    }
+};
 
 //------------------------------------------------------------------------------------------------
 template<class _T>
@@ -80,10 +92,11 @@ public:
         {
         case InterfaceId::IGeneric:
             *ppObj = this;
+            AddRef();
             break;
 
         default:
-            return Result::NoInterface;
+            return _T::QueryInterface(iid, ppObj);
         }
 
         return Result::Success;

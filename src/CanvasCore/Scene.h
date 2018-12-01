@@ -19,9 +19,14 @@ namespace std
 
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNodeBase :
-    public ISceneGraphNode
+    public ISceneGraphNode,
+    public CCanvasObjectBase
 {
 public:
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return CCanvasObjectBase::QueryInterface(iid, ppObj);
+    }
 };
 
 
@@ -68,7 +73,8 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CModelInstance :
-    public IModelInstance
+    public IModelInstance,
+    public CCanvasObjectBase
 {
 public:
     static Result Create(InterfaceId iid, void **ppModelInstance, CSceneGraphNode *pNode);
@@ -76,7 +82,8 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CCamera :
-    public ICamera
+    public ICamera,
+    public CCanvasObjectBase
 {
 public:
     static Result Create(InterfaceId iid, void **ppCamera, CSceneGraphNode *pNode);
@@ -84,7 +91,8 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public ILight
+    public ILight,
+    public CCanvasObjectBase
 {
 public:
     static Result Create(InterfaceId iid, void **ppLight, CSceneGraphNode *pNode);
@@ -92,7 +100,8 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
-    public ITransform
+    public ITransform,
+    public CCanvasObjectBase
 {
 public:
     static Result Create(InterfaceId iid, void **ppTransform, CSceneGraphNode *pNode);
@@ -100,7 +109,8 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CSceneGraphIterator :
-    public ISceneGraphIterator
+    public ISceneGraphIterator,
+    public CCanvasObjectBase
 {
 public:
     CComPtr<CSceneGraphNode> m_pContainingSceneGraphNode;
@@ -113,9 +123,15 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public IScene
+    public IScene,
+    public CCanvasObjectBase
 {
 public:
     CComPtr<CSceneGraphNode> m_pRootSceneGraphNode;
+
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return CCanvasObjectBase::QueryInterface(iid, ppObj);
+    }
 //    CANVASMETHOD(FinalConstruct)();
 };

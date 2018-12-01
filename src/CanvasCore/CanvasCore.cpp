@@ -6,11 +6,30 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-class CCanvas
-    : public ICanvas
+class CCanvas :
+    public ICanvas,
+    public CCanvasObjectBase
 {
 public:
     CCanvas() = default;
+
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        *ppObj = nullptr;
+        switch (iid)
+        {
+        case InterfaceId::ICanvas:
+            *ppObj = this;
+            AddRef();
+            break;
+
+        default:
+            return CCanvasObjectBase::QueryInterface(iid, ppObj);
+        }
+
+        return Result::Success;
+    }
+
     CANVASMETHOD(CreateScene)(InterfaceId iid, void **ppScene)
     {
         *ppScene = nullptr;
