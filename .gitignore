@@ -15,3 +15,7 @@
 *.tlog
 *.user
 src/.vs
+src/Debug/*
+src/x64/*
+src/CanvasConsole/x64/*
+src/CanvasUnitTest/x64/*
