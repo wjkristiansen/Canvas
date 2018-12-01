@@ -44,8 +44,8 @@ int main()
     auto fm44c = fm44a * fm44b;
 
     CComPtr<ICanvas> pCanvas;
-    HRESULT hr = CreateCanvas(__uuidof(ICanvas), (void **)&pCanvas);
+    Canvas::Result result = CreateCanvas(ICanvas::IId, (void **) &pCanvas);
 
-    CComPtr<IScene> pScene;
-    hr = pCanvas->CreateScene(__uuidof(IScene), (void **) &pScene);
+    //CComPtr<IScene> pScene;
+    //result = pCanvas->CreateScene(IScene::IId, (void **) &pScene);
 }

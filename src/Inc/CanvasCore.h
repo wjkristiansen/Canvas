@@ -5,9 +5,59 @@
 #pragma once
 
 #define CANVASAPI __stdcall
+#define CANVASNOTHROW __declspec(nothrow)
+#define CANVASMETHOD(method) virtual Canvas::Result CANVASNOTHROW CANVASAPI method
+#define CANVASMETHOD_(retType, method) virtual retType CANVASNOTHROW CANVASAPI method
+#define CANVASMETHODIMP Canvas::Result CANVASAPI
+#define CANVASMETHODIMP_(retType) retType CANVASAPI
+#define CANVAS_INTERFACE struct
+#define CANVAS_INTERFACE_DECLARE(iid) static const InterfaceId IId = InterfaceId::##iid;
 
 namespace Canvas
 {
+enum class Result : int
+{
+    Success = 0,
+    Finished = 1,
+    InvalidArg = -1,
+    NotFound = -2,
+    OutOfMemory = -3,
+    NoInterface = -4,
+    BadPointer = -5,
+    NotImplemented = -6,
+    DuplicateKey = -7,
+    Uninitialized = -8,
+};
+
+inline bool Failed(Result result)
+{
+    return result < Result::Success;
+}
+
+inline bool Succeeded(Result result)
+{
+    return result == Result::Success;
+}
+
+enum class InterfaceId : int
+{
+    IUnknown = 0,
+    IGeneric = 1,
+    ICanvas,
+    IScene,
+    ISceneGraphNode,
+    ISceneGraphIterator,
+    IModelInstance,
+    ICamera,
+    ILight,
+    ITransform,
+    ITexture,
+    IMaterial,
+    IMesh,
+    IAnimation,
+    ISkeleton,
+};
+
 enum NODE_ELEMENT_FLAGS
 {
     NODE_ELEMENT_FLAGS_NONE        = 0x0,
@@ -17,88 +67,102 @@ enum NODE_ELEMENT_FLAGS
     NODE_ELEMENT_FLAGS_TRANSFORM   = 0x8,
 };
 
-// Canvas core interface
-interface ICanvas;
+// Generic
+CANVAS_INTERFACE IGeneric;
 
-// Scene interface
-interface IScene;
+// Canvas core interfaces
+CANVAS_INTERFACE ICanvas;
+
+// Scene CANVAS_INTERFACE
+CANVAS_INTERFACE IScene;
 
 // Scene object
-interface ISceneGraphNode;
+CANVAS_INTERFACE ISceneGraphNode;
 
-// Camera interfaces
-interface ICamera;
+// Camera CANVAS_INTERFACEs
+CANVAS_INTERFACE ICamera;
 
-// Light interfaces
-interface ILight;
+// Light CANVAS_INTERFACEs
+CANVAS_INTERFACE ILight;
 
-// Transform interfaces
-interface ITransform;
+// Transform CANVAS_INTERFACEs
+CANVAS_INTERFACE ITransform;
 
 // Assets
-interface ITexture;
-interface IMaterial;
-interface IMesh;
-interface IAnimation;
-interface ISkeleton;
+CANVAS_INTERFACE ITexture;
+CANVAS_INTERFACE IMaterial;
+CANVAS_INTERFACE IMesh;
+CANVAS_INTERFACE IAnimation;
+CANVAS_INTERFACE ISkeleton;
 
-interface __declspec(uuid("{521EBB77-A6AC-4F63-BBFD-C5289B23ABDB}"))
-IIterator : public IUnknown
+CANVAS_INTERFACE IGeneric
 {
-    STDMETHOD(MoveNext)() = 0;
-    STDMETHOD(Remove)() = 0;
-    STDMETHOD(GetCurrentObject)(REFIID riid, _COM_Outptr_ void **ppUnk) = 0;
+    CANVAS_INTERFACE_DECLARE(IGeneric)
+
+    CANVASMETHOD_(ULONG, AddRef)() = 0;
+    CANVASMETHOD_(ULONG, Release)() = 0;
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
 };
 
-interface __declspec(uuid("{7ABF521F-4209-4A38-B6D7-741C95772AE0}"))
-ICanvas : public IUnknown
+CANVAS_INTERFACE
+ICanvas : public IGeneric
 {
-    STDMETHOD(CreateScene)(REFIID Riid, _COM_Outptr_ void **ppScene) = 0;
-    STDMETHOD(CreateNode)(PCSTR pName, NODE_ELEMENT_FLAGS flags, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode) = 0;
+    CANVAS_INTERFACE_DECLARE(ICanvas)
+
+    CANVASMETHOD(CreateScene)(Canvas::InterfaceId iid, _Outptr_ void **ppScene) = 0;
+    CANVASMETHOD(CreateNode)(PCSTR pName, NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppSceneGraphNode) = 0;
 };
 
-interface __declspec(uuid("{ABDC9885-42C0-45ED-AEA4-E549EE9C5A0F}"))
-IModelInstance : public IUnknown
+CANVAS_INTERFACE
+IModelInstance : public IGeneric
+{
+    CANVAS_INTERFACE_DECLARE(IModelInstance)
+
+};
+
+CANVAS_INTERFACE
+ICamera : public IGeneric
+{
+    CANVAS_INTERFACE_DECLARE(ICamera)
+
+};
+
+CANVAS_INTERFACE
+ILight : public IGeneric
+{
+    CANVAS_INTERFACE_DECLARE(ILight)
+
+};
+
+CANVAS_INTERFACE
+ITransform : public IGeneric
+{
+    CANVAS_INTERFACE_DECLARE(ITransform)
+
+};
+
+CANVAS_INTERFACE
+ISceneGraphIterator : public IGeneric
+{
+    CANVAS_INTERFACE_DECLARE(ISceneGraphIterator)
+    CANVASMETHOD(MoveNextSibling)() = 0;
+    CANVASMETHOD(GetNode(InterfaceId iid, void **ppNode)) = 0;
+    CANVASMETHOD(Reset)(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName) = 0;
+};
+
+CANVAS_INTERFACE
+ISceneGraphNode : public IGeneric
+{
+    CANVASMETHOD(AddChild)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode) = 0;
+};
+
+CANVAS_INTERFACE
+IScene : public IGeneric
 {
 };
 
-interface __declspec(uuid("{1707E5D1-900B-47A9-A372-5401F911A52A}"))
-ICamera : public IUnknown
-{
-};
-
-interface __declspec(uuid("{37A8917B-A007-4A53-A868-52D2C88E09A3}"))
-ILight : public IUnknown
-{
-};
-
-interface __declspec(uuid("{E4BA9961-052C-4819-9FCC-E63E75D81D22}"))
-ITransform : public IUnknown
-{
-};
-
-interface __declspec(uuid("{CA3A2CFD-2648-4371-9A5B-2B51AD057A9F}"))
-ISceneGraphIterator : public IUnknown
-{
-    STDMETHOD(MoveNextSibling)() = 0;
-    STDMETHOD(GetNode(REFIID riid, void **ppNode)) = 0;
-    STDMETHOD(Reset)(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName) = 0;
-};
-
-interface __declspec(uuid("{92F3F7C3-3470-4D5D-A52F-86A642A7BDAB}"))
-ISceneGraphNode : public IUnknown
-{
-    STDMETHOD(AddChild)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode) = 0;
-};
-
-interface __declspec(uuid("{4EADEFF8-2C3C-4085-A246-C961F877C882}"))
-IScene : public IUnknown
-{
-};
-
-//interface __declspec(uuid("{656FF461-CDBD-4112-AD55-498F3D3BD4E0}"))
 }
 
 
-extern HRESULT CANVASAPI CreateCanvas(REFIID riid, void **ppCanvas);
+extern Canvas::Result CANVASAPI CreateCanvas(Canvas::InterfaceId iid, _Outptr_ void **ppCanvas);
 
