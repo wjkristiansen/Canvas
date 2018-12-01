@@ -87,3 +87,55 @@ public:
         return Result::Success;
     }
 };
+
+//------------------------------------------------------------------------------------------------
+template<class _IFace>
+class CInnerGeneric :
+    public _IFace
+{
+public:
+    IGeneric *m_pOuterGeneric = 0; // weak pointer
+
+    CInnerGeneric(_In_ IGeneric *pOuterGeneric) :
+        m_pOuterGeneric(pOuterGeneric)
+    {
+        if (!pOuterGeneric)
+        {
+            ThrowFailure(Result::BadPointer);
+        }
+    }
+
+    CANVASMETHOD_(ULONG,AddRef)()
+    {
+        return m_pOuterGeneric->AddRef();
+    }
+
+    CANVASMETHOD_(ULONG, Release)()
+    {
+        return m_pOuterGeneric->Release();
+    }
+
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        if (IGeneric::IId == iid)
+        {
+            return m_pOuterGeneric->QueryInterface(iid, ppObj);
+        }
+
+        *ppObj = nullptr;
+
+        if (!ppObj)
+        {
+            return Result::BadPointer;
+        }
+
+        if (_IFace::IId == iid)
+        {
+            *ppObj = this;
+            AddRef();
+            return Result::Success;
+        }
+
+        return Result::NoInterface;
+    }
+};
