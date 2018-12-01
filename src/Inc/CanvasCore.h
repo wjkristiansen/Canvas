@@ -8,13 +8,13 @@
 
 namespace Canvas
 {
-enum NodeElementFlags
+enum NODE_ELEMENT_FLAGS
 {
-    None        = 0x0,
-    Camera      = 0x1,
-    Light       = 0x2,
-    Model       = 0x4,
-    Transform   = 0x8,
+    NODE_ELEMENT_FLAGS_NONE        = 0x0,
+    NODE_ELEMENT_FLAGS_CAMERA      = 0x1,
+    NODE_ELEMENT_FLAGS_LIGHT       = 0x2,
+    NODE_ELEMENT_FLAGS_MODEL       = 0x4,
+    NODE_ELEMENT_FLAGS_TRANSFORM   = 0x8,
 };
 
 // Canvas core interface
@@ -54,7 +54,7 @@ interface __declspec(uuid("{7ABF521F-4209-4A38-B6D7-741C95772AE0}"))
 ICanvas : public IUnknown
 {
     STDMETHOD(CreateScene)(REFIID Riid, _COM_Outptr_ void **ppScene) = 0;
-    STDMETHOD(CreateNode)(PCSTR pName, NodeElementFlags flags, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode) = 0;
+    STDMETHOD(CreateNode)(PCSTR pName, NODE_ELEMENT_FLAGS flags, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode) = 0;
 };
 
 interface __declspec(uuid("{ABDC9885-42C0-45ED-AEA4-E549EE9C5A0F}"))

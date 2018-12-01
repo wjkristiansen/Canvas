@@ -34,7 +34,7 @@ class CSceneGraphNode :
     public CComObjectNoLock<CSceneGraphNodeBase>
 {
 public:
-    Canvas::NodeElementFlags m_NodeElementFlags = Canvas::NodeElementFlags::None;
+    Canvas::NODE_ELEMENT_FLAGS m_NodeElementFlags = Canvas::NODE_ELEMENT_FLAGS_NONE;
     using NodeMapType = std::unordered_map<std::string, CComPtr<typename Canvas::ISceneGraphNode>>;
     using ElementMapType = std::unordered_map<IID, CComPtr<typename IUnknown>>;
 
@@ -43,7 +43,7 @@ public:
 
     ElementMapType m_Elements;
 
-    CSceneGraphNode(Canvas::NodeElementFlags flags) : CComObjectNoLock<CSceneGraphNodeBase>(),
+    CSceneGraphNode(Canvas::NODE_ELEMENT_FLAGS flags) : CComObjectNoLock<CSceneGraphNodeBase>(),
         m_NodeElementFlags(flags)
     {
     }

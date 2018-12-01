@@ -21,6 +21,7 @@ public:
         try
         {
             CScene *pScene = new CComObjectNoLock<CScene>(); // throw(std::bad_alloc)
+            pScene->FinalConstruct();
             *ppScene = pScene;
             pScene->AddRef();
         }
@@ -31,7 +32,7 @@ public:
         return S_OK;
     }
 
-    STDMETHOD(CreateNode)(PCSTR pName, NodeElementFlags flags, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
+    STDMETHOD(CreateNode)(PCSTR pName, NODE_ELEMENT_FLAGS flags, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
     {
         *ppSceneGraphNode = nullptr;
         try
@@ -56,6 +57,7 @@ HRESULT STDMETHODCALLTYPE CreateCanvas(REFIID riid, void **ppCanvas)
         if (riid == __uuidof(ICanvas))
         {
             CCanvas *pCanvas = new CComObjectNoLock<CCanvas>; // throw(bad_alloc)
+            pCanvas->FinalConstruct();
             *ppCanvas = pCanvas;
             pCanvas->AddRef();
         }

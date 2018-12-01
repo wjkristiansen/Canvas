@@ -12,7 +12,7 @@ STDMETHODIMP CSceneGraphNode::FinalConstruct()
     {
         ThrowFailure(__super::FinalConstruct());
 
-        if (m_NodeElementFlags & NodeElementFlags::Transform)
+        if (m_NodeElementFlags & NODE_ELEMENT_FLAGS_TRANSFORM)
         {
             // Add a transform element
             CComPtr<IUnknown> pTransform;
@@ -163,5 +163,15 @@ STDMETHODIMP CSceneGraphIterator::GetNode(REFIID riid, void **ppNode)
 
 STDMETHODIMP CScene::FinalConstruct()
 {
+    try
+    {
+        CComPtr<CSceneGraphNode> pRootNode = new CSceneGraphNode(NODE_ELEMENT_FLAGS_TRANSFORM); // throw(std::bad_alloc)
+        m_pRootSceneGraphNode = pRootNode;
+    }
+    catch(std::bad_alloc&)
+    {
+        return E_OUTOFMEMORY;
+    }
+
     return S_OK;
 }
