@@ -102,6 +102,12 @@ CANVAS_INTERFACE IGeneric
     CANVASMETHOD_(ULONG, AddRef)() = 0;
     CANVASMETHOD_(ULONG, Release)() = 0;
     CANVASMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
+
+    template<class _IFace>
+    Result QueryInterface(_IFace **ppObj)
+    {
+        return QueryInterface(_IFace::IId, reinterpret_cast<void **>(ppObj));
+    }
 };
 
 CANVAS_INTERFACE

@@ -52,10 +52,7 @@ public:
         *ppSceneGraphNode = nullptr;
         try
         {
-            CComPtr<CSceneGraphNode> pSceneGraphNode;
-            ThrowFailure(CSceneGraphNode::Create(flags, InterfaceId::ISceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)));
-            *ppSceneGraphNode = pSceneGraphNode;
-            return pSceneGraphNode->QueryInterface(iid, ppSceneGraphNode);
+            return CSceneGraphNode::Create(flags, iid, ppSceneGraphNode);
         }
         catch (std::bad_alloc&)
         {
