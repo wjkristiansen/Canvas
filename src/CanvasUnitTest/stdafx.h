@@ -6,12 +6,18 @@
 #pragma once
 
 #include "targetver.h"
+#include <comdef.h>
+#include <atlbase.h>
+#include <atlcom.h>
 
 // Headers for CppUnitTest
 #include "CppUnitTest.h"
 #include "CanvasMath.hpp"
 #include "CanvasCore.h"
 
-#include <d3d12.h>
+#include <new>
+#include <vector>
+#include <map>
+#include <string>
 
 // TODO: reference additional headers your program requires here

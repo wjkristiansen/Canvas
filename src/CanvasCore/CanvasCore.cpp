@@ -4,61 +4,68 @@
 #include "stdafx.h"
 
 using namespace Canvas;
-
-template<class _T>
-class CRefCounted : public _T
+//------------------------------------------------------------------------------------------------
+class CCanvas
+    : public ICanvas
+    , public CComObjectRoot
 {
-public:
-    UINT RefCount = 0;
+    BEGIN_COM_MAP(CCanvas)
+        COM_INTERFACE_ENTRY(ICanvas)
+    END_COM_MAP()
 
-    virtual void AddRef()
-    {
-        InterlockedIncrement(&RefCount);
-    }
-
-    virtual UINT Release()
-    {
-        if (0 == InterlockedDecrement(&RefCount))
-        {
-            delete(this);
-        }
-        return RefCount;
-    }
-};
-
-class CCanvas : 
-    public CRefCounted<ICanvas>
-{
 public:
     CCanvas() = default;
-    virtual CanvasResult CreateScene()
+    STDMETHOD(CreateScene)(REFIID riid, void **ppScene)
     {
-        return Canvas::CanvasResult::NotImplemented;
-    }
-    virtual CanvasResult QueryInterface(UINT iid, void **ppVoid)
-    {
-        switch (iid)
+        *ppScene = nullptr;
+        try
         {
-        case ICanvas::IID:
-            *ppVoid = reinterpret_cast<IGeneric *>(this);
-            AddRef();
-            break;
-
-        case IGeneric::IID:
-            *ppVoid = this;
-            AddRef();
-            break;
-
-        default:
-            return CanvasResult::NoInterface;
+            CScene *pScene = new CComObjectNoLock<CScene>(); // throw(std::bad_alloc)
+            pScene->FinalConstruct();
+            *ppScene = pScene;
+            pScene->AddRef();
         }
-        return CanvasResult::Success;
+        catch (std::bad_alloc&)
+        {
+            return E_OUTOFMEMORY;
+        }
+        return S_OK;
+    }
+
+    STDMETHOD(CreateNode)(PCSTR pName, NODE_ELEMENT_FLAGS flags, REFIID riid, _COM_Outptr_ void **ppSceneGraphNode)
+    {
+        *ppSceneGraphNode = nullptr;
+        try
+        {
+            CComPtr<CSceneGraphNode> pSceneGraphNode = new CSceneGraphNode(flags); // throw(std::bad_alloc)
+            *ppSceneGraphNode = pSceneGraphNode;
+            return pSceneGraphNode->QueryInterface(riid, ppSceneGraphNode);
+        }
+        catch (std::bad_alloc&)
+        {
+            return E_OUTOFMEMORY;
+        }
     }
 };
 
-CanvasResult CANVASAPI CreateCanvas(unsigned int iid, void **ppCanvas)
+HRESULT STDMETHODCALLTYPE CreateCanvas(REFIID riid, void **ppCanvas)
 {
-    CCanvas *pCanvas = new CCanvas();
+    *ppCanvas = nullptr;
 
-    return CanvasResult::Success;
+    try
+    {
+        if (riid == __uuidof(ICanvas))
+        {
+            CCanvas *pCanvas = new CComObjectNoLock<CCanvas>; // throw(bad_alloc)
+            pCanvas->FinalConstruct();
+            *ppCanvas = pCanvas;
+            pCanvas->AddRef();
+        }
+    }
+    catch (std::bad_alloc &)
+    {
+        return E_OUTOFMEMORY;
+    }
+
+    return S_OK;
 }
