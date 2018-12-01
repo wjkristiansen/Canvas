@@ -59,9 +59,21 @@ public:
 //}
 
 //------------------------------------------------------------------------------------------------
+class CSceneNodeElement :
+    public CCanvasObjectBase
+{
+protected:
+    CSceneGraphNode *m_pNode;
+
+public:
+    CSceneNodeElement(CSceneGraphNode *pNode) :
+        m_pNode(pNode) {}
+};
+
+//------------------------------------------------------------------------------------------------
 class CModelInstance :
     public IModelInstance,
-    public CCanvasObjectBase
+    public CSceneNodeElement
 {
     CSceneGraphNode *m_pNode;
 
@@ -74,17 +86,15 @@ public:
 
 public:
     CModelInstance(CSceneGraphNode *pNode) :
-        m_pNode(pNode)
+        CSceneNodeElement(pNode)
     {}
 };
 
 //------------------------------------------------------------------------------------------------
 class CCamera :
     public ICamera,
-    public CCanvasObjectBase
+    public CSceneNodeElement
 {
-    CSceneGraphNode *m_pNode;
-
 public:
     static Result Create(InterfaceId iid, void **ppCamera, CSceneGraphNode *pNode);
     CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
@@ -94,17 +104,15 @@ public:
 
 public:
     CCamera(CSceneGraphNode *pNode) :
-        m_pNode(pNode)
+        CSceneNodeElement(pNode)
     {}
 };
 
 //------------------------------------------------------------------------------------------------
 class CLight :
     public ILight,
-    public CCanvasObjectBase
+    public CSceneNodeElement
 {
-    CSceneGraphNode *m_pNode;
-
 public:
     static Result Create(InterfaceId iid, void **ppLight, CSceneGraphNode *pNode);
     CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
@@ -114,14 +122,14 @@ public:
 
 public:
     CLight(CSceneGraphNode *pNode) :
-        m_pNode(pNode)
+        CSceneNodeElement(pNode)
     {}
 };
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
     public ITransform,
-    public CCanvasObjectBase
+    public CSceneNodeElement
 {
     CSceneGraphNode *m_pNode;
 
@@ -134,7 +142,7 @@ public:
 
 public:
     CTransform(CSceneGraphNode *pNode) :
-        m_pNode(pNode)
+        CSceneNodeElement(pNode)
     {}
 };
 
