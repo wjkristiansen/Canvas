@@ -13,6 +13,10 @@
 #define CANVAS_INTERFACE struct
 #define CANVAS_INTERFACE_DECLARE(iid) static const InterfaceId IId = InterfaceId::##iid;
 
+#define CANVAS_IID_PPV_ARGS(ppObj) \
+    std::remove_reference_t<decltype(**ppObj)>::IId, reinterpret_cast<void **>(ppObj)
+
+
 namespace Canvas
 {
 enum class Result : int
