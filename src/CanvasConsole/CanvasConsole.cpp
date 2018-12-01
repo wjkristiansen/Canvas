@@ -13,16 +13,16 @@ float DoVectorThing(float v[2])
 
 int main()
 {
-	FloatVector2 fv2a(1.0f, 2.0f);
-	FloatVector2 fv2b(3.0f, 3.0f);
-	FloatVector2 fv2c = fv2a + fv2b;
+    FloatVector2 fv2a(1.0f, 2.0f);
+    FloatVector2 fv2b(3.0f, 3.0f);
+    FloatVector2 fv2c = fv2a + fv2b;
 
     DoubleVector3 dv3a(2.2, 3.3, 4.4);
     DoubleVector3 dv3b(3.0, 4.0, 5.0);
     DoubleVector3 dv3c = dv3b - dv3a;
 
-	float X = fv2c.X();
-	float Y = fv2c.Y();
+    float X = fv2c.X();
+    float Y = fv2c.Y();
     float Dot = DotProduct(fv2a, fv2b);
     auto Cross = CrossProduct(dv3a, dv3b);
 
@@ -44,8 +44,18 @@ int main()
     auto fm44c = fm44a * fm44b;
 
     CComPtr<ICanvas> pCanvas;
-    Canvas::Result result = CreateCanvas(ICanvas::IId, (void **) &pCanvas);
+    Canvas::Result result = CreateCanvas(ICanvas::IId, (void **)&pCanvas);
 
     CComPtr<IScene> pScene;
-    result = pCanvas->CreateScene(IScene::IId, (void **) &pScene);
+    result = pCanvas->CreateScene(IScene::IId, (void **)&pScene);
+
+    CComPtr<IGeneric> pGeneric1;
+    CComPtr<IGeneric> pGeneric2;
+    CComPtr<ITransform> pTransform;
+    result = pCanvas->CreateNode("My Transform", Canvas::NODE_ELEMENT_FLAGS_TRANSFORM, ITransform::IId, reinterpret_cast<void **>(&pTransform));
+    CComPtr<ISceneGraphNode> pNode;
+    pTransform->QueryInterface(&pNode);
+    pTransform->QueryInterface(&pGeneric1);
+    pNode->QueryInterface(&pGeneric2);
 }
+
