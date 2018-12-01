@@ -12,25 +12,25 @@ CSceneGraphNode::CSceneGraphNode(NODE_ELEMENT_FLAGS flags) : // throw(std::bad_a
     if (flags & NODE_ELEMENT_FLAGS_TRANSFORM)
     {
         CComPtr<IGeneric> pTransform;
-        ThrowFailure(CTransform::Create(ITransform::IId, reinterpret_cast<void **>(&pTransform), this));
+        ThrowFailure(CSceneNodeElement<CTransform>::Create(ITransform::IId, reinterpret_cast<void **>(&pTransform), this));
         m_Elements.emplace(ITransform::IId, pTransform); // throw(std::bad_alloc)
     }
     if (flags & NODE_ELEMENT_FLAGS_CAMERA)
     {
         CComPtr<ICamera> pCamera;
-        ThrowFailure(CCamera::Create(ICamera::IId, reinterpret_cast<void **>(&pCamera), this));
+        ThrowFailure(CSceneNodeElement<CCamera>::Create(ICamera::IId, reinterpret_cast<void **>(&pCamera), this));
         m_Elements.emplace(ICamera::IId, pCamera); // throw(std::bad_alloc)
     }
     if (flags & NODE_ELEMENT_FLAGS_LIGHT)
     {
         CComPtr<IGeneric> pLight;
-        ThrowFailure(CLight::Create(ILight::IId, reinterpret_cast<void **>(&pLight), this));
+        ThrowFailure(CSceneNodeElement<CLight>::Create(ILight::IId, reinterpret_cast<void **>(&pLight), this));
         m_Elements.emplace(ILight::IId, pLight); // throw(std::bad_alloc)
     }
     if (flags & NODE_ELEMENT_FLAGS_MODELINSTANCE)
     {
         CComPtr<IGeneric> pModelInstance;
-        ThrowFailure(CModelInstance::Create(IModelInstance::IId, reinterpret_cast<void **>(&pModelInstance), this));
+        ThrowFailure(CSceneNodeElement<CModelInstance>::Create(IModelInstance::IId, reinterpret_cast<void **>(&pModelInstance), this));
         m_Elements.emplace(IModelInstance::IId, pModelInstance); // throw(std::bad_alloc)
     }
 }
@@ -71,95 +71,6 @@ CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ PCSTR pName, _In_ ISceneGraphNode
     auto result = m_ChildNodes.emplace(pName, pSceneNode);
     return result.second ? Result::Success : Result::DuplicateKey;
 }
-
-
-Result CModelInstance::Create(InterfaceId iid, void **ppModelInstance, CSceneGraphNode *pNode)
-{
-    if (!ppModelInstance)
-    {
-        return Result::BadPointer;
-    }
-
-    *ppModelInstance = nullptr;
-
-    try
-    {
-        CComPtr<CModelInstance> pModelInstance = new CGeneric<CModelInstance>(pNode); // throw(std::bad_alloc)
-        return pModelInstance->QueryInterface(iid, ppModelInstance);
-    }
-    catch (CanvasError &e)
-    {
-        return e.Result();
-    }
-
-    return Result::Success;
-}
-
-Result CCamera::Create(InterfaceId iid, void **ppCamera, CSceneGraphNode *pNode)
-{
-    if (!ppCamera)
-    {
-        return Result::BadPointer;
-    }
-
-    *ppCamera = nullptr;
-
-    try
-    {
-        CComPtr<CCamera> pCamera = new CGeneric<CCamera>(pNode); // throw(std::bad_alloc)
-        return pCamera->QueryInterface(iid, ppCamera);
-    }
-    catch (CanvasError &e)
-    {
-        return e.Result();
-    }
-
-    return Result::Success;
-}
-
-Result CLight::Create(InterfaceId iid, void **ppLight, CSceneGraphNode *pNode)
-{
-    if (!ppLight)
-    {
-        return Result::BadPointer;
-    }
-
-    *ppLight = nullptr;
-
-    try
-    {
-        CComPtr<CLight> pLight = new CGeneric<CLight>(pNode); // throw(std::bad_alloc)
-        return pLight->QueryInterface(iid, ppLight);
-    }
-    catch (CanvasError &e)
-    {
-        return e.Result();
-    }
-
-    return Result::Success;
-}
-
-Result CTransform::Create(InterfaceId iid, void **ppTransform, CSceneGraphNode *pNode)
-{
-    if (!ppTransform)
-    {
-        return Result::BadPointer;
-    }
-
-    *ppTransform = nullptr;
-    try
-    {
-        CComPtr<CTransform> pTransform = new CGeneric<CTransform>(pNode); // throw(std::bad_alloc)
-        return pTransform->QueryInterface(iid, ppTransform);
-    }
-    catch (CanvasError &e)
-    {
-        return e.Result();
-    }
-
-    return Result::Success;
-}
-
 
 CANVASMETHODIMP CSceneGraphIterator::MoveNextSibling()
 {
