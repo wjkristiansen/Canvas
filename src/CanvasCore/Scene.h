@@ -26,11 +26,13 @@ public:
     static Result CANVASAPI Create(NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
 
 public:
-    using NodeMapType = std::unordered_map<std::string, CComPtr<typename ISceneGraphNode>>;
     using ElementMapType = std::unordered_map<InterfaceId, CComPtr<typename IGeneric>>;
 
-    NodeMapType m_ChildNodes;
-    CSceneGraphNode *m_pParent; // weak pointer
+    CSceneGraphNode *m_pParent = nullptr; // weak pointer
+    CSceneGraphNode *m_pPrevSibling = nullptr; // weak pointer
+    CSceneGraphNode *m_pLastChild = nullptr; // weak pointer
+    CComPtr<CSceneGraphNode> m_pNextSibling;
+    CComPtr<CSceneGraphNode> m_pFirstChild;
 
     ElementMapType m_Elements;
 
@@ -38,7 +40,13 @@ public:
 
 //    CANVASMETHOD(FinalConstruct)();
     CANVASMETHOD(QueryInterface)(InterfaceId iid, void **ppUnk);
-    CANVASMETHOD(AddChild)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode);
+    CANVASMETHOD(Insert)(_In_ ISceneGraphNode *pParent, _In_opt_ ISceneGraphNode *pInsertBefore);
+    CANVASMETHOD(Remove)();
+    CANVASMETHOD_(ISceneGraphNode *, GetParent)() { return m_pParent; }
+    CANVASMETHOD_(ISceneGraphNode *, GetFirstChild)() { return m_pFirstChild; }
+    CANVASMETHOD_(ISceneGraphNode *, GetLastChild)() { return m_pLastChild; }
+    CANVASMETHOD_(ISceneGraphNode *, GetPrevSibling)() { return m_pPrevSibling; }
+    CANVASMETHOD_(ISceneGraphNode *, GetNextSibling)() { return m_pNextSibling; }
 };
 
 //template<class _T>
@@ -128,24 +136,6 @@ public:
 
     CSceneNodeElement(CSceneGraphNode *pNode) :
         _Base(pNode) {}
-};
-
-//------------------------------------------------------------------------------------------------
-class CSceneGraphIterator :
-    public ISceneGraphIterator,
-    public CCanvasObjectBase
-{
-public:
-    CComPtr<CSceneGraphNode> m_pContainingSceneGraphNode;
-    CSceneGraphNode::NodeMapType::iterator m_It;
-
-    CANVASMETHOD(MoveNextSibling)();
-    CANVASMETHOD(Reset)(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName);
-    CANVASMETHOD(GetNode(InterfaceId iid, void **ppNode));
-    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-    {
-        return CCanvasObjectBase::QueryInterface(iid, ppObj);
-    }
 };
 
 //------------------------------------------------------------------------------------------------
