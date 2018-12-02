@@ -6,12 +6,13 @@
 
 using namespace Canvas;
 
+//------------------------------------------------------------------------------------------------
 CSceneGraphNode::CSceneGraphNode(NODE_ELEMENT_FLAGS flags) : // throw(std::bad_alloc)
     CCanvasObjectBase()
 {
 }
 
-
+//------------------------------------------------------------------------------------------------
 Result CSceneGraphNode::Create(NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj)
 {
     try
@@ -61,59 +62,74 @@ CANVASMETHODIMP CSceneGraphNode::QueryInterface(InterfaceId iid, void **ppUnk)
     return CCanvasObjectBase::QueryInterface(iid, ppUnk);
 }
 
-CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode)
+CANVASMETHODIMP CSceneGraphNode::Remove()
 {
-    auto result = m_ChildNodes.emplace(pName, pSceneNode);
-    return result.second ? Result::Success : Result::DuplicateKey;
-}
-
-CANVASMETHODIMP CSceneGraphIterator::MoveNextSibling()
-{
-    if (m_It != m_pContainingSceneGraphNode->m_ChildNodes.end())
+    if(m_pPrevSibling)
     {
-        ++m_It;
-        if (m_It != m_pContainingSceneGraphNode->m_ChildNodes.end())
+        m_pPrevSibling->m_pNextSibling = m_pNextSibling;
+    }
+
+    if (m_pNextSibling)
+    {
+        m_pNextSibling->m_pPrevSibling;
+    }
+
+    if (m_pParent)
+    {
+        if (m_pParent->m_pFirstChild == this)
         {
-            return Result::Success;
+            m_pParent->m_pFirstChild = m_pNextSibling;
+        }
+
+        if (m_pParent->m_pLastChild == this)
+        {
+            m_pParent->m_pLastChild = m_pPrevSibling;
         }
     }
 
-    return Result::Finished;
+    m_pParent = nullptr;
+    m_pPrevSibling = nullptr;
+    m_pNextSibling = nullptr;
+    return Result::NotImplemented;
 }
 
-CANVASMETHODIMP CSceneGraphIterator::Reset(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName)
+CANVASMETHODIMP CSceneGraphNode::Insert(_In_opt_ ISceneGraphNode *pParent, _In_opt_ ISceneGraphNode *pInsertBefore)
 {
-    Result result = Result::Success;
-    CSceneGraphNode *pParentNodeImpl = reinterpret_cast<CSceneGraphNode *>(pParentNode);
-    CSceneGraphNode::NodeMapType::iterator it;
-    if(pName)
+    CSceneGraphNode *pParentNodeImp = reinterpret_cast<CSceneGraphNode *>(pParent);
+    CSceneGraphNode *pInsertBeforeImp = pInsertBefore ? reinterpret_cast<CSceneGraphNode *>(pInsertBefore) : nullptr;
+    if (pInsertBeforeImp && pInsertBeforeImp->m_pParent != pParent)
     {
-        it = pParentNodeImpl->m_ChildNodes.find(pName);
-        if(it == pParentNodeImpl->m_ChildNodes.end())
+        // Node parameters are not parent-child
+        return Result::InvalidArg;
+    }
+
+    m_pNextSibling = pInsertBeforeImp;
+
+    if (pInsertBeforeImp)
+    {
+        m_pPrevSibling = pInsertBeforeImp->m_pPrevSibling;
+        pInsertBeforeImp->m_pPrevSibling = this;
+        m_pParent = pParentNodeImp;
+    }
+    else
+    {
+        // Insert at the end of the list
+        m_pPrevSibling = pParentNodeImp->m_pLastChild;
+        if (pParentNodeImp->m_pLastChild)
         {
-            result = Result::NotFound;
+            pParentNodeImp->m_pLastChild->m_pNextSibling = this;
         }
+        pParentNodeImp->m_pLastChild = this;
+    }
+
+    if (m_pPrevSibling)
+    {
+        m_pPrevSibling->m_pNextSibling = this;
     }
     else
     {
-        it = pParentNodeImpl->m_ChildNodes.begin();
+        pParentNodeImp->m_pFirstChild = this;
     }
 
-    m_It = it;
-
-    m_pContainingSceneGraphNode = pParentNodeImpl;
-
-    return result;
-}
-
-CANVASMETHODIMP CSceneGraphIterator::GetNode(InterfaceId iid, void **ppNode)
-{
-    if(m_pContainingSceneGraphNode)
-    {
-        return m_pContainingSceneGraphNode->QueryInterface(iid, ppNode);
-    }
-    else
-    {
-        return Result::Uninitialized;
-    }
+    return Result::Success;
 }

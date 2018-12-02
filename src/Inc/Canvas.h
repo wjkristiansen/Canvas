@@ -6,8 +6,8 @@
 
 #define CANVASAPI __stdcall
 #define CANVASNOTHROW __declspec(nothrow)
-#define CANVASMETHOD(method) virtual Canvas::Result CANVASNOTHROW CANVASAPI method
-#define CANVASMETHOD_(retType, method) virtual retType CANVASNOTHROW CANVASAPI method
+#define CANVASMETHOD(method) virtual CANVASNOTHROW Canvas::Result method
+#define CANVASMETHOD_(retType, method) virtual CANVASNOTHROW retType method
 #define CANVASMETHODIMP Canvas::Result CANVASAPI
 #define CANVASMETHODIMP_(retType) retType CANVASAPI
 #define CANVAS_INTERFACE struct
@@ -60,6 +60,8 @@ enum class InterfaceId : int
     IMesh,
     IAnimation,
     ISkeleton,
+    IIterator,
+    ITreeIterator,
 };
 
 enum NODE_ELEMENT_FLAGS
@@ -114,6 +116,24 @@ CANVAS_INTERFACE IGeneric
     }
 };
 
+CANVAS_INTERFACE IIterator : public IGeneric
+{
+    CANVAS_INTERFACE_DECLARE(IIterator)
+    CANVASMETHOD(MoveNext)() = 0;
+    CANVASMETHOD(MovePrev)() = 0;
+};
+
+CANVAS_INTERFACE 
+ITreeIterator : public IGeneric
+{
+    CANVAS_INTERFACE_DECLARE(ITreeIterator)
+
+    CANVASMETHOD(MoveNext)() = 0;
+    CANVASMETHOD(MovePrev)() = 0;
+    CANVASMETHOD(MoveFirstChild)() = 0;
+    CANVASMETHOD(MoveParent)() = 0;
+};
+
 CANVAS_INTERFACE
 ICanvas : public IGeneric
 {
@@ -152,18 +172,17 @@ ITransform : public IGeneric
 };
 
 CANVAS_INTERFACE
-ISceneGraphIterator : public IGeneric
-{
-    CANVAS_INTERFACE_DECLARE(ISceneGraphIterator)
-    CANVASMETHOD(MoveNextSibling)() = 0;
-    CANVASMETHOD(GetNode(InterfaceId iid, void **ppNode)) = 0;
-    CANVASMETHOD(Reset)(_In_ ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName) = 0;
-};
-
-CANVAS_INTERFACE
 ISceneGraphNode : public IGeneric
 {
-    CANVASMETHOD(AddChild)(_In_ PCSTR pName, _In_ ISceneGraphNode *pSceneNode) = 0;
+    CANVAS_INTERFACE_DECLARE(ISceneGraphNode)
+
+    CANVASMETHOD(Insert)(_In_ ISceneGraphNode *pParent, _In_opt_ ISceneGraphNode *pInsertBefore) = 0;
+    CANVASMETHOD(Remove)() = 0;
+    CANVASMETHOD_(ISceneGraphNode *, GetParent)() = 0;
+    CANVASMETHOD_(ISceneGraphNode *, GetFirstChild)() = 0;
+    CANVASMETHOD_(ISceneGraphNode *, GetLastChild)() = 0;
+    CANVASMETHOD_(ISceneGraphNode *, GetPrevSibling)() = 0;
+    CANVASMETHOD_(ISceneGraphNode *, GetNextSibling)() = 0;
 };
 
 CANVAS_INTERFACE
