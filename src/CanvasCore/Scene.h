@@ -19,27 +19,34 @@ namespace std
 
 //------------------------------------------------------------------------------------------------
 class CObject :
-    public ISceneGraphNode,
+    public IGeneric,
     public CCanvasObjectBase
 {
-public:
-    static Result CANVASAPI Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
-
-public:
     using ElementMapType = std::unordered_map<InterfaceId, CComPtr<typename IGeneric>>;
-
-    CObject *m_pParent = nullptr; // weak pointer
-    CObject *m_pPrevSibling = nullptr; // weak pointer
-    CObject *m_pLastChild = nullptr; // weak pointer
-    CComPtr<CObject> m_pNextSibling;
-    CComPtr<CObject> m_pFirstChild;
-
     ElementMapType m_Elements;
 
+public:
+    static Result CANVASAPI Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
     CObject(OBJECT_ELEMENT_FLAGS flags);
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, void **ppUnk);
+};
+
+//------------------------------------------------------------------------------------------------
+class CSceneGraphNode :
+    public CInnerGeneric<ISceneGraphNode>
+{
+public:
+    CSceneGraphNode(CObject *pObj) :
+        CInnerGeneric(pObj)
+    {}
+
+    CSceneGraphNode *m_pParent = nullptr; // weak pointer
+    CSceneGraphNode *m_pPrevSibling = nullptr; // weak pointer
+    CSceneGraphNode *m_pLastChild = nullptr; // weak pointer
+    CComPtr<CSceneGraphNode> m_pNextSibling;
+    CComPtr<CSceneGraphNode> m_pFirstChild;
 
 //    CANVASMETHOD(FinalConstruct)();
-    CANVASMETHOD(QueryInterface)(InterfaceId iid, void **ppUnk);
     CANVASMETHOD(Insert)(_In_ ISceneGraphNode *pParent, _In_opt_ ISceneGraphNode *pInsertBefore);
     CANVASMETHOD(Remove)();
     CANVASMETHOD_(ISceneGraphNode *, GetParent)() { return m_pParent; }
@@ -54,8 +61,8 @@ class CModelInstance :
     public CInnerGeneric<IModelInstance>
 {
 public:
-    CModelInstance(CObject *pNode) :
-        CInnerGeneric(pNode)
+    CModelInstance(CObject *pObj) :
+        CInnerGeneric(pObj)
     {}
 };
 
@@ -64,8 +71,8 @@ class CCamera :
     public CInnerGeneric<ICamera>
 {
 public:
-    CCamera(CObject *pNode) :
-        CInnerGeneric(pNode)
+    CCamera(CObject *pObj) :
+        CInnerGeneric(pObj)
     {}
 };
 
@@ -74,8 +81,8 @@ class CLight :
     public CInnerGeneric<ILight>
 {
 public:
-    CLight(CObject *pNode) :
-        CInnerGeneric(pNode)
+    CLight(CObject *pObj) :
+        CInnerGeneric(pObj)
     {}
 };
 
@@ -84,18 +91,18 @@ class CTransform :
     public CInnerGeneric<ITransform>
 {
 public:
-    CTransform(CObject *pNode) :
-        CInnerGeneric(pNode)
+    CTransform(CObject *pObj) :
+        CInnerGeneric(pObj)
     {}
 };
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
-class CSceneNodeElement :
+class CObjectElement :
     public _Base
 {
 public:
-    static Result Create(InterfaceId iid, void **ppObj, CObject *pNode)
+    static Result Create(InterfaceId iid, void **ppObj, CObject *pObj)
     {
         if (!ppObj)
         {
@@ -106,8 +113,8 @@ public:
 
         try
         {
-            CComPtr<_Base> pObj = new CSceneNodeElement<_Base>(pNode); // throw(std::bad_alloc)
-            return pObj->QueryInterface(iid, ppObj);
+            CComPtr<_Base> pElement = new CObjectElement<_Base>(pObj); // throw(std::bad_alloc)
+            return pElement->QueryInterface(iid, ppObj);
         }
         catch (CanvasError &e)
         {
@@ -117,8 +124,8 @@ public:
         return Result::Success;
     }
 
-    CSceneNodeElement(CObject *pNode) :
-        _Base(pNode) {}
+    CObjectElement(CObject *pObj) :
+        _Base(pObj) {}
 };
 
 //------------------------------------------------------------------------------------------------
@@ -127,14 +134,14 @@ class CScene :
     public CCanvasObjectBase
 {
 public:
-    CComPtr<CObject> m_pRootSceneGraphNode;
+    CComPtr<CSceneGraphNode> m_pRootSceneGraphNode;
 
     CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         return CCanvasObjectBase::QueryInterface(iid, ppObj);
     }
 
-    CScene(CObject *pRootSceneGraphNode) :
+    CScene(CSceneGraphNode *pRootSceneGraphNode) :
         m_pRootSceneGraphNode(pRootSceneGraphNode)
     {
     }
