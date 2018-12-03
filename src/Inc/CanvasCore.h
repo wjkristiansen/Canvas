@@ -222,6 +222,7 @@ ISceneGraphNode : public IGeneric
 CANVAS_INTERFACE
 IScene : public IGeneric
 {
+    CANVAS_INTERFACE_DECLARE(IScene)
 };
 
 }
