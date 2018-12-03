@@ -46,22 +46,22 @@ inline bool Succeeded(Result result)
 enum class InterfaceId : int
 {
     IUnknown = 0,
-    IGeneric = 1,
-    ICanvas,
-    IScene,
-    ISceneGraphNode,
-    ISceneGraphIterator,
-    IModelInstance,
-    ICamera,
-    ILight,
-    ITransform,
-    ITexture,
-    IMaterial,
-    IMesh,
-    IAnimation,
-    ISkeleton,
-    IIterator,
-    ITreeIterator,
+    XGeneric = 1,
+    XCanvas,
+    XScene,
+    XSceneGraphNode,
+    XSceneGraphIterator,
+    XModelInstance,
+    XCamera,
+    XLight,
+    XTransform,
+    XTexture,
+    XMaterial,
+    XMesh,
+    XAmination,
+    XSkeleton,
+    XIterator,
+    XTreeIterator,
 };
 
 enum OBJECT_ELEMENT_FLAGS
@@ -99,59 +99,59 @@ struct OBJECT_DESC
 };
 
 // Generic
-CANVAS_INTERFACE IGeneric;
+CANVAS_INTERFACE XGeneric;
 
 // Canvas core interfaces
-CANVAS_INTERFACE ICanvas;
+CANVAS_INTERFACE XCanvas;
 
 // Scene CANVAS_INTERFACE
-CANVAS_INTERFACE IScene;
+CANVAS_INTERFACE XScene;
 
 // Scene graph node
-CANVAS_INTERFACE ISceneGraphNode;
+CANVAS_INTERFACE XSceneGraphNode;
 
 // Camera CANVAS_INTERFACEs
-CANVAS_INTERFACE ICamera;
+CANVAS_INTERFACE XCamera;
 
 // Light CANVAS_INTERFACEs
-CANVAS_INTERFACE ILight;
+CANVAS_INTERFACE XLight;
 
 // Transform CANVAS_INTERFACEs
-CANVAS_INTERFACE ITransform;
+CANVAS_INTERFACE XTransform;
 
 // Assets
-CANVAS_INTERFACE ITexture;
-CANVAS_INTERFACE IMaterial;
-CANVAS_INTERFACE IMesh;
-CANVAS_INTERFACE IAnimation;
-CANVAS_INTERFACE ISkeleton;
+CANVAS_INTERFACE XTexture;
+CANVAS_INTERFACE XMaterial;
+CANVAS_INTERFACE XMesh;
+CANVAS_INTERFACE XAmination;
+CANVAS_INTERFACE XSkeleton;
 
-CANVAS_INTERFACE IGeneric
+CANVAS_INTERFACE XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(IGeneric)
+    CANVAS_INTERFACE_DECLARE(XGeneric)
 
     CANVASMETHOD_(ULONG, AddRef)() = 0;
     CANVASMETHOD_(ULONG, Release)() = 0;
     CANVASMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
 
-    template<class _IFace>
-    Result QueryInterface(_IFace **ppObj)
+    template<class _XFace>
+    Result QueryInterface(_XFace **ppObj)
     {
-        return QueryInterface(_IFace::IId, reinterpret_cast<void **>(ppObj));
+        return QueryInterface(_XFace::IId, reinterpret_cast<void **>(ppObj));
     }
 };
 
-CANVAS_INTERFACE IIterator : public IGeneric
+CANVAS_INTERFACE XIterator : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(IIterator)
+    CANVAS_INTERFACE_DECLARE(XIterator)
     CANVASMETHOD(MoveNext)() = 0;
     CANVASMETHOD(MovePrev)() = 0;
 };
 
 CANVAS_INTERFACE 
-ITreeIterator : public IGeneric
+XTreeIterator : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(ITreeIterator)
+    CANVAS_INTERFACE_DECLARE(XTreeIterator)
 
     CANVASMETHOD(MoveNext)() = 0;
     CANVASMETHOD(MovePrev)() = 0;
@@ -160,69 +160,69 @@ ITreeIterator : public IGeneric
 };
 
 CANVAS_INTERFACE
-ICanvas : public IGeneric
+XCanvas : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(ICanvas)
+    CANVAS_INTERFACE_DECLARE(XCanvas)
 
     CANVASMETHOD(CreateScene)(Canvas::InterfaceId iid, _Outptr_ void **ppScene) = 0;
     CANVASMETHOD(CreateNode)(PCSTR pName, OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppSceneGraphNode) = 0;
 };
 
 CANVAS_INTERFACE
-IModelInstance : public IGeneric
+XModelInstance : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(IModelInstance)
+    CANVAS_INTERFACE_DECLARE(XModelInstance)
 
 };
 
 CANVAS_INTERFACE
-ICamera : public IGeneric
+XCamera : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(ICamera)
+    CANVAS_INTERFACE_DECLARE(XCamera)
 
 };
 
 CANVAS_INTERFACE
-ILight : public IGeneric
+XLight : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(ILight)
+    CANVAS_INTERFACE_DECLARE(XLight)
 
 };
 
 CANVAS_INTERFACE
-ITransform : public IGeneric
+XTransform : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(ITransform)
+    CANVAS_INTERFACE_DECLARE(XTransform)
 
 };
 
 CANVAS_INTERFACE
-ISceneGraphIterator : public IGeneric
+XSceneGraphIterator : public XGeneric
 {
     CANVASMETHOD(GetSceneGraphNode)(InterfaceId iid, void **ppObj) = 0;
-    CANVASMETHOD(MoveTo)(ISceneGraphNode *pObj) = 0;
+    CANVASMETHOD(MoveTo)(XSceneGraphNode *pObj) = 0;
     CANVASMETHOD(MoveParent)() = 0;
     CANVASMETHOD(MoveFirstChild)() = 0;
 };
 
 CANVAS_INTERFACE
-ISceneGraphNode : public IGeneric
+XSceneGraphNode : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(ISceneGraphNode)
+    CANVAS_INTERFACE_DECLARE(XSceneGraphNode)
 
-    CANVASMETHOD(Insert)(_In_ ISceneGraphNode *pParent, _In_opt_ ISceneGraphNode *pInsertBefore) = 0;
+    CANVASMETHOD(Insert)(_In_ XSceneGraphNode *pParent, _In_opt_ XSceneGraphNode *pInsertBefore) = 0;
     CANVASMETHOD(Remove)() = 0;
-    CANVASMETHOD_(ISceneGraphNode *, GetParent)() = 0;
-    CANVASMETHOD_(ISceneGraphNode *, GetFirstChild)() = 0;
-    CANVASMETHOD_(ISceneGraphNode *, GetLastChild)() = 0;
-    CANVASMETHOD_(ISceneGraphNode *, GetPrevSibling)() = 0;
-    CANVASMETHOD_(ISceneGraphNode *, GetNextSibling)() = 0;
+    CANVASMETHOD_(XSceneGraphNode *, GetParent)() = 0;
+    CANVASMETHOD_(XSceneGraphNode *, GetFirstChild)() = 0;
+    CANVASMETHOD_(XSceneGraphNode *, GetLastChild)() = 0;
+    CANVASMETHOD_(XSceneGraphNode *, GetPrevSibling)() = 0;
+    CANVASMETHOD_(XSceneGraphNode *, GetNextSibling)() = 0;
 };
 
 CANVAS_INTERFACE
-IScene : public IGeneric
+XScene : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(IScene)
+    CANVAS_INTERFACE_DECLARE(XScene)
 };
 
 }

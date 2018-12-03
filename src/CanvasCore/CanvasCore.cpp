@@ -7,7 +7,7 @@ using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
 class CCanvas :
-    public ICanvas,
+    public XCanvas,
     public CGenericBase
 {
 public:
@@ -18,7 +18,7 @@ public:
         *ppObj = nullptr;
         switch (iid)
         {
-        case InterfaceId::ICanvas:
+        case InterfaceId::XCanvas:
             *ppObj = this;
             AddRef();
             break;
@@ -37,8 +37,8 @@ public:
         {
             // Create a root scene graph node object
             CComPtr<CSceneGraphNode> pSceneGraphNode;
-            CObject::Create(OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE, InterfaceId::ISceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)); // throw(bad_alloc)
-            CComPtr<IScene> pScene = new CGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
+            CObject::Create(OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE, InterfaceId::XSceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)); // throw(bad_alloc)
+            CComPtr<XScene> pScene = new CGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
             return pScene->QueryInterface(iid, ppScene);
         }
         catch (std::bad_alloc&)
@@ -73,7 +73,7 @@ Canvas::Result CANVASAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 
     try
     {
-        if (iid == ICanvas::IId)
+        if (iid == XCanvas::IId)
         {
             CCanvas *pCanvas = new CGeneric<CCanvas>; // throw(bad_alloc)
             *ppCanvas = pCanvas;

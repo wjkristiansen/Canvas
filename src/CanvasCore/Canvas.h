@@ -91,7 +91,7 @@ public:
         *ppObj = nullptr;
         switch (iid)
         {
-        case InterfaceId::IGeneric:
+        case InterfaceId::XGeneric:
             *ppObj = this;
             AddRef();
             break;
@@ -109,9 +109,9 @@ class CInnerGeneric :
     public _Base
 {
 public:
-    IGeneric *m_pOuterGeneric = 0; // weak pointer
+    XGeneric *m_pOuterGeneric = 0; // weak pointer
 
-    CInnerGeneric(_In_ IGeneric *pOuterGeneric) :
+    CInnerGeneric(_In_ XGeneric *pOuterGeneric) :
         m_pOuterGeneric(pOuterGeneric)
     {
         if (!pOuterGeneric)

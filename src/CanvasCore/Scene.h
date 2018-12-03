@@ -29,7 +29,7 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CObject :
-    public IGeneric,
+    public XGeneric,
     public CGenericBase
 {
     using ElementMapType = std::unordered_map<InterfaceId, std::unique_ptr<CInnerGenericBase>>;
@@ -43,7 +43,7 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
-    public ISceneGraphNode,
+    public XSceneGraphNode,
     public CInnerGenericBase
 {
 public:
@@ -55,7 +55,7 @@ public:
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
-        if (iid == InterfaceId::ISceneGraphNode)
+        if (iid == InterfaceId::XSceneGraphNode)
         {
             *ppUnk = this;
             return Result::Success;
@@ -64,18 +64,18 @@ public:
         return __super::InternalQueryInterface(iid, ppUnk);
     }
 
-    CANVASMETHOD(Insert)(_In_ ISceneGraphNode *pParent, _In_opt_ ISceneGraphNode *pInsertBefore);
+    CANVASMETHOD(Insert)(_In_ XSceneGraphNode *pParent, _In_opt_ XSceneGraphNode *pInsertBefore);
     CANVASMETHOD(Remove)();
-    CANVASMETHOD_(ISceneGraphNode *, GetParent)() { return m_pParent; }
-    CANVASMETHOD_(ISceneGraphNode *, GetFirstChild)() { return m_pFirstChild; }
-    CANVASMETHOD_(ISceneGraphNode *, GetLastChild)() { return m_pLastChild; }
-    CANVASMETHOD_(ISceneGraphNode *, GetPrevSibling)() { return m_pPrevSibling; }
-    CANVASMETHOD_(ISceneGraphNode *, GetNextSibling)() { return m_pNextSibling; }
+    CANVASMETHOD_(XSceneGraphNode *, GetParent)() { return m_pParent; }
+    CANVASMETHOD_(XSceneGraphNode *, GetFirstChild)() { return m_pFirstChild; }
+    CANVASMETHOD_(XSceneGraphNode *, GetLastChild)() { return m_pLastChild; }
+    CANVASMETHOD_(XSceneGraphNode *, GetPrevSibling)() { return m_pPrevSibling; }
+    CANVASMETHOD_(XSceneGraphNode *, GetNextSibling)() { return m_pNextSibling; }
 };
 
 //------------------------------------------------------------------------------------------------
 class CModelInstance :
-    public IModelInstance,
+    public XModelInstance,
     public CInnerGenericBase
 {
 public:
@@ -83,28 +83,28 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CCamera :
-    public ICamera,
+    public XCamera,
     public CInnerGenericBase
 {
 };
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public ILight,
+    public XLight,
     public CInnerGenericBase
 {
 };
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
-    public ITransform,
+    public XTransform,
     public CInnerGenericBase
 {
 };
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public IScene,
+    public XScene,
     public CGenericBase
 {
 public:
@@ -112,7 +112,7 @@ public:
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
-        if (InterfaceId::IScene == iid)
+        if (InterfaceId::XScene == iid)
         {
             *ppObj = this;
             AddRef();
