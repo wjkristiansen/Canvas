@@ -49,13 +49,13 @@ int main()
     CComPtr<IScene> pScene;
     result = pCanvas->CreateScene(IScene::IId, (void **)&pScene);
 
-    CComPtr<IGeneric> pGeneric1;
-    CComPtr<IGeneric> pGeneric2;
-    CComPtr<ITransform> pTransform;
-    result = pCanvas->CreateNode("My Transform", Canvas::OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE|Canvas::OBJECT_ELEMENT_FLAG_TRANSFORM, ITransform::IId, reinterpret_cast<void **>(&pTransform));
-    CComPtr<ISceneGraphNode> pNode;
-    pTransform->QueryInterface(&pNode);
-    pTransform->QueryInterface(&pGeneric1);
-    pNode->QueryInterface(&pGeneric2);
+    //CComPtr<IGeneric> pGeneric1;
+    //CComPtr<IGeneric> pGeneric2;
+    //CComPtr<ITransform> pTransform;
+    //result = pCanvas->CreateNode("My Transform", Canvas::OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE|Canvas::OBJECT_ELEMENT_FLAG_TRANSFORM, ITransform::IId, reinterpret_cast<void **>(&pTransform));
+    //CComPtr<ISceneGraphNode> pNode;
+    //pTransform->QueryInterface(&pNode);
+    //pTransform->QueryInterface(&pGeneric1);
+    //pNode->QueryInterface(&pGeneric2);
 }
 
