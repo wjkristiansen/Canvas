@@ -7,36 +7,36 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-CSceneGraphNode::CSceneGraphNode(NODE_ELEMENT_FLAGS flags) : // throw(std::bad_alloc)
+CObject::CObject(OBJECT_ELEMENT_FLAGS flags) : // throw(std::bad_alloc)
     CCanvasObjectBase()
 {
 }
 
 //------------------------------------------------------------------------------------------------
-Result CSceneGraphNode::Create(NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj)
+Result CObject::Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj)
 {
     try
     {
-        CComPtr<CSceneGraphNode> pNode = new CGeneric<CSceneGraphNode>(flags); // throw(std::bad_alloc)
-        if (flags & NODE_ELEMENT_FLAGS_TRANSFORM)
+        CComPtr<CObject> pNode = new CGeneric<CObject>(flags); // throw(std::bad_alloc)
+        if (flags & OBJECT_ELEMENT_FLAG_TRANSFORM)
         {
             CComPtr<IGeneric> pTransform;
             ThrowFailure(CSceneNodeElement<CTransform>::Create(ITransform::IId, reinterpret_cast<void **>(&pTransform), pNode));
             pNode->m_Elements.emplace(ITransform::IId, pTransform); // throw(std::bad_alloc)
         }
-        if (flags & NODE_ELEMENT_FLAGS_CAMERA)
+        if (flags & OBJECT_ELEMENT_FLAG_CAMERA)
         {
             CComPtr<ICamera> pCamera;
             ThrowFailure(CSceneNodeElement<CCamera>::Create(ICamera::IId, reinterpret_cast<void **>(&pCamera), pNode));
             pNode->m_Elements.emplace(ICamera::IId, pCamera); // throw(std::bad_alloc)
         }
-        if (flags & NODE_ELEMENT_FLAGS_LIGHT)
+        if (flags & OBJECT_ELEMENT_FLAG_LIGHT)
         {
             CComPtr<IGeneric> pLight;
             ThrowFailure(CSceneNodeElement<CLight>::Create(ILight::IId, reinterpret_cast<void **>(&pLight), pNode));
             pNode->m_Elements.emplace(ILight::IId, pLight); // throw(std::bad_alloc)
         }
-        if (flags & NODE_ELEMENT_FLAGS_MODELINSTANCE)
+        if (flags & OBJECT_ELEMENT_FLAG_MODELINSTANCE)
         {
             CComPtr<IGeneric> pModelInstance;
             ThrowFailure(CSceneNodeElement<CModelInstance>::Create(IModelInstance::IId, reinterpret_cast<void **>(&pModelInstance), pNode));
@@ -50,7 +50,7 @@ Result CSceneGraphNode::Create(NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outpt
     }
 }
 
-CANVASMETHODIMP CSceneGraphNode::QueryInterface(InterfaceId iid, void **ppUnk)
+CANVASMETHODIMP CObject::QueryInterface(InterfaceId iid, void **ppUnk)
 {
     auto it = m_Elements.find(iid);
     if (it != m_Elements.end())
@@ -62,7 +62,7 @@ CANVASMETHODIMP CSceneGraphNode::QueryInterface(InterfaceId iid, void **ppUnk)
     return CCanvasObjectBase::QueryInterface(iid, ppUnk);
 }
 
-CANVASMETHODIMP CSceneGraphNode::Remove()
+CANVASMETHODIMP CObject::Remove()
 {
     if(m_pPrevSibling)
     {
@@ -93,10 +93,10 @@ CANVASMETHODIMP CSceneGraphNode::Remove()
     return Result::NotImplemented;
 }
 
-CANVASMETHODIMP CSceneGraphNode::Insert(_In_opt_ ISceneGraphNode *pParent, _In_opt_ ISceneGraphNode *pInsertBefore)
+CANVASMETHODIMP CObject::Insert(_In_opt_ ISceneGraphNode *pParent, _In_opt_ ISceneGraphNode *pInsertBefore)
 {
-    CSceneGraphNode *pParentNodeImp = reinterpret_cast<CSceneGraphNode *>(pParent);
-    CSceneGraphNode *pInsertBeforeImp = pInsertBefore ? reinterpret_cast<CSceneGraphNode *>(pInsertBefore) : nullptr;
+    CObject *pParentNodeImp = reinterpret_cast<CObject *>(pParent);
+    CObject *pInsertBeforeImp = pInsertBefore ? reinterpret_cast<CObject *>(pInsertBefore) : nullptr;
     if (pInsertBeforeImp && pInsertBeforeImp->m_pParent != pParent)
     {
         // Node parameters are not parent-child

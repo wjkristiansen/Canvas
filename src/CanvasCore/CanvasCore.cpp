@@ -36,7 +36,7 @@ public:
         try
         {
             // Create a root scene graph node
-            CComPtr<CSceneGraphNode> pRootSceneGraphNode = new CGeneric<CSceneGraphNode>(NODE_ELEMENT_FLAGS_NONE); // throw(bad_alloc)
+            CComPtr<CObject> pRootSceneGraphNode = new CGeneric<CObject>(OBJECT_ELEMENT_FLAG_NONE); // throw(bad_alloc)
             CComPtr<CScene> pScene = new CGeneric<CScene>(pRootSceneGraphNode); // throw(std::bad_alloc)
             return pScene->QueryInterface(iid, ppScene);
         }
@@ -47,12 +47,12 @@ public:
         return Result::Success;
     }
 
-    CANVASMETHOD(CreateNode)(PCSTR pName, NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppSceneGraphNode)
+    CANVASMETHOD(CreateNode)(PCSTR pName, OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppSceneGraphNode)
     {
         *ppSceneGraphNode = nullptr;
         try
         {
-            return CSceneGraphNode::Create(flags, iid, ppSceneGraphNode);
+            return CObject::Create(flags, iid, ppSceneGraphNode);
         }
         catch (std::bad_alloc&)
         {
