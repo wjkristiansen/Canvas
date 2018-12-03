@@ -107,7 +107,7 @@ CANVAS_INTERFACE ICanvas;
 // Scene CANVAS_INTERFACE
 CANVAS_INTERFACE IScene;
 
-// Scene object
+// Scene graph node
 CANVAS_INTERFACE ISceneGraphNode;
 
 // Camera CANVAS_INTERFACEs
