@@ -8,12 +8,12 @@ using namespace Canvas;
 //------------------------------------------------------------------------------------------------
 class CCanvas :
     public ICanvas,
-    public CCanvasObjectBase
+    public CGenericBase
 {
 public:
     CCanvas() = default;
 
-    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         *ppObj = nullptr;
         switch (iid)
@@ -24,7 +24,7 @@ public:
             break;
 
         default:
-            return CCanvasObjectBase::QueryInterface(iid, ppObj);
+            return __super::InternalQueryInterface(iid, ppObj);
         }
 
         return Result::Success;
@@ -37,8 +37,8 @@ public:
         {
             // Create a root scene graph node object
             CComPtr<CSceneGraphNode> pSceneGraphNode;
-            CObject::Create(OBJECT_ELEMENT_FLAG_NONE, InterfaceId::ISceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)); // throw(bad_alloc)
-            CComPtr<CScene> pScene = new CGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
+            CObject::Create(OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE, InterfaceId::ISceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)); // throw(bad_alloc)
+            CComPtr<IScene> pScene = new CGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
             return pScene->QueryInterface(iid, ppScene);
         }
         catch (std::bad_alloc&)
