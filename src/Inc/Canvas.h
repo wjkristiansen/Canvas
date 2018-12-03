@@ -64,13 +64,38 @@ enum class InterfaceId : int
     ITreeIterator,
 };
 
-enum NODE_ELEMENT_FLAGS
+enum OBJECT_ELEMENT_FLAGS
 {
-    NODE_ELEMENT_FLAGS_NONE             = 0x0,
-    NODE_ELEMENT_FLAGS_CAMERA           = 0x1,
-    NODE_ELEMENT_FLAGS_LIGHT            = 0x2,
-    NODE_ELEMENT_FLAGS_MODELINSTANCE    = 0x4,
-    NODE_ELEMENT_FLAGS_TRANSFORM        = 0x8,
+    OBJECT_ELEMENT_FLAG_NONE                = 0x0,
+    OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE    = 0x1,
+    OBJECT_ELEMENT_FLAG_CAMERA              = 0x2,
+    OBJECT_ELEMENT_FLAG_LIGHT               = 0x4,
+    OBJECT_ELEMENT_FLAG_MODELINSTANCE       = 0x10,
+    OBJECT_ELEMENT_FLAG_TRANSFORM           = 0x20,
+};
+inline OBJECT_ELEMENT_FLAGS operator|(const OBJECT_ELEMENT_FLAGS &a, const OBJECT_ELEMENT_FLAGS &b) { return (OBJECT_ELEMENT_FLAGS)(int(a) | int(b)); }
+
+struct CAMERA_DESC
+{
+    float NearClip;
+    float FarClip;
+};
+
+enum LIGHT_TYPE
+{
+    LIGHT_TYPE_POINT,
+    LIGHT_TYPE_DIRECTIONAL,
+    LIGHT_TYPE_SPOT,
+};
+
+struct LIGHT_DESC
+{
+    LIGHT_TYPE Type;
+};
+
+struct OBJECT_DESC
+{
+    OBJECT_ELEMENT_FLAGS    ElementFlags;
 };
 
 // Generic
@@ -140,7 +165,7 @@ ICanvas : public IGeneric
     CANVAS_INTERFACE_DECLARE(ICanvas)
 
     CANVASMETHOD(CreateScene)(Canvas::InterfaceId iid, _Outptr_ void **ppScene) = 0;
-    CANVASMETHOD(CreateNode)(PCSTR pName, NODE_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppSceneGraphNode) = 0;
+    CANVASMETHOD(CreateNode)(PCSTR pName, OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppSceneGraphNode) = 0;
 };
 
 CANVAS_INTERFACE
@@ -169,6 +194,15 @@ ITransform : public IGeneric
 {
     CANVAS_INTERFACE_DECLARE(ITransform)
 
+};
+
+CANVAS_INTERFACE
+ISceneGraphIterator : public IGeneric
+{
+    CANVASMETHOD(GetSceneGraphNode)(InterfaceId iid, void **ppObj) = 0;
+    CANVASMETHOD(MoveTo)(ISceneGraphNode *pObj) = 0;
+    CANVASMETHOD(MoveParent)() = 0;
+    CANVASMETHOD(MoveFirstChild)() = 0;
 };
 
 CANVAS_INTERFACE
