@@ -28,12 +28,33 @@ inline void ThrowFailure(Result result)
 //------------------------------------------------------------------------------------------------
 class CGenericBase
 {
-    ULONG m_RefCount = 0;
-
 public:
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         return Result::NoInterface;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+template<class _Base>
+class CGeneric : public _Base
+{
+    ULONG m_RefCount = 0;
+
+public:
+    template<typename... Arguments>
+    CGeneric(Arguments&&... args) : _Base(args ...)
+    {
+    }
+
+    CANVASMETHOD_(ULONG,AddRef)() final
+    {
+        return InternalAddRef();
+    }
+
+    CANVASMETHOD_(ULONG, Release)() final
+    {
+        return InternalRelease();
     }
 
     ULONG CANVASNOTHROW InternalAddRef()
@@ -51,27 +72,6 @@ public:
         }
 
         return result;
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-template<class _Base>
-class CGeneric : public _Base
-{
-public:
-    template<typename... Arguments>
-    CGeneric(Arguments&&... args) : _Base(args ...)
-    {
-    }
-
-    CANVASMETHOD_(ULONG,AddRef)() final
-    {
-        return _Base::InternalAddRef();
-    }
-
-    CANVASMETHOD_(ULONG, Release)() final
-    {
-        return _Base::InternalRelease();
     }
 
     CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) override
