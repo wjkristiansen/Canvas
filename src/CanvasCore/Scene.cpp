@@ -13,31 +13,32 @@ Result CObject::Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ voi
     {
         CComPtr<CObject> pObj = new CGeneric<CObject>(flags); // throw(std::bad_alloc)
 
+        if (flags & OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE)
+        {
+            pObj->m_Elements.emplace(ISceneGraphNode::IId, std::make_unique<CInnerGeneric<CSceneGraphNode, ISceneGraphNode::IId>>(pObj)); // throw(std::bad_alloc)
+        }
         if (flags & OBJECT_ELEMENT_FLAG_TRANSFORM)
         {
-            CComPtr<IGeneric> pTransform;
-            ThrowFailure(CObjectElement<CTransform>::Create(ITransform::IId, reinterpret_cast<void **>(&pTransform), pObj));
-            pObj->m_Elements.emplace(ITransform::IId, pTransform); // throw(std::bad_alloc)
+            pObj->m_Elements.emplace(ITransform::IId, std::make_unique<CInnerGeneric<CTransform, ITransform::IId>>(pObj)); // throw(std::bad_alloc)
         }
         if (flags & OBJECT_ELEMENT_FLAG_CAMERA)
         {
-            CComPtr<ICamera> pCamera;
-            ThrowFailure(CObjectElement<CCamera>::Create(ICamera::IId, reinterpret_cast<void **>(&pCamera), pObj));
-            pObj->m_Elements.emplace(ICamera::IId, pCamera); // throw(std::bad_alloc)
+            pObj->m_Elements.emplace(ICamera::IId, std::make_unique<CInnerGeneric<CCamera, ICamera::IId>>(pObj)); // throw(std::bad_alloc)
         }
         if (flags & OBJECT_ELEMENT_FLAG_LIGHT)
         {
-            CComPtr<IGeneric> pLight;
-            ThrowFailure(CObjectElement<CLight>::Create(ILight::IId, reinterpret_cast<void **>(&pLight), pObj));
-            pObj->m_Elements.emplace(ILight::IId, pLight); // throw(std::bad_alloc)
+            pObj->m_Elements.emplace(ILight::IId, std::make_unique<CInnerGeneric<CLight, ILight::IId>>(pObj)); // throw(std::bad_alloc)
         }
         if (flags & OBJECT_ELEMENT_FLAG_MODELINSTANCE)
         {
-            CComPtr<IGeneric> pModelInstance;
-            ThrowFailure(CObjectElement<CModelInstance>::Create(IModelInstance::IId, reinterpret_cast<void **>(&pModelInstance), pObj));
-            pObj->m_Elements.emplace(IModelInstance::IId, pModelInstance); // throw(std::bad_alloc)
+            pObj->m_Elements.emplace(IModelInstance::IId, std::make_unique<CInnerGeneric<CModelInstance, IModelInstance::IId>>(pObj)); // throw(std::bad_alloc)
         }
+
         return pObj->QueryInterface(iid, ppObj);
+    }
+    catch(Canvas::Result &res)
+    {
+        return res;
     }
     catch (std::bad_alloc &)
     {
@@ -47,21 +48,35 @@ Result CObject::Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ voi
 
 //------------------------------------------------------------------------------------------------
 CObject::CObject(OBJECT_ELEMENT_FLAGS flags) : // throw(std::bad_alloc)
-    CCanvasObjectBase()
+    CGenericBase()
 {
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CObject::QueryInterface(InterfaceId iid, void **ppUnk)
+CANVASMETHODIMP CObject::InternalQueryInterface(InterfaceId iid, void **ppUnk)
 {
     auto it = m_Elements.find(iid);
     if (it != m_Elements.end())
     {
-        auto pUnk = it->second;
-        return pUnk->QueryInterface(iid, ppUnk);
+        // Quick path
+        return it->second.get()->InternalQueryInterface(iid, ppUnk);
+    }
+    else
+    {
+        // Slow path
+        // Iterate through the elements and return the first implementer
+        for (it = m_Elements.begin(); it != m_Elements.end(); ++it)
+        {
+            auto res = it->second->InternalQueryInterface(iid, ppUnk);
+            if (res == Result::Success)
+            {
+                return res;
+            }
+        }
     }
 
-    return CCanvasObjectBase::QueryInterface(iid, ppUnk);
+    // Fall through to base implementation
+    return __super::InternalQueryInterface(iid, ppUnk);
 }
 
 //------------------------------------------------------------------------------------------------
