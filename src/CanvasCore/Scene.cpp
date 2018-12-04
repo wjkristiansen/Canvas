@@ -11,7 +11,7 @@ Result CObject::Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ voi
 {
     try
     {
-        CComPtr<CObject> pObj = new CGeneric<CObject>(flags); // throw(std::bad_alloc)
+        CComPtr<CObject> pObj = new CGeneric<CObject>(); // throw(std::bad_alloc)
 
         if (flags & OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE)
         {
@@ -44,12 +44,6 @@ Result CObject::Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ voi
     {
         return Result::OutOfMemory;
     }
-}
-
-//------------------------------------------------------------------------------------------------
-CObject::CObject(OBJECT_ELEMENT_FLAGS flags) : // throw(std::bad_alloc)
-    CGenericBase()
-{
 }
 
 //------------------------------------------------------------------------------------------------

@@ -27,7 +27,6 @@ class CObject :
 
 public:
     static Result CANVASAPI Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
-    CObject(OBJECT_ELEMENT_FLAGS flags);
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk);
 };
 
