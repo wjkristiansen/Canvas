@@ -4,32 +4,6 @@
 
 #pragma once
 
-namespace std
-{
-    template<>
-    class hash<InterfaceId>
-    {
-    public:
-        size_t operator()(InterfaceId iid) const
-        {
-            return static_cast<size_t>(iid);
-        }
-    };
-}
-
-//------------------------------------------------------------------------------------------------
-class CObject :
-    public XGeneric,
-    public CGenericBase
-{
-    using ElementMapType = std::unordered_map<InterfaceId, std::unique_ptr<CGenericBase>>;
-    ElementMapType m_Elements;
-
-public:
-    static Result CANVASAPI Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk);
-};
-
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
     public XSceneGraphNode,
