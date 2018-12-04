@@ -26,11 +26,6 @@ class CObject :
     ElementMapType m_Elements;
 
 public:
-    virtual ~CObject()
-    {
-        OutputDebugStringA("Deleting CObject");
-    }
-
     static Result CANVASAPI Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
     CObject(OBJECT_ELEMENT_FLAGS flags);
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk);
@@ -47,11 +42,6 @@ public:
     CSceneGraphNode *m_pLastChild = nullptr; // weak pointer
     CComPtr<CSceneGraphNode> m_pNextSibling;
     CComPtr<CSceneGraphNode> m_pFirstChild;
-
-    ~CSceneGraphNode()
-    {
-        OutputDebugStringA("Deleting CSceneGraphNode");
-    }
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
