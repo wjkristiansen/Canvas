@@ -18,24 +18,19 @@ namespace std
 }
 
 //------------------------------------------------------------------------------------------------
-class CInnerGenericBase
-{
-public:
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-    {
-        return Result::NoInterface;
-    }
-};
-
-//------------------------------------------------------------------------------------------------
 class CObject :
     public XGeneric,
     public CGenericBase
 {
-    using ElementMapType = std::unordered_map<InterfaceId, std::unique_ptr<CInnerGenericBase>>;
+    using ElementMapType = std::unordered_map<InterfaceId, std::unique_ptr<CGenericBase>>;
     ElementMapType m_Elements;
 
 public:
+    virtual ~CObject()
+    {
+        OutputDebugStringA("Deleting CObject");
+    }
+
     static Result CANVASAPI Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
     CObject(OBJECT_ELEMENT_FLAGS flags);
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk);
@@ -44,7 +39,7 @@ public:
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
     public XSceneGraphNode,
-    public CInnerGenericBase
+    public CGenericBase
 {
 public:
     CSceneGraphNode *m_pParent = nullptr; // weak pointer
@@ -52,6 +47,11 @@ public:
     CSceneGraphNode *m_pLastChild = nullptr; // weak pointer
     CComPtr<CSceneGraphNode> m_pNextSibling;
     CComPtr<CSceneGraphNode> m_pFirstChild;
+
+    ~CSceneGraphNode()
+    {
+        OutputDebugStringA("Deleting CSceneGraphNode");
+    }
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
@@ -76,7 +76,7 @@ public:
 //------------------------------------------------------------------------------------------------
 class CModelInstance :
     public XModelInstance,
-    public CInnerGenericBase
+    public CGenericBase
 {
 public:
 };
@@ -84,21 +84,21 @@ public:
 //------------------------------------------------------------------------------------------------
 class CCamera :
     public XCamera,
-    public CInnerGenericBase
+    public CGenericBase
 {
 };
 
 //------------------------------------------------------------------------------------------------
 class CLight :
     public XLight,
-    public CInnerGenericBase
+    public CGenericBase
 {
 };
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
     public XTransform,
-    public CInnerGenericBase
+    public CGenericBase
 {
 };
 

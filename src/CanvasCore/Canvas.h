@@ -29,6 +29,8 @@ inline void ThrowFailure(Result result)
 class CGenericBase
 {
 public:
+    virtual ~CGenericBase() = default;
+
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         return Result::NoInterface;
