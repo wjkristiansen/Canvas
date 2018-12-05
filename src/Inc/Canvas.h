@@ -11,7 +11,7 @@
 #define CANVASMETHODIMP Canvas::Result CANVASAPI
 #define CANVASMETHODIMP_(retType) retType CANVASAPI
 #define CANVAS_INTERFACE struct
-#define CANVAS_INTERFACE_DECLARE(iid) static const InterfaceId IId = IId_##iid;
+#define CANVAS_INTERFACE_DECLARE(iid) static const InterfaceId IId = InterfaceId::IId_##iid;
 
 #define CANVAS_IID_PPV_ARGS(ppObj) \
     std::remove_reference_t<decltype(**ppObj)>::IId, reinterpret_cast<void **>(ppObj)
@@ -75,7 +75,7 @@ inline bool Succeeded(Result result)
 }
 
 //------------------------------------------------------------------------------------------------
-enum InterfaceIds
+enum class InterfaceId : unsigned
 {
     IId_XUnknown = 0,
     IId_XGeneric = 1,
@@ -93,12 +93,8 @@ enum InterfaceIds
     IId_XAmination,
     IId_XSkeleton,
     IId_XIterator,
-    IId_XTreeIterator,
-
-    IId_User = 0x80000000,
+    IId_XTreeIterator
 };
-
-typedef UINT InterfaceId;
 
 //------------------------------------------------------------------------------------------------
 enum OBJECT_ELEMENT_FLAGS

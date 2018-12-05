@@ -95,7 +95,7 @@ public:
         *ppObj = nullptr;
         switch (iid)
         {
-        case IId_XGeneric:
+        case InterfaceId::IId_XGeneric:
             *ppObj = this;
             AddRef();
             break;
@@ -114,6 +114,10 @@ class CObject :
     public CGenericBase
 {
 public:
+    // For now just create a vector of inner element pointers.  Consider
+    // in the future allocating a contiguous chunk of memory for all
+    // elements (including the outer CObject interface) and using
+    // placement-new to allocate the whole object
     std::vector<std::unique_ptr<CGenericBase>> m_InnerElements;
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
