@@ -18,7 +18,7 @@ public:
         *ppObj = nullptr;
         switch (iid)
         {
-        case InterfaceId::IId_XCanvas:
+        case InterfaceId::XCanvas:
             *ppObj = this;
             AddRef();
             break;
@@ -37,7 +37,7 @@ public:
         //{
         //    // Create a root scene graph node object
         //    CComPtr<CSceneGraphNode> pSceneGraphNode;
-        //    CObject::Create(OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE, IId_XSceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)); // throw(bad_alloc)
+        //    CObject::Create(OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE, XSceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)); // throw(bad_alloc)
         //    CComPtr<XScene> pScene = new CInnerGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
         //    return pScene->QueryInterface(iid, ppScene);
         //}
@@ -94,20 +94,20 @@ Result CObjectFactory::CreateObject(InterfaceId *pInnerInterfaces, UINT numInner
         {
             switch (pInnerInterfaces[i])
             {
-            case InterfaceId::IId_XSceneGraphNode:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CSceneGraphNode, InterfaceId::IId_XSceneGraphNode>>(pObject)); // throw(std::bad_alloc)
+            case InterfaceId::XSceneGraphNode:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CSceneGraphNode, InterfaceId::XSceneGraphNode>>(pObject)); // throw(std::bad_alloc)
                 break;
-            case InterfaceId::IId_XTransform:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CTransform, InterfaceId::IId_XTransform>>(pObject)); // throw(std::bad+alloc)
+            case InterfaceId::XTransform:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CTransform, InterfaceId::XTransform>>(pObject)); // throw(std::bad+alloc)
                 break;
-            case InterfaceId::IId_XModelInstance:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CModelInstance, InterfaceId::IId_XModelInstance>>(pObject)); // throw(std::bad+alloc)
+            case InterfaceId::XModelInstance:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CModelInstance, InterfaceId::XModelInstance>>(pObject)); // throw(std::bad+alloc)
                 break;
-            case InterfaceId::IId_XCamera:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CCamera, InterfaceId::IId_XCamera>>(pObject)); // throw(std::bad+alloc)
+            case InterfaceId::XCamera:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CCamera, InterfaceId::XCamera>>(pObject)); // throw(std::bad+alloc)
                 break;
-            case InterfaceId::IId_XLight:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CLight, InterfaceId::IId_XLight>>(pObject)); // throw(std::bad+alloc)
+            case InterfaceId::XLight:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CLight, InterfaceId::XLight>>(pObject)); // throw(std::bad+alloc)
                 break;
             }
         }
