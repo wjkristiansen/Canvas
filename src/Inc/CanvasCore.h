@@ -183,7 +183,6 @@ XCanvas : public XGeneric
     CANVAS_INTERFACE_DECLARE(XCanvas)
 
     CANVASMETHOD(CreateScene)(Canvas::InterfaceId iid, _Outptr_ void **ppScene) = 0;
-    CANVASMETHOD(CreateNode)(PCSTR pName, OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppSceneGraphNode) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -265,7 +264,6 @@ class CInnerGeneric :
 {
 public:
     XGeneric *m_pOuterGeneric = 0; // weak pointer
-    XGeneric *m_pNextInnerGeneric = nullptr;
 
     CInnerGeneric(_In_ XGeneric *pOuterGeneric) :
         m_pOuterGeneric(pOuterGeneric)
@@ -299,22 +297,18 @@ public:
             return Result::Success;
         }
 
-        if (m_pNextInnerGeneric)
-        {
-            return m_pNextInnerGeneric->QueryInterface(iid, ppObj);
-        }
-
         return Result::NoInterface;
     }
 };
 
-}
-
 //------------------------------------------------------------------------------------------------
 class CObjectFactory
 {
-    virtual Result CreateObject(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, InterfaceId iid, _Outptr_ void **ppObj);
+public:
+    Result CreateObject(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj);
 };
+
+}
 
 
 extern Canvas::Result CANVASAPI CreateCanvas(Canvas::InterfaceId iid, _Outptr_ void **ppCanvas);
