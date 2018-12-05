@@ -18,7 +18,7 @@ public:
         *ppObj = nullptr;
         switch (iid)
         {
-        case InterfaceId::XCanvas:
+        case IId_XCanvas:
             *ppObj = this;
             AddRef();
             break;
@@ -37,7 +37,7 @@ public:
         {
             // Create a root scene graph node object
             CComPtr<CSceneGraphNode> pSceneGraphNode;
-            CObject::Create(OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE, InterfaceId::XSceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)); // throw(bad_alloc)
+            CObject::Create(OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE, IId_XSceneGraphNode, reinterpret_cast<void **>(&pSceneGraphNode)); // throw(bad_alloc)
             CComPtr<XScene> pScene = new CGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
             return pScene->QueryInterface(iid, ppScene);
         }
