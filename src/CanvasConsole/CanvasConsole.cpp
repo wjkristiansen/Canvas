@@ -52,10 +52,10 @@ int main()
     CComPtr<XGeneric> pGeneric1;
     CComPtr<XGeneric> pGeneric2;
     CComPtr<XTransform> pTransform;
-    result = pCanvas->CreateNode("My Transform", Canvas::OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE|Canvas::OBJECT_ELEMENT_FLAG_TRANSFORM, XTransform::IId, reinterpret_cast<void **>(&pTransform));
-    CComPtr<XSceneGraphNode> pNode;
-    pTransform->QueryInterface(&pNode);
-    pTransform->QueryInterface(&pGeneric1);
-    pNode->QueryInterface(&pGeneric2);
+    //result = pCanvas->CreateNode("My Transform", Canvas::OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE|Canvas::OBJECT_ELEMENT_FLAG_TRANSFORM, XTransform::IId, reinterpret_cast<void **>(&pTransform));
+    //CComPtr<XSceneGraphNode> pNode;
+    //pTransform->QueryInterface(&pNode);
+    //pTransform->QueryInterface(&pGeneric1);
+    //pNode->QueryInterface(&pGeneric2);
 }
 

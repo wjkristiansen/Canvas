@@ -113,10 +113,33 @@ class CObject :
     public XGeneric,
     public CGenericBase
 {
-    using ElementMapType = std::unordered_map<InterfaceId, std::unique_ptr<CGenericBase>>;
-    ElementMapType m_Elements;
+    std::vector<std::unique_ptr<CGenericBase>> m_InnerElements;
 
 public:
-    static Result CANVASAPI Create(OBJECT_ELEMENT_FLAGS flags, InterfaceId iid, _Outptr_ void **ppObj);
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk);
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    {
+        for (auto &pElement : m_InnerElements)
+        {
+            Result res = pElement->InternalQueryInterface(iid, ppUnk);
+            if (Result::NoInterface != res)
+            {
+                return res;
+            }
+        }
+
+        return Result::NoInterface;
+    }
 };
+
+//------------------------------------------------------------------------------------------------
+Result CObjectFactory::CreateObject(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj)
+{
+    Result res = Result::Success;
+
+    for (UINT i = 0; i < numInnerInterfaces; ++i)
+    {
+
+    }
+
+    return res;
+}
