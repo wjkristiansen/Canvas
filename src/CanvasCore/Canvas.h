@@ -95,7 +95,7 @@ public:
         *ppObj = nullptr;
         switch (iid)
         {
-        case InterfaceId::IId_XGeneric:
+        case InterfaceId::XGeneric:
             *ppObj = this;
             AddRef();
             break;
