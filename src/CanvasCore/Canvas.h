@@ -113,9 +113,9 @@ class CObject :
     public XGeneric,
     public CGenericBase
 {
+public:
     std::vector<std::unique_ptr<CGenericBase>> m_InnerElements;
 
-public:
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
         for (auto &pElement : m_InnerElements)
@@ -130,16 +130,3 @@ public:
         return Result::NoInterface;
     }
 };
-
-//------------------------------------------------------------------------------------------------
-Result CObjectFactory::CreateObject(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj)
-{
-    Result res = Result::Success;
-
-    for (UINT i = 0; i < numInnerInterfaces; ++i)
-    {
-
-    }
-
-    return res;
-}

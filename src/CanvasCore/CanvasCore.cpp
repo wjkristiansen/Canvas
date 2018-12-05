@@ -70,3 +70,52 @@ Canvas::Result CANVASAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 
     return Result::Success;
 }
+
+//------------------------------------------------------------------------------------------------
+Result CObjectFactory::CreateObject(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj)
+{
+    Result res = Result::Success;
+
+    if (numInnerInterfaces == 0)
+    {
+        return Result::InvalidArg;
+    }
+
+    if (pInnerInterfaces == nullptr)
+    {
+        return Result::BadPointer;
+    }
+
+    try
+    {
+        CComPtr<CObject> pObject = new CGeneric<CObject>(); // throw(std::bad_alloc)
+
+        for (UINT i = 0; i < numInnerInterfaces; ++i)
+        {
+            switch (pInnerInterfaces[i])
+            {
+            case IId_XSceneGraphNode:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CSceneGraphNode, IId_XSceneGraphNode>>(pObject)); // throw(std::bad_alloc)
+                break;
+            case IId_XTransform:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CTransform, IId_XTransform>>(pObject)); // throw(std::bad+alloc)
+                break;
+            case IId_XModelInstance:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CModelInstance, IId_XModelInstance>>(pObject)); // throw(std::bad+alloc)
+                break;
+            case IId_XCamera:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CCamera, IId_XCamera>>(pObject)); // throw(std::bad+alloc)
+                break;
+            case IId_XLight:
+                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CLight, IId_XLight>>(pObject)); // throw(std::bad+alloc)
+                break;
+            }
+        }
+
+        return pObject->QueryInterface(pInnerInterfaces[0], ppObj);
+    }
+    catch (std::bad_alloc&)
+    {
+        return Result::OutOfMemory;
+    }
+}
