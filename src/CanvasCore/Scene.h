@@ -18,7 +18,7 @@ public:
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
-        if (iid == InterfaceId::XSceneGraphNode)
+        if (iid == IId_XSceneGraphNode)
         {
             *ppUnk = this;
             return Result::Success;
@@ -75,7 +75,7 @@ public:
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
-        if (InterfaceId::XScene == iid)
+        if (IId_XScene == iid)
         {
             *ppObj = this;
             AddRef();
