@@ -178,8 +178,12 @@ XCanvas : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XCanvas)
 
-    CANVASMETHOD(CreateScene)(Canvas::InterfaceId iid, _Outptr_ void **ppScene) = 0;
-    CANVASMETHOD(CreateObject)(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppScene) = 0;
+    CANVASMETHOD(CreateTransformObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateCameraObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateLightObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateModelInstanceObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateCustomObject)(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -241,65 +245,7 @@ XScene : public XGeneric
     CANVAS_INTERFACE_DECLARE(XScene)
 };
 
-//------------------------------------------------------------------------------------------------
-// Custom interfaces must derive from CGenericBase
-class CGenericBase
-{
-public:
-    virtual ~CGenericBase() = default;
-
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-    {
-        return Result::NoInterface;
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-template<class _Base, InterfaceId IId>
-class CInnerGeneric :
-    public _Base
-{
-public:
-    XGeneric *m_pOuterGeneric = 0; // weak pointer
-
-    CInnerGeneric(_In_ XGeneric *pOuterGeneric) :
-        m_pOuterGeneric(pOuterGeneric)
-    {
-    }
-
-    // Forward AddRef to outer generic
-    CANVASMETHOD_(ULONG,AddRef)() final
-    {
-        return m_pOuterGeneric->AddRef();
-    }
-
-    // Forward Release to outer generic
-    CANVASMETHOD_(ULONG, Release)() final
-    {
-        return m_pOuterGeneric->Release();
-    }
-
-    // Forward Query interface to outer generic
-    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
-    {
-        return m_pOuterGeneric->QueryInterface(iid, ppObj);
-    }
-
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
-    {
-        if (IId == iid)
-        {
-            *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return Result::NoInterface;
-    }
-};
-
 }
-
 
 extern Canvas::Result CANVASAPI CreateCanvas(Canvas::InterfaceId iid, _Outptr_ void **ppCanvas);
 

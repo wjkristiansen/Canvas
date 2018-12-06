@@ -41,7 +41,7 @@ public:
             {
                 InterfaceId::XSceneGraphNode,
             };
-            CreateObject(iids, 1, reinterpret_cast<void **>(&pSceneGraphNode));
+            CreateCustomObject(iids, 1, reinterpret_cast<void **>(&pSceneGraphNode));
             CComPtr<XScene> pScene = new CGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
             return pScene->QueryInterface(iid, ppScene);
         }
@@ -52,8 +52,64 @@ public:
         return Result::Success;
     }
 
+    CANVASMETHOD(CreateTransformObject)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        class CTransformObject :
+            public CGenericBase,
+            public XGeneric
+        {
+        public:
+            CInnerGeneric<CTransform, InterfaceId::XTransform> m_Transform;
+            CInnerGeneric<CSceneGraphNode, InterfaceId::XSceneGraphNode> m_SceneGraphNode;
+
+            CTransformObject() :
+                m_Transform(this),
+                m_SceneGraphNode(this) 
+            {}
+
+            CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+            {
+                if (InterfaceId::XTransform == iid)
+                {
+                    return m_Transform.InternalQueryInterface(iid, ppObj);
+                }
+                if (InterfaceId::XSceneGraphNode == iid)
+                {
+                    return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
+                }
+
+                return __super::InternalQueryInterface(iid, ppObj);
+            }
+        };
+
+        try
+        {
+            CTransformObject *pObj = new CGeneric<CTransformObject>(); // throw(std::bad_alloc)
+        }
+        catch(std::bad_alloc &)
+        {
+            return Result::OutOfMemory;
+        }
+        return Result::NotImplemented;
+    }
+
+    CANVASMETHOD(CreateCameraObject)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return Result::NotImplemented;
+    }
+
+    CANVASMETHOD(CreateLightObject)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return Result::NotImplemented;
+    }
+
+    CANVASMETHOD(CreateModelInstanceObject)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return Result::NotImplemented;
+    }
+
     //------------------------------------------------------------------------------------------------
-    CANVASMETHOD(CreateObject)(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj)
+    CANVASMETHOD(CreateCustomObject)(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj)
     {
         Result res = Result::Success;
 
