@@ -71,7 +71,7 @@ class CScene :
     public CGenericBase
 {
 public:
-    CComPtr<CSceneGraphNode> m_pRootSceneGraphNode;
+    CInnerGeneric<CSceneGraphNode, InterfaceId::XSceneGraphNode> m_RootSceneGraphNode;
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
@@ -81,24 +81,18 @@ public:
             AddRef();
             return Result::Success;
         }
+
+        if (InterfaceId::XSceneGraphNode == iid)
+        {
+            *ppObj = &m_RootSceneGraphNode;
+            AddRef();
+            return Result::Success;
+        }
         return __super::InternalQueryInterface(iid, ppObj);
     }
 
     CScene(CSceneGraphNode *pRootSceneGraphNode) :
-        m_pRootSceneGraphNode(pRootSceneGraphNode)
+        m_RootSceneGraphNode(this)
     {
-    }
-
-    CANVASMETHOD(GetRootSceneGraphNode)(XSceneGraphNode **ppRootNode) final
-    {
-        if (!ppRootNode)
-        {
-            return Result::BadPointer;
-        }
-
-        *ppRootNode = m_pRootSceneGraphNode;
-        (*ppRootNode)->AddRef();
-
-        return Result::Success;
     }
 };

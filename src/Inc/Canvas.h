@@ -239,8 +239,6 @@ CANVAS_INTERFACE
 XScene : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XScene)
-
-    CANVASMETHOD(GetRootSceneGraphNode)(XSceneGraphNode **ppRootNode) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
