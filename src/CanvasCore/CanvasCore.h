@@ -109,6 +109,64 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
+template<class _Base, InterfaceId IId>
+class CInnerGeneric :
+    public _Base
+{
+public:
+    XGeneric *m_pOuterGeneric = 0; // weak pointer
+
+    CInnerGeneric(_In_ XGeneric *pOuterGeneric) :
+        m_pOuterGeneric(pOuterGeneric)
+    {
+    }
+
+    // Forward AddRef to outer generic
+    CANVASMETHOD_(ULONG,AddRef)() final
+    {
+        return m_pOuterGeneric->AddRef();
+    }
+
+    // Forward Release to outer generic
+    CANVASMETHOD_(ULONG, Release)() final
+    {
+        return m_pOuterGeneric->Release();
+    }
+
+    // Forward Query interface to outer generic
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
+        return m_pOuterGeneric->QueryInterface(iid, ppObj);
+    }
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
+        if (IId == iid)
+        {
+            *ppObj = this;
+            AddRef(); // This will actually AddRef the outer generic
+            return Result::Success;
+        }
+
+        return Result::NoInterface;
+    }
+};
+
+
+//------------------------------------------------------------------------------------------------
+// Custom interfaces must derive from CGenericBase
+class CGenericBase
+{
+public:
+    virtual ~CGenericBase() = default;
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return Result::NoInterface;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
 class CObject :
     public XGeneric,
     public CGenericBase
