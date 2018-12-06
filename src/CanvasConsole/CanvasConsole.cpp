@@ -49,6 +49,9 @@ int main()
     CComPtr<XScene> pScene;
     result = pCanvas->CreateScene(XScene::IId, (void **)&pScene);
 
+    CComPtr<XSceneGraphNode> pRootSceneGraphNode;
+    pScene->GetRootSceneGraphNode(&pRootSceneGraphNode);
+
     CComPtr<XGeneric> pGeneric1;
     CComPtr<XGeneric> pGeneric2;
     CComPtr<XTransform> pTransform;

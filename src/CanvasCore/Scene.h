@@ -88,4 +88,17 @@ public:
         m_pRootSceneGraphNode(pRootSceneGraphNode)
     {
     }
+
+    CANVASMETHOD(GetRootSceneGraphNode)(XSceneGraphNode **ppRootNode) final
+    {
+        if (!ppRootNode)
+        {
+            return Result::BadPointer;
+        }
+
+        *ppRootNode = m_pRootSceneGraphNode;
+        (*ppRootNode)->AddRef();
+
+        return Result::Success;
+    }
 };
