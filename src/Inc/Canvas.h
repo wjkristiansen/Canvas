@@ -179,6 +179,7 @@ XCanvas : public XGeneric
     CANVAS_INTERFACE_DECLARE(XCanvas)
 
     CANVASMETHOD(CreateScene)(Canvas::InterfaceId iid, _Outptr_ void **ppScene) = 0;
+    CANVASMETHOD(CreateObject)(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -238,6 +239,8 @@ CANVAS_INTERFACE
 XScene : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XScene)
+
+    CANVASMETHOD(GetRootSceneGraphNode)(XSceneGraphNode **ppRootNode) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -295,13 +298,6 @@ public:
 
         return Result::NoInterface;
     }
-};
-
-//------------------------------------------------------------------------------------------------
-class CObjectFactory
-{
-public:
-    Result CreateObject(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj);
 };
 
 }
