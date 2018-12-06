@@ -50,7 +50,10 @@ int main()
     result = pCanvas->CreateScene(XScene::IId, (void **)&pScene);
 
     CComPtr<XSceneGraphNode> pRootSceneGraphNode;
-    pScene->QueryInterface(&pRootSceneGraphNode);
+    result = pScene->QueryInterface(&pRootSceneGraphNode);
+
+ //   CComPtr<XSceneGraphNode> pTransformNode;
+ //   result = pCanvas->MakeTransform(XSceneGraphNode, &pTransformNode);
 
     CComPtr<XGeneric> pGeneric1;
     CComPtr<XGeneric> pGeneric2;
