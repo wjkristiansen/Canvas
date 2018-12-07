@@ -167,7 +167,7 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-class CObject :
+class CCustomObject :
     public XGeneric,
     public CGenericBase
 {
