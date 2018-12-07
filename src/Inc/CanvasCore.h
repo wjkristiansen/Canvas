@@ -213,45 +213,6 @@ enum class InterfaceId : unsigned
 };
 
 //------------------------------------------------------------------------------------------------
-enum OBJECT_ELEMENT_FLAGS
-{
-    OBJECT_ELEMENT_FLAG_NONE                = 0x0,
-    OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE    = 0x1,
-    OBJECT_ELEMENT_FLAG_CAMERA              = 0x2,
-    OBJECT_ELEMENT_FLAG_LIGHT               = 0x4,
-    OBJECT_ELEMENT_FLAG_MODELINSTANCE       = 0x10,
-    OBJECT_ELEMENT_FLAG_TRANSFORM           = 0x20,
-};
-inline OBJECT_ELEMENT_FLAGS operator|(const OBJECT_ELEMENT_FLAGS &a, const OBJECT_ELEMENT_FLAGS &b) { return (OBJECT_ELEMENT_FLAGS)(int(a) | int(b)); }
-
-//------------------------------------------------------------------------------------------------
-struct CAMERA_DESC
-{
-    float NearClip;
-    float FarClip;
-};
-
-//------------------------------------------------------------------------------------------------
-enum LIGHT_TYPE
-{
-    LIGHT_TYPE_POINT,
-    LIGHT_TYPE_DIRECTIONAL,
-    LIGHT_TYPE_SPOT,
-};
-
-//------------------------------------------------------------------------------------------------
-struct LIGHT_DESC
-{
-    LIGHT_TYPE Type;
-};
-
-//------------------------------------------------------------------------------------------------
-struct OBJECT_DESC
-{
-    OBJECT_ELEMENT_FLAGS    ElementFlags;
-};
-
-//------------------------------------------------------------------------------------------------
 CANVAS_INTERFACE XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XGeneric)
@@ -295,11 +256,14 @@ XCanvas : public XGeneric
     CANVAS_INTERFACE_DECLARE(XCanvas)
 
     CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppScene) = 0;
-    CANVASMETHOD(CreateTransformObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateCameraObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateLightObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateModelInstanceObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateCustomObject)(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) = 0;
+
+    CANVASMETHOD(CreateTransformObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateCameraObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateLightObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateModelInstanceObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateCustomObject)(_In_z_ PCSTR szName, InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) = 0;
+
+    CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
