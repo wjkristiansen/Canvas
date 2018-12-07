@@ -59,28 +59,28 @@ public:
             public CGenericBase
         {
         public:
-            //CInnerGeneric<CTransform, InterfaceId::XTransform> m_Transform;
-            //CInnerGeneric<CSceneGraphNode, InterfaceId::XSceneGraphNode> m_SceneGraphNode;
+            CInnerGeneric<CTransform, InterfaceId::XTransform> m_Transform;
+            CInnerGeneric<CSceneGraphNode, InterfaceId::XSceneGraphNode> m_SceneGraphNode;
 
-            //CTransformObject() :
-            //    m_Transform(this),
-            //    m_SceneGraphNode(this) 
-            //{}
+            CTransformObject() :
+                m_Transform(this),
+                m_SceneGraphNode(this) 
+            {}
             virtual ~CTransformObject() {}
 
-            //CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-            //{
-            //    if (InterfaceId::XTransform == iid)
-            //    {
-            //        return m_Transform.InternalQueryInterface(iid, ppObj);
-            //    }
-            //    if (InterfaceId::XSceneGraphNode == iid)
-            //    {
-            //        return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
-            //    }
+            CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+            {
+                if (InterfaceId::XTransform == iid)
+                {
+                    return m_Transform.InternalQueryInterface(iid, ppObj);
+                }
+                if (InterfaceId::XSceneGraphNode == iid)
+                {
+                    return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
+                }
 
-            //    return __super::InternalQueryInterface(iid, ppObj);
-            //}
+                return __super::InternalQueryInterface(iid, ppObj);
+            }
         };
 
         try
