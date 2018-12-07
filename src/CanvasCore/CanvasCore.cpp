@@ -36,13 +36,13 @@ public:
         try
         {
             // Create a root scene graph node object
-            CComPtr<CSceneGraphNode> pSceneGraphNode;
+            CCanvasPtr<CSceneGraphNode> pSceneGraphNode;
             InterfaceId iids[] =
             {
                 InterfaceId::XSceneGraphNode,
             };
             CreateCustomObject(iids, 1, reinterpret_cast<void **>(&pSceneGraphNode));
-            CComPtr<XScene> pScene = new CGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
+            CCanvasPtr<XScene> pScene = new CGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
             return pScene->QueryInterface(iid, ppScene);
         }
         catch (std::bad_alloc&)
@@ -55,36 +55,37 @@ public:
     CANVASMETHOD(CreateTransformObject)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         class CTransformObject :
-            public CGenericBase,
-            public XGeneric
+            public XGeneric,
+            public CGenericBase
         {
         public:
-            CInnerGeneric<CTransform, InterfaceId::XTransform> m_Transform;
-            CInnerGeneric<CSceneGraphNode, InterfaceId::XSceneGraphNode> m_SceneGraphNode;
+            //CInnerGeneric<CTransform, InterfaceId::XTransform> m_Transform;
+            //CInnerGeneric<CSceneGraphNode, InterfaceId::XSceneGraphNode> m_SceneGraphNode;
 
-            CTransformObject() :
-                m_Transform(this),
-                m_SceneGraphNode(this) 
-            {}
+            //CTransformObject() :
+            //    m_Transform(this),
+            //    m_SceneGraphNode(this) 
+            //{}
+            virtual ~CTransformObject() {}
 
-            CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-            {
-                if (InterfaceId::XTransform == iid)
-                {
-                    return m_Transform.InternalQueryInterface(iid, ppObj);
-                }
-                if (InterfaceId::XSceneGraphNode == iid)
-                {
-                    return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
-                }
+            //CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+            //{
+            //    if (InterfaceId::XTransform == iid)
+            //    {
+            //        return m_Transform.InternalQueryInterface(iid, ppObj);
+            //    }
+            //    if (InterfaceId::XSceneGraphNode == iid)
+            //    {
+            //        return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
+            //    }
 
-                return __super::InternalQueryInterface(iid, ppObj);
-            }
+            //    return __super::InternalQueryInterface(iid, ppObj);
+            //}
         };
 
         try
         {
-            CComPtr<CTransformObject> pObj = new CGeneric<CTransformObject>(); // throw(std::bad_alloc)
+            CCanvasPtr<CTransformObject> pObj = new CGeneric<CTransformObject>(); // throw(std::bad_alloc)
             *ppObj = pObj;
             pObj.Detach();
             return Result::Success;
@@ -128,7 +129,7 @@ public:
 
         try
         {
-            CComPtr<CCustomObject> pObject = new CGeneric<CCustomObject>(); // throw(std::bad_alloc)
+            CCanvasPtr<CCustomObject> pObject = new CGeneric<CCustomObject>(); // throw(std::bad_alloc)
 
             for (UINT i = 0; i < numInnerInterfaces; ++i)
             {

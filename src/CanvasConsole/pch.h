@@ -10,10 +10,8 @@
 #define PCH_H
 
 // TODO: add headers that you want to pre-compile here
-
-#include <comdef.h>
-#include <atlbase.h>
-#include <atlcom.h>
+#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
+#include <Windows.h>
 
 #include <CanvasMath.hpp>
 #include <Canvas.h>

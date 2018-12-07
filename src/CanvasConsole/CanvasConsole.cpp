@@ -43,23 +43,23 @@ int main()
 
     auto fm44c = fm44a * fm44b;
 
-    CComPtr<XCanvas> pCanvas;
+    CCanvasPtr<XCanvas> pCanvas;
     Canvas::Result result = CreateCanvas(XCanvas::IId, (void **)&pCanvas);
 
-    CComPtr<XScene> pScene;
+    CCanvasPtr<XScene> pScene;
     result = pCanvas->CreateScene(XScene::IId, (void **)&pScene);
 
-    CComPtr<XSceneGraphNode> pRootSceneGraphNode;
+    CCanvasPtr<XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
-    CComPtr<XSceneGraphNode> pTransformNode;
+    CCanvasPtr<XSceneGraphNode> pTransformNode;
     result = pCanvas->CreateTransformObject(CANVAS_PPV_ARGS(&pTransformNode));
 
-    CComPtr<XGeneric> pGeneric1;
-    CComPtr<XGeneric> pGeneric2;
-    CComPtr<XTransform> pTransform;
+    CCanvasPtr<XGeneric> pGeneric1;
+    CCanvasPtr<XGeneric> pGeneric2;
+    CCanvasPtr<XTransform> pTransform;
     //result = pCanvas->CreateNode("My Transform", Canvas::OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE|Canvas::OBJECT_ELEMENT_FLAG_TRANSFORM, XTransform::IId, reinterpret_cast<void **>(&pTransform));
-    //CComPtr<XSceneGraphNode> pNode;
+    //CCanvasPtr<XSceneGraphNode> pNode;
     //pTransform->QueryInterface(&pNode);
     //pTransform->QueryInterface(&pGeneric1);
     //pNode->QueryInterface(&pGeneric2);

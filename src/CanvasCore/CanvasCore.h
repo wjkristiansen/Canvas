@@ -61,12 +61,12 @@ public:
         return InternalRelease();
     }
 
-    ULONG CANVASNOTHROW InternalAddRef()
+    ULONG CANVASNOTHROW CANVASAPI InternalAddRef()
     {
         return InterlockedIncrement(&m_RefCount);
     }
 
-    ULONG CANVASNOTHROW InternalRelease()
+    ULONG CANVASNOTHROW CANVASAPI InternalRelease()
     {
         auto result = InterlockedDecrement(&m_RefCount);
 
