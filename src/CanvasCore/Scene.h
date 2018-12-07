@@ -13,8 +13,8 @@ public:
     CSceneGraphNode *m_pParent = nullptr; // weak pointer
     CSceneGraphNode *m_pPrevSibling = nullptr; // weak pointer
     CSceneGraphNode *m_pLastChild = nullptr; // weak pointer
-    CComPtr<CSceneGraphNode> m_pNextSibling;
-    CComPtr<CSceneGraphNode> m_pFirstChild;
+    CCanvasPtr<CSceneGraphNode> m_pNextSibling;
+    CCanvasPtr<CSceneGraphNode> m_pFirstChild;
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {

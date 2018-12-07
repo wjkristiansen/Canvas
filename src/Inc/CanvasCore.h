@@ -6,10 +6,10 @@
 
 #define CANVASAPI __stdcall
 #define CANVASNOTHROW __declspec(nothrow)
-#define CANVASMETHOD(method) virtual CANVASNOTHROW Canvas::Result method
-#define CANVASMETHOD_(retType, method) virtual CANVASNOTHROW retType method
-#define CANVASMETHODIMP Canvas::Result CANVASAPI
-#define CANVASMETHODIMP_(retType) retType CANVASAPI
+#define CANVASMETHOD(method) virtual CANVASNOTHROW Canvas::Result CANVASAPI method
+#define CANVASMETHOD_(retType, method) virtual CANVASNOTHROW retType CANVASAPI method
+#define CANVASMETHODIMP Canvas::Result
+#define CANVASMETHODIMP_(retType) retType
 #define CANVAS_INTERFACE struct
 #define CANVAS_INTERFACE_DECLARE(iid) static const InterfaceId IId = InterfaceId::##iid;
 
@@ -46,6 +46,108 @@ CANVAS_INTERFACE XMaterial;
 CANVAS_INTERFACE XMesh;
 CANVAS_INTERFACE XAmination;
 CANVAS_INTERFACE XSkeleton;
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+class CCanvasPtr
+{
+    _Type *m_p = nullptr;
+
+public:
+    CCanvasPtr() = default;
+    CCanvasPtr(_Type *p) :
+        m_p(p)
+    {
+        if (m_p)
+        {
+            m_p->AddRef();
+        }
+    }
+    CCanvasPtr(const CCanvasPtr &o) :
+        m_p(o.m_p)
+    {
+        if (m_p)
+        {
+            m_p->AddRef();
+        }
+    }
+    CCanvasPtr(CCanvasPtr &&o) :
+        m_p(o.m_p)
+    {
+        o.m_p = nullptr;
+    }
+
+    ~CCanvasPtr()
+    {
+        if (m_p)
+        {
+            m_p->Release();
+        }
+    }
+
+    CCanvasPtr &operator=(_Type *p)
+    {
+        if (m_p)
+        {
+            m_p->Release();
+        }
+
+        m_p = p;
+        if (p)
+        {
+            m_p->AddRef();
+        }
+
+        return *this;
+    }
+
+    CCanvasPtr &operator=(const CCanvasPtr &o)
+    {
+        if (m_p)
+        {
+            m_p->Release();
+        }
+
+        m_p = o.m_p;
+        m_p->AddRef();
+        return *this;
+    }
+
+    CCanvasPtr &operator=(CCanvasPtr &&o)
+    {
+        if (m_p)
+        {
+            m_p->Release();
+        }
+        m_p = o.m_p;
+        o.m_p = nullptr;
+        return *this;
+    }
+
+    _Type **operator&()
+    {
+        return &m_p;
+    }
+
+    _Type *const*operator&() const
+    {
+        return &m_p;
+    }
+
+    void Detach()
+    {
+        m_p = nullptr;
+    }
+
+    _Type *Get() { return m_p; }
+    const _Type *Get() const { return m_p; }
+
+    operator _Type *() { return m_p; }
+    operator const _Type *() const { return m_p; }
+
+    _Type *operator->() { return m_p; }
+    const _Type *operator->() const { return m_p; }
+};
 
 //------------------------------------------------------------------------------------------------
 enum class Result : int

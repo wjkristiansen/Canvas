@@ -17,27 +17,27 @@ namespace CanvasUnitTest
         TEST_METHOD(SimpleInterfaces)
         {
             // Create XCanvas object
-            CComPtr<XCanvas> pCanvas;
+            CCanvasPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(CreateCanvas(CANVAS_PPV_ARGS(&pCanvas))));
 
             // Create XScene object
-            CComPtr<XScene> pScene;
+            CCanvasPtr<XScene> pScene;
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(CANVAS_PPV_ARGS(&pScene))));
 
             // Create transform XSceneGraphNode
-            CComPtr<XTransform> pTransformElement;
-            CComPtr<XSceneGraphNode> pSceneGraphNode;
+            CCanvasPtr<XTransform> pTransformElement;
+            CCanvasPtr<XSceneGraphNode> pSceneGraphNode;
             //Assert::IsTrue(Succeeded(pCanvas->CreateNode("Transform", OBJECT_ELEMENT_FLAG_TRANSFORM, CANVAS_PPV_ARGS(&pSceneGraphNode))));
             //Assert::IsTrue(Succeeded(pSceneGraphNode->QueryInterface(&pTransformElement)));
 
             // Create a camera XSceneGraphNode
-            //CComPtr<XGeneric> pCameraElement;
+            //CCanvasPtr<XGeneric> pCameraElement;
             //Assert::IsTrue(Succeeded(pCanvas->CreateNode("Camera", OBJECT_ELEMENT_FLAG_CAMERA, CANVAS_PPV_ARGS(&pCameraElement))));
 
             //// QI rules
-            //CComPtr<XCamera> pCamera2;
+            //CCanvasPtr<XCamera> pCamera2;
             //Assert::IsTrue(Succeeded(pCameraElement->QueryInterface(&pCamera2)));
-            //CComPtr<XGeneric> pGeneric;
+            //CCanvasPtr<XGeneric> pGeneric;
             //Assert::IsTrue(Succeeded(pCamera2->QueryInterface(&pGeneric)));
             //Assert::IsTrue(pGeneric.p == pCameraElement.p);
         }
