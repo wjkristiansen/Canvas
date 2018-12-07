@@ -109,7 +109,7 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _Base, InterfaceId IId>
+template<class _Base>
 class CInnerGeneric :
     public _Base
 {
@@ -137,18 +137,6 @@ public:
     CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         return m_pOuterGeneric->QueryInterface(iid, ppObj);
-    }
-
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
-    {
-        if (IId == iid)
-        {
-            *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return Result::NoInterface;
     }
 };
 

@@ -16,11 +16,12 @@ public:
     CCanvasPtr<CSceneGraphNode> m_pNextSibling;
     CCanvasPtr<CSceneGraphNode> m_pFirstChild;
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final
     {
         if (iid == InterfaceId::XSceneGraphNode)
         {
             *ppUnk = this;
+            AddRef(); // This will actually AddRef the outer generic
             return Result::Success;
         }
 
@@ -42,6 +43,17 @@ class CModelInstance :
     public CGenericBase
 {
 public:
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
+        if (InterfaceId::XModelInstance == iid)
+        {
+            *ppObj = this;
+            AddRef(); // This will actually AddRef the outer generic
+            return Result::Success;
+        }
+
+        return __super::InternalQueryInterface(iid, ppObj);
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -49,6 +61,18 @@ class CCamera :
     public XCamera,
     public CGenericBase
 {
+public:
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
+        if (InterfaceId::XCamera == iid)
+        {
+            *ppObj = this;
+            AddRef(); // This will actually AddRef the outer generic
+            return Result::Success;
+        }
+
+        return __super::InternalQueryInterface(iid, ppObj);
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -56,6 +80,18 @@ class CLight :
     public XLight,
     public CGenericBase
 {
+public:
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
+        if (InterfaceId::XLight == iid)
+        {
+            *ppObj = this;
+            AddRef(); // This will actually AddRef the outer generic
+            return Result::Success;
+        }
+
+        return __super::InternalQueryInterface(iid, ppObj);
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -63,6 +99,18 @@ class CTransform :
     public XTransform,
     public CGenericBase
 {
+public:
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
+        if (InterfaceId::XTransform == iid)
+        {
+            *ppObj = this;
+            AddRef(); // This will actually AddRef the outer generic
+            return Result::Success;
+        }
+
+        return __super::InternalQueryInterface(iid, ppObj);
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -71,7 +119,7 @@ class CScene :
     public CGenericBase
 {
 public:
-    CInnerGeneric<CSceneGraphNode, InterfaceId::XSceneGraphNode> m_RootSceneGraphNode;
+    CInnerGeneric<CSceneGraphNode> m_RootSceneGraphNode;
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
