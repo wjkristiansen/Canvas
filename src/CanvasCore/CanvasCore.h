@@ -78,7 +78,7 @@ public:
         return result;
     }
 
-    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) override
+    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (!ppObj)
         {
@@ -87,24 +87,14 @@ public:
 
         *ppObj = nullptr;
 
-        return InternalQueryInterface(iid, ppObj);
-    }
-
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
-    {
-        *ppObj = nullptr;
-        switch (iid)
+        if (InterfaceId::XGeneric == iid)
         {
-        case InterfaceId::XGeneric:
-            *ppObj = this;
+            *ppObj = reinterpret_cast<XGeneric *>(this);
             AddRef();
-            break;
-
-        default:
-            return __super::InternalQueryInterface(iid, ppObj);
+            return Result::Success;
         }
 
-        return Result::Success;
+        return _Base::InternalQueryInterface(iid, ppObj);
     }
 };
 
@@ -147,8 +137,7 @@ class CGenericBase
 {
 public:
     virtual ~CGenericBase() = default;
-
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
         return Result::NoInterface;
     }
@@ -166,7 +155,7 @@ public:
     // placement-new to allocate the whole object
     std::vector<std::unique_ptr<CGenericBase>> m_InnerElements;
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final
     {
         for (auto &pElement : m_InnerElements)
         {

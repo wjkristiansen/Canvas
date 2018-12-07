@@ -49,7 +49,7 @@ int main()
     CCanvasPtr<XScene> pScene;
     result = pCanvas->CreateScene(XScene::IId, (void **)&pScene);
 
-    CCanvasPtr<XSceneGraphNode> pRootSceneGraphNode;
+    CCanvasPtr<XGeneric> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
     CCanvasPtr<XSceneGraphNode> pTransformNode;

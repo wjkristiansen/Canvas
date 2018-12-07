@@ -30,7 +30,7 @@ public:
         return it->second->QueryInterface(iid, ppObj);
     }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         *ppObj = nullptr;
         switch (iid)
@@ -85,7 +85,7 @@ public:
             {}
             virtual ~CTransformObject() {}
 
-            CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+            CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
             {
                 if (InterfaceId::XTransform == iid)
                 {
