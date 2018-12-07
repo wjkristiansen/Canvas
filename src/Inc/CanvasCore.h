@@ -85,6 +85,11 @@ public:
         }
     }
 
+    void Detach()
+    {
+        m_p = nullptr;
+    }
+
     CCanvasPtr &operator=(_Type *p)
     {
         if (m_p)
@@ -103,24 +108,41 @@ public:
 
     CCanvasPtr &operator=(const CCanvasPtr &o)
     {
-        if (m_p)
-        {
-            m_p->Release();
-        }
+        auto temp = m_p;
 
         m_p = o.m_p;
-        m_p->AddRef();
+
+        if (temp != m_p)
+        {
+            if (m_p)
+            {
+                m_p->AddRef();
+            }
+
+            if (temp)
+            {
+                temp->Release();
+            }
+        }
+
         return *this;
     }
 
     CCanvasPtr &operator=(CCanvasPtr &&o)
     {
-        if (m_p)
+        if (m_p != o.m_p)
         {
-            m_p->Release();
+            auto temp = m_p;
+
+            m_p = o.m_p;
+
+            if (temp)
+            {
+                temp->Release();
+            }
         }
-        m_p = o.m_p;
         o.m_p = nullptr;
+
         return *this;
     }
 
@@ -129,24 +151,16 @@ public:
         return &m_p;
     }
 
-    _Type *const*operator&() const
+    _Type &operator*() const
     {
-        return &m_p;
+        return *m_p;
     }
 
-    void Detach()
-    {
-        m_p = nullptr;
-    }
+    _Type *Get() const { return m_p; }
 
-    _Type *Get() { return m_p; }
-    const _Type *Get() const { return m_p; }
-
-    operator _Type *() { return m_p; }
-    operator const _Type *() const { return m_p; }
-
-    _Type *operator->() { return m_p; }
-    const _Type *operator->() const { return m_p; }
+    operator _Type *() const { return m_p; }
+    
+    _Type *operator->() const { return m_p; }
 };
 
 //------------------------------------------------------------------------------------------------
