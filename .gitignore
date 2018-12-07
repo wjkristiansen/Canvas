@@ -16,6 +16,7 @@
 *.user
 src/.vs
 src/Debug/*
+src/Release/*
 src/x64/*
 src/CanvasConsole/x64/*
 src/CanvasUnitTest/x64/*
