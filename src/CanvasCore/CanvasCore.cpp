@@ -86,9 +86,7 @@ public:
         try
         {
             CCanvasPtr<CTransformObject> pObj = new CGeneric<CTransformObject>(); // throw(std::bad_alloc)
-            *ppObj = pObj;
-            pObj.Detach();
-            return Result::Success;
+            return pObj->QueryInterface(iid, ppObj);
         }
         catch(std::bad_alloc &)
         {
