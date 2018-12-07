@@ -53,7 +53,7 @@ int main()
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
     CCanvasPtr<XSceneGraphNode> pTransformNode;
-    result = pCanvas->CreateTransformObject(CANVAS_PPV_ARGS(&pTransformNode));
+    result = pCanvas->CreateTransformObject("MyTransform", CANVAS_PPV_ARGS(&pTransformNode));
 
     CCanvasPtr<XGeneric> pGeneric1;
     CCanvasPtr<XGeneric> pGeneric2;
