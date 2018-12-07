@@ -6,14 +6,14 @@
 #pragma once
 
 #include "targetver.h"
-#include <comdef.h>
-#include <atlbase.h>
-#include <atlcom.h>
+
+#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
+#include <windows.h>
 
 // Headers for CppUnitTest
 #include "CppUnitTest.h"
 #include "CanvasMath.hpp"
-#include "CanvasCore.h"
+#include "Canvas.h"
 
 #include <new>
 #include <vector>

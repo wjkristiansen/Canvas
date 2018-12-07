@@ -155,7 +155,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\Inc\CanvasCore.h" />
+    <ClInclude Include="..\Inc\Canvas.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

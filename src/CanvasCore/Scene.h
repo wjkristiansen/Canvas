@@ -4,141 +4,95 @@
 
 #pragma once
 
-namespace std
-{
-    template<>
-    class hash<IID>
-    {
-    public:
-        size_t operator()(REFIID riid) const
-        {
-            return riid.Data1;
-        }
-    };
-}
-
-//------------------------------------------------------------------------------------------------
-class CSceneGraphNodeBase :
-    public Canvas::ISceneGraphNode,
-    public CComObjectRoot
-{
-    BEGIN_COM_MAP(CSceneGraphNodeBase)
-        COM_INTERFACE_ENTRY(Canvas::ISceneGraphNode)
-    END_COM_MAP()
-
-};
-
-
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
-    public CComObjectNoLock<CSceneGraphNodeBase>
+    public XSceneGraphNode,
+    public CGenericBase
 {
 public:
-    Canvas::NODE_ELEMENT_FLAGS m_NodeElementFlags = Canvas::NODE_ELEMENT_FLAGS_NONE;
-    using NodeMapType = std::unordered_map<std::string, CComPtr<typename Canvas::ISceneGraphNode>>;
-    using ElementMapType = std::unordered_map<IID, CComPtr<typename IUnknown>>;
+    CSceneGraphNode *m_pParent = nullptr; // weak pointer
+    CSceneGraphNode *m_pPrevSibling = nullptr; // weak pointer
+    CSceneGraphNode *m_pLastChild = nullptr; // weak pointer
+    CCanvasPtr<CSceneGraphNode> m_pNextSibling;
+    CCanvasPtr<CSceneGraphNode> m_pFirstChild;
 
-    NodeMapType m_ChildNodes;
-    CSceneGraphNode *m_pParent; // weak pointer
-
-    ElementMapType m_Elements;
-
-    CSceneGraphNode(Canvas::NODE_ELEMENT_FLAGS flags) : CComObjectNoLock<CSceneGraphNodeBase>(),
-        m_NodeElementFlags(flags)
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
+        if (iid == InterfaceId::XSceneGraphNode)
+        {
+            *ppUnk = this;
+            return Result::Success;
+        }
+
+        return __super::InternalQueryInterface(iid, ppUnk);
     }
 
-    STDMETHOD(FinalConstruct)();
-    STDMETHOD(QueryInterface)(REFIID riid, void **ppUnk);
-    STDMETHOD(AddChild)(_In_ PCSTR pName, _In_ Canvas::ISceneGraphNode *pSceneNode);
+    CANVASMETHOD(Insert)(_In_ XSceneGraphNode *pParent, _In_opt_ XSceneGraphNode *pInsertBefore);
+    CANVASMETHOD(Remove)();
+    CANVASMETHOD_(XSceneGraphNode *, GetParent)() { return m_pParent; }
+    CANVASMETHOD_(XSceneGraphNode *, GetFirstChild)() { return m_pFirstChild; }
+    CANVASMETHOD_(XSceneGraphNode *, GetLastChild)() { return m_pLastChild; }
+    CANVASMETHOD_(XSceneGraphNode *, GetPrevSibling)() { return m_pPrevSibling; }
+    CANVASMETHOD_(XSceneGraphNode *, GetNextSibling)() { return m_pNextSibling; }
 };
-
-template<class _T>
-HRESULT CreateAggregateElement(REFIID riid, void **ppObj, CSceneGraphNode *pNode)
-{
-    *ppObj = nullptr;
-    try
-    {
-        CComPtr<CComAggObject<_T>> pObj;
-        CComAggObject<_T>::CreateInstance(pNode, &pObj); // throw(std::bad_alloc)
-        pObj->QueryInterface(riid, reinterpret_cast<void **>(ppObj));
-    }
-    catch(std::bad_alloc &)
-    {
-        return E_OUTOFMEMORY;
-    }
-    return E_NOTIMPL;
-}
 
 //------------------------------------------------------------------------------------------------
 class CModelInstance :
-    public Canvas::IModelInstance,
-    public CComObjectRoot
+    public XModelInstance,
+    public CGenericBase
 {
-    BEGIN_COM_MAP(CModelInstance)
-        COM_INTERFACE_ENTRY(IModelInstance)
-    END_COM_MAP()
-
-    static HRESULT Create(REFIID riid, void **ppModelInstance, CSceneGraphNode *pNode);
+public:
 };
 
 //------------------------------------------------------------------------------------------------
 class CCamera :
-    public Canvas::ICamera,
-    public CComObjectRoot
+    public XCamera,
+    public CGenericBase
 {
-    BEGIN_COM_MAP(CCamera)
-        COM_INTERFACE_ENTRY(Canvas::ICamera)
-    END_COM_MAP()
-
-    static HRESULT Create(REFIID riid, void **ppCamera, CSceneGraphNode *pNode);
 };
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public Canvas::ILight,
-    public CComObjectRoot
+    public XLight,
+    public CGenericBase
 {
-    BEGIN_COM_MAP(CLight)
-        COM_INTERFACE_ENTRY(Canvas::ILight)
-    END_COM_MAP()
-
-    static HRESULT Create(REFIID riid, void **ppLight, CSceneGraphNode *pNode);
 };
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
-    public Canvas::ITransform,
-    public CComObjectRoot
+    public XTransform,
+    public CGenericBase
 {
-    BEGIN_COM_MAP(CTransform)
-        COM_INTERFACE_ENTRY(Canvas::ITransform)
-    END_COM_MAP()
-
-    static HRESULT Create(REFIID riid, void **ppTransform, CSceneGraphNode *pNode);
-};
-
-//------------------------------------------------------------------------------------------------
-class CSceneGraphIterator :
-    public Canvas::ISceneGraphIterator
-{
-    CComPtr<CSceneGraphNode> m_pContainingSceneGraphNode;
-    CSceneGraphNode::NodeMapType::iterator m_It;
-
-    STDMETHOD(MoveNextSibling)();
-    STDMETHOD(Reset)(_In_ Canvas::ISceneGraphNode *pParentNode, _In_opt_ PCSTR pName);
-    STDMETHOD(GetNode(REFIID riid, void **ppNode));
 };
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public Canvas::IScene,
-    public CComObjectRoot
+    public XScene,
+    public CGenericBase
 {
-    BEGIN_COM_MAP(CScene)
-        COM_INTERFACE_ENTRY(Canvas::IScene)
-    END_COM_MAP()
-    
-    CComPtr<CSceneGraphNode> m_pRootSceneGraphNode;
-    STDMETHOD(FinalConstruct)();
+public:
+    CInnerGeneric<CSceneGraphNode, InterfaceId::XSceneGraphNode> m_RootSceneGraphNode;
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        if (InterfaceId::XScene == iid)
+        {
+            *ppObj = this;
+            AddRef();
+            return Result::Success;
+        }
+
+        if (InterfaceId::XSceneGraphNode == iid)
+        {
+            *ppObj = &m_RootSceneGraphNode;
+            AddRef();
+            return Result::Success;
+        }
+        return __super::InternalQueryInterface(iid, ppObj);
+    }
+
+    CScene(CSceneGraphNode *pRootSceneGraphNode) :
+        m_RootSceneGraphNode(this)
+    {
+    }
 };

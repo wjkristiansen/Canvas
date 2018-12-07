@@ -13,16 +13,16 @@ float DoVectorThing(float v[2])
 
 int main()
 {
-	FloatVector2 fv2a(1.0f, 2.0f);
-	FloatVector2 fv2b(3.0f, 3.0f);
-	FloatVector2 fv2c = fv2a + fv2b;
+    FloatVector2 fv2a(1.0f, 2.0f);
+    FloatVector2 fv2b(3.0f, 3.0f);
+    FloatVector2 fv2c = fv2a + fv2b;
 
     DoubleVector3 dv3a(2.2, 3.3, 4.4);
     DoubleVector3 dv3b(3.0, 4.0, 5.0);
     DoubleVector3 dv3c = dv3b - dv3a;
 
-	float X = fv2c.X();
-	float Y = fv2c.Y();
+    float X = fv2c.X();
+    float Y = fv2c.Y();
     float Dot = DotProduct(fv2a, fv2b);
     auto Cross = CrossProduct(dv3a, dv3b);
 
@@ -43,9 +43,25 @@ int main()
 
     auto fm44c = fm44a * fm44b;
 
-    CComPtr<ICanvas> pCanvas;
-    HRESULT hr = CreateCanvas(__uuidof(ICanvas), (void **)&pCanvas);
+    CCanvasPtr<XCanvas> pCanvas;
+    Canvas::Result result = CreateCanvas(XCanvas::IId, (void **)&pCanvas);
 
-    CComPtr<IScene> pScene;
-    hr = pCanvas->CreateScene(__uuidof(IScene), (void **) &pScene);
+    CCanvasPtr<XScene> pScene;
+    result = pCanvas->CreateScene(XScene::IId, (void **)&pScene);
+
+    CCanvasPtr<XSceneGraphNode> pRootSceneGraphNode;
+    result = pScene->QueryInterface(&pRootSceneGraphNode);
+
+    CCanvasPtr<XSceneGraphNode> pTransformNode;
+    result = pCanvas->CreateTransformObject(CANVAS_PPV_ARGS(&pTransformNode));
+
+    CCanvasPtr<XGeneric> pGeneric1;
+    CCanvasPtr<XGeneric> pGeneric2;
+    CCanvasPtr<XTransform> pTransform;
+    //result = pCanvas->CreateNode("My Transform", Canvas::OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE|Canvas::OBJECT_ELEMENT_FLAG_TRANSFORM, XTransform::IId, reinterpret_cast<void **>(&pTransform));
+    //CCanvasPtr<XSceneGraphNode> pNode;
+    //pTransform->QueryInterface(&pNode);
+    //pTransform->QueryInterface(&pGeneric1);
+    //pNode->QueryInterface(&pGeneric2);
 }
+
