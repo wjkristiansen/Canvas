@@ -52,8 +52,8 @@ int main()
     CComPtr<XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
- //   CComPtr<XSceneGraphNode> pTransformNode;
- //   result = pCanvas->MakeTransform(XSceneGraphNode, &pTransformNode);
+    CComPtr<XSceneGraphNode> pTransformNode;
+    result = pCanvas->CreateTransformObject(CANVAS_PPV_ARGS(&pTransformNode));
 
     CComPtr<XGeneric> pGeneric1;
     CComPtr<XGeneric> pGeneric2;

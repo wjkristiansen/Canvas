@@ -84,7 +84,10 @@ public:
 
         try
         {
-            CTransformObject *pObj = new CGeneric<CTransformObject>(); // throw(std::bad_alloc)
+            CComPtr<CTransformObject> pObj = new CGeneric<CTransformObject>(); // throw(std::bad_alloc)
+            *ppObj = pObj;
+            pObj.Detach();
+            return Result::Success;
         }
         catch(std::bad_alloc &)
         {
@@ -125,7 +128,7 @@ public:
 
         try
         {
-            CComPtr<CObject> pObject = new CGeneric<CObject>(); // throw(std::bad_alloc)
+            CComPtr<CCustomObject> pObject = new CGeneric<CCustomObject>(); // throw(std::bad_alloc)
 
             for (UINT i = 0; i < numInnerInterfaces; ++i)
             {
