@@ -121,7 +121,7 @@ class CScene :
 public:
     CInnerGeneric<CSceneGraphNode> m_RootSceneGraphNode;
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (InterfaceId::XScene == iid)
         {
