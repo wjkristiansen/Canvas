@@ -33,10 +33,9 @@ public:
             {
                 return Result::End;
             }
+            m_it++;
 
-            ++m_it;
-
-            return Result::Success;
+            return m_it == m_pParentNode->m_Children.end() ? Result::End : Result::Success;
         }
 
         CANVASMETHOD(MovePrev)() final
@@ -50,6 +49,13 @@ public:
 
             return Result::Success;
         }
+
+        CANVASMETHOD(GetElement)(InterfaceId iid, _Outptr_ void **ppObj)
+        {
+            auto pObj = *m_it;
+            return pObj->QueryInterface(iid, ppObj);
+        }
+
     };
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final
