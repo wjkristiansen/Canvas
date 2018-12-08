@@ -164,24 +164,25 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-enum class Result : int
+enum class Result : UINT32
 {
     Success = 0,
-    Finished = 1,
-    InvalidArg = -1,
-    NotFound = -2,
-    OutOfMemory = -3,
-    NoInterface = -4,
-    BadPointer = -5,
-    NotImplemented = -6,
-    DuplicateKey = -7,
-    Uninitialized = -8,
+    End = 1,
+    Fail = 0x80000000,
+    InvalidArg,
+    NotFound,
+    OutOfMemory,
+    NoInterface,
+    BadPointer,
+    NotImplemented,
+    DuplicateKey,
+    Uninitialized,
 };
 
 //------------------------------------------------------------------------------------------------
 inline bool Failed(Result result)
 {
-    return result < Result::Success;
+    return static_cast<int>(result) < 0;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -314,8 +315,8 @@ XSceneGraphNode : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XSceneGraphNode)
 
-    CANVASMETHOD(Insert)(_In_ XSceneGraphNode *pParent, _In_opt_ XSceneGraphNode *pInsertBefore) = 0;
-    CANVASMETHOD(Remove)() = 0;
+    CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pNode) = 0;
+    CANVASMETHOD(EnumChildren)(_Inout_ XIterator **ppIterator) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
