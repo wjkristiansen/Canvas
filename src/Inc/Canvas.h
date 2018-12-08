@@ -188,7 +188,7 @@ inline bool Failed(Result result)
 //------------------------------------------------------------------------------------------------
 inline bool Succeeded(Result result)
 {
-    return result == Result::Success;
+    return static_cast<int>(result) >= 0;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -236,18 +236,6 @@ CANVAS_INTERFACE XIterator : public XGeneric
     CANVAS_INTERFACE_DECLARE(XIterator)
     CANVASMETHOD(MoveNext)() = 0;
     CANVASMETHOD(MovePrev)() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE 
-XTreeIterator : public XGeneric
-{
-    CANVAS_INTERFACE_DECLARE(XTreeIterator)
-
-    CANVASMETHOD(MoveNext)() = 0;
-    CANVASMETHOD(MovePrev)() = 0;
-    CANVASMETHOD(MoveFirstChild)() = 0;
-    CANVASMETHOD(MoveParent)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -301,22 +289,11 @@ XTransform : public XGeneric
 
 //------------------------------------------------------------------------------------------------
 CANVAS_INTERFACE
-XSceneGraphIterator : public XGeneric
-{
-    CANVASMETHOD(GetSceneGraphNode)(InterfaceId iid, void **ppObj) = 0;
-    CANVASMETHOD(MoveTo)(XSceneGraphNode *pObj) = 0;
-    CANVASMETHOD(MoveParent)() = 0;
-    CANVASMETHOD(MoveFirstChild)() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
 XSceneGraphNode : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XSceneGraphNode)
 
-    CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pNode) = 0;
-    CANVASMETHOD(EnumChildren)(_Inout_ XIterator **ppIterator) = 0;
+    CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
