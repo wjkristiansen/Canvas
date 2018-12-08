@@ -61,9 +61,13 @@ int main()
     CCanvasPtr<XSceneGraphNode> pTransformNode3;
     result = pCanvas->CreateTransformObject("MyTransform 3", CANVAS_PPV_ARGS(&pTransformNode3));
 
+    CCanvasPtr<XSceneGraphNode> pTransformNode4;
+    result = pCanvas->CreateTransformObject("MyTransform 4", CANVAS_PPV_ARGS(&pTransformNode4));
+
     pRootSceneGraphNode->AddChild(pTransformNode1);
-    pRootSceneGraphNode->AddChild(pTransformNode2);
-    pRootSceneGraphNode->AddChild(pTransformNode3);
+    pTransformNode1->AddChild(pTransformNode2);
+    pTransformNode1->AddChild(pTransformNode3);
+    pRootSceneGraphNode->AddChild(pTransformNode4);
 
     CCanvasPtr<XIterator> pIterator;
     for (result = pRootSceneGraphNode->EnumChildren(&pIterator);
@@ -71,7 +75,7 @@ int main()
         result = pIterator->MoveNext())
     {
         CCanvasPtr<XSceneGraphNode> pObj;
-        pIterator->GetElement(CANVAS_PPV_ARGS(&pObj));
+        pIterator->Select(CANVAS_PPV_ARGS(&pObj));
     }
 
     CCanvasPtr<XGeneric> pGeneric1;

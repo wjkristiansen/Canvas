@@ -168,7 +168,7 @@ enum class Result : UINT32
 {
     Success = 0,
     End = 1,
-    Fail = 0x80000000,
+    Fail = 0x80000000, // Must be first failure
     InvalidArg,
     NotFound,
     OutOfMemory,
@@ -182,13 +182,13 @@ enum class Result : UINT32
 //------------------------------------------------------------------------------------------------
 inline bool Failed(Result result)
 {
-    return static_cast<int>(result) < 0;
+    return result >= Result::Fail;
 }
 
 //------------------------------------------------------------------------------------------------
 inline bool Succeeded(Result result)
 {
-    return static_cast<int>(result) >= 0;
+    return result < Result::Fail;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -236,7 +236,17 @@ CANVAS_INTERFACE XIterator : public XGeneric
     CANVAS_INTERFACE_DECLARE(XIterator)
     CANVASMETHOD(MoveNext)() = 0;
     CANVASMETHOD(MovePrev)() = 0;
-    CANVASMETHOD(GetElement)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(Remove)() = 0;
+//    CANVASMETHOD(Swap)(XGeneric *pNewObj, InterfaceId iid, _Outptr_opt_ void **ppOrigObj) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+CANVAS_INTERFACE XNamedObjectList : public XGeneric
+{
+    CANVASMETHOD(Add(PCSTR pName, XGeneric *pObj)) = 0;
+    CANVASMETHOD(Select(PCSTR pName, InterfaceId iidm, _Outptr_opt_ void **ppObj)) = 0;
+    CANVASMETHOD(EnumObjects)(_Inout_ XIterator **ppIterator) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
