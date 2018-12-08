@@ -10,11 +10,47 @@ class CSceneGraphNode :
     public CGenericBase
 {
 public:
-    CSceneGraphNode *m_pParent = nullptr; // weak pointer
-    CSceneGraphNode *m_pPrevSibling = nullptr; // weak pointer
-    CSceneGraphNode *m_pLastChild = nullptr; // weak pointer
-    CCanvasPtr<CSceneGraphNode> m_pNextSibling;
-    CCanvasPtr<CSceneGraphNode> m_pFirstChild;
+    using ChildListType = std::list<CCanvasPtr<XSceneGraphNode>>;
+    ChildListType m_Children;
+
+    class CChildIterator :
+        public XIterator,
+        public CGenericBase
+    {
+    public:
+        ChildListType::iterator m_it;
+        CCanvasPtr<CSceneGraphNode> m_pParentNode;
+
+        CChildIterator(CSceneGraphNode *pParentNode) :
+            m_pParentNode(pParentNode) 
+        {
+            m_it = pParentNode->m_Children.begin();
+        }
+
+        CANVASMETHOD(MoveNext)() final
+        {
+            if (m_it == m_pParentNode->m_Children.end())
+            {
+                return Result::End;
+            }
+
+            ++m_it;
+
+            return Result::Success;
+        }
+
+        CANVASMETHOD(MovePrev)() final
+        {
+            if (m_it == m_pParentNode->m_Children.begin())
+            {
+                return Result::End;
+            }
+
+            --m_it;
+
+            return Result::Success;
+        }
+    };
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final
     {
@@ -28,13 +64,42 @@ public:
         return __super::InternalQueryInterface(iid, ppUnk);
     }
 
-    CANVASMETHOD(Insert)(_In_ XSceneGraphNode *pParent, _In_opt_ XSceneGraphNode *pInsertBefore);
-    CANVASMETHOD(Remove)();
-    CANVASMETHOD_(XSceneGraphNode *, GetParent)() { return m_pParent; }
-    CANVASMETHOD_(XSceneGraphNode *, GetFirstChild)() { return m_pFirstChild; }
-    CANVASMETHOD_(XSceneGraphNode *, GetLastChild)() { return m_pLastChild; }
-    CANVASMETHOD_(XSceneGraphNode *, GetPrevSibling)() { return m_pPrevSibling; }
-    CANVASMETHOD_(XSceneGraphNode *, GetNextSibling)() { return m_pNextSibling; }
+    CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild)
+    {
+        try
+        {
+            m_Children.emplace_back(pChild); // throw(std::bad_alloc)
+        }
+        catch (std::bad_alloc &)
+        {
+            return Result::OutOfMemory;
+        }
+
+        return Result::Success;
+    }
+
+    CANVASMETHOD(EnumChildren)(_Inout_ XIterator **ppIterator)
+    {
+        *ppIterator = nullptr;
+
+        if (!ppIterator)
+        {
+            return Result::BadPointer;
+        }
+
+        try
+        {
+            CChildIterator *pIterator = new CGeneric<CChildIterator>(this); // throw(std::bad_alloc)
+            pIterator->AddRef();
+            *ppIterator = pIterator;
+        }
+        catch (std::bad_alloc &)
+        {
+            return Result::OutOfMemory;
+        }
+
+        return Result::Success;
+    }
 };
 
 //------------------------------------------------------------------------------------------------

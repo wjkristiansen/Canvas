@@ -49,11 +49,13 @@ int main()
     CCanvasPtr<XScene> pScene;
     result = pCanvas->CreateScene(XScene::IId, (void **)&pScene);
 
-    CCanvasPtr<XGeneric> pRootSceneGraphNode;
+    CCanvasPtr<XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
     CCanvasPtr<XSceneGraphNode> pTransformNode;
     result = pCanvas->CreateTransformObject("MyTransform", CANVAS_PPV_ARGS(&pTransformNode));
+
+    pRootSceneGraphNode->AddChild(pTransformNode);
 
     CCanvasPtr<XGeneric> pGeneric1;
     CCanvasPtr<XGeneric> pGeneric2;
