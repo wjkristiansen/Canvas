@@ -236,6 +236,7 @@ CANVAS_INTERFACE XIterator : public XGeneric
     CANVAS_INTERFACE_DECLARE(XIterator)
     CANVASMETHOD(MoveNext)() = 0;
     CANVASMETHOD(MovePrev)() = 0;
+    CANVASMETHOD(GetElement)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -294,6 +295,7 @@ XSceneGraphNode : public XGeneric
     CANVAS_INTERFACE_DECLARE(XSceneGraphNode)
 
     CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
+    CANVASMETHOD(EnumChildren)(_Inout_ XIterator **ppIterator) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

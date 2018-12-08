@@ -52,10 +52,27 @@ int main()
     CCanvasPtr<XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
-    CCanvasPtr<XSceneGraphNode> pTransformNode;
-    result = pCanvas->CreateTransformObject("MyTransform", CANVAS_PPV_ARGS(&pTransformNode));
+    CCanvasPtr<XSceneGraphNode> pTransformNode1;
+    result = pCanvas->CreateTransformObject("MyTransform 1", CANVAS_PPV_ARGS(&pTransformNode1));
 
-    pRootSceneGraphNode->AddChild(pTransformNode);
+    CCanvasPtr<XSceneGraphNode> pTransformNode2;
+    result = pCanvas->CreateTransformObject("MyTransform 2", CANVAS_PPV_ARGS(&pTransformNode2));
+
+    CCanvasPtr<XSceneGraphNode> pTransformNode3;
+    result = pCanvas->CreateTransformObject("MyTransform 3", CANVAS_PPV_ARGS(&pTransformNode3));
+
+    pRootSceneGraphNode->AddChild(pTransformNode1);
+    pRootSceneGraphNode->AddChild(pTransformNode2);
+    pRootSceneGraphNode->AddChild(pTransformNode3);
+
+    CCanvasPtr<XIterator> pIterator;
+    for (result = pRootSceneGraphNode->EnumChildren(&pIterator);
+        result != Result::End;
+        result = pIterator->MoveNext())
+    {
+        CCanvasPtr<XSceneGraphNode> pObj;
+        pIterator->GetElement(CANVAS_PPV_ARGS(&pObj));
+    }
 
     CCanvasPtr<XGeneric> pGeneric1;
     CCanvasPtr<XGeneric> pGeneric2;
