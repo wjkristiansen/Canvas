@@ -4,24 +4,27 @@
 
 #pragma once
 
-class CNamedObject :
-    public XNamedObject,
+class CObjectName :
+    public XObjectName,
     public CGenericBase
 {
 public:
     std::string m_Name;
+    class CNamedObjectList *m_pNamedObjectList = nullptr;
 
-    CNamedObject(PCSTR szName) :
-        m_Name(szName) {}
+    CObjectName(class CNamedObjectList *pNamedObjectList);
+    virtual ~CObjectName();
 
-    CANVASMETHOD_(PCSTR) GetName() final
+    CANVASMETHOD_(PCSTR, GetName)() final
     {
         return m_Name.c_str();
     }
 
+    CANVASMETHOD(SetName)(PCSTR szName) final;
+
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
-        if (InterfaceId::XNamedObject == iid)
+        if (InterfaceId::XObjectName == iid)
         {
             *ppObj = this;
             AddRef();
@@ -32,29 +35,22 @@ public:
     }
 };
 
-class CNamedObjectList :
-    public XNamedObjectList,
-    public CGenericBase
+class CNamedObjectList
 {
 public:
-    std::map<std::string, CCanvasPtr<XNamedObject>> m_NamedObjectMap;
+    std::map<std::string, CObjectName *> m_ObjectNames;
 
     CANVASMETHOD(Select)(PCSTR szName, InterfaceId iid, void **ppObj) final;
 
-    CANVASMETHOD(Add)(CNamedObject *pNamedObject)
+    CANVASMETHOD(Set)(CObjectName *pObjectName)
     {
-        m_NamedObjectMap.emplace(pNamedObject->m_Name, pNamedObject);
+        m_ObjectNames.emplace(pObjectName->m_Name, pObjectName);
+        return Result::Success;
     }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    CANVASMETHOD(Erase)(CObjectName *pObjectName)
     {
-        if (InterfaceId::XNamedObjectList == iid)
-        {
-            *ppObj = this;
-            AddRef();
-            return Result::Success;
-        }
-
-        return __super::InternalQueryInterface(iid, ppObj);
+        m_ObjectNames.erase(pObjectName->m_Name);
+        return Result::Success;
     }
 };

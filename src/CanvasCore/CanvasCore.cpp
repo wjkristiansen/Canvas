@@ -12,23 +12,17 @@ class CCanvas :
 {
 public:
     CCanvas() = default;
-    std::map<std::string, CCanvasPtr<XGeneric>> m_NamedObjects;
+    CNamedObjectList m_NamedObjects;
 
     //void AddNamedObject(_In_z_ XGeneric *pObject) // throw(std::bad_alloc)
     //{
     //    m_NamedObjects[szName] = pObject; // throw(std::bad_alloc)
     //}
 
-    //CANVASMETHOD(GetNamedObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj)
-    //{
-    //    auto it = m_NamedObjects.find(szName);
-    //    if (it == m_NamedObjects.end())
-    //    {
-    //        return Result::NotFound;
-    //    }
-
-    //    return it->second->QueryInterface(iid, ppObj);
-    //}
+    CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return m_NamedObjects.Select(szName, iid, ppObj);
+    }
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
@@ -78,10 +72,12 @@ public:
         public:
             CInnerGeneric<CTransform> m_Transform;
             CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
+            CInnerGeneric<CObjectName> m_ObjectName;
 
-            CTransformObject() :
+            CTransformObject(CCanvas *pCanvas) :
                 m_Transform(this),
-                m_SceneGraphNode(this) 
+                m_SceneGraphNode(this),
+                m_ObjectName(this, &pCanvas->m_NamedObjects)
             {}
             virtual ~CTransformObject() {}
 
@@ -102,7 +98,7 @@ public:
 
         try
         {
-            CCanvasPtr<CTransformObject> pObj = new CGeneric<CTransformObject>(); // throw(std::bad_alloc)
+            CCanvasPtr<CTransformObject> pObj = new CGeneric<CTransformObject>(this); // throw(std::bad_alloc)
             return pObj->QueryInterface(iid, ppObj);
         }
         catch(std::bad_alloc &)
