@@ -10,12 +10,16 @@ class CSceneGraphNode :
     public CGenericBase
 {
 public:
-    using ChildListType = std::list<CCanvasPtr<XSceneGraphNode>>;
-    ChildListType m_Children;
+    CSceneGraphNode * m_pParent = nullptr; // weak pointer
+    CCanvasPtr<CSceneGraphNode> m_pFirstChild;
+    CSceneGraphNode **m_ppChildTail = &m_pFirstChild;
+    CCanvasPtr<CSceneGraphNode> m_pNextSibling;
+    CSceneGraphNode *m_pPrevSibling = nullptr; // weak pointer
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final;
     CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
-    CANVASMETHOD(EnumChildren)(_Inout_ XIterator **ppIterator) final;
+    CANVASMETHOD(MakeIterator)(_Inout_ XTreeIterator **ppIterator) final;
+    CANVASMETHOD(Prune)() final;
 };
 
 //------------------------------------------------------------------------------------------------

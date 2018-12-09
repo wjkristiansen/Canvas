@@ -237,8 +237,14 @@ CANVAS_INTERFACE XIterator : public XGeneric
     CANVASMETHOD(MoveNext)() = 0;
     CANVASMETHOD(MovePrev)() = 0;
     CANVASMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(Remove)() = 0;
-//    CANVASMETHOD(Swap)(XGeneric *pNewObj, InterfaceId iid, _Outptr_opt_ void **ppOrigObj) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+CANVAS_INTERFACE XTreeIterator : public XIterator
+{
+    CANVAS_INTERFACE_DECLARE(XTreeIterator)
+    CANVASMETHOD(MoveParent)() = 0;
+    CANVASMETHOD(MoveFirstChild)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -257,13 +263,13 @@ XCanvas : public XGeneric
 
     CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppScene) = 0;
 
-    CANVASMETHOD(CreateTransformObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateCameraObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateLightObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateModelInstanceObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateCustomObject)(_In_z_ PCSTR szName, InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateTransformObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateCameraObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateLightObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateModelInstanceObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateCustomObject)(_In_z_ InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) = 0;
 
-    CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
+//    CANVASMETHOD(GetNamedObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -305,7 +311,8 @@ XSceneGraphNode : public XGeneric
     CANVAS_INTERFACE_DECLARE(XSceneGraphNode)
 
     CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
-    CANVASMETHOD(EnumChildren)(_Inout_ XIterator **ppIterator) = 0;
+    CANVASMETHOD(MakeIterator)(_Inout_ XTreeIterator **ppIterator) = 0;
+    CANVASMETHOD(Prune)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
