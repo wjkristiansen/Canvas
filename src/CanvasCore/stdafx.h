@@ -15,6 +15,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <set>
 #include <deque>
 #include <unordered_map>
 
@@ -25,3 +26,4 @@
 using namespace Canvas;
 #include "CanvasCore.h"
 #include "Scene.h"
+#include "NamedObject.h"

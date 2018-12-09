@@ -210,7 +210,9 @@ enum class InterfaceId : unsigned
     XAmination,
     XSkeleton,
     XIterator,
-    XTreeIterator
+    XTreeIterator,
+    XNamedObject,
+    XNamedObjectList
 };
 
 //------------------------------------------------------------------------------------------------
@@ -248,9 +250,18 @@ CANVAS_INTERFACE XTreeIterator : public XIterator
 };
 
 //------------------------------------------------------------------------------------------------
+CANVAS_INTERFACE
+XNamedObject : public XGeneric
+{
+    CANVAS_INTERFACE_DECLARE(XNamedObject)
+    CANVASMETHOD_(PCSTR, GetName)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
 CANVAS_INTERFACE XNamedObjectList : public XGeneric
 {
-    CANVASMETHOD(Add(PCSTR pName, XGeneric *pObj)) = 0;
+    CANVAS_INTERFACE_DECLARE(XNamedObjectList)
+    CANVASMETHOD(Add(XNamedObject *pObj)) = 0;
     CANVASMETHOD(Select(PCSTR pName, InterfaceId iidm, _Outptr_opt_ void **ppObj)) = 0;
     CANVASMETHOD(EnumObjects)(_Inout_ XIterator **ppIterator) = 0;
 };
