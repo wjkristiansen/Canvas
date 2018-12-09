@@ -106,8 +106,11 @@ class CInnerGeneric :
 public:
     XGeneric *m_pOuterGeneric = 0; // weak pointer
 
-    CInnerGeneric(_In_ XGeneric *pOuterGeneric) :
-        m_pOuterGeneric(pOuterGeneric)
+    template<typename... Arguments>
+    CInnerGeneric(_In_ XGeneric *pOuterGeneric, Arguments... params) :
+        m_pOuterGeneric(pOuterGeneric),
+        _Base(params...)
+        
     {
     }
 

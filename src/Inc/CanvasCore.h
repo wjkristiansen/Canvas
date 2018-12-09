@@ -211,8 +211,7 @@ enum class InterfaceId : unsigned
     XSkeleton,
     XIterator,
     XTreeIterator,
-    XNamedObject,
-    XNamedObjectList
+    XObjectName,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -251,19 +250,10 @@ CANVAS_INTERFACE XTreeIterator : public XIterator
 
 //------------------------------------------------------------------------------------------------
 CANVAS_INTERFACE
-XNamedObject : public XGeneric
+XObjectName : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XNamedObject)
+    CANVAS_INTERFACE_DECLARE(XObjectName)
     CANVASMETHOD_(PCSTR, GetName)() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE XNamedObjectList : public XGeneric
-{
-    CANVAS_INTERFACE_DECLARE(XNamedObjectList)
-    CANVASMETHOD(Add(XNamedObject *pObj)) = 0;
-    CANVASMETHOD(Select(PCSTR pName, InterfaceId iidm, _Outptr_opt_ void **ppObj)) = 0;
-    CANVASMETHOD(EnumObjects)(_Inout_ XIterator **ppIterator) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -280,7 +270,7 @@ XCanvas : public XGeneric
     CANVASMETHOD(CreateModelInstanceObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) = 0;
     CANVASMETHOD(CreateCustomObject)(_In_z_ InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) = 0;
 
-//    CANVASMETHOD(GetNamedObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
