@@ -4,32 +4,35 @@
 
 #include "stdafx.h"
 
-using namespace Canvas;
-
-CObjectName::CObjectName(CNamedObjectList *pNamedObjectList) :
-    m_pNamedObjectList(pNamedObjectList)
+CObjectName::CObjectName(XGeneric *pOuterGeneric) :
+    CInnerGenericBase(pOuterGeneric)
 {
 }
 
 CObjectName::~CObjectName()
 {
-    if (m_pNamedObjectList)
+    CCanvasObjectBase *pCanvasObject = reinterpret_cast<CCanvasObjectBase *>(m_pOuterGeneric);
+    CCanvas *pCanvas = pCanvasObject->m_pCanvas;
+    if (!m_Name.empty())
     {
-        m_pNamedObjectList->Erase(this);
+        pCanvas->m_NamedObjects.Erase(this);
     }
 }
 
 CANVASMETHODIMP CObjectName::SetName(PCSTR szName)
 {
-    if (m_pNamedObjectList && !m_Name.empty())
+    CCanvasObjectBase *pCanvasObject = reinterpret_cast<CCanvasObjectBase *>(m_pOuterGeneric);
+    CCanvas *pCanvas = pCanvasObject->m_pCanvas;
+
+    if (!m_Name.empty())
     {
-        m_pNamedObjectList->Erase(this);
+        pCanvas->m_NamedObjects.Erase(this);
     }
 
     m_Name = std::string(szName);
-    if (!m_Name.empty() && m_pNamedObjectList)
+    if (!m_Name.empty())
     {
-        m_pNamedObjectList->Set(this);
+        pCanvas->m_NamedObjects.Set(this);
     }
 
     return Result::Success;

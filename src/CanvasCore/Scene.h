@@ -7,9 +7,11 @@
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
     public XSceneGraphNode,
-    public CGenericBase
+    public CInnerGenericBase
 {
 public:
+    CSceneGraphNode(XGeneric *pOuterObj) :
+        CInnerGenericBase(pOuterObj) {}
     CSceneGraphNode * m_pParent = nullptr; // weak pointer
     CCanvasPtr<CSceneGraphNode> m_pFirstChild;
     CSceneGraphNode **m_ppChildTail = &m_pFirstChild;
@@ -25,9 +27,11 @@ public:
 //------------------------------------------------------------------------------------------------
 class CModelInstance :
     public XModelInstance,
-    public CGenericBase
+    public CInnerGenericBase
 {
 public:
+    CModelInstance(XGeneric *pOuterObj) :
+        CInnerGenericBase(pOuterObj) {}
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (InterfaceId::XModelInstance == iid)
@@ -44,9 +48,11 @@ public:
 //------------------------------------------------------------------------------------------------
 class CCamera :
     public XCamera,
-    public CGenericBase
+    public CInnerGenericBase
 {
 public:
+    CCamera(XGeneric *pOuterObj) :
+        CInnerGenericBase(pOuterObj) {}
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (InterfaceId::XCamera == iid)
@@ -63,9 +69,11 @@ public:
 //------------------------------------------------------------------------------------------------
 class CLight :
     public XLight,
-    public CGenericBase
+    public CInnerGenericBase
 {
 public:
+    CLight(XGeneric *pOuterObj) :
+        CInnerGenericBase(pOuterObj) {}
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (InterfaceId::XLight == iid)
@@ -82,9 +90,11 @@ public:
 //------------------------------------------------------------------------------------------------
 class CTransform :
     public XTransform,
-    public CGenericBase
+    public CInnerGenericBase
 {
 public:
+    CTransform(XGeneric *pOuterObj) :
+        CInnerGenericBase(pOuterObj) {}
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (InterfaceId::XTransform == iid)
@@ -127,5 +137,36 @@ public:
     CScene(CSceneGraphNode *pRootSceneGraphNode) :
         m_RootSceneGraphNode(this)
     {
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+class CCustomObject :
+    public XGeneric,
+    public CCanvasObjectBase
+{
+public:
+    CCustomObject(CCanvas *pCanvas) : 
+        CCanvasObjectBase(pCanvas)
+    {}
+
+    // For now just create a vector of inner element pointers.  Consider
+    // in the future allocating a contiguous chunk of memory for all
+    // elements (including the outer CObject interface) and using
+    // placement-new to allocate the whole object
+    std::vector<std::unique_ptr<CGenericBase>> m_InnerElements;
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final
+    {
+        for (auto &pElement : m_InnerElements)
+        {
+            Result res = pElement->InternalQueryInterface(iid, ppUnk);
+            if (Result::NoInterface != res)
+            {
+                return res;
+            }
+        }
+
+        return Result::NoInterface;
     }
 };

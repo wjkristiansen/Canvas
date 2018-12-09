@@ -24,6 +24,7 @@
 #include <Canvas.h>
 
 using namespace Canvas;
+#include "Generic.hpp"
+#include "NamedObject.h"
 #include "CanvasCore.h"
 #include "Scene.h"
-#include "NamedObject.h"
