@@ -47,10 +47,9 @@ CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, void **ppScene)
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateTransformObject(InterfaceId iid, _Outptr_ void **ppObj)
+CANVASMETHODIMP CCanvas::CreateTransformObject(InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
 {
     class CTransformObject :
-        public XGeneric,
         public CCanvasObjectBase
     {
     public:
@@ -58,16 +57,20 @@ CANVASMETHODIMP CCanvas::CreateTransformObject(InterfaceId iid, _Outptr_ void **
         CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
         CInnerGeneric<CObjectName> m_ObjectName;
 
-        CTransformObject(CCanvas *pCanvas) :
+        CTransformObject(CCanvas *pCanvas, PCSTR szName) :
             CCanvasObjectBase(pCanvas),
             m_Transform(this),
             m_SceneGraphNode(this),
-            m_ObjectName(this)
+            m_ObjectName(this, szName)
         {}
         virtual ~CTransformObject() {}
 
         CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
         {
+            if (InterfaceId::XObjectName == iid)
+            {
+                return m_ObjectName.InternalQueryInterface(iid, ppObj);
+            }
             if (InterfaceId::XTransform == iid)
             {
                 return m_Transform.InternalQueryInterface(iid, ppObj);
@@ -83,7 +86,7 @@ CANVASMETHODIMP CCanvas::CreateTransformObject(InterfaceId iid, _Outptr_ void **
 
     try
     {
-        CCanvasPtr<CTransformObject> pObj = new CGeneric<CTransformObject>(this); // throw(std::bad_alloc)
+        CCanvasPtr<CTransformObject> pObj = new CGeneric<CTransformObject>(this, szName); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)
@@ -94,25 +97,25 @@ CANVASMETHODIMP CCanvas::CreateTransformObject(InterfaceId iid, _Outptr_ void **
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateCameraObject(_In_z_ InterfaceId iid, _Outptr_ void **ppObj)
+CANVASMETHODIMP CCanvas::CreateCameraObject(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
 {
     return Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateLightObject(_In_z_ InterfaceId iid, _Outptr_ void **ppObj)
+CANVASMETHODIMP CCanvas::CreateLightObject(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
 {
     return Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateModelInstanceObject(_In_z_ InterfaceId iid, _Outptr_ void **ppObj)
+CANVASMETHODIMP CCanvas::CreateModelInstanceObject(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
 {
     return Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateCustomObject(_In_z_ InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj)
+CANVASMETHODIMP CCanvas::CreateCustomObject(_In_z_ InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj, PCSTR szName)
 {
     Result res = Result::Success;
 

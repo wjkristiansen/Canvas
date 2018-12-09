@@ -69,11 +69,6 @@ class CInnerGeneric :
     public _Base
 {
 public:
-    CInnerGeneric(_In_ XGeneric *pOuterGeneric) :
-        _Base(pOuterGeneric)
-    {
-    }
-
     template<typename... Arguments>
     CInnerGeneric(_In_ XGeneric *pOuterGeneric, Arguments... params) :
         _Base(pOuterGeneric, params...)

@@ -142,7 +142,6 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CCustomObject :
-    public XGeneric,
     public CCanvasObjectBase
 {
 public:

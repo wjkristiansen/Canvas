@@ -4,6 +4,7 @@
 
 #pragma once
 
+//------------------------------------------------------------------------------------------------
 class CObjectName :
     public XObjectName,
     public CInnerGenericBase
@@ -11,7 +12,7 @@ class CObjectName :
 public:
     std::string m_Name;
 
-    CObjectName(XGeneric *pOuterGeneric);
+    CObjectName(XGeneric *pOuterGeneric, PCSTR szName);
 
     virtual ~CObjectName();
 
@@ -35,22 +36,3 @@ public:
     }
 };
 
-class CNamedObjectList
-{
-public:
-    std::map<std::string, CObjectName *> m_ObjectNames;
-
-    CANVASMETHOD(Select)(PCSTR szName, InterfaceId iid, void **ppObj) final;
-
-    CANVASMETHOD(Set)(CObjectName *pObjectName)
-    {
-        m_ObjectNames.emplace(pObjectName->m_Name, pObjectName);
-        return Result::Success;
-    }
-
-    CANVASMETHOD(Erase)(CObjectName *pObjectName)
-    {
-        m_ObjectNames.erase(pObjectName->m_Name);
-        return Result::Success;
-    }
-};
