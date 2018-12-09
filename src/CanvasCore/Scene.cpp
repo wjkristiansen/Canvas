@@ -6,28 +6,41 @@
 
 using namespace Canvas;
 
+template<class _NodeType>
+class CTreeIterator
+{
+public:
+    std::deque<_NodeType *> m_Stack;
+
+    CANVASMETHOD(MoveNext)()
+    {
+        return Result::NotImplemented;
+    }
+    CANVASMETHOD(MovePrev)()
+    {
+        return Result::NotImplemented;
+    }
+};
+
 //------------------------------------------------------------------------------------------------
 class CSceneGraphIterator :
-    public XIterator,
+    public XTreeIterator,
     public CGenericBase
 {
 public:
-    CSceneGraphNode::ChildListType::iterator m_it;
-    CCanvasPtr<CSceneGraphNode> m_pParentNode;
+    CSceneGraphNode *m_pCurrent; // weak-ptr
 
-    CSceneGraphIterator(CSceneGraphNode *pParentNode) :
-        m_pParentNode(pParentNode) 
+    CSceneGraphIterator(_In_ CSceneGraphNode *pNode) :
+        m_pCurrent(pNode) 
     {
-        m_it = pParentNode->m_Children.begin();
     }
 
     CANVASMETHOD(MoveNext)() final
     {
-        if (m_it != m_pParentNode->m_Children.end())
+        if (m_pCurrent->m_pNextSibling)
         {
-            ++m_it;
-
-            return m_it == m_pParentNode->m_Children.end() ? Result::End : Result::Success;
+            m_pCurrent = m_pCurrent->m_pNextSibling;
+            return Result::Success;
         }
 
         return Result::End;
@@ -35,10 +48,31 @@ public:
 
     CANVASMETHOD(MovePrev)() final
     {
-        if (m_it != m_pParentNode->m_Children.begin())
+        if (m_pCurrent->m_pPrevSibling)
         {
-            --m_it;
+            m_pCurrent = m_pCurrent->m_pPrevSibling;
+            return Result::Success;
+        }
 
+        return Result::End;
+    }
+
+    CANVASMETHOD(MoveParent)() final
+    {
+        if (m_pCurrent->m_pParent)
+        {
+            m_pCurrent = m_pCurrent->m_pParent;
+            return Result::Success;
+        }
+
+        return Result::End;
+    }
+
+    CANVASMETHOD(MoveFirstChild)() final
+    {
+        if (m_pCurrent->m_pFirstChild)
+        {
+            m_pCurrent = m_pCurrent->m_pFirstChild;
             return Result::Success;
         }
 
@@ -47,19 +81,7 @@ public:
 
     CANVASMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj)
     {
-        auto pObj = *m_it;
-        return pObj->QueryInterface(iid, ppObj);
-    }
-
-    CANVASMETHOD(Remove)() final
-    {
-        if (m_it != m_pParentNode->m_Children.end())
-        {
-            m_it = m_pParentNode->m_Children.erase(m_it);
-            return m_it == m_pParentNode->m_Children.end() ? Result::End : Result::Success;
-        }
-
-        return Result::End;
+        return m_pCurrent->QueryInterface(iid, ppObj);
     }
 };
 
@@ -79,20 +101,17 @@ CANVASMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **
 //------------------------------------------------------------------------------------------------
 CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
 {
-    try
-    {
-        m_Children.emplace_back(pChild); // throw(std::bad_alloc)
-    }
-    catch (std::bad_alloc &)
-    {
-        return Result::OutOfMemory;
-    }
+    CSceneGraphNode *pChildImpl = reinterpret_cast<CSceneGraphNode *>(pChild);
+    pChildImpl->m_pPrevSibling = *m_ppChildTail;
+    *m_ppChildTail = pChildImpl;
+    m_ppChildTail = &pChildImpl->m_pNextSibling;
+    pChildImpl->AddRef();
 
     return Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CSceneGraphNode::EnumChildren(_Inout_ XIterator **ppIterator)
+CANVASMETHODIMP CSceneGraphNode::MakeIterator(_Inout_ XTreeIterator **ppIterator)
 {
     *ppIterator = nullptr;
 
@@ -111,6 +130,42 @@ CANVASMETHODIMP CSceneGraphNode::EnumChildren(_Inout_ XIterator **ppIterator)
     {
         return Result::OutOfMemory;
     }
+
+    return Result::Success;
+}
+
+
+//------------------------------------------------------------------------------------------------
+CANVASMETHODIMP CSceneGraphNode::Prune()
+{
+    if (m_pPrevSibling)
+    {
+        m_pPrevSibling->m_pNextSibling = m_pNextSibling;
+    }
+    else if(m_pParent)
+    {
+        m_pParent->m_pFirstChild = m_pNextSibling;
+    }
+
+    if (m_pNextSibling)
+    {
+        m_pNextSibling->m_pPrevSibling = m_pPrevSibling;
+    }
+    else if(m_pParent)
+    {
+        if(m_pPrevSibling)
+        {
+            m_pParent->m_ppChildTail = &m_pPrevSibling->m_pNextSibling;
+        }
+        else
+        {
+            m_pParent->m_ppChildTail = &m_pParent->m_pFirstChild;
+        }
+    }
+
+    m_pPrevSibling = nullptr;
+    m_pNextSibling = nullptr;
+    m_pParent = nullptr;
 
     return Result::Success;
 }
