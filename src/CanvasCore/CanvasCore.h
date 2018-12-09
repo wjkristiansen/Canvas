@@ -41,6 +41,7 @@ inline void ThrowFailure(Result result)
 
 //------------------------------------------------------------------------------------------------
 class CCanvasObjectBase :
+    public XGeneric,
     public CGenericBase
 {
 public:
@@ -57,18 +58,24 @@ class CCanvas :
 {
 public:
     CCanvas() = default;
-    CNamedObjectList m_NamedObjects;
+    std::map<std::string, CObjectName *> m_ObjectNames;
 
     CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj)
     {
-        return m_NamedObjects.Select(szName, iid, ppObj);
+        auto it = m_ObjectNames.find(szName);
+        if (it != m_ObjectNames.end())
+        {
+            return it->second->QueryInterface(iid, ppObj);
+        }
+        return Result::NotFound;
     }
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final;
     CANVASMETHOD(CreateScene)(InterfaceId iid, void **ppScene) final;
-    CANVASMETHOD(CreateTransformObject)(InterfaceId iid, _Outptr_ void **ppObj) final;
-    CANVASMETHOD(CreateCameraObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) final;
-    CANVASMETHOD(CreateLightObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) final;
-    CANVASMETHOD(CreateModelInstanceObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj) final;
-    CANVASMETHOD(CreateCustomObject)(_In_z_ InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) final;
+
+    CANVASMETHOD(CreateTransformObject)(InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
+    CANVASMETHOD(CreateCameraObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
+    CANVASMETHOD(CreateLightObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
+    CANVASMETHOD(CreateModelInstanceObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
+    CANVASMETHOD(CreateCustomObject)(_In_z_ InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
 };
