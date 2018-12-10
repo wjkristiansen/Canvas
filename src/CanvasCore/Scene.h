@@ -12,6 +12,9 @@ class CSceneGraphNode :
 public:
     std::vector<CCanvasPtr<CSceneGraphNode>> m_ChildList;
 
+    CSceneGraphNode(XGeneric *pOuterObj) :
+        CInnerGenericBase(pOuterObj) {}
+
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final;
     CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
 };
