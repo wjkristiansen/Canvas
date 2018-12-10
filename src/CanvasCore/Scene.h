@@ -20,7 +20,6 @@ public:
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final;
     CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
-    CANVASMETHOD(MakeIterator)(_Inout_ XTreeIterator **ppIterator) final;
     CANVASMETHOD(Prune)() final;
 };
 
