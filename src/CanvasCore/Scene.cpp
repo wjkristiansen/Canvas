@@ -22,46 +22,13 @@ CANVASMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **
 //------------------------------------------------------------------------------------------------
 CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
 {
-    CSceneGraphNode *pChildImpl = reinterpret_cast<CSceneGraphNode *>(pChild);
-    pChildImpl->m_pPrevSibling = *m_ppChildTail;
-    *m_ppChildTail = pChildImpl;
-    m_ppChildTail = &pChildImpl->m_pNextSibling;
-    pChildImpl->AddRef();
-
-    return Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CSceneGraphNode::Prune()
-{
-    if (m_pPrevSibling)
+    try
     {
-        m_pPrevSibling->m_pNextSibling = m_pNextSibling;
+        m_ChildList.emplace_back(reinterpret_cast<CSceneGraphNode*>(pChild)); // throw(std::bad_alloc)
     }
-    else if(m_pParent)
+    catch (std::bad_alloc &)
     {
-        m_pParent->m_pFirstChild = m_pNextSibling;
+        return Result::OutOfMemory;
     }
-
-    if (m_pNextSibling)
-    {
-        m_pNextSibling->m_pPrevSibling = m_pPrevSibling;
-    }
-    else if(m_pParent)
-    {
-        if(m_pPrevSibling)
-        {
-            m_pParent->m_ppChildTail = &m_pPrevSibling->m_pNextSibling;
-        }
-        else
-        {
-            m_pParent->m_ppChildTail = &m_pParent->m_pFirstChild;
-        }
-    }
-
-    m_pPrevSibling = nullptr;
-    m_pNextSibling = nullptr;
-    m_pParent = nullptr;
-
     return Result::Success;
 }
