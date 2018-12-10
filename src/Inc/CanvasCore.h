@@ -314,7 +314,7 @@ XSceneGraphNode : public XGeneric
     CANVAS_INTERFACE_DECLARE(XSceneGraphNode)
 
     CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
-    //CANVASMETHOD(CreateChildIterator, XIterator **ppIterator)() = 0;
+    CANVASMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
