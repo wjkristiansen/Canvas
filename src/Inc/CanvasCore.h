@@ -209,10 +209,11 @@ enum class InterfaceId : unsigned
     XMesh,
     XAmination,
     XSkeleton,
-    XEnumerable,
-    XEnumerator,
+    XIterator,
     XObjectName,
 };
+
+
 
 //------------------------------------------------------------------------------------------------
 CANVAS_INTERFACE XGeneric
@@ -232,12 +233,21 @@ CANVAS_INTERFACE XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE XEnumerator : public XGeneric
+CANVAS_INTERFACE XIterator : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XEnumerator)
+    CANVAS_INTERFACE_DECLARE(XIterator)
+
+    // Moves the iterator to the next element
     CANVASMETHOD(MoveNext)() = 0;
+
+    // Moves the iterator to the previous element
     CANVASMETHOD(MovePrev)() = 0;
+
+    // QI's the current element (if exists)
     CANVASMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    
+    // Removes the current element and the iterator to the next element
+    CANVASMETHOD(Prune)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -304,7 +314,7 @@ XSceneGraphNode : public XGeneric
     CANVAS_INTERFACE_DECLARE(XSceneGraphNode)
 
     CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
-    CANVASMETHOD(Prune)() = 0;
+    //CANVASMETHOD(CreateChildIterator, XIterator **ppIterator)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

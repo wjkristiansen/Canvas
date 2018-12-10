@@ -10,17 +10,10 @@ class CSceneGraphNode :
     public CInnerGenericBase
 {
 public:
-    CSceneGraphNode(XGeneric *pOuterObj) :
-        CInnerGenericBase(pOuterObj) {}
-    CSceneGraphNode * m_pParent = nullptr; // weak pointer
-    CCanvasPtr<CSceneGraphNode> m_pFirstChild;
-    CSceneGraphNode **m_ppChildTail = &m_pFirstChild;
-    CCanvasPtr<CSceneGraphNode> m_pNextSibling;
-    CSceneGraphNode *m_pPrevSibling = nullptr; // weak pointer
+    std::vector<CCanvasPtr<CSceneGraphNode>> m_ChildList;
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final;
     CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
-    CANVASMETHOD(Prune)() final;
 };
 
 //------------------------------------------------------------------------------------------------
