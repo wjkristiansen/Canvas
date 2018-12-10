@@ -32,3 +32,19 @@ CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
     }
     return Result::Success;
 }
+
+//------------------------------------------------------------------------------------------------
+CANVASMETHODIMP CSceneGraphNode::CreateChildIterator(_Outptr_ XIterator **ppIterator)
+{
+    try
+    {
+        CSceneGraphNodeIterator *pIterator = new CGeneric<CSceneGraphNodeIterator>(this); // throw(std::bad_alloc)
+        pIterator->AddRef();
+        *ppIterator = pIterator;
+        return Result::Success;
+    }
+    catch (std::bad_alloc &)
+    {
+        return Result::OutOfMemory;
+    }
+}
