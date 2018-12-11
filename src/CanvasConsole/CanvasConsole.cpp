@@ -13,27 +13,33 @@ float DoVectorThing(float v[2])
 
 void DumpNode(XSceneGraphNode *pNode, const std::string &indent)
 {
-    CCanvasPtr<XObjectName> pNodeName;
-    if (Succeeded(pNode->QueryInterface(&pNodeName)))
+    CCanvasPtr<XObjectName> pName;
+    if (Succeeded(pNode->QueryInterface(&pName)))
     {
-        std::cout << indent << pNodeName->GetName() << std::endl;
+        std::cout << indent << pName->GetName() << std::endl;
+    }
+    else
+    {
+        std::cout << indent << "<unnamed node>" << std::endl;
     }
 
-    CCanvasPtr<XIterator> pIterator;
-    if (Succeeded(pNode->CreateChildIterator(&pIterator)))
+    // Dump children
+    CCanvasPtr<XIterator> pChildIterator;
+    if (Succeeded(pNode->CreateChildIterator(&pChildIterator)))
     {
-        CCanvasPtr<XSceneGraphNode> pChildNode;
-        for (; pIterator->Select(CANVAS_PPV_ARGS(&pChildNode)) != Result::End; pIterator->MoveNext())
+        for (pChildIterator->Reset(); !pChildIterator->IsAtEnd(); pChildIterator->MoveNext())
         {
+            CCanvasPtr<XSceneGraphNode> pChildNode;
+            pChildIterator->Select(CANVAS_PPV_ARGS(&pChildNode));
             DumpNode(pChildNode, indent + "  ");
         }
     }
-};
+}
 
 int main()
 {
     FloatVector2 fv2a(1.0f, 2.0f);
-    FloatVector2 fv2b(3.0f, 3.0f);
+    FloatVector2 fv2b(3.0f, 3.0f);  
     FloatVector2 fv2c = fv2a + fv2b;
 
     DoubleVector3 dv3a(2.2, 3.3, 4.4);

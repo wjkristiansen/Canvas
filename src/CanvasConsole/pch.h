@@ -20,3 +20,5 @@
 #include <iostream>
 
 #endif //PCH_H
+#include <string>
+#include <iostream>

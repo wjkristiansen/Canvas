@@ -237,6 +237,12 @@ CANVAS_INTERFACE XIterator : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XIterator)
 
+    // Resets the iterator to the start of the collection
+    CANVASMETHOD(Reset)() = 0;
+
+    // Returns true if the the iterator is at the end of the collection
+    CANVASMETHOD_(bool, IsAtEnd)() = 0;
+
     // Moves the iterator to the next element
     CANVASMETHOD(MoveNext)() = 0;
 
