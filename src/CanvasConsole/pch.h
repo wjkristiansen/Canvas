@@ -16,4 +16,7 @@
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
 
+#include <string>
+#include <iostream>
+
 #endif //PCH_H
