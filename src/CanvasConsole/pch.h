@@ -17,3 +17,5 @@
 #include <Canvas.h>
 
 #endif //PCH_H
+#include <string>
+#include <iostream>

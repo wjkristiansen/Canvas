@@ -36,6 +36,17 @@ public:
         m_it = pNode->m_ChildList.begin();
     }
 
+    CANVASMETHOD_(bool, IsAtEnd)() final
+    {
+        return m_it == m_pNode->m_ChildList.end();
+    }
+
+    CANVASMETHOD(Reset)() final
+    {
+        m_it = m_pNode->m_ChildList.begin();
+        return Result::Success;
+    }
+
     CANVASMETHOD(MoveNext)() final
     {
         if (m_it != m_pNode->m_ChildList.end())
