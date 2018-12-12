@@ -93,6 +93,7 @@ int main()
     pTransformNode1->AddChild(pTransformNode2);
     pTransformNode1->AddChild(pTransformNode3);
     pRootSceneGraphNode->AddChild(pTransformNode4);
+    pRootSceneGraphNode->AddRef();
 
     DumpNode(pRootSceneGraphNode, "");
 

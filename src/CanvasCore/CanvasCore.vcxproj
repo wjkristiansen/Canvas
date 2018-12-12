@@ -165,6 +165,7 @@
   <ItemGroup>
     <ClCompile Include="CanvasCore.cpp" />
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="Generic.cpp" />
     <ClCompile Include="NamedObject.cpp" />
     <ClCompile Include="Scene.cpp" />
     <ClCompile Include="stdafx.cpp">
