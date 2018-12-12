@@ -5,6 +5,9 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
+extern std::unordered_set<typename XGeneric *> g_OutstandingGenerics;
+
+//------------------------------------------------------------------------------------------------
 template<class _Base>
 class CGeneric : public _Base
 {
@@ -14,6 +17,19 @@ public:
     template<typename... Arguments>
     CGeneric(Arguments&&... args) : _Base(args ...)
     {
+        try
+        {
+            g_OutstandingGenerics.insert(this); // throw(std::bad_alloc)
+        }
+        catch (std::bad_alloc &)
+        {
+            // Drop tracking of object...
+        }
+    }
+
+    ~CGeneric()
+    {
+        g_OutstandingGenerics.erase(this);
     }
 
     CANVASMETHOD_(ULONG,AddRef)() final
@@ -116,3 +132,4 @@ public:
         m_pOuterGeneric(pOuterGeneric) {}
 };
 
+extern void ReportGenericLeaks();
