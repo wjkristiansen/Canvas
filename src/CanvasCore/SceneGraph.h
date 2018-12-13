@@ -1,0 +1,137 @@
+//================================================================================================
+// SceneGraph
+//================================================================================================
+
+#pragma once
+
+//------------------------------------------------------------------------------------------------
+class CSceneGraphNode :
+    public XSceneGraphNode,
+    public CInnerGenericBase
+{
+public:
+    using _ListType = std::vector<CCanvasPtr<CSceneGraphNode>>;
+    _ListType m_ChildList;
+
+    CSceneGraphNode(XGeneric *pOuterObj) :
+        CInnerGenericBase(pOuterObj) {}
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final;
+    CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
+    CANVASMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) final;
+};
+
+//------------------------------------------------------------------------------------------------
+class CSceneGraphNodeIterator :
+    public XIterator,
+    public CGenericBase
+{
+public:
+    CSceneGraphNode::_ListType::iterator m_it;
+    CCanvasPtr<CSceneGraphNode> m_pNode;
+
+    CSceneGraphNodeIterator(CSceneGraphNode *pNode) :
+        m_pNode(pNode)
+    {
+        m_it = pNode->m_ChildList.begin();
+    }
+
+    CANVASMETHOD_(bool, IsAtEnd)() final
+    {
+        return m_it == m_pNode->m_ChildList.end();
+    }
+
+    CANVASMETHOD(Reset)() final
+    {
+        m_it = m_pNode->m_ChildList.begin();
+        return Result::Success;
+    }
+
+    CANVASMETHOD(MoveNext)() final
+    {
+        if (m_it != m_pNode->m_ChildList.end())
+        {
+            ++m_it;
+            return m_it != m_pNode->m_ChildList.end() ? Result::Success : Result::End;
+        }
+
+        return Result::End;
+    }
+
+    CANVASMETHOD(MovePrev)() final
+    {
+        if (m_it != m_pNode->m_ChildList.begin())
+        {
+            --m_it;
+            return Result::Success;
+        }
+
+        return Result::End;
+    }
+
+    CANVASMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
+        if (m_it != m_pNode->m_ChildList.end())
+        {
+            return (*m_it)->QueryInterface(iid, ppObj);
+        }
+
+        return Result::End;
+    }
+
+    CANVASMETHOD(Prune)() final
+    {
+        if (m_it != m_pNode->m_ChildList.end())
+        {
+            m_pNode->m_ChildList.erase(m_it);
+            return Result::Success;
+        }
+
+        return Result::End;
+    }
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    {
+        if (iid == InterfaceId::XIterator)
+        {
+            *ppUnk = this;
+            AddRef();
+            return Result::Success;
+        }
+
+        return __super::InternalQueryInterface(iid, ppUnk);
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+template <>
+class CCanvasObject<ObjectType::SceneGraphNode> :
+    public XGeneric,
+    public CCanvasObjectBase
+{
+public:
+    CInnerGeneric<CObjectName> m_ObjectName;
+    CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
+
+    CCanvasObject(CCanvas *pCanvas, PCSTR szName) :
+        CCanvasObjectBase(pCanvas),
+        m_SceneGraphNode(this),
+        m_ObjectName(this, szName, pCanvas)
+    {}
+
+    CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::SceneGraphNode; }
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        if (InterfaceId::XObjectName == iid)
+        {
+            return m_ObjectName.InternalQueryInterface(iid, ppObj);
+        }
+
+        if (InterfaceId::XObjectName == iid)
+        {
+            return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
+        }
+
+        return __super::InternalQueryInterface(iid, ppObj);
+    }
+};
