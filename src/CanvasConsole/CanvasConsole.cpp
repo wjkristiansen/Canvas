@@ -78,22 +78,22 @@ int main()
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
     CCanvasPtr<XSceneGraphNode> pTransformNode1;
-    result = pCanvas->CreateTransformObject(CANVAS_PPV_ARGS(&pTransformNode1), "TransformNode1");
+    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode1), "TransformNode1");
 
     CCanvasPtr<XSceneGraphNode> pTransformNode2;
-    result = pCanvas->CreateTransformObject(CANVAS_PPV_ARGS(&pTransformNode2), "TransformNode2");
+    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode2), "TransformNode2");
 
     CCanvasPtr<XSceneGraphNode> pTransformNode3;
-    result = pCanvas->CreateTransformObject(CANVAS_PPV_ARGS(&pTransformNode3), "TransformNode3");
+    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode3), "TransformNode3");
 
     CCanvasPtr<XSceneGraphNode> pTransformNode4;
-    result = pCanvas->CreateTransformObject(CANVAS_PPV_ARGS(&pTransformNode4), "TransformNode4");
+    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode4), "TransformNode4");
 
     pRootSceneGraphNode->AddChild(pTransformNode1);
     pTransformNode1->AddChild(pTransformNode2);
     pTransformNode1->AddChild(pTransformNode3);
     pRootSceneGraphNode->AddChild(pTransformNode4);
-    pRootSceneGraphNode->AddRef();
+    pRootSceneGraphNode->AddRef(); // BUGBUG - DELIBERATE LEAK FOR SANITY TESTING LEAK REPORTING
 
     DumpNode(pRootSceneGraphNode, "");
 
