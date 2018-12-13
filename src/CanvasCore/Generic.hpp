@@ -52,7 +52,7 @@ public:
 
         *ppObj = nullptr;
 
-        return _Base::InternalQueryInterface(iid, ppObj);
+        return InternalQueryInterface(iid, ppObj);
     }
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final

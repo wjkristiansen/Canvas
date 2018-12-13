@@ -98,13 +98,6 @@ public:
             return Result::Success;
         }
 
-        if(iid == InterfaceId::XGeneric)
-        {
-            *ppUnk = reinterpret_cast<XGeneric *>(this);
-            AddRef();
-            return Result::Success;
-        }
-
         return __super::InternalQueryInterface(iid, ppUnk);
     }
 };
