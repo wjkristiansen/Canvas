@@ -13,6 +13,7 @@ class CObjectName :
 {
 public:
     std::string m_Name;
+    CCanvas *m_pCanvas; // Weak pointer
 
     CObjectName(XGeneric *pOuterGeneric, PCSTR szName, CCanvas *pCanvas);
 

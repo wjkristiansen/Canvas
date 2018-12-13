@@ -93,7 +93,6 @@ int main()
     pTransformNode1->AddChild(pTransformNode2);
     pTransformNode1->AddChild(pTransformNode3);
     pRootSceneGraphNode->AddChild(pTransformNode4);
-    pRootSceneGraphNode->AddRef(); // BUGBUG - DELIBERATE LEAK FOR SANITY TESTING LEAK REPORTING
 
     DumpNode(pRootSceneGraphNode, "");
 

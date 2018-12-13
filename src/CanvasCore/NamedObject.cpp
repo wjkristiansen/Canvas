@@ -7,7 +7,8 @@
 //------------------------------------------------------------------------------------------------
 CObjectName::CObjectName(XGeneric *pOuterGeneric, PCSTR szName, CCanvas *pCanvas) :
     CInnerGenericBase(pOuterGeneric),
-    m_Name(szName ? szName : "")
+    m_Name(szName ? szName : ""),
+    m_pCanvas(pCanvas)
 {
     if (!m_Name.empty())
     {
@@ -20,9 +21,7 @@ CObjectName::~CObjectName()
 {
     if (!m_Name.empty())
     {
-        CCanvasObjectBase *pCanvasObject = reinterpret_cast<CCanvasObjectBase *>(m_pOuterGeneric);
-        CCanvas *pCanvas = pCanvasObject->m_pCanvas;
-        pCanvas->m_ObjectNames.erase(m_Name);
+        m_pCanvas->m_ObjectNames.erase(m_Name);
     }
 }
 
