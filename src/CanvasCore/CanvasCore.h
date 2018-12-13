@@ -19,6 +19,31 @@ namespace std
 }
 
 //------------------------------------------------------------------------------------------------
+inline std::string to_string(ObjectType t)
+{
+    switch (t)
+    {
+    case ObjectType::Unknown:
+        return "Unknown";
+    case ObjectType::Null:
+        return "Null";
+    case ObjectType::Scene:
+        return "Scene";
+    case ObjectType::SceneGraphNode:
+        return "SceneGraphNode";
+    case ObjectType::Transform:
+        return "Transform";
+    case ObjectType::Camera:
+        return "Camera";
+    case ObjectType::ModelInstance:
+        return "ModelInstance";
+    case ObjectType::Light:
+        return "Light";
+    }
+    return "<invalid>";
+}
+
+//------------------------------------------------------------------------------------------------
 class CanvasError
 {
     Result m_result;
@@ -40,155 +65,30 @@ inline void ThrowFailure(Result result)
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _Base>
-class CGeneric : public _Base
-{
-    ULONG m_RefCount = 0;
-
-public:
-    template<typename... Arguments>
-    CGeneric(Arguments&&... args) : _Base(args ...)
-    {
-    }
-
-    CANVASMETHOD_(ULONG,AddRef)() final
-    {
-        return InternalAddRef();
-    }
-
-    CANVASMETHOD_(ULONG, Release)() final
-    {
-        return InternalRelease();
-    }
-
-    ULONG CANVASNOTHROW CANVASAPI InternalAddRef()
-    {
-        return InterlockedIncrement(&m_RefCount);
-    }
-
-    ULONG CANVASNOTHROW CANVASAPI InternalRelease()
-    {
-        auto result = InterlockedDecrement(&m_RefCount);
-
-        if (0 == result)
-        {
-            delete(this);
-        }
-
-        return result;
-    }
-
-    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) override
-    {
-        if (!ppObj)
-        {
-            return Result::BadPointer;
-        }
-
-        *ppObj = nullptr;
-
-        return InternalQueryInterface(iid, ppObj);
-    }
-
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
-    {
-        *ppObj = nullptr;
-        switch (iid)
-        {
-        case InterfaceId::XGeneric:
-            *ppObj = this;
-            AddRef();
-            break;
-
-        default:
-            return __super::InternalQueryInterface(iid, ppObj);
-        }
-
-        return Result::Success;
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-template<class _Base, InterfaceId IId>
-class CInnerGeneric :
-    public _Base
-{
-public:
-    XGeneric *m_pOuterGeneric = 0; // weak pointer
-
-    CInnerGeneric(_In_ XGeneric *pOuterGeneric) :
-        m_pOuterGeneric(pOuterGeneric)
-    {
-    }
-
-    // Forward AddRef to outer generic
-    CANVASMETHOD_(ULONG,AddRef)() final
-    {
-        return m_pOuterGeneric->AddRef();
-    }
-
-    // Forward Release to outer generic
-    CANVASMETHOD_(ULONG, Release)() final
-    {
-        return m_pOuterGeneric->Release();
-    }
-
-    // Forward Query interface to outer generic
-    CANVASMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
-    {
-        return m_pOuterGeneric->QueryInterface(iid, ppObj);
-    }
-
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
-    {
-        if (IId == iid)
-        {
-            *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return Result::NoInterface;
-    }
-};
-
-
-//------------------------------------------------------------------------------------------------
-// Custom interfaces must derive from CGenericBase
-class CGenericBase
-{
-public:
-    virtual ~CGenericBase() = default;
-
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-    {
-        return Result::NoInterface;
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-class CCustomObject :
-    public XGeneric,
+class CCanvas :
+    public XCanvas,
     public CGenericBase
 {
 public:
-    // For now just create a vector of inner element pointers.  Consider
-    // in the future allocating a contiguous chunk of memory for all
-    // elements (including the outer CObject interface) and using
-    // placement-new to allocate the whole object
-    std::vector<std::unique_ptr<CGenericBase>> m_InnerElements;
+    CCanvas() = default;
+    ~CCanvas();
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    std::map<std::string, CObjectName *> m_ObjectNames;
+    std::unordered_set<typename CCanvasObjectBase *> m_OutstandingObjects;
+
+    CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj)
     {
-        for (auto &pElement : m_InnerElements)
+        auto it = m_ObjectNames.find(szName);
+        if (it != m_ObjectNames.end())
         {
-            Result res = pElement->InternalQueryInterface(iid, ppUnk);
-            if (Result::NoInterface != res)
-            {
-                return res;
-            }
+            return it->second->QueryInterface(iid, ppObj);
         }
-
-        return Result::NoInterface;
+        return Result::NotFound;
     }
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj);
+    CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) final;
+    CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
+
+    void ReportObjectLeaks();
 };

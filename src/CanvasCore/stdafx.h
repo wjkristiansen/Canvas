@@ -15,12 +15,24 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <set>
+#include <deque>
+#include <unordered_set>
 #include <unordered_map>
+#include <iostream>
 
 // reference additional headers your program requires here
 #include <CanvasMath.hpp>
 #include <Canvas.h>
 
 using namespace Canvas;
-#include "CanvasCore.h"
+#include "Generic.hpp"
+#include "CanvasObject.h"
+#include "NamedObject.h"
+#include "SceneGraph.h"
+#include "Transform.h"
+#include "Camera.h"
+#include "Light.h"
+#include "Model.h"
 #include "Scene.h"
+#include "CanvasCore.h"

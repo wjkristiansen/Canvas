@@ -164,30 +164,31 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-enum class Result : int
+enum class Result : UINT32
 {
     Success = 0,
-    Finished = 1,
-    InvalidArg = -1,
-    NotFound = -2,
-    OutOfMemory = -3,
-    NoInterface = -4,
-    BadPointer = -5,
-    NotImplemented = -6,
-    DuplicateKey = -7,
-    Uninitialized = -8,
+    End = 1,
+    Fail = 0x80000000, // Must be first failure
+    InvalidArg,
+    NotFound,
+    OutOfMemory,
+    NoInterface,
+    BadPointer,
+    NotImplemented,
+    DuplicateKey,
+    Uninitialized,
 };
 
 //------------------------------------------------------------------------------------------------
 inline bool Failed(Result result)
 {
-    return result < Result::Success;
+    return result >= Result::Fail;
 }
 
 //------------------------------------------------------------------------------------------------
 inline bool Succeeded(Result result)
 {
-    return result == Result::Success;
+    return result < Result::Fail;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -209,46 +210,20 @@ enum class InterfaceId : unsigned
     XAmination,
     XSkeleton,
     XIterator,
-    XTreeIterator
+    XObjectName,
 };
 
 //------------------------------------------------------------------------------------------------
-enum OBJECT_ELEMENT_FLAGS
+enum class ObjectType : unsigned
 {
-    OBJECT_ELEMENT_FLAG_NONE                = 0x0,
-    OBJECT_ELEMENT_FLAG_SCENE_GRAPH_NODE    = 0x1,
-    OBJECT_ELEMENT_FLAG_CAMERA              = 0x2,
-    OBJECT_ELEMENT_FLAG_LIGHT               = 0x4,
-    OBJECT_ELEMENT_FLAG_MODELINSTANCE       = 0x10,
-    OBJECT_ELEMENT_FLAG_TRANSFORM           = 0x20,
-};
-inline OBJECT_ELEMENT_FLAGS operator|(const OBJECT_ELEMENT_FLAGS &a, const OBJECT_ELEMENT_FLAGS &b) { return (OBJECT_ELEMENT_FLAGS)(int(a) | int(b)); }
-
-//------------------------------------------------------------------------------------------------
-struct CAMERA_DESC
-{
-    float NearClip;
-    float FarClip;
-};
-
-//------------------------------------------------------------------------------------------------
-enum LIGHT_TYPE
-{
-    LIGHT_TYPE_POINT,
-    LIGHT_TYPE_DIRECTIONAL,
-    LIGHT_TYPE_SPOT,
-};
-
-//------------------------------------------------------------------------------------------------
-struct LIGHT_DESC
-{
-    LIGHT_TYPE Type;
-};
-
-//------------------------------------------------------------------------------------------------
-struct OBJECT_DESC
-{
-    OBJECT_ELEMENT_FLAGS    ElementFlags;
+    Unknown,
+    Null,
+    Scene,
+    SceneGraphNode,
+    Transform,
+    Camera,
+    ModelInstance,
+    Light,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -272,20 +247,32 @@ CANVAS_INTERFACE XGeneric
 CANVAS_INTERFACE XIterator : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XIterator)
+
+    // Resets the iterator to the start of the collection
+    CANVASMETHOD(Reset)() = 0;
+
+    // Returns true if the the iterator is at the end of the collection
+    CANVASMETHOD_(bool, IsAtEnd)() = 0;
+
+    // Moves the iterator to the next element
     CANVASMETHOD(MoveNext)() = 0;
+
+    // Moves the iterator to the previous element
     CANVASMETHOD(MovePrev)() = 0;
+
+    // QI's the current element (if exists)
+    CANVASMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    
+    // Removes the current element and the iterator to the next element
+    CANVASMETHOD(Prune)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE 
-XTreeIterator : public XGeneric
+CANVAS_INTERFACE
+XObjectName : public XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XTreeIterator)
-
-    CANVASMETHOD(MoveNext)() = 0;
-    CANVASMETHOD(MovePrev)() = 0;
-    CANVASMETHOD(MoveFirstChild)() = 0;
-    CANVASMETHOD(MoveParent)() = 0;
+    CANVAS_INTERFACE_DECLARE(XObjectName)
+    CANVASMETHOD_(PCSTR, GetName)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -294,12 +281,9 @@ XCanvas : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XCanvas)
 
-    CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppScene) = 0;
-    CANVASMETHOD(CreateTransformObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateCameraObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateLightObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateModelInstanceObject)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateCustomObject)(InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
+    CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -336,22 +320,12 @@ XTransform : public XGeneric
 
 //------------------------------------------------------------------------------------------------
 CANVAS_INTERFACE
-XSceneGraphIterator : public XGeneric
-{
-    CANVASMETHOD(GetSceneGraphNode)(InterfaceId iid, void **ppObj) = 0;
-    CANVASMETHOD(MoveTo)(XSceneGraphNode *pObj) = 0;
-    CANVASMETHOD(MoveParent)() = 0;
-    CANVASMETHOD(MoveFirstChild)() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
 XSceneGraphNode : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XSceneGraphNode)
 
-    CANVASMETHOD(Insert)(_In_ XSceneGraphNode *pParent, _In_opt_ XSceneGraphNode *pInsertBefore) = 0;
-    CANVASMETHOD(Remove)() = 0;
+    CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
+    CANVASMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
