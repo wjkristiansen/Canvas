@@ -218,7 +218,6 @@ enum class ObjectType : unsigned
 {
     Unknown,
     Null,
-    Canvas,
     Scene,
     SceneGraphNode,
     Transform,
@@ -282,7 +281,6 @@ XCanvas : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XCanvas)
 
-    CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppScene) = 0;
     CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
     CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };

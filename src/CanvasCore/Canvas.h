@@ -79,6 +79,5 @@ public:
     }
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final;
-    CANVASMETHOD(CreateScene)(InterfaceId iid, void **ppScene) final;
     CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
 };
