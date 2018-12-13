@@ -5,14 +5,12 @@
 #include "stdafx.h"
 
 //------------------------------------------------------------------------------------------------
-CObjectName::CObjectName(XGeneric *pOuterGeneric, PCSTR szName) :
+CObjectName::CObjectName(XGeneric *pOuterGeneric, PCSTR szName, CCanvas *pCanvas) :
     CInnerGenericBase(pOuterGeneric),
     m_Name(szName)
 {
     if (!m_Name.empty())
     {
-        CCanvasObjectBase *pCanvasObject = reinterpret_cast<CCanvasObjectBase *>(m_pOuterGeneric);
-        CCanvas *pCanvas = pCanvasObject->m_pCanvas;
         pCanvas->m_ObjectNames.emplace(m_Name, this);
     }
 }

@@ -178,10 +178,20 @@ public:
 //------------------------------------------------------------------------------------------------
 class CScene :
     public XScene,
-    public CGenericBase
+    public CCanvasObjectBase
 {
 public:
     CInnerGeneric<CSceneGraphNode> m_RootSceneGraphNode;
+    CInnerGeneric<CObjectName> m_ObjectName;
+
+    CScene(CCanvas *pCanvas, _In_z_ PCSTR szName) :
+        CCanvasObjectBase(pCanvas),
+        m_RootSceneGraphNode(this),
+        m_ObjectName(this, szName, pCanvas)
+    {
+    }
+
+    CANVASMETHOD_(ObjectType, GetType)() const final { return ObjectType::Scene; }
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
@@ -192,47 +202,15 @@ public:
             return Result::Success;
         }
 
+        if (InterfaceId::XObjectName == iid)
+        {
+            return m_ObjectName.InternalQueryInterface(iid, ppObj);
+        }
+
         if (InterfaceId::XSceneGraphNode == iid)
         {
-            *ppObj = &m_RootSceneGraphNode;
-            AddRef();
-            return Result::Success;
+            return m_RootSceneGraphNode.InternalQueryInterface(iid, ppObj);
         }
         return __super::InternalQueryInterface(iid, ppObj);
-    }
-
-    CScene(CSceneGraphNode *pRootSceneGraphNode) :
-        m_RootSceneGraphNode(this)
-    {
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-class CCustomObject :
-    public CCanvasObjectBase
-{
-public:
-    CCustomObject(CCanvas *pCanvas) : 
-        CCanvasObjectBase(pCanvas)
-    {}
-
-    // For now just create a vector of inner element pointers.  Consider
-    // in the future allocating a contiguous chunk of memory for all
-    // elements (including the outer CObject interface) and using
-    // placement-new to allocate the whole object
-    std::vector<std::unique_ptr<CGenericBase>> m_InnerElements;
-
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final
-    {
-        for (auto &pElement : m_InnerElements)
-        {
-            Result res = pElement->InternalQueryInterface(iid, ppUnk);
-            if (Result::NoInterface != res)
-            {
-                return res;
-            }
-        }
-
-        return Result::NoInterface;
     }
 };

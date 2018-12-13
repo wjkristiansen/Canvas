@@ -218,6 +218,8 @@ enum class ObjectType : unsigned
 {
     Unknown,
     Null,
+    Canvas,
+    Scene,
     SceneGraphNode,
     Transform,
     Camera,

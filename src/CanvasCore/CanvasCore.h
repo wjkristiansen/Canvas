@@ -41,7 +41,6 @@ inline void ThrowFailure(Result result)
 
 //------------------------------------------------------------------------------------------------
 class CCanvasObjectBase :
-    public XGeneric,
     public CGenericBase
 {
 public:
