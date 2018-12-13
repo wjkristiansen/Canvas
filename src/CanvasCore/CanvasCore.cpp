@@ -24,6 +24,27 @@ CANVASMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void *
 }
 
 //------------------------------------------------------------------------------------------------
+CCanvasObjectBase::CCanvasObjectBase(CCanvas *pCanvas) :
+    m_pCanvas(pCanvas)
+{
+    try
+    {
+        pCanvas->m_OutstandingObjects.insert(this); // throw(std::bad_alloc)
+    }
+    catch (std::bad_alloc &)
+    {
+        // Drop tracking of object...
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+CCanvasObjectBase::~CCanvasObjectBase()
+{
+    m_pCanvas->m_OutstandingObjects.erase(this);
+}
+
+
+//------------------------------------------------------------------------------------------------
 template <>
 class CCanvasObject<ObjectType::Null> :
     public XGeneric,
@@ -34,11 +55,12 @@ public:
     CCanvasObject(CCanvas *pCanvas, PCSTR szName) :
         CCanvasObjectBase(pCanvas),
         m_ObjectName(this, szName, pCanvas)
-    {}
+    {
+    }
 
     CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::Null; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (InterfaceId::XObjectName == iid)
         {
@@ -67,7 +89,7 @@ public:
 
     CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::SceneGraphNode; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (InterfaceId::XObjectName == iid)
         {
@@ -103,7 +125,7 @@ public:
 
     CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::Transform; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (InterfaceId::XObjectName == iid)
         {
@@ -144,7 +166,7 @@ public:
 
     CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::Camera; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (InterfaceId::XCamera == iid)
         {
@@ -189,7 +211,7 @@ public:
 
     CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::Light; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (InterfaceId::XLight == iid)
         {
@@ -234,7 +256,7 @@ public:
 
     CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::ModelInstance; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (InterfaceId::XModelInstance == iid)
         {
@@ -258,6 +280,27 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
+CCanvas::~CCanvas()
+{
+    ReportObjectLeaks();
+}
+
+//------------------------------------------------------------------------------------------------
+CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
+{
+    try
+    {
+        CCanvasPtr<XGeneric> pObj;
+        pObj = new CGeneric<CScene>(this, "SceneRoot"); // throw(std::bad_alloc)
+        return pObj->QueryInterface(iid, ppObj);
+    }
+    catch(std::bad_alloc &)
+    {
+        return Result::OutOfMemory;
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 CANVASMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
 {
     try
@@ -265,10 +308,6 @@ CANVASMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_
         CCanvasPtr<XGeneric> pObj;
         switch (type)
         {
-        case ObjectType::Scene:
-            pObj = new CGeneric<CScene>(this, szName); // throw(std::bad_alloc)
-            break;
-
         case ObjectType::Null:
             pObj = new CGeneric<CCanvasObject<ObjectType::Null>>(this, szName); // throw(std::bad_alloc)
             break;
@@ -301,7 +340,56 @@ CANVASMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_
     {
         return Result::OutOfMemory;
     }
-    return Result::NotImplemented;
+}
+
+namespace std
+{
+    string to_string(ObjectType t)
+    {
+        switch (t)
+        {
+        case ObjectType::Unknown:
+            return string("Unknown");
+        case ObjectType::Null:
+            return string("Null");
+        case ObjectType::Scene:
+            return string("Scene");
+        case ObjectType::SceneGraphNode:
+            return string("SceneGraphNode");
+        case ObjectType::Transform:
+            return string("Transform");
+        case ObjectType::Camera:
+            return string("Camera");
+        case ObjectType::ModelInstance:
+            return string("ModelInstance");
+        case ObjectType::Light:
+            return string("Light");
+        }
+        return "<invalid>";
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CCanvas::ReportObjectLeaks()
+{
+    for (CCanvasObjectBase *pObject : m_OutstandingObjects)
+    {
+        std::cout << "Leaked object: ";
+        std::cout << "Type=" << std::to_string(pObject->GetType()) << ", ";
+        XObjectName *pObjectName;
+        if (Succeeded(pObject->InternalQueryInterface(CANVAS_PPV_ARGS(&pObjectName))))
+        {
+            pObjectName->Release();
+            std::cout << "Name=\"" << pObjectName->GetName() << "\", ";
+        }
+        XGeneric *pXGeneric;
+        if (Succeeded(pObject->InternalQueryInterface(CANVAS_PPV_ARGS(&pXGeneric))))
+        {
+            ULONG RefCount = pXGeneric->Release();
+            std::cout << "RefCount=" << RefCount;
+        }
+        std::cout << std::endl;
+    }
 }
 
 //------------------------------------------------------------------------------------------------

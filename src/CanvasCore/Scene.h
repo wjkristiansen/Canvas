@@ -89,6 +89,24 @@ public:
 
         return Result::End;
     }
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    {
+        if (iid == InterfaceId::XIterator)
+        {
+            *ppUnk = this;
+            AddRef();
+            return Result::Success;
+        }
+
+        if(iid == InterfaceId::XGeneric)
+        {
+            *ppUnk = reinterpret_cast<XGeneric *>(this);
+            AddRef();
+            return Result::Success;
+        }
+
+        return __super::InternalQueryInterface(iid, ppUnk);
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -193,7 +211,7 @@ public:
 
     CANVASMETHOD_(ObjectType, GetType)() const final { return ObjectType::Scene; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (InterfaceId::XScene == iid)
         {

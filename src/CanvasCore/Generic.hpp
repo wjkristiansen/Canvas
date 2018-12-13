@@ -5,9 +5,6 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-extern std::unordered_set<typename XGeneric *> g_OutstandingGenerics;
-
-//------------------------------------------------------------------------------------------------
 template<class _Base>
 class CGeneric : public _Base
 {
@@ -17,19 +14,6 @@ public:
     template<typename... Arguments>
     CGeneric(Arguments&&... args) : _Base(args ...)
     {
-        try
-        {
-            g_OutstandingGenerics.insert(this); // throw(std::bad_alloc)
-        }
-        catch (std::bad_alloc &)
-        {
-            // Drop tracking of object...
-        }
-    }
-
-    ~CGeneric()
-    {
-        g_OutstandingGenerics.erase(this);
     }
 
     CANVASMETHOD_(ULONG,AddRef)() final
@@ -68,6 +52,11 @@ public:
 
         *ppObj = nullptr;
 
+        return _Base::InternalQueryInterface(iid, ppObj);
+    }
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
         if (InterfaceId::XGeneric == iid)
         {
             *ppObj = reinterpret_cast<XGeneric *>(this);
@@ -75,7 +64,7 @@ public:
             return Result::Success;
         }
 
-        return _Base::InternalQueryInterface(iid, ppObj);
+        return __super::InternalQueryInterface(iid, ppObj);
     }
 };
 
