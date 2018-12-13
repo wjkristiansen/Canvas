@@ -27,6 +27,12 @@
 
 using namespace Canvas;
 #include "Generic.hpp"
+#include "CanvasObject.h"
 #include "NamedObject.h"
-#include "Canvas.h"
+#include "SceneGraph.h"
+#include "Transform.h"
+#include "Camera.h"
+#include "Light.h"
+#include "Model.h"
 #include "Scene.h"
+#include "Canvas.h"

@@ -155,15 +155,22 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Camera.h" />
     <ClInclude Include="Canvas.h" />
+    <ClInclude Include="CanvasObject.h" />
     <ClInclude Include="Generic.hpp" />
+    <ClInclude Include="Light.h" />
+    <ClInclude Include="Model.h" />
     <ClInclude Include="NamedObject.h" />
     <ClInclude Include="Scene.h" />
+    <ClInclude Include="SceneGraph.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="Transform.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CanvasCore.cpp" />
+    <ClCompile Include="CanvasObject.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Generic.cpp" />
     <ClCompile Include="NamedObject.cpp" />

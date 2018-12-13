@@ -19,6 +19,31 @@ namespace std
 }
 
 //------------------------------------------------------------------------------------------------
+inline std::string to_string(ObjectType t)
+{
+    switch (t)
+    {
+    case ObjectType::Unknown:
+        return "Unknown";
+    case ObjectType::Null:
+        return "Null";
+    case ObjectType::Scene:
+        return "Scene";
+    case ObjectType::SceneGraphNode:
+        return "SceneGraphNode";
+    case ObjectType::Transform:
+        return "Transform";
+    case ObjectType::Camera:
+        return "Camera";
+    case ObjectType::ModelInstance:
+        return "ModelInstance";
+    case ObjectType::Light:
+        return "Light";
+    }
+    return "<invalid>";
+}
+
+//------------------------------------------------------------------------------------------------
 class CanvasError
 {
     Result m_result;
@@ -38,26 +63,6 @@ inline void ThrowFailure(Result result)
         throw(CanvasError(result));
     }
 }
-
-//------------------------------------------------------------------------------------------------
-class CCanvasObjectBase :
-    public CGenericBase
-{
-public:
-    class CCanvas *m_pCanvas = nullptr;
-
-    CANVASMETHOD_(ObjectType, GetType)() const = 0;
-
-    CCanvasObjectBase(CCanvas *pCanvas);
-    ~CCanvasObjectBase();
-};
-
-//------------------------------------------------------------------------------------------------
-template<ObjectType _Type>
-class CCanvasObject
-{
-    ObjectType GetType() const override { return _Type; }
-};
 
 //------------------------------------------------------------------------------------------------
 class CCanvas :
