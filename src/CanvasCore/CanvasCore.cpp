@@ -24,22 +24,6 @@ CANVASMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void *
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, void **ppScene)
-{
-    *ppScene = nullptr;
-    try
-    {
-        // Create a root scene graph node object
-        return CreateObject(ObjectType::Scene, iid, ppScene, "Scene");
-    }
-    catch (std::bad_alloc&)
-    {
-        return Result::OutOfMemory;
-    }
-    return Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
 template <>
 class CCanvasObject<ObjectType::Null> :
     public XGeneric,

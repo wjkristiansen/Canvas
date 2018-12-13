@@ -72,7 +72,7 @@ int main()
     Canvas::Result result = CreateCanvas(XCanvas::IId, (void **)&pCanvas);
 
     CCanvasPtr<XScene> pScene;
-    result = pCanvas->CreateScene(XScene::IId, (void **)&pScene);
+    result = pCanvas->CreateObject(ObjectType::Scene, XScene::IId, (void **)&pScene);
 
     CCanvasPtr<XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);
