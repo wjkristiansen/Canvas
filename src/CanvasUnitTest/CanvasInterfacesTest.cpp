@@ -25,21 +25,33 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(CANVAS_PPV_ARGS(&pScene))));
 
             // Create transform XSceneGraphNode
-            CCanvasPtr<XTransform> pTransformElement;
+            CCanvasPtr<XTransform> pTransform;
             CCanvasPtr<XSceneGraphNode> pSceneGraphNode;
-            //Assert::IsTrue(Succeeded(pCanvas->CreateNode("Transform", OBJECT_ELEMENT_FLAG_TRANSFORM, CANVAS_PPV_ARGS(&pSceneGraphNode))));
-            //Assert::IsTrue(Succeeded(pSceneGraphNode->QueryInterface(&pTransformElement)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pSceneGraphNode), "Transform")));
+            Assert::IsTrue(Succeeded(pSceneGraphNode->QueryInterface(&pTransform)));
 
             // Create a camera XSceneGraphNode
-            //CCanvasPtr<XGeneric> pCameraElement;
-            //Assert::IsTrue(Succeeded(pCanvas->CreateNode("Camera", OBJECT_ELEMENT_FLAG_CAMERA, CANVAS_PPV_ARGS(&pCameraElement))));
+            CCanvasPtr<XGeneric> pGeneric;
+            const char szCameraName[] = "Camera";
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Camera, CANVAS_PPV_ARGS(&pGeneric), szCameraName)));
 
-            //// QI rules
-            //CCanvasPtr<XCamera> pCamera2;
-            //Assert::IsTrue(Succeeded(pCameraElement->QueryInterface(&pCamera2)));
-            //CCanvasPtr<XGeneric> pGeneric;
-            //Assert::IsTrue(Succeeded(pCamera2->QueryInterface(&pGeneric)));
-            //Assert::IsTrue(pGeneric.p == pCameraElement.p);
+            // Make sure QI works for all the camera parts
+            CCanvasPtr<XObjectName> pCameraName;
+            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraName)));
+            CCanvasPtr<XCamera> pCamera;
+            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCamera)));
+            CCanvasPtr<XTransform> pCameraTransform;
+            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraTransform)));
+            CCanvasPtr<XTransform> pCameraSceneGraphNode;
+            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraSceneGraphNode)));
+
+            // Validate the name
+            Assert::IsTrue(0 == strncmp(pCameraName->GetName(), szCameraName, _countof(szCameraName)));
+
+            // QI rules
+            CCanvasPtr<XGeneric> pGeneric2;
+            Assert::IsTrue(Succeeded(pCamera->QueryInterface(&pGeneric2)));
+            Assert::IsTrue(pGeneric.Get() == pGeneric2.Get());
         }
     };
 }
