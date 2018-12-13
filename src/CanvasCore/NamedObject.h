@@ -4,6 +4,8 @@
 
 #pragma once
 
+class CCanvas;
+
 //------------------------------------------------------------------------------------------------
 class CObjectName :
     public XObjectName,
@@ -12,7 +14,7 @@ class CObjectName :
 public:
     std::string m_Name;
 
-    CObjectName(XGeneric *pOuterGeneric, PCSTR szName);
+    CObjectName(XGeneric *pOuterGeneric, PCSTR szName, CCanvas *pCanvas);
 
     virtual ~CObjectName();
 
