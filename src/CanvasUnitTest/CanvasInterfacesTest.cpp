@@ -22,7 +22,7 @@ namespace CanvasUnitTest
 
             // Create XScene object
             CCanvasPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Scene, CANVAS_PPV_ARGS(&pScene))));
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(CANVAS_PPV_ARGS(&pScene))));
 
             // Create transform XSceneGraphNode
             CCanvasPtr<XTransform> pTransformElement;

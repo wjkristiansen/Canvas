@@ -48,8 +48,8 @@ public:
 
     CANVASMETHOD_(ObjectType, GetType)() const = 0;
 
-    CCanvasObjectBase(CCanvas *pCanvas) :
-        m_pCanvas(pCanvas) {}
+    CCanvasObjectBase(CCanvas *pCanvas);
+    ~CCanvasObjectBase();
 };
 
 //------------------------------------------------------------------------------------------------
@@ -66,7 +66,10 @@ class CCanvas :
 {
 public:
     CCanvas() = default;
+    ~CCanvas();
+
     std::map<std::string, CObjectName *> m_ObjectNames;
+    std::unordered_set<typename CCanvasObjectBase *> m_OutstandingObjects;
 
     CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj)
     {
@@ -78,6 +81,9 @@ public:
         return Result::NotFound;
     }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final;
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj);
+    CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) final;
     CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
+
+    void ReportObjectLeaks();
 };

@@ -7,7 +7,7 @@
 //------------------------------------------------------------------------------------------------
 CObjectName::CObjectName(XGeneric *pOuterGeneric, PCSTR szName, CCanvas *pCanvas) :
     CInnerGenericBase(pOuterGeneric),
-    m_Name(szName)
+    m_Name(szName ? szName : "")
 {
     if (!m_Name.empty())
     {
