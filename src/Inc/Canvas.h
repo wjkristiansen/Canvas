@@ -213,7 +213,17 @@ enum class InterfaceId : unsigned
     XObjectName,
 };
 
-
+//------------------------------------------------------------------------------------------------
+enum class ObjectType : unsigned
+{
+    Unknown,
+    Null,
+    SceneGraphNode,
+    Transform,
+    Camera,
+    ModelInstance,
+    Light,
+};
 
 //------------------------------------------------------------------------------------------------
 CANVAS_INTERFACE XGeneric
@@ -271,13 +281,7 @@ XCanvas : public XGeneric
     CANVAS_INTERFACE_DECLARE(XCanvas)
 
     CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppScene) = 0;
-
-    CANVASMETHOD(CreateTransformObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
-    CANVASMETHOD(CreateCameraObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
-    CANVASMETHOD(CreateLightObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
-    CANVASMETHOD(CreateModelInstanceObject)(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
-    CANVASMETHOD(CreateCustomObject)(_In_z_ InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
-
+    CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
     CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 

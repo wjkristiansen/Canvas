@@ -31,11 +31,7 @@ CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, void **ppScene)
     {
         // Create a root scene graph node object
         CCanvasPtr<CSceneGraphNode> pSceneGraphNode;
-        InterfaceId iids[] =
-        {
-            InterfaceId::XSceneGraphNode,
-        };
-        CreateCustomObject(iids, 1, reinterpret_cast<void **>(&pSceneGraphNode));
+        CreateObject(ObjectType::SceneGraphNode, CANVAS_PPV_ARGS(&pSceneGraphNode), "SceneRoot");
         CCanvasPtr<XScene> pScene = new CGeneric<CScene>(pSceneGraphNode); // throw(std::bad_alloc)
         return pScene->QueryInterface(iid, ppScene);
     }
@@ -46,47 +42,117 @@ CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, void **ppScene)
     return Result::Success;
 }
 
-//------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateTransformObject(InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
+template <>
+class CCanvasObject<ObjectType::Null> :
+    public CCanvasObjectBase
 {
-    class CTransformObject :
-        public CCanvasObjectBase
+public:
+    CInnerGeneric<CObjectName> m_ObjectName;
+    CCanvasObject(CCanvas *pCanvas, PCSTR szName) :
+        CCanvasObjectBase(pCanvas),
+        m_ObjectName(this, szName)
+    {}
+
+    CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::Null; }
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
-    public:
-        CInnerGeneric<CTransform> m_Transform;
-        CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
-        CInnerGeneric<CObjectName> m_ObjectName;
-
-        CTransformObject(CCanvas *pCanvas, PCSTR szName) :
-            CCanvasObjectBase(pCanvas),
-            m_Transform(this),
-            m_SceneGraphNode(this),
-            m_ObjectName(this, szName)
-        {}
-        virtual ~CTransformObject() {}
-
-        CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+        if (InterfaceId::XObjectName == iid)
         {
-            if (InterfaceId::XObjectName == iid)
-            {
-                return m_ObjectName.InternalQueryInterface(iid, ppObj);
-            }
-            if (InterfaceId::XTransform == iid)
-            {
-                return m_Transform.InternalQueryInterface(iid, ppObj);
-            }
-            if (InterfaceId::XSceneGraphNode == iid)
-            {
-                return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
-            }
-
-            return __super::InternalQueryInterface(iid, ppObj);
+            return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
-    };
 
+        return __super::InternalQueryInterface(iid, ppObj);
+    }
+};
+
+template <>
+class CCanvasObject<ObjectType::SceneGraphNode> :
+    public CCanvasObjectBase
+{
+public:
+    CInnerGeneric<CObjectName> m_ObjectName;
+    CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
+
+    CCanvasObject(CCanvas *pCanvas, PCSTR szName) :
+        CCanvasObjectBase(pCanvas),
+        m_SceneGraphNode(this),
+        m_ObjectName(this, szName)
+    {}
+
+    CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::SceneGraphNode; }
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
+        if (InterfaceId::XObjectName == iid)
+        {
+            return m_ObjectName.InternalQueryInterface(iid, ppObj);
+        }
+
+        if (InterfaceId::XObjectName == iid)
+        {
+            return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
+        }
+
+        return __super::InternalQueryInterface(iid, ppObj);
+    }
+};
+
+template <>
+class CCanvasObject<ObjectType::Transform> :
+    public CCanvasObjectBase
+{
+public:
+    CInnerGeneric<CTransform> m_Transform;
+    CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
+    CInnerGeneric<CObjectName> m_ObjectName;
+
+    CCanvasObject(CCanvas *pCanvas, PCSTR szName) :
+        CCanvasObjectBase(pCanvas),
+        m_Transform(this),
+        m_SceneGraphNode(this),
+        m_ObjectName(this, szName)
+    {}
+
+    CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::Transform; }
+
+    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    {
+        if (InterfaceId::XObjectName == iid)
+        {
+            return m_ObjectName.InternalQueryInterface(iid, ppObj);
+        }
+        if (InterfaceId::XTransform == iid)
+        {
+            return m_Transform.InternalQueryInterface(iid, ppObj);
+        }
+        if (InterfaceId::XSceneGraphNode == iid)
+        {
+            return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
+        }
+
+        return __super::InternalQueryInterface(iid, ppObj);
+    }
+};
+
+
+
+//------------------------------------------------------------------------------------------------
+CANVASMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
+{
     try
     {
-        CCanvasPtr<CTransformObject> pObj = new CGeneric<CTransformObject>(this, szName); // throw(std::bad_alloc)
+        CCanvasPtr<CCanvasObjectBase> pObj;
+        switch (type)
+        {
+        case ObjectType::Null:
+            pObj = new CGeneric<CCanvasObject<ObjectType::Null>>(this, szName); // throw(std::bad_alloc)
+            break;
+
+        case ObjectType::Transform:
+            pObj = new CGeneric<CCanvasObject<ObjectType::Transform>>(this, szName); // throw(std::bad_alloc)
+            break;
+        }
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)
@@ -94,73 +160,6 @@ CANVASMETHODIMP CCanvas::CreateTransformObject(InterfaceId iid, _Outptr_ void **
         return Result::OutOfMemory;
     }
     return Result::NotImplemented;
-}
-
-//------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateCameraObject(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
-{
-    return Result::NotImplemented;
-}
-
-//------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateLightObject(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
-{
-    return Result::NotImplemented;
-}
-
-//------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateModelInstanceObject(_In_z_ InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
-{
-    return Result::NotImplemented;
-}
-
-//------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateCustomObject(_In_z_ InterfaceId *pInnerInterfaces, UINT numInnerInterfaces, _Outptr_ void **ppObj, PCSTR szName)
-{
-    Result res = Result::Success;
-
-    if (numInnerInterfaces == 0)
-    {
-        return Result::InvalidArg;
-    }
-
-    if (pInnerInterfaces == nullptr)
-    {
-        return Result::BadPointer;
-    }
-
-    try
-    {
-        CCanvasPtr<CCustomObject> pObject = new CGeneric<CCustomObject>(this); // throw(std::bad_alloc)
-
-        for (UINT i = 0; i < numInnerInterfaces; ++i)
-        {
-            switch (pInnerInterfaces[i])
-            {
-            case InterfaceId::XSceneGraphNode:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CSceneGraphNode>>(pObject)); // throw(std::bad_alloc)
-                break;
-            case InterfaceId::XTransform:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CTransform>>(pObject)); // throw(std::bad+alloc)
-                break;
-            case InterfaceId::XModelInstance:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CModelInstance>>(pObject)); // throw(std::bad+alloc)
-                break;
-            case InterfaceId::XCamera:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CCamera>>(pObject)); // throw(std::bad+alloc)
-                break;
-            case InterfaceId::XLight:
-                pObject->m_InnerElements.emplace_back(std::make_unique<CInnerGeneric<CLight>>(pObject)); // throw(std::bad+alloc)
-                break;
-            }
-        }
-
-        return pObject->QueryInterface(pInnerInterfaces[0], ppObj);
-    }
-    catch (std::bad_alloc&)
-    {
-        return Result::OutOfMemory;
-    }
 }
 
 //------------------------------------------------------------------------------------------------
