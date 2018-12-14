@@ -106,6 +106,11 @@ namespace CanvasUnitTest
                 Assert::IsTrue(Result::Success == pIterator->MoveNext());
                 VerifyChildNode(pIterator, pNodes[1]);
                 Assert::IsTrue(Result::End == pIterator->MoveNext());
+                Assert::IsTrue(pIterator->IsAtEnd());
+                Assert::IsTrue(Result::Success == pIterator->MovePrev());
+                Assert::IsTrue(Result::Success == pIterator->MovePrev());
+                VerifyChildNode(pIterator, pNodes[0]);
+                Assert::IsTrue(Result::End == pIterator->MovePrev());
             }
             {
                 CCanvasPtr<XIterator> pIterator;
