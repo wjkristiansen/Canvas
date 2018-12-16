@@ -76,7 +76,7 @@ CWindow::CWindow(
 }
 
 //------------------------------------------------------------------------------------------------
-LRESULT CALLBACK CWindow::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT CWindow::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
