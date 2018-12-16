@@ -12,4 +12,5 @@
 #include <Windows.h>
 #include <WinUser.h>
 
+#include <comdef.h>
 #include "ThinWin.h"
