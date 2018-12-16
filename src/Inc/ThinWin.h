@@ -12,7 +12,7 @@ class CWindow
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 public:
-    static ATOM RegisterWindowClass(HINSTANCE hInstance, PCWSTR pszMenuName, HCURSOR hCursor = NULL, HICON hIcon = NULL, HICON hIconSm = NULL, HBRUSH hbrBackground = (HBRUSH)(COLOR_WINDOW + 1));
+    static ATOM RegisterWindowClass(HINSTANCE hInstance, PCWSTR pszMenuName = nullptr, HCURSOR hCursor = NULL, HICON hIcon = NULL, HICON hIconSm = NULL, HBRUSH hbrBackground = (HBRUSH)(COLOR_WINDOW + 1));
 
 public:
     HWND m_hWnd = NULL;
