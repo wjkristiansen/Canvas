@@ -81,7 +81,7 @@ LRESULT CWindow::WindowProc(UINT message, WPARAM wParam, LPARAM lParam)
     switch (message)
     {
     case WM_CREATE:
-        OutputDebugString(L"WM_CREATE");
+        return DefWindowProc(m_hWnd, message, wParam, lParam);
         break;
     case WM_PAINT:
         {
