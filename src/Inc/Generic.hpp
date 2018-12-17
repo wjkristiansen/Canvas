@@ -11,14 +11,16 @@
 #define GOMMETHODIMP Canvas::Result
 #define GOMMETHODIMP_(retType) retType
 #define GOM_INTERFACE struct
-#define GOM_INTERFACE_DECLARE(iid) static const InterfaceId IId = iid;
+#define GOM_INTERFACE_DECLARE(XFace, iid) const InterfaceId GIID_##XFace = iid;
 
 #define GOM_IID_PPV_ARGS(ppObj) \
     std::remove_reference_t<decltype(**ppObj)>::IId, reinterpret_cast<void **>(ppObj)
 
 namespace GOM
 {
-typedef InterfaceId UINT;
+typedef UINT InterfaceId;
+
+const InterfaceId GIID_XGeneric = 0xffffffff;
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
@@ -51,7 +53,7 @@ public:
     {
         auto result = InterlockedDecrement(&m_RefCount);
 
-        if (0 == result)
+        if (GIID_XGeneric == result)
         {
             delete(this);
         }
@@ -73,7 +75,7 @@ public:
 
     GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
-        if (0 == iid)
+        if (GIID_XGeneric == iid)
         {
             *ppObj = reinterpret_cast<XGeneric *>(this);
             AddRef();
@@ -140,8 +142,6 @@ public:
 //------------------------------------------------------------------------------------------------
 GOM_INTERFACE XGeneric
 {
-    GOM_INTERFACE_DECLARE(0);
-
     GOMMETHOD_(ULONG, AddRef)() = 0;
     GOMMETHOD_(ULONG, Release)() = 0;
     GOMMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
