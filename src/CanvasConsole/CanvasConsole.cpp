@@ -11,16 +11,16 @@ float DoVectorThing(float v[2])
     return v[0] + v[1];
 }
 
-void DumpNode(XSceneGraphNode *pNode, const std::string &indent)
+void DumpNode(XSceneGraphNode *pNode, const std::wstring &indent)
 {
     CCanvasPtr<XObjectName> pName;
     if (Succeeded(pNode->QueryInterface(&pName)))
     {
-        std::cout << indent << pName->GetName() << std::endl;
+        std::wcout << indent << pName->GetName() << std::endl;
     }
     else
     {
-        std::cout << indent << "<unnamed node>" << std::endl;
+        std::wcout << indent << L"<unnamed node>" << std::endl;
     }
 
     // Dump children
@@ -31,7 +31,7 @@ void DumpNode(XSceneGraphNode *pNode, const std::string &indent)
         {
             CCanvasPtr<XSceneGraphNode> pChildNode;
             pChildIterator->Select(CANVAS_PPV_ARGS(&pChildNode));
-            DumpNode(pChildNode, indent + "  ");
+            DumpNode(pChildNode, indent + L"  ");
         }
     }
 }
@@ -78,23 +78,23 @@ int main()
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
     CCanvasPtr<XSceneGraphNode> pTransformNode1;
-    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode1), "TransformNode1");
+    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode1), L"TransformNode1");
 
     CCanvasPtr<XSceneGraphNode> pTransformNode2;
-    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode2), "TransformNode2");
+    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode2), L"TransformNode2");
 
     CCanvasPtr<XSceneGraphNode> pTransformNode3;
-    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode3), "TransformNode3");
+    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode3), L"TransformNode3");
 
     CCanvasPtr<XSceneGraphNode> pTransformNode4;
-    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode4), "TransformNode4");
+    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode4), L"TransformNode4");
 
     pRootSceneGraphNode->AddChild(pTransformNode1);
     pTransformNode1->AddChild(pTransformNode2);
     pTransformNode1->AddChild(pTransformNode3);
     pRootSceneGraphNode->AddChild(pTransformNode4);
 
-    DumpNode(pRootSceneGraphNode, "");
+    DumpNode(pRootSceneGraphNode, L"");
 
     CCanvasPtr<XGeneric> pGeneric1;
     CCanvasPtr<XGeneric> pGeneric2;

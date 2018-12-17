@@ -27,12 +27,12 @@ namespace CanvasUnitTest
             // Create transform XSceneGraphNode
             CCanvasPtr<XTransform> pTransform;
             CCanvasPtr<XSceneGraphNode> pSceneGraphNode;
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pSceneGraphNode), "Transform")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pSceneGraphNode), L"Transform")));
             Assert::IsTrue(Succeeded(pSceneGraphNode->QueryInterface(&pTransform)));
 
             // Create a camera XSceneGraphNode
             CCanvasPtr<XGeneric> pGeneric;
-            const char szCameraName[] = "Camera";
+            const wchar_t szCameraName[] = L"Camera";
             Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Camera, CANVAS_PPV_ARGS(&pGeneric), szCameraName)));
 
             // Make sure QI works for all the camera parts
@@ -46,7 +46,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraSceneGraphNode)));
 
             // Validate the name
-            Assert::IsTrue(0 == strncmp(pCameraName->GetName(), szCameraName, _countof(szCameraName)));
+            Assert::IsTrue(0 == wcsncmp(pCameraName->GetName(), szCameraName, _countof(szCameraName)));
 
             // QI rules
             CCanvasPtr<XGeneric> pGeneric2;
@@ -66,12 +66,12 @@ namespace CanvasUnitTest
 
             // Create nodes
             CCanvasPtr<XSceneGraphNode> pNodes[6];
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[0]), "Node0")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[1]), "Node1")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[2]), "Node2")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[3]), "Node3")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[4]), "Node4")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[5]), "Node5")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[0]), L"Node0")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[1]), L"Node1")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[2]), L"Node2")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[3]), L"Node3")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[4]), L"Node4")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[5]), L"Node5")));
 
             // Build the following tree
             // Root

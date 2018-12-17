@@ -19,28 +19,28 @@ namespace std
 }
 
 //------------------------------------------------------------------------------------------------
-inline std::string to_string(ObjectType t)
+inline std::wstring to_string(ObjectType t)
 {
     switch (t)
     {
     case ObjectType::Unknown:
-        return "Unknown";
+        return L"Unknown";
     case ObjectType::Null:
-        return "Null";
+        return L"Null";
     case ObjectType::Scene:
-        return "Scene";
+        return L"Scene";
     case ObjectType::SceneGraphNode:
-        return "SceneGraphNode";
+        return L"SceneGraphNode";
     case ObjectType::Transform:
-        return "Transform";
+        return L"Transform";
     case ObjectType::Camera:
-        return "Camera";
+        return L"Camera";
     case ObjectType::ModelInstance:
-        return "ModelInstance";
+        return L"ModelInstance";
     case ObjectType::Light:
-        return "Light";
+        return L"Light";
     }
-    return "<invalid>";
+    return L"<invalid>";
 }
 
 //------------------------------------------------------------------------------------------------
@@ -73,10 +73,10 @@ public:
     CCanvas() = default;
     ~CCanvas();
 
-    std::map<std::string, CObjectName *> m_ObjectNames;
+    std::map<std::wstring, CObjectName *> m_ObjectNames;
     std::unordered_set<typename CCanvasObjectBase *> m_OutstandingObjects;
 
-    CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj)
+    CANVASMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, InterfaceId iid, _Outptr_ void **ppObj)
     {
         auto it = m_ObjectNames.find(szName);
         if (it != m_ObjectNames.end())
@@ -88,7 +88,7 @@ public:
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj);
     CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) final;
-    CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
+    CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
 
     void ReportObjectLeaks();
 };

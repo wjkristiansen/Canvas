@@ -13,7 +13,7 @@ public:
     CInnerGeneric<CSceneGraphNode> m_RootSceneGraphNode;
     CInnerGeneric<CObjectName> m_ObjectName;
 
-    CScene(CCanvas *pCanvas, _In_z_ PCSTR szName) :
+    CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
         CCanvasObjectBase(pCanvas),
         m_RootSceneGraphNode(this),
         m_ObjectName(this, szName, pCanvas)

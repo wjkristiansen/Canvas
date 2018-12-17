@@ -112,7 +112,7 @@ public:
     CInnerGeneric<CObjectName> m_ObjectName;
     CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
 
-    CCanvasObject(CCanvas *pCanvas, PCSTR szName) :
+    CCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
         CCanvasObjectBase(pCanvas),
         m_SceneGraphNode(this),
         m_ObjectName(this, szName, pCanvas)
