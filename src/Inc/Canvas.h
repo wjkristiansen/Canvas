@@ -211,6 +211,7 @@ enum class InterfaceId : unsigned
     XSkeleton,
     XIterator,
     XObjectName,
+    XGraphicsDevice,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -333,6 +334,12 @@ CANVAS_INTERFACE
 XScene : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XScene)
+};
+
+CANVAS_INTERFACE
+XGraphicsDevice : public XGeneric
+{
+    CANVAS_INTERFACE_DECLARE(XGraphicsDevice)
 };
 
 }
