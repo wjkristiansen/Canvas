@@ -10,8 +10,8 @@ class CScene :
     public CCanvasObjectBase
 {
 public:
-    CInnerGeneric<CSceneGraphNode> m_RootSceneGraphNode;
-    CInnerGeneric<CObjectName> m_ObjectName;
+    TInnerGeneric<CSceneGraphNode> m_RootSceneGraphNode;
+    TInnerGeneric<CObjectName> m_ObjectName;
 
     CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
         CCanvasObjectBase(pCanvas),

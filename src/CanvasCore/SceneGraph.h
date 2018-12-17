@@ -10,7 +10,7 @@ class CSceneGraphNode :
     public CInnerGenericBase
 {
 public:
-    using _ListType = std::vector<CCanvasPtr<CSceneGraphNode>>;
+    using _ListType = std::vector<TCanvasPtr<CSceneGraphNode>>;
     _ListType m_ChildList;
 
     CSceneGraphNode(XGeneric *pOuterObj) :
@@ -28,7 +28,7 @@ class CSceneGraphNodeIterator :
 {
 public:
     CSceneGraphNode::_ListType::iterator m_it;
-    CCanvasPtr<CSceneGraphNode> m_pNode;
+    TCanvasPtr<CSceneGraphNode> m_pNode;
 
     CSceneGraphNodeIterator(CSceneGraphNode *pNode) :
         m_pNode(pNode)
@@ -104,15 +104,15 @@ public:
 
 //------------------------------------------------------------------------------------------------
 template <>
-class CCanvasObject<ObjectType::SceneGraphNode> :
+class TCanvasObject<ObjectType::SceneGraphNode> :
     public XGeneric,
     public CCanvasObjectBase
 {
 public:
-    CInnerGeneric<CObjectName> m_ObjectName;
-    CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
+    TInnerGeneric<CObjectName> m_ObjectName;
+    TInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
 
-    CCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
+    TCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
         CCanvasObjectBase(pCanvas),
         m_SceneGraphNode(this),
         m_ObjectName(this, szName, pCanvas)
