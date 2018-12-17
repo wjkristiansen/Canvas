@@ -12,4 +12,6 @@ class CGraphicsDevice12 :
     CComPtr<ID3D12Device5> m_pD3DDevice;
 
     CGraphicsDevice12();
+
+    virtual Result Initialize();
 };
