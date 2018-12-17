@@ -1,0 +1,3 @@
+LIBRARY CanvasGraphics12
+EXPORTS
+	CreateGraphicsDevice12

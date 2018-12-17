@@ -6,12 +6,14 @@
 
 //------------------------------------------------------------------------------------------------
 class CGraphicsDevice12 :
-    public XGraphicsDevice,
-    public CGenericBase
+    public CGraphicsDevice
 {
+public:
     CComPtr<ID3D12Device5> m_pD3DDevice;
 
     CGraphicsDevice12();
 
     virtual Result Initialize();
 };
+
+extern Result CANVASAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice);

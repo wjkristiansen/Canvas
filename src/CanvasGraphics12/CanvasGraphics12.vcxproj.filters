@@ -39,4 +39,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="CanvasGraphics12.def">
+      <Filter>Source Files</Filter>
+    </None>
+  </ItemGroup>
 </Project>
