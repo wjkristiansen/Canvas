@@ -6,13 +6,13 @@
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
-class CGeneric : public _Base
+class TGeneric : public _Base
 {
     ULONG m_RefCount = 0;
 
 public:
     template<typename... Arguments>
-    CGeneric(Arguments&&... args) : _Base(args ...)
+    TGeneric(Arguments&&... args) : _Base(args ...)
     {
     }
 
@@ -70,12 +70,12 @@ public:
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
-class CInnerGeneric :
+class TInnerGeneric :
     public _Base
 {
 public:
     template<typename... Arguments>
-    CInnerGeneric(_In_ XGeneric *pOuterGeneric, Arguments... params) :
+    TInnerGeneric(_In_ XGeneric *pOuterGeneric, Arguments... params) :
         _Base(pOuterGeneric, params...)
     {
     }

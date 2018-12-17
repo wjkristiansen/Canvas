@@ -27,17 +27,17 @@ public:
 
 //------------------------------------------------------------------------------------------------
 template <>
-class CCanvasObject<ObjectType::Light> :
+class TCanvasObject<ObjectType::Light> :
     public XGeneric,
     public CCanvasObjectBase
 {
 public:
-    CInnerGeneric<CLight> m_Light;
-    CInnerGeneric<CTransform> m_Transform;
-    CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
-    CInnerGeneric<CObjectName> m_ObjectName;
+    TInnerGeneric<CLight> m_Light;
+    TInnerGeneric<CTransform> m_Transform;
+    TInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
+    TInnerGeneric<CObjectName> m_ObjectName;
 
-    CCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
+    TCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
         CCanvasObjectBase(pCanvas),
         m_Light(this),
         m_Transform(this),

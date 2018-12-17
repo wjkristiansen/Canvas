@@ -26,13 +26,13 @@ CANVASMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void *
 
 //------------------------------------------------------------------------------------------------
 template <>
-class CCanvasObject<ObjectType::Null> :
+class TCanvasObject<ObjectType::Null> :
     public XGeneric,
     public CCanvasObjectBase
 {
 public:
-    CInnerGeneric<CObjectName> m_ObjectName;
-    CCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
+    TInnerGeneric<CObjectName> m_ObjectName;
+    TCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
         CCanvasObjectBase(pCanvas),
         m_ObjectName(this, szName, pCanvas)
     {
@@ -62,8 +62,8 @@ CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
 {
     try
     {
-        CCanvasPtr<XGeneric> pObj;
-        pObj = new CGeneric<CScene>(this, L"SceneRoot"); // throw(std::bad_alloc)
+        TCanvasPtr<XGeneric> pObj;
+        pObj = new TGeneric<CScene>(this, L"SceneRoot"); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)
@@ -77,31 +77,31 @@ CANVASMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_
 {
     try
     {
-        CCanvasPtr<XGeneric> pObj;
+        TCanvasPtr<XGeneric> pObj;
         switch (type)
         {
         case ObjectType::Null:
-            pObj = new CGeneric<CCanvasObject<ObjectType::Null>>(this, szName); // throw(std::bad_alloc)
+            pObj = new TGeneric<TCanvasObject<ObjectType::Null>>(this, szName); // throw(std::bad_alloc)
             break;
 
         case ObjectType::SceneGraphNode:
-            pObj = new CGeneric<CCanvasObject<ObjectType::SceneGraphNode>>(this, szName); // throw(std::bad_alloc)
+            pObj = new TGeneric<TCanvasObject<ObjectType::SceneGraphNode>>(this, szName); // throw(std::bad_alloc)
             break;
 
         case ObjectType::Transform:
-            pObj = new CGeneric<CCanvasObject<ObjectType::Transform>>(this, szName); // throw(std::bad_alloc)
+            pObj = new TGeneric<TCanvasObject<ObjectType::Transform>>(this, szName); // throw(std::bad_alloc)
             break;
 
         case ObjectType::Light:
-            pObj = new CGeneric<CCanvasObject<ObjectType::Light>>(this, szName); // throw(std::bad_alloc)
+            pObj = new TGeneric<TCanvasObject<ObjectType::Light>>(this, szName); // throw(std::bad_alloc)
             break;
 
         case ObjectType::Camera:
-            pObj = new CGeneric<CCanvasObject<ObjectType::Camera>>(this, szName); // throw(std::bad_alloc)
+            pObj = new TGeneric<TCanvasObject<ObjectType::Camera>>(this, szName); // throw(std::bad_alloc)
             break;
 
         case ObjectType::ModelInstance:
-            pObj = new CGeneric<CCanvasObject<ObjectType::ModelInstance>>(this, szName); // throw(std::bad_alloc)
+            pObj = new TGeneric<TCanvasObject<ObjectType::ModelInstance>>(this, szName); // throw(std::bad_alloc)
             break;
         default:
             return Result::NoInterface;
@@ -146,7 +146,7 @@ Result CANVASAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
     {
         if (iid == XCanvas::IId)
         {
-            CCanvasPtr<CCanvas> pCanvas = new CGeneric<CCanvas>; // throw(bad_alloc)
+            TCanvasPtr<CCanvas> pCanvas = new TGeneric<CCanvas>; // throw(bad_alloc)
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }

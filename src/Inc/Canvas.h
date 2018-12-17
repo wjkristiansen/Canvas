@@ -49,13 +49,13 @@ CANVAS_INTERFACE XSkeleton;
 
 //------------------------------------------------------------------------------------------------
 template<class _Type>
-class CCanvasPtr
+class TCanvasPtr
 {
     _Type *m_p = nullptr;
 
 public:
-    CCanvasPtr() = default;
-    CCanvasPtr(_Type *p) :
+    TCanvasPtr() = default;
+    TCanvasPtr(_Type *p) :
         m_p(p)
     {
         if (m_p)
@@ -63,7 +63,7 @@ public:
             m_p->AddRef();
         }
     }
-    CCanvasPtr(const CCanvasPtr &o) :
+    TCanvasPtr(const TCanvasPtr &o) :
         m_p(o.m_p)
     {
         if (m_p)
@@ -71,13 +71,13 @@ public:
             m_p->AddRef();
         }
     }
-    CCanvasPtr(CCanvasPtr &&o) :
+    TCanvasPtr(TCanvasPtr &&o) :
         m_p(o.m_p)
     {
         o.m_p = nullptr;
     }
 
-    ~CCanvasPtr()
+    ~TCanvasPtr()
     {
         if (m_p)
         {
@@ -90,7 +90,7 @@ public:
         m_p = nullptr;
     }
 
-    CCanvasPtr &operator=(_Type *p)
+    TCanvasPtr &operator=(_Type *p)
     {
         if (m_p)
         {
@@ -106,7 +106,7 @@ public:
         return *this;
     }
 
-    CCanvasPtr &operator=(const CCanvasPtr &o)
+    TCanvasPtr &operator=(const TCanvasPtr &o)
     {
         auto temp = m_p;
 
@@ -128,7 +128,7 @@ public:
         return *this;
     }
 
-    CCanvasPtr &operator=(CCanvasPtr &&o)
+    TCanvasPtr &operator=(TCanvasPtr &&o)
     {
         if (m_p != o.m_p)
         {

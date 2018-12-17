@@ -19,7 +19,7 @@ public:
 
 //------------------------------------------------------------------------------------------------
 template<ObjectType _Type>
-class CCanvasObject
+class TCanvasObject
 {
     ObjectType GetType() const override { return _Type; }
 };
