@@ -27,16 +27,16 @@ public:
 
 //------------------------------------------------------------------------------------------------
 template <>
-class CCanvasObject<ObjectType::Transform> :
+class TCanvasObject<ObjectType::Transform> :
     public XGeneric,
     public CCanvasObjectBase
 {
 public:
-    CInnerGeneric<CTransform> m_Transform;
-    CInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
-    CInnerGeneric<CObjectName> m_ObjectName;
+    TInnerGeneric<CTransform> m_Transform;
+    TInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
+    TInnerGeneric<CObjectName> m_ObjectName;
 
-    CCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
+    TCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
         CCanvasObjectBase(pCanvas),
         m_Transform(this),
         m_SceneGraphNode(this),
