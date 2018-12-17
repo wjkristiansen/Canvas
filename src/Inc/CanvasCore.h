@@ -273,7 +273,7 @@ CANVAS_INTERFACE
 XObjectName : public XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XObjectName)
-    CANVASMETHOD_(PCSTR, GetName)() = 0;
+    CANVASMETHOD_(PCWSTR, GetName)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -283,8 +283,8 @@ XCanvas : public XGeneric
     CANVAS_INTERFACE_DECLARE(XCanvas)
 
     CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
-    CANVASMETHOD(GetNamedObject)(_In_z_ PCSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
+    CANVASMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

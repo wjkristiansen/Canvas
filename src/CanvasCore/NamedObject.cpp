@@ -5,9 +5,9 @@
 #include "stdafx.h"
 
 //------------------------------------------------------------------------------------------------
-CObjectName::CObjectName(XGeneric *pOuterGeneric, PCSTR szName, CCanvas *pCanvas) :
+CObjectName::CObjectName(XGeneric *pOuterGeneric, PCWSTR szName, CCanvas *pCanvas) :
     CInnerGenericBase(pOuterGeneric),
-    m_Name(szName ? szName : ""),
+    m_Name(szName ? szName : L""),
     m_pCanvas(pCanvas)
 {
     if (!m_Name.empty())
@@ -26,7 +26,7 @@ CObjectName::~CObjectName()
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CObjectName::SetName(PCSTR szName)
+CANVASMETHODIMP CObjectName::SetName(PCWSTR szName)
 {
     CCanvasObjectBase *pCanvasObject = reinterpret_cast<CCanvasObjectBase *>(m_pOuterGeneric);
     CCanvas *pCanvas = pCanvasObject->m_pCanvas;
@@ -37,7 +37,7 @@ CANVASMETHODIMP CObjectName::SetName(PCSTR szName)
         pCanvas->m_ObjectNames.erase(m_Name);
     }
 
-    m_Name = std::string(szName);
+    m_Name = std::wstring(szName);
 
     // Add new entry
     if (!m_Name.empty())

@@ -12,19 +12,19 @@ class CObjectName :
     public CInnerGenericBase
 {
 public:
-    std::string m_Name;
+    std::wstring m_Name;
     CCanvas *m_pCanvas; // Weak pointer
 
-    CObjectName(XGeneric *pOuterGeneric, PCSTR szName, CCanvas *pCanvas);
+    CObjectName(XGeneric *pOuterGeneric, PCWSTR szName, CCanvas *pCanvas);
 
     virtual ~CObjectName();
 
-    CANVASMETHOD_(PCSTR, GetName)() final
+    CANVASMETHOD_(PCWSTR, GetName)() final
     {
         return m_Name.c_str();
     }
 
-    CANVASMETHOD(SetName)(PCSTR szName) final;
+    CANVASMETHOD(SetName)(PCWSTR szName) final;
 
     CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {

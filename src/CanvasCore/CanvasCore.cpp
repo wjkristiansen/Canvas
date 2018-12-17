@@ -32,7 +32,7 @@ class CCanvasObject<ObjectType::Null> :
 {
 public:
     CInnerGeneric<CObjectName> m_ObjectName;
-    CCanvasObject(CCanvas *pCanvas, PCSTR szName) :
+    CCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
         CCanvasObjectBase(pCanvas),
         m_ObjectName(this, szName, pCanvas)
     {
@@ -63,7 +63,7 @@ CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
     try
     {
         CCanvasPtr<XGeneric> pObj;
-        pObj = new CGeneric<CScene>(this, "SceneRoot"); // throw(std::bad_alloc)
+        pObj = new CGeneric<CScene>(this, L"SceneRoot"); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)
@@ -73,7 +73,7 @@ CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
+CANVASMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName)
 {
     try
     {
@@ -119,21 +119,21 @@ void CCanvas::ReportObjectLeaks()
 {
     for (CCanvasObjectBase *pObject : m_OutstandingObjects)
     {
-        std::cout << "Leaked object: ";
-        std::cout << "Type=" << to_string(pObject->GetType()) << ", ";
+        std::wcout << L"Leaked object: ";
+        std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
         XObjectName *pObjectName;
         if (Succeeded(pObject->InternalQueryInterface(CANVAS_PPV_ARGS(&pObjectName))))
         {
             pObjectName->Release();
-            std::cout << "Name=\"" << pObjectName->GetName() << "\", ";
+            std::wcout << L"Name=\"" << pObjectName->GetName() << L"\", ";
         }
         XGeneric *pXGeneric;
         if (Succeeded(pObject->InternalQueryInterface(CANVAS_PPV_ARGS(&pXGeneric))))
         {
             ULONG RefCount = pXGeneric->Release();
-            std::cout << "RefCount=" << RefCount;
+            std::wcout << L"RefCount=" << RefCount;
         }
-        std::cout << std::endl;
+        std::wcout << std::endl;
     }
 }
 
