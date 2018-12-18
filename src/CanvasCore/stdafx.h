@@ -42,4 +42,4 @@ using namespace Gem;
 #include "GraphicsDevice.h"
 #include "CanvasCore.h"
 
-#include "GraphicsDevice12.h"
+#include "CanvasGraphics12.h"

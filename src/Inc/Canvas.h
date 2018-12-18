@@ -89,6 +89,7 @@ struct CANVAS_GRAPHICS_OPTIONS
 };
 
 //------------------------------------------------------------------------------------------------
+GEM_INTERFACE XIterator : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
 

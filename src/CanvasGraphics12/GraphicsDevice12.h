@@ -15,5 +15,3 @@ public:
 
     virtual Result Initialize();
 };
-
-extern Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice);
