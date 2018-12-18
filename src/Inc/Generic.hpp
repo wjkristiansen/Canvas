@@ -40,6 +40,128 @@ enum class Result : UINT32
 };
 
 //------------------------------------------------------------------------------------------------
+template<class _Type>
+class TGomPtr
+{
+    _Type *m_p = nullptr;
+
+public:
+    TGomPtr() = default;
+    TGomPtr(_Type *p) :
+        m_p(p)
+    {
+        if (m_p)
+        {
+            m_p->AddRef();
+        }
+    }
+    TGomPtr(const TGomPtr &o) :
+        m_p(o.m_p)
+    {
+        if (m_p)
+        {
+            m_p->AddRef();
+        }
+    }
+    TGomPtr(TGomPtr &&o) :
+        m_p(o.m_p)
+    {
+        o.m_p = nullptr;
+    }
+
+    ~TGomPtr()
+    {
+        if (m_p)
+        {
+            m_p->Release();
+        }
+    }
+
+    void Detach()
+    {
+        m_p = nullptr;
+    }
+
+    TGomPtr &operator=(_Type *p)
+    {
+        if (m_p)
+        {
+            m_p->Release();
+        }
+
+        m_p = p;
+        if (p)
+        {
+            m_p->AddRef();
+        }
+
+        return *this;
+    }
+
+    TGomPtr &operator=(const TGomPtr &o)
+    {
+        auto temp = m_p;
+
+        m_p = o.m_p;
+
+        if (temp != m_p)
+        {
+            if (m_p)
+            {
+                m_p->AddRef();
+            }
+
+            if (temp)
+            {
+                temp->Release();
+            }
+        }
+
+        return *this;
+    }
+
+    TGomPtr &operator=(TGomPtr &&o)
+    {
+        if (m_p != o.m_p)
+        {
+            auto temp = m_p;
+
+            m_p = o.m_p;
+
+            if (temp)
+            {
+                temp->Release();
+            }
+        }
+        o.m_p = nullptr;
+
+        return *this;
+    }
+
+    _Type **operator&()
+    {
+        return &m_p;
+    }
+
+    _Type &operator*() const
+    {
+        return *m_p;
+    }
+
+    _Type *Get() const { return m_p; }
+
+    operator _Type *() const { return m_p; }
+    
+    _Type *operator->() const { return m_p; }
+};
+
+//------------------------------------------------------------------------------------------------
+inline bool Failed(GOM::Result result)
+{
+    return result >= GOM::Result::Fail;
+}
+
+//------------------------------------------------------------------------------------------------
 template<class _Base>
 class TGeneric : public _Base
 {
