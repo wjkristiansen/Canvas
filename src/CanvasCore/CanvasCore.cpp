@@ -7,12 +7,12 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **ppObj)
+GOMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **ppObj)
 {
     *ppObj = nullptr;
     switch (iid)
     {
-    case InterfaceId::XCanvas:
+    case XCanvas::IId:
         *ppObj = this;
         AddRef();
         break;
@@ -38,11 +38,11 @@ public:
     {
     }
 
-    CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::Null; }
+    GOMMETHOD_(ObjectType, GetType)() const { return ObjectType::Null; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
-        if (InterfaceId::XObjectName == iid)
+        if (XObjectName::IId == iid)
         {
             return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
@@ -58,7 +58,7 @@ CCanvas::~CCanvas()
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
+GOMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
 {
     try
     {
@@ -73,7 +73,7 @@ CANVASMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName)
+GOMMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName)
 {
     try
     {
@@ -122,13 +122,13 @@ void CCanvas::ReportObjectLeaks()
         std::wcout << L"Leaked object: ";
         std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
         XObjectName *pObjectName;
-        if (Succeeded(pObject->InternalQueryInterface(CANVAS_PPV_ARGS(&pObjectName))))
+        if (Succeeded(pObject->InternalQueryInterface(GOM_IID_PPV_ARGS(&pObjectName))))
         {
             pObjectName->Release();
             std::wcout << L"Name=\"" << pObjectName->GetName() << L"\", ";
         }
         XGeneric *pXGeneric;
-        if (Succeeded(pObject->InternalQueryInterface(CANVAS_PPV_ARGS(&pXGeneric))))
+        if (Succeeded(pObject->InternalQueryInterface(GOM_IID_PPV_ARGS(&pXGeneric))))
         {
             ULONG RefCount = pXGeneric->Release();
             std::wcout << L"RefCount=" << RefCount;
@@ -138,7 +138,7 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result CANVASAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
+Result GOMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 {
     *ppCanvas = nullptr;
 

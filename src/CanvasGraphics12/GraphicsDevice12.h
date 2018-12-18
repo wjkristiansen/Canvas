@@ -16,4 +16,4 @@ public:
     virtual Result Initialize();
 };
 
-extern Result CANVASAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice);
+extern Result GOMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice);

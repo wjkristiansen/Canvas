@@ -14,7 +14,7 @@ namespace CanvasUnitTest
         TEST_METHOD(SimpleSortedListTest)
         {
             TCanvasPtr<XCanvas> pCanvas;
-            Canvas::Result result = CreateCanvas(XCanvas::IId, (void **) &pCanvas);
+            Result result = CreateCanvas(XCanvas::IId, (void **) &pCanvas);
         }
     };
 }

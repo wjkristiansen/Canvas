@@ -19,16 +19,16 @@ public:
 
     virtual ~CObjectName();
 
-    CANVASMETHOD_(PCWSTR, GetName)() final
+    GOMMETHOD_(PCWSTR, GetName)() final
     {
         return m_Name.c_str();
     }
 
-    CANVASMETHOD(SetName)(PCWSTR szName) final;
+    GOMMETHOD(SetName)(PCWSTR szName) final;
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
-        if (InterfaceId::XObjectName == iid)
+        if (XObjectName::IId == iid)
         {
             *ppObj = this;
             AddRef();

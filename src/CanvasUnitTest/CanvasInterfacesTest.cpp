@@ -18,22 +18,22 @@ namespace CanvasUnitTest
         {
             // Create XCanvas object
             TCanvasPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(CreateCanvas(CANVAS_PPV_ARGS(&pCanvas))));
+            Assert::IsTrue(Succeeded(CreateCanvas(GOM_IID_PPV_ARGS(&pCanvas))));
 
             // Create XScene object
             TCanvasPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(CANVAS_PPV_ARGS(&pScene))));
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(GOM_IID_PPV_ARGS(&pScene))));
 
             // Create transform XSceneGraphNode
             TCanvasPtr<XTransform> pTransform;
             TCanvasPtr<XSceneGraphNode> pSceneGraphNode;
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pSceneGraphNode), L"Transform")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pSceneGraphNode), L"Transform")));
             Assert::IsTrue(Succeeded(pSceneGraphNode->QueryInterface(&pTransform)));
 
             // Create a camera XSceneGraphNode
             TCanvasPtr<XGeneric> pGeneric;
             const wchar_t szCameraName[] = L"Camera";
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Camera, CANVAS_PPV_ARGS(&pGeneric), szCameraName)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Camera, GOM_IID_PPV_ARGS(&pGeneric), szCameraName)));
 
             // Make sure QI works for all the camera parts
             TCanvasPtr<XObjectName> pCameraName;
@@ -58,20 +58,20 @@ namespace CanvasUnitTest
         {
             // Create XCanvas object
             TCanvasPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(CreateCanvas(CANVAS_PPV_ARGS(&pCanvas))));
+            Assert::IsTrue(Succeeded(CreateCanvas(GOM_IID_PPV_ARGS(&pCanvas))));
 
             // Create XScene object
             TCanvasPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(CANVAS_PPV_ARGS(&pScene))));
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(GOM_IID_PPV_ARGS(&pScene))));
 
             // Create nodes
             TCanvasPtr<XSceneGraphNode> pNodes[6];
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[0]), L"Node0")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[1]), L"Node1")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[2]), L"Node2")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[3]), L"Node3")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[4]), L"Node4")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pNodes[5]), L"Node5")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pNodes[0]), L"Node0")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pNodes[1]), L"Node1")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pNodes[2]), L"Node2")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pNodes[3]), L"Node3")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pNodes[4]), L"Node4")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pNodes[5]), L"Node5")));
 
             // Build the following tree
             // Root
@@ -94,7 +94,7 @@ namespace CanvasUnitTest
             auto VerifyChildNode = [](XIterator *pIterator, XSceneGraphNode *pCompare)
             {
                 TCanvasPtr<XSceneGraphNode> pNode;
-                Assert::IsTrue(Succeeded(pIterator->Select(CANVAS_PPV_ARGS(&pNode))));
+                Assert::IsTrue(Succeeded(pIterator->Select(GOM_IID_PPV_ARGS(&pNode))));
                 Assert::IsTrue(pNode.Get() == pCompare);
             };
 

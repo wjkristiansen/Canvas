@@ -11,7 +11,7 @@ class CCanvasObjectBase :
 public:
     class CCanvas *m_pCanvas = nullptr;
 
-    CANVASMETHOD_(ObjectType, GetType)() const = 0;
+    GOMMETHOD_(ObjectType, GetType)() const = 0;
 
     CCanvasObjectBase(CCanvas *pCanvas);
     ~CCanvasObjectBase();

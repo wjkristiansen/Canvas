@@ -22,11 +22,13 @@
 #include <iostream>
 
 // reference additional headers your program requires here
+#include <Generic.hpp>
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
 
 using namespace Canvas;
-#include "Generic.hpp"
+using namespace GOM;
+
 #include "CanvasObject.h"
 #include "NamedObject.h"
 #include "SceneGraph.h"

@@ -10,9 +10,6 @@
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Generic.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="NamedObject.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -31,9 +28,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="CanvasObject.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Generic.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Model.h">

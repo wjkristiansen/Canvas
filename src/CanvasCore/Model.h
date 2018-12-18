@@ -12,9 +12,9 @@ class CModelInstance :
 public:
     CModelInstance(XGeneric *pOuterObj) :
         CInnerGenericBase(pOuterObj) {}
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
-        if (InterfaceId::XModelInstance == iid)
+        if (XModelInstance::IId == iid)
         {
             *ppObj = this;
             AddRef(); // This will actually AddRef the outer generic
@@ -45,23 +45,23 @@ public:
         m_ObjectName(this, szName, pCanvas)
     {}
 
-    CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::ModelInstance; }
+    GOMMETHOD_(ObjectType, GetType)() const { return ObjectType::ModelInstance; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
-        if (InterfaceId::XModelInstance == iid)
+        if (XModelInstance::IId == iid)
         {
             return m_ModelInstance.InternalQueryInterface(iid, ppObj);
         }
-        if (InterfaceId::XObjectName == iid)
+        if (XObjectName::IId == iid)
         {
             return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
-        if (InterfaceId::XTransform == iid)
+        if (XTransform::IId == iid)
         {
             return m_Transform.InternalQueryInterface(iid, ppObj);
         }
-        if (InterfaceId::XSceneGraphNode == iid)
+        if (XSceneGraphNode::IId == iid)
         {
             return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
         }

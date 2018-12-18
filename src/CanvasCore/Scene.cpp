@@ -7,9 +7,9 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **ppUnk)
+GOMMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **ppUnk)
 {
-    if (iid == InterfaceId::XSceneGraphNode)
+    if (iid == XSceneGraphNode::IId)
     {
         *ppUnk = this;
         AddRef(); // This will actually AddRef the outer generic
@@ -20,7 +20,7 @@ CANVASMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
+GOMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
 {
     try
     {
@@ -34,7 +34,7 @@ CANVASMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CSceneGraphNode::CreateChildIterator(_Outptr_ XIterator **ppIterator)
+GOMMETHODIMP CSceneGraphNode::CreateChildIterator(_Outptr_ XIterator **ppIterator)
 {
     try
     {
