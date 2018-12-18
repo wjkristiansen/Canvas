@@ -157,3 +157,33 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 
     return Result::Success;
 }
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions)
+{
+    Result result = Result::NotImplemented;
+
+    switch (pGraphicsOptions->Subsystem)
+    {
+    case GraphicsSubsystem::D3D12:
+        result = SetupD3D12(pGraphicsOptions);
+        break;
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
+Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions)
+{
+    TGemPtr<CGraphicsDevice> pGraphicsDevice;
+    try
+    {
+        ThrowGemError(CreateGraphicsDevice12(&pGraphicsDevice));
+        return Result::Success;
+    }
+    catch (GemError &gomError)
+    {
+        return gomError.Result();
+    }
+}

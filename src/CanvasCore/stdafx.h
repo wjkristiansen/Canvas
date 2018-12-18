@@ -10,6 +10,8 @@
 #define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
 // Windows Header Files
 #include <windows.h>
+#include <atlbase.h>
+#include <d3d12.h>
 
 #include <new>
 #include <vector>
@@ -37,4 +39,7 @@ using namespace Gem;
 #include "Light.h"
 #include "Model.h"
 #include "Scene.h"
+#include "GraphicsDevice.h"
 #include "CanvasCore.h"
+
+#include "CanvasGraphics12.h"

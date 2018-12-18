@@ -70,6 +70,25 @@ enum class ObjectType : unsigned
 };
 
 //------------------------------------------------------------------------------------------------
+enum class GraphicsSubsystem
+{
+    Null = 0,
+    D3D12 = 1,
+    D3D11 = 2,
+    Vulcan = 3,
+    Metal = 4,
+};
+
+//------------------------------------------------------------------------------------------------
+struct CANVAS_GRAPHICS_OPTIONS
+{
+    GraphicsSubsystem Subsystem;
+    bool Windowed;
+    UINT DisplayWidth;
+    UINT DisplayHeight;
+};
+
+//------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
@@ -111,6 +130,8 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(CreateObject)(ObjectType type, Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+
+    GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
