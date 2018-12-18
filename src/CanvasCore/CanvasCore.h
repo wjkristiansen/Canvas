@@ -76,7 +76,7 @@ public:
     std::map<std::wstring, CObjectName *> m_ObjectNames;
     std::unordered_set<typename CCanvasObjectBase *> m_OutstandingObjects;
 
-    GOMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, InterfaceId iid, _Outptr_ void **ppObj)
     {
         auto it = m_ObjectNames.find(szName);
         if (it != m_ObjectNames.end())
@@ -86,9 +86,9 @@ public:
         return Result::NotFound;
     }
 
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj);
-    GOMMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) final;
-    GOMMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj);
+    GEMMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) final;
+    GEMMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
 
     void ReportObjectLeaks();
 };

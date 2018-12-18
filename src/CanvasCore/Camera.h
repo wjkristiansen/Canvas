@@ -13,7 +13,7 @@ class CCamera :
 public:
     CCamera(XGeneric *pOuterObj) :
         CInnerGenericBase(pOuterObj) {}
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (XCamera::IId == iid)
         {
@@ -46,9 +46,9 @@ public:
         m_ObjectName(this, szName, pCanvas)
     {}
 
-    GOMMETHOD_(ObjectType, GetType)() const { return ObjectType::Camera; }
+    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::Camera; }
 
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (XCamera::IId == iid)
         {

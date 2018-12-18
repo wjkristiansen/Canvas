@@ -90,7 +90,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;CANVASGRAPHICS12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\CanvasCore;..\..\..\GOM\Src\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\CanvasCore;..\..\..\GEM\Src\Inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -107,7 +107,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;CANVASGRAPHICS12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\CanvasCore;..\..\..\GOM\Src\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\CanvasCore;..\..\..\GEM\Src\Inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -126,7 +126,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;CANVASGRAPHICS12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\CanvasCore;..\..\..\GOM\Src\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\CanvasCore;..\..\..\GEM\Src\Inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -147,7 +147,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;CANVASGRAPHICS12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\CanvasCore;..\..\..\GOM\Src\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\CanvasCore;..\..\..\GEM\Src\Inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

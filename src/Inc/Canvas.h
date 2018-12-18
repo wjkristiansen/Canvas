@@ -7,34 +7,34 @@
 namespace Canvas
 {
 // Canvas core interfaces
-GOM_INTERFACE XCanvas;
+GEM_INTERFACE XCanvas;
 
-// Scene GOM_INTERFACE
-GOM_INTERFACE XScene;
+// Scene GEM_INTERFACE
+GEM_INTERFACE XScene;
 
 // Scene graph node
-GOM_INTERFACE XSceneGraphNode;
+GEM_INTERFACE XSceneGraphNode;
 
-// Camera GOM_INTERFACEs
-GOM_INTERFACE XCamera;
+// Camera GEM_INTERFACEs
+GEM_INTERFACE XCamera;
 
-// Light GOM_INTERFACEs
-GOM_INTERFACE XLight;
+// Light GEM_INTERFACEs
+GEM_INTERFACE XLight;
 
-// Transform GOM_INTERFACEs
-GOM_INTERFACE XTransform;
+// Transform GEM_INTERFACEs
+GEM_INTERFACE XTransform;
 
 // Assets
-GOM_INTERFACE XTexture;
-GOM_INTERFACE XMaterial;
-GOM_INTERFACE XMesh;
-GOM_INTERFACE XAmination;
-GOM_INTERFACE XSkeleton;
+GEM_INTERFACE XTexture;
+GEM_INTERFACE XMaterial;
+GEM_INTERFACE XMesh;
+GEM_INTERFACE XAmination;
+GEM_INTERFACE XSkeleton;
 
 //------------------------------------------------------------------------------------------------
-inline bool Succeeded(GOM::Result result)
+inline bool Succeeded(Gem::Result result)
 {
-    return result < GOM::Result::Fail;
+    return result < Gem::Result::Fail;
 }
 
 enum CanvasIId
@@ -70,94 +70,94 @@ enum class ObjectType : unsigned
 };
 
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE XIterator : public GOM::XGeneric
+GEM_INTERFACE XIterator : public Gem::XGeneric
 {
-    GOM_INTERFACE_DECLARE(CanvasIId_XIterator);
+    GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
 
     // Resets the iterator to the start of the collection
-    GOMMETHOD(Reset)() = 0;
+    GEMMETHOD(Reset)() = 0;
 
     // Returns true if the the iterator is at the end of the collection
-    GOMMETHOD_(bool, IsAtEnd)() = 0;
+    GEMMETHOD_(bool, IsAtEnd)() = 0;
 
     // Moves the iterator to the next element
-    GOMMETHOD(MoveNext)() = 0;
+    GEMMETHOD(MoveNext)() = 0;
 
     // Moves the iterator to the previous element
-    GOMMETHOD(MovePrev)() = 0;
+    GEMMETHOD(MovePrev)() = 0;
 
     // QI's the current element (if exists)
-    GOMMETHOD(Select)(GOM::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GEMMETHOD(Select)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     
     // Removes the current element and the iterator to the next element
-    GOMMETHOD(Prune)() = 0;
+    GEMMETHOD(Prune)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE
-XObjectName : public GOM::XGeneric
+GEM_INTERFACE
+XObjectName : public Gem::XGeneric
 {
-    GOM_INTERFACE_DECLARE(CanvasIId_XObjectName);
+    GEM_INTERFACE_DECLARE(CanvasIId_XObjectName);
 
-    GOMMETHOD_(PCWSTR, GetName)() = 0;
+    GEMMETHOD_(PCWSTR, GetName)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE
-XCanvas : public GOM::XGeneric
+GEM_INTERFACE
+XCanvas : public Gem::XGeneric
 {
-    GOM_INTERFACE_DECLARE(CanvasIId_XCanvas);
+    GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
-    GOMMETHOD(CreateScene)(GOM::InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    GOMMETHOD(CreateObject)(ObjectType type, GOM::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
-    GOMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, GOM::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GEMMETHOD(CreateObject)(ObjectType type, Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
+    GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE
-XModelInstance : public GOM::XGeneric
+GEM_INTERFACE
+XModelInstance : public Gem::XGeneric
 {
-    GOM_INTERFACE_DECLARE(CanvasIId_XModelInstance);
+    GEM_INTERFACE_DECLARE(CanvasIId_XModelInstance);
 };
 
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE
-XCamera : public GOM::XGeneric
+GEM_INTERFACE
+XCamera : public Gem::XGeneric
 {
-    GOM_INTERFACE_DECLARE(CanvasIId_XCamera);
+    GEM_INTERFACE_DECLARE(CanvasIId_XCamera);
 };
 
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE
-XLight : public GOM::XGeneric
+GEM_INTERFACE
+XLight : public Gem::XGeneric
 {
-    GOM_INTERFACE_DECLARE(CanvasIId_XLight);
+    GEM_INTERFACE_DECLARE(CanvasIId_XLight);
 };
 
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE
-XTransform : public GOM::XGeneric
+GEM_INTERFACE
+XTransform : public Gem::XGeneric
 {
-    GOM_INTERFACE_DECLARE(CanvasIId_XTransform);
+    GEM_INTERFACE_DECLARE(CanvasIId_XTransform);
 };
 
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE
-XSceneGraphNode : public GOM::XGeneric
+GEM_INTERFACE
+XSceneGraphNode : public Gem::XGeneric
 {
-    GOM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
-    GOMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
-    GOMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) = 0;
+    GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
+    GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
+    GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE
-XScene : public GOM::XGeneric
+GEM_INTERFACE
+XScene : public Gem::XGeneric
 {
-    GOM_INTERFACE_DECLARE(CanvasIId_XScene);
+    GEM_INTERFACE_DECLARE(CanvasIId_XScene);
 };
 
 }
 
-extern GOM::Result GOMAPI CreateCanvas(GOM::InterfaceId iid, _Outptr_ void **ppCanvas);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas);
 
