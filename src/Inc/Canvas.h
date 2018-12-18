@@ -70,6 +70,25 @@ enum class ObjectType : unsigned
 };
 
 //------------------------------------------------------------------------------------------------
+enum class GraphicsSubsystem
+{
+    Null = 0,
+    D3D12 = 1,
+    D3D11 = 2,
+    Vulcan = 3,
+    Metal = 4,
+};
+
+//------------------------------------------------------------------------------------------------
+struct CANVAS_GRAPHICS_OPTIONS
+{
+    GraphicsSubsystem Subsystem;
+    bool Windowed;
+    UINT DisplayWidth;
+    UINT DisplayHeight;
+};
+
+//------------------------------------------------------------------------------------------------
 GOM_INTERFACE XIterator : public GOM::XGeneric
 {
     GOM_INTERFACE_DECLARE(CanvasIId_XIterator);
@@ -111,6 +130,8 @@ XCanvas : public GOM::XGeneric
     GOMMETHOD(CreateScene)(GOM::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GOMMETHOD(CreateObject)(ObjectType type, GOM::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
     GOMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, GOM::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+
+    GOMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

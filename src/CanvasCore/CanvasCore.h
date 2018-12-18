@@ -5,20 +5,6 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-namespace std
-{
-    template<>
-    class hash<InterfaceId>
-    {
-    public:
-        size_t operator()(InterfaceId iid) const
-        {
-            return static_cast<size_t>(iid);
-        }
-    };
-}
-
-//------------------------------------------------------------------------------------------------
 inline std::wstring to_string(ObjectType t)
 {
     switch (t)
@@ -41,27 +27,6 @@ inline std::wstring to_string(ObjectType t)
         return L"Light";
     }
     return L"<invalid>";
-}
-
-//------------------------------------------------------------------------------------------------
-class CanvasError
-{
-    Result m_result;
-public:
-    operator CanvasError() = delete;
-    CanvasError(Result result) :
-        m_result(result) {}
-
-    Result Result() const { return m_result; }
-};
-
-//------------------------------------------------------------------------------------------------
-inline void ThrowFailure(Result result)
-{
-    if (Failed(result))
-    {
-        throw(CanvasError(result));
-    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -90,5 +55,12 @@ public:
     GOMMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) final;
     GOMMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
 
+    GOMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions) final;
+
+    Result SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions);
+
     void ReportObjectLeaks();
+
+public:
+    TGomPtr<CGraphicsDevice> m_pGraphicsDevice;
 };
