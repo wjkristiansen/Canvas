@@ -6,12 +6,12 @@
 
 #define GOMAPI __stdcall
 #define GOMNOTHROW __declspec(nothrow)
-#define GOMMETHOD(method) virtual GOMNOTHROW Canvas::Result GOMAPI method
+#define GOMMETHOD(method) virtual GOMNOTHROW GOM::Result GOMAPI method
 #define GOMMETHOD_(retType, method) virtual GOMNOTHROW retType GOMAPI method
-#define GOMMETHODIMP Canvas::Result
+#define GOMMETHODIMP GOM::Result
 #define GOMMETHODIMP_(retType) retType
 #define GOM_INTERFACE struct
-#define GOM_INTERFACE_DECLARE(XFace, iid) const InterfaceId GIID_##XFace = iid;
+#define GOM_INTERFACE_DECLARE(iid) static const GOM::InterfaceId IId = iid
 
 #define GOM_IID_PPV_ARGS(ppObj) \
     std::remove_reference_t<decltype(**ppObj)>::IId, reinterpret_cast<void **>(ppObj)
@@ -20,7 +20,24 @@ namespace GOM
 {
 typedef UINT InterfaceId;
 
-const InterfaceId GIID_XGeneric = 0xffffffff;
+// Forward decl XGeneric
+GOM_INTERFACE XGeneric;
+
+//------------------------------------------------------------------------------------------------
+enum class Result : UINT32
+{
+    Success = 0,
+    End = 1,
+    Fail = 0x80000000, // Must be first failure
+    InvalidArg,
+    NotFound,
+    OutOfMemory,
+    NoInterface,
+    BadPointer,
+    NotImplemented,
+    DuplicateKey,
+    Uninitialized,
+};
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
@@ -53,7 +70,7 @@ public:
     {
         auto result = InterlockedDecrement(&m_RefCount);
 
-        if (GIID_XGeneric == result)
+        if (XGeneric::IId == result)
         {
             delete(this);
         }
@@ -75,7 +92,7 @@ public:
 
     GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
-        if (GIID_XGeneric == iid)
+        if (XGeneric::IId == iid)
         {
             *ppObj = reinterpret_cast<XGeneric *>(this);
             AddRef();
@@ -142,9 +159,17 @@ public:
 //------------------------------------------------------------------------------------------------
 GOM_INTERFACE XGeneric
 {
+    GOM_INTERFACE_DECLARE(0xffffffffU);
+
     GOMMETHOD_(ULONG, AddRef)() = 0;
     GOMMETHOD_(ULONG, Release)() = 0;
     GOMMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
+
+    template<class _XFace>
+    GOM::Result QueryInterface(_XFace **ppObj)
+    {
+        return QueryInterface(_XFace::IId, reinterpret_cast<void **>(ppObj));
+    }
 };
 
 }
