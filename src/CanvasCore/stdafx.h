@@ -24,12 +24,12 @@
 #include <iostream>
 
 // reference additional headers your program requires here
-#include <Generic.hpp>
+#include <Gem.hpp>
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
 
 using namespace Canvas;
-using namespace GOM;
+using namespace Gem;
 
 #include "CanvasObject.h"
 #include "NamedObject.h"

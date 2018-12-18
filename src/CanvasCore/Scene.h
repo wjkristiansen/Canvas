@@ -20,9 +20,9 @@ public:
     {
     }
 
-    GOMMETHOD_(ObjectType, GetType)() const final { return ObjectType::Scene; }
+    GEMMETHOD_(ObjectType, GetType)() const final { return ObjectType::Scene; }
 
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (XScene::IId == iid)
         {

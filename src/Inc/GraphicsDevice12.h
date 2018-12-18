@@ -16,4 +16,4 @@ public:
     virtual Result Initialize();
 };
 
-extern Result GOMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice);
+extern Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice);

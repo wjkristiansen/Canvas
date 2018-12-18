@@ -10,15 +10,15 @@ class CSceneGraphNode :
     public CInnerGenericBase
 {
 public:
-    using _ListType = std::vector<TGomPtr<CSceneGraphNode>>;
+    using _ListType = std::vector<TGemPtr<CSceneGraphNode>>;
     _ListType m_ChildList;
 
     CSceneGraphNode(XGeneric *pOuterObj) :
         CInnerGenericBase(pOuterObj) {}
 
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final;
-    GOMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
-    GOMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) final;
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final;
+    GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
+    GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) final;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -28,7 +28,7 @@ class CSceneGraphNodeIterator :
 {
 public:
     CSceneGraphNode::_ListType::iterator m_it;
-    TGomPtr<CSceneGraphNode> m_pNode;
+    TGemPtr<CSceneGraphNode> m_pNode;
 
     CSceneGraphNodeIterator(CSceneGraphNode *pNode) :
         m_pNode(pNode)
@@ -36,18 +36,18 @@ public:
         m_it = pNode->m_ChildList.begin();
     }
 
-    GOMMETHOD_(bool, IsAtEnd)() final
+    GEMMETHOD_(bool, IsAtEnd)() final
     {
         return m_it == m_pNode->m_ChildList.end();
     }
 
-    GOMMETHOD(Reset)() final
+    GEMMETHOD(Reset)() final
     {
         m_it = m_pNode->m_ChildList.begin();
         return Result::Success;
     }
 
-    GOMMETHOD(MoveNext)() final
+    GEMMETHOD(MoveNext)() final
     {
         if (m_it != m_pNode->m_ChildList.end())
         {
@@ -58,7 +58,7 @@ public:
         return Result::End;
     }
 
-    GOMMETHOD(MovePrev)() final
+    GEMMETHOD(MovePrev)() final
     {
         if (m_it != m_pNode->m_ChildList.begin())
         {
@@ -69,7 +69,7 @@ public:
         return Result::End;
     }
 
-    GOMMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (m_it != m_pNode->m_ChildList.end())
         {
@@ -79,7 +79,7 @@ public:
         return Result::End;
     }
 
-    GOMMETHOD(Prune)() final
+    GEMMETHOD(Prune)() final
     {
         if (m_it != m_pNode->m_ChildList.end())
         {
@@ -89,7 +89,7 @@ public:
 
         return Result::End;
     }
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
         if (iid == XIterator::IId)
         {
@@ -118,9 +118,9 @@ public:
         m_ObjectName(this, szName, pCanvas)
     {}
 
-    GOMMETHOD_(ObjectType, GetType)() const { return ObjectType::SceneGraphNode; }
+    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::SceneGraphNode; }
 
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (XObjectName::IId == iid)
         {

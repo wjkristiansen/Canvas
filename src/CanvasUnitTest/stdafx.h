@@ -11,13 +11,13 @@
 #include <windows.h>
 
 // Headers for CppUnitTest
-#include "Generic.hpp"
+#include "Gem.hpp"
 #include "CppUnitTest.h"
 #include "CanvasMath.hpp"
 #include "CanvasCore.h"
 
 using namespace Canvas;
-using namespace GOM;
+using namespace Gem;
 
 #include <new>
 #include <vector>
