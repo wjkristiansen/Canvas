@@ -4,24 +4,24 @@
 
 #pragma once
 
-#define GOMAPI __stdcall
-#define GOMNOTHROW __declspec(nothrow)
-#define GOMMETHOD(method) virtual GOMNOTHROW GOM::Result GOMAPI method
-#define GOMMETHOD_(retType, method) virtual GOMNOTHROW retType GOMAPI method
-#define GOMMETHODIMP GOM::Result
-#define GOMMETHODIMP_(retType) retType
-#define GOM_INTERFACE struct
-#define GOM_INTERFACE_DECLARE(iid) static const GOM::InterfaceId IId = iid
+#define GEMAPI __stdcall
+#define GEMNOTHROW __declspec(nothrow)
+#define GEMMETHOD(method) virtual GEMNOTHROW Gem::Result GEMAPI method
+#define GEMMETHOD_(retType, method) virtual GEMNOTHROW retType GEMAPI method
+#define GEMMETHODIMP Gem::Result
+#define GEMMETHODIMP_(retType) retType
+#define GEM_INTERFACE struct
+#define GEM_INTERFACE_DECLARE(iid) static const Gem::InterfaceId IId = iid
 
-#define GOM_IID_PPV_ARGS(ppObj) \
+#define GEM_IID_PPV_ARGS(ppObj) \
     std::remove_reference_t<decltype(**ppObj)>::IId, reinterpret_cast<void **>(ppObj)
 
-namespace GOM
+namespace Gem
 {
 typedef UINT InterfaceId;
 
 // Forward decl XGeneric
-GOM_INTERFACE XGeneric;
+GEM_INTERFACE XGeneric;
 
 //------------------------------------------------------------------------------------------------
 enum class Result : UINT32
@@ -41,13 +41,13 @@ enum class Result : UINT32
 
 //------------------------------------------------------------------------------------------------
 template<class _Type>
-class TGomPtr
+class TGemPtr
 {
     _Type *m_p = nullptr;
 
 public:
-    TGomPtr() = default;
-    TGomPtr(_Type *p) :
+    TGemPtr() = default;
+    TGemPtr(_Type *p) :
         m_p(p)
     {
         if (m_p)
@@ -55,7 +55,7 @@ public:
             m_p->AddRef();
         }
     }
-    TGomPtr(const TGomPtr &o) :
+    TGemPtr(const TGemPtr &o) :
         m_p(o.m_p)
     {
         if (m_p)
@@ -63,13 +63,13 @@ public:
             m_p->AddRef();
         }
     }
-    TGomPtr(TGomPtr &&o) :
+    TGemPtr(TGemPtr &&o) :
         m_p(o.m_p)
     {
         o.m_p = nullptr;
     }
 
-    ~TGomPtr()
+    ~TGemPtr()
     {
         if (m_p)
         {
@@ -82,7 +82,7 @@ public:
         m_p = nullptr;
     }
 
-    TGomPtr &operator=(_Type *p)
+    TGemPtr &operator=(_Type *p)
     {
         if (m_p)
         {
@@ -98,7 +98,7 @@ public:
         return *this;
     }
 
-    TGomPtr &operator=(const TGomPtr &o)
+    TGemPtr &operator=(const TGemPtr &o)
     {
         auto temp = m_p;
 
@@ -120,7 +120,7 @@ public:
         return *this;
     }
 
-    TGomPtr &operator=(TGomPtr &&o)
+    TGemPtr &operator=(TGemPtr &&o)
     {
         if (m_p != o.m_p)
         {
@@ -156,29 +156,29 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-inline bool Failed(GOM::Result result)
+inline bool Failed(Gem::Result result)
 {
-    return result >= GOM::Result::Fail;
+    return result >= Gem::Result::Fail;
 }
 
 //------------------------------------------------------------------------------------------------
-class GomError
+class GemError
 {
     Result m_result;
 public:
-    operator GomError() = delete;
-    GomError(Result result) :
+    operator GemError() = delete;
+    GemError(Result result) :
         m_result(result) {}
 
     Result Result() const { return m_result; }
 };
 
 //------------------------------------------------------------------------------------------------
-inline void ThrowGomError(Result result)
+inline void ThrowGemError(Result result)
 {
     if (Failed(result))
     {
-        throw(GomError(result));
+        throw(GemError(result));
     }
 }
 
@@ -194,22 +194,22 @@ public:
     {
     }
 
-    GOMMETHOD_(ULONG,AddRef)() final
+    GEMMETHOD_(ULONG,AddRef)() final
     {
         return InternalAddRef();
     }
 
-    GOMMETHOD_(ULONG, Release)() final
+    GEMMETHOD_(ULONG, Release)() final
     {
         return InternalRelease();
     }
 
-    ULONG GOMNOTHROW GOMAPI InternalAddRef()
+    ULONG GEMNOTHROW GEMAPI InternalAddRef()
     {
         return InterlockedIncrement(&m_RefCount);
     }
 
-    ULONG GOMNOTHROW GOMAPI InternalRelease()
+    ULONG GEMNOTHROW GEMAPI InternalRelease()
     {
         auto result = InterlockedDecrement(&m_RefCount);
 
@@ -221,7 +221,7 @@ public:
         return result;
     }
 
-    GOMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (!ppObj)
         {
@@ -233,7 +233,7 @@ public:
         return InternalQueryInterface(iid, ppObj);
     }
 
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (XGeneric::IId == iid)
         {
@@ -259,19 +259,19 @@ public:
     }
 
     // Delegate AddRef to outer generic
-    GOMMETHOD_(ULONG,AddRef)() final
+    GEMMETHOD_(ULONG,AddRef)() final
     {
         return _Base::m_pOuterGeneric->AddRef();
     }
 
     // Delegate Release to outer generic
-    GOMMETHOD_(ULONG, Release)() final
+    GEMMETHOD_(ULONG, Release)() final
     {
         return _Base::m_pOuterGeneric->Release();
     }
 
     // Delegate Query interface to outer generic
-    GOMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         return _Base::m_pOuterGeneric->QueryInterface(iid, ppObj);
     }
@@ -283,7 +283,7 @@ class CGenericBase
 {
 public:
     virtual ~CGenericBase() = default;
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
         return Result::NoInterface;
     }
@@ -300,16 +300,16 @@ public:
 };
     
 //------------------------------------------------------------------------------------------------
-GOM_INTERFACE XGeneric
+GEM_INTERFACE XGeneric
 {
-    GOM_INTERFACE_DECLARE(0xffffffffU);
+    GEM_INTERFACE_DECLARE(0xffffffffU);
 
-    GOMMETHOD_(ULONG, AddRef)() = 0;
-    GOMMETHOD_(ULONG, Release)() = 0;
-    GOMMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
+    GEMMETHOD_(ULONG, AddRef)() = 0;
+    GEMMETHOD_(ULONG, Release)() = 0;
+    GEMMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
 
     template<class _XFace>
-    GOM::Result QueryInterface(_XFace **ppObj)
+    Gem::Result QueryInterface(_XFace **ppObj)
     {
         return QueryInterface(_XFace::IId, reinterpret_cast<void **>(ppObj));
     }
