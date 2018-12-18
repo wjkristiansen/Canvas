@@ -8,7 +8,7 @@ namespace Canvas
 {
 
 class CGraphicsDevice :
-    public CGenericBase
+    public TGeneric<CGenericBase>
 {
 
 };
