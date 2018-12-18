@@ -19,14 +19,14 @@ public:
 
     virtual ~CObjectName();
 
-    GOMMETHOD_(PCWSTR, GetName)() final
+    GEMMETHOD_(PCWSTR, GetName)() final
     {
         return m_Name.c_str();
     }
 
-    GOMMETHOD(SetName)(PCWSTR szName) final;
+    GEMMETHOD(SetName)(PCWSTR szName) final;
 
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (XObjectName::IId == iid)
         {

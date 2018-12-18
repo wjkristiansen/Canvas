@@ -12,7 +12,7 @@ class CTransform :
 public:
     CTransform(XGeneric *pOuterObj) :
         CInnerGenericBase(pOuterObj) {}
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (XTransform::IId == iid)
         {
@@ -43,9 +43,9 @@ public:
         m_ObjectName(this, szName, pCanvas)
     {}
 
-    GOMMETHOD_(ObjectType, GetType)() const { return ObjectType::Transform; }
+    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::Transform; }
 
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (XObjectName::IId == iid)
         {

@@ -7,7 +7,7 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-GOMMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **ppUnk)
+GEMMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **ppUnk)
 {
     if (iid == XSceneGraphNode::IId)
     {
@@ -20,7 +20,7 @@ GOMMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **ppU
 }
 
 //------------------------------------------------------------------------------------------------
-GOMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
+GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
 {
     try
     {
@@ -34,7 +34,7 @@ GOMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
 }
 
 //------------------------------------------------------------------------------------------------
-GOMMETHODIMP CSceneGraphNode::CreateChildIterator(_Outptr_ XIterator **ppIterator)
+GEMMETHODIMP CSceneGraphNode::CreateChildIterator(_Outptr_ XIterator **ppIterator)
 {
     try
     {

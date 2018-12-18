@@ -12,7 +12,7 @@ class CLight :
 public:
     CLight(XGeneric *pOuterObj) :
         CInnerGenericBase(pOuterObj) {}
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (XLight::IId == iid)
         {
@@ -45,9 +45,9 @@ public:
         m_ObjectName(this, szName, pCanvas)
     {}
 
-    GOMMETHOD_(ObjectType, GetType)() const { return ObjectType::Light; }
+    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::Light; }
 
-    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (XLight::IId == iid)
         {
