@@ -10,7 +10,7 @@ class CSceneGraphNode :
     public CInnerGenericBase
 {
 public:
-    using _ListType = std::vector<TCanvasPtr<CSceneGraphNode>>;
+    using _ListType = std::vector<TGomPtr<CSceneGraphNode>>;
     _ListType m_ChildList;
 
     CSceneGraphNode(XGeneric *pOuterObj) :
@@ -28,7 +28,7 @@ class CSceneGraphNodeIterator :
 {
 public:
     CSceneGraphNode::_ListType::iterator m_it;
-    TCanvasPtr<CSceneGraphNode> m_pNode;
+    TGomPtr<CSceneGraphNode> m_pNode;
 
     CSceneGraphNodeIterator(CSceneGraphNode *pNode) :
         m_pNode(pNode)

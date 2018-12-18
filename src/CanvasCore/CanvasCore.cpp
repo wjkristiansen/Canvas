@@ -62,7 +62,7 @@ GOMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
 {
     try
     {
-        TCanvasPtr<XGeneric> pObj;
+        TGomPtr<XGeneric> pObj;
         pObj = new TGeneric<CScene>(this, L"SceneRoot"); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
@@ -77,7 +77,7 @@ GOMMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ vo
 {
     try
     {
-        TCanvasPtr<XGeneric> pObj;
+        TGomPtr<XGeneric> pObj;
         switch (type)
         {
         case ObjectType::Null:
@@ -146,7 +146,7 @@ Result GOMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
     {
         if (iid == XCanvas::IId)
         {
-            TCanvasPtr<CCanvas> pCanvas = new TGeneric<CCanvas>; // throw(bad_alloc)
+            TGomPtr<CCanvas> pCanvas = new TGeneric<CCanvas>; // throw(bad_alloc)
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
