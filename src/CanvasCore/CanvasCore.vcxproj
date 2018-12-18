@@ -90,7 +90,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\..\..\GOM\Src\Inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -107,7 +107,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\..\..\GOM\Src\Inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -126,7 +126,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\..\..\GOM\Src\Inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -147,7 +147,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\..\..\wintl\Src\Inc;..\..\..\GOM\Src\Inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -162,7 +162,6 @@
     <ClInclude Include="Camera.h" />
     <ClInclude Include="CanvasCore.h" />
     <ClInclude Include="CanvasObject.h" />
-    <ClInclude Include="Generic.hpp" />
     <ClInclude Include="GraphicsDevice.h" />
     <ClInclude Include="Light.h" />
     <ClInclude Include="Model.h" />
@@ -177,7 +176,6 @@
     <ClCompile Include="CanvasCore.cpp" />
     <ClCompile Include="CanvasObject.cpp" />
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="Generic.cpp" />
     <ClCompile Include="NamedObject.cpp" />
     <ClCompile Include="Scene.cpp" />
     <ClCompile Include="stdafx.cpp">

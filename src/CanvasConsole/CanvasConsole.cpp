@@ -14,7 +14,7 @@ float DoVectorThing(float v[2])
 void DumpNode(XSceneGraphNode *pNode, const std::wstring &indent)
 {
     TCanvasPtr<XObjectName> pName;
-    if (Succeeded(pNode->QueryInterface(&pName)))
+    if (Succeeded(pNode->QueryInterface(GOM_IID_PPV_ARGS(&pName))))
     {
         std::wcout << indent << pName->GetName() << std::endl;
     }
@@ -30,7 +30,7 @@ void DumpNode(XSceneGraphNode *pNode, const std::wstring &indent)
         for (pChildIterator->Reset(); !pChildIterator->IsAtEnd(); pChildIterator->MoveNext())
         {
             TCanvasPtr<XSceneGraphNode> pChildNode;
-            pChildIterator->Select(CANVAS_PPV_ARGS(&pChildNode));
+            pChildIterator->Select(GOM_IID_PPV_ARGS(&pChildNode));
             DumpNode(pChildNode, indent + L"  ");
         }
     }
@@ -69,7 +69,7 @@ int main()
     auto fm44c = fm44a * fm44b;
 
     TCanvasPtr<XCanvas> pCanvas;
-    Canvas::Result result = CreateCanvas(XCanvas::IId, (void **)&pCanvas);
+    Result result = CreateCanvas(XCanvas::IId, (void **)&pCanvas);
 
     TCanvasPtr<XScene> pScene;
     result = pCanvas->CreateScene(XScene::IId, (void **)&pScene);
@@ -78,16 +78,16 @@ int main()
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
     TCanvasPtr<XSceneGraphNode> pTransformNode1;
-    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode1), L"TransformNode1");
+    result = pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pTransformNode1), L"TransformNode1");
 
     TCanvasPtr<XSceneGraphNode> pTransformNode2;
-    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode2), L"TransformNode2");
+    result = pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pTransformNode2), L"TransformNode2");
 
     TCanvasPtr<XSceneGraphNode> pTransformNode3;
-    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode3), L"TransformNode3");
+    result = pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pTransformNode3), L"TransformNode3");
 
     TCanvasPtr<XSceneGraphNode> pTransformNode4;
-    result = pCanvas->CreateObject(ObjectType::Transform, CANVAS_PPV_ARGS(&pTransformNode4), L"TransformNode4");
+    result = pCanvas->CreateObject(ObjectType::Transform, GOM_IID_PPV_ARGS(&pTransformNode4), L"TransformNode4");
 
     pRootSceneGraphNode->AddChild(pTransformNode1);
     pTransformNode1->AddChild(pTransformNode2);

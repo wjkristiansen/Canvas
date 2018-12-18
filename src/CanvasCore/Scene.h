@@ -20,23 +20,23 @@ public:
     {
     }
 
-    CANVASMETHOD_(ObjectType, GetType)() const final { return ObjectType::Scene; }
+    GOMMETHOD_(ObjectType, GetType)() const final { return ObjectType::Scene; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
-        if (InterfaceId::XScene == iid)
+        if (XScene::IId == iid)
         {
             *ppObj = this;
             AddRef();
             return Result::Success;
         }
 
-        if (InterfaceId::XObjectName == iid)
+        if (XObjectName::IId == iid)
         {
             return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
 
-        if (InterfaceId::XSceneGraphNode == iid)
+        if (XSceneGraphNode::IId == iid)
         {
             return m_RootSceneGraphNode.InternalQueryInterface(iid, ppObj);
         }

@@ -16,9 +16,9 @@ public:
     CSceneGraphNode(XGeneric *pOuterObj) :
         CInnerGenericBase(pOuterObj) {}
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final;
-    CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
-    CANVASMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) final;
+    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk) final;
+    GOMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
+    GOMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) final;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -36,18 +36,18 @@ public:
         m_it = pNode->m_ChildList.begin();
     }
 
-    CANVASMETHOD_(bool, IsAtEnd)() final
+    GOMMETHOD_(bool, IsAtEnd)() final
     {
         return m_it == m_pNode->m_ChildList.end();
     }
 
-    CANVASMETHOD(Reset)() final
+    GOMMETHOD(Reset)() final
     {
         m_it = m_pNode->m_ChildList.begin();
         return Result::Success;
     }
 
-    CANVASMETHOD(MoveNext)() final
+    GOMMETHOD(MoveNext)() final
     {
         if (m_it != m_pNode->m_ChildList.end())
         {
@@ -58,7 +58,7 @@ public:
         return Result::End;
     }
 
-    CANVASMETHOD(MovePrev)() final
+    GOMMETHOD(MovePrev)() final
     {
         if (m_it != m_pNode->m_ChildList.begin())
         {
@@ -69,7 +69,7 @@ public:
         return Result::End;
     }
 
-    CANVASMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GOMMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (m_it != m_pNode->m_ChildList.end())
         {
@@ -79,7 +79,7 @@ public:
         return Result::End;
     }
 
-    CANVASMETHOD(Prune)() final
+    GOMMETHOD(Prune)() final
     {
         if (m_it != m_pNode->m_ChildList.end())
         {
@@ -89,9 +89,9 @@ public:
 
         return Result::End;
     }
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
     {
-        if (iid == InterfaceId::XIterator)
+        if (iid == XIterator::IId)
         {
             *ppUnk = this;
             AddRef();
@@ -118,16 +118,16 @@ public:
         m_ObjectName(this, szName, pCanvas)
     {}
 
-    CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::SceneGraphNode; }
+    GOMMETHOD_(ObjectType, GetType)() const { return ObjectType::SceneGraphNode; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GOMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
-        if (InterfaceId::XObjectName == iid)
+        if (XObjectName::IId == iid)
         {
             return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
 
-        if (InterfaceId::XObjectName == iid)
+        if (XObjectName::IId == iid)
         {
             return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
         }

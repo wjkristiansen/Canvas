@@ -26,7 +26,7 @@ CObjectName::~CObjectName()
 }
 
 //------------------------------------------------------------------------------------------------
-CANVASMETHODIMP CObjectName::SetName(PCWSTR szName)
+GOMMETHODIMP CObjectName::SetName(PCWSTR szName)
 {
     CCanvasObjectBase *pCanvasObject = reinterpret_cast<CCanvasObjectBase *>(m_pOuterGeneric);
     CCanvas *pCanvas = pCanvasObject->m_pCanvas;

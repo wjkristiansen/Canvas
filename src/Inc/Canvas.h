@@ -4,48 +4,32 @@
 
 #pragma once
 
-#define CANVASAPI __stdcall
-#define CANVASNOTHROW __declspec(nothrow)
-#define CANVASMETHOD(method) virtual CANVASNOTHROW Canvas::Result CANVASAPI method
-#define CANVASMETHOD_(retType, method) virtual CANVASNOTHROW retType CANVASAPI method
-#define CANVASMETHODIMP Canvas::Result
-#define CANVASMETHODIMP_(retType) retType
-#define CANVAS_INTERFACE struct
-#define CANVAS_INTERFACE_DECLARE(iid) static const InterfaceId IId = InterfaceId::##iid;
-
-#define CANVAS_PPV_ARGS(ppObj) \
-    std::remove_reference_t<decltype(**ppObj)>::IId, reinterpret_cast<void **>(ppObj)
-
-
 namespace Canvas
 {
-// Generic
-CANVAS_INTERFACE XGeneric;
-
 // Canvas core interfaces
-CANVAS_INTERFACE XCanvas;
+GOM_INTERFACE XCanvas;
 
-// Scene CANVAS_INTERFACE
-CANVAS_INTERFACE XScene;
+// Scene GOM_INTERFACE
+GOM_INTERFACE XScene;
 
 // Scene graph node
-CANVAS_INTERFACE XSceneGraphNode;
+GOM_INTERFACE XSceneGraphNode;
 
-// Camera CANVAS_INTERFACEs
-CANVAS_INTERFACE XCamera;
+// Camera GOM_INTERFACEs
+GOM_INTERFACE XCamera;
 
-// Light CANVAS_INTERFACEs
-CANVAS_INTERFACE XLight;
+// Light GOM_INTERFACEs
+GOM_INTERFACE XLight;
 
-// Transform CANVAS_INTERFACEs
-CANVAS_INTERFACE XTransform;
+// Transform GOM_INTERFACEs
+GOM_INTERFACE XTransform;
 
 // Assets
-CANVAS_INTERFACE XTexture;
-CANVAS_INTERFACE XMaterial;
-CANVAS_INTERFACE XMesh;
-CANVAS_INTERFACE XAmination;
-CANVAS_INTERFACE XSkeleton;
+GOM_INTERFACE XTexture;
+GOM_INTERFACE XMaterial;
+GOM_INTERFACE XMesh;
+GOM_INTERFACE XAmination;
+GOM_INTERFACE XSkeleton;
 
 //------------------------------------------------------------------------------------------------
 template<class _Type>
@@ -164,53 +148,34 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-enum class Result : UINT32
+inline bool Failed(GOM::Result result)
 {
-    Success = 0,
-    End = 1,
-    Fail = 0x80000000, // Must be first failure
-    InvalidArg,
-    NotFound,
-    OutOfMemory,
-    NoInterface,
-    BadPointer,
-    NotImplemented,
-    DuplicateKey,
-    Uninitialized,
-};
-
-//------------------------------------------------------------------------------------------------
-inline bool Failed(Result result)
-{
-    return result >= Result::Fail;
+    return result >= GOM::Result::Fail;
 }
 
 //------------------------------------------------------------------------------------------------
-inline bool Succeeded(Result result)
+inline bool Succeeded(GOM::Result result)
 {
-    return result < Result::Fail;
+    return result < GOM::Result::Fail;
 }
 
-//------------------------------------------------------------------------------------------------
-enum class InterfaceId : unsigned
+enum CanvasIId
 {
-    XUnknown = 0,
-    XGeneric = 1,
-    XCanvas,
-    XScene,
-    XSceneGraphNode,
-    XSceneGraphIterator,
-    XModelInstance,
-    XCamera,
-    XLight,
-    XTransform,
-    XTexture,
-    XMaterial,
-    XMesh,
-    XAmination,
-    XSkeleton,
-    XIterator,
-    XObjectName,
+    CanvasIId_XCanvas = 1U,
+    CanvasIId_XScene = 2U,
+    CanvasIId_XSceneGraphNode = 3U,
+    CanvasIId_XSceneGraphIterator = 4U,
+    CanvasIId_XModelInstance = 5U,
+    CanvasIId_XCamera = 6U,
+    CanvasIId_XLight = 7U,
+    CanvasIId_XTransform = 8U,
+    CanvasIId_XTexture = 9U,
+    CanvasIId_XMaterial = 10U,
+    CanvasIId_XMesh = 11U,
+    CanvasIId_XAmination = 12U,
+    CanvasIId_XSkeleton = 13U,
+    CanvasIId_XIterator = 14U,
+    CanvasIId_XObjectName = 15U,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -227,115 +192,94 @@ enum class ObjectType : unsigned
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE XGeneric
+GOM_INTERFACE XIterator : public GOM::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XGeneric)
-
-    CANVASMETHOD_(ULONG, AddRef)() = 0;
-    CANVASMETHOD_(ULONG, Release)() = 0;
-    CANVASMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
-
-    // Helper for typed QI
-    template<class _XFace>
-    Result QueryInterface(_XFace **ppObj)
-    {
-        return QueryInterface(_XFace::IId, reinterpret_cast<void **>(ppObj));
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE XIterator : public XGeneric
-{
-    CANVAS_INTERFACE_DECLARE(XIterator)
+    GOM_INTERFACE_DECLARE(CanvasIId_XIterator);
 
     // Resets the iterator to the start of the collection
-    CANVASMETHOD(Reset)() = 0;
+    GOMMETHOD(Reset)() = 0;
 
     // Returns true if the the iterator is at the end of the collection
-    CANVASMETHOD_(bool, IsAtEnd)() = 0;
+    GOMMETHOD_(bool, IsAtEnd)() = 0;
 
     // Moves the iterator to the next element
-    CANVASMETHOD(MoveNext)() = 0;
+    GOMMETHOD(MoveNext)() = 0;
 
     // Moves the iterator to the previous element
-    CANVASMETHOD(MovePrev)() = 0;
+    GOMMETHOD(MovePrev)() = 0;
 
     // QI's the current element (if exists)
-    CANVASMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GOMMETHOD(Select)(GOM::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     
     // Removes the current element and the iterator to the next element
-    CANVASMETHOD(Prune)() = 0;
+    GOMMETHOD(Prune)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
-XObjectName : public XGeneric
+GOM_INTERFACE
+XObjectName : public GOM::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XObjectName)
-    CANVASMETHOD_(PCWSTR, GetName)() = 0;
+    GOM_INTERFACE_DECLARE(CanvasIId_XObjectName);
+
+    GOMMETHOD_(PCWSTR, GetName)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
-XCanvas : public XGeneric
+GOM_INTERFACE
+XCanvas : public GOM::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XCanvas)
+    GOM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
-    CANVASMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    CANVASMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
-    CANVASMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GOMMETHOD(CreateScene)(GOM::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GOMMETHOD(CreateObject)(ObjectType type, GOM::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
+    GOMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, GOM::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
-XModelInstance : public XGeneric
+GOM_INTERFACE
+XModelInstance : public GOM::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XModelInstance)
-
+    GOM_INTERFACE_DECLARE(CanvasIId_XModelInstance);
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
-XCamera : public XGeneric
+GOM_INTERFACE
+XCamera : public GOM::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XCamera)
-
+    GOM_INTERFACE_DECLARE(CanvasIId_XCamera);
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
-XLight : public XGeneric
+GOM_INTERFACE
+XLight : public GOM::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XLight)
-
+    GOM_INTERFACE_DECLARE(CanvasIId_XLight);
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
-XTransform : public XGeneric
+GOM_INTERFACE
+XTransform : public GOM::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XTransform)
-
+    GOM_INTERFACE_DECLARE(CanvasIId_XTransform);
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
-XSceneGraphNode : public XGeneric
+GOM_INTERFACE
+XSceneGraphNode : public GOM::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XSceneGraphNode)
-
-    CANVASMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
-    CANVASMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) = 0;
+    GOM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
+    GOMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
+    GOMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-CANVAS_INTERFACE
-XScene : public XGeneric
+GOM_INTERFACE
+XScene : public GOM::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XScene)
+    GOM_INTERFACE_DECLARE(CanvasIId_XScene);
 };
 
 }
 
-extern Canvas::Result CANVASAPI CreateCanvas(Canvas::InterfaceId iid, _Outptr_ void **ppCanvas);
+extern GOM::Result GOMAPI CreateCanvas(GOM::InterfaceId iid, _Outptr_ void **ppCanvas);
 
