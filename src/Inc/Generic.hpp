@@ -162,6 +162,27 @@ inline bool Failed(GOM::Result result)
 }
 
 //------------------------------------------------------------------------------------------------
+class GomError
+{
+    Result m_result;
+public:
+    operator GomError() = delete;
+    GomError(Result result) :
+        m_result(result) {}
+
+    Result Result() const { return m_result; }
+};
+
+//------------------------------------------------------------------------------------------------
+inline void ThrowGomError(Result result)
+{
+    if (Failed(result))
+    {
+        throw(GomError(result));
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 template<class _Base>
 class TGeneric : public _Base
 {
