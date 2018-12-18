@@ -19,6 +19,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Inc", "Inc", "{66481EAC-E4B
 	ProjectSection(SolutionItems) = preProject
 		Inc\Canvas.h = Inc\Canvas.h
 		Inc\CanvasMath.hpp = Inc\CanvasMath.hpp
+		Inc\GraphicsDevice12.h = Inc\GraphicsDevice12.h
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasModelViewer", "CanvasModelViewer\CanvasModelViewer.vcxproj", "{6C7EFAF8-C6B0-410E-A5FD-2B7FE5B3C83C}"

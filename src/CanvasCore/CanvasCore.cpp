@@ -157,3 +157,32 @@ Result GOMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 
     return Result::Success;
 }
+
+//------------------------------------------------------------------------------------------------
+GOMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions)
+{
+    switch (pGraphicsOptions->Subsystem)
+    {
+    case GraphicsSubsystem::D3D12:
+        return SetupD3D12(pGraphicsOptions);
+        break;
+
+    default:
+        return Result::NotImplemented;
+        break;
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions)
+{
+    TGomPtr<TGeneric<CGraphicsDevice>> pGraphicsDevice;
+    try
+    {
+        ThrowGomError(CreateGraphicsDevice12(&pGraphicsDevice));
+    }
+    catch (GomError &gomError)
+    {
+        return gomError.Result();
+    }
+}
