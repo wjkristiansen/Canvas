@@ -7,7 +7,8 @@
 namespace Canvas
 {
 
-class CGraphicsDevice
+class CGraphicsDevice :
+    public CGenericBase
 {
 
 };
