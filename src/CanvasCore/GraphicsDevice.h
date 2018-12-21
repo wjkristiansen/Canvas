@@ -62,6 +62,49 @@ class CTexture :
 
 };
 
+struct CANVAS_MATERIAL_DESC
+{
+
+    void *pVSData;
+    void *pPSData;
+};
+
+//------------------------------------------------------------------------------------------------
+// Describes data passed into the graphics rendering pipeline.
+// This includes:
+//  * Vertex layout
+//  * Vertex shader state
+//  * Pixel shader state
+//  * Fill mode
+//  * Alpha blend state
+class CMaterial
+{
+
+};
+
+//------------------------------------------------------------------------------------------------
+struct CANVAS_MESH_DESC
+{
+    UINT NumIndices;
+    UINT32 *pIndices;
+    UINT NumVertices;
+    UINT16 VertexStride;
+    void *pVertexData;
+};
+
+//------------------------------------------------------------------------------------------------
+// A mesh is essentially an indexed triangle list
+// The actual layout of pixels depends on the material
+class CMesh :
+    public TGeneric<CGenericBase>
+{
+    CMesh(const CANVAS_MESH_DESC *pMeshDesc);
+};
+
+
+
+
+
 //------------------------------------------------------------------------------------------------
 class CPipelineState :
     public TGeneric<CGenericBase>
