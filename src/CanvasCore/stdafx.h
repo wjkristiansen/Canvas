@@ -24,6 +24,7 @@
 #include <iostream>
 
 // reference additional headers your program requires here
+#include <fbxsdk.h>
 #include <Gem.hpp>
 #include <CanvasMath.hpp>
 #include <Canvas.h>
