@@ -159,14 +159,14 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions)
+GEMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd)
 {
     Result result = Result::NotImplemented;
 
     switch (pGraphicsOptions->Subsystem)
     {
     case GraphicsSubsystem::D3D12:
-        result = SetupD3D12(pGraphicsOptions);
+        result = SetupD3D12(pGraphicsOptions, hWnd);
         break;
     }
 
@@ -174,12 +174,12 @@ GEMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions)
 }
 
 //------------------------------------------------------------------------------------------------
-Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions)
+Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd)
 {
     TGemPtr<CGraphicsDevice> pGraphicsDevice;
     try
     {
-        ThrowGemError(CreateGraphicsDevice12(&pGraphicsDevice));
+        ThrowGemError(CreateGraphicsDevice12(&pGraphicsDevice, hWnd));
         return Result::Success;
     }
     catch (GemError &gomError)
