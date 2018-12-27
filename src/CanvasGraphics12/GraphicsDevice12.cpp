@@ -36,18 +36,20 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed, UINT WidthIfWindo
         // Create the swap chain
         CComPtr<IDXGISwapChain1> pSwapChain;
         DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
-        swapChainDesc.BufferCount = 4;
-        swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+        swapChainDesc.BufferCount = 3;
+        swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING|DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
         swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-        swapChainDesc.BufferUsage = DXGI_USAGE_BACK_BUFFER;
+        swapChainDesc.BufferUsage = DXGI_USAGE_SHADER_INPUT|DXGI_USAGE_RENDER_TARGET_OUTPUT;
         swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
         swapChainDesc.SampleDesc.Count = 1;
         swapChainDesc.SampleDesc.Quality = 0;
         swapChainDesc.Scaling = DXGI_SCALING_NONE;
-        swapChainDesc.Width = WidthIfWindowed;
-        swapChainDesc.Height = HeightIfWindowed;
+        swapChainDesc.Width = 0;
+        swapChainDesc.Height = 0;
+        swapChainDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
         DXGI_SWAP_CHAIN_FULLSCREEN_DESC swapChainDescFS = {};
         swapChainDescFS.RefreshRate.Denominator = 1;
+        swapChainDescFS.Windowed = Windowed;
         ThrowFailedHResult(pFactory->CreateSwapChainForHwnd(pCommandQueue, hWnd, &swapChainDesc, &swapChainDescFS, nullptr, &pSwapChain));
 
         m_pD3DDevice = pDevice;
