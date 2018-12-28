@@ -132,6 +132,8 @@ XCanvas : public Gem::XGeneric
     GOMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
     GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd) = 0;
+    //GEMMETHOD(CreateLoadModelWorker)(PCWSTR szModelPath) = 0;
+    GEMMETHOD(FrameTick)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

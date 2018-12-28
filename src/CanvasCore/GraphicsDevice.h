@@ -12,7 +12,8 @@ namespace Canvas
 class CGraphicsDevice :
     public TGeneric<CGenericBase>
 {
-
+public:
+    virtual Result Present() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

@@ -174,16 +174,28 @@ GEMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, H
 }
 
 //------------------------------------------------------------------------------------------------
+// Updates application logic and submits work to the graphics engine
+GEMMETHODIMP CCanvas::FrameTick()
+{
+    Result result = Result::Success;
+
+    m_pGraphicsDevice->Present();
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
 Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd)
 {
     TGemPtr<CGraphicsDevice> pGraphicsDevice;
     try
     {
         ThrowGemError(CreateGraphicsDevice12(&pGraphicsDevice, hWnd));
-        return Result::Success;
     }
     catch (GemError &gomError)
     {
         return gomError.Result();
     }
+    m_pGraphicsDevice = std::move(pGraphicsDevice);
+    return Result::Success;
 }

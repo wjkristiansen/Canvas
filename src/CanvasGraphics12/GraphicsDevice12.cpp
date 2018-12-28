@@ -6,7 +6,7 @@
 
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed, UINT WidthIfWindowed, UINT HeightIfWindowed)
+Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
 {
     try
     {
@@ -24,14 +24,6 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed, UINT WidthIfWindo
         // Create the DXGI factory
         CComPtr<IDXGIFactory2> pFactory;
         ThrowFailedHResult(CreateDXGIFactory1(IID_PPV_ARGS(&pFactory)));
-
-        if (Windowed)
-        {
-            // Resize the window
-            RECT rcWnd;
-            GetWindowRect(hWnd, &rcWnd);
-            SetWindowPos(hWnd, NULL, rcWnd.left, rcWnd.top, WidthIfWindowed, HeightIfWindowed, SWP_NOMOVE | SWP_NOZORDER);
-        }
 
         // Create the swap chain
         CComPtr<IDXGISwapChain1> pSwapChain;
@@ -66,6 +58,21 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed, UINT WidthIfWindo
 }
 
 //------------------------------------------------------------------------------------------------
+Result CGraphicsDevice12::Present()
+{
+    try
+    {
+        ThrowFailedHResult(m_pSwapChain->Present(0, 0));
+    }
+    catch (_com_error &e)
+    {
+        return HResultToResult(e.Error());
+    }
+
+    return Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice, HWND hWnd)
 {
     *ppGraphicsDevice = nullptr;
@@ -73,7 +80,7 @@ Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice, HWND hW
     try
     {
         CGraphicsDevice12 *pGraphicsDevice = new CGraphicsDevice12(); // throw(bad_alloc)
-        auto result = pGraphicsDevice->Initialize(hWnd, true, 1020, 780);
+        auto result = pGraphicsDevice->Initialize(hWnd, true);
         if (result == Result::Success)
         {
             *ppGraphicsDevice = pGraphicsDevice;

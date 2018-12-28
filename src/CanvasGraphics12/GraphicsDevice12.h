@@ -16,5 +16,6 @@ public:
 
     CGraphicsDevice12();
 
-    virtual Result Initialize(HWND hWnd, bool Windowed, UINT WidthIfWindowed, UINT HeightIfWindowed);
+    virtual Result Initialize(HWND hWnd, bool Windowed);
+    virtual Result Present();
 };
