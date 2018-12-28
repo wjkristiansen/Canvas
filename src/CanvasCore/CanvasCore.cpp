@@ -187,7 +187,7 @@ GEMMETHODIMP CCanvas::FrameTick()
 
     // Render the display list
 
-    m_pGraphicsDevice->Present();
+    m_pGraphicsDevice->RenderFrame();
 
     return result;
 }

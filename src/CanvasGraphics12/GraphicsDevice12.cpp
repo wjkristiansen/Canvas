@@ -61,7 +61,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
 }
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::Present()
+Result CGraphicsDevice12::RenderFrame()
 {
     try
     {

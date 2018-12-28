@@ -13,7 +13,7 @@ class CGraphicsDevice :
     public TGeneric<CGenericBase>
 {
 public:
-    virtual Result Present() = 0;
+    virtual Result RenderFrame() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

@@ -17,5 +17,5 @@ public:
     CGraphicsDevice12();
 
     virtual Result Initialize(HWND hWnd, bool Windowed);
-    virtual Result Present();
+    virtual Result RenderFrame();
 };
