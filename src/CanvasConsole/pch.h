@@ -13,11 +13,15 @@
 #define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
 #include <Windows.h>
 
+#include <Gem.hpp>
 #include <CanvasMath.hpp>
 #include <Canvas.h>
 
 #include <string>
 #include <iostream>
+
+using namespace Canvas;
+using namespace Gem;
 
 #endif //PCH_H
 #include <string>

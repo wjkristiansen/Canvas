@@ -10,6 +10,8 @@
 #define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
 // Windows Header Files
 #include <windows.h>
+#include <atlbase.h>
+#include <d3d12.h>
 
 #include <new>
 #include <vector>
@@ -22,11 +24,14 @@
 #include <iostream>
 
 // reference additional headers your program requires here
+#include <fbxsdk.h>
+#include <Gem.hpp>
 #include <CanvasMath.hpp>
 #include <Canvas.h>
 
 using namespace Canvas;
-#include "Generic.hpp"
+using namespace Gem;
+
 #include "CanvasObject.h"
 #include "NamedObject.h"
 #include "SceneGraph.h"
@@ -35,4 +40,7 @@ using namespace Canvas;
 #include "Light.h"
 #include "Model.h"
 #include "Scene.h"
+#include "GraphicsDevice.h"
 #include "CanvasCore.h"
+
+#include "CanvasGraphics12.h"

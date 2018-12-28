@@ -13,9 +13,9 @@ class CCamera :
 public:
     CCamera(XGeneric *pOuterObj) :
         CInnerGenericBase(pOuterObj) {}
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
-        if (InterfaceId::XCamera == iid)
+        if (XCamera::IId == iid)
         {
             *ppObj = this;
             AddRef(); // This will actually AddRef the outer generic
@@ -46,23 +46,23 @@ public:
         m_ObjectName(this, szName, pCanvas)
     {}
 
-    CANVASMETHOD_(ObjectType, GetType)() const { return ObjectType::Camera; }
+    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::Camera; }
 
-    CANVASMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
-        if (InterfaceId::XCamera == iid)
+        if (XCamera::IId == iid)
         {
             return m_Camera.InternalQueryInterface(iid, ppObj);
         }
-        if (InterfaceId::XObjectName == iid)
+        if (XObjectName::IId == iid)
         {
             return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
-        if (InterfaceId::XTransform == iid)
+        if (XTransform::IId == iid)
         {
             return m_Transform.InternalQueryInterface(iid, ppObj);
         }
-        if (InterfaceId::XSceneGraphNode == iid)
+        if (XSceneGraphNode::IId == iid)
         {
             return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
         }
