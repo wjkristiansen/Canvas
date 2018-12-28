@@ -179,6 +179,14 @@ GEMMETHODIMP CCanvas::FrameTick()
 {
     Result result = Result::Success;
 
+    // Elapse time
+
+    // Update scene graph
+
+    // Build the display list
+
+    // Render the display list
+
     m_pGraphicsDevice->Present();
 
     return result;
