@@ -43,7 +43,7 @@ enum CanvasIId
     CanvasIId_XScene = 2U,
     CanvasIId_XSceneGraphNode = 3U,
     CanvasIId_XSceneGraphIterator = 4U,
-    CanvasIId_XModelInstance = 5U,
+    CanvasIId_XMeshInstance = 5U,
     CanvasIId_XCamera = 6U,
     CanvasIId_XLight = 7U,
     CanvasIId_XTransform = 8U,
@@ -65,7 +65,7 @@ enum class ObjectType : unsigned
     SceneGraphNode,
     Transform,
     Camera,
-    ModelInstance,
+    MeshInstance,
     Light,
 };
 
@@ -138,9 +138,9 @@ XCanvas : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XModelInstance : public Gem::XGeneric
+XMeshInstance : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XModelInstance);
+    GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
 };
 
 //------------------------------------------------------------------------------------------------
@@ -158,10 +158,29 @@ XLight : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
+enum RotationType
+{
+    EulerXYZ,
+    EulerXZY,
+    EulerYXZ,
+    EulerYZX,
+    EulerZXY,
+    EulerZYX,
+    QuaternionWXYZ,
+};
+
+//------------------------------------------------------------------------------------------------
 GEM_INTERFACE
 XTransform : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XTransform);
+
+    GEMMETHOD_(RotationType, GetRotationType)() const = 0;
+//    virtual __declspec(nothrow) const FloatVector4& __stdcall GetRotation() const = 0;
+    GEMMETHOD_(const FloatVector4 &, GetRotation)() const = 0;
+    GEMMETHOD_(const FloatVector3 &, GetTranslation)() const = 0;
+    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4 &Rotation) = 0;
+    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector3 &Translation) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

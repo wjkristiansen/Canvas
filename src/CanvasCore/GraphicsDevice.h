@@ -84,29 +84,6 @@ class CMaterial
 };
 
 //------------------------------------------------------------------------------------------------
-struct CANVAS_MESH_DESC
-{
-    UINT NumIndices;
-    UINT32 *pIndices;
-    UINT NumVertices;
-    UINT16 VertexStride;
-    void *pVertexData;
-};
-
-//------------------------------------------------------------------------------------------------
-// A mesh is essentially an indexed triangle list
-// The actual layout of pixels depends on the material
-class CMesh :
-    public TGeneric<CGenericBase>
-{
-    CMesh(const CANVAS_MESH_DESC *pMeshDesc);
-};
-
-
-
-
-
-//------------------------------------------------------------------------------------------------
 class CPipelineState :
     public TGeneric<CGenericBase>
 {

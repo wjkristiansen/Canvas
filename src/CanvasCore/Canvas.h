@@ -21,8 +21,8 @@ inline std::wstring to_string(ObjectType t)
         return L"Transform";
     case ObjectType::Camera:
         return L"Camera";
-    case ObjectType::ModelInstance:
-        return L"ModelInstance";
+    case ObjectType::MeshInstance:
+        return L"MeshInstance";
     case ObjectType::Light:
         return L"Light";
     }
