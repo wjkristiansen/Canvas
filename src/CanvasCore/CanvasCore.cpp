@@ -100,8 +100,8 @@ GEMMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ vo
             pObj = new TGeneric<TCanvasObject<ObjectType::Camera>>(this, szName); // throw(std::bad_alloc)
             break;
 
-        case ObjectType::ModelInstance:
-            pObj = new TGeneric<TCanvasObject<ObjectType::ModelInstance>>(this, szName); // throw(std::bad_alloc)
+        case ObjectType::MeshInstance:
+            pObj = new TGeneric<TCanvasObject<ObjectType::MeshInstance>>(this, szName); // throw(std::bad_alloc)
             break;
         default:
             return Result::NoInterface;
