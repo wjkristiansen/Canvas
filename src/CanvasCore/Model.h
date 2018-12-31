@@ -70,15 +70,10 @@ public:
     }
 };
 
-struct ModelNodeElement
-{
-
-};
-
 //------------------------------------------------------------------------------------------------
-// An indexed triangle list with common material and texture associations
+// An indexed triangle list with common material and texture attributes
 // The actual layout of pixels depends on the material
-struct ModelTriangleGroup
+struct TriangleGroup
 {
     std::vector<FloatVector3> m_Vertices;
     std::vector<FloatVector3> m_Normals;
@@ -94,10 +89,17 @@ struct ModelTriangleGroup
 };
 
 //------------------------------------------------------------------------------------------------
-struct ModelMesh :
+struct ModelNodeElement
+{
+
+};
+
+//------------------------------------------------------------------------------------------------
+// One or more TriangleGroup instances
+struct Mesh :
     public ModelNodeElement
 {
-    std::vector<ModelTriangleGroup> m_TriangleGroups;
+    std::vector<TriangleGroup> m_TriangleGroups;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -114,15 +116,30 @@ struct ModelTransformData :
 
 };
 
+//------------------------------------------------------------------------------------------------
 struct ModelNode
 {
     std::vector<ModelNode> ChildNodes;
 };
 
 //------------------------------------------------------------------------------------------------
-struct Model :
-    public TGeneric<CGenericBase>
+struct ModelMaterial
 {
-public:
+    std::string Name;
+};
 
+//------------------------------------------------------------------------------------------------
+struct ModelTexture
+{
+    std::string Name;
+};
+
+//------------------------------------------------------------------------------------------------
+class CModel :
+    public XModel,
+    public CGenericBase
+{
+    ModelNode RootNode;
+    std::vector<ModelMaterial> Materials;
+    std::vector<ModelTexture> Textures;
 };

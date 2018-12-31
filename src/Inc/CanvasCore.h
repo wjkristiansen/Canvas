@@ -54,6 +54,8 @@ enum CanvasIId
     CanvasIId_XSkeleton = 13U,
     CanvasIId_XIterator = 14U,
     CanvasIId_XObjectName = 15U,
+    CanvasIId_XModel = 16U,
+    CanvasIId_XMesh = 17U,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -127,9 +129,10 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
-    GOMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    GOMMETHOD(CreateObject)(ObjectType type, Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
-    GOMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GEMMETHOD(CreateModel)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GEMMETHOD(CreateObject)(ObjectType type, Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
+    GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
     GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd) = 0;
     //GEMMETHOD(CreateLoadModelWorker)(PCWSTR szModelPath) = 0;
@@ -138,9 +141,34 @@ XCanvas : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
+XMaterial : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XMaterial);
+
+    GEMMETHOD(Initialize)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
+XMesh : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XMesh);
+
+    // Methods for creating mesh vertex data and triangles
+    GEMMETHOD(SetVertices)(UINT NumVertices, FloatVector3 *pVertices) = 0;
+    GEMMETHOD(SetNormals)(FloatVector3 *pNormals) = 0;
+    GEMMETHOD(SetTextureUVCoords)(UINT Layer, FloatVector2 *pUVCoords) = 0;
+    GEMMETHOD(SetBoneWeights)(TVector<UINT, 4> *pBoneIndices, FloatVector4 *pWeights) = 0;
+    GEMMETHOD(SetTriangles)(XMaterial *pMaterial, UINT NumTriangles, TVector<UINT, 3> *pTriangles) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
 XMeshInstance : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
+
+    GEMMETHOD(SetMesh)(XMesh *pMesh) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -176,7 +204,6 @@ XTransform : public Gem::XGeneric
     GEM_INTERFACE_DECLARE(CanvasIId_XTransform);
 
     GEMMETHOD_(RotationType, GetRotationType)() const = 0;
-//    virtual __declspec(nothrow) const FloatVector4& __stdcall GetRotation() const = 0;
     GEMMETHOD_(const FloatVector4 &, GetRotation)() const = 0;
     GEMMETHOD_(const FloatVector3 &, GetTranslation)() const = 0;
     GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4 &Rotation) = 0;
