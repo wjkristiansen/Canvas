@@ -55,7 +55,6 @@ enum CanvasIId
     CanvasIId_XIterator = 14U,
     CanvasIId_XObjectName = 15U,
     CanvasIId_XModel = 16U,
-    CanvasIId_XMesh = 17U,
 };
 
 //------------------------------------------------------------------------------------------------
