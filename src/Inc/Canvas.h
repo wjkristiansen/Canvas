@@ -130,7 +130,6 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(CreateObject)(ObjectType type, Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
-    GEMMETHOD(CreateMesh)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
     GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd) = 0;
@@ -167,7 +166,7 @@ XMeshInstance : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
 
-    GEMMETHOD(SetMesh)(XMesh *pMesh) = 0;
+//    GEMMETHOD(SetMesh)(XMesh *pMesh) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
