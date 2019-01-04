@@ -20,6 +20,7 @@ public:
 // Submits command streams to the GPU.
 // Manages synchronization with other command contexts and
 // the CPU.
+// In D3D12, this wraps a command queue and a pool of command lists and command allocators.
 class CCommandContext :
     public TGeneric<CGenericBase>
 {
