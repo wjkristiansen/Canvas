@@ -14,6 +14,7 @@ class CGraphicsDevice :
 {
 public:
     virtual Result RenderFrame() = 0;
+    virtual Result CreateMesh(const MESH_DATA *pMeshData) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

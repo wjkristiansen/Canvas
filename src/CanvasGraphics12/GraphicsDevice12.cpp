@@ -122,6 +122,12 @@ Result CGraphicsDevice12::RenderFrame()
 }
 
 //------------------------------------------------------------------------------------------------
+Result CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData)
+{
+    return Result::NotImplemented;
+}
+
+//------------------------------------------------------------------------------------------------
 Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice, HWND hWnd)
 {
     *ppGraphicsDevice = nullptr;
