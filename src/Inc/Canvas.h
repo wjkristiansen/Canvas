@@ -81,8 +81,6 @@ enum class LightType : unsigned
     Volume
 };
 
-enum class
-
 //------------------------------------------------------------------------------------------------
 enum class GraphicsSubsystem
 {

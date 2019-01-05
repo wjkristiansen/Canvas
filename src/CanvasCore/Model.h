@@ -135,5 +135,10 @@ struct CameraData
 struct LightData
 {
     LightType m_Type;
+    float m_Intensity;
+    FloatVector4 m_Color;
+    float m_InnerAngle; // For spot light
+    float m_OuterAngle; // For spot light
+
 };
 
