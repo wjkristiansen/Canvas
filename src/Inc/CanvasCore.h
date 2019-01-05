@@ -101,7 +101,61 @@ struct CANVAS_GRAPHICS_OPTIONS
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE XIterator : public GOM::XGeneric
+// An indexed triangle list with common material and texture attributes
+// The actual layout of pixels depends on the material
+struct TRIANGLE_GROUP_DATA
+{
+    UINT NumIndices = 0;
+   _In_count_(NumIndices)  UINT *pIndices = nullptr;
+};
+
+//------------------------------------------------------------------------------------------------
+struct MESH_DATA
+{
+    UINT NumVertices = 0;
+    _In_count_(NumVertices) FloatVector3 *pVertices = nullptr;
+    _In_opt_count_(NumVertices) FloatVector3 *pNormals = nullptr;
+    _In_opt_count_(NumVertices) FloatVector2 *pTextureUVs[4] = {0};
+    _In_opt_count_(NumVertices) UintVector4 *pBoneIndices = nullptr;
+    _In_opt_count_(NumVertices) FloatVector4 *pBoneWeights = nullptr;
+    UINT NumTriangleGroups = 0;
+    _In_count_(NumTriangleGroups) TRIANGLE_GROUP_DATA *pTriangleGroups = nullptr;
+};
+
+//------------------------------------------------------------------------------------------------
+struct MATERIAL_DATA
+{
+
+};
+
+//------------------------------------------------------------------------------------------------
+struct TEXTURE_DATA
+{
+
+};
+
+//------------------------------------------------------------------------------------------------
+struct CAMERA_DATA
+{
+    float NearClip;
+    float FarClip;
+    float FovAngle;
+};
+
+//------------------------------------------------------------------------------------------------
+struct LIGHT_DATA
+{
+    LightType Type;
+    float Intensity;
+    FloatVector4 Color;
+    float InnerAngle; // For spot light
+    float OuterAngle; // For spot light
+
+};
+
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE XIterator : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
 
@@ -144,6 +198,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
     GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd) = 0;
+    GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData) = 0;
     //GEMMETHOD(CreateLoadModelWorker)(PCWSTR szModelPath) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
@@ -162,13 +217,6 @@ GEM_INTERFACE
 XMesh : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XMesh);
-
-    // Methods for creating mesh vertex data and triangles
-    GEMMETHOD(SetVertices)(UINT NumVertices, FloatVector3 *pVertices) = 0;
-    GEMMETHOD(SetNormals)(FloatVector3 *pNormals) = 0;
-    GEMMETHOD(SetTextureUVCoords)(UINT Layer, FloatVector2 *pUVCoords) = 0;
-    GEMMETHOD(SetBoneWeights)(TVector<UINT, 4> *pBoneIndices, FloatVector4 *pWeights) = 0;
-    GEMMETHOD(SetTriangles)(XMaterial *pMaterial, UINT NumTriangles, TVector<UINT, 3> *pTriangles) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

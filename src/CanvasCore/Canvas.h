@@ -57,6 +57,7 @@ public:
 
     GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd) final;
     GEMMETHOD(FrameTick)() final;
+    GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData) final;
 
     Result SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd);
 

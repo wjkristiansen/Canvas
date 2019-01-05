@@ -16,6 +16,7 @@ public:
 
     CGraphicsDevice12();
 
-    virtual Result Initialize(HWND hWnd, bool Windowed);
-    virtual Result RenderFrame();
+    virtual Result Initialize(HWND hWnd, bool Windowed) final;
+    virtual Result RenderFrame() final;
+    virtual Result CreateMesh(const MESH_DATA *pMeshData) final;
 };

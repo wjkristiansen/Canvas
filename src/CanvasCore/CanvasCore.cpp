@@ -193,6 +193,12 @@ GEMMETHODIMP CCanvas::FrameTick()
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateMesh(const MESH_DATA *pMeshData)
+{
+    return m_pGraphicsDevice->CreateMesh(pMeshData);
+}
+
+//------------------------------------------------------------------------------------------------
 Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd)
 {
     TGemPtr<CGraphicsDevice> pGraphicsDevice;
