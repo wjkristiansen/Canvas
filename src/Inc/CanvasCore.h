@@ -71,6 +71,19 @@ enum class ObjectType : unsigned
 };
 
 //------------------------------------------------------------------------------------------------
+enum class LightType : unsigned
+{
+    Null,
+    Point,
+    Directional,
+    Spot,
+    Area,
+    Volume
+};
+
+enum class
+
+//------------------------------------------------------------------------------------------------
 enum class GraphicsSubsystem
 {
     Null = 0,
