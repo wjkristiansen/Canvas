@@ -59,20 +59,6 @@ class CBuffer :
 };
 
 //------------------------------------------------------------------------------------------------
-class CTexture :
-    public TGeneric<CGenericBase>
-{
-
-};
-
-struct CANVAS_MATERIAL_DESC
-{
-
-    void *pVSData;
-    void *pPSData;
-};
-
-//------------------------------------------------------------------------------------------------
 // Describes data passed into the graphics rendering pipeline.
 // This includes:
 //  * Vertex layout
@@ -80,7 +66,17 @@ struct CANVAS_MATERIAL_DESC
 //  * Pixel shader state
 //  * Fill mode
 //  * Alpha blend state
-class CMaterial
+//------------------------------------------------------------------------------------------------
+class CMaterial :
+    public XMaterial,
+    public CGenericBase
+{
+
+};
+
+//------------------------------------------------------------------------------------------------
+class CTexture :
+    public TGeneric<CGenericBase>
 {
 
 };

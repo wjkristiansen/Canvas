@@ -10,6 +10,11 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
 {
     try
     {
+#if defined(_DEBUG)
+        CComPtr<ID3D12Debug3> pDebug;
+        ThrowFailedHResult(D3D12GetDebugInterface(IID_PPV_ARGS(&pDebug)));
+        pDebug->EnableDebugLayer();
+#endif
         // Create the device
         CComPtr<ID3D12Device5> pDevice;
         ThrowFailedHResult(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice)));
@@ -47,10 +52,40 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
         CComPtr<IDXGISwapChain4> pSwapChain4;
         ThrowFailedHResult(pSwapChain1->QueryInterface(&pSwapChain4));
 
-        m_pD3DDevice = pDevice;
-        m_pDirectCommandQueue = pCommandQueue;
-        m_pDXGIFactory = pFactory;
-        m_pSwapChain = pSwapChain4;
+        // The default root signature uses the following parameters
+        //  Root CBV (descriptor static)
+        //  Root SRV (descriptor static)
+        //  Root UAV (descriptor static)
+        //  Root descriptor table
+
+        // The default root descriptor table is layed out as follows:
+        //  CBV[2] (data static)
+        //  SRV[4] (data static)
+        //  UAV[2] (descriptor static)
+        std::vector<CD3DX12_DESCRIPTOR_RANGE1> DefaultDescriptorRanges(3);
+        DefaultDescriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
+        DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
+        DefaultDescriptorRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 6);
+
+        std::vector<CD3DX12_ROOT_PARAMETER1> DefaultRootParams(4);
+        DefaultRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+        DefaultRootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+        DefaultRootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+        DefaultRootParams[3].InitAsDescriptorTable(1, DefaultDescriptorRanges.data(), D3D12_SHADER_VISIBILITY_ALL);
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc (4U, DefaultRootParams.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+        CComPtr<ID3DBlob> pRSBlob;
+        ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&DefaultRootSigDesc, &pRSBlob, nullptr));
+
+        CComPtr<ID3D12RootSignature> pDefaultRootSig;
+        pDevice->CreateRootSignature(1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pDefaultRootSig));
+
+        m_pD3DDevice = std::move(pDevice);
+        m_pDirectCommandQueue = std::move(pCommandQueue);
+        m_pDXGIFactory = std::move(pFactory);
+        m_pSwapChain = std::move(pSwapChain4);
+        m_pDefaultRootSig = std::move(pDefaultRootSig);
     }
     catch (_com_error &e)
     {
@@ -123,6 +158,12 @@ Result CGraphicsDevice12::RenderFrame()
 
 //------------------------------------------------------------------------------------------------
 Result CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData)
+{
+    return Result::NotImplemented;
+}
+
+//------------------------------------------------------------------------------------------------
+Result CGraphicsDevice12::CreateMaterial(const MATERIAL_DATA *pMaterialData)
 {
     return Result::NotImplemented;
 }
