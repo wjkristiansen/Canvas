@@ -159,14 +159,14 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd)
+GEMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
     Result result = Result::NotImplemented;
 
     switch (pGraphicsOptions->Subsystem)
     {
     case GraphicsSubsystem::D3D12:
-        result = SetupD3D12(pGraphicsOptions, hWnd);
+        result = SetupD3D12(pGraphicsOptions, hWnd, ppGraphicsDevice);
         break;
     }
 
@@ -193,14 +193,13 @@ GEMMETHODIMP CCanvas::FrameTick()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateMesh(const MESH_DATA *pMeshData)
+Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
-    return m_pGraphicsDevice->CreateMesh(pMeshData);
-}
+    if (ppGraphicsDevice)
+    {
+        *ppGraphicsDevice = nullptr;
+    }
 
-//------------------------------------------------------------------------------------------------
-Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd)
-{
     TGemPtr<CGraphicsDevice> pGraphicsDevice;
     try
     {
@@ -210,6 +209,14 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd)
     {
         return gomError.Result();
     }
+
     m_pGraphicsDevice = std::move(pGraphicsDevice);
+
+    if (ppGraphicsDevice)
+    {
+        pGraphicsDevice->AddRef();
+        *ppGraphicsDevice = pGraphicsDevice;
+    }
+
     return Result::Success;
 }

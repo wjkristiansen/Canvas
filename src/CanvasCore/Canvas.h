@@ -55,11 +55,10 @@ public:
     GEMMETHOD(CreateScene)(InterfaceId iid, _Outptr_ void **ppObj) final;
     GEMMETHOD(CreateObject)(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
 
-    GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd) final;
+    GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) final;
     GEMMETHOD(FrameTick)() final;
-    GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData) final;
 
-    Result SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd);
+    Result SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice);
 
     void ReportObjectLeaks();
 

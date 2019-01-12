@@ -55,6 +55,7 @@ enum CanvasIId
     CanvasIId_XIterator = 14U,
     CanvasIId_XObjectName = 15U,
     CanvasIId_XModel = 16U,
+    CanvasIId_XGraphicsDevice = 17U,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -189,6 +190,15 @@ XObjectName : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
+XGraphicsDevice : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
+
+    GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
 XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
@@ -197,8 +207,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateObject)(ObjectType type, Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
-    GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd) = 0;
-    GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData) = 0;
+    GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
     //GEMMETHOD(CreateLoadModelWorker)(PCWSTR szModelPath) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };

@@ -157,7 +157,7 @@ Result CGraphicsDevice12::RenderFrame()
 }
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData)
+Result CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
 {
     return Result::NotImplemented;
 }
@@ -175,7 +175,7 @@ Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice, HWND hW
 
     try
     {
-        CGraphicsDevice12 *pGraphicsDevice = new CGraphicsDevice12(); // throw(bad_alloc)
+        CGraphicsDevice12 *pGraphicsDevice = new TGeneric<CGraphicsDevice12>(); // throw(bad_alloc)
         auto result = pGraphicsDevice->Initialize(hWnd, true);
         if (result == Result::Success)
         {

@@ -20,7 +20,7 @@ public:
 
     virtual Result Initialize(HWND hWnd, bool Windowed) final;
     virtual Result RenderFrame() final;
-    virtual Result CreateMesh(const MESH_DATA *pMeshData) final;
+    virtual Result CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh) final;
     virtual Result CreateMaterial(const MATERIAL_DATA *pMaterialData) final;
 };
 
