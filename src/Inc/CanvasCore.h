@@ -105,8 +105,8 @@ struct CANVAS_GRAPHICS_OPTIONS
 // The actual layout of pixels depends on the material
 struct TRIANGLE_GROUP_DATA
 {
-    UINT NumIndices = 0;
-   _In_count_(NumIndices)  UINT *pIndices = nullptr;
+    UINT NumTriangles = 0;
+   _In_count_(NumTriangles)  UIntVector3 *pTriangles = nullptr;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -116,7 +116,7 @@ struct MESH_DATA
     _In_count_(NumVertices) FloatVector3 *pVertices = nullptr;
     _In_opt_count_(NumVertices) FloatVector3 *pNormals = nullptr;
     _In_opt_count_(NumVertices) FloatVector2 *pTextureUVs[4] = {0};
-    _In_opt_count_(NumVertices) UintVector4 *pBoneIndices = nullptr;
+    _In_opt_count_(NumVertices) UIntVector4 *pBoneIndices = nullptr;
     _In_opt_count_(NumVertices) FloatVector4 *pBoneWeights = nullptr;
     UINT NumTriangleGroups = 0;
     _In_count_(NumTriangleGroups) TRIANGLE_GROUP_DATA *pTriangleGroups = nullptr;
