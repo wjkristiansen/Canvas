@@ -10,11 +10,12 @@ namespace Canvas
 //------------------------------------------------------------------------------------------------
 // Abstract graphics device class
 class CGraphicsDevice :
-    public TGeneric<CGenericBase>
+    public XGraphicsDevice,
+    public CGenericBase
 {
 public:
     virtual Result RenderFrame() = 0;
-    virtual Result CreateMesh(const MESH_DATA *pMeshData) = 0;
+    virtual Result CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
