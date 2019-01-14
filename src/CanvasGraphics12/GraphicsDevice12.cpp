@@ -127,7 +127,17 @@ Result CGraphicsDevice12::RenderFrame()
         static UINT clearColorIndex = 0;
 
         pCommandList->Reset(pCommandAllocator, nullptr);
+        D3D12_RESOURCE_BARRIER RTBarrier[1] = {};
+        RTBarrier[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        RTBarrier[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        RTBarrier[0].Transition.pResource = pBackBuffer;
+        RTBarrier[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        RTBarrier[0].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        pCommandList->ResourceBarrier(1, RTBarrier);
         pCommandList->ClearRenderTargetView(pRTVHeap->GetCPUDescriptorHandleForHeapStart(), ClearColors[clearColorIndex], 0, nullptr);
+        RTBarrier[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        RTBarrier[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+        pCommandList->ResourceBarrier(1, RTBarrier);
         clearColorIndex ^= 1;
         ThrowFailedHResult(pCommandList->Close());
 
