@@ -5,6 +5,36 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
+inline Result HResultToResult(HRESULT hr)
+{
+    switch (hr)
+    {
+    case S_OK:
+        return Result::Success;
+
+    case E_FAIL:
+        return Result::Fail;
+
+    case E_OUTOFMEMORY:
+        return Result::OutOfMemory;
+
+    case E_INVALIDARG:
+    case DXGI_ERROR_INVALID_CALL:
+        return Result::InvalidArg;
+
+    case DXGI_ERROR_DEVICE_REMOVED:
+        // BUGBUG: TODO...
+        return Result::Fail;
+
+    case E_NOINTERFACE:
+        return Result::NoInterface;
+
+    default:
+        return Result::Fail;
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 inline std::wstring to_string(ObjectType t)
 {
     switch (t)

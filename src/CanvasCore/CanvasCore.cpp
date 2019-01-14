@@ -204,6 +204,12 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
     try
     {
         ThrowGemError(CreateGraphicsDevice12(&pGraphicsDevice, hWnd));
+
+        if (ppGraphicsDevice)
+        {
+            pGraphicsDevice->AddRef();
+            *ppGraphicsDevice = pGraphicsDevice;
+        }
     }
     catch (GemError &gomError)
     {
@@ -211,12 +217,6 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
     }
 
     m_pGraphicsDevice = std::move(pGraphicsDevice);
-
-    if (ppGraphicsDevice)
-    {
-        pGraphicsDevice->AddRef();
-        *ppGraphicsDevice = pGraphicsDevice;
-    }
 
     return Result::Success;
 }

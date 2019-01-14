@@ -8,17 +8,6 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-// Abstract graphics device class
-class CGraphicsDevice :
-    public XGraphicsDevice,
-    public CGenericBase
-{
-public:
-    virtual Result RenderFrame() = 0;
-    virtual Result CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
 // Submits command streams to the GPU.
 // Manages synchronization with other command contexts and
 // the CPU.
@@ -46,7 +35,8 @@ class CCommandStream :
 class CUploadBuffer :
     public TGeneric<CGenericBase>
 {
-
+public:
+    GEMMETHOD_(void *, Data)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -96,5 +86,17 @@ class CDescriptorHeap :
 
 };
 
+
+//------------------------------------------------------------------------------------------------
+// Abstract graphics device class
+class CGraphicsDevice :
+    public XGraphicsDevice,
+    public CGenericBase
+{
+public:
+    virtual Result RenderFrame() = 0;
+    virtual Result CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
+    virtual Result AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) = 0;
+};
 
 }
