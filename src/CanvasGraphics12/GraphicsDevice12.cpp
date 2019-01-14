@@ -157,9 +157,55 @@ Result CGraphicsDevice12::RenderFrame()
 }
 
 //------------------------------------------------------------------------------------------------
+Result CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer)
+{
+    try
+    {
+        // Allocate a buffer to contain the vertex data
+        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(SizeInBytes);
+        CComPtr<ID3D12Resource> pD3DBuffer;
+        CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
+        ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource1(&HeapProp, D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, nullptr, IID_PPV_ARGS(&pD3DBuffer)));
+        TGemPtr<CUploadBuffer> pUploadBuffer = new CUploadBuffer12(pD3DBuffer, 0, SizeInBytes); // throw(std::bad_alloc), throw(_com_error)
+        *ppUploadBuffer = pUploadBuffer;
+        pUploadBuffer.Detach();
+    }
+    catch (std::bad_alloc)
+    {
+        return Result::OutOfMemory;
+    }
+    catch (_com_error &e)
+    {
+        return HResultToResult(e.Error());
+    }
+    return Result::Success;
+}
+
+
+//------------------------------------------------------------------------------------------------
 Result CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
 {
-    return Result::NotImplemented;
+    try
+    {
+        if (pMeshData->pVertices)
+        {
+            TGemPtr<CUploadBuffer> pVertexBuffer;
+            AllocateUploadBuffer(pMeshData->NumVertices * sizeof(FloatVector4), &pVertexBuffer);
+            FloatVector4 *pVertexPos = reinterpret_cast<FloatVector4 *>(pVertexBuffer->Data());
+
+            // Copy the vertex data into the buffer, converting from float3 to float4 format
+            for (UINT i = 0; i < pMeshData->NumVertices; ++i)
+            {
+                const FloatVector3 &SrcPos = pMeshData->pVertices[i];
+                pVertexPos[i] = FloatVector4(SrcPos.X(), SrcPos.Y(), SrcPos.Z(), 0.f);
+            }
+        }
+    }
+    catch (_com_error &e)
+    {
+        return HResultToResult(e.Error());
+    }
+    return Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -175,11 +221,12 @@ Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice, HWND hW
 
     try
     {
-        CGraphicsDevice12 *pGraphicsDevice = new TGeneric<CGraphicsDevice12>(); // throw(bad_alloc)
+        TGemPtr<CGraphicsDevice12> pGraphicsDevice = new TGeneric<CGraphicsDevice12>(); // throw(bad_alloc)
         auto result = pGraphicsDevice->Initialize(hWnd, true);
         if (result == Result::Success)
         {
             *ppGraphicsDevice = pGraphicsDevice;
+            pGraphicsDevice.Detach();
         }
         return result;
     }
@@ -187,4 +234,22 @@ Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice, HWND hW
     {
         return Result::OutOfMemory;
     }
+}
+
+//------------------------------------------------------------------------------------------------
+CUploadBuffer12::CUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size) :
+    m_pResource(pResource),
+    m_OffsetToStart(OffsetToStart)
+{
+    // Persistently map the data
+    D3D12_RANGE ReadRange;
+    ReadRange.Begin = OffsetToStart;
+    ReadRange.End = OffsetToStart + Size;
+    ThrowFailedHResult(pResource->Map(0, &ReadRange, &m_pData));
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void *) CUploadBuffer12::Data()
+{
+    return m_pData;
 }
