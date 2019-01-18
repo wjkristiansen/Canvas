@@ -82,24 +82,24 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
         pDevice->CreateRootSignature(1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pDefaultRootSig));
 
         // BUGBUG - test code...
-        CComPtr<ID3D12Resource> pBuffer;
-        CD3DX12_RESOURCE_DESC BufDesc = CD3DX12_RESOURCE_DESC::Buffer(65536);
-        CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
-        ThrowFailedHResult(pDevice->CreateCommittedResource(
-            &HeapProp,
-            D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES,
-            &BufDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&pBuffer)));
-        D3D12_GPU_VIRTUAL_ADDRESS BaseVA = pBuffer->GetGPUVirtualAddress();
-        CComPtr<ID3D12GraphicsCommandList4> pCL;
-        CComPtr<ID3D12CommandAllocator> pCA;
-        ThrowFailedHResult(pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pCA)));
-        ThrowFailedHResult(pDevice->CreateCommandList1(1, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&pCL)));
-        pCL->Reset(pCA, nullptr);
-        pCL->SetGraphicsRootSignature(pDefaultRootSig);
-        pCL->SetGraphicsRootConstantBufferView(0, BaseVA + 514);
+        //CComPtr<ID3D12Resource> pBuffer;
+        //CD3DX12_RESOURCE_DESC BufDesc = CD3DX12_RESOURCE_DESC::Buffer(65536);
+        //CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
+        //ThrowFailedHResult(pDevice->CreateCommittedResource(
+        //    &HeapProp,
+        //    D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES,
+        //    &BufDesc,
+        //    D3D12_RESOURCE_STATE_GENERIC_READ,
+        //    nullptr,
+        //    IID_PPV_ARGS(&pBuffer)));
+        //D3D12_GPU_VIRTUAL_ADDRESS BaseVA = pBuffer->GetGPUVirtualAddress();
+        //CComPtr<ID3D12GraphicsCommandList4> pCL;
+        //CComPtr<ID3D12CommandAllocator> pCA;
+        //ThrowFailedHResult(pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pCA)));
+        //ThrowFailedHResult(pDevice->CreateCommandList1(1, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&pCL)));
+        //pCL->Reset(pCA, nullptr);
+        //pCL->SetGraphicsRootSignature(pDefaultRootSig);
+        //pCL->SetGraphicsRootConstantBufferView(0, BaseVA + 514);
 
         // BUGBUG - end test code
 
