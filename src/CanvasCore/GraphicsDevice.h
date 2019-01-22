@@ -95,7 +95,6 @@ class CGraphicsDevice :
 {
 public:
     virtual Result RenderFrame() = 0;
-    virtual Result CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
     virtual Result AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) = 0;
 };
 
