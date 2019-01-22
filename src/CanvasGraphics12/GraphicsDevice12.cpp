@@ -81,28 +81,6 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
         CComPtr<ID3D12RootSignature> pDefaultRootSig;
         pDevice->CreateRootSignature(1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pDefaultRootSig));
 
-        // BUGBUG - test code...
-        //CComPtr<ID3D12Resource> pBuffer;
-        //CD3DX12_RESOURCE_DESC BufDesc = CD3DX12_RESOURCE_DESC::Buffer(65536);
-        //CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
-        //ThrowFailedHResult(pDevice->CreateCommittedResource(
-        //    &HeapProp,
-        //    D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES,
-        //    &BufDesc,
-        //    D3D12_RESOURCE_STATE_GENERIC_READ,
-        //    nullptr,
-        //    IID_PPV_ARGS(&pBuffer)));
-        //D3D12_GPU_VIRTUAL_ADDRESS BaseVA = pBuffer->GetGPUVirtualAddress();
-        //CComPtr<ID3D12GraphicsCommandList4> pCL;
-        //CComPtr<ID3D12CommandAllocator> pCA;
-        //ThrowFailedHResult(pDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pCA)));
-        //ThrowFailedHResult(pDevice->CreateCommandList1(1, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&pCL)));
-        //pCL->Reset(pCA, nullptr);
-        //pCL->SetGraphicsRootSignature(pDefaultRootSig);
-        //pCL->SetGraphicsRootConstantBufferView(0, BaseVA + 514);
-
-        // BUGBUG - end test code
-
         m_pD3DDevice = std::move(pDevice);
         m_pDirectCommandQueue = std::move(pCommandQueue);
         m_pDXGIFactory = std::move(pFactory);
@@ -215,7 +193,7 @@ Result CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer
 
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
+GEMMETHODIMP CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
 {
     try
     {
@@ -241,9 +219,21 @@ Result CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
 }
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::CreateMaterial(const MATERIAL_DATA *pMaterialData)
+GEMMETHODIMP CGraphicsDevice12::CreateCamera(const CAMERA_DATA *pCameraData, XCamera **ppCamera)
+{
+
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CGraphicsDevice12::CreateMaterial(const MATERIAL_DATA *pMaterialData, XMaterial *ppMaterial)
 {
     return Result::NotImplemented;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CGraphicsDevice12::CreateLight(const LIGHT_DATA *pLightData, XLight *ppLight)
+{
+
 }
 
 //------------------------------------------------------------------------------------------------

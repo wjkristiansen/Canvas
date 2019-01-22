@@ -24,9 +24,11 @@ public:
 
     virtual Result Initialize(HWND hWnd, bool Windowed) final;
     virtual Result RenderFrame() final;
-    virtual Result CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh) final;
-    virtual Result CreateMaterial(const MATERIAL_DATA *pMaterialData) final;
-    virtual Result AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) final;
+    GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) final;
+    GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) final;
+    GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) final;
+    GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight) final;
+    GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) final;
 };
 
 //------------------------------------------------------------------------------------------------
