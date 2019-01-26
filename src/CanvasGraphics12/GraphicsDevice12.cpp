@@ -62,6 +62,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
         //  CBV[2] (data static)
         //  SRV[4] (data static)
         //  UAV[2] (descriptor static)
+#if defined(__ID3D12DeviceRemovedExtendedDataSettings_INTERFACE_DEFINED__)
         std::vector<CD3DX12_DESCRIPTOR_RANGE1> DefaultDescriptorRanges(3);
         DefaultDescriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
         DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
@@ -86,6 +87,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
         m_pDXGIFactory = std::move(pFactory);
         m_pSwapChain = std::move(pSwapChain4);
         m_pDefaultRootSig = std::move(pDefaultRootSig);
+#endif
     }
     catch (_com_error &e)
     {
@@ -221,19 +223,19 @@ GEMMETHODIMP CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **p
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CGraphicsDevice12::CreateCamera(const CAMERA_DATA *pCameraData, XCamera **ppCamera)
 {
-
+    return Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::CreateMaterial(const MATERIAL_DATA *pMaterialData, XMaterial *ppMaterial)
+GEMMETHODIMP CGraphicsDevice12::CreateMaterial(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
 {
     return Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::CreateLight(const LIGHT_DATA *pLightData, XLight *ppLight)
+GEMMETHODIMP CGraphicsDevice12::CreateLight(const LIGHT_DATA *pLightData, XLight **ppLight)
 {
-
+    return Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
