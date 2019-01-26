@@ -26,8 +26,8 @@ public:
     virtual Result RenderFrame() final;
     GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) final;
     GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) final;
-    GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) final;
-    GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight) final;
+    GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial);
+    GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight);
     GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) final;
 };
 
