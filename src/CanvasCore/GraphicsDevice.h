@@ -94,8 +94,8 @@ class CGraphicsDevice :
     public CGenericBase
 {
 public:
-    virtual Result RenderFrame() = 0;
-    virtual Result AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) = 0;
+    GEMMETHOD(RenderFrame)() = 0;
+    GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) = 0;
 };
 
 }
