@@ -103,22 +103,21 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-template <>
-class TCanvasObject<ObjectType::SceneGraphNode> :
+class CSceneGraphNodeObject :
     public XGeneric,
     public CCanvasObjectBase
 {
 public:
     TInnerGeneric<CObjectName> m_ObjectName;
     TInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
+    TInnerGeneric<CTransform> m_Transform;
 
-    TCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
+    CSceneGraphNodeObject(CCanvas *pCanvas, PCWSTR szName) :
         CCanvasObjectBase(pCanvas),
         m_SceneGraphNode(this),
+        m_Transform(this),
         m_ObjectName(this, szName, pCanvas)
     {}
-
-    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::SceneGraphNode; }
 
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
@@ -127,9 +126,14 @@ public:
             return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
 
-        if (XObjectName::IId == iid)
+        if (XSceneGraphNode::IId == iid)
         {
             return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
+        }
+
+        if (XTransform::IId == iid)
+        {
+            return m_Transform.InternalQueryInterface(iid, ppObj);
         }
 
         return __super::InternalQueryInterface(iid, ppObj);

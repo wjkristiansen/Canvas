@@ -59,19 +59,6 @@ enum CanvasIId
 };
 
 //------------------------------------------------------------------------------------------------
-enum class ObjectType : unsigned
-{
-    Unknown,
-    Null,
-    Scene,
-    SceneGraphNode,
-    Transform,
-    Camera,
-    MeshInstance,
-    Light,
-};
-
-//------------------------------------------------------------------------------------------------
 enum class LightType : unsigned
 {
     Null,
@@ -104,7 +91,7 @@ struct CANVAS_GRAPHICS_OPTIONS
 //------------------------------------------------------------------------------------------------
 // An indexed triangle list with common material and texture attributes
 // The actual layout of pixels depends on the material
-struct TRIANGLE_GROUP_DATA
+struct MATERIAL_GROUP_DATA
 {
     UINT NumTriangles = 0;
    _In_count_(NumTriangles)  UIntVector3 *pTriangles = nullptr;
@@ -119,8 +106,8 @@ struct MESH_DATA
     _In_opt_count_(NumVertices) FloatVector2 *pTextureUVs[4] = {0};
     _In_opt_count_(NumVertices) UIntVector4 *pBoneIndices = nullptr;
     _In_opt_count_(NumVertices) FloatVector4 *pBoneWeights = nullptr;
-    UINT NumTriangleGroups = 0;
-    _In_count_(NumTriangleGroups) TRIANGLE_GROUP_DATA *pTriangleGroups = nullptr;
+    UINT NumMaterialGroups = 0;
+    _In_count_(NumMaterialGroups) MATERIAL_GROUP_DATA *pMaterialGroups = nullptr;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -207,11 +194,10 @@ XCanvas : public Gem::XGeneric
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    GEMMETHOD(CreateObject)(ObjectType type, Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
+    GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
     GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
-    //GEMMETHOD(CreateLoadModelWorker)(PCWSTR szModelPath) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
 
@@ -237,7 +223,7 @@ XMeshInstance : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
 
-//    GEMMETHOD(SetMesh)(XMesh *pMesh) = 0;
+    GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -286,6 +272,10 @@ XSceneGraphNode : public Gem::XGeneric
     GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
     GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) = 0;
+
+    //GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
+    //GEMMETHOD_(void, SetCamera)(XCamera *pCamera) = 0;
+    //GEMMETHOD_(void, SetLight)(XLight *pLight) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

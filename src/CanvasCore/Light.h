@@ -7,11 +7,11 @@
 //------------------------------------------------------------------------------------------------
 class CLight :
     public XLight,
-    public CInnerGenericBase
+    public CGenericBase
 {
 public:
-    CLight(XGeneric *pOuterObj) :
-        CInnerGenericBase(pOuterObj) {}
+    CLight() :
+        CGenericBase() {}
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (XLight::IId == iid)
@@ -19,51 +19,6 @@ public:
             *ppObj = this;
             AddRef(); // This will actually AddRef the outer generic
             return Result::Success;
-        }
-
-        return __super::InternalQueryInterface(iid, ppObj);
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-template <>
-class TCanvasObject<ObjectType::Light> :
-    public XGeneric,
-    public CCanvasObjectBase
-{
-public:
-    TInnerGeneric<CLight> m_Light;
-    TInnerGeneric<CTransform> m_Transform;
-    TInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
-    TInnerGeneric<CObjectName> m_ObjectName;
-
-    TCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
-        CCanvasObjectBase(pCanvas),
-        m_Light(this),
-        m_Transform(this),
-        m_SceneGraphNode(this),
-        m_ObjectName(this, szName, pCanvas)
-    {}
-
-    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::Light; }
-
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-    {
-        if (XLight::IId == iid)
-        {
-            return m_Light.InternalQueryInterface(iid, ppObj);
-        }
-        if (XObjectName::IId == iid)
-        {
-            return m_ObjectName.InternalQueryInterface(iid, ppObj);
-        }
-        if (XTransform::IId == iid)
-        {
-            return m_Transform.InternalQueryInterface(iid, ppObj);
-        }
-        if (XSceneGraphNode::IId == iid)
-        {
-            return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
         }
 
         return __super::InternalQueryInterface(iid, ppObj);

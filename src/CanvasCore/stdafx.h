@@ -34,8 +34,8 @@ using namespace Gem;
 
 #include "CanvasObject.h"
 #include "NamedObject.h"
-#include "SceneGraph.h"
 #include "Transform.h"
+#include "SceneGraph.h"
 #include "Camera.h"
 #include "Light.h"
 #include "Model.h"

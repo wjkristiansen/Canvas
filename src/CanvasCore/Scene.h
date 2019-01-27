@@ -14,13 +14,11 @@ public:
     TInnerGeneric<CObjectName> m_ObjectName;
 
     CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
-        CCanvasObjectBase(pCanvas),
+        m_ObjectName(this, szName, pCanvas),
         m_RootSceneGraphNode(this),
-        m_ObjectName(this, szName, pCanvas)
+        CCanvasObjectBase(pCanvas)
     {
     }
-
-    GEMMETHOD_(ObjectType, GetType)() const final { return ObjectType::Scene; }
 
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {

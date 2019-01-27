@@ -25,33 +25,6 @@ GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **pp
 }
 
 //------------------------------------------------------------------------------------------------
-template <>
-class TCanvasObject<ObjectType::Null> :
-    public XGeneric,
-    public CCanvasObjectBase
-{
-public:
-    TInnerGeneric<CObjectName> m_ObjectName;
-    TCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
-        CCanvasObjectBase(pCanvas),
-        m_ObjectName(this, szName, pCanvas)
-    {
-    }
-
-    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::Null; }
-
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-    {
-        if (XObjectName::IId == iid)
-        {
-            return m_ObjectName.InternalQueryInterface(iid, ppObj);
-        }
-
-        return __super::InternalQueryInterface(iid, ppObj);
-    }
-};
-
-//------------------------------------------------------------------------------------------------
 CCanvas::~CCanvas()
 {
     ReportObjectLeaks();
@@ -73,39 +46,11 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName)
+GEMMETHODIMP CCanvas::CreateSceneGraphNode(InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName)
 {
     try
     {
-        TGemPtr<XGeneric> pObj;
-        switch (type)
-        {
-        case ObjectType::Null:
-            pObj = new TGeneric<TCanvasObject<ObjectType::Null>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::SceneGraphNode:
-            pObj = new TGeneric<TCanvasObject<ObjectType::SceneGraphNode>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::Transform:
-            pObj = new TGeneric<TCanvasObject<ObjectType::Transform>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::Light:
-            pObj = new TGeneric<TCanvasObject<ObjectType::Light>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::Camera:
-            pObj = new TGeneric<TCanvasObject<ObjectType::Camera>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::MeshInstance:
-            pObj = new TGeneric<TCanvasObject<ObjectType::MeshInstance>>(this, szName); // throw(std::bad_alloc)
-            break;
-        default:
-            return Result::NoInterface;
-        }
+        TGemPtr<XGeneric> pObj = new TGeneric<CSceneGraphNodeObject>(this, szName); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)
@@ -120,7 +65,7 @@ void CCanvas::ReportObjectLeaks()
     for (CCanvasObjectBase *pObject : m_OutstandingObjects)
     {
         std::wcout << L"Leaked object: ";
-        std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
+        //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
         XObjectName *pObjectName;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pObjectName))))
         {
