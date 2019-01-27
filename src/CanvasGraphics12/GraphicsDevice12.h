@@ -22,8 +22,9 @@ public:
 
     CGraphicsDevice12();
 
-    virtual Result Initialize(HWND hWnd, bool Windowed) final;
-    virtual Result RenderFrame() final;
+    Result Initialize(HWND hWnd, bool Windowed);
+
+    GEMMETHOD(RenderFrame)() final;
     GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) final;
     GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) final;
     GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial);

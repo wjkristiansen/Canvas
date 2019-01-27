@@ -97,7 +97,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
 }
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::RenderFrame()
+GEMMETHODIMP CGraphicsDevice12::RenderFrame()
 {
     try
     {
@@ -168,7 +168,7 @@ Result CGraphicsDevice12::RenderFrame()
 }
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer)
+GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer)
 {
     try
     {
@@ -266,8 +266,8 @@ CUploadBuffer12::CUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart
 {
     // Persistently map the data
     D3D12_RANGE ReadRange;
-    ReadRange.Begin = OffsetToStart;
-    ReadRange.End = OffsetToStart + Size;
+    ReadRange.Begin = SIZE_T(OffsetToStart);
+    ReadRange.End = SIZE_T(OffsetToStart + Size);
     ThrowFailedHResult(pResource->Map(0, &ReadRange, &m_pData));
 }
 
