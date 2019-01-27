@@ -78,16 +78,16 @@ int main()
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
     TGemPtr<XSceneGraphNode> pTransformNode1;
-    result = pCanvas->CreateObject(ObjectType::Transform, GEM_IID_PPV_ARGS(&pTransformNode1), L"TransformNode1");
+    result = pCanvas->CreateSceneGraphNode(GEM_IID_PPV_ARGS(&pTransformNode1), L"TransformNode1");
 
     TGemPtr<XSceneGraphNode> pTransformNode2;
-    result = pCanvas->CreateObject(ObjectType::Transform, GEM_IID_PPV_ARGS(&pTransformNode2), L"TransformNode2");
+    result = pCanvas->CreateSceneGraphNode(GEM_IID_PPV_ARGS(&pTransformNode2), L"TransformNode2");
 
     TGemPtr<XSceneGraphNode> pTransformNode3;
-    result = pCanvas->CreateObject(ObjectType::Transform, GEM_IID_PPV_ARGS(&pTransformNode3), L"TransformNode3");
+    result = pCanvas->CreateSceneGraphNode(GEM_IID_PPV_ARGS(&pTransformNode3), L"TransformNode3");
 
     TGemPtr<XSceneGraphNode> pTransformNode4;
-    result = pCanvas->CreateObject(ObjectType::Transform, GEM_IID_PPV_ARGS(&pTransformNode4), L"TransformNode4");
+    result = pCanvas->CreateSceneGraphNode(GEM_IID_PPV_ARGS(&pTransformNode4), L"TransformNode4");
 
     pRootSceneGraphNode->AddChild(pTransformNode1);
     pTransformNode1->AddChild(pTransformNode2);
