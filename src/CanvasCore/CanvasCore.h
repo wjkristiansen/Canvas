@@ -68,5 +68,24 @@ public:
     void ReportObjectLeaks();
 
 public:
-    TGemPtr<CGraphicsDevice> m_pGraphicsDevice;
+    TGemPtr<class CGraphicsDevice> m_pGraphicsDevice;
 };
+
+//------------------------------------------------------------------------------------------------
+inline CCanvasObjectBase::CCanvasObjectBase(CCanvas *pCanvas) :
+    CGenericBase()
+{
+    try
+    {
+        pCanvas->m_OutstandingObjects.insert(this); // throw(std::bad_alloc)
+    }
+    catch (std::bad_alloc &)
+    {
+        // Drop tracking of object...
+    }
+}
+
+inline CCanvasObjectBase::~CCanvasObjectBase()
+{
+    m_pCanvas->m_OutstandingObjects.erase(this);
+}

@@ -148,7 +148,7 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
     TGemPtr<CGraphicsDevice> pGraphicsDevice;
     try
     {
-        ThrowGemError(CreateGraphicsDevice12(&pGraphicsDevice, hWnd));
+        ThrowGemError(CreateGraphicsDevice12(this, &pGraphicsDevice, hWnd));
 
         if (ppGraphicsDevice)
         {
