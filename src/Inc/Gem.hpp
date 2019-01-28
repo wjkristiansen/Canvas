@@ -35,7 +35,7 @@ enum class Result : UINT32
     NoInterface,
     BadPointer,
     NotImplemented,
-    DuplicateKey,
+    Unavailable,
     Uninitialized,
 };
 
