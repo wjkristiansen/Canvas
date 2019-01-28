@@ -11,7 +11,7 @@ class CCanvasObjectBase :
 public:
     class CCanvas *m_pCanvas = nullptr;
 
-    CCanvasObjectBase(CCanvas *pCanvas);
+    CCanvasObjectBase(class CCanvas *pCanvas);
     ~CCanvasObjectBase();
 };
 
