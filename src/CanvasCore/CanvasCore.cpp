@@ -104,7 +104,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
+GEMMETHODIMP CCanvas::CreateGraphicsDevice(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
     Result result = Result::NotImplemented;
 
