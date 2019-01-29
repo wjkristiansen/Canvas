@@ -7,8 +7,7 @@
 //------------------------------------------------------------------------------------------------
 class CScene :
     public XScene,
-    public CGenericBase,
-    public CCanvasListNode
+    public CCanvasObjectBase
 {
 public:
     TInnerGeneric<CSceneGraphNode> m_RootSceneGraphNode;
