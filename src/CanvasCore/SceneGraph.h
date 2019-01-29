@@ -105,8 +105,7 @@ public:
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNodeObject :
     public XGeneric,
-    public CGenericBase,
-    public CCanvasListNode
+    public CCanvasObjectBase
 {
 public:
     TInnerGeneric<CObjectName> m_ObjectName;

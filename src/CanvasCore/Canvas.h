@@ -45,7 +45,7 @@ public:
 
     std::map<std::wstring, CObjectName *> m_ObjectNames;
     struct Sentinel {};
-    CCanvasListNode m_OutstandingObjects;
+    TAutoList<CCanvasObjectBase *> m_OutstandingObjects;
 
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj)
     {
@@ -68,12 +68,13 @@ public:
 
     void ReportObjectLeaks();
 
-    void AddOutstandingObject(CCanvasListNode *pObject)
-    {
-        // The m_OutstandingObjects sentinel node m_pPrev points to the tail of the linked list
-        pObject->InsertAfter(m_OutstandingObjects.m_pPrev);
-    }
-
 public:
     TGemPtr<class CGraphicsDevice> m_pGraphicsDevice;
 };
+
+//------------------------------------------------------------------------------------------------
+inline CCanvasObjectBase::CCanvasObjectBase(CCanvas *pCanvas) :
+    CGenericBase(),
+    m_OutstandingNode(this, pCanvas->m_OutstandingObjects.GetLast())
+{
+}

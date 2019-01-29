@@ -8,23 +8,19 @@ using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
 CSceneGraphNodeObject::CSceneGraphNodeObject(CCanvas *pCanvas, PCWSTR szName) :
-    CGenericBase(),
-    CCanvasListNode(),
+    CCanvasObjectBase(pCanvas),
     m_SceneGraphNode(this),
     m_Transform(this),
     m_ObjectName(this, szName, pCanvas)
 {
-    pCanvas->AddOutstandingObject(this);
 }
 
 //------------------------------------------------------------------------------------------------
 CScene::CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
+    CCanvasObjectBase(pCanvas),
     m_ObjectName(this, szName, pCanvas),
-    m_RootSceneGraphNode(this),
-    CGenericBase(),
-    CCanvasListNode()
+    m_RootSceneGraphNode(this)
 {
-    pCanvas->AddOutstandingObject(this);
 }
 
 //------------------------------------------------------------------------------------------------
