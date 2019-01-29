@@ -62,24 +62,24 @@ GEMMETHODIMP CCanvas::CreateSceneGraphNode(InterfaceId iid, _Outptr_ void **ppOb
 //------------------------------------------------------------------------------------------------
 void CCanvas::ReportObjectLeaks()
 {
-    for (CCanvasObjectBase *pObject : m_OutstandingObjects)
-    {
-        std::wcout << L"Leaked object: ";
-        //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
-        XObjectName *pObjectName;
-        if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pObjectName))))
-        {
-            pObjectName->Release();
-            std::wcout << L"Name=\"" << pObjectName->GetName() << L"\", ";
-        }
-        XGeneric *pXGeneric;
-        if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pXGeneric))))
-        {
-            ULONG RefCount = pXGeneric->Release();
-            std::wcout << L"RefCount=" << RefCount;
-        }
-        std::wcout << std::endl;
-    }
+    //for (CCanvasListNode *pObject = m_OutstandingObjects.m_pNext; pObject != &m_OutstandingObjects; pObject = pObject->m_pNext)
+    //{
+    //    std::wcout << L"Leaked object: ";
+    //    //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
+    //    XObjectName *pObjectName;
+    //    if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pObjectName))))
+    //    {
+    //        pObjectName->Release();
+    //        std::wcout << L"Name=\"" << pObjectName->GetName() << L"\", ";
+    //    }
+    //    XGeneric *pXGeneric;
+    //    if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pXGeneric))))
+    //    {
+    //        ULONG RefCount = pXGeneric->Release();
+    //        std::wcout << L"RefCount=" << RefCount;
+    //    }
+    //    std::wcout << std::endl;
+    //}
 }
 
 //------------------------------------------------------------------------------------------------

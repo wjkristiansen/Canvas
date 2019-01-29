@@ -244,7 +244,8 @@ Result GEMAPI CreateGraphicsDevice12(CCanvas *pCanvas, CGraphicsDevice **ppGraph
 
     try
     {
-        TGemPtr<CGraphicsDevice12> pGraphicsDevice = new TGeneric<CGraphicsDevice12>(pCanvas); // throw(bad_alloc)
+        TGemPtr<CGraphicsDevice12> pGraphicsDevice = new TGeneric<CGraphicsDevice12>(); // throw(bad_alloc)
+        pCanvas->AddOutstandingObject(pGraphicsDevice);
         auto result = pGraphicsDevice->Initialize(hWnd, true);
         if (result == Result::Success)
         {

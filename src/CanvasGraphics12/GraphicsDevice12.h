@@ -20,7 +20,7 @@ public:
     CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
 
 
-    CGraphicsDevice12(CCanvas *pCanvas);
+    CGraphicsDevice12();
 
     Result Initialize(HWND hWnd, bool Windowed);
 

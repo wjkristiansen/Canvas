@@ -7,6 +7,27 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
+CSceneGraphNodeObject::CSceneGraphNodeObject(CCanvas *pCanvas, PCWSTR szName) :
+    CGenericBase(),
+    CCanvasListNode(),
+    m_SceneGraphNode(this),
+    m_Transform(this),
+    m_ObjectName(this, szName, pCanvas)
+{
+    pCanvas->AddOutstandingObject(this);
+}
+
+//------------------------------------------------------------------------------------------------
+CScene::CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
+    m_ObjectName(this, szName, pCanvas),
+    m_RootSceneGraphNode(this),
+    CGenericBase(),
+    CCanvasListNode()
+{
+    pCanvas->AddOutstandingObject(this);
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **ppUnk)
 {
     if (iid == XSceneGraphNode::IId)
