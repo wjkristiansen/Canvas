@@ -7,18 +7,14 @@
 //------------------------------------------------------------------------------------------------
 class CScene :
     public XScene,
-    public CCanvasObjectBase
+    public CGenericBase,
+    public CCanvasListNode
 {
 public:
     TInnerGeneric<CSceneGraphNode> m_RootSceneGraphNode;
     TInnerGeneric<CObjectName> m_ObjectName;
 
-    CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
-        m_ObjectName(this, szName, pCanvas),
-        m_RootSceneGraphNode(this),
-        CCanvasObjectBase(pCanvas)
-    {
-    }
+    CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName);
 
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {

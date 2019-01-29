@@ -105,19 +105,15 @@ public:
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNodeObject :
     public XGeneric,
-    public CCanvasObjectBase
+    public CGenericBase,
+    public CCanvasListNode
 {
 public:
     TInnerGeneric<CObjectName> m_ObjectName;
     TInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
     TInnerGeneric<CTransform> m_Transform;
 
-    CSceneGraphNodeObject(CCanvas *pCanvas, PCWSTR szName) :
-        CCanvasObjectBase(pCanvas),
-        m_SceneGraphNode(this),
-        m_Transform(this),
-        m_ObjectName(this, szName, pCanvas)
-    {}
+    CSceneGraphNodeObject(CCanvas *pCanvas, PCWSTR szName);
 
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
