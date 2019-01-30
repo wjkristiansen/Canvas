@@ -40,6 +40,12 @@ enum class Result : UINT32
 };
 
 //------------------------------------------------------------------------------------------------
+inline bool Succeeded(Result result)
+{
+    return result < Result::Fail;
+}
+
+//------------------------------------------------------------------------------------------------
 template<class _Type>
 class TGemPtr
 {
@@ -213,7 +219,7 @@ public:
     {
         auto result = InterlockedDecrement(&m_RefCount);
 
-        if (XGeneric::IId == result)
+        if (0UL == result)
         {
             delete(this);
         }
