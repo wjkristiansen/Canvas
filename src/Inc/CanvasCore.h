@@ -31,12 +31,6 @@ GEM_INTERFACE XMesh;
 GEM_INTERFACE XAmination;
 GEM_INTERFACE XSkeleton;
 
-//------------------------------------------------------------------------------------------------
-inline bool Succeeded(Gem::Result result)
-{
-    return result < Gem::Result::Fail;
-}
-
 enum CanvasIId
 {
     CanvasIId_XCanvas = 1U,
