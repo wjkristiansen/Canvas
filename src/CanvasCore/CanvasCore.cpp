@@ -38,7 +38,7 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
     try
     {
         TGemPtr<XGeneric> pObj;
-        pObj = new TGeneric<CScene>(this, L"SceneRoot"); // throw(std::bad_alloc)
+        pObj = new TGeneric<CScene>(this, L"Scene"); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)
@@ -52,7 +52,7 @@ GEMMETHODIMP CCanvas::CreateSceneGraphNode(InterfaceId iid, _Outptr_ void **ppOb
 {
     try
     {
-        TGemPtr<XGeneric> pObj = new TGeneric<CSceneGraphNodeObject>(this, szName); // throw(std::bad_alloc)
+        TGemPtr<XGeneric> pObj = new TGeneric<CSceneGraphNode>(this, szName); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)

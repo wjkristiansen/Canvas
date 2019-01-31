@@ -277,6 +277,8 @@ GEM_INTERFACE
 XScene : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XScene);
+
+    GEMMETHOD(GetRootSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 }

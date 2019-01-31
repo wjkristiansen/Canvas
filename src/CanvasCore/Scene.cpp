@@ -7,9 +7,8 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-CSceneGraphNodeObject::CSceneGraphNodeObject(CCanvas *pCanvas, PCWSTR szName) :
+CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas, PCWSTR szName) :
     CCanvasObjectBase(pCanvas),
-    m_SceneGraphNode(this),
     m_Transform(this),
     m_ObjectName(this, szName, pCanvas)
 {
@@ -18,9 +17,12 @@ CSceneGraphNodeObject::CSceneGraphNodeObject(CCanvas *pCanvas, PCWSTR szName) :
 //------------------------------------------------------------------------------------------------
 CScene::CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
     CCanvasObjectBase(pCanvas),
-    m_ObjectName(this, szName, pCanvas),
-    m_RootSceneGraphNode(this)
+    m_ObjectName(this, szName, pCanvas) // throw(Gem::GemError)
 {
+    TGemPtr<XSceneGraphNode> pNode;
+    std::wstring RootNodeName = std::wstring(szName) + L"_Root";
+    ThrowGemError(pCanvas->CreateSceneGraphNode(GEM_IID_PPV_ARGS(&pNode), RootNodeName.c_str()));
+    m_pRootSceneGraphNode = pNode;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -31,6 +33,16 @@ GEMMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **ppU
         *ppUnk = this;
         AddRef(); // This will actually AddRef the outer generic
         return Result::Success;
+    }
+
+    if (XObjectName::IId == iid)
+    {
+        return m_ObjectName.InternalQueryInterface(iid, ppUnk);
+    }
+
+    if (XTransform::IId == iid)
+    {
+        return m_Transform.InternalQueryInterface(iid, ppUnk);
     }
 
     return __super::InternalQueryInterface(iid, ppUnk);
