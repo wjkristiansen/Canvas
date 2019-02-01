@@ -101,7 +101,7 @@ class CDefaultLogger : public CLogger
     virtual void OutputString(_In_z_ PCWSTR szString) final
     {
         OutputDebugStringW(szString);
-        std::cout << szString;
+        std::wcout << szString;
     }
 };
 
