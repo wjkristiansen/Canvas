@@ -83,6 +83,36 @@ struct CANVAS_GRAPHICS_OPTIONS
 };
 
 //------------------------------------------------------------------------------------------------
+class CLogOutput
+{
+public:
+    virtual void WriteString(PCWSTR szString) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+class CLogOutputConsole :
+    public CLogOutput
+{
+public:
+    virtual void WriteString(PCWSTR szString);
+};
+
+//------------------------------------------------------------------------------------------------
+class CLogOutputDebug :
+    public CLogOutput
+{
+public:
+    virtual void WriteString(PCWSTR szString);
+};
+
+//------------------------------------------------------------------------------------------------
+struct LOG_OUTPUT_DESC
+{
+    UINT Level = 0UL - 1;
+    _In_ CLogOutput *pLogOutput = nullptr;
+};
+
+//------------------------------------------------------------------------------------------------
 // An indexed triangle list with common material and texture attributes
 // The actual layout of pixels depends on the material
 struct MATERIAL_GROUP_DATA
@@ -190,6 +220,9 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+
+    GEMMETHOD(InitLogger)(UINT NumOutputs = 0, _In_opt_count_(NumOutputs) const LOG_OUTPUT_DESC *pLogOutputDescs = nullptr) = 0;
+    GEMMETHOD_(void, LogWrite)(UINT Level, PCWSTR szLogString) = 0;
 
     GEMMETHOD(CreateGraphicsDevice)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
