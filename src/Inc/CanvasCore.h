@@ -83,33 +83,37 @@ struct CANVAS_GRAPHICS_OPTIONS
 };
 
 //------------------------------------------------------------------------------------------------
-class CLogOutput
+// Derive from this class to implement a custom logger
+// 
+// Custom implementations are reponsibile for thread safety.
+class CLogger
 {
-public:
-    virtual void WriteString(PCWSTR szString) = 0;
-};
+    UINT m_OutputLevel = 0UL - 1;
 
-//------------------------------------------------------------------------------------------------
-class CLogOutputConsole :
-    public CLogOutput
-{
 public:
-    virtual void WriteString(PCWSTR szString);
-};
+    CLogger() = default;
 
-//------------------------------------------------------------------------------------------------
-class CLogOutputDebug :
-    public CLogOutput
-{
-public:
-    virtual void WriteString(PCWSTR szString);
-};
+    // Writes a log entry string to a logging output.  
+    //
+    // Level is an indication of criticallty, 0 being most-critical.
+    // Typically, Canvas log entries are considered to be:
+    // 0 - Critical errors or events
+    // 1 - Warnings or important messages
+    // 2 - Informational
+    // 3 - Verbose
+    // 
+    // Override this method to customize overall log entry handling.
+    virtual void WriteToLog(UINT Level, _In_z_ PCWSTR szString) = 0;
+    
+    // Limits log output to the indicated level.
+    // Log entries with a higher Level are filtered out
+    void SetLogOutputLevel(UINT Level) { m_OutputLevel = Level; };
+    UINT GetLogOutputLevel() const { return m_OutputLevel; }
 
-//------------------------------------------------------------------------------------------------
-struct LOG_OUTPUT_DESC
-{
-    UINT Level = 0UL - 1;
-    _In_ CLogOutput *pLogOutput = nullptr;
+protected:
+    // Override this method to provide custom logging output
+    // without impacting the output level or handling of newlines.
+    virtual void OutputString(_In_z_ PCWSTR szString) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -221,9 +225,6 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
-    GEMMETHOD(InitLogger)(UINT NumOutputs = 0, _In_opt_count_(NumOutputs) const LOG_OUTPUT_DESC *pLogOutputDescs = nullptr) = 0;
-    GEMMETHOD_(void, LogWrite)(UINT Level, PCWSTR szLogString) = 0;
-
     GEMMETHOD(CreateGraphicsDevice)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
@@ -316,5 +317,5 @@ XScene : public Gem::XGeneric
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, _In_ Canvas::CLogger *pLogger = nullptr);
 

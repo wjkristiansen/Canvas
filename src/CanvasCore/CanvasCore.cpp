@@ -87,15 +87,40 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
+class CDefaultLogger : public CLogger
+{
+    virtual void WriteToLog(UINT Level, PCWSTR szString) final
+    {
+        if (Level <= GetLogOutputLevel())
+        {
+            OutputString(szString);
+            OutputString(L"\n");
+        }
+    };
+
+    virtual void OutputString(_In_z_ PCWSTR szString) final
+    {
+        OutputDebugStringW(szString);
+        std::cout << szString;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, _In_ CLogger *pLogger)
 {
     *ppCanvas = nullptr;
+    static CDefaultLogger DefaultLogger;
+
+    if (nullptr == pLogger)
+    {
+        pLogger = &DefaultLogger;
+    }
 
     try
     {
         if (iid == XCanvas::IId)
         {
-            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>; // throw(bad_alloc)
+            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogger); // throw(bad_alloc)
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
@@ -111,6 +136,8 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 GEMMETHODIMP CCanvas::CreateGraphicsDevice(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
     Result result = Result::NotImplemented;
+
+    GetLogger()->WriteToLog(2, L"CCanvas::CreateGraphicsDevice");
 
     switch (pGraphicsOptions->Subsystem)
     {
@@ -170,51 +197,3 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
     return Result::Success;
 }
 
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::InitLogger(UINT NumOutputs, _In_opt_count_(NumOutputs) const LOG_OUTPUT_DESC *pLogOutputDescs)
-{
-    static CLogOutputDebug DefaultDebugLog;
-    static const LOG_OUTPUT_DESC DefaultLogOutputDescs[] =
-    {
-        { 0UL - 1, &DefaultDebugLog }
-    };
-
-    if (pLogOutputDescs == nullptr)
-    {
-        NumOutputs = _countof(DefaultLogOutputDescs);
-        pLogOutputDescs = DefaultLogOutputDescs;
-    }
-
-    try
-    {
-        m_LogOutputs.resize(NumOutputs); // throw(std::bad_alloc)
-        for (UINT index = 0; index < NumOutputs; ++index)
-        {
-            m_LogOutputs[index] = pLogOutputDescs[index];
-        }
-    }
-    catch (std::bad_alloc&)
-    {
-        return Result::OutOfMemory;
-    }
-
-    return Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CCanvas::LogWrite(UINT Level, PCWSTR szString)
-{
-    for (auto &LogOutputDesc : m_LogOutputs)
-    {
-        if (Level <= LogOutputDesc.Level && LogOutputDesc.pLogOutput)
-        {
-            LogOutputDesc.pLogOutput->WriteString(szString);
-        }
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CLogOutputDebug::WriteString(PCWSTR szString)
-{
-    OutputDebugStringW(szString);
-}
