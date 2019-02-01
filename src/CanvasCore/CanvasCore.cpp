@@ -169,3 +169,52 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
 
     return Result::Success;
 }
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::InitLogger(UINT NumOutputs, _In_opt_count_(NumOutputs) const LOG_OUTPUT_DESC *pLogOutputDescs)
+{
+    static CLogOutputDebug DefaultDebugLog;
+    static const LOG_OUTPUT_DESC DefaultLogOutputDescs[] =
+    {
+        { 0UL - 1, &DefaultDebugLog }
+    };
+
+    if (pLogOutputDescs == nullptr)
+    {
+        NumOutputs = _countof(DefaultLogOutputDescs);
+        pLogOutputDescs = DefaultLogOutputDescs;
+    }
+
+    try
+    {
+        m_LogOutputs.resize(NumOutputs); // throw(std::bad_alloc)
+        for (UINT index = 0; index < NumOutputs; ++index)
+        {
+            m_LogOutputs[index] = pLogOutputDescs[index];
+        }
+    }
+    catch (std::bad_alloc&)
+    {
+        return Result::OutOfMemory;
+    }
+
+    return Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CCanvas::LogWrite(UINT Level, PCWSTR szString)
+{
+    for (auto &LogOutputDesc : m_LogOutputs)
+    {
+        if (Level <= LogOutputDesc.Level && LogOutputDesc.pLogOutput)
+        {
+            LogOutputDesc.pLogOutput->WriteString(szString);
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CLogOutputDebug::WriteString(PCWSTR szString)
+{
+    OutputDebugStringW(szString);
+}
