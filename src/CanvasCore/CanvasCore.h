@@ -40,14 +40,17 @@ class CCanvas :
     public CGenericBase
 {
 public:
-    CCanvas() = default;
+    CCanvas(CLogger *pLogger) :
+        CGenericBase(),
+        m_pLogger(pLogger)
+    {}
+
     ~CCanvas();
 
     std::map<std::wstring, CObjectName *> m_ObjectNames;
     struct Sentinel {};
     TAutoList<CCanvasObjectBase *> m_OutstandingObjects;
-
-    std::vector<LOG_OUTPUT_DESC> m_LogOutputs;
+    CLogger *m_pLogger = nullptr;
 
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj)
     {
@@ -63,15 +66,14 @@ public:
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) final;
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
 
-    GEMMETHOD(InitLogger)(UINT NumOutputs = 0, _In_opt_count_(NumOutputs) const LOG_OUTPUT_DESC *pLogOutputDescs = nullptr) final;
-    GEMMETHOD_(void, LogWrite)(UINT Level, PCWSTR szLogString) final;
-
     GEMMETHOD(CreateGraphicsDevice)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) final;
     GEMMETHOD(FrameTick)() final;
 
     Result SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice);
 
     void ReportObjectLeaks();
+
+    CLogger *GetLogger() const { return m_pLogger; }
 
 public:
     TGemPtr<class CGraphicsDevice> m_pGraphicsDevice;
