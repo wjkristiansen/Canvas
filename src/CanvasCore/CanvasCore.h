@@ -49,7 +49,7 @@ public:
 
     std::map<std::wstring, CObjectName *> m_ObjectNames;
     struct Sentinel {};
-    TAutoList<CCanvasObjectBase *> m_OutstandingObjects;
+    TAutoList<TStaticPtr<CCanvasObjectBase>> m_OutstandingObjects;
     CLogger *m_pLogger = nullptr;
 
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj)
@@ -82,6 +82,6 @@ public:
 //------------------------------------------------------------------------------------------------
 inline CCanvasObjectBase::CCanvasObjectBase(CCanvas *pCanvas) :
     CGenericBase(),
-    m_OutstandingNode(this, pCanvas->m_OutstandingObjects.GetLast())
+    m_OutstandingNode(pCanvas->m_OutstandingObjects.GetLast(), this)
 {
 }
