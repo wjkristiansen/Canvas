@@ -87,34 +87,15 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-class CDefaultLogger : public CLogger
-{
-    virtual void WriteToLog(UINT Level, PCWSTR szString) final
-    {
-        if (Level <= GetLogOutputLevel())
-        {
-            OutputString(szString);
-            OutputString(L"\n");
-        }
-    };
-
-    virtual void OutputString(_In_z_ PCWSTR szString) final
-    {
-        OutputDebugStringW(szString);
-        std::wcout << szString;
-    }
-};
-
-//------------------------------------------------------------------------------------------------
 Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, _In_ CLogger *pLogger)
 {
     *ppCanvas = nullptr;
-    static CDefaultLogger DefaultLogger;
+    //static CDefaultLogger DefaultLogger;
 
-    if (nullptr == pLogger)
-    {
-        pLogger = &DefaultLogger;
-    }
+    //if (nullptr == pLogger)
+    //{
+    //    pLogger = &DefaultLogger;
+    //}
 
     try
     {
@@ -137,7 +118,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(CANVAS_GRAPHICS_OPTIONS *pGraphicsOpt
 {
     Result result = Result::NotImplemented;
 
-    GetLogger()->WriteToLog(2, L"CCanvas::CreateGraphicsDevice");
+    GetLogger()->WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CCanvas::CreateGraphicsDevice");
 
     switch (pGraphicsOptions->Subsystem)
     {
