@@ -64,9 +64,9 @@ GEMMETHODIMP CCanvas::CreateSceneGraphNode(InterfaceId iid, _Outptr_ void **ppOb
 //------------------------------------------------------------------------------------------------
 void CCanvas::ReportObjectLeaks()
 {
-    for (auto pNode = m_OutstandingObjects.GetFirst(); pNode != m_OutstandingObjects.GetEnd(); pNode = pNode->m_pNext)
+    for (auto pNode = m_OutstandingObjects.GetFirst(); pNode != m_OutstandingObjects.GetEnd(); pNode = pNode->GetNext())
     {
-        CCanvasObjectBase *pObject = pNode->m_Value;
+        CCanvasObjectBase *pObject = pNode->Ptr();
 
         std::wcout << L"Leaked object: ";
         //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
