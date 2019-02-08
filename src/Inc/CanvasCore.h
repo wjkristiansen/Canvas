@@ -163,37 +163,67 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-// Derive from this class to implement a custom logger
-// 
-// Custom implementations are reponsibile for thread safety.
-class CLogger
+enum LOG_OUTPUT_LEVEL
 {
-    UINT m_OutputLevel = 0UL - 1;
+    LOG_OUTPUT_LEVEL_ERROR = 0,
+    LOG_OUTPUT_LEVEL_WARNING,
+    LOG_OUTPUT_LEVEL_MESSAGE,
+    LOG_OUTPUT_LEVEL_VERBOSE,
+    NUM_LOG_OUTPUT_LEVELS
+};
+
+//------------------------------------------------------------------------------------------------
+class CLogOutputBase
+{
+public:
+    virtual LOG_OUTPUT_LEVEL GetMaxLogOutputLevel() { return LOG_OUTPUT_LEVEL_VERBOSE; }
+    virtual void WriteString(PCWSTR szString) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+class CLogOutputDebugger :
+    public CLogOutputBase
+{
+public:
+    virtual void WriteString(PCWSTR szString) final;
+};
+
+//------------------------------------------------------------------------------------------------
+class CLogOutputConsole :
+    public CLogOutputBase
+{
+public:
+    virtual void WriteString(PCWSTR szString) final;
+};
+
+//------------------------------------------------------------------------------------------------
+class CLogger : public TAutoList<TStaticPtr<CLogOutputBase>>
+{
+    LOG_OUTPUT_LEVEL m_MaxOutputLevel = LOG_OUTPUT_LEVEL_MESSAGE;
 
 public:
+    using LogOutputNodeType = TAutoListNode<CLogOutputBase>;
     CLogger() = default;
+    ~CLogger();
 
-    // Writes a log entry string to a logging output.  
-    //
-    // Level is an indication of criticallty, 0 being most-critical.
-    // Typically, Canvas log entries are considered to be:
-    // 0 - Critical errors or events
-    // 1 - Warnings or important messages
-    // 2 - Informational
-    // 3 - Verbose
-    // 
-    // Override this method to customize overall log entry handling.
-    virtual void WriteToLog(UINT Level, _In_z_ PCWSTR szString) = 0;
-    
-    // Limits log output to the indicated level.
-    // Log entries with a higher Level are filtered out
-    void SetLogOutputLevel(UINT Level) { m_OutputLevel = Level; };
-    UINT GetLogOutputLevel() const { return m_OutputLevel; }
+    template<class _LogOutputClass, typename ... Args>
+    LogOutputNodeType *AddLogOutput(Args ... args) // throw(std::bad_alloc)
+    {
+        LogOutputNodeType *pNode = new TAutoListNode<_LogOutputClass>(&m_Sentinel, args...); // throw(std::bad_alloc)
+        return pNode;
+    }
 
-protected:
-    // Override this method to provide custom logging output
-    // without impacting the output level or handling of newlines.
-    virtual void OutputString(_In_z_ PCWSTR szString) = 0;
+    LogOutputNodeType *DeleteLogOutput(LogOutputNodeType *pNode)
+    {
+        LogOutputNodeType *pNext = pNode->GetNext();
+        delete(pNode);
+        return pNext;
+    }
+
+    void SetMaxOutputLevel(LOG_OUTPUT_LEVEL Level) { m_MaxOutputLevel = Level; };
+
+    void WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
+    void WriteToLogF(LOG_OUTPUT_LEVEL Level, PCWSTR szFormat, ...);
 };
 
 //------------------------------------------------------------------------------------------------
