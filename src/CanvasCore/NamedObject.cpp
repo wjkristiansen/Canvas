@@ -28,21 +28,25 @@ CObjectName::~CObjectName()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CObjectName::SetName(PCWSTR szName)
 {
-    CCanvasObjectBase *pCanvasObject = reinterpret_cast<CCanvasObjectBase *>(m_pOuterGeneric);
-    CCanvas *pCanvas = pCanvasObject->m_pCanvas;
-
-    // Erase old entry
-    if (!m_Name.empty())
+    try
     {
-        pCanvas->m_ObjectNames.erase(m_Name);
+        // Erase old entry
+        if (!m_Name.empty())
+        {
+            m_pCanvas->m_ObjectNames.erase(m_Name);
+        }
+
+        m_Name = std::wstring(szName); // throw(std::bad_alloc)
+
+        // Add new entry
+        if (!m_Name.empty())
+        {
+            m_pCanvas->m_ObjectNames.emplace(m_Name, this); // throw(std::bad_alloc)
+        }
     }
-
-    m_Name = std::wstring(szName);
-
-    // Add new entry
-    if (!m_Name.empty())
+    catch (std::bad_alloc &)
     {
-        pCanvas->m_ObjectNames.emplace(m_Name, this);
+        return Result::OutOfMemory;
     }
 
     return Result::Success;

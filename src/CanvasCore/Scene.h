@@ -10,17 +10,10 @@ class CScene :
     public CCanvasObjectBase
 {
 public:
-    TInnerGeneric<CSceneGraphNode> m_RootSceneGraphNode;
+    TGemPtr<XSceneGraphNode> m_pRootSceneGraphNode;
     TInnerGeneric<CObjectName> m_ObjectName;
 
-    CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
-        CCanvasObjectBase(pCanvas),
-        m_RootSceneGraphNode(this),
-        m_ObjectName(this, szName, pCanvas)
-    {
-    }
-
-    GEMMETHOD_(ObjectType, GetType)() const final { return ObjectType::Scene; }
+    CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName);
 
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
@@ -36,10 +29,11 @@ public:
             return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
 
-        if (XSceneGraphNode::IId == iid)
-        {
-            return m_RootSceneGraphNode.InternalQueryInterface(iid, ppObj);
-        }
         return __super::InternalQueryInterface(iid, ppObj);
+    }
+
+    GEMMETHOD(GetRootSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        return m_pRootSceneGraphNode->QueryInterface(iid, ppObj);
     }
 };

@@ -6,6 +6,27 @@
 
 using namespace Canvas;
 
+    
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CLogger::WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szString)
+{
+    if (Level <= m_MaxLogOutput)
+    {
+        m_LogOutputProc(Level, szString);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CLogger::DefaultOutputProc(LOG_OUTPUT_LEVEL Level, PCWSTR szString)
+{
+    // Write the string to the debugger followed by a newline
+    OutputDebugStringW(szString);
+    OutputDebugStringW(L"\n");
+
+    // Write the string to the stdout
+    std::wcout << szString << L"\n";
+}
+
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **ppObj)
 {
@@ -13,7 +34,12 @@ GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **pp
     switch (iid)
     {
     case XCanvas::IId:
-        *ppObj = this;
+        *ppObj = reinterpret_cast<XCanvas *>(this);
+        AddRef();
+        break;
+
+    case XLogger::IId:
+        *ppObj = reinterpret_cast<CLogger *>(this);
         AddRef();
         break;
 
@@ -25,35 +51,10 @@ GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **pp
 }
 
 //------------------------------------------------------------------------------------------------
-template <>
-class TCanvasObject<ObjectType::Null> :
-    public XGeneric,
-    public CCanvasObjectBase
-{
-public:
-    TInnerGeneric<CObjectName> m_ObjectName;
-    TCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
-        CCanvasObjectBase(pCanvas),
-        m_ObjectName(this, szName, pCanvas)
-    {
-    }
-
-    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::Null; }
-
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
-    {
-        if (XObjectName::IId == iid)
-        {
-            return m_ObjectName.InternalQueryInterface(iid, ppObj);
-        }
-
-        return __super::InternalQueryInterface(iid, ppObj);
-    }
-};
-
-//------------------------------------------------------------------------------------------------
 CCanvas::~CCanvas()
 {
+    m_pGraphicsDevice = nullptr;
+
     ReportObjectLeaks();
 }
 
@@ -63,7 +64,7 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
     try
     {
         TGemPtr<XGeneric> pObj;
-        pObj = new TGeneric<CScene>(this, L"SceneRoot"); // throw(std::bad_alloc)
+        pObj = new TGeneric<CScene>(this, L"Scene"); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)
@@ -73,39 +74,11 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName)
+GEMMETHODIMP CCanvas::CreateSceneGraphNode(InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName)
 {
     try
     {
-        TGemPtr<XGeneric> pObj;
-        switch (type)
-        {
-        case ObjectType::Null:
-            pObj = new TGeneric<TCanvasObject<ObjectType::Null>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::SceneGraphNode:
-            pObj = new TGeneric<TCanvasObject<ObjectType::SceneGraphNode>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::Transform:
-            pObj = new TGeneric<TCanvasObject<ObjectType::Transform>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::Light:
-            pObj = new TGeneric<TCanvasObject<ObjectType::Light>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::Camera:
-            pObj = new TGeneric<TCanvasObject<ObjectType::Camera>>(this, szName); // throw(std::bad_alloc)
-            break;
-
-        case ObjectType::ModelInstance:
-            pObj = new TGeneric<TCanvasObject<ObjectType::ModelInstance>>(this, szName); // throw(std::bad_alloc)
-            break;
-        default:
-            return Result::NoInterface;
-        }
+        TGemPtr<XGeneric> pObj = new TGeneric<CSceneGraphNode>(this, szName); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)
@@ -117,10 +90,12 @@ GEMMETHODIMP CCanvas::CreateObject(ObjectType type, InterfaceId iid, _Outptr_ vo
 //------------------------------------------------------------------------------------------------
 void CCanvas::ReportObjectLeaks()
 {
-    for (CCanvasObjectBase *pObject : m_OutstandingObjects)
+    for (auto pNode = m_OutstandingObjects.GetFirst(); pNode != m_OutstandingObjects.GetEnd(); pNode = pNode->GetNext())
     {
+        CCanvasObjectBase *pObject = pNode->Ptr();
+
         std::wcout << L"Leaked object: ";
-        std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
+        //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
         XObjectName *pObjectName;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pObjectName))))
         {
@@ -138,15 +113,21 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
+Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, LogOutputProc OutputProc)
 {
     *ppCanvas = nullptr;
+    //static CDefaultLogger DefaultLogger;
+
+    //if (nullptr == pLogger)
+    //{
+    //    pLogger = &DefaultLogger;
+    //}
 
     try
     {
         if (iid == XCanvas::IId)
         {
-            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>; // throw(bad_alloc)
+            TGemPtr<XCanvas> pCanvas = new TGeneric<CCanvas>(OutputProc); // throw(bad_alloc)
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
@@ -159,14 +140,16 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::SetupGraphics(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd)
+GEMMETHODIMP CCanvas::CreateGraphicsDevice(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
     Result result = Result::NotImplemented;
+
+    WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CCanvas::CreateGraphicsDevice");
 
     switch (pGraphicsOptions->Subsystem)
     {
     case GraphicsSubsystem::D3D12:
-        result = SetupD3D12(pGraphicsOptions, hWnd);
+        result = SetupD3D12(pGraphicsOptions, hWnd, ppGraphicsDevice);
         break;
     }
 
@@ -193,17 +176,31 @@ GEMMETHODIMP CCanvas::FrameTick()
 }
 
 //------------------------------------------------------------------------------------------------
-Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd)
+Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
+    if (ppGraphicsDevice)
+    {
+        *ppGraphicsDevice = nullptr;
+    }
+
     TGemPtr<CGraphicsDevice> pGraphicsDevice;
     try
     {
-        ThrowGemError(CreateGraphicsDevice12(&pGraphicsDevice, hWnd));
+        ThrowGemError(CreateGraphicsDevice12(this, &pGraphicsDevice, hWnd));
+
+        if (ppGraphicsDevice)
+        {
+            pGraphicsDevice->AddRef();
+            *ppGraphicsDevice = pGraphicsDevice;
+        }
     }
     catch (GemError &gomError)
     {
         return gomError.Result();
     }
+
     m_pGraphicsDevice = std::move(pGraphicsDevice);
+
     return Result::Success;
 }
+

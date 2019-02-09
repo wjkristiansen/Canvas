@@ -10,6 +10,11 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
 {
     try
     {
+#if defined(_DEBUG)
+        CComPtr<ID3D12Debug3> pDebug;
+        ThrowFailedHResult(D3D12GetDebugInterface(IID_PPV_ARGS(&pDebug)));
+        pDebug->EnableDebugLayer();
+#endif
         // Create the device
         CComPtr<ID3D12Device5> pDevice;
         ThrowFailedHResult(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice)));
@@ -47,10 +52,41 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
         CComPtr<IDXGISwapChain4> pSwapChain4;
         ThrowFailedHResult(pSwapChain1->QueryInterface(&pSwapChain4));
 
-        m_pD3DDevice = pDevice;
-        m_pDirectCommandQueue = pCommandQueue;
-        m_pDXGIFactory = pFactory;
-        m_pSwapChain = pSwapChain4;
+        // The default root signature uses the following parameters
+        //  Root CBV (descriptor static)
+        //  Root SRV (descriptor static)
+        //  Root UAV (descriptor static)
+        //  Root descriptor table
+
+        // The default root descriptor table is layed out as follows:
+        //  CBV[2] (data static)
+        //  SRV[4] (data static)
+        //  UAV[2] (descriptor static)
+
+        std::vector<CD3DX12_DESCRIPTOR_RANGE1> DefaultDescriptorRanges(3);
+        DefaultDescriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
+        DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
+        DefaultDescriptorRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 6);
+
+        std::vector<CD3DX12_ROOT_PARAMETER1> DefaultRootParams(4);
+        DefaultRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+        DefaultRootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
+        DefaultRootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+        DefaultRootParams[3].InitAsDescriptorTable(1, DefaultDescriptorRanges.data(), D3D12_SHADER_VISIBILITY_ALL);
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc (4U, DefaultRootParams.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+        CComPtr<ID3DBlob> pRSBlob;
+        ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&DefaultRootSigDesc, &pRSBlob, nullptr));
+
+        CComPtr<ID3D12RootSignature> pDefaultRootSig;
+        pDevice->CreateRootSignature(1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pDefaultRootSig));
+
+        m_pD3DDevice = std::move(pDevice);
+        m_pDirectCommandQueue = std::move(pCommandQueue);
+        m_pDXGIFactory = std::move(pFactory);
+        m_pSwapChain = std::move(pSwapChain4);
+        m_pDefaultRootSig = std::move(pDefaultRootSig);
     }
     catch (_com_error &e)
     {
@@ -61,7 +97,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
 }
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::RenderFrame()
+GEMMETHODIMP CGraphicsDevice12::RenderFrame()
 {
     try
     {
@@ -92,7 +128,17 @@ Result CGraphicsDevice12::RenderFrame()
         static UINT clearColorIndex = 0;
 
         pCommandList->Reset(pCommandAllocator, nullptr);
+        D3D12_RESOURCE_BARRIER RTBarrier[1] = {};
+        RTBarrier[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        RTBarrier[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        RTBarrier[0].Transition.pResource = pBackBuffer;
+        RTBarrier[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        RTBarrier[0].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        pCommandList->ResourceBarrier(1, RTBarrier);
         pCommandList->ClearRenderTargetView(pRTVHeap->GetCPUDescriptorHandleForHeapStart(), ClearColors[clearColorIndex], 0, nullptr);
+        RTBarrier[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        RTBarrier[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+        pCommandList->ResourceBarrier(1, RTBarrier);
         clearColorIndex ^= 1;
         ThrowFailedHResult(pCommandList->Close());
 
@@ -122,17 +168,88 @@ Result CGraphicsDevice12::RenderFrame()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice, HWND hWnd)
+GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer)
+{
+    try
+    {
+        // Allocate a buffer to contain the vertex data
+        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(SizeInBytes);
+        CComPtr<ID3D12Resource> pD3DBuffer;
+        CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
+        ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource1(&HeapProp, D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, nullptr, IID_PPV_ARGS(&pD3DBuffer)));
+        TGemPtr<CUploadBuffer> pUploadBuffer = new CUploadBuffer12(pD3DBuffer, 0, SizeInBytes); // throw(std::bad_alloc), throw(_com_error)
+        *ppUploadBuffer = pUploadBuffer;
+        pUploadBuffer.Detach();
+    }
+    catch (std::bad_alloc)
+    {
+        return Result::OutOfMemory;
+    }
+    catch (_com_error &e)
+    {
+        return HResultToResult(e.Error());
+    }
+    return Result::Success;
+}
+
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
+{
+    try
+    {
+        if (pMeshData->pVertices)
+        {
+            TGemPtr<CUploadBuffer> pVertexBuffer;
+            AllocateUploadBuffer(pMeshData->NumVertices * sizeof(FloatVector4), &pVertexBuffer);
+            FloatVector4 *pVertexPos = reinterpret_cast<FloatVector4 *>(pVertexBuffer->Data());
+
+            // Copy the vertex data into the buffer, converting from float3 to float4 format
+            for (UINT i = 0; i < pMeshData->NumVertices; ++i)
+            {
+                const FloatVector3 &SrcPos = pMeshData->pVertices[i];
+                pVertexPos[i] = FloatVector4(SrcPos.X(), SrcPos.Y(), SrcPos.Z(), 0.f);
+            }
+        }
+    }
+    catch (_com_error &e)
+    {
+        return HResultToResult(e.Error());
+    }
+    return Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CGraphicsDevice12::CreateCamera(const CAMERA_DATA *pCameraData, XCamera **ppCamera)
+{
+    return Result::NotImplemented;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CGraphicsDevice12::CreateMaterial(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
+{
+    return Result::NotImplemented;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CGraphicsDevice12::CreateLight(const LIGHT_DATA *pLightData, XLight **ppLight)
+{
+    return Result::NotImplemented;
+}
+
+//------------------------------------------------------------------------------------------------
+Result GEMAPI CreateGraphicsDevice12(CCanvas *pCanvas, CGraphicsDevice **ppGraphicsDevice, HWND hWnd)
 {
     *ppGraphicsDevice = nullptr;
 
     try
     {
-        CGraphicsDevice12 *pGraphicsDevice = new CGraphicsDevice12(); // throw(bad_alloc)
+        TGemPtr<CGraphicsDevice12> pGraphicsDevice = new TGeneric<CGraphicsDevice12>(pCanvas); // throw(bad_alloc)
         auto result = pGraphicsDevice->Initialize(hWnd, true);
         if (result == Result::Success)
         {
             *ppGraphicsDevice = pGraphicsDevice;
+            pGraphicsDevice.Detach();
         }
         return result;
     }
@@ -140,4 +257,22 @@ Result GEMAPI CreateGraphicsDevice12(CGraphicsDevice **ppGraphicsDevice, HWND hW
     {
         return Result::OutOfMemory;
     }
+}
+
+//------------------------------------------------------------------------------------------------
+CUploadBuffer12::CUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size) :
+    m_pResource(pResource),
+    m_OffsetToStart(OffsetToStart)
+{
+    // Persistently map the data
+    D3D12_RANGE ReadRange;
+    ReadRange.Begin = SIZE_T(OffsetToStart);
+    ReadRange.End = SIZE_T(OffsetToStart + Size);
+    ThrowFailedHResult(pResource->Map(0, &ReadRange, &m_pData));
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void *) CUploadBuffer12::Data()
+{
+    return m_pData;
 }

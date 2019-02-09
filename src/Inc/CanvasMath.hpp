@@ -90,6 +90,14 @@ struct TVector<_T, 4U>
     const _T &W() const { return V[3]; }
 };
 
+using UIntVector2 = TVector<UINT, 2>;
+using UIntVector3 = TVector<UINT, 3>;
+using UIntVector4 = TVector<UINT, 4>;
+
+using IntVector2 = TVector<INT, 2>;
+using IntVector3 = TVector<INT, 3>;
+using IntVector4 = TVector<INT, 4>;
+
 using FloatVector2 = TVector<float, 2U>;
 using FloatVector3 = TVector<float, 3U>;
 using FloatVector4 = TVector<float, 4U>;

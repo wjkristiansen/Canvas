@@ -9,6 +9,10 @@ class CTransform :
     public XTransform,
     public CInnerGenericBase
 {
+    FloatVector3 m_Translation;
+    FloatVector4 m_Rotation;
+    RotationType m_RotationType;
+
 public:
     CTransform(XGeneric *pOuterObj) :
         CInnerGenericBase(pOuterObj) {}
@@ -23,44 +27,30 @@ public:
 
         return __super::InternalQueryInterface(iid, ppObj);
     }
-};
 
-//------------------------------------------------------------------------------------------------
-template <>
-class TCanvasObject<ObjectType::Transform> :
-    public XGeneric,
-    public CCanvasObjectBase
-{
-public:
-    TInnerGeneric<CTransform> m_Transform;
-    TInnerGeneric<CSceneGraphNode> m_SceneGraphNode;
-    TInnerGeneric<CObjectName> m_ObjectName;
-
-    TCanvasObject(CCanvas *pCanvas, PCWSTR szName) :
-        CCanvasObjectBase(pCanvas),
-        m_Transform(this),
-        m_SceneGraphNode(this),
-        m_ObjectName(this, szName, pCanvas)
-    {}
-
-    GEMMETHOD_(ObjectType, GetType)() const { return ObjectType::Transform; }
-
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD_(RotationType, GetRotationType)() const final
     {
-        if (XObjectName::IId == iid)
-        {
-            return m_ObjectName.InternalQueryInterface(iid, ppObj);
-        }
-        if (XTransform::IId == iid)
-        {
-            return m_Transform.InternalQueryInterface(iid, ppObj);
-        }
-        if (XSceneGraphNode::IId == iid)
-        {
-            return m_SceneGraphNode.InternalQueryInterface(iid, ppObj);
-        }
+        return m_RotationType;
+    }
 
-        return __super::InternalQueryInterface(iid, ppObj);
+    GEMMETHOD_(const FloatVector4 &, GetRotation)() const final
+    {
+        return m_Rotation;
+    }
+
+    GEMMETHOD_(const FloatVector3 &, GetTranslation)() const final
+    {
+        return m_Translation;
+    }
+
+    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4 &Rotation) final
+    {
+        m_RotationType = Type;
+        m_Rotation = Rotation;
+    }
+
+    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector3 &Translation) final
+    {
+        m_Translation = Translation;
     }
 };
-

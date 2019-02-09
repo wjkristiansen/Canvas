@@ -31,19 +31,13 @@ GEM_INTERFACE XMesh;
 GEM_INTERFACE XAmination;
 GEM_INTERFACE XSkeleton;
 
-//------------------------------------------------------------------------------------------------
-inline bool Succeeded(Gem::Result result)
-{
-    return result < Gem::Result::Fail;
-}
-
 enum CanvasIId
 {
     CanvasIId_XCanvas = 1U,
     CanvasIId_XScene = 2U,
     CanvasIId_XSceneGraphNode = 3U,
     CanvasIId_XSceneGraphIterator = 4U,
-    CanvasIId_XModelInstance = 5U,
+    CanvasIId_XMeshInstance = 5U,
     CanvasIId_XCamera = 6U,
     CanvasIId_XLight = 7U,
     CanvasIId_XTransform = 8U,
@@ -54,19 +48,20 @@ enum CanvasIId
     CanvasIId_XSkeleton = 13U,
     CanvasIId_XIterator = 14U,
     CanvasIId_XObjectName = 15U,
+    CanvasIId_XModel = 16U,
+    CanvasIId_XGraphicsDevice = 17U,
+    CanvasIId_XLogger = 18U,
 };
 
 //------------------------------------------------------------------------------------------------
-enum class ObjectType : unsigned
+enum class LightType : unsigned
 {
-    Unknown,
     Null,
-    Scene,
-    SceneGraphNode,
-    Transform,
-    Camera,
-    ModelInstance,
-    Light,
+    Point,
+    Directional,
+    Spot,
+    Area,
+    Volume
 };
 
 //------------------------------------------------------------------------------------------------
@@ -86,6 +81,115 @@ struct CANVAS_GRAPHICS_OPTIONS
     bool Windowed;
     UINT DisplayWidth;
     UINT DisplayHeight;
+};
+
+//------------------------------------------------------------------------------------------------
+enum LOG_OUTPUT_LEVEL
+{
+    LOG_OUTPUT_LEVEL_ERROR = 0,
+    LOG_OUTPUT_LEVEL_WARNING,
+    LOG_OUTPUT_LEVEL_MESSAGE,
+    LOG_OUTPUT_LEVEL_VERBOSE,
+    NUM_LOG_OUTPUT_LEVELS
+};
+
+//------------------------------------------------------------------------------------------------
+// Derive from this to make a custom log output class.
+class CLogOutputBase
+{
+    LOG_OUTPUT_LEVEL m_MaxOutputLevel = LOG_OUTPUT_LEVEL_MESSAGE;
+
+public:
+    void SetMaxOutputLevel(LOG_OUTPUT_LEVEL Level) { m_MaxOutputLevel = Level; };
+    LOG_OUTPUT_LEVEL GetMaxOutputLevel() const{ return m_MaxOutputLevel; };
+
+    virtual void WriteString(PCWSTR szString) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+class CLogOutputDebugger :
+    public CLogOutputBase
+{
+public:
+    virtual void WriteString(PCWSTR szString) final;
+};
+
+//------------------------------------------------------------------------------------------------
+class CLogOutputConsole :
+    public CLogOutputBase
+{
+public:
+    virtual void WriteString(PCWSTR szString) final;
+};
+
+//------------------------------------------------------------------------------------------------
+// An indexed triangle list with common material and texture attributes
+// The actual layout of pixels depends on the material
+struct MATERIAL_GROUP_DATA
+{
+    UINT NumTriangles = 0;
+   _In_count_(NumTriangles)  UIntVector3 *pTriangles = nullptr;
+};
+
+//------------------------------------------------------------------------------------------------
+struct MESH_DATA
+{
+    UINT NumVertices = 0;
+    _In_count_(NumVertices) FloatVector3 *pVertices = nullptr;
+    _In_opt_count_(NumVertices) FloatVector3 *pNormals = nullptr;
+    _In_opt_count_(NumVertices) FloatVector2 *pTextureUVs[4] = {0};
+    _In_opt_count_(NumVertices) UIntVector4 *pBoneIndices = nullptr;
+    _In_opt_count_(NumVertices) FloatVector4 *pBoneWeights = nullptr;
+    UINT NumMaterialGroups = 0;
+    _In_count_(NumMaterialGroups) MATERIAL_GROUP_DATA *pMaterialGroups = nullptr;
+};
+
+//------------------------------------------------------------------------------------------------
+struct MATERIAL_DATA
+{
+
+};
+
+//------------------------------------------------------------------------------------------------
+struct TEXTURE_DATA
+{
+
+};
+
+//------------------------------------------------------------------------------------------------
+struct CAMERA_DATA
+{
+    float NearClip;
+    float FarClip;
+    float FovAngle;
+};
+
+//------------------------------------------------------------------------------------------------
+struct LIGHT_DATA
+{
+    LightType Type;
+    float Intensity;
+    FloatVector4 Color;
+    float InnerAngle; // For spot light
+    float OuterAngle; // For spot light
+
+};
+
+using LogOutputProc = void(*)(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
+
+//------------------------------------------------------------------------------------------------
+// By default, log output is directed to the console
+// and to debug output.
+GEM_INTERFACE XLogger : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XLogger);
+
+    GEMMETHOD_(void, SetMaxOutputLevel)(LOG_OUTPUT_LEVEL Level) = 0;
+    GEMMETHOD_(void, WriteToLog)(LOG_OUTPUT_LEVEL Level, PCWSTR szString) = 0;
+    GEMMETHOD_(void, SetLogOutputProc)(LogOutputProc OutputProc) = 0;
+
+    // Helper method
+//    void WriteToLogF(LOG_OUTPUT_LEVEL Level, PCWSTR szFormat, ...);
 };
 
 //------------------------------------------------------------------------------------------------
@@ -123,24 +227,53 @@ XObjectName : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XCanvas : public Gem::XGeneric
+XGraphicsDevice : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
+
+    GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
+    GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) = 0;
+    GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) = 0;
+    GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
+XCanvas : public XLogger
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    GEMMETHOD(CreateObject)(ObjectType type, Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
+    GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
-    GEMMETHOD(SetupGraphics)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd) = 0;
-    //GEMMETHOD(CreateLoadModelWorker)(PCWSTR szModelPath) = 0;
+    GEMMETHOD(CreateGraphicsDevice)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XModelInstance : public Gem::XGeneric
+XMaterial : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XModelInstance);
+    GEM_INTERFACE_DECLARE(CanvasIId_XMaterial);
+
+    GEMMETHOD(Initialize)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
+XMesh : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XMesh);
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
+XMeshInstance : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
+
+    GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -158,10 +291,28 @@ XLight : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
+enum RotationType
+{
+    EulerXYZ,
+    EulerXZY,
+    EulerYXZ,
+    EulerYZX,
+    EulerZXY,
+    EulerZYX,
+    QuaternionWXYZ,
+};
+
+//------------------------------------------------------------------------------------------------
 GEM_INTERFACE
 XTransform : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XTransform);
+
+    GEMMETHOD_(RotationType, GetRotationType)() const = 0;
+    GEMMETHOD_(const FloatVector4 &, GetRotation)() const = 0;
+    GEMMETHOD_(const FloatVector3 &, GetTranslation)() const = 0;
+    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4 &Rotation) = 0;
+    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector3 &Translation) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -171,6 +322,10 @@ XSceneGraphNode : public Gem::XGeneric
     GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
     GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) = 0;
+
+    //GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
+    //GEMMETHOD_(void, SetCamera)(XCamera *pCamera) = 0;
+    //GEMMETHOD_(void, SetLight)(XLight *pLight) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -178,9 +333,11 @@ GEM_INTERFACE
 XScene : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XScene);
+
+    GEMMETHOD(GetRootSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, Canvas::LogOutputProc OutputProc = nullptr);
 

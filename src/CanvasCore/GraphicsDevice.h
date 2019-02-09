@@ -8,18 +8,10 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-// Abstract graphics device class
-class CGraphicsDevice :
-    public TGeneric<CGenericBase>
-{
-public:
-    virtual Result RenderFrame() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
 // Submits command streams to the GPU.
 // Manages synchronization with other command contexts and
 // the CPU.
+// In D3D12, this wraps a command queue and a pool of command lists and command allocators.
 class CCommandContext :
     public TGeneric<CGenericBase>
 {
@@ -43,7 +35,8 @@ class CCommandStream :
 class CUploadBuffer :
     public TGeneric<CGenericBase>
 {
-
+public:
+    GEMMETHOD_(void *, Data)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -57,20 +50,6 @@ class CBuffer :
 };
 
 //------------------------------------------------------------------------------------------------
-class CTexture :
-    public TGeneric<CGenericBase>
-{
-
-};
-
-struct CANVAS_MATERIAL_DESC
-{
-
-    void *pVSData;
-    void *pPSData;
-};
-
-//------------------------------------------------------------------------------------------------
 // Describes data passed into the graphics rendering pipeline.
 // This includes:
 //  * Vertex layout
@@ -78,33 +57,20 @@ struct CANVAS_MATERIAL_DESC
 //  * Pixel shader state
 //  * Fill mode
 //  * Alpha blend state
-class CMaterial
+//------------------------------------------------------------------------------------------------
+class CMaterial :
+    public XMaterial,
+    public CGenericBase
 {
 
 };
 
 //------------------------------------------------------------------------------------------------
-struct CANVAS_MESH_DESC
-{
-    UINT NumIndices;
-    UINT32 *pIndices;
-    UINT NumVertices;
-    UINT16 VertexStride;
-    void *pVertexData;
-};
-
-//------------------------------------------------------------------------------------------------
-// A mesh is essentially an indexed triangle list
-// The actual layout of pixels depends on the material
-class CMesh :
+class CTexture :
     public TGeneric<CGenericBase>
 {
-    CMesh(const CANVAS_MESH_DESC *pMeshDesc);
+
 };
-
-
-
-
 
 //------------------------------------------------------------------------------------------------
 class CPipelineState :
@@ -120,5 +86,19 @@ class CDescriptorHeap :
 
 };
 
+
+//------------------------------------------------------------------------------------------------
+// Abstract graphics device class
+class CGraphicsDevice :
+    public XGraphicsDevice,
+    public CCanvasObjectBase
+{
+public:
+    CGraphicsDevice(CCanvas *pCanvas) :
+        CCanvasObjectBase(pCanvas)
+    {}
+    GEMMETHOD(RenderFrame)() = 0;
+    GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) = 0;
+};
 
 }
