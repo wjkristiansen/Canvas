@@ -173,11 +173,11 @@
     <Image Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\ThinWin\src\ThinWin\ThinWin.vcxproj">
-      <Project>{27f5356b-4424-4129-8c24-2757b56a4c8d}</Project>
-    </ProjectReference>
     <ProjectReference Include="..\CanvasCore\CanvasCore.vcxproj">
       <Project>{ea57eef8-e2c3-403e-adfb-bcc7e08dea22}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\ThinWin\ThinWin.vcxproj">
+      <Project>{27f5356b-4424-4129-8c24-2757b56a4c8d}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
