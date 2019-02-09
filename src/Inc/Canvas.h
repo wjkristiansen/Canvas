@@ -50,6 +50,7 @@ enum CanvasIId
     CanvasIId_XObjectName = 15U,
     CanvasIId_XModel = 16U,
     CanvasIId_XGraphicsDevice = 17U,
+    CanvasIId_XLogger = 18U,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -83,86 +84,6 @@ struct CANVAS_GRAPHICS_OPTIONS
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T>
-class TStaticPtr
-{
-    _T *m_ptr = nullptr;
-public:
-    TStaticPtr() = default;
-    TStaticPtr(_T *p) :
-        m_ptr(p) {}
-
-    _T *Ptr() { return m_ptr; }
-    const _T *Ptr() const { return m_ptr; }
-};
-
-//------------------------------------------------------------------------------------------------
-// Node in a linked list using a sentinal node.
-// By default the node points back to itself.  
-// During destruction, the node removes itself from a list.
-// Sentinel nodes are used to indicate the list terminator.
-// In a sentinel node, m_pPrev points to the end of the list
-// and m_pNext points to the beginning.
-template<class _Base>
-class TAutoListNode : public _Base
-{
-    TAutoListNode *m_pPrev;
-    TAutoListNode *m_pNext;
-    
-public:
-    template<typename ... Args>
-    TAutoListNode(TAutoListNode *pPrev, Args... args) :
-        _Base(args...),
-        m_pPrev(this),
-        m_pNext(this)
-    {
-        if (pPrev)
-        {
-            m_pPrev = pPrev;
-            m_pNext = pPrev->m_pNext;
-            pPrev->m_pNext->m_pPrev = this;
-            pPrev->m_pNext = this;
-        }
-    }
-    ~TAutoListNode()
-    {
-        // Remove this from the list
-        Remove();
-    }
-
-    void Remove()
-    {
-        // Can't remove the sentinel node
-        if (m_pNext != this)
-        {
-            m_pPrev->m_pNext = m_pNext;
-            m_pNext->m_pPrev = m_pPrev;
-
-            // Point to self
-            m_pNext = this;
-            m_pPrev = this;
-        }
-    }
-
-    TAutoListNode *GetPrev() const { return m_pPrev; }
-    TAutoListNode *GetNext() const { return m_pNext; }
-};
-
-//------------------------------------------------------------------------------------------------
-template<class _NodeBaseType>
-class TAutoList
-{
-    TAutoListNode<_NodeBaseType> m_Sentinel;
-
-public:
-    TAutoList() :
-        m_Sentinel(nullptr) {}
-    const TAutoListNode<_NodeBaseType> *GetEnd() const { return &m_Sentinel; }
-    TAutoListNode<_NodeBaseType> *GetFirst() { return m_Sentinel.GetNext(); }
-    TAutoListNode<_NodeBaseType> *GetLast() { return m_Sentinel.GetPrev(); }
-};
-
-//------------------------------------------------------------------------------------------------
 enum LOG_OUTPUT_LEVEL
 {
     LOG_OUTPUT_LEVEL_ERROR = 0,
@@ -173,10 +94,15 @@ enum LOG_OUTPUT_LEVEL
 };
 
 //------------------------------------------------------------------------------------------------
+// Derive from this to make a custom log output class.
 class CLogOutputBase
 {
+    LOG_OUTPUT_LEVEL m_MaxOutputLevel = LOG_OUTPUT_LEVEL_MESSAGE;
+
 public:
-    virtual LOG_OUTPUT_LEVEL GetMaxLogOutputLevel() { return LOG_OUTPUT_LEVEL_VERBOSE; }
+    void SetMaxOutputLevel(LOG_OUTPUT_LEVEL Level) { m_MaxOutputLevel = Level; };
+    LOG_OUTPUT_LEVEL GetMaxOutputLevel() const{ return m_MaxOutputLevel; };
+
     virtual void WriteString(PCWSTR szString) = 0;
 };
 
@@ -194,36 +120,6 @@ class CLogOutputConsole :
 {
 public:
     virtual void WriteString(PCWSTR szString) final;
-};
-
-//------------------------------------------------------------------------------------------------
-class CLogger : public TAutoList<TStaticPtr<CLogOutputBase>>
-{
-    LOG_OUTPUT_LEVEL m_MaxOutputLevel = LOG_OUTPUT_LEVEL_MESSAGE;
-
-public:
-    using LogOutputNodeType = TAutoListNode<CLogOutputBase>;
-    CLogger() = default;
-    ~CLogger();
-
-    template<class _LogOutputClass, typename ... Args>
-    LogOutputNodeType *AddLogOutput(Args ... args) // throw(std::bad_alloc)
-    {
-        LogOutputNodeType *pNode = new TAutoListNode<_LogOutputClass>(&m_Sentinel, args...); // throw(std::bad_alloc)
-        return pNode;
-    }
-
-    LogOutputNodeType *DeleteLogOutput(LogOutputNodeType *pNode)
-    {
-        LogOutputNodeType *pNext = pNode->GetNext();
-        delete(pNode);
-        return pNext;
-    }
-
-    void SetMaxOutputLevel(LOG_OUTPUT_LEVEL Level) { m_MaxOutputLevel = Level; };
-
-    void WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
-    void WriteToLogF(LOG_OUTPUT_LEVEL Level, PCWSTR szFormat, ...);
 };
 
 //------------------------------------------------------------------------------------------------
@@ -279,6 +175,22 @@ struct LIGHT_DATA
 
 };
 
+using LogOutputProc = void(*)(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
+
+//------------------------------------------------------------------------------------------------
+// By default, log output is directed to the console
+// and to debug output.
+GEM_INTERFACE XLogger : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XLogger);
+
+    GEMMETHOD_(void, SetMaxOutputLevel)(LOG_OUTPUT_LEVEL Level) = 0;
+    GEMMETHOD_(void, WriteToLog)(LOG_OUTPUT_LEVEL Level, PCWSTR szString) = 0;
+    GEMMETHOD_(void, SetLogOutputProc)(LogOutputProc OutputProc) = 0;
+
+    // Helper method
+//    void WriteToLogF(LOG_OUTPUT_LEVEL Level, PCWSTR szFormat, ...);
+};
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric
@@ -327,7 +239,7 @@ XGraphicsDevice : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XCanvas : public Gem::XGeneric
+XCanvas : public XLogger
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
@@ -427,5 +339,5 @@ XScene : public Gem::XGeneric
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, _In_ Canvas::CLogger *pLogger = nullptr);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, Canvas::LogOutputProc OutputProc = nullptr);
 

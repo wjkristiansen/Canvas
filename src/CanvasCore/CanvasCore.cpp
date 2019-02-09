@@ -6,6 +6,27 @@
 
 using namespace Canvas;
 
+    
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CLogger::WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szString)
+{
+    if (Level <= m_MaxLogOutput)
+    {
+        m_LogOutputProc(Level, szString);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CLogger::DefaultOutputProc(LOG_OUTPUT_LEVEL Level, PCWSTR szString)
+{
+    // Write the string to the debugger followed by a newline
+    OutputDebugStringW(szString);
+    OutputDebugStringW(L"\n");
+
+    // Write the string to the stdout
+    std::wcout << szString << L"\n";
+}
+
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **ppObj)
 {
@@ -13,7 +34,12 @@ GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **pp
     switch (iid)
     {
     case XCanvas::IId:
-        *ppObj = this;
+        *ppObj = reinterpret_cast<XCanvas *>(this);
+        AddRef();
+        break;
+
+    case XLogger::IId:
+        *ppObj = reinterpret_cast<CLogger *>(this);
         AddRef();
         break;
 
@@ -87,7 +113,7 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, _In_ CLogger *pLogger)
+Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, LogOutputProc OutputProc)
 {
     *ppCanvas = nullptr;
     //static CDefaultLogger DefaultLogger;
@@ -101,7 +127,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, _In_ CLogger *pLogg
     {
         if (iid == XCanvas::IId)
         {
-            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogger); // throw(bad_alloc)
+            TGemPtr<XCanvas> pCanvas = new TGeneric<CCanvas>(OutputProc); // throw(bad_alloc)
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
@@ -118,7 +144,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(CANVAS_GRAPHICS_OPTIONS *pGraphicsOpt
 {
     Result result = Result::NotImplemented;
 
-    GetLogger()->WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CCanvas::CreateGraphicsDevice");
+    WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CCanvas::CreateGraphicsDevice");
 
     switch (pGraphicsOptions->Subsystem)
     {
