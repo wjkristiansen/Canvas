@@ -22,6 +22,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <iostream>
+#include <sstream>
 
 // reference additional headers your program requires here
 #include <fbxsdk.h>
