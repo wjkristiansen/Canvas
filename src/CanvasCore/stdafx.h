@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <iostream>
 #include <sstream>
+#include <mutex>
 
 // reference additional headers your program requires here
 #include <fbxsdk.h>

@@ -50,7 +50,6 @@ enum CanvasIId
     CanvasIId_XObjectName = 15U,
     CanvasIId_XModel = 16U,
     CanvasIId_XGraphicsDevice = 17U,
-    CanvasIId_XLogger = 18U,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -178,21 +177,6 @@ struct LIGHT_DATA
 using LogOutputProc = void(*)(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
 
 //------------------------------------------------------------------------------------------------
-// By default, log output is directed to the console
-// and to debug output.
-GEM_INTERFACE XLogger : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XLogger);
-
-    GEMMETHOD_(void, SetMaxOutputLevel)(LOG_OUTPUT_LEVEL Level) = 0;
-    GEMMETHOD_(void, WriteToLog)(LOG_OUTPUT_LEVEL Level, PCWSTR szString) = 0;
-    GEMMETHOD_(void, SetLogOutputProc)(LogOutputProc OutputProc) = 0;
-
-    // Helper method
-//    void WriteToLogF(LOG_OUTPUT_LEVEL Level, PCWSTR szFormat, ...);
-};
-
-//------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
@@ -239,9 +223,11 @@ XGraphicsDevice : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XCanvas : public XLogger
+XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
+
+    GEMMETHOD_(void, SetMaxOutputLevel)(LOG_OUTPUT_LEVEL Level) = 0;
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
