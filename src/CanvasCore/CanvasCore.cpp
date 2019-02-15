@@ -8,26 +8,7 @@ using namespace Canvas;
 
     
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CLogger::WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szString)
-{
-    static PCWSTR PrefixStrings[] =
-    {
-        L"CANVAS ERROR: ", // LOG_OUTPUT_LEVEL_ERROR
-        L"CANVAS WARNING: ", // LOG_OUTPUT_LEVEL_WARNING
-        L"CANVAS MESSAGE: ", // LOG_OUTPUT_LEVEL_MESSAGE
-        L"CANVAS: ", // LOG_OUTPUT_LEVEL_VERBOSE
-    };
-
-    if (Level <= m_MaxLogOutput)
-    {
-        std::wostringstream ostr;
-        ostr << PrefixStrings[Level] << szString;
-        m_LogOutputProc(Level, ostr.str().c_str());
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CLogger::DefaultOutputProc(LOG_OUTPUT_LEVEL Level, PCWSTR szString)
+static void DefaultOutputProc(LOG_OUTPUT_LEVEL Level, PCWSTR szString)
 {
     // Write the string to the debugger followed by a newline
     OutputDebugStringW(szString);
@@ -45,11 +26,6 @@ GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **pp
     {
     case XCanvas::IId:
         *ppObj = reinterpret_cast<XCanvas *>(this);
-        AddRef();
-        break;
-
-    case XLogger::IId:
-        *ppObj = reinterpret_cast<CLogger *>(this);
         AddRef();
         break;
 
@@ -135,7 +111,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, LogOutputProc Outpu
     {
         if (iid == XCanvas::IId)
         {
-            TGemPtr<XCanvas> pCanvas = new TGeneric<CCanvas>(OutputProc); // throw(bad_alloc)
+            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(OutputProc); // throw(bad_alloc)
             pCanvas->WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CreateCanvas");
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
@@ -220,5 +196,24 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
     m_pGraphicsDevice = std::move(pGraphicsDevice);
 
     return Result::Success;
+}
+
+void CCanvas::WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString)
+{
+    std::unique_lock<std::mutex> Lock(m_Mutex);
+    static PCWSTR PrefixStrings[] =
+    {
+        L"CANVAS ERROR: ", // LOG_OUTPUT_LEVEL_ERROR
+        L"CANVAS WARNING: ", // LOG_OUTPUT_LEVEL_WARNING
+        L"CANVAS MESSAGE: ", // LOG_OUTPUT_LEVEL_MESSAGE
+        L"CANVAS: ", // LOG_OUTPUT_LEVEL_VERBOSE
+    };
+
+    if (Level <= m_MaxLogOutputLevel)
+    {
+        std::wostringstream ostr;
+        ostr << PrefixStrings[Level] << szLogString;
+        m_LogOutputProc(Level, ostr.str().c_str());
+    }
 }
 

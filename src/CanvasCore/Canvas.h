@@ -35,39 +35,19 @@ inline Result HResultToResult(HRESULT hr)
 }
 
 //------------------------------------------------------------------------------------------------
-class CLogger : public XCanvas
+class CCanvas :
+    public XCanvas,
+    public CGenericBase
 {
-    LOG_OUTPUT_LEVEL m_MaxLogOutput;
+    std::mutex m_Mutex;
+    LOG_OUTPUT_LEVEL m_MaxLogOutputLevel;
     LogOutputProc m_LogOutputProc;
 
 public:
-    CLogger(LogOutputProc OutputProc) :
-        m_MaxLogOutput(LOG_OUTPUT_LEVEL_MESSAGE),
-        m_LogOutputProc(OutputProc)
-    {
-        if (m_LogOutputProc == nullptr)
-        {
-            m_LogOutputProc = DefaultOutputProc;
-        }
-    }
-
-    static void DefaultOutputProc(LOG_OUTPUT_LEVEL Level, PCWSTR szSTring);
-    
-    // XLogger methods
-    GEMMETHOD_(void, SetMaxOutputLevel)(LOG_OUTPUT_LEVEL Level) { m_MaxLogOutput = Level; }
-    GEMMETHOD_(void, WriteToLog)(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
-    GEMMETHOD_(void, SetLogOutputProc)(LogOutputProc OutputProc) { m_LogOutputProc = OutputProc; }
-};
-
-//------------------------------------------------------------------------------------------------
-class CCanvas :
-    public CLogger,
-    public CGenericBase
-{
-public:
     CCanvas(LogOutputProc OutputProc) :
         CGenericBase(),
-        CLogger(OutputProc)
+        m_MaxLogOutputLevel(LOG_OUTPUT_LEVEL_MESSAGE),
+        m_LogOutputProc(OutputProc)
     {}
 
     ~CCanvas();
@@ -76,8 +56,15 @@ public:
     struct Sentinel {};
     TAutoList<TStaticPtr<CCanvasObjectBase>> m_OutstandingObjects;
 
+    GEMMETHOD_(void, SetMaxOutputLevel)(LOG_OUTPUT_LEVEL Level)
+    {
+        std::unique_lock<std::mutex> Lock(m_Mutex);
+        m_MaxLogOutputLevel = Level;
+    }
+
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj)
     {
+        std::unique_lock<std::mutex> Lock(m_Mutex);
         auto it = m_ObjectNames.find(szName);
         if (it != m_ObjectNames.end())
         {
@@ -95,6 +82,8 @@ public:
     GEMMETHOD(FrameTick)() final;
 
     Result SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice);
+
+    void WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString);
 
     void ReportObjectLeaks();
 
