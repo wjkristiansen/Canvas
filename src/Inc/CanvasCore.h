@@ -93,35 +93,6 @@ enum LOG_OUTPUT_LEVEL
 };
 
 //------------------------------------------------------------------------------------------------
-// Derive from this to make a custom log output class.
-class CLogOutputBase
-{
-    LOG_OUTPUT_LEVEL m_MaxOutputLevel = LOG_OUTPUT_LEVEL_MESSAGE;
-
-public:
-    void SetMaxOutputLevel(LOG_OUTPUT_LEVEL Level) { m_MaxOutputLevel = Level; };
-    LOG_OUTPUT_LEVEL GetMaxOutputLevel() const{ return m_MaxOutputLevel; };
-
-    virtual void WriteString(PCWSTR szString) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-class CLogOutputDebugger :
-    public CLogOutputBase
-{
-public:
-    virtual void WriteString(PCWSTR szString) final;
-};
-
-//------------------------------------------------------------------------------------------------
-class CLogOutputConsole :
-    public CLogOutputBase
-{
-public:
-    virtual void WriteString(PCWSTR szString) final;
-};
-
-//------------------------------------------------------------------------------------------------
 // An indexed triangle list with common material and texture attributes
 // The actual layout of pixels depends on the material
 struct MATERIAL_GROUP_DATA
@@ -174,7 +145,12 @@ struct LIGHT_DATA
 
 };
 
-using LogOutputProc = void(*)(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
+//------------------------------------------------------------------------------------------------
+class CLog
+{
+public:
+    virtual void WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
+};
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric
@@ -325,5 +301,5 @@ XScene : public Gem::XGeneric
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, Canvas::LogOutputProc OutputProc = nullptr);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, Canvas::CLog *pLog = nullptr);
 
