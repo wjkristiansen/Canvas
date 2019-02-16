@@ -102,25 +102,46 @@ void CCanvas::ReportObjectLeaks()
     }
 }
 
+class CDefaultLogOutput : public CLogOutput
+{
+    virtual void WriteOutput(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString)
+    {
+        // Write to console output
+        std::wcout << szLogString;
+        std::wcout << L"\n";
+
+        // Write to debugger output
+        OutputDebugStringW(szLogString);
+        OutputDebugStringW(L"\n");
+    }
+};
+
+static CDefaultLogOutput g_DefaultLogOutput;
+
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, CLog *pLog)
+Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, CLogOutput *pLogOutput)
 {
     *ppCanvas = nullptr;
+
+    if (!pLogOutput)
+    {
+        pLogOutput = &g_DefaultLogOutput;
+    }
 
     try
     {
         if (iid == XCanvas::IId)
         {
-            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLog); // throw(bad_alloc)
+            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogOutput); // throw(bad_alloc)
             pCanvas->WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CreateCanvas");
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
     catch (std::bad_alloc &)
     {
-        if (pLog)
+        if (pLogOutput)
         {
-            pLog->WriteToLog(LOG_OUTPUT_LEVEL_ERROR, L"FAILURE in CreateCanvas");
+            pLogOutput->WriteOutput(LOG_OUTPUT_LEVEL_ERROR, L"FAILURE in CreateCanvas");
         }
         return Result::OutOfMemory;
     }
@@ -209,11 +230,11 @@ void CCanvas::WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString)
         L"CANVAS: ", // LOG_OUTPUT_LEVEL_VERBOSE
     };
 
-    if (m_pLog && Level <= m_MaxLogOutputLevel)
+    if (m_pLogOutput && Level <= m_MaxLogOutputLevel)
     {
         std::wostringstream ostr;
         ostr << PrefixStrings[Level] << szLogString;
-        m_pLog->WriteToLog(Level, ostr.str().c_str());
+        m_pLogOutput->WriteOutput(Level, ostr.str().c_str());
     }
 }
 
