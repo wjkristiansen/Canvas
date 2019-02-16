@@ -41,13 +41,13 @@ class CCanvas :
 {
     std::mutex m_Mutex;
     LOG_OUTPUT_LEVEL m_MaxLogOutputLevel;
-    LogOutputProc m_LogOutputProc;
+    CLog *m_pLog;
 
 public:
-    CCanvas(LogOutputProc OutputProc) :
+    CCanvas(CLog *pLog) :
         CGenericBase(),
         m_MaxLogOutputLevel(LOG_OUTPUT_LEVEL_MESSAGE),
-        m_LogOutputProc(OutputProc)
+        m_pLog(pLog)
     {}
 
     ~CCanvas();

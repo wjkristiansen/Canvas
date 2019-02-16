@@ -103,7 +103,7 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, LogOutputProc OutputProc)
+Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, CLog *pLog)
 {
     *ppCanvas = nullptr;
 
@@ -111,16 +111,16 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, LogOutputProc Outpu
     {
         if (iid == XCanvas::IId)
         {
-            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(OutputProc); // throw(bad_alloc)
+            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLog); // throw(bad_alloc)
             pCanvas->WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CreateCanvas");
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
     catch (std::bad_alloc &)
     {
-        if (OutputProc)
+        if (pLog)
         {
-            OutputProc(LOG_OUTPUT_LEVEL_ERROR, L"FAILURE in CreateCanvas");
+            pLog->WriteToLog(LOG_OUTPUT_LEVEL_ERROR, L"FAILURE in CreateCanvas");
         }
         return Result::OutOfMemory;
     }
@@ -209,11 +209,11 @@ void CCanvas::WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString)
         L"CANVAS: ", // LOG_OUTPUT_LEVEL_VERBOSE
     };
 
-    if (Level <= m_MaxLogOutputLevel)
+    if (m_pLog && Level <= m_MaxLogOutputLevel)
     {
         std::wostringstream ostr;
         ostr << PrefixStrings[Level] << szLogString;
-        m_LogOutputProc(Level, ostr.str().c_str());
+        m_pLog->WriteToLog(Level, ostr.str().c_str());
     }
 }
 
