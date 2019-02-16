@@ -146,10 +146,10 @@ struct LIGHT_DATA
 };
 
 //------------------------------------------------------------------------------------------------
-class CLog
+class CLogOutput
 {
 public:
-    virtual void WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
+    virtual void WriteOutput(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -301,5 +301,5 @@ XScene : public Gem::XGeneric
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, Canvas::CLog *pLog = nullptr);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, Canvas::CLogOutput *pLogOutput = nullptr);
 
