@@ -149,7 +149,7 @@ struct LIGHT_DATA
 class CLogOutput
 {
 public:
-    virtual void WriteOutput(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString) = 0;
+    virtual void WriteOutput(PCWSTR szHeading, PCWSTR szLogString) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

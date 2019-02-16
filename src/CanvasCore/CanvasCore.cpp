@@ -104,13 +104,17 @@ void CCanvas::ReportObjectLeaks()
 
 class CDefaultLogOutput : public CLogOutput
 {
-    virtual void WriteOutput(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString)
+    virtual void WriteOutput(PCWSTR szHeading, PCWSTR szLogString)
     {
-        // Write to console output
-        std::wcout << szLogString;
-        std::wcout << L"\n";
+        if (szHeading)
+        {
+            std::wcout << szHeading << L": ";
+            OutputDebugStringW(szHeading);
+            OutputDebugStringW(L": ");
+        }
 
-        // Write to debugger output
+        std::wcout << szLogString << L"\n";
+
         OutputDebugStringW(szLogString);
         OutputDebugStringW(L"\n");
     }
@@ -141,7 +145,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, CLogOutput *pLogOut
     {
         if (pLogOutput)
         {
-            pLogOutput->WriteOutput(LOG_OUTPUT_LEVEL_ERROR, L"FAILURE in CreateCanvas");
+            pLogOutput->WriteOutput(L"CANVAS ERROR: ", L"FAILURE in CreateCanvas");
         }
         return Result::OutOfMemory;
     }
@@ -219,22 +223,21 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
     return Result::Success;
 }
 
+//------------------------------------------------------------------------------------------------
 void CCanvas::WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString)
 {
-    std::unique_lock<std::mutex> Lock(m_Mutex);
     static PCWSTR PrefixStrings[] =
     {
-        L"CANVAS ERROR: ", // LOG_OUTPUT_LEVEL_ERROR
-        L"CANVAS WARNING: ", // LOG_OUTPUT_LEVEL_WARNING
-        L"CANVAS MESSAGE: ", // LOG_OUTPUT_LEVEL_MESSAGE
-        L"CANVAS: ", // LOG_OUTPUT_LEVEL_VERBOSE
+        L"CANVAS ERROR", // LOG_OUTPUT_LEVEL_ERROR
+        L"CANVAS WARNING", // LOG_OUTPUT_LEVEL_WARNING
+        L"CANVAS MESSAGE", // LOG_OUTPUT_LEVEL_MESSAGE
+        L"CANVAS", // LOG_OUTPUT_LEVEL_VERBOSE
     };
 
+    std::unique_lock<std::mutex> Lock(m_Mutex);
     if (m_pLogOutput && Level <= m_MaxLogOutputLevel)
     {
-        std::wostringstream ostr;
-        ostr << PrefixStrings[Level] << szLogString;
-        m_pLogOutput->WriteOutput(Level, ostr.str().c_str());
+        m_pLogOutput->WriteOutput(PrefixStrings[Level], szLogString);
     }
 }
 
