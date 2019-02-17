@@ -171,6 +171,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\Gem\src\Inc\Gem.hpp" />
+    <ClInclude Include="..\Inc\Canvas.h" />
+    <ClInclude Include="..\Inc\CanvasMath.hpp" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="Canvas.h" />
     <ClInclude Include="CanvasObject.h" />
