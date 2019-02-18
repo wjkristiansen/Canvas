@@ -21,7 +21,7 @@ namespace SlimLog
     public:
         CBasicLogOutput() = default;
 
-        void BeginOutput(PCWSTR szHeader)
+        void OutputStart(PCWSTR szHeader)
         {
             OutputString(szHeader);
             OutputString(L": ");
@@ -44,7 +44,7 @@ namespace SlimLog
             OutputString(m_Buffer);
         }
 
-        void EndOutput()
+        void OutputFinish()
         {
             OutputString(L"\n");
         }
@@ -59,15 +59,20 @@ namespace SlimLog
     public:
         TLogger() = default;
 
-        bool BeginOutput(LOG_LEVEL Level, PCWSTR szPrefix)
+        bool BeginOutput(LOG_LEVEL Level, PCWSTR szHeader)
         {
             if (m_FilterMask & Level)
             {
-                m_Output.BeginOutput(szPrefix);
+                m_Output.OutputStart(szHeader);
                 return true;
             }
 
             return false;
+        }
+
+        void BeginOutput(PCWSTR szHeader)
+        {
+            m_Output.OutputStart(szHeader);
         }
 
         void OutputString(PCWSTR szOutputString)
@@ -82,7 +87,7 @@ namespace SlimLog
 
         void EndOutput()
         {
-            m_Output.EndOutput();
+            m_Output.OutputFinish();
         }
 
         template<LOG_LEVEL Level>

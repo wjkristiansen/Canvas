@@ -104,7 +104,7 @@ void CCanvas::ReportObjectLeaks()
 
 class CDefaultLogOutput : public CLogOutput
 {
-    virtual void WriteOutput(PCWSTR szHeading, PCWSTR szLogString)
+    virtual void operator()(PCWSTR szHeading, PCWSTR szLogString)
     {
         if (szHeading)
         {
@@ -145,7 +145,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, CLogOutput *pLogOut
     {
         if (pLogOutput)
         {
-            pLogOutput->WriteOutput(L"CANVAS ERROR: ", L"FAILURE in CreateCanvas");
+            pLogOutput->operator()(L"CANVAS ERROR: ", L"FAILURE in CreateCanvas");
         }
         return Result::OutOfMemory;
     }
@@ -237,7 +237,7 @@ void CCanvas::WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szLogString)
     std::unique_lock<std::mutex> Lock(m_Mutex);
     if (m_pLogOutput && Level <= m_MaxLogOutputLevel)
     {
-        m_pLogOutput->WriteOutput(PrefixStrings[Level], szLogString);
+        m_pLogOutput->operator()(PrefixStrings[Level], szLogString);
     }
 }
 
