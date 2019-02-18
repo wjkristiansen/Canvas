@@ -23,12 +23,15 @@
 #include <unordered_map>
 #include <iostream>
 #include <sstream>
+#include <mutex>
 
 // reference additional headers your program requires here
 #include <fbxsdk.h>
 #include <Gem.hpp>
 #include <CanvasMath.hpp>
 #include <Canvas.h>
+
+#include <SlimLog.h>
 
 using namespace Canvas;
 using namespace Gem;

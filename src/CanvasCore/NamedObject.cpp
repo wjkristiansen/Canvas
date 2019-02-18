@@ -46,6 +46,7 @@ GEMMETHODIMP CObjectName::SetName(PCWSTR szName)
     }
     catch (std::bad_alloc &)
     {
+        m_pCanvas->Logger().LogErrorF(L"Out of memory: CObjectName::SetName: szName = %s", szName);
         return Result::OutOfMemory;
     }
 

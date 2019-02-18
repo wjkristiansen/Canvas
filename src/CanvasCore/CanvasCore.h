@@ -34,40 +34,105 @@ inline Result HResultToResult(HRESULT hr)
     }
 }
 
-//------------------------------------------------------------------------------------------------
-class CLogger : public XCanvas
-{
-    LOG_OUTPUT_LEVEL m_MaxLogOutput;
-    LogOutputProc m_LogOutputProc;
+using CanvasLogOutput = SlimLog::CLogOutputBase;
 
+//------------------------------------------------------------------------------------------------
+class CCanvasLogger : 
+    public SlimLog::TLogger<CanvasLogOutput>
+{
 public:
-    CLogger(LogOutputProc OutputProc) :
-        m_MaxLogOutput(LOG_OUTPUT_LEVEL_MESSAGE),
-        m_LogOutputProc(OutputProc)
+    CCanvasLogger(CanvasLogOutput *pLogOutput) :
+        SlimLog::TLogger<CanvasLogOutput>(pLogOutput) {}
+
+    void LogError(PCWSTR szOutput)
     {
-        if (m_LogOutputProc == nullptr)
-        {
-            m_LogOutputProc = DefaultOutputProc;
-        }
+        LogOutput<SlimLog::LOG_LEVEL_ERROR>(L"CANVAS ERROR", szOutput);
     }
 
-    static void DefaultOutputProc(LOG_OUTPUT_LEVEL Level, PCWSTR szSTring);
-    
-    // XLogger methods
-    GEMMETHOD_(void, SetMaxOutputLevel)(LOG_OUTPUT_LEVEL Level) { m_MaxLogOutput = Level; }
-    GEMMETHOD_(void, WriteToLog)(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
-    GEMMETHOD_(void, SetLogOutputProc)(LogOutputProc OutputProc) { m_LogOutputProc = OutputProc; }
+    void LogErrorF(PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        LogOutputVA<SlimLog::LOG_LEVEL_ERROR>(L"CANVAS ERROR", szOutput, args);
+        va_end(args);
+    }
+
+    void LogWarning(PCWSTR szOutput)
+    {
+        LogOutput<SlimLog::LOG_LEVEL_WARNING>(L"CANVAS WARNING", szOutput);
+    }
+
+    void LogWarningF(PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        LogOutputVA<SlimLog::LOG_LEVEL_WARNING>(L"CANVAS WARNING", szOutput, args);
+        va_end(args);
+    }
+
+    void LogMessage(PCWSTR szOutput)
+    {
+        LogOutput<SlimLog::LOG_LEVEL_MESSAGE>(L"CANVAS MESSAGE", szOutput);
+    }
+
+    void LogMessageF(PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        LogOutputVA<SlimLog::LOG_LEVEL_MESSAGE>(L"CANVAS MESSAGE", szOutput, args);
+        va_end(args);
+    }
+
+    void LogInfo(PCWSTR szOutput)
+    {
+        LogOutput<SlimLog::LOG_LEVEL_INFO>(L"CANVAS INFO", szOutput);
+    }
+
+    void LogInfoF(PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        LogOutputVA<SlimLog::LOG_LEVEL_INFO>(L"CANVAS INFO", szOutput, args);
+        va_end(args);
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+class CDefaultLogOutput : public SlimLog::CLogOutputBase
+{
+    std::mutex m_Mutex;
+
+public:
+    CDefaultLogOutput() = default;
+
+    virtual void Output(PCWSTR szHeader, PCWSTR szString)
+    {
+        std::unique_lock<std::mutex> lock(m_Mutex);
+
+        // Debugger
+        OutputDebugStringW(L"[");
+        OutputDebugStringW(szHeader);
+        OutputDebugStringW(L"] ");
+        OutputDebugStringW(szString);
+        OutputDebugStringW(L"[END]\n");
+
+        // Console
+        wprintf_s(L"%s: %s\n", szHeader, szString);
+    }
 };
 
 //------------------------------------------------------------------------------------------------
 class CCanvas :
-    public CLogger,
+    public XCanvas,
     public CGenericBase
 {
+    std::mutex m_Mutex;
+    CCanvasLogger m_Logger;
+
 public:
-    CCanvas(LogOutputProc OutputProc) :
-        CGenericBase(),
-        CLogger(OutputProc)
+    CCanvas(SlimLog::CLogOutputBase *pLogOutput) :
+        m_Logger(pLogOutput),
+        CGenericBase()
     {}
 
     ~CCanvas();
@@ -76,8 +141,14 @@ public:
     struct Sentinel {};
     TAutoList<TStaticPtr<CCanvasObjectBase>> m_OutstandingObjects;
 
+    GEMMETHOD_(int, SetLogOutputMask)(int Mask)
+    {
+        return m_Logger.SetOutputMask(Mask);
+    }
+
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj)
     {
+        std::unique_lock<std::mutex> Lock(m_Mutex);
         auto it = m_ObjectNames.find(szName);
         if (it != m_ObjectNames.end())
         {
@@ -98,6 +169,8 @@ public:
 
     void ReportObjectLeaks();
 
+    CCanvasLogger &Logger() { return m_Logger; }
+
 public:
     TGemPtr<class CGraphicsDevice> m_pGraphicsDevice;
 };
@@ -105,6 +178,7 @@ public:
 //------------------------------------------------------------------------------------------------
 inline CCanvasObjectBase::CCanvasObjectBase(CCanvas *pCanvas) :
     CGenericBase(),
+    m_pCanvas(pCanvas),
     m_OutstandingNode(pCanvas->m_OutstandingObjects.GetLast(), this)
 {
 }

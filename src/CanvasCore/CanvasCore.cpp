@@ -8,36 +8,6 @@ using namespace Canvas;
 
     
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CLogger::WriteToLog(LOG_OUTPUT_LEVEL Level, PCWSTR szString)
-{
-    static PCWSTR PrefixStrings[] =
-    {
-        L"CANVAS ERROR: ", // LOG_OUTPUT_LEVEL_ERROR
-        L"CANVAS WARNING: ", // LOG_OUTPUT_LEVEL_WARNING
-        L"CANVAS MESSAGE: ", // LOG_OUTPUT_LEVEL_MESSAGE
-        L"CANVAS: ", // LOG_OUTPUT_LEVEL_VERBOSE
-    };
-
-    if (Level <= m_MaxLogOutput)
-    {
-        std::wostringstream ostr;
-        ostr << PrefixStrings[Level] << szString;
-        m_LogOutputProc(Level, ostr.str().c_str());
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CLogger::DefaultOutputProc(LOG_OUTPUT_LEVEL Level, PCWSTR szString)
-{
-    // Write the string to the debugger followed by a newline
-    OutputDebugStringW(szString);
-    OutputDebugStringW(L"\n");
-
-    // Write the string to the stdout
-    std::wcout << szString << L"\n";
-}
-
-//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **ppObj)
 {
     *ppObj = nullptr;
@@ -45,11 +15,6 @@ GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **pp
     {
     case XCanvas::IId:
         *ppObj = reinterpret_cast<XCanvas *>(this);
-        AddRef();
-        break;
-
-    case XLogger::IId:
-        *ppObj = reinterpret_cast<CLogger *>(this);
         AddRef();
         break;
 
@@ -79,7 +44,7 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
     }
     catch(std::bad_alloc &)
     {
-        WriteToLog(LOG_OUTPUT_LEVEL_ERROR, L"Out of memory XCanvas::CreateScene");
+        Logger().LogError(L"Out of memory XCanvas::CreateScene");
         return Result::OutOfMemory;
     }
 }
@@ -94,7 +59,7 @@ GEMMETHODIMP CCanvas::CreateSceneGraphNode(InterfaceId iid, _Outptr_ void **ppOb
     }
     catch(std::bad_alloc &)
     {
-        WriteToLog(LOG_OUTPUT_LEVEL_ERROR, L"Out of memory XCanvas::CreateSceneGraphNode");
+        Logger().LogError(L"Out of memory XCanvas::CreateSceneGraphNode");
         return Result::OutOfMemory;
     }
 }
@@ -122,12 +87,12 @@ void CCanvas::ReportObjectLeaks()
             ostr << L"RefCount=" << RefCount;
         }
         
-        WriteToLog(LOG_OUTPUT_LEVEL_ERROR, ostr.str().c_str());
+        Logger().LogError(ostr.str().c_str());
     }
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, LogOutputProc OutputProc)
+Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutputBase *pLogOutput)
 {
     *ppCanvas = nullptr;
 
@@ -135,16 +100,16 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, LogOutputProc Outpu
     {
         if (iid == XCanvas::IId)
         {
-            TGemPtr<XCanvas> pCanvas = new TGeneric<CCanvas>(OutputProc); // throw(bad_alloc)
-            pCanvas->WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CreateCanvas");
+            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogOutput); // throw(bad_alloc)
+            pCanvas->Logger().LogMessage(L"CreateCanvas");
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
     catch (std::bad_alloc &)
     {
-        if (OutputProc)
+        if (pLogOutput)
         {
-            OutputProc(LOG_OUTPUT_LEVEL_ERROR, L"FAILURE in CreateCanvas");
+            pLogOutput->Output(L"CANVAS ERROR: ", L"FAILURE in CreateCanvas");
         }
         return Result::OutOfMemory;
     }
@@ -157,7 +122,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(CANVAS_GRAPHICS_OPTIONS *pGraphicsOpt
 {
     Result result = Result::NotImplemented;
 
-    WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CCanvas::CreateGraphicsDevice");
+    Logger().LogMessage(L"CCanvas::CreateGraphicsDevice");
 
     switch (pGraphicsOptions->Subsystem)
     {
@@ -174,7 +139,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(CANVAS_GRAPHICS_OPTIONS *pGraphicsOpt
 GEMMETHODIMP CCanvas::FrameTick()
 {
     Result result = Result::Success;
-    WriteToLog(LOG_OUTPUT_LEVEL_VERBOSE, L"Begin CCanvas::FrameTick");
+    Logger().LogInfo(L"Begin CCanvas::FrameTick");
 
     // Elapse time
 
@@ -186,7 +151,7 @@ GEMMETHODIMP CCanvas::FrameTick()
 
     m_pGraphicsDevice->RenderFrame();
 
-    WriteToLog(LOG_OUTPUT_LEVEL_VERBOSE, L"End CCanvas::FrameTick");
+    Logger().LogInfo(L"End CCanvas::FrameTick");
 
     return result;
 }
@@ -202,7 +167,7 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
     TGemPtr<CGraphicsDevice> pGraphicsDevice;
     try
     {
-        WriteToLog(LOG_OUTPUT_LEVEL_MESSAGE, L"CCanvas::SetupD3D12");
+        Logger().LogMessage(L"CCanvas::SetupD3D12");
         ThrowGemError(CreateGraphicsDevice12(this, &pGraphicsDevice, hWnd));
 
         if (ppGraphicsDevice)
@@ -213,7 +178,7 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
     }
     catch (GemError &gomError)
     {
-        WriteToLog(LOG_OUTPUT_LEVEL_ERROR, L"ERROR in CCanvas::SetupD3D12");
+        Logger().LogError(L"ERROR in CCanvas::SetupD3D12");
         return gomError.Result();
     }
 
@@ -221,4 +186,5 @@ Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd,
 
     return Result::Success;
 }
+
 

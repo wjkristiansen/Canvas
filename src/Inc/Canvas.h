@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <SlimLog.h>
+
 namespace Canvas
 {
 // Canvas core interfaces
@@ -50,7 +52,6 @@ enum CanvasIId
     CanvasIId_XObjectName = 15U,
     CanvasIId_XModel = 16U,
     CanvasIId_XGraphicsDevice = 17U,
-    CanvasIId_XLogger = 18U,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -81,45 +82,6 @@ struct CANVAS_GRAPHICS_OPTIONS
     bool Windowed;
     UINT DisplayWidth;
     UINT DisplayHeight;
-};
-
-//------------------------------------------------------------------------------------------------
-enum LOG_OUTPUT_LEVEL
-{
-    LOG_OUTPUT_LEVEL_ERROR = 0,
-    LOG_OUTPUT_LEVEL_WARNING,
-    LOG_OUTPUT_LEVEL_MESSAGE,
-    LOG_OUTPUT_LEVEL_VERBOSE,
-    NUM_LOG_OUTPUT_LEVELS
-};
-
-//------------------------------------------------------------------------------------------------
-// Derive from this to make a custom log output class.
-class CLogOutputBase
-{
-    LOG_OUTPUT_LEVEL m_MaxOutputLevel = LOG_OUTPUT_LEVEL_MESSAGE;
-
-public:
-    void SetMaxOutputLevel(LOG_OUTPUT_LEVEL Level) { m_MaxOutputLevel = Level; };
-    LOG_OUTPUT_LEVEL GetMaxOutputLevel() const{ return m_MaxOutputLevel; };
-
-    virtual void WriteString(PCWSTR szString) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-class CLogOutputDebugger :
-    public CLogOutputBase
-{
-public:
-    virtual void WriteString(PCWSTR szString) final;
-};
-
-//------------------------------------------------------------------------------------------------
-class CLogOutputConsole :
-    public CLogOutputBase
-{
-public:
-    virtual void WriteString(PCWSTR szString) final;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -175,23 +137,6 @@ struct LIGHT_DATA
 
 };
 
-using LogOutputProc = void(*)(LOG_OUTPUT_LEVEL Level, PCWSTR szString);
-
-//------------------------------------------------------------------------------------------------
-// By default, log output is directed to the console
-// and to debug output.
-GEM_INTERFACE XLogger : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XLogger);
-
-    GEMMETHOD_(void, SetMaxOutputLevel)(LOG_OUTPUT_LEVEL Level) = 0;
-    GEMMETHOD_(void, WriteToLog)(LOG_OUTPUT_LEVEL Level, PCWSTR szString) = 0;
-    GEMMETHOD_(void, SetLogOutputProc)(LogOutputProc OutputProc) = 0;
-
-    // Helper method
-//    void WriteToLogF(LOG_OUTPUT_LEVEL Level, PCWSTR szFormat, ...);
-};
-
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric
 {
@@ -239,9 +184,11 @@ XGraphicsDevice : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XCanvas : public XLogger
+XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
+
+    GEMMETHOD_(int, SetLogOutputMask)(int Mask) = 0;
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
@@ -339,5 +286,5 @@ XScene : public Gem::XGeneric
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, Canvas::LogOutputProc OutputProc = nullptr);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, SlimLog::CLogOutputBase *pLogOutput = nullptr);
 
