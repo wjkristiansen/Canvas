@@ -89,6 +89,8 @@ class CCanvasObjectBase :
     public CGenericBase
 {
 public:
+    class CCanvas *m_pCanvas; // Weak pointer
+
     TAutoListNode<TStaticPtr<CCanvasObjectBase>> m_OutstandingNode;
 
     CCanvasObjectBase(class CCanvas *pCanvas);

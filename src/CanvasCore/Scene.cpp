@@ -57,6 +57,7 @@ GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode *pChild)
     }
     catch (std::bad_alloc &)
     {
+        m_pCanvas->Logger().LogError(L"Out of memory: CSceneGraphNode::AddChild");
         return Result::OutOfMemory;
     }
     return Result::Success;
