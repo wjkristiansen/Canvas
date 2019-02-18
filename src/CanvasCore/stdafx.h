@@ -31,6 +31,8 @@
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
 
+#include <SlimLog.h>
+
 using namespace Canvas;
 using namespace Gem;
 

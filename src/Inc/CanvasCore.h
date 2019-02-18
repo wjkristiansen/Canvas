@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <SlimLog.h>
+
 namespace Canvas
 {
 // Canvas core interfaces
@@ -83,16 +85,6 @@ struct CANVAS_GRAPHICS_OPTIONS
 };
 
 //------------------------------------------------------------------------------------------------
-enum LOG_OUTPUT_LEVEL
-{
-    LOG_OUTPUT_LEVEL_ERROR = 0,
-    LOG_OUTPUT_LEVEL_WARNING,
-    LOG_OUTPUT_LEVEL_MESSAGE,
-    LOG_OUTPUT_LEVEL_VERBOSE,
-    NUM_LOG_OUTPUT_LEVELS
-};
-
-//------------------------------------------------------------------------------------------------
 // An indexed triangle list with common material and texture attributes
 // The actual layout of pixels depends on the material
 struct MATERIAL_GROUP_DATA
@@ -146,13 +138,6 @@ struct LIGHT_DATA
 };
 
 //------------------------------------------------------------------------------------------------
-class CLogOutput
-{
-public:
-    virtual void operator()(PCWSTR szHeading, PCWSTR szLogString) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
@@ -203,7 +188,7 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
-    GEMMETHOD_(void, SetMaxOutputLevel)(LOG_OUTPUT_LEVEL Level) = 0;
+    GEMMETHOD_(int, SetLogOutputMask)(int Mask) = 0;
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
@@ -301,5 +286,5 @@ XScene : public Gem::XGeneric
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, Canvas::CLogOutput *pLogOutput = nullptr);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, SlimLog::CLogOutputBase *pLogOutput = nullptr);
 
