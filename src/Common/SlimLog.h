@@ -25,7 +25,7 @@ namespace SlimLog
     template<class _LogOutputClass>
     class TLogger
     {
-        static __declspec(thread) WCHAR m_szBuffer[4096];
+        static inline __declspec(thread) WCHAR m_szBuffer[4096];
         CLogOutputBase *m_pOutput = nullptr;
         int m_OutputMask = LOG_LEVEL_ERROR | LOG_LEVEL_WARNING | LOG_LEVEL_MESSAGE;
 
