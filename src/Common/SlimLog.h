@@ -14,102 +14,50 @@ namespace SlimLog
         LOG_LEVEL_INFO = 0x08,
     };
 
-    class CBasicLogOutput
+    //------------------------------------------------------------------------------------------------
+    class CLogOutputBase
     {
-        wchar_t m_Buffer[4096]; // Not thread-safe
-
     public:
-        CBasicLogOutput() = default;
-
-        void OutputStart(PCWSTR szHeader)
-        {
-            OutputString(szHeader);
-            OutputString(L": ");
-        }
-
-        void OutputString(PCWSTR szString)
-        {
-            // Debugger
-            OutputDebugStringW(szString);
-
-            // Console
-            wprintf_s(szString);
-        }
-
-        void OutputStringVA(PCWSTR szFormat, va_list args)
-        {
-            // Build output string in buffer (not thread-safe)
-            vswprintf_s(m_Buffer, szFormat, args);
-
-            OutputString(m_Buffer);
-        }
-
-        void OutputFinish()
-        {
-            OutputString(L"\n");
-        }
+        virtual void Output(PCWSTR szHeader, PCWSTR szString) = 0;
     };
 
-    template<class _LogOutputClass = CBasicLogOutput>
+    //------------------------------------------------------------------------------------------------
+    template<class _LogOutputClass>
     class TLogger
     {
-        int m_FilterMask = LOG_LEVEL_ERROR | LOG_LEVEL_WARNING | LOG_LEVEL_MESSAGE;
-        _LogOutputClass m_Output;
+        static __declspec(thread) WCHAR m_szBuffer[4096];
+        CLogOutputBase *m_pOutput = nullptr;
+        int m_OutputMask = LOG_LEVEL_ERROR | LOG_LEVEL_WARNING | LOG_LEVEL_MESSAGE;
 
     public:
-        TLogger() = default;
+        TLogger(_LogOutputClass *pOutput) :
+            m_pOutput(pOutput) {}
 
-        bool BeginOutput(LOG_LEVEL Level, PCWSTR szHeader)
+        int SetOutputMask(int FilterMask)
         {
-            if (m_FilterMask & Level)
-            {
-                m_Output.OutputStart(szHeader);
-                return true;
-            }
-
-            return false;
+            int OldMask = m_OutputMask;
+            m_OutputMask = FilterMask;
+            return OldMask;
         }
 
-        void BeginOutput(PCWSTR szHeader)
-        {
-            m_Output.OutputStart(szHeader);
-        }
-
-        void OutputString(PCWSTR szOutputString)
-        {
-            m_Output.OutputString(szOutputString);
-        }
-
-        void OutputStringVA(PCWSTR szFormat, va_list args)
-        {
-            m_Output.OutputStringVA(szFormat, args);
-        }
-
-        void EndOutput()
-        {
-            m_Output.OutputFinish();
-        }
+        int GetOutputMask() const { return m_OutputMask; }
 
         template<LOG_LEVEL Level>
-        void LogWrite(PCWSTR szPrefix, PCWSTR szOutputString)
+        void LogOutput(PCWSTR szPrefix, PCWSTR szOutputString)
         {
-            if (BeginOutput(Level, szPrefix))
+            if (0 != (m_OutputMask & Level) && m_pOutput)
             {
-                OutputString(szOutputString);
-                EndOutput();
+                m_pOutput->Output(szPrefix, szOutputString);
             }
         }
 
         template<LOG_LEVEL Level>
-        void LogWriteF(PCWSTR szPrefix, PCWSTR szFormat, ...)
+        void LogOutputVA(PCWSTR szPrefix, PCWSTR szFormat, va_list args)
         {
-            if (LogBeginOutput(Level, szPrefix))
+            if (0 != (m_OutputMask & Level) && m_pOutput)
             {
-                va_list args;
-                va_start(args, szFormat);
-                OutputStringVA(szFormat, args);
-                va_end(args);
-                EndOutput();
+                vswprintf_s(m_szBuffer, szFormat, args);
+                m_pOutput->Output(szPrefix, m_szBuffer);
             }
         }
     };
