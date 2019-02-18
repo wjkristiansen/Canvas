@@ -75,6 +75,7 @@ GEMMETHODIMP CSceneGraphNode::CreateChildIterator(_Outptr_ XIterator **ppIterato
     }
     catch (std::bad_alloc &)
     {
+        m_pCanvas->Logger().LogError(L"Out of memory: CSceneGraphNode::CreateChildIterator");
         return Result::OutOfMemory;
     }
 }
