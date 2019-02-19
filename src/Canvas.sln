@@ -30,6 +30,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThinWin", "ThinWin\ThinWin.
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Common", "Common", "{F01739B3-B7F5-4B6D-A93A-94E5B2A0CCC3}"
 	ProjectSection(SolutionItems) = preProject
+		Common\CanvasGraphics.h = Common\CanvasGraphics.h
+		Common\CanvasObject.h = Common\CanvasObject.h
 		Common\SlimLog.h = Common\SlimLog.h
 	EndProjectSection
 EndProject
