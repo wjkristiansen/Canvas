@@ -188,7 +188,7 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
-    GEMMETHOD_(int, SetLogOutputMask)(int Mask) = 0;
+    GEMMETHOD_(int, SetLogCategoryMask)(int Mask) = 0;
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;

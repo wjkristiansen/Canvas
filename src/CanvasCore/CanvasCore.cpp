@@ -100,8 +100,11 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutput
     {
         if (iid == XCanvas::IId)
         {
+            if (pLogOutput)
+            {
+                pLogOutput->Output(L"CANVAS", L"CreateCanvas: Creating canvas object...");
+            }
             TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogOutput); // throw(bad_alloc)
-            pCanvas->Logger().LogMessage(L"CreateCanvas");
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
