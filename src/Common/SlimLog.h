@@ -40,21 +40,21 @@ namespace SlimLog
 
         int GetCategoryMask() const { return m_CategoryMask; }
 
-        // Write to log output (not thread safe)
-        template<LOG_CATEGORY Level>
+        // Write to log output
+        template<LOG_CATEGORY Category>
         void LogOutput(PCWSTR szPrefix, PCWSTR szOutputString)
         {
-            if (m_pOutput && 0 != (m_CategoryMask & Level))
+            if (m_pOutput && 0 != (m_CategoryMask & Category))
             {
                 m_pOutput->Output(szPrefix, szOutputString);
             }
         }
 
-        // Write to log output (not thread safe)
-        template<LOG_CATEGORY Level>
+        // Write to log output
+        template<LOG_CATEGORY Category>
         void LogOutputVA(PCWSTR szPrefix, PCWSTR szFormat, va_list args)
         {
-            if (m_pOutput && 0 != (m_CategoryMask & Level))
+            if (m_pOutput && 0 != (m_CategoryMask & Category))
             {
                 vswprintf_s(m_szBuffer, szFormat, args);
                 m_pOutput->Output(szPrefix, m_szBuffer);

@@ -40,21 +40,17 @@ using CanvasLogOutput = SlimLog::CLogOutputBase;
 class CCanvasLogger : 
     public SlimLog::TLogger<CanvasLogOutput>
 {
-    std::mutex m_Mutex;
-
 public:
     CCanvasLogger(CanvasLogOutput *pLogOutput) :
         SlimLog::TLogger<CanvasLogOutput>(pLogOutput) {}
 
     void LogError(PCWSTR szOutput)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
         LogOutput<SlimLog::LOG_CATEGORY_ERROR>(L"CANVAS ERROR", szOutput);
     }
 
     void LogErrorF(PCWSTR szOutput, ...)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
         va_list args;
         va_start(args, szOutput);
         LogOutputVA<SlimLog::LOG_CATEGORY_ERROR>(L"CANVAS ERROR", szOutput, args);
@@ -63,13 +59,11 @@ public:
 
     void LogWarning(PCWSTR szOutput)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
         LogOutput<SlimLog::LOG_CATEGORY_WARNING>(L"CANVAS WARNING", szOutput);
     }
 
     void LogWarningF(PCWSTR szOutput, ...)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
         va_list args;
         va_start(args, szOutput);
         LogOutputVA<SlimLog::LOG_CATEGORY_WARNING>(L"CANVAS WARNING", szOutput, args);
@@ -78,13 +72,11 @@ public:
 
     void LogMessage(PCWSTR szOutput)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
         LogOutput<SlimLog::LOG_CATEGORY_MESSAGE>(L"CANVAS MESSAGE", szOutput);
     }
 
     void LogMessageF(PCWSTR szOutput, ...)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
         va_list args;
         va_start(args, szOutput);
         LogOutputVA<SlimLog::LOG_CATEGORY_MESSAGE>(L"CANVAS MESSAGE", szOutput, args);
@@ -93,13 +85,11 @@ public:
 
     void LogInfo(PCWSTR szOutput)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
         LogOutput<SlimLog::LOG_CATEGORY_INFO>(L"CANVAS INFO", szOutput);
     }
 
     void LogInfoF(PCWSTR szOutput, ...)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
         va_list args;
         va_start(args, szOutput);
         LogOutputVA<SlimLog::LOG_CATEGORY_INFO>(L"CANVAS INFO", szOutput, args);
