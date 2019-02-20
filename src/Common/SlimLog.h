@@ -6,12 +6,12 @@
 
 namespace SlimLog
 {
-    enum LOG_LEVEL
+    enum LOG_CATEGORY
     {
-        LOG_LEVEL_ERROR = 0x01,
-        LOG_LEVEL_WARNING = 0x02,
-        LOG_LEVEL_MESSAGE = 0x04,
-        LOG_LEVEL_INFO = 0x08,
+        LOG_CATEGORY_ERROR = 0x01,
+        LOG_CATEGORY_WARNING = 0x02,
+        LOG_CATEGORY_MESSAGE = 0x04,
+        LOG_CATEGORY_INFO = 0x08,
     };
 
     //------------------------------------------------------------------------------------------------
@@ -27,32 +27,34 @@ namespace SlimLog
     {
         static inline __declspec(thread) WCHAR m_szBuffer[4096];
         _LogOutputClass *m_pOutput = nullptr;
-        long m_OutputMask = LOG_LEVEL_ERROR | LOG_LEVEL_WARNING | LOG_LEVEL_MESSAGE;
+        long m_CategoryMask = LOG_CATEGORY_ERROR | LOG_CATEGORY_WARNING | LOG_CATEGORY_MESSAGE;
 
     public:
         TLogger(_LogOutputClass *pOutput) :
             m_pOutput(pOutput) {}
 
-        int SetOutputMask(long FilterMask)
+        int SetCategoryMask(long FilterMask)
         {
-            return InterlockedExchange(&m_OutputMask, FilterMask);
+            return InterlockedExchange(&m_CategoryMask, FilterMask);
         }
 
-        int GetOutputMask() const { return m_OutputMask; }
+        int GetCategoryMask() const { return m_CategoryMask; }
 
-        template<LOG_LEVEL Level>
+        // Write to log output (not thread safe)
+        template<LOG_CATEGORY Level>
         void LogOutput(PCWSTR szPrefix, PCWSTR szOutputString)
         {
-            if (0 != (m_OutputMask & Level) && m_pOutput)
+            if (m_pOutput && 0 != (m_CategoryMask & Level))
             {
                 m_pOutput->Output(szPrefix, szOutputString);
             }
         }
 
-        template<LOG_LEVEL Level>
+        // Write to log output (not thread safe)
+        template<LOG_CATEGORY Level>
         void LogOutputVA(PCWSTR szPrefix, PCWSTR szFormat, va_list args)
         {
-            if (0 != (m_OutputMask & Level) && m_pOutput)
+            if (m_pOutput && 0 != (m_CategoryMask & Level))
             {
                 vswprintf_s(m_szBuffer, szFormat, args);
                 m_pOutput->Output(szPrefix, m_szBuffer);
