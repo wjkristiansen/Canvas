@@ -129,6 +129,10 @@ class CCanvas :
     std::mutex m_Mutex;
     CCanvasLogger m_Logger;
 
+    CTimer m_FrameTimer;
+    UINT64 m_FrameEndTimeLast = 0;
+    UINT m_FrameCounter = 0;
+
 public:
     CCanvas(SlimLog::CLogOutputBase *pLogOutput) :
         m_Logger(pLogOutput),
