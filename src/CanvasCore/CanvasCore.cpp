@@ -100,8 +100,11 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutput
     {
         if (iid == XCanvas::IId)
         {
+            if (pLogOutput)
+            {
+                pLogOutput->Output(L"CANVAS", L"CreateCanvas: Creating canvas object...");
+            }
             TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogOutput); // throw(bad_alloc)
-            pCanvas->Logger().LogMessage(L"CreateCanvas");
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
@@ -150,6 +153,21 @@ GEMMETHODIMP CCanvas::FrameTick()
     // Render the display list
 
     m_pGraphicsDevice->RenderFrame();
+
+    ++m_FrameCounter;
+    if (m_FrameCounter == 1200)
+    {
+        UINT64 FrameEndTime = m_FrameTimer.Now();
+
+        if (m_FrameEndTimeLast > 0)
+        {
+            UINT64 DTime = FrameEndTime - m_FrameEndTimeLast;
+            UINT64 FramesPerSecond = m_FrameCounter * 1000 / CTimer::Milliseconds(DTime);
+            std::wcout << L"FPS: " << FramesPerSecond << std::endl;
+        }
+        m_FrameEndTimeLast = FrameEndTime;
+        m_FrameCounter = 0;
+    }
 
     Logger().LogInfo(L"End CCanvas::FrameTick");
 

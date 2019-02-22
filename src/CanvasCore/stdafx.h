@@ -12,6 +12,7 @@
 #include <windows.h>
 #include <atlbase.h>
 #include <d3d12.h>
+#include <intrin.h>
 
 #include <new>
 #include <vector>
@@ -24,9 +25,9 @@
 #include <iostream>
 #include <sstream>
 #include <mutex>
+#include <chrono>
 
 // reference additional headers your program requires here
-#include <fbxsdk.h>
 #include <Gem.hpp>
 #include <CanvasMath.hpp>
 #include <Canvas.h>
@@ -45,6 +46,7 @@ using namespace Gem;
 #include "Model.h"
 #include "Scene.h"
 #include "CanvasGraphics.h"
+#include "Timer.h"
 #include "CanvasCore.h"
 
 #include "CanvasGraphics12.h"

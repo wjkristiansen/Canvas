@@ -46,53 +46,53 @@ public:
 
     void LogError(PCWSTR szOutput)
     {
-        LogOutput<SlimLog::LOG_LEVEL_ERROR>(L"CANVAS ERROR", szOutput);
+        LogOutput<SlimLog::LOG_CATEGORY_ERROR>(L"CANVAS ERROR", szOutput);
     }
 
     void LogErrorF(PCWSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
-        LogOutputVA<SlimLog::LOG_LEVEL_ERROR>(L"CANVAS ERROR", szOutput, args);
+        LogOutputVA<SlimLog::LOG_CATEGORY_ERROR>(L"CANVAS ERROR", szOutput, args);
         va_end(args);
     }
 
     void LogWarning(PCWSTR szOutput)
     {
-        LogOutput<SlimLog::LOG_LEVEL_WARNING>(L"CANVAS WARNING", szOutput);
+        LogOutput<SlimLog::LOG_CATEGORY_WARNING>(L"CANVAS WARNING", szOutput);
     }
 
     void LogWarningF(PCWSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
-        LogOutputVA<SlimLog::LOG_LEVEL_WARNING>(L"CANVAS WARNING", szOutput, args);
+        LogOutputVA<SlimLog::LOG_CATEGORY_WARNING>(L"CANVAS WARNING", szOutput, args);
         va_end(args);
     }
 
     void LogMessage(PCWSTR szOutput)
     {
-        LogOutput<SlimLog::LOG_LEVEL_MESSAGE>(L"CANVAS MESSAGE", szOutput);
+        LogOutput<SlimLog::LOG_CATEGORY_MESSAGE>(L"CANVAS MESSAGE", szOutput);
     }
 
     void LogMessageF(PCWSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
-        LogOutputVA<SlimLog::LOG_LEVEL_MESSAGE>(L"CANVAS MESSAGE", szOutput, args);
+        LogOutputVA<SlimLog::LOG_CATEGORY_MESSAGE>(L"CANVAS MESSAGE", szOutput, args);
         va_end(args);
     }
 
     void LogInfo(PCWSTR szOutput)
     {
-        LogOutput<SlimLog::LOG_LEVEL_INFO>(L"CANVAS INFO", szOutput);
+        LogOutput<SlimLog::LOG_CATEGORY_INFO>(L"CANVAS INFO", szOutput);
     }
 
     void LogInfoF(PCWSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
-        LogOutputVA<SlimLog::LOG_LEVEL_INFO>(L"CANVAS INFO", szOutput, args);
+        LogOutputVA<SlimLog::LOG_CATEGORY_INFO>(L"CANVAS INFO", szOutput, args);
         va_end(args);
     }
 };
@@ -129,6 +129,10 @@ class CCanvas :
     std::mutex m_Mutex;
     CCanvasLogger m_Logger;
 
+    CTimer m_FrameTimer;
+    UINT64 m_FrameEndTimeLast = 0;
+    UINT m_FrameCounter = 0;
+
 public:
     CCanvas(SlimLog::CLogOutputBase *pLogOutput) :
         m_Logger(pLogOutput),
@@ -141,9 +145,9 @@ public:
     struct Sentinel {};
     TAutoList<TStaticPtr<CCanvasObjectBase>> m_OutstandingObjects;
 
-    GEMMETHOD_(int, SetLogOutputMask)(int Mask)
+    GEMMETHOD_(int, SetLogCategoryMask)(int Mask)
     {
-        return m_Logger.SetOutputMask(Mask);
+        return m_Logger.SetCategoryMask(Mask);
     }
 
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj)
