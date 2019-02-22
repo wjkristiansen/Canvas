@@ -45,12 +45,8 @@ using namespace Gem;
 #include "Light.h"
 #include "Model.h"
 #include "Scene.h"
-<<<<<<< HEAD
 #include "CanvasGraphics.h"
-=======
-#include "GraphicsDevice.h"
 #include "Timer.h"
->>>>>>> Implements CTimer class
 #include "CanvasCore.h"
 
 #include "CanvasGraphics12.h"
