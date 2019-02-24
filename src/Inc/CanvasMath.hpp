@@ -90,9 +90,9 @@ struct TVector<_T, 4U>
     const _T &W() const { return V[3]; }
 };
 
-using UIntVector2 = TVector<UINT, 2>;
-using UIntVector3 = TVector<UINT, 3>;
-using UIntVector4 = TVector<UINT, 4>;
+using UIntVector2 = TVector<unsigned int, 2>;
+using UIntVector3 = TVector<unsigned int, 3>;
+using UIntVector4 = TVector<unsigned int, 4>;
 
 using IntVector2 = TVector<INT, 2>;
 using IntVector3 = TVector<INT, 3>;
@@ -384,9 +384,75 @@ bool operator!=(TMatrix<_T, _Rows, _Columns> m0, TMatrix<_T, _Rows, _Columns> m1
     return !operator==(m0, m1);
 }
 
+template<class _T, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_T, _Rows, _Columns> IdentityMatrix()
+{
+    TMatrix<_T, _Rows, _Columns> m = {};
+    for (unsigned int i = 0; i < (_Rows < _Columns ? _Rows : _Columns); ++i)
+    {
+        m[i][i] = 1;
+    }
+
+    return m;
+}
+
+//------------------------------------------------------------------------------------------------
+// Sets the upper-left 3x3 as a rotation about the x-axis
+template<class _T, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_T, _Rows, _Columns> XRotMatrix(_T rot)
+{
+    TMatrix<_T, _Rows, _Columns> m = IdentityMatrix<_T, _Rows, _Columns>();
+
+    _T c = cos(rot);
+    _T s = sin(rot);
+    m[1][1] = c;
+    m[1][2] = -s;
+    
+    m[2][1] = s;
+    m[2][3] = c;
+
+    return m;
+}
+
+//------------------------------------------------------------------------------------------------
+// Sets the upper-left 3x3 as a rotation about the x-axis
+template<class _T, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_T, _Rows, _Columns> YRotMatrix(_T rot)
+{
+    TMatrix<_T, _Rows, _Columns> m = IdentityMatrix<_T, _Rows, _Columns>();
+
+    _T c = cos(rot);
+    _T s = sin(rot);
+    m[0][0] = c;
+    m[0][2] = s;
+
+    m[2][0] = -s;
+    m[2][3] = c;
+
+    return m;
+}
+//------------------------------------------------------------------------------------------------
+// Sets the upper-left 3x3 as a rotation about the x-axis
+template<class _T, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_T, _Rows, _Columns> ZRotMatrix(_T rot)
+{
+    TMatrix<_T, _Rows, _Columns> m = IdentityMatrix<_T, _Rows, _Columns>();
+
+    _T c = cos(rot);
+    _T s = sin(rot);
+    m[1][1] = c;
+    m[1][2] = -s;
+    
+    m[2][1] = s;
+    m[2][3] = c;
+
+    return m;
+}
+
+
 //------------------------------------------------------------------------------------------------
 template<class _T>
-TMatrix<_T, 4, 4> InvertAffine(const TMatrix<_T, 4, 4> &m)
+TMatrix<_T, 4, 4> InvertMatrixAffine(const TMatrix<_T, 4, 4> &m)
 {
     TMatrix<_T, 4, 4> invm;
 
@@ -397,7 +463,6 @@ TMatrix<_T, 4, 4> InvertAffine(const TMatrix<_T, 4, 4> &m)
     invm[3][3] = 1.0f;
 
     // Transpose upper-left 3x3 and negate
-    TMatrix<_T, 4, 4> invm;
     invm[0][0] = m[0][0];
     invm[1][0] = m[0][1];
     invm[2][0] = m[0][2];
