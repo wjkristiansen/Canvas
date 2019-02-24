@@ -8,86 +8,94 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-template <class _T>
+template <class _Type>
 struct TQuaternion
 {
-    _T Q[4];
+    _Type Q[4];
 };
 
 using FloatQuaternion = TQuaternion<float>;
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _D>
+template<class _Type, unsigned int _D>
 struct TVector
 {
     static auto constexpr Dimension = _D;
-    _T V[Dimension] = {};
+    using ElementType = _Type;
+
+    _Type V[Dimension] = {};
 
     TVector() = default;
     TVector(const TVector &o) = default;
     TVector &operator=(const TVector &o) = default;
-    const _T &operator[](int index) const { return V[index]; }
-    _T &operator[](int index) { return V[index]; }
+    const _Type &operator[](int index) const { return V[index]; }
+    _Type &operator[](int index) { return V[index]; }
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T>
-struct TVector<_T, 2U>
+template<class _Type>
+struct TVector<_Type, 2U>
 {
     static auto constexpr Dimension = 2U;
-    _T V[Dimension] = {};
+    using ElementType = _Type;
+
+    _Type V[Dimension] = {};
 
     TVector() = default;
     TVector(const TVector &o) = default;
-    TVector(_T x, _T y) :
+    TVector(_Type x, _Type y) :
         V{ x, y } {}
     TVector &operator=(const TVector &o) = default;
 
-    const _T &operator[](int index) const { return V[index]; }
-    _T &operator[](int index) { return V[index]; }
-    const _T &X() const { return V[0]; }
-    const _T &Y() const { return V[1]; }
+    const _Type &operator[](int index) const { return V[index]; }
+    _Type &operator[](int index) { return V[index]; }
+    const _Type &X() const { return V[0]; }
+    const _Type &Y() const { return V[1]; }
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T>
-struct TVector<_T, 3U>
+template<class _Type>
+struct TVector<_Type, 3U>
 {
     static auto constexpr Dimension = 3U;
-    _T V[Dimension] = {};
+    using ElementType = _Type;
+
+    _Type V[Dimension] = {};
 
     TVector() = default;
     TVector(const TVector &o) = default;
-    TVector(_T x, _T y, _T z) :
+    TVector(_Type x, _Type y, _Type z) :
         V{ x, y, z } {}
     TVector &operator=(const TVector &o) = default;
 
-    const _T &operator[](int index) const { return V[index]; }
-    _T &operator[](int index) { return V[index]; }
-    const _T &X() const { return V[0]; }
-    const _T &Y() const { return V[1]; }
-    const _T &Z() const { return V[2]; }
+    const _Type &operator[](int index) const { return V[index]; }
+    _Type &operator[](int index) { return V[index]; }
+    const _Type &X() const { return V[0]; }
+    const _Type &Y() const { return V[1]; }
+    const _Type &Z() const { return V[2]; }
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T>
-struct TVector<_T, 4U>
+template<class _Type>
+struct TVector<_Type, 4U>
 {
     static auto constexpr Dimension = 4U;
-    _T V[Dimension] = {};
+    using ElementType = _Type;
+
+    _Type V[Dimension] = {};
 
     TVector() = default;
     TVector(const TVector &o) = default;
-    TVector(_T x, _T y, _T z, _T w) :
+    TVector(_Type x, _Type y, _Type z, _Type w) :
         V{ x, y, z, w } {}
     TVector &operator=(const TVector &o) = default;
 
-    const _T &operator[](int index) const { return V[index]; }
-    _T &operator[](int index) { return V[index]; }
-    const _T &X() const { return V[0]; }
-    const _T &Y() const { return V[1]; }
-    const _T &Z() const { return V[2]; }
-    const _T &W() const { return V[3]; }
+    const _Type &operator[](int index) const { return V[index]; }
+    _Type &operator[](int index) { return V[index]; }
+    const _Type &X() const { return V[0]; }
+    const _Type &Y() const { return V[1]; }
+    const _Type &Z() const { return V[2]; }
+    const _Type &W() const { return V[3]; }
 };
 
 using UIntVector2 = TVector<unsigned int, 2>;
@@ -107,8 +115,8 @@ using DoubleVector3 = TVector<double, 3U>;
 using DoubleVector4 = TVector<double, 4U>;
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _D>
-bool operator==(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
+template<class _Type, unsigned int _D>
+bool operator==(const TVector<_Type, _D> &v0, const TVector<_Type, _D> &v1)
 {
     for (unsigned int i = 0; i < _D; ++i)
     {
@@ -119,17 +127,17 @@ bool operator==(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _D>
-bool operator!=(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
+template<class _Type, unsigned int _D>
+bool operator!=(const TVector<_Type, _D> &v0, const TVector<_Type, _D> &v1)
 {
     return !operator==(v0, v1);
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _D>
-TVector<_T, _D> operator+(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
+template<class _Type, unsigned int _D>
+TVector<_Type, _D> operator+(const TVector<_Type, _D> &v0, const TVector<_Type, _D> &v1)
 {
-    TVector<_T, _D> result;
+    TVector<_Type, _D> result;
 
     for (unsigned int i = 0; i < _D; ++i)
     {
@@ -140,10 +148,10 @@ TVector<_T, _D> operator+(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _D>
-TVector<_T, _D> operator-(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
+template<class _Type, unsigned int _D>
+TVector<_Type, _D> operator-(const TVector<_Type, _D> &v0, const TVector<_Type, _D> &v1)
 {
-    TVector<_T, _D> result;
+    TVector<_Type, _D> result;
 
     for (unsigned int i = 0; i < _D; ++i)
     {
@@ -154,10 +162,10 @@ TVector<_T, _D> operator-(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _D>
-TVector<_T, _D> operator*(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
+template<class _Type, unsigned int _D>
+TVector<_Type, _D> operator*(const TVector<_Type, _D> &v0, const TVector<_Type, _D> &v1)
 {
-    TVector<_T, _D> result;
+    TVector<_Type, _D> result;
 
     for (unsigned int i = 0; i < _D; ++i)
     {
@@ -168,10 +176,10 @@ TVector<_T, _D> operator*(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _D>
-_T DotProduct(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
+template<class _Type, unsigned int _D>
+_Type DotProduct(const TVector<_Type, _D> &v0, const TVector<_Type, _D> &v1)
 {
-    _T result = 0;
+    _Type result = 0;
 
     for (unsigned int i = 0; i < _D; ++i)
     {
@@ -182,10 +190,10 @@ _T DotProduct(const TVector<_T, _D> &v0, const TVector<_T, _D> &v1)
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T>
-TVector<_T, 3U> CrossProduct(const TVector<_T, 3U> &v0, const TVector<_T, 3U> &v1)
+template<class _Type>
+TVector<_Type, 3U> CrossProduct(const TVector<_Type, 3U> &v0, const TVector<_Type, 3U> &v1)
 {
-    return TVector<_T, 3U>(
+    return TVector<_Type, 3U>(
         v0[1] * v1[2] - v0[2] * v1[1],
         v0[2] * v1[0] - v0[0] * v1[2],
         v0[0] * v1[1] - v0[1] * v1[0]
@@ -193,10 +201,10 @@ TVector<_T, 3U> CrossProduct(const TVector<_T, 3U> &v0, const TVector<_T, 3U> &v
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _D>
-TVector<_T, _D> operator*(const TVector<_T, _D> &v, _T mul)
+template<class _Type, unsigned int _D>
+TVector<_Type, _D> operator*(const TVector<_Type, _D> &v, _Type mul)
 {
-    TVector<_T, _D> result;
+    TVector<_Type, _D> result;
 
     for (unsigned int i = 0; i < _D; ++i)
     {
@@ -207,8 +215,8 @@ TVector<_T, _D> operator*(const TVector<_T, _D> &v, _T mul)
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _D>
-TVector<_T, _D> operator*(_T mul, const TVector<_T, _D> &v)
+template<class _Type, unsigned int _D>
+TVector<_Type, _D> operator*(_Type mul, const TVector<_Type, _D> &v)
 {
     return operator*(v, mul);
 }
@@ -248,12 +256,13 @@ TVector<double, _D> NormalizeVector(const TVector<double, _D> &v)
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows, unsigned int _Columns>
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
 struct TMatrix
 {
     static auto constexpr Rows = _Rows;
     static auto constexpr Columns = _Columns;
-    using RowType = TVector<_T, Columns>;
+    using RowType = TVector<_Type, Columns>;
+    using ElementType = _Type;
 
     RowType M[Rows] = {};
 
@@ -264,12 +273,13 @@ struct TMatrix
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Columns>
-struct TMatrix<_T, 2U, _Columns>
+template<class _Type, unsigned int _Columns>
+struct TMatrix<_Type, 2U, _Columns>
 {
     static auto constexpr Rows = 2U;
     static auto constexpr Columns = _Columns;
-    using RowType = TVector<_T, Columns>;
+    using RowType = TVector<_Type, Columns>;
+    using ElementType = _Type;
     RowType M[Rows] = {};
 
     TMatrix() = default;
@@ -286,12 +296,13 @@ struct TMatrix<_T, 2U, _Columns>
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Columns>
-struct TMatrix<_T, 3U, _Columns>
+template<class _Type, unsigned int _Columns>
+struct TMatrix<_Type, 3U, _Columns>
 {
     static auto constexpr Rows = 3U;
     static auto constexpr Columns = _Columns;
-    using RowType = TVector<_T, Columns>;
+    using RowType = TVector<_Type, Columns>;
+    using ElementType = _Type;
     RowType M[Rows] = {};
 
     TMatrix() = default;
@@ -310,12 +321,13 @@ struct TMatrix<_T, 3U, _Columns>
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Columns>
-struct TMatrix<_T, 4U, _Columns>
+template<class _Type, unsigned int _Columns>
+struct TMatrix<_Type, 4U, _Columns>
 {
     static auto constexpr Rows = 4U;
     static auto constexpr Columns = _Columns;
-    using RowType = TVector<_T, Columns>;
+    using RowType = TVector<_Type, Columns>;
+    using ElementType = _Type;
     RowType M[Rows] = {};
 
     TMatrix() = default;
@@ -336,10 +348,10 @@ struct TMatrix<_T, 4U, _Columns>
 };
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows, unsigned int _Columns>
-TVector<_T, _Columns> operator*(const TVector<_T, _Rows> &v, const TMatrix<_T, _Rows, _Columns> &m)
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
+TVector<_Type, _Columns> operator*(const TVector<_Type, _Rows> &v, const TMatrix<_Type, _Rows, _Columns> &m)
 {
-    TVector<_T, _Columns> result;
+    TVector<_Type, _Columns> result;
 
     for (unsigned int Col = 0; Col < _Columns; ++Col)
     {
@@ -353,10 +365,10 @@ TVector<_T, _Columns> operator*(const TVector<_T, _Rows> &v, const TMatrix<_T, _
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows0, unsigned int _Columns0, unsigned int _Columns1>
-TMatrix<_T, _Rows0, _Columns1> operator*(const TMatrix<_T, _Rows0, _Columns0> &m0, const TMatrix<_T, _Columns0, _Columns1> &m1)
+template<class _Type, unsigned int _Rows0, unsigned int _Columns0, unsigned int _Columns1>
+TMatrix<_Type, _Rows0, _Columns1> operator*(const TMatrix<_Type, _Rows0, _Columns0> &m0, const TMatrix<_Type, _Columns0, _Columns1> &m1)
 {
-    TMatrix<_T, _Rows0, _Columns1> result;
+    TMatrix<_Type, _Rows0, _Columns1> result;
 
     for (unsigned int Row = 0; Row < _Rows0; ++Row)
     {
@@ -367,8 +379,8 @@ TMatrix<_T, _Rows0, _Columns1> operator*(const TMatrix<_T, _Rows0, _Columns0> &m
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows, unsigned int _Columns>
-bool operator==(TMatrix<_T, _Rows, _Columns> m0, TMatrix<_T, _Rows, _Columns> m1)
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
+bool operator==(TMatrix<_Type, _Rows, _Columns> m0, TMatrix<_Type, _Rows, _Columns> m1)
 {
     for (unsigned int Row = 0; Row < _Rows; ++Row)
     {
@@ -378,16 +390,16 @@ bool operator==(TMatrix<_T, _Rows, _Columns> m0, TMatrix<_T, _Rows, _Columns> m1
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _T, unsigned int _Rows, unsigned int _Columns>
-bool operator!=(TMatrix<_T, _Rows, _Columns> m0, TMatrix<_T, _Rows, _Columns> m1)
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
+bool operator!=(TMatrix<_Type, _Rows, _Columns> m0, TMatrix<_Type, _Rows, _Columns> m1)
 {
     return !operator==(m0, m1);
 }
 
-template<class _T, unsigned int _Rows, unsigned int _Columns>
-TMatrix<_T, _Rows, _Columns> IdentityMatrix()
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_Type, _Rows, _Columns> IdentityMatrix()
 {
-    TMatrix<_T, _Rows, _Columns> m = {};
+    TMatrix<_Type, _Rows, _Columns> m = {};
     for (unsigned int i = 0; i < (_Rows < _Columns ? _Rows : _Columns); ++i)
     {
         m[i][i] = 1;
@@ -398,63 +410,62 @@ TMatrix<_T, _Rows, _Columns> IdentityMatrix()
 
 //------------------------------------------------------------------------------------------------
 // Sets the upper-left 3x3 as a rotation about the x-axis
-template<class _T, unsigned int _Rows, unsigned int _Columns>
-TMatrix<_T, _Rows, _Columns> XRotMatrix(_T rot)
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_Type, _Rows, _Columns> XRotMatrix(_Type rot)
 {
-    TMatrix<_T, _Rows, _Columns> m = IdentityMatrix<_T, _Rows, _Columns>();
+    TMatrix<_Type, _Rows, _Columns> m = IdentityMatrix<_Type, _Rows, _Columns>();
 
-    _T c = cos(rot);
-    _T s = sin(rot);
+    _Type c = cos(rot);
+    _Type s = sin(rot);
     m[1][1] = c;
     m[1][2] = -s;
     
     m[2][1] = s;
-    m[2][3] = c;
+    m[2][2] = c;
 
     return m;
 }
 
 //------------------------------------------------------------------------------------------------
 // Sets the upper-left 3x3 as a rotation about the x-axis
-template<class _T, unsigned int _Rows, unsigned int _Columns>
-TMatrix<_T, _Rows, _Columns> YRotMatrix(_T rot)
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_Type, _Rows, _Columns> YRotMatrix(_Type rot)
 {
-    TMatrix<_T, _Rows, _Columns> m = IdentityMatrix<_T, _Rows, _Columns>();
+    TMatrix<_Type, _Rows, _Columns> m = IdentityMatrix<_Type, _Rows, _Columns>();
 
-    _T c = cos(rot);
-    _T s = sin(rot);
+    _Type c = cos(rot);
+    _Type s = sin(rot);
     m[0][0] = c;
     m[0][2] = s;
 
     m[2][0] = -s;
-    m[2][3] = c;
+    m[2][2] = c;
 
     return m;
 }
 //------------------------------------------------------------------------------------------------
 // Sets the upper-left 3x3 as a rotation about the x-axis
-template<class _T, unsigned int _Rows, unsigned int _Columns>
-TMatrix<_T, _Rows, _Columns> ZRotMatrix(_T rot)
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_Type, _Rows, _Columns> ZRotMatrix(_Type rot)
 {
-    TMatrix<_T, _Rows, _Columns> m = IdentityMatrix<_T, _Rows, _Columns>();
+    TMatrix<_Type, _Rows, _Columns> m = IdentityMatrix<_Type, _Rows, _Columns>();
 
-    _T c = cos(rot);
-    _T s = sin(rot);
-    m[1][1] = c;
-    m[1][2] = -s;
+    _Type c = cos(rot);
+    _Type s = sin(rot);
+    m[0][0] = c;
+    m[0][1] = -s;
     
-    m[2][1] = s;
-    m[2][3] = c;
+    m[1][0] = s;
+    m[1][1] = c;
 
     return m;
 }
 
-
 //------------------------------------------------------------------------------------------------
-template<class _T>
-TMatrix<_T, 4, 4> InvertMatrixAffine(const TMatrix<_T, 4, 4> &m)
+template<class _Type>
+TMatrix<_Type, 4, 4> InvertMatrixAffine(const TMatrix<_Type, 4, 4> &m)
 {
-    TMatrix<_T, 4, 4> invm;
+    TMatrix<_Type, 4, 4> invm;
 
     // Set the last column to 0, 0, 0, 1
     invm[0][3] = 0.0f;
