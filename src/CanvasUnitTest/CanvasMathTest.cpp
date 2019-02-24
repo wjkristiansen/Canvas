@@ -11,6 +11,14 @@ namespace CanvasUnitTest
 	{
 	public:
 		
+        template<class _Type, unsigned int _D>
+        bool AlmostEqual(const TVector<_Type, _D> &v0, const TVector<_Type, _D> &v1)
+        {
+            TVector<_Type, _D> delta = v1 - v0;
+            _Type lensq = DotProduct(delta, delta);
+            return lensq < 0.00000001;
+        }
+
 		TEST_METHOD(SimpleVectors)
 		{
             TVector<int, 4> V0(1, 2, 3, 4);
@@ -107,6 +115,47 @@ namespace CanvasUnitTest
                 double diff = std::abs(magsq - 1.0);
                 Assert::IsTrue(diff < 0.000001);
             }
+        }
+
+        TEST_METHOD(Rotation)
+        {
+            using MatrixType = TMatrix<double, 3, 3>;
+            using VecType = MatrixType::RowType;
+            using ElementType = MatrixType::ElementType;
+            static const auto Rows = MatrixType::Rows;
+            static const auto Columns = MatrixType::Columns;
+
+            const double PI = 3.1415926535897932384626433832795;
+
+            MatrixType rx = XRotMatrix<ElementType, Rows, Columns>(PI / 2);
+            Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, -1)));
+            Assert::IsTrue(AlmostEqual(rx[2], VecType(0, 1, 0)));
+
+            rx = XRotMatrix<ElementType, Rows, Columns>(-PI / 2);
+            Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, 1)));
+            Assert::IsTrue(AlmostEqual(rx[2], VecType(0, -1, 0)));
+
+            MatrixType ry = YRotMatrix<ElementType, Rows, Columns>(PI / 2);
+            Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, 1)));
+            Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0)));
+            Assert::IsTrue(AlmostEqual(ry[2], VecType(-1, 0, 0)));
+
+            ry = YRotMatrix<ElementType, Rows, Columns>(-PI / 2);
+            Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, -1)));
+            Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0)));
+            Assert::IsTrue(AlmostEqual(ry[2], VecType(1, 0, 0)));
+
+            MatrixType rz = ZRotMatrix<ElementType, Rows, Columns>(PI / 2);
+            Assert::IsTrue(AlmostEqual(rz[0], VecType(0, -1, 0)));
+            Assert::IsTrue(AlmostEqual(rz[1], VecType(1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1)));
+
+            rz = ZRotMatrix<ElementType, Rows, Columns>(-PI / 2);
+            Assert::IsTrue(AlmostEqual(rz[0], VecType(0, 1, 0)));
+            Assert::IsTrue(AlmostEqual(rz[1], VecType(-1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1)));
         }
 	};
 }
