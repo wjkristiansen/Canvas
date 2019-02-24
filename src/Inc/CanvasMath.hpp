@@ -214,6 +214,40 @@ TVector<_T, _D> operator*(_T mul, const TVector<_T, _D> &v)
 }
 
 //------------------------------------------------------------------------------------------------
+// Caller is responsible for ensuring the input vector does not have a
+// zero magnitude
+template<unsigned int _D>
+TVector<float, _D> NormalizeVector(const TVector<float, _D> &v)
+{
+    float magsq = DotProduct(v, v);
+    float recipmag = 1.f / sqrtf(magsq);
+    TVector<float, _D> result;
+    for (unsigned int i = 0; i < _D; ++i)
+    {
+        result[i] = v[i] * recipmag;
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
+// Caller is responsible for ensuring the input vector does not have a
+// zero magnitude
+template<unsigned int _D>
+TVector<double, _D> NormalizeVector(const TVector<double, _D> &v)
+{
+    double magsq = DotProduct(v, v);
+    double recipmag = 1.f / sqrtl(magsq);
+    TVector<double, _D> result;
+    for (unsigned int i = 0; i < _D; ++i)
+    {
+        result[i] = v[i] * recipmag;
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
 template<class _T, unsigned int _Rows, unsigned int _Columns>
 struct TMatrix
 {
@@ -348,6 +382,36 @@ template<class _T, unsigned int _Rows, unsigned int _Columns>
 bool operator!=(TMatrix<_T, _Rows, _Columns> m0, TMatrix<_T, _Rows, _Columns> m1)
 {
     return !operator==(m0, m1);
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _T>
+TMatrix<_T, 4, 4> InvertAffine(const TMatrix<_T, 4, 4> &m)
+{
+    TMatrix<_T, 4, 4> invm;
+
+    // Set the last column to 0, 0, 0, 1
+    invm[0][3] = 0.0f;
+    invm[1][3] = 0.0f;
+    invm[2][3] = 0.0f;
+    invm[3][3] = 1.0f;
+
+    // Transpose upper-left 3x3 and negate
+    TMatrix<_T, 4, 4> invm;
+    invm[0][0] = m[0][0];
+    invm[1][0] = m[0][1];
+    invm[2][0] = m[0][2];
+    invm[0][1] = m[1][0];
+    invm[1][1] = m[1][1];
+    invm[2][1] = m[1][2];
+    invm[0][2] = m[2][0];
+    invm[1][2] = m[2][1];
+    invm[2][2] = m[2][2];
+
+    // Negate the last row
+    invm[3][0] = -m[3][0];
+    invm[3][1] = -m[3][1];
+    invm[3][2] = -m[3][2];
 }
 
 //------------------------------------------------------------------------------------------------

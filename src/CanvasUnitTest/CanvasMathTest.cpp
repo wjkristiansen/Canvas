@@ -71,5 +71,42 @@ namespace CanvasUnitTest
 
             Assert::IsTrue(MMulResult == M2);
         }
+
+        TEST_METHOD(Normalize)
+        {
+            TVector<float, 3> fv[] =
+            {
+                { 1.0f, 0.0f, 0.0f },
+                { 1.0f, 1.0f, 1.0f },
+                { 1.0f, 2.0f, 3.0f }
+            };
+
+            for (unsigned int i = 0; i < _countof(fv); ++i)
+            {
+                auto nv = NormalizeVector(fv[i]);
+            
+                // Verify the magnitude is nearly 1.0f
+                float magsq = DotProduct(nv, nv);
+                float diff = std::abs(magsq - 1.0f);
+                Assert::IsTrue(diff < 0.000001f);
+            }
+
+            TVector<double, 4> dv[] =
+            {
+                { 0.0, 1.0, 0.0, 0.0 },
+                { 1.0, 1.0, 1.0, 1.0 },
+                { 0.0, 1.0, 2.0, 3.0 }
+            };
+
+            for (unsigned int i = 0; i < _countof(dv); ++i)
+            {
+                auto nv = NormalizeVector(dv[i]);
+            
+                // Verify the magnitude is nearly 1.0f
+                double magsq = DotProduct(nv, nv);
+                double diff = std::abs(magsq - 1.0);
+                Assert::IsTrue(diff < 0.000001);
+            }
+        }
 	};
 }
