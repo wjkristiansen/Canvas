@@ -8,15 +8,6 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-template <class _Type>
-struct TQuaternion
-{
-    _Type Q[4];
-};
-
-using FloatQuaternion = TQuaternion<float>;
-
-//------------------------------------------------------------------------------------------------
 template<class _Type, unsigned int _Dim>
 struct TVector
 {
@@ -30,6 +21,16 @@ struct TVector
     TVector &operator=(const TVector &o) = default;
     const _Type &operator[](int index) const { return V[index]; }
     _Type &operator[](int index) { return V[index]; }
+
+    TVector &operator-()
+    {
+        for (unsigned int index = 0; index < _Dim; ++index)
+        {
+            V[index] = -V[index];
+        }
+
+        return *this;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -51,6 +52,12 @@ struct TVector<_Type, 2U>
     _Type &operator[](int index) { return V[index]; }
     const _Type &X() const { return V[0]; }
     const _Type &Y() const { return V[1]; }
+    TVector &operator-()
+    {
+        V[0] = -V[0];
+        V[1] = -V[1];
+        return *this;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -73,6 +80,13 @@ struct TVector<_Type, 3U>
     const _Type &X() const { return V[0]; }
     const _Type &Y() const { return V[1]; }
     const _Type &Z() const { return V[2]; }
+    TVector &operator-()
+    {
+        V[0] = -V[0];
+        V[1] = -V[1];
+        V[2] = -V[2];
+        return *this;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -96,6 +110,14 @@ struct TVector<_Type, 4U>
     const _Type &Y() const { return V[1]; }
     const _Type &Z() const { return V[2]; }
     const _Type &W() const { return V[3]; }
+    TVector &operator-()
+    {
+        V[0] = -V[0];
+        V[1] = -V[1];
+        V[2] = -V[2];
+        V[3] = -V[3];
+        return *this;
+    }
 };
 
 using UIntVector2 = TVector<unsigned int, 2>;
@@ -517,5 +539,68 @@ using FloatMatrix4x4 = TMatrix<float, 4U, 4U>;
 using DoubleMatrix2x2 = TMatrix<double, 2U, 2U>;
 using DoubleMatrix3x3 = TMatrix<double, 3U, 3U>;
 using DoubleMatrix4x4 = TMatrix<double, 4U, 4U>;
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+struct TQuaternion
+{
+    TVector<_Type, 4> V;
+    TQuaternion() = default;
+    TQuaternion(const TVector<_Type, 4> v) :
+        V(v) {}
+    TQuaterion(_Type a, _Type b, _Type c, _Type d) :
+        V{ a, b, c, d } {}
+
+    _Type &operator[](int index) { return V[index]; }
+    const _Type &operator[](int index) const { return V[index]; }
+
+    TQuaternion &operator-()
+    {
+        V = -V;
+        return *this;
+    }
+};
+
+template<class _Type>
+TQuaternion<_Type> NormalizeQuaternion(const TQuaternion<_Type> &Q)
+{
+    return TQuaternion(NormalizeVector(Q.V));
+}
+
+template<class _Type>
+_Type QuaternionDotProduct(const TQuaternion<_Type> &Q, const TQuaternion<_Type> &R)
+{
+    return DotProduct(Q.V, R.V);
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+TQuaternion<_Type> operator*(const TQuaternion<_Type> &Q, const TQuaternion<_Type> &R)
+{
+    TQuaternion T;
+    T[0] = R[0] * Q[0] - R[1] * Q[1] - R[2] * Q[2] - R[3] * Q[3];
+    T[1] = R[0] * Q[1] + R[1] * Q[0] - R[2] * Q[3] + R[3] * Q[4];
+    T[2] = R[0] * Q[2] + R[1] * Q[3] + R[2] * Q[0] - R[3] * Q[1];
+    T[3] = R[0] * Q[3] - R[1] * Q[2] + R[2] * Q[1] + R[3] * Q[0];
+    return T;
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+TQuaternion<_Type> QuaternionSlerp(const TQuaternion<_Type> &Q, const TQuaternion<_Type> &R, _Type t)
+{
+    // Assumes unit quaternions
+
+    _Type dot = QuaternionDotProduct(Q, R);
+    if (dot < 0)
+    {
+        Q = -Q;
+        dot = -dot;
+    }
+}
+
+using FloatQuaternion = TQuaternion<float>;
+using DoubleQuaternion = TQuaternion<double>;
+
 
 }
