@@ -578,8 +578,8 @@ using DoubleMatrix4x4 = TMatrix<double, 4U, 4U>;
 template<class _Type>
 struct TQuaternion
 {
-    _Type W;
-    TVector<_Type, 3> V;
+    _Type W; // Real term
+    TVector<_Type, 3> V; // Vector term
 
     TQuaternion() = default;
     TQuaternion(const _Type &w, const TVector<_Type, 3> &v) :
@@ -593,6 +593,11 @@ struct TQuaternion
 
     TQuaternion &operator=(const TQuaternion &o) = default;
 
+    bool operator==(const TQuaternion &o)
+    {
+        return W == o.W && V == o.V;
+    }
+
     TQuaternion operator*(const _Type &scale)
     {
         return TQuaternion(scale * W, scale * V[0], scale * V[1], scale * V[2]);
@@ -601,6 +606,13 @@ struct TQuaternion
     void ReNormalize();
     TQuaternion Conjugate();
 };
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+TQuaternion<_Type> IdentityQuaternion()
+{
+    return TQuaternion<_Type>(1., 0., 0., 0.);
+}
 
 //------------------------------------------------------------------------------------------------
 template<class _Type>
@@ -653,6 +665,8 @@ TQuaternion<_Type> operator+(const TQuaternion<_Type> Q, const TQuaternion<_Type
 }
 
 //------------------------------------------------------------------------------------------------
+// Performs a Spherical-linear interpolation (SLERP) between two Quaternions and
+// returns the resulting Quaternion
 template<class _Type>
 TQuaternion<_Type> QuaternionSlerp(const TQuaternion<_Type> &Q, const TQuaternion<_Type> &R, _Type t)
 {
@@ -664,6 +678,31 @@ TQuaternion<_Type> QuaternionSlerp(const TQuaternion<_Type> &Q, const TQuaternio
         Q = -Q;
         dot = -dot;
     }
+}
+
+//------------------------------------------------------------------------------------------------
+// Converts the unit quaternion to a 3x3 rotation matrix
+template<class _Type>
+TMatrix<_Type, 3, 3> QuaternionToMatrix(const TQuaternion<_Type> &Q)
+{
+    return TMatrix<_Type, 3, 3>(
+    {
+        {
+            1. - 2. * (Q.V[1] * Q.V[1] + Q.V[2] * Q.V[2]),
+            2. * (Q.V[0] * Q.V[1] - Q.V[2] * Q.W),
+            2. * (Q.V[0] * Q.V[2] + Q.V[1] * Q.W)
+        },
+        {
+            2. * (Q.V[0] * Q.V[1] + Q.V[2] * Q.W),
+            1. - 2. * (Q.V[0] * Q.V[0] + Q.V[2] * Q.V[2]),
+            2. * (Q.V[1] * Q.V[2] - Q.V[0] * Q.W)
+        },
+        {
+            2. * (Q.V[0] * Q.V[2] - Q.V[1] * Q.W),
+            2. * (Q.V[1] * Q.V[2] + Q.V[0] * Q.W),
+            1. - 2. * (Q.V[0] * Q.V[0] + Q.V[1] * Q.V[1])
+        },
+    });
 }
 
 using FloatQuaternion = TQuaternion<float>;
