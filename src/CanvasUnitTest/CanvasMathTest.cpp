@@ -132,7 +132,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, -1)));
             Assert::IsTrue(AlmostEqual(rx[2], VecType(0, 1, 0)));
 
-            rx = XRotMatrix<ElementType, Rows, Columns>(-PI / 2);
+            rx = XRotMatrix<ElementType, Rows, Columns>(-g_PI / 2);
             Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, 1)));
             Assert::IsTrue(AlmostEqual(rx[2], VecType(0, -1, 0)));
@@ -142,7 +142,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0)));
             Assert::IsTrue(AlmostEqual(ry[2], VecType(-1, 0, 0)));
 
-            ry = YRotMatrix<ElementType, Rows, Columns>(-PI / 2);
+            ry = YRotMatrix<ElementType, Rows, Columns>(-g_PI / 2);
             Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, -1)));
             Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0)));
             Assert::IsTrue(AlmostEqual(ry[2], VecType(1, 0, 0)));
@@ -152,7 +152,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(rz[1], VecType(1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1)));
 
-            rz = ZRotMatrix<ElementType, Rows, Columns>(-PI / 2);
+            rz = ZRotMatrix<ElementType, Rows, Columns>(-g_PI / 2);
             Assert::IsTrue(AlmostEqual(rz[0], VecType(0, 1, 0)));
             Assert::IsTrue(AlmostEqual(rz[1], VecType(-1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1)));
