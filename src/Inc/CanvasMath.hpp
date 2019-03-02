@@ -548,7 +548,7 @@ struct TQuaternion
     TQuaternion() = default;
     TQuaternion(const TVector<_Type, 4> v) :
         V(v) {}
-    TQuaterion(_Type a, _Type b, _Type c, _Type d) :
+    TQuaternion(_Type a, _Type b, _Type c, _Type d) :
         V{ a, b, c, d } {}
 
     _Type &operator[](int index) { return V[index]; }
