@@ -22,6 +22,7 @@ struct TVector
     const _Type &operator[](int index) const { return V[index]; }
     _Type &operator[](int index) { return V[index]; }
 
+    // Unary operators
     TVector &operator-()
     {
         for (unsigned int index = 0; index < _Dim; ++index)
@@ -52,6 +53,8 @@ struct TVector<_Type, 2U>
     _Type &operator[](int index) { return V[index]; }
     const _Type &X() const { return V[0]; }
     const _Type &Y() const { return V[1]; }
+
+    // Unary operators
     TVector &operator-()
     {
         V[0] = -V[0];
@@ -80,6 +83,8 @@ struct TVector<_Type, 3U>
     const _Type &X() const { return V[0]; }
     const _Type &Y() const { return V[1]; }
     const _Type &Z() const { return V[2]; }
+
+    // Unary operators
     TVector &operator-()
     {
         V[0] = -V[0];
@@ -110,6 +115,8 @@ struct TVector<_Type, 4U>
     const _Type &Y() const { return V[1]; }
     const _Type &Z() const { return V[2]; }
     const _Type &W() const { return V[3]; }
+
+    // Unary operators
     TVector &operator-()
     {
         V[0] = -V[0];
@@ -192,6 +199,20 @@ TVector<_Type, _Dim> operator*(const TVector<_Type, _Dim> &v0, const TVector<_Ty
     for (unsigned int i = 0; i < _Dim; ++i)
     {
         result[i] = v0[i] * v1[i];
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type, unsigned int _Dim>
+TVector<_Type, _Dim> operator/(const TVector<_Type, _Dim> &v0, const TVector<_Type, _Dim> &v1)
+{
+    TVector<_Type, _Dim> result;
+
+    for (unsigned int i = 0; i < _Dim; ++i)
+    {
+        result[i] = v0[i] / v1[i];
     }
 
     return result;
@@ -541,14 +562,13 @@ using DoubleMatrix3x3 = TMatrix<double, 3U, 3U>;
 using DoubleMatrix4x4 = TMatrix<double, 4U, 4U>;
 
 //------------------------------------------------------------------------------------------------
+// Represents a Unit Quaternion, or versor
 // Quaternion math from http://www.gamasutra.com/view/feature/131686/rotating_objects_using_quaternions.php
 // 
 // Addition: q + q´ = [w + w´, v + v´] 
 //
 // Multiplication: qq´ = [ww´ - v . v´, v x v´ + wv´ + w´v] (. is vector dot product and x is vector cross product); Note: qq´ ? q´q 
 // Conjugate: q* = [w, -v] 
-//
-// Norm: N(q) = sqrt(w2 + x2 + y2 + z2) 
 //
 // Inverse: q-1 = q* / N(q) 
 //
@@ -560,55 +580,76 @@ struct TQuaternion
 {
     _Type W;
     TVector<_Type, 3> V;
+
     TQuaternion() = default;
-    TQuaternion(_Type w, const TVector<_Type, 3> v) :
+    TQuaternion(const _Type &w, const TVector<_Type, 3> &v) :
+        W(w),
         V(v) {}
     TQuaternion(_Type w, _Type a, _Type b, _Type c) :
-        W(w)
+        W(w),
         V{ a, b, c,} {}
 
-    TQuaternion Conjugate() const
+    TQuaternion(const TQuaternion &o) = default;
+
+    TQuaternion &operator=(const TQuaternion &o) = default;
+
+    TQuaternion operator*(const _Type &scale)
     {
-        return TQuaternion(W, -V);
+        return TQuaternion(scale * W, scale * V[0], scale * V[1], scale * V[2]);
     }
 
-    _Type
+    void ReNormalize();
+    TQuaternion Conjugate();
 };
-
-template<class _Type>
-TQuaternion<_Type> UnitQuaternionConjugate(const TQuaternion<_Type> &Q)
-{
-
-}
-
-template<class _Type>
-TQuaternion<_Type> UnitQuaternionInverse(const TQuaternion<_Type> &Q)
-{
-
-}
-
-template<class _Type>
-TQuaternion<_Type> NormalizeQuaternion(const TQuaternion<_Type> &Q)
-{
-    return TQuaternion(NormalizeVector(Q.V));
-}
-
-template<class _Type>
-_Type QuaternionDotProduct(const TQuaternion<_Type> &Q, const TQuaternion<_Type> &R)
-{
-    return DotProduct(Q.V, R.V);
-}
 
 //------------------------------------------------------------------------------------------------
 template<class _Type>
-TQuaternion<_Type> operator*(const TQuaternion<_Type> &Q, const TQuaternion<_Type> &R)
+_Type DotProduct(const TQuaternion<_Type> &Q, const TQuaternion<_Type> &R)
 {
-    TQuaternion T;
-    T[0] = R[0] * Q[0] - R[1] * Q[1] - R[2] * Q[2] - R[3] * Q[3];
-    T[1] = R[0] * Q[1] + R[1] * Q[0] - R[2] * Q[3] + R[3] * Q[4];
-    T[2] = R[0] * Q[2] + R[1] * Q[3] + R[2] * Q[0] - R[3] * Q[1];
-    T[3] = R[0] * Q[3] - R[1] * Q[2] + R[2] * Q[1] + R[3] * Q[0];
-    return T;
+    return Q.W * R.W + DotProduct(Q.V, R.V);
+}
+
+//------------------------------------------------------------------------------------------------
+// Should be a unit quaternion but may need to be renormalized to correct
+// for accumulated floating point errors
+template<class _Type>
+void TQuaternion<_Type>::ReNormalize()
+{
+    _Type dot = DotProduct(*this, *this);
+    _Type rsq = 1. / sqrt(dot);
+    W = W * rsq;
+    V = V * rsq;
+}
+
+//------------------------------------------------------------------------------------------------
+// Returns the conjugate quaternion.
+// Note: Since this is expected to be a unit quaternion, the conjugate is the also
+// the inverse.
+template<class _Type>
+TQuaternion<_Type> TQuaternion<_Type>::Conjugate()
+{
+    return TQuaternion(W, -V);
+}
+
+//------------------------------------------------------------------------------------------------
+// Returns the product of two unit quaternions.
+// See https://en.wikipedia.org/wiki/Quaternion#Hamilton_product
+template<class _Type>
+TQuaternion<_Type> operator*(const TQuaternion<_Type> Q, const TQuaternion<_Type> &R)
+{
+    _Type w = Q.W * R.W - DotProduct(Q.V, R.V);
+    TVector<_Type, 3> v = CrossProduct(Q.V, R.V) + Q.W *R.V + R.W * Q.V;
+    return TQuaternion<_Type>(w, v);
+
+}
+
+//------------------------------------------------------------------------------------------------
+// Returns the sum of two quaternions
+template<class _Type>
+TQuaternion<_Type> operator+(const TQuaternion<_Type> Q, const TQuaternion<_Type> &R)
+{
+    return TQuaternion<_Type>(Q.W + R.W, Q.V + R.V);
+
 }
 
 //------------------------------------------------------------------------------------------------
@@ -617,7 +658,7 @@ TQuaternion<_Type> QuaternionSlerp(const TQuaternion<_Type> &Q, const TQuaternio
 {
     // Assumes unit quaternions
 
-    _Type dot = QuaternionDotProduct(Q, R);
+    _Type dot = DotProduct(Q, R);
     if (dot < 0)
     {
         Q = -Q;
