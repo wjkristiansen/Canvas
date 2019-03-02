@@ -7,6 +7,8 @@ using namespace Canvas;
 
 namespace CanvasUnitTest
 {		
+    const double g_PI = 3.1415926535897932384626433832795;
+
 	TEST_CLASS(CanvasMathTest)
 	{
 	public:
@@ -117,7 +119,7 @@ namespace CanvasUnitTest
             }
         }
 
-        TEST_METHOD(Rotation)
+        TEST_METHOD(MatrixRotation)
         {
             using MatrixType = TMatrix<double, 3, 3>;
             using VecType = MatrixType::RowType;
@@ -125,9 +127,7 @@ namespace CanvasUnitTest
             static const auto Rows = MatrixType::Rows;
             static const auto Columns = MatrixType::Columns;
 
-            const double PI = 3.1415926535897932384626433832795;
-
-            MatrixType rx = XRotMatrix<ElementType, Rows, Columns>(PI / 2);
+            MatrixType rx = XRotMatrix<ElementType, Rows, Columns>(g_PI / 2);
             Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, -1)));
             Assert::IsTrue(AlmostEqual(rx[2], VecType(0, 1, 0)));
@@ -137,7 +137,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, 1)));
             Assert::IsTrue(AlmostEqual(rx[2], VecType(0, -1, 0)));
 
-            MatrixType ry = YRotMatrix<ElementType, Rows, Columns>(PI / 2);
+            MatrixType ry = YRotMatrix<ElementType, Rows, Columns>(g_PI / 2);
             Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, 1)));
             Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0)));
             Assert::IsTrue(AlmostEqual(ry[2], VecType(-1, 0, 0)));
@@ -147,7 +147,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0)));
             Assert::IsTrue(AlmostEqual(ry[2], VecType(1, 0, 0)));
 
-            MatrixType rz = ZRotMatrix<ElementType, Rows, Columns>(PI / 2);
+            MatrixType rz = ZRotMatrix<ElementType, Rows, Columns>(g_PI / 2);
             Assert::IsTrue(AlmostEqual(rz[0], VecType(0, -1, 0)));
             Assert::IsTrue(AlmostEqual(rz[1], VecType(1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1)));
@@ -156,6 +156,13 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(rz[0], VecType(0, 1, 0)));
             Assert::IsTrue(AlmostEqual(rz[1], VecType(-1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1)));
+        }
+
+        TEST_METHOD(BasicQuaternion)
+        {
+            TQuaternion<double> Q;
+            auto M = IdentityMatrix<double, 3, 3>();
+
         }
 	};
 }
