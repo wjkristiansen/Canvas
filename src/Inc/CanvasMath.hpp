@@ -541,25 +541,51 @@ using DoubleMatrix3x3 = TMatrix<double, 3U, 3U>;
 using DoubleMatrix4x4 = TMatrix<double, 4U, 4U>;
 
 //------------------------------------------------------------------------------------------------
+// Quaternion math from http://www.gamasutra.com/view/feature/131686/rotating_objects_using_quaternions.php
+// 
+// Addition: q + q´ = [w + w´, v + v´] 
+//
+// Multiplication: qq´ = [ww´ - v . v´, v x v´ + wv´ + w´v] (. is vector dot product and x is vector cross product); Note: qq´ ? q´q 
+// Conjugate: q* = [w, -v] 
+//
+// Norm: N(q) = sqrt(w2 + x2 + y2 + z2) 
+//
+// Inverse: q-1 = q* / N(q) 
+//
+// Unit Quaternion: q is a unit quaternion if N(q)= 1 and then q-1 = q*
+//
+// Identity: [1, (0, 0, 0)] (when involving multiplication) and [0, (0, 0, 0)] (when involving addition) 
 template<class _Type>
 struct TQuaternion
 {
-    TVector<_Type, 4> V;
+    _Type W;
+    TVector<_Type, 3> V;
     TQuaternion() = default;
-    TQuaternion(const TVector<_Type, 4> v) :
+    TQuaternion(_Type w, const TVector<_Type, 3> v) :
         V(v) {}
-    TQuaternion(_Type a, _Type b, _Type c, _Type d) :
-        V{ a, b, c, d } {}
+    TQuaternion(_Type w, _Type a, _Type b, _Type c) :
+        W(w)
+        V{ a, b, c,} {}
 
-    _Type &operator[](int index) { return V[index]; }
-    const _Type &operator[](int index) const { return V[index]; }
-
-    TQuaternion &operator-()
+    TQuaternion Conjugate() const
     {
-        V = -V;
-        return *this;
+        return TQuaternion(W, -V);
     }
+
+    _Type
 };
+
+template<class _Type>
+TQuaternion<_Type> UnitQuaternionConjugate(const TQuaternion<_Type> &Q)
+{
+
+}
+
+template<class _Type>
+TQuaternion<_Type> UnitQuaternionInverse(const TQuaternion<_Type> &Q)
+{
+
+}
 
 template<class _Type>
 TQuaternion<_Type> NormalizeQuaternion(const TQuaternion<_Type> &Q)
