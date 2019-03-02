@@ -13,12 +13,41 @@ namespace CanvasUnitTest
 	{
 	public:
 		
+        bool AlmostZero(double n)
+        {
+            return n < DBL_EPSILON;
+        }
+
+        bool AlmostZero(float n)
+        {
+            return n < FLT_EPSILON;
+        }
+
         template<class _Type, unsigned int _D>
         bool AlmostEqual(const TVector<_Type, _D> &v0, const TVector<_Type, _D> &v1)
         {
             TVector<_Type, _D> delta = v1 - v0;
             _Type lensq = DotProduct(delta, delta);
-            return lensq < 0.00000001;
+            return AlmostZero(lensq);
+        }
+        template<class _Type, unsigned int _D>
+        bool AlmostEqual(const TQuaternion<_Type> &q0, const TQuaternion<_Type> &q1)
+        {
+            TQuaternion<_Type> delta = q1 - q0;
+            _Type lensq = DotProduct(delta, delta);
+            return AlmostZero(lensq);
+        }
+        template<class _Type, unsigned int _Rows, unsigned int _Columns>
+        bool AlmostEqual(const TMatrix<_Type, _Rows, _Columns> &m0, const TMatrix<_Type, _Rows, _Columns> &m1)
+        {
+            for (unsigned int row = 0; row < _Rows; ++row)
+            {
+                if (!AlmostEqual(m0.M[row], m1.M[row]))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
 		TEST_METHOD(SimpleVectors)
@@ -160,8 +189,11 @@ namespace CanvasUnitTest
 
         TEST_METHOD(BasicQuaternion)
         {
-            TQuaternion<double> Q;
+            TQuaternion<double> Q = IdentityQuaternion<double>();
+            Assert::IsTrue(Q == TQuaternion(1., 0., 0., 0.));
             auto M = IdentityMatrix<double, 3, 3>();
+            auto N = QuaternionToMatrix(Q);
+            Assert::IsTrue(AlmostEqual(M, N));
 
         }
 	};
