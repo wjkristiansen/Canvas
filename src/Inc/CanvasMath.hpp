@@ -562,7 +562,7 @@ using DoubleMatrix3x3 = TMatrix<double, 3U, 3U>;
 using DoubleMatrix4x4 = TMatrix<double, 4U, 4U>;
 
 //------------------------------------------------------------------------------------------------
-// Represents a Unit Quaternion, or versor
+// Represents a Unit Quaternion representing a rotation in 3-dimensional space
 // Quaternion math from http://www.gamasutra.com/view/feature/131686/rotating_objects_using_quaternions.php
 // 
 // Addition: q + q´ = [w + w´, v + v´] 
@@ -692,7 +692,7 @@ TQuaternion<_Type> QuaternionSlerp(const TQuaternion<_Type> &Q, const TQuaternio
 //------------------------------------------------------------------------------------------------
 // Converts the unit quaternion to a 3x3 rotation matrix
 template<class _Type>
-TMatrix<_Type, 3, 3> QuaternionToMatrix(const TQuaternion<_Type> &Q)
+TMatrix<_Type, 3, 3> QuaternionToRotationMatrix(const TQuaternion<_Type> &Q)
 {
     return TMatrix<_Type, 3, 3>(
     {
@@ -723,6 +723,75 @@ TQuaternion<_Type> QuaternionFromAngleAxis(const _Type &angle, const TVector<_Ty
     _Type c = cos(HalfAngle);
     _Type s = sin(HalfAngle);
     return TQuaternion<_Type>(c, s * axis);
+}
+
+//------------------------------------------------------------------------------------------------
+// Creates a quaternion from a given matrix
+// See http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
+template<class _Type>
+TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 3, 3> &M)
+{
+    TQuaternion<_Type> Q;
+    _Type T = M[0][0] + M[1][1] + M[2][2];
+
+    if (T > 0)
+    {
+        _Type S = 2 * sqrt(T + 1);
+        _Type Sr = 1. / S;
+        Q.W    = .25 * S;
+        Q.V[0] = (M[2][1] - M[1][2]) * Sr;
+        Q.V[1] = (M[0][2] - M[2][0]) * Sr;
+        Q.V[2] = (M[1][0] - M[0][1]) * Sr;
+    }
+    else if(M[0][0] > M[1][1] && (M[0][0] > M[2][2]))
+    {
+        T = M[0][0] - M[1][1] - M[2][2];
+        _Type S = 2 * sqrt(T + 1);
+        _Type Sr = 1. / S;
+        Q.W    = (M[2][1] - M[1][2]) * Sr;
+        Q.V[0] = .25 * S;
+        Q.V[1] = (M[0][1] + M[1][0]) * Sr;
+        Q.V[2] = (M[0][2] + M[2][0]) * Sr;
+    }
+    else if(M[1][1] > M[2][2])
+    {
+        T = M[1][1] - M[0][0] - M[2][2];
+        _Type S = 2 * sqrt(T + 1);
+        _Type Sr = 1. / S;
+        Q.W    = (M[0][2] - M[2][0]) * Sr;
+        Q.V[0] = (M[0][1] + M[1][0]) * Sr;
+        Q.V[1] = .25 * S;
+        Q.V[2] = (M[1][2] + M[2][1]) * Sr;
+    }
+    else
+    {
+        T = M[2][2] - M[0][0] - M[1][1];
+        _Type S = 2 * sqrt(T + 1);
+        _Type Sr = 1. / S;
+        Q.W    = (M[1][0] - M[0][1]) * Sr;
+        Q.V[0] = (M[0][2] + M[2][0]) * Sr;
+        Q.V[1] = (M[1][2] + M[2][1]) * Sr;
+        Q.V[2] = .25 * S;
+    }
+
+    return Q;
+}
+
+//------------------------------------------------------------------------------------------------
+// Creates a quaternion that represents a rotation such that a local RH basis
+// orients
+template<class _Type>
+TQuaternion<_Type> QuaternionFromLookVector(const TVector<_Type, 3> &Look, const TVector<_Type, 3> &Up)
+{
+    // 
+    // The dot product of the Look vector with the -axis is the cos(a) where
+    // a is the angle between the look vector and the 
+
+    // The dot product of the Look vector with the up vector is the cos(b) where
+    // b is the angle between the look vector and the up vector
+    _Type cosb = DotProduct(Look, Up);
+
+    // Quaternions from 
 }
 
 using FloatQuaternion = TQuaternion<float>;
