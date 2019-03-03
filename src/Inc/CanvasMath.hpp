@@ -665,6 +665,15 @@ TQuaternion<_Type> operator+(const TQuaternion<_Type> Q, const TQuaternion<_Type
 }
 
 //------------------------------------------------------------------------------------------------
+// Returns the sum of two quaternions
+template<class _Type>
+TQuaternion<_Type> operator-(const TQuaternion<_Type> Q, const TQuaternion<_Type> &R)
+{
+    return TQuaternion<_Type>(Q.W - R.W, Q.V - R.V);
+
+}
+
+//------------------------------------------------------------------------------------------------
 // Performs a Spherical-linear interpolation (SLERP) between two Quaternions and
 // returns the resulting Quaternion
 template<class _Type>
@@ -703,6 +712,17 @@ TMatrix<_Type, 3, 3> QuaternionToMatrix(const TQuaternion<_Type> &Q)
             1. - 2. * (Q.V[0] * Q.V[0] + Q.V[1] * Q.V[1])
         },
     });
+}
+
+//------------------------------------------------------------------------------------------------
+// Creates a quaternion from the provided angle (in radians) and axis (assumed to be a unit vector)
+template<class _Type>
+TQuaternion<_Type> QuaternionFromAngleAxis(const _Type &angle, const TVector<_Type, 3> &axis)
+{
+    _Type HalfAngle = angle / 2;
+    _Type c = cos(HalfAngle);
+    _Type s = sin(HalfAngle);
+    return TQuaternion<_Type>(c, s * axis);
 }
 
 using FloatQuaternion = TQuaternion<float>;

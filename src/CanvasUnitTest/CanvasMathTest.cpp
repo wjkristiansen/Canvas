@@ -30,7 +30,7 @@ namespace CanvasUnitTest
             _Type lensq = DotProduct(delta, delta);
             return AlmostZero(lensq);
         }
-        template<class _Type, unsigned int _D>
+        template<class _Type>
         bool AlmostEqual(const TQuaternion<_Type> &q0, const TQuaternion<_Type> &q1)
         {
             TQuaternion<_Type> delta = q1 - q0;
@@ -195,6 +195,10 @@ namespace CanvasUnitTest
             auto N = QuaternionToMatrix(Q);
             Assert::IsTrue(AlmostEqual(M, N));
 
+            TQuaternion<double> R = QuaternionFromAngleAxis(0., DoubleVector3(1., 0., 0.));
+            Assert::IsTrue(AlmostEqual(Q, R));
+
+            R = QuaternionFromAngleAxis(g_PI / 2., DoubleVector3(0., 1., 0.));
         }
 	};
 }
