@@ -192,13 +192,16 @@ namespace CanvasUnitTest
             TQuaternion<double> Q = IdentityQuaternion<double>();
             Assert::IsTrue(Q == TQuaternion(1., 0., 0., 0.));
             auto M = IdentityMatrix<double, 3, 3>();
-            auto N = QuaternionToMatrix(Q);
+            auto N = QuaternionToRotationMatrix(Q);
             Assert::IsTrue(AlmostEqual(M, N));
 
             TQuaternion<double> R = QuaternionFromAngleAxis(0., DoubleVector3(1., 0., 0.));
             Assert::IsTrue(AlmostEqual(Q, R));
 
             R = QuaternionFromAngleAxis(g_PI / 2., DoubleVector3(0., 1., 0.));
+            M = QuaternionToRotationMatrix(R);
+            TQuaternion<double> R2 = QuaternionFromRotationMatrix(M);
+            Assert::IsTrue(AlmostEqual(R2, R));
         }
 	};
 }
