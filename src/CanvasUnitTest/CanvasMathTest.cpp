@@ -189,11 +189,49 @@ namespace CanvasUnitTest
 
         TEST_METHOD(LookAt)
         {
-            auto WorldUp = FloatVector3(0, 0, 1);
+            // Simulate a "LookAt" transform with world-up as the world Z-axis and
+            // Camera-up as the camera-local Y-axis and camera-forward as the
+            // negative camera-local Z-axis
+            auto WorldUp = FloatVector3(0, 0, 1); // World-up is the world Z-axis
             FloatMatrix3x3 M;
-//            M[2] = FloatVector3(3.f, 2.f, 5.f);
-            M[2] = FloatVector3(0, 1, 0);
+            M[2] = FloatVector3(0, 1, 0); // Camera looks in the -Y direction (this is a backward vector)
             ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
+
+            Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
+                {
+                    {-1, 0, 0},
+                    {0, 0, 1},
+                    {0, 1, 0},
+                }
+            )));
+
+            // Look straight down (gimbal lock).
+            // Should use default out-vector
+            M[2] = FloatVector3(0, 0, 1); // Camera looks in the -Z direction
+            ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
+
+            // Assume camera-up aligns with the Y-axis
+            Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
+                {
+                    {1, 0, 0},
+                    {0, 1, 0},
+                    {0, 0, 1},
+                }
+            )));
+
+            // Look straight up (gimbal lock).
+            // Should use default out-vector
+            M[2] = FloatVector3(0, 0, -1); // Camera looks in the +Z direction
+            ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
+
+            // Assume camera-up aligns with the Y-axis
+            Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
+                {
+                    {-1, 0, 0},
+                    {0, 1, 0},
+                    {0, 0, -1},
+                }
+            )));
         }
 
         TEST_METHOD(BasicQuaternion)
