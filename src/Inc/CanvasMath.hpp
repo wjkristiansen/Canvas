@@ -610,6 +610,12 @@ struct TQuaternion
     TVector<_Type, 3> V; // Vector term
 
     TQuaternion() = default;
+    TQuaternion(_Type real) :
+        W(real),
+        V{ 0, 0, 0 } {}
+    TQuaternion(const TVector<_Type, 3> v) :
+        W(0),
+        V(v) {}
     TQuaternion(const _Type &w, const TVector<_Type, 3> &v) :
         W(w),
         V(v) {}
@@ -644,9 +650,9 @@ TQuaternion<_Type> IdentityQuaternion()
 
 //------------------------------------------------------------------------------------------------
 template<class _Type>
-_Type DotProduct(const TQuaternion<_Type> &Q, const TQuaternion<_Type> &R)
+_Type DotProduct(const TQuaternion<_Type> &q, const TQuaternion<_Type> &r)
 {
-    return Q.W * R.W + DotProduct(Q.V, R.V);
+    return q.W * r.W + DotProduct(q.V, r.V);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -675,29 +681,36 @@ TQuaternion<_Type> TQuaternion<_Type>::Conjugate()
 // Returns the product of two unit quaternions.
 // See https://en.wikipedia.org/wiki/Quaternion#Hamilton_product
 template<class _Type>
-TQuaternion<_Type> operator*(const TQuaternion<_Type> Q, const TQuaternion<_Type> &R)
+TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TQuaternion<_Type> &r)
 {
-    _Type w = Q.W * R.W - DotProduct(Q.V, R.V);
-    TVector<_Type, 3> v = CrossProduct(Q.V, R.V) + Q.W *R.V + R.W * Q.V;
+    _Type w = q.W * r.W - DotProduct(q.V, r.V);
+    TVector<_Type, 3> v = CrossProduct(q.V, r.V) + q.W *r.V + r.W * q.V;
     return TQuaternion<_Type>(w, v);
+}
+
+//------------------------------------------------------------------------------------------------
+// Returns the product of a quaternion with a vector (treated as a quaternion with a 0 real coordinate)
+template<class _Type>
+TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TVector<_Type, 3> &v)
+{
+    return q * TQuaternion<_Type>(v);
 
 }
 
 //------------------------------------------------------------------------------------------------
 // Returns the sum of two quaternions
 template<class _Type>
-TQuaternion<_Type> operator+(const TQuaternion<_Type> Q, const TQuaternion<_Type> &R)
+TQuaternion<_Type> operator+(const TQuaternion<_Type> q, const TQuaternion<_Type> &r)
 {
-    return TQuaternion<_Type>(Q.W + R.W, Q.V + R.V);
-
+    return TQuaternion<_Type>(q.W + r.W, q.V + r.V);
 }
 
 //------------------------------------------------------------------------------------------------
 // Returns the sum of two quaternions
 template<class _Type>
-TQuaternion<_Type> operator-(const TQuaternion<_Type> Q, const TQuaternion<_Type> &R)
+TQuaternion<_Type> operator-(const TQuaternion<_Type> q, const TQuaternion<_Type> &r)
 {
-    return TQuaternion<_Type>(Q.W - R.W, Q.V - R.V);
+    return TQuaternion<_Type>(q.W - r.W, q.V - r.V);
 
 }
 
@@ -705,14 +718,14 @@ TQuaternion<_Type> operator-(const TQuaternion<_Type> Q, const TQuaternion<_Type
 // Performs a Spherical-linear interpolation (SLERP) between two Quaternions and
 // returns the resulting Quaternion
 template<class _Type>
-TQuaternion<_Type> QuaternionSlerp(const TQuaternion<_Type> &Q, const TQuaternion<_Type> &R, _Type t)
+TQuaternion<_Type> QuaternionSlerp(const TQuaternion<_Type> &q, const TQuaternion<_Type> &r, _Type t)
 {
     // Assumes unit quaternions
 
-    _Type dot = DotProduct(Q, R);
+    _Type dot = DotProduct(q, r);
     if (dot < 0)
     {
-        Q = -Q;
+        q = -q;
         dot = -dot;
     }
 }
@@ -720,24 +733,24 @@ TQuaternion<_Type> QuaternionSlerp(const TQuaternion<_Type> &Q, const TQuaternio
 //------------------------------------------------------------------------------------------------
 // Converts the unit quaternion to a 3x3 rotation matrix
 template<class _Type>
-TMatrix<_Type, 3, 3> QuaternionToRotationMatrix(const TQuaternion<_Type> &Q)
+TMatrix<_Type, 3, 3> QuaternionToRotationMatrix(const TQuaternion<_Type> &q)
 {
     return TMatrix<_Type, 3, 3>(
     {
         {
-            1. - 2. * (Q.V[1] * Q.V[1] + Q.V[2] * Q.V[2]),
-            2. * (Q.V[0] * Q.V[1] - Q.V[2] * Q.W),
-            2. * (Q.V[0] * Q.V[2] + Q.V[1] * Q.W)
+            1. - 2. * (q.V[1] * q.V[1] + q.V[2] * q.V[2]),
+            2. * (q.V[0] * q.V[1] - q.V[2] * q.W),
+            2. * (q.V[0] * q.V[2] + q.V[1] * q.W)
         },
         {
-            2. * (Q.V[0] * Q.V[1] + Q.V[2] * Q.W),
-            1. - 2. * (Q.V[0] * Q.V[0] + Q.V[2] * Q.V[2]),
-            2. * (Q.V[1] * Q.V[2] - Q.V[0] * Q.W)
+            2. * (q.V[0] * q.V[1] + q.V[2] * q.W),
+            1. - 2. * (q.V[0] * q.V[0] + q.V[2] * q.V[2]),
+            2. * (q.V[1] * q.V[2] - q.V[0] * q.W)
         },
         {
-            2. * (Q.V[0] * Q.V[2] - Q.V[1] * Q.W),
-            2. * (Q.V[1] * Q.V[2] + Q.V[0] * Q.W),
-            1. - 2. * (Q.V[0] * Q.V[0] + Q.V[1] * Q.V[1])
+            2. * (q.V[0] * q.V[2] - q.V[1] * q.W),
+            2. * (q.V[1] * q.V[2] + q.V[0] * q.W),
+            1. - 2. * (q.V[0] * q.V[0] + q.V[1] * q.V[1])
         },
     });
 }
@@ -757,48 +770,48 @@ TQuaternion<_Type> QuaternionFromAngleAxis(const _Type &angle, const TVector<_Ty
 // Creates a quaternion from a given matrix
 // See http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
 template<class _Type>
-TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 3, 3> &M)
+TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 3, 3> &m)
 {
     TQuaternion<_Type> Q;
-    _Type T = M[0][0] + M[1][1] + M[2][2];
+    _Type T = m[0][0] + m[1][1] + m[2][2];
 
     if (T > 0)
     {
         _Type S = 2 * sqrt(T + 1);
         _Type Sr = 1. / S;
         Q.W    = .25 * S;
-        Q.V[0] = (M[2][1] - M[1][2]) * Sr;
-        Q.V[1] = (M[0][2] - M[2][0]) * Sr;
-        Q.V[2] = (M[1][0] - M[0][1]) * Sr;
+        Q.V[0] = (m[2][1] - m[1][2]) * Sr;
+        Q.V[1] = (m[0][2] - m[2][0]) * Sr;
+        Q.V[2] = (m[1][0] - m[0][1]) * Sr;
     }
-    else if(M[0][0] > M[1][1] && (M[0][0] > M[2][2]))
+    else if(m[0][0] > m[1][1] && (m[0][0] > m[2][2]))
     {
-        T = M[0][0] - M[1][1] - M[2][2];
+        T = m[0][0] - m[1][1] - m[2][2];
         _Type S = 2 * sqrt(T + 1);
         _Type Sr = 1. / S;
-        Q.W    = (M[2][1] - M[1][2]) * Sr;
+        Q.W    = (m[2][1] - m[1][2]) * Sr;
         Q.V[0] = .25 * S;
-        Q.V[1] = (M[0][1] + M[1][0]) * Sr;
-        Q.V[2] = (M[0][2] + M[2][0]) * Sr;
+        Q.V[1] = (m[0][1] + m[1][0]) * Sr;
+        Q.V[2] = (m[0][2] + m[2][0]) * Sr;
     }
-    else if(M[1][1] > M[2][2])
+    else if(m[1][1] > m[2][2])
     {
-        T = M[1][1] - M[0][0] - M[2][2];
+        T = m[1][1] - m[0][0] - m[2][2];
         _Type S = 2 * sqrt(T + 1);
         _Type Sr = 1. / S;
-        Q.W    = (M[0][2] - M[2][0]) * Sr;
-        Q.V[0] = (M[0][1] + M[1][0]) * Sr;
+        Q.W    = (m[0][2] - m[2][0]) * Sr;
+        Q.V[0] = (m[0][1] + m[1][0]) * Sr;
         Q.V[1] = .25 * S;
-        Q.V[2] = (M[1][2] + M[2][1]) * Sr;
+        Q.V[2] = (m[1][2] + m[2][1]) * Sr;
     }
     else
     {
-        T = M[2][2] - M[0][0] - M[1][1];
+        T = m[2][2] - m[0][0] - m[1][1];
         _Type S = 2 * sqrt(T + 1);
         _Type Sr = 1. / S;
-        Q.W    = (M[1][0] - M[0][1]) * Sr;
-        Q.V[0] = (M[0][2] + M[2][0]) * Sr;
-        Q.V[1] = (M[1][2] + M[2][1]) * Sr;
+        Q.W    = (m[1][0] - m[0][1]) * Sr;
+        Q.V[0] = (m[0][2] + m[2][0]) * Sr;
+        Q.V[1] = (m[1][2] + m[2][1]) * Sr;
         Q.V[2] = .25 * S;
     }
 
@@ -806,20 +819,34 @@ TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 3, 3> &M)
 }
 
 //------------------------------------------------------------------------------------------------
-// Creates a quaternion that represents a rotation such that a local RH basis
-// orients
+// Calculates an OutVector and an UpVector given a unit UpAxisVector and a unit LookVector.
+// Can be used to initialize the orthonormal basis of a "look at" rotation matrix.
+// Note, the LookVector may be a Forward vector or a Backward vector, depending
+// on the desired direction of the OutVector.
 template<class _Type>
-TQuaternion<_Type> QuaternionFromLookVector(const TVector<_Type, 3> &Look, const TVector<_Type, 3> &Up)
+void ComposeLookBasisVectors(_In_ const TVector<_Type, 3> &UpAxisVector, _In_ const TVector<_Type, 3> &LookVector, _Out_ TVector<_Type, 3> &OutVector, _Out_ TVector<_Type, 3> &UpVector)
 {
-    // 
-    // The dot product of the Look vector with the -axis is the cos(a) where
-    // a is the angle between the look vector and the 
+    // OutVector is the cross product of UpAxisVector with LookVector
+    OutVector = CrossProduct(UpAxisVector, LookVector);
+    _Type dot = DotProduct(OutVector, OutVector);
+    _Type dotsq = dot * dot;
+    if (dotsq == 0.)
+    {
+        // LookVector and UpAxisVector appear to be colinear
+        // Choose an arbitrary OutVector
+        OutVector = TVector<_Type, 3>(UpAxisVector.V[1], UpAxisVector.V[2], UpAxisVector.V[0]);
+    }
+    else
+    {
+        // Normalize OutVector
+        OutVector = OutVector * _Type(1. / sqrt(dotsq));
+    }
 
-    // The dot product of the Look vector with the up vector is the cos(b) where
-    // b is the angle between the look vector and the up vector
-    _Type cosb = DotProduct(Look, Up);
-
-    // Quaternions from 
+    // The cross product of OutVector with LookVector is the UpVector.
+    // There is no need to normalize the result since the
+    // LookVector and UpVector are unit vectors and are 
+    // orthogonal. The result must already be a unit vector.
+    UpVector = CrossProduct(LookVector, OutVector);
 }
 
 using FloatQuaternion = TQuaternion<float>;
