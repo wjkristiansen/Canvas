@@ -205,7 +205,9 @@ namespace CanvasUnitTest
                 }
             )));
 
-            // Look straight down (gimbal lock).
+            
+            // Degenerate cases:
+
             // Should use default out-vector
             M[2] = FloatVector3(0, 0, 1); // Camera looks in the -Z direction
             ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
