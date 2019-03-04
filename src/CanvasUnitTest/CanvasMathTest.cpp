@@ -198,10 +198,34 @@ namespace CanvasUnitTest
             TQuaternion<double> R = QuaternionFromAngleAxis(0., DoubleVector3(1., 0., 0.));
             Assert::IsTrue(AlmostEqual(Q, R));
 
-            R = QuaternionFromAngleAxis(g_PI / 2., DoubleVector3(0., 1., 0.));
-            M = QuaternionToRotationMatrix(R);
-            TQuaternion<double> R2 = QuaternionFromRotationMatrix(M);
-            Assert::IsTrue(AlmostEqual(R2, R));
+            M = TMatrix<double, 3, 3>(
+                {
+                    { -1,  0,  0 },
+                    {  0, -1,  0 },
+                    {  0,  0,  1 }
+                }
+            );
+
+            R = QuaternionFromRotationMatrix(M);
+            N = QuaternionToRotationMatrix(R);
+            Assert::IsTrue(AlmostEqual(M, N));
+
+            for (int i = 0; i < 16; i++)
+            {
+                for (int j = 0; j < 16; j++)
+                {
+                    for (int k = 0; k < 16; k++)
+                    {
+                        double rotx = i * g_PI / 16.;
+                        double roty = j * g_PI / 16.;
+                        double rotz = k * g_PI / 16.;
+                        M = XRotMatrix<double, 3, 3>(rotx) * YRotMatrix<double, 3, 3>(roty) * ZRotMatrix<double, 3, 3>(rotz);
+                        R = QuaternionFromRotationMatrix(M);
+                        N = QuaternionToRotationMatrix(R);
+                        Assert::IsTrue(AlmostEqual(M, N));
+                    }
+                }
+            }
         }
 	};
 }

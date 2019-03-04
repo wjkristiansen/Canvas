@@ -423,6 +423,34 @@ TMatrix<_Type, _Rows0, _Columns1> operator*(const TMatrix<_Type, _Rows0, _Column
 
 //------------------------------------------------------------------------------------------------
 template<class _Type, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_Type, _Rows, _Columns> operator*(const _Type &scale, const TMatrix<_Type, _Rows, _Columns> &m)
+{
+    TMatrix<_Type, _Rows, _Columns> result;
+
+    for (unsigned int Row = 0; Row < _Rows; ++Row)
+    {
+        result[Row] = m[Row] * scale;
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
+TMatrix<_Type, _Rows, _Columns> operator*(const TMatrix<_Type, _Rows, _Columns> &m, const _Type &scale)
+{
+    TMatrix<_Type, _Rows, _Columns> result;
+
+    for (unsigned int Row = 0; Row < _Rows; ++Row)
+    {
+        result[Row] = m[Row] * scale;
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
 bool operator==(TMatrix<_Type, _Rows, _Columns> m0, TMatrix<_Type, _Rows, _Columns> m1)
 {
     for (unsigned int Row = 0; Row < _Rows; ++Row)
