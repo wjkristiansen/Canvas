@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include <math.h>
+#include <float.h>
+
 namespace Canvas
 {
 
@@ -818,6 +821,23 @@ TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 3, 3> &m)
     return Q;
 }
 
+template<class _Type>
+struct MinNorm
+{
+};
+
+template<>
+struct MinNorm<float>
+{
+    inline static const float Value = FLT_MIN;
+};
+
+template<>
+struct MinNorm<double>
+{
+    inline static const double Value = DBL_MIN;
+};
+
 //------------------------------------------------------------------------------------------------
 // Calculates an OutVector and an UpVector given a unit UpAxisVector and a unit LookVector.
 // Can be used to initialize the orthonormal basis of a "look at" rotation matrix.
@@ -830,11 +850,20 @@ void ComposeLookBasisVectors(_In_ const TVector<_Type, 3> &UpAxisVector, _In_ co
     OutVector = CrossProduct(UpAxisVector, LookVector);
     _Type dot = DotProduct(OutVector, OutVector);
     _Type dotsq = dot * dot;
-    if (dotsq == 0.)
+    if (dotsq < MinNorm<_Type>::Value)
     {
         // LookVector and UpAxisVector appear to be colinear
-        // Choose an arbitrary OutVector
-        OutVector = TVector<_Type, 3>(UpAxisVector.V[1], UpAxisVector.V[2], UpAxisVector.V[0]);
+        // Choose an arbitrary OutVector preserving the sign
+        // of the camera up vector
+        _Type d2 = DotProduct(LookVector, UpAxisVector);
+        if (d2 > 0)
+        {
+            OutVector = TVector<_Type, 3>(UpAxisVector.V[2], UpAxisVector.V[0], UpAxisVector.V[1]);
+        }
+        else
+        {
+            OutVector = TVector<_Type, 3>(-UpAxisVector.V[2], UpAxisVector.V[0], -UpAxisVector.V[1]);
+        }
     }
     else
     {
