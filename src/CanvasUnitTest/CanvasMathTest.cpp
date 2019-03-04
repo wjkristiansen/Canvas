@@ -187,6 +187,15 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1)));
         }
 
+        TEST_METHOD(LookAt)
+        {
+            auto WorldUp = FloatVector3(0, 0, 1);
+            FloatMatrix3x3 M;
+//            M[2] = FloatVector3(3.f, 2.f, 5.f);
+            M[2] = FloatVector3(0, 1, 0);
+            ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
+        }
+
         TEST_METHOD(BasicQuaternion)
         {
             TQuaternion<double> Q = IdentityQuaternion<double>();
@@ -222,7 +231,26 @@ namespace CanvasUnitTest
                         M = XRotMatrix<double, 3, 3>(rotx) * YRotMatrix<double, 3, 3>(roty) * ZRotMatrix<double, 3, 3>(rotz);
                         R = QuaternionFromRotationMatrix(M);
                         N = QuaternionToRotationMatrix(R);
+
+                        // Verify round-trip conversion from matrix->quaternion->matrix produces the original matrix
                         Assert::IsTrue(AlmostEqual(M, N));
+
+                        // Transform a set of vertices by matrix and by quaternion and verify 
+                        // the rotated results match
+
+                        TVector<double, 3> Vectors[] =
+                        {
+                            {1., 0., 0.},
+                            {-5., 7, 13.},
+                            {6, -2, 11},
+                            {6, 22, -11},
+                            {.5, .2, 0.},
+                        };
+
+                        for (auto &V : Vectors)
+                        {
+
+                        }
                     }
                 }
             }
