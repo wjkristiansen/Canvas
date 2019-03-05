@@ -12,7 +12,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 template<class _Type, unsigned int _Dim>
-struct TVector
+struct alignas(16) TVector
 {
     static auto constexpr Dimension = _Dim;
     using ElementType = _Type;
@@ -40,7 +40,7 @@ struct TVector
 
 //------------------------------------------------------------------------------------------------
 template<class _Type>
-struct TVector<_Type, 2U>
+struct alignas(16) TVector<_Type, 2U>
 {
     static auto constexpr Dimension = 2U;
     using ElementType = _Type;
@@ -67,7 +67,7 @@ struct TVector<_Type, 2U>
 
 //------------------------------------------------------------------------------------------------
 template<class _Type>
-struct TVector<_Type, 3U>
+struct alignas(16) TVector<_Type, 3U>
 {
     static auto constexpr Dimension = 3U;
     using ElementType = _Type;
@@ -95,7 +95,7 @@ struct TVector<_Type, 3U>
 
 //------------------------------------------------------------------------------------------------
 template<class _Type>
-struct TVector<_Type, 4U>
+struct alignas(16) TVector<_Type, 4U>
 {
     static auto constexpr Dimension = 4U;
     using ElementType = _Type;
@@ -295,7 +295,7 @@ TVector<double, _Dim> NormalizeVector(const TVector<double, _Dim> &v)
 
 //------------------------------------------------------------------------------------------------
 template<class _Type, unsigned int _Rows, unsigned int _Columns>
-struct TMatrix
+struct alignas(16) TMatrix
 {
     static auto constexpr Rows = _Rows;
     static auto constexpr Columns = _Columns;
@@ -312,7 +312,7 @@ struct TMatrix
 
 //------------------------------------------------------------------------------------------------
 template<class _Type, unsigned int _Columns>
-struct TMatrix<_Type, 2U, _Columns>
+struct alignas(16) TMatrix<_Type, 2U, _Columns>
 {
     static auto constexpr Rows = 2U;
     static auto constexpr Columns = _Columns;
@@ -335,7 +335,7 @@ struct TMatrix<_Type, 2U, _Columns>
 
 //------------------------------------------------------------------------------------------------
 template<class _Type, unsigned int _Columns>
-struct TMatrix<_Type, 3U, _Columns>
+struct alignas(16) TMatrix<_Type, 3U, _Columns>
 {
     static auto constexpr Rows = 3U;
     static auto constexpr Columns = _Columns;
@@ -360,7 +360,7 @@ struct TMatrix<_Type, 3U, _Columns>
 
 //------------------------------------------------------------------------------------------------
 template<class _Type, unsigned int _Columns>
-struct TMatrix<_Type, 4U, _Columns>
+struct alignas(16) TMatrix<_Type, 4U, _Columns>
 {
     static auto constexpr Rows = 4U;
     static auto constexpr Columns = _Columns;
@@ -599,7 +599,7 @@ using DoubleMatrix4x4 = TMatrix<double, 4U, 4U>;
 //
 // Identity: [1, (0, 0, 0)] (when involving multiplication) and [0, (0, 0, 0)] (when involving addition) 
 template<class _Type>
-struct TQuaternion
+struct alignas(16) TQuaternion
 {
     _Type W; // Real term
     TVector<_Type, 3> V; // Vector term
