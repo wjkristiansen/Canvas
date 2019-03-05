@@ -26,14 +26,15 @@ struct TVector
     _Type &operator[](int index) { return V[index]; }
 
     // Unary operators
-    TVector &operator-()
+    TVector operator-()
     {
+        TVector result;
         for (unsigned int index = 0; index < _Dim; ++index)
         {
-            V[index] = -V[index];
+            result[index] = -V[index];
         }
 
-        return *this;
+        return result;
     }
 };
 
@@ -58,11 +59,9 @@ struct TVector<_Type, 2U>
     const _Type &Y() const { return V[1]; }
 
     // Unary operators
-    TVector &operator-()
+    TVector operator-()
     {
-        V[0] = -V[0];
-        V[1] = -V[1];
-        return *this;
+        return TVector(-V[0], -V[1]);
     }
 };
 
@@ -88,12 +87,9 @@ struct TVector<_Type, 3U>
     const _Type &Z() const { return V[2]; }
 
     // Unary operators
-    TVector &operator-()
+    TVector operator-()
     {
-        V[0] = -V[0];
-        V[1] = -V[1];
-        V[2] = -V[2];
-        return *this;
+        return TVector(-V[0], -V[1], -V[2]);
     }
 };
 
@@ -120,13 +116,9 @@ struct TVector<_Type, 4U>
     const _Type &W() const { return V[3]; }
 
     // Unary operators
-    TVector &operator-()
+    TVector operator-()
     {
-        V[0] = -V[0];
-        V[1] = -V[1];
-        V[2] = -V[2];
-        V[3] = -V[3];
-        return *this;
+        return TVector(-V[0], -V[1], -V[2], -V[3]);
     }
 };
 
@@ -689,6 +681,10 @@ TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TQuaternion<_Type
     _Type w = q.W * r.W - DotProduct(q.V, r.V);
     TVector<_Type, 3> v = CrossProduct(q.V, r.V) + q.W *r.V + r.W * q.V;
     return TQuaternion<_Type>(w, v);
+    //_Type x = q.W * r.V[0] + q.V[0] * r.W + q.V[1] * r.V[2] - q.V[2] * r.V[1];
+    //_Type y = q.W * r.V[1] - q.V[0] * r.V[2] + q.V[1] * r.W + q.V[2] * r.V[0];
+    //_Type z = q.W * r.V[2] + q.V[0] * r.V[1] - q.V[1] * r.V[0] + q.V[2] * r.W;
+    //return TQuaternion<_Type>(w, x, y, z);
 }
 
 //------------------------------------------------------------------------------------------------

@@ -263,7 +263,7 @@ namespace CanvasUnitTest
             {
                 for (int j = 0; j < 16; j++)
                 {
-                    for (int k = 0; k < 16; k++)
+                    for (int k = 1; k < 16; k++)
                     {
                         double rotx = i * g_PI / 16.;
                         double roty = j * g_PI / 16.;
@@ -287,9 +287,22 @@ namespace CanvasUnitTest
                             {.5, .2, 0.},
                         };
 
+                        // Transform each vector by matrix and by quaternion
+                        // and verify the results match
                         for (auto &V : Vectors)
                         {
+                            // Matrix transform
+                            auto VByM = V * M;
 
+                            auto InvR = R.Conjugate();
+                            auto Ident = R * InvR;
+                            Assert::IsTrue(AlmostEqual(Ident, TQuaternion<double>(1, 0, 0, 0)));
+
+                            // Quaternion transform
+                            auto step1 = InvR * V;
+                            auto VByQ = step1 * R;
+
+                            Assert::IsTrue(AlmostEqual(VByM, VByQ.V));
                         }
                     }
                 }
