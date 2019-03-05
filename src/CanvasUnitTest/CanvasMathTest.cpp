@@ -292,15 +292,14 @@ namespace CanvasUnitTest
                         for (auto &V : Vectors)
                         {
                             // Matrix transform
-                            auto VByM = V * M;
+                            auto VByM = M * V;
 
                             auto InvR = R.Conjugate();
                             auto Ident = R * InvR;
                             Assert::IsTrue(AlmostEqual(Ident, TQuaternion<double>(1, 0, 0, 0)));
 
                             // Quaternion transform
-                            auto step1 = InvR * V;
-                            auto VByQ = step1 * R;
+                            auto VByQ = R * V * InvR;
 
                             Assert::IsTrue(AlmostEqual(VByM, VByQ.V));
                         }

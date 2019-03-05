@@ -386,16 +386,35 @@ struct TMatrix<_Type, 4U, _Columns>
 };
 
 //------------------------------------------------------------------------------------------------
+// Multiple v * M, treating v as a row vector
 template<class _Type, unsigned int _Rows, unsigned int _Columns>
 TVector<_Type, _Columns> operator*(const TVector<_Type, _Rows> &v, const TMatrix<_Type, _Rows, _Columns> &m)
 {
-    TVector<_Type, _Columns> result;
+    TVector<_Type, _Columns> result = {};
 
     for (unsigned int Col = 0; Col < _Columns; ++Col)
     {
         for (unsigned int Row = 0; Row < _Rows; ++Row)
         {
             result[Col] += v[Row] * m[Row][Col];
+        }
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
+// Multiply M * v, treating v as a column vector
+template<class _Type, unsigned int _Rows, unsigned int _Columns>
+TVector<_Type, _Rows> operator*(const TMatrix<_Type, _Rows, _Columns> &m, const TVector<_Type, _Columns> &v)
+{
+    TVector<_Type, _Columns> result = {};
+
+    for (unsigned int Row = 0; Row < _Rows; ++Row)
+    {
+        for (unsigned int Col = 0; Col < _Columns; ++Col)
+        {
+            result[Row] += m[Row][Col] * v[Col];
         }
     }
 
@@ -476,6 +495,8 @@ TMatrix<_Type, _Rows, _Columns> IdentityMatrix()
 
 //------------------------------------------------------------------------------------------------
 // Sets the upper-left 3x3 as a rotation about the x-axis
+// Canvas rotation matrices use pre-multiplication, meaning
+// M * v where v is treated as a column vector
 template<class _Type, unsigned int _Rows, unsigned int _Columns>
 TMatrix<_Type, _Rows, _Columns> XRotMatrix(_Type rot)
 {
@@ -494,6 +515,8 @@ TMatrix<_Type, _Rows, _Columns> XRotMatrix(_Type rot)
 
 //------------------------------------------------------------------------------------------------
 // Sets the upper-left 3x3 as a rotation about the x-axis
+// Canvas rotation matrices use pre-multiplication, meaning
+// M * v where v is treated as a column vector
 template<class _Type, unsigned int _Rows, unsigned int _Columns>
 TMatrix<_Type, _Rows, _Columns> YRotMatrix(_Type rot)
 {
@@ -512,6 +535,8 @@ TMatrix<_Type, _Rows, _Columns> YRotMatrix(_Type rot)
 
 //------------------------------------------------------------------------------------------------
 // Sets the upper-left 3x3 as a rotation about the x-axis
+// Canvas rotation matrices use pre-multiplication, meaning
+// M * v where v is treated as a column vector
 template<class _Type, unsigned int _Rows, unsigned int _Columns>
 TMatrix<_Type, _Rows, _Columns> ZRotMatrix(_Type rot)
 {
