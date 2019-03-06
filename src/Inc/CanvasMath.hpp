@@ -573,35 +573,6 @@ TMatrix<_ElementType, _SquareDim, _SquareDim> TransposeMatrix(const TMatrix<_Ele
 }
 
 //------------------------------------------------------------------------------------------------
-template<class _Type>
-TMatrix<_Type, 4, 4> InvertAffineTransform4x4(const TMatrix<_Type, 4, 4> &m)
-{
-    TMatrix<_Type, 4, 4> invm;
-
-    // Set the last column to 0, 0, 0, 1
-    invm[0][3] = 0.0f;
-    invm[1][3] = 0.0f;
-    invm[2][3] = 0.0f;
-    invm[3][3] = 1.0f;
-
-    // Transpose upper-left 3x3 and negate
-    invm[0][0] = m[0][0];
-    invm[1][0] = m[0][1];
-    invm[2][0] = m[0][2];
-    invm[0][1] = m[1][0];
-    invm[1][1] = m[1][1];
-    invm[2][1] = m[1][2];
-    invm[0][2] = m[2][0];
-    invm[1][2] = m[2][1];
-    invm[2][2] = m[2][2];
-
-    // Negate the last row
-    invm[3][0] = -m[3][0];
-    invm[3][1] = -m[3][1];
-    invm[3][2] = -m[3][2];
-}
-
-//------------------------------------------------------------------------------------------------
 using FloatMatrix2x2 = TMatrix<float, 2U, 2U>;
 using FloatMatrix3x3 = TMatrix<float, 3U, 3U>;
 using FloatMatrix4x4 = TMatrix<float, 4U, 4U>;
@@ -626,7 +597,7 @@ using DoubleMatrix4x4 = TMatrix<double, 4U, 4U>;
 template<class _Type>
 struct alignas(16) TQuaternion
 {
-    _Type W; // Real term
+    _Type W; // Scalar term
     TVector<_Type, 3> V; // Vector term
 
     TQuaternion() = default;
