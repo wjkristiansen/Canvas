@@ -532,6 +532,48 @@ TMatrix<_Type, 3, 3> ZRotationMatrix(_Type angle)
 }
 
 //------------------------------------------------------------------------------------------------
+template<class _Type>
+TMatrix<_Type, 3, 3> XYZRotationMatrix(_Type angleX, _Type angleY, _Type angleZ)
+{
+    return ZRotationMatrix(angleZ) * YRotationMatrix(angleY) * XRotationMatrix(angleX);
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+TMatrix<_Type, 3, 3> XZYRotationMatrix(_Type angleX, _Type angleZ, _Type angleY)
+{
+    return YRotationMatrix(angleY) * ZRotationMatrix(angleZ) * XRotationMatrix(angleX);
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+TMatrix<_Type, 3, 3> YXZRotationMatrix(_Type angleY, _Type angleX, _Type angleZ)
+{
+    return ZRotationMatrix(angleZ) * XRotationMatrix(angleX) * YRotationMatrix(angleY);
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+TMatrix<_Type, 3, 3> YZXRotationMatrix(_Type angleY, _Type angleZ, _Type angleX)
+{
+    return XRotationMatrix(angleX) * ZRotationMatrix(angleZ) * YRotationMatrix(angleY);
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+TMatrix<_Type, 3, 3> ZXYRotationMatrix(_Type angleZ, _Type angleX, _Type angleY)
+{
+    return YRotationMatrix(angleY) * XRotationMatrix(angleX) * ZRotationMatrix(angleZ);
+}
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+TMatrix<_Type, 3, 3> ZYXRotationMatrix(_Type angleZ, _Type angleY, _Type angleX)
+{
+    return XRotationMatrix(angleX) * YRotationMatrix(angleY) * ZRotationMatrix(angleZ);
+}
+
+//------------------------------------------------------------------------------------------------
 // Transposes all or part of a matrix.
 // Returns a copy of the given matrix with the specified square ranges transposed.
 template<class _MatrixType>
