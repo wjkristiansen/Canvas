@@ -476,13 +476,14 @@ TMatrix<_Type, _Rows, _Columns> IdentityMatrix()
 
 //------------------------------------------------------------------------------------------------
 // Sets the upper-left 3x3 as a rotation about the x-axis
-template<class _Type, unsigned int _Rows, unsigned int _Columns>
-TMatrix<_Type, _Rows, _Columns> XRotMatrix(_Type rot)
+// with the given Euler angle
+template<class _Type>
+TMatrix<_Type, 3, 3> XRotationMatrix(_Type angle)
 {
-    TMatrix<_Type, _Rows, _Columns> m = IdentityMatrix<_Type, _Rows, _Columns>();
+    auto m = IdentityMatrix<_Type, 3, 3>();
 
-    _Type c = cos(rot);
-    _Type s = sin(rot);
+    alignas(16) _Type c = cos(angle);
+    alignas(16) _Type s = sin(angle);
     m[1][1] = c;
     m[1][2] = -s;
     
@@ -494,13 +495,14 @@ TMatrix<_Type, _Rows, _Columns> XRotMatrix(_Type rot)
 
 //------------------------------------------------------------------------------------------------
 // Sets the upper-left 3x3 as a rotation about the x-axis
-template<class _Type, unsigned int _Rows, unsigned int _Columns>
-TMatrix<_Type, _Rows, _Columns> YRotMatrix(_Type rot)
+// with the given Euler angle
+template<class _Type>
+TMatrix<_Type, 3, 3> YRotationMatrix(_Type angle)
 {
-    TMatrix<_Type, _Rows, _Columns> m = IdentityMatrix<_Type, _Rows, _Columns>();
+    auto m = IdentityMatrix<_Type, 3, 3>();
 
-    _Type c = cos(rot);
-    _Type s = sin(rot);
+    alignas(16) _Type c = cos(angle);
+    alignas(16) _Type s = sin(angle);
     m[0][0] = c;
     m[0][2] = s;
 
@@ -512,13 +514,14 @@ TMatrix<_Type, _Rows, _Columns> YRotMatrix(_Type rot)
 
 //------------------------------------------------------------------------------------------------
 // Sets the upper-left 3x3 as a rotation about the x-axis
-template<class _Type, unsigned int _Rows, unsigned int _Columns>
-TMatrix<_Type, _Rows, _Columns> ZRotMatrix(_Type rot)
+// with the given Euler angle
+template<class _Type>
+TMatrix<_Type, 3, 3> ZRotationMatrix(_Type angle)
 {
-    TMatrix<_Type, _Rows, _Columns> m = IdentityMatrix<_Type, _Rows, _Columns>();
+    auto m = IdentityMatrix<_Type, 3, 3>();
 
-    _Type c = cos(rot);
-    _Type s = sin(rot);
+    alignas(16) _Type c = cos(angle);
+    alignas(16) _Type s = sin(angle);
     m[0][0] = c;
     m[0][1] = -s;
     
@@ -529,22 +532,20 @@ TMatrix<_Type, _Rows, _Columns> ZRotMatrix(_Type rot)
 }
 
 //------------------------------------------------------------------------------------------------
-// Transposes a square _SquareDim x _SquareDim matrix
-template <class _ElementType, unsigned int _SquareDim>
-TMatrix<_ElementType, _SquareDim, _SquareDim> TransposeMatrix(const TMatrix<_ElementType, _SquareDim, _SquareDim> &m)
+// Transposes all or part of a matrix.
+// Returns a copy of the given matrix with the specified square ranges transposed.
+template<class _MatrixType>
+_MatrixType MatrixTransposeRows(const _MatrixType &m, unsigned int Dim = _MatrixType::Rows, unsigned int OffRow = 0, unsigned int OffCol = 0)
 {
-    using MatrixType = TMatrix<_ElementType, _SquareDim, _SquareDim>;
-    MatrixType t;
-
-    for (unsigned int i = 0; i < _SquareDim; ++i)
+    _MatrixType n = m;
+    for (unsigned int i = 0; i < Dim; ++i)
     {
-        for (unsigned int j = 0; j < _SquareDim; ++j)
+        for (unsigned int j = 0; j < Dim; ++j)
         {
-            t[i][j] = m[j][i];
+            n[j + OffRow][i + OffCol] = m[i + OffRow][j + OffCol];
         }
     }
-
-    return t;
+    return n;
 }
 
 //------------------------------------------------------------------------------------------------
