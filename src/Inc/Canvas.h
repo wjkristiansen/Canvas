@@ -258,10 +258,10 @@ XTransform : public Gem::XGeneric
 
     GEMMETHOD_(RotationType, GetRotationType)() const = 0;
     GEMMETHOD_(const FloatVector4 &, GetRotation)() const = 0;
-    GEMMETHOD_(const FloatVector3 &, GetTranslation)() const = 0;
+    GEMMETHOD_(const FloatVector4 &, GetTranslation)() const = 0;
     GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4 &Rotation) = 0;
-    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector3 &Translation) = 0;
-    GEMMETHOD(LookAt)(_In_ const FloatVector3 &Location) = 0;
+    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector4 &Translation) = 0;
+    GEMMETHOD(LookAt)(_In_ const FloatVector4 &Location) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

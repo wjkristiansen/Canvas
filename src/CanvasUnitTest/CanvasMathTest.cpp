@@ -54,11 +54,11 @@ namespace CanvasUnitTest
 		{
             TVector<int, 4> V0(1, 2, 3, 4);
             TVector<int, 4> V1(5, 6, 1, 2);
-            Assert::AreEqual(V0.Dimension, 4U);
-            Assert::AreEqual(V1.X(), 5);
-            Assert::AreEqual(V1.Y(), 6);
-            Assert::AreEqual(V1.Z(), 1);
-            Assert::AreEqual(V1.W(), 2);
+            Assert::AreEqual(V0.Dim, 4);
+            Assert::AreEqual(V1[0], 5);
+            Assert::AreEqual(V1[1], 6);
+            Assert::AreEqual(V1[2], 1);
+            Assert::AreEqual(V1[3], 2);
             auto SubResult = V1 - V0;
             Assert::IsTrue(SubResult == TVector<int, 4>(4, 4, -2, -2));
             auto AddResult = V1 + V0;
@@ -76,8 +76,8 @@ namespace CanvasUnitTest
             Assert::AreEqual(V4[0], 11);
             Assert::AreEqual(V4[1], 13);
 
-            TVector<int, 6> V5 = { { 1, 1, 2, 3, 5, 8 } };
-            TVector<int, 6> V8 = { { 2, 2, 4, 6, 10, 16 } };
+            TVector<int, 6> V5 = { 1, 1, 2, 3, 5, 8 };
+            TVector<int, 6> V8 = { 2, 2, 4, 6, 10, 16 };
             auto V6 = 2 * V5;
             auto V7 = V5 * 2;
             Assert::IsTrue(V8 == V7);
@@ -91,8 +91,8 @@ namespace CanvasUnitTest
                 {5, 8, 13, 21},
                 {34, 55, 89, 144}
             };
-            Assert::AreEqual(M0.Columns, 4U);
-            Assert::AreEqual(M0.Rows, 3U);
+            Assert::AreEqual(M0.Columns, 4);
+            Assert::AreEqual(M0.Rows, 3);
             TMatrix<int, 4, 4> M1 = {
                 {4, 7, 10, 13 },
                 {5, 8, 11, 14},
@@ -166,41 +166,45 @@ namespace CanvasUnitTest
 
         TEST_METHOD(MatrixRotation)
         {
-            using MatrixType = TMatrix<double, 3, 3>;
+            using MatrixType = FloatMatrix4x4;
             using VecType = MatrixType::RowType;
             using ElementType = MatrixType::ElementType;
             static const auto Rows = MatrixType::Rows;
             static const auto Columns = MatrixType::Columns;
 
             MatrixType rx = XRotationMatrix<ElementType>(g_PI / 2);
-            Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0)));
-            Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, -1)));
-            Assert::IsTrue(AlmostEqual(rx[2], VecType(0, 1, 0)));
+            Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, -1, 0)));
+            Assert::IsTrue(AlmostEqual(rx[2], VecType(0, 1, 0, 0)));
 
             rx = XRotationMatrix<ElementType>(-g_PI / 2);
-            Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0)));
-            Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, 1)));
-            Assert::IsTrue(AlmostEqual(rx[2], VecType(0, -1, 0)));
+            Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, 1, 0)));
+            Assert::IsTrue(AlmostEqual(rx[2], VecType(0, -1, 0, 0)));
 
             MatrixType ry = YRotationMatrix<ElementType>(g_PI / 2);
-            Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, 1)));
-            Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0)));
-            Assert::IsTrue(AlmostEqual(ry[2], VecType(-1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, 1, 0)));
+            Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(ry[2], VecType(-1, 0, 0, 0)));
+            Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
             ry = YRotationMatrix<ElementType>(-g_PI / 2);
-            Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, -1)));
-            Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0)));
-            Assert::IsTrue(AlmostEqual(ry[2], VecType(1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, -1, 0)));
+            Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(ry[2], VecType(1, 0, 0, 0)));
+            Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
             MatrixType rz = ZRotationMatrix<ElementType>(g_PI / 2);
-            Assert::IsTrue(AlmostEqual(rz[0], VecType(0, -1, 0)));
-            Assert::IsTrue(AlmostEqual(rz[1], VecType(1, 0, 0)));
-            Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1)));
+            Assert::IsTrue(AlmostEqual(rz[0], VecType(0, -1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rz[1], VecType(1, 0, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1, 0)));
+            Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
             rz = ZRotationMatrix<ElementType>(-g_PI / 2);
-            Assert::IsTrue(AlmostEqual(rz[0], VecType(0, 1, 0)));
-            Assert::IsTrue(AlmostEqual(rz[1], VecType(-1, 0, 0)));
-            Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1)));
+            Assert::IsTrue(AlmostEqual(rz[0], VecType(0, 1, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rz[1], VecType(-1, 0, 0, 0)));
+            Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1, 0)));
+            Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
         }
 
         TEST_METHOD(LookAt)
@@ -254,20 +258,21 @@ namespace CanvasUnitTest
 
         TEST_METHOD(BasicQuaternion)
         {
-            TQuaternion<double> Q = IdentityQuaternion<double>();
+            auto Q = IdentityQuaternion<double>();
             Assert::IsTrue(Q == TQuaternion(1., 0., 0., 0.));
-            auto M = IdentityMatrix<double, 3, 3>();
+            auto M = IdentityMatrix<double, 4, 4>();
             auto N = QuaternionToRotationMatrix(Q);
             Assert::IsTrue(AlmostEqual(M, N));
 
-            TQuaternion<double> R = QuaternionFromAngleAxis(0., DoubleVector3(1., 0., 0.));
+            auto R = QuaternionFromAngleAxis(DoubleVector4(1, 0, 0, 0));
             Assert::IsTrue(AlmostEqual(Q, R));
 
-            M = TMatrix<double, 3, 3>(
+            M = TMatrix<double, 4, 4>(
                 {
-                    { -1,  0,  0 },
-                    {  0, -1,  0 },
-                    {  0,  0,  1 }
+                    { -1,  0,  0, 0 },
+                    {  0, -1,  0, 0 },
+                    {  0,  0,  1, 0 },
+                    {  0,  0,  0, 1 }
                 }
             );
 
@@ -294,13 +299,13 @@ namespace CanvasUnitTest
                         // Transform a set of vertices by matrix and by quaternion and verify 
                         // the rotated results match
 
-                        TVector<double, 3> Vectors[] =
+                        TVector<double, 4> Vectors[] =
                         {
-                            {1., 0., 0.},
-                            {-5., 7, 13.},
-                            {6, -2, 11},
-                            {6, 22, -11},
-                            {.5, .2, 0.},
+                            {1., 0., 0., 0},
+                            {-5., 7, 13., 0},
+                            {6, -2, 11, 0},
+                            {6, 22, -11, 0},
+                            {.5, .2, 0., 0},
                         };
 
                         // Transform each vector by matrix and by quaternion
@@ -310,15 +315,15 @@ namespace CanvasUnitTest
                             // Matrix transform
                             auto VByM = V * M;
 
-                            auto InvR = R.Conjugate();
+                            auto InvR = Conjugate(R);
                             auto Ident = R * InvR;
-                            Assert::IsTrue(AlmostEqual(Ident, TQuaternion<double>(1, 0, 0, 0)));
+                            Assert::IsTrue(AlmostEqual(Ident, TQuaternion<double>(0, 0, 0, 1)));
 
                             // Quaternion transform
                             auto step1 = InvR * V;
                             auto VByQ = step1 * R;
 
-                            Assert::IsTrue(AlmostEqual(VByM, VByQ.V));
+                            Assert::IsTrue(AlmostEqual(VByM, VByQ.Q));
                         }
                     }
                 }

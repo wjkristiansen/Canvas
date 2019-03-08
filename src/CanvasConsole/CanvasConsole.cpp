@@ -46,8 +46,8 @@ int main()
     DoubleVector3 dv3b(3.0, 4.0, 5.0);
     DoubleVector3 dv3c = dv3b - dv3a;
 
-    float X = fv2c.X();
-    float Y = fv2c.Y();
+    float X = fv2c[0];
+    float Y = fv2c[1];
     float Dot = DotProduct(fv2a, fv2b);
     auto Cross = CrossProduct(dv3a, dv3b);
 
