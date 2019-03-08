@@ -17,21 +17,73 @@ struct TVector
     static auto constexpr Dim = _Dim;
     using Type = _Type;
 
-    Type V[Dimension] = {};
+    Type V[Dim] = {};
 
     TVector() = default;
-    TVector(const Type v[Dim])
-    {
-        for (int i = 0; i < Dim; ++i)
-        {
-            V[i] = v[i];
-        }
-    }
     TVector(const TVector &o) = default;
     TVector &operator=(const TVector &o) = default;
+
     const _Type &operator[](int index) const { return V[index]; }
     Type &operator[](int index) { return V[index]; }
 };
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+struct TVector<_Type, 2>
+{
+    static auto constexpr Dim = 2;
+    using Type = _Type;
+
+    Type V[Dim] = {};
+
+    TVector() = default;
+    TVector(_Type x, _Type y) :
+        V{ x, y } {}
+    TVector(const TVector &o) = default;
+    TVector &operator=(const TVector &o) = default;
+
+    const _Type &operator[](int index) const { return V[index]; }
+    Type &operator[](int index) { return V[index]; }
+};
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+struct TVector<_Type, 3>
+{
+    static auto constexpr Dim = 3;
+    using Type = _Type;
+
+    Type V[Dim] = {};
+
+    TVector() = default;
+    TVector(_Type x, _Type y, _Type z) :
+        V{ x, y, z } {}
+    TVector(const TVector &o) = default;
+    TVector &operator=(const TVector &o) = default;
+
+    const _Type &operator[](int index) const { return V[index]; }
+    Type &operator[](int index) { return V[index]; }
+};
+
+//------------------------------------------------------------------------------------------------
+template<class _Type>
+struct TVector<_Type, 4>
+{
+    static auto constexpr Dim = 4;
+    using Type = _Type;
+
+    Type V[Dim] = {};
+
+    TVector() = default;
+    TVector(_Type x, _Type y, _Type z, _Type w) :
+        V{ x, y, z, w } {}
+    TVector(const TVector &o) = default;
+    TVector &operator=(const TVector &o) = default;
+
+    const _Type &operator[](int index) const { return V[index]; }
+    Type &operator[](int index) { return V[index]; }
+};
+
 
 //------------------------------------------------------------------------------------------------
 template<>
@@ -43,16 +95,18 @@ struct alignas(16) TVector<float, 4>
     Type V[Dim] = {};
 
     TVector() = default;
-    TVector(const TVector &o) = default;
-    TVector(const Type v[Dim]) :
-        V{ v[0], v[1], v[2], v[3] } {}
     TVector(Type x, Type y, Type z, Type w) :
         V{ x, y, z, w } {}
+    TVector(const TVector &o) = default;
     TVector &operator=(const TVector &o) = default;
 
     const Type &operator[](int index) const { return V[index]; }
     Type &operator[](int index) { return V[index]; }
 };
+
+using UIntVector2 = TVector<unsigned int, 2>;
+using UIntVector3 = TVector<unsigned int, 3>;
+using UIntVector4 = TVector<unsigned int, 4>;
 
 using IntVector2 = TVector<int, 2>;
 using IntVector3 = TVector<int, 3>;
@@ -208,7 +262,7 @@ TVector<_Type, _Dim> NormalizeVector(const TVector<_Type, _Dim> &v)
 
 //------------------------------------------------------------------------------------------------
 template<class _Type, int _Rows, int _Columns>
-struct alignas(16) TMatrix
+struct TMatrix
 {
     static auto constexpr Rows = _Rows;
     static auto constexpr Columns = _Columns;
@@ -217,6 +271,67 @@ struct alignas(16) TMatrix
 
     RowType M[Rows] = {};
 
+    TMatrix() = default;
+    TMatrix(const TMatrix &o) = default;
+    TMatrix &operator=(const TMatrix &o) = default;
+    const RowType &operator[](int index) const { return M[index]; }
+    RowType &operator[](int index) { return M[index]; }
+};
+
+//------------------------------------------------------------------------------------------------
+template<class _Type, int _Columns>
+struct TMatrix<_Type, 2, _Columns>
+{
+    static auto constexpr Rows = 2;
+    static auto constexpr Columns = _Columns;
+    using RowType = TVector<_Type, Columns>;
+    using ElementType = _Type;
+
+    RowType M[Rows] = {};
+
+    TMatrix() = default;
+    TMatrix(const RowType &r0, const RowType &r1) :
+        M{ r0, r1 } {}
+    TMatrix(const TMatrix &o) = default;
+    TMatrix &operator=(const TMatrix &o) = default;
+    const RowType &operator[](int index) const { return M[index]; }
+    RowType &operator[](int index) { return M[index]; }
+};
+
+//------------------------------------------------------------------------------------------------
+template<class _Type, int _Columns>
+struct TMatrix<_Type, 3, _Columns>
+{
+    static auto constexpr Rows = 3;
+    static auto constexpr Columns = _Columns;
+    using RowType = TVector<_Type, Columns>;
+    using ElementType = _Type;
+
+    RowType M[Rows] = {};
+
+    TMatrix() = default;
+    TMatrix(const RowType &r0, const RowType &r1, const RowType &r2) :
+        M{ r0, r1, r2 } {}
+    TMatrix(const TMatrix &o) = default;
+    TMatrix &operator=(const TMatrix &o) = default;
+    const RowType &operator[](int index) const { return M[index]; }
+    RowType &operator[](int index) { return M[index]; }
+};
+
+//------------------------------------------------------------------------------------------------
+template<class _Type, int _Columns>
+struct TMatrix<_Type, 4, _Columns>
+{
+    static auto constexpr Rows = 4;
+    static auto constexpr Columns = _Columns;
+    using RowType = TVector<_Type, Columns>;
+    using ElementType = _Type;
+
+    RowType M[Rows] = {};
+
+    TMatrix() = default;
+    TMatrix(const RowType &r0, const RowType &r1, const RowType &r2, const RowType &r3) :
+        M{ r0, r1, r2, r3 } {}
     TMatrix(const TMatrix &o) = default;
     TMatrix &operator=(const TMatrix &o) = default;
     const RowType &operator[](int index) const { return M[index]; }
@@ -438,18 +553,20 @@ using DoubleMatrix4x4 = TMatrix<double, 4, 4>;
 
 
 //------------------------------------------------------------------------------------------------
-template<class _Type>
-TVector<_Type, 3> CrossProduct(const TVector<_Type, 3> &a, const TVector<_Type, 3> &b)
+template<class VectorType>
+VectorType CrossProduct(const VectorType &a, const VectorType &b)
 {
-    return TVector<_Type, 3>(
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0]
-    );
+    VectorType c;
+
+    c[0] = a[1] * b[2] - a[2] * b[1];
+    c[1] = a[2] * b[0] - a[0] * b[2];
+    c[2] = a[0] * b[1] - a[1] * b[0];
+
+    return c;
 }
 
 //------------------------------------------------------------------------------------------------
-// Mathematically treats the inputs as 3-element vectors
+// Mathematically treats the inputs as float3 vectors
 FloatVector4 CrossProduct(const FloatVector4 &a, const FloatVector4 &b)
 {
     FloatMatrix4x4 m;
@@ -494,16 +611,18 @@ struct TQuaternion
     TQuaternion(_Type scalar) :
         Q{ 0, 0, 0, scalar } {}
     TQuaternion(const TVector<Type, 4> &v) :
-        V(v) {}
+        Q(v) {}
     TQuaternion(Type a, Type b, Type c, Type w) :
-        V{ a, b, c, w} {}
+        Q{ a, b, c, w} {}
 
     TQuaternion(const TQuaternion &o) = default;
 
     TQuaternion &operator=(const TQuaternion &o) = default;
 
+    const _Type &operator[](int index) const { return Q[index]; }
+    Type &operator[](int index) { return Q[index]; }
+
     void ReNormalize();
-    TQuaternion Conjugate();
 };
 
 //------------------------------------------------------------------------------------------------
@@ -557,14 +676,14 @@ void TQuaternion<_Type>::ReNormalize()
 // Note: Since this is expected to be a unit quaternion, the conjugate is the also
 // the inverse.
 template<class _Type>
-TQuaternion<_Type> TQuaternion<_Type>::Conjugate()
+TQuaternion<_Type> Conjugate(const TQuaternion<_Type> &q)
 {
-    Quaternion C;
-    C[0] = -Q[0];
-    C[1] = -Q[1];
-    C[2] = -Q[2];
-    C[3] = Q[3];
-    return C;
+    TQuaternion<_Type> c;
+    c[0] = -q[0];
+    c[1] = -q[1];
+    c[2] = -q[2];
+    c[3] = q[3];
+    return c;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -584,7 +703,7 @@ TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TQuaternion<_Type
 //------------------------------------------------------------------------------------------------
 // Returns the product of a quaternion with a vector (treated as a quaternion with a 0 real coordinate)
 template<class _Type>
-TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TVector<_Type, 3> &v)
+TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TVector<_Type, 4> &v)
 {
     return q * TQuaternion<_Type>(v);
 
@@ -661,21 +780,22 @@ template<class _Type>
 TQuaternion<_Type> QuaternionFromAngleAxis(const TVector<_Type, 4> &v)
 {
     _Type HalfAngle = v[3] / 2;
-    _Type c = cosf(HalfAngle);
-    _Type s = sinf(HalfAngle);
-    FloatVector v;
-    v = s * axis;
-    v[3] = c;
-    return Quaternion(v);
+    _Type c = cos(HalfAngle);
+    _Type s = sin(HalfAngle);
+    TQuaternion<_Type> q;
+    q.Q = s * v;
+    q.Q[3] = c;
+    return q;
 }
 
 //------------------------------------------------------------------------------------------------
 // Creates a quaternion from a given matrix
+// Assumes the matrix is rotation only affine (no scale or translation)
 // See http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
 template<class _Type>
-TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 3, 3> &m)
+TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 4, 4> &m)
 {
-    TQuaternion q;
+    TQuaternion<_Type> q;
     _Type t = m[0][0] + m[1][1] + m[2][2];
 
     if (t > 0)
@@ -746,10 +866,10 @@ struct MinNorm<double>
 template<class _VectorType>
 void ComposeLookBasisVectors(_In_ const _VectorType &UpAxisVector, _In_ const _VectorType &LookVector, _Out_ _VectorType &OutVector, _Out_ _VectorType &UpVector)
 {
-    using Type = _VectorType::Type;
+    using Type = typename _VectorType::Type;
 
     // OutVector is the cross product of UpAxisVector with LookVector
-    _VectorType OutVector = CrossProduct(UpAxisVector, LookVector);
+    OutVector = CrossProduct(UpAxisVector, LookVector);
     Type dot = DotProduct(OutVector, OutVector);
     Type dotsq = dot * dot;
     if (dotsq < MinNorm<Type>::Value)
@@ -772,7 +892,7 @@ void ComposeLookBasisVectors(_In_ const _VectorType &UpAxisVector, _In_ const _V
     else
     {
         // Normalize OutVector
-        OutVector = OutVector * _Type(1. / sqrt(dotsq));
+        OutVector = OutVector * Type(1. / sqrt(dotsq));
     }
 
     // The cross product of OutVector with LookVector is the UpVector.
