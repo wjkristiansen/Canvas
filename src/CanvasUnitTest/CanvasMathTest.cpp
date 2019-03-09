@@ -7,6 +7,8 @@ using namespace Canvas;
 
 namespace CanvasUnitTest
 {		
+    volatile float g_mul = 1.0f;
+
     const double g_PI = 3.1415926535897932384626433832795;
 
 	TEST_CLASS(CanvasMathTest)
@@ -82,6 +84,11 @@ namespace CanvasUnitTest
             auto V7 = V5 * 2;
             Assert::IsTrue(V8 == V7);
             Assert::IsTrue(V8 == V6);
+
+            FloatVector4 a(1 * g_mul, 2 * g_mul, 3 * g_mul, 4 * g_mul);
+            FloatVector4 b(.1f * g_mul, .2f * g_mul, .3f * g_mul, .4f * g_mul);
+            FloatVector4 c = a * b;
+            Assert::IsTrue(AlmostEqual(c, FloatVector4(.1, .4, .9, 1.6)));
         }
 
         TEST_METHOD(SimpleMatrices)
