@@ -215,7 +215,7 @@ TVector<_Type, _Dim> operator*(const TVector<_Type, _Dim> &a, const TVector<_Typ
 // Only need to do this for FloatVector4 since the is where SSE can be useful.
 TVector<float, 4> operator*(const TVector<float, 4> &a, const TVector<float, 4> &b)
 {
-    TVector<float, 4> result = 
+    TVector<float, 4> result =
     {
         a[0] * b[0],
         a[1] * b[1],
@@ -242,7 +242,7 @@ TVector<_Type, _Dim> operator/(const TVector<_Type, _Dim> &a, const TVector<_Typ
 
 //------------------------------------------------------------------------------------------------
 template<class _Type, int _Dim>
-_Type VectorSum( const TVector<_Type, _Dim> &v)
+_Type VectorSum(const TVector<_Type, _Dim> &v)
 {
     _Type r = 0;
     for (int i = 0; i < _Dim; ++i)
@@ -503,7 +503,7 @@ TMatrix<_Type, 4, 4> XRotationMatrix(_Type angle)
     _Type s = sin(angle);
     m[1][1] = c;
     m[1][2] = -s;
-    
+
     m[2][1] = s;
     m[2][2] = c;
 
@@ -541,7 +541,7 @@ TMatrix<_Type, 4, 4> ZRotationMatrix(_Type angle)
     alignas(16) _Type s = sin(angle);
     m[0][0] = c;
     m[0][1] = -s;
-    
+
     m[1][0] = s;
     m[1][1] = c;
 
@@ -677,7 +677,7 @@ struct TQuaternion
     TQuaternion(const TVector<Type, 4> &v) :
         Q(v) {}
     TQuaternion(Type a, Type b, Type c, Type w) :
-        Q{ a, b, c, w} {}
+        Q{ a, b, c, w } {}
 
     TQuaternion(const TQuaternion &o) = default;
 
@@ -812,29 +812,29 @@ template<class _Type>
 TMatrix<_Type, 4, 4> QuaternionToRotationMatrix(const TQuaternion<_Type> &q)
 {
     return TMatrix<_Type, 4, 4>(
-    {
         {
-            1 - 2 * (q.Q[1] * q.Q[1] + q.Q[2] * q.Q[2]),
-            2 * (q.Q[0] * q.Q[1] - q.Q[2] * q.Q[3]),
-            2 * (q.Q[0] * q.Q[2] + q.Q[1] * q.Q[3]), 
-            0
-        },
-        {
-            2 * (q.Q[0] * q.Q[1] + q.Q[2] * q.Q[3]),
-            1 - 2 * (q.Q[0] * q.Q[0] + q.Q[2] * q.Q[2]),
-            2 * (q.Q[1] * q.Q[2] - q.Q[0] * q.Q[3]),
-            0
-        },
-        {
-            2 * (q.Q[0] * q.Q[2] - q.Q[1] * q.Q[3]),
-            2 * (q.Q[1] * q.Q[2] + q.Q[0] * q.Q[3]),
-            1 - 2 * (q.Q[0] * q.Q[0] + q.Q[1] * q.Q[1]),
-            0
-        },
-        {
-            0, 0, 0, 1
-        }
-    });
+            {
+                1 - 2 * (q.Q[1] * q.Q[1] + q.Q[2] * q.Q[2]),
+                2 * (q.Q[0] * q.Q[1] - q.Q[2] * q.Q[3]),
+                2 * (q.Q[0] * q.Q[2] + q.Q[1] * q.Q[3]),
+                0
+            },
+            {
+                2 * (q.Q[0] * q.Q[1] + q.Q[2] * q.Q[3]),
+                1 - 2 * (q.Q[0] * q.Q[0] + q.Q[2] * q.Q[2]),
+                2 * (q.Q[1] * q.Q[2] - q.Q[0] * q.Q[3]),
+                0
+            },
+            {
+                2 * (q.Q[0] * q.Q[2] - q.Q[1] * q.Q[3]),
+                2 * (q.Q[1] * q.Q[2] + q.Q[0] * q.Q[3]),
+                1 - 2 * (q.Q[0] * q.Q[0] + q.Q[1] * q.Q[1]),
+                0
+            },
+            {
+                0, 0, 0, 1
+            }
+        });
 }
 
 //------------------------------------------------------------------------------------------------
@@ -871,7 +871,7 @@ TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 4, 4> &m)
         q.Q[1] = (m[0][2] - m[2][0]) * srsq;
         q.Q[2] = (m[1][0] - m[0][1]) * srsq;
     }
-    else if(m[0][0] > m[1][1] && (m[0][0] > m[2][2]))
+    else if (m[0][0] > m[1][1] && (m[0][0] > m[2][2]))
     {
         t = m[0][0] - m[1][1] - m[2][2];
         _Type s = 2 * sqrt(t + 1);
@@ -881,7 +881,7 @@ TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 4, 4> &m)
         q.Q[1] = (m[0][1] + m[1][0]) * srsq;
         q.Q[2] = (m[0][2] + m[2][0]) * srsq;
     }
-    else if(m[1][1] > m[2][2])
+    else if (m[1][1] > m[2][2])
     {
         t = m[1][1] - m[0][0] - m[2][2];
         _Type s = 2 * sqrt(t + 1);
