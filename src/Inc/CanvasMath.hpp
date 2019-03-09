@@ -7,6 +7,11 @@
 #include <math.h>
 #include <float.h>
 
+#define EVAL4(macro) EVAL3(macro)
+#define EVAL3(macro) EVAL2(macro)
+#define EVAL2(macro) EVAL1(macro)
+#define EVAL1(macro) macro
+
 namespace Canvas
 {
 
@@ -195,6 +200,33 @@ TVector<_Type, _Dim> operator*(const TVector<_Type, _Dim> &a, const TVector<_Typ
 }
 
 //------------------------------------------------------------------------------------------------
+// There is an optimization bug in the msvc compiler.
+// The compiler tries to use the 4-parameter FloatVector4 constructor
+// post-muliplicatio of each scalar element.  This prevent the use of SSE in some inline
+// cases.
+// Constructing the result first from a then using unary *= tricks the compiler
+// back to using the SSE ops.
+// The problem goes away if the 4-parameter constructor is deleted.
+//
+// Interestingly, this is not always the case.  When operator* is used in the DotProduct
+// implementation, the compiler uses the SSE movups and mulps operations.  May
+// need to report this to the msvc compiler team.
+//
+// Only need to do this for FloatVector4 since the is where SSE can be useful.
+TVector<float, 4> operator*(const TVector<float, 4> &a, const TVector<float, 4> &b)
+{
+    TVector<float, 4> result = 
+    {
+        a[0] * b[0],
+        a[1] * b[1],
+        a[2] * b[2],
+        a[3] * b[3]
+    };
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
 template<class _Type, int _Dim>
 TVector<_Type, _Dim> operator/(const TVector<_Type, _Dim> &a, const TVector<_Type, _Dim> &b)
 {
@@ -238,6 +270,18 @@ TVector<_Type, _Dim> operator*(const TVector<_Type, _Dim> &v, _Type mul)
     {
         result[i] = v[i] * mul;
     }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
+TVector<float, 4> operator*(const TVector<float, 4> &v, float mul)
+{
+    TVector<float, 4> result(v);
+    result[0] *= mul;
+    result[1] *= mul;
+    result[2] *= mul;
+    result[3] *= mul;
 
     return result;
 }
