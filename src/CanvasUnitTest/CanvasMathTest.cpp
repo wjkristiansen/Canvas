@@ -52,6 +52,11 @@ namespace CanvasUnitTest
             return true;
         }
 
+        __declspec(noinline) FloatVector4 Mul(const FloatVector4 &a, const FloatVector4 &b)
+        {
+            return a * b;
+
+        }
 		TEST_METHOD(SimpleVectors)
 		{
             TVector<int, 4> V0(1, 2, 3, 4);
@@ -87,7 +92,7 @@ namespace CanvasUnitTest
 
             FloatVector4 a(1 * g_mul, 2 * g_mul, 3 * g_mul, 4 * g_mul);
             FloatVector4 b(.1f * g_mul, .2f * g_mul, .3f * g_mul, .4f * g_mul);
-            FloatVector4 c = a * b;
+            FloatVector4 c = Mul(a, b);
             Assert::IsTrue(AlmostEqual(c, FloatVector4(.1, .4, .9, 1.6)));
         }
 
