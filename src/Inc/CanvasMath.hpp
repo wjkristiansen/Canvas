@@ -210,16 +210,22 @@ TVector<_Type, _Dim> operator/(const TVector<_Type, _Dim> &a, const TVector<_Typ
 
 //------------------------------------------------------------------------------------------------
 template<class _Type, int _Dim>
-_Type DotProduct(const TVector<_Type, _Dim> &a, const TVector<_Type, _Dim> &b)
+_Type VectorSum( const TVector<_Type, _Dim> &v)
 {
-    _Type dot = 0;
-
+    _Type r = 0;
     for (int i = 0; i < _Dim; ++i)
     {
-        dot += a[i] * b[i];
+        r += v[i];
     }
+    return r;
+}
 
-    return dot;
+//------------------------------------------------------------------------------------------------
+template<class _Type, int _Dim>
+_Type DotProduct(const TVector<_Type, _Dim> &a, const TVector<_Type, _Dim> &b)
+{
+    TVector<_Type, _Dim> temp = a * b;
+    return VectorSum(temp);
 }
 
 //------------------------------------------------------------------------------------------------
