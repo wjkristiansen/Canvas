@@ -654,9 +654,9 @@ FloatVector4 CrossProduct(const FloatVector4 &a, const FloatVector4 &b)
 // Represents a Unit Quaternion representing a rotation in 3-dimensional space
 // Quaternion math from http://www.gamasutra.com/view/feature/131686/rotating_objects_using_quaternions.php
 // 
-// Addition: q + q´ = [w + w´, v + v´] 
+// Addition: q + q' = [w + w', v + v'] 
 //
-// Multiplication: qq´ = [ww´ - v . v´, v x v´ + wv´ + w´v] (. is vector dot product and x is vector cross product); Note: qq´ ? q´q 
+// Multiplication: qq' = [ww' - v . v', v x v' + wv' + w'v] (. is vector dot product and x is vector cross product); Note: qq' ? q'q 
 // Conjugate: q* = [w, -v] 
 //
 // Inverse: q-1 = q* / N(q) 
