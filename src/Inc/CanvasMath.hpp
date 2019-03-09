@@ -356,6 +356,20 @@ TVector<_Type, _Columns> operator*(const TVector<_Type, _Rows> &v, const TMatrix
 }
 
 //------------------------------------------------------------------------------------------------
+template<class _Type, int _Rows, int _Columns>
+TVector<_Type, _Columns> operator*(const TMatrix<_Type, _Rows, _Columns> &m, const TVector<_Type, _Rows> &v)
+{
+    TVector<_Type, _Columns> result = {};
+
+    for (int i = 0; i < _Rows; ++i)
+    {
+        result[i] = DotProduct(m[i], v);
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
 template<class _Type, int _Rows0, int _Columns0, int _Columns1>
 TMatrix<_Type, _Rows0, _Columns1> operator*(const TMatrix<_Type, _Rows0, _Columns0> &m0, const TMatrix<_Type, _Columns0, _Columns1> &m1)
 {
@@ -629,7 +643,7 @@ struct TQuaternion
 template<class _Type>
 TQuaternion<_Type> IdentityQuaternion()
 {
-    return TQuaternion<_Type>(1., 0., 0., 0.);
+    return TQuaternion<_Type>(0, 0, 0, 1);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -695,7 +709,7 @@ TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TQuaternion<_Type
     //_Type w = q.W * r.W - DotProduct(q.V, r.V);
     //TVector<_Type, 3> v = CrossProduct(q.V, r.V) + q.W *r.V + r.W * q.V;
     //return TQuaternion<_Type>(w, v);
-    TQuaternion<_Type> v = CrossProduct(q.Q, r.Q) + q[2] * r.Q + r[2] * q.Q; // Leaves garbage in v[3] but that gets fixed below
+    TQuaternion<_Type> v = CrossProduct(q.Q, r.Q) + q[3] * r.Q + r[3] * q.Q; // Leaves garbage in v[3] but that gets fixed below
     v[3] = q[3] * r[3] - (q[0] * r[0] + q[1] * r[1] + q[2] * r[2]);
     return v;
 }
