@@ -259,7 +259,7 @@ namespace CanvasUnitTest
         TEST_METHOD(BasicQuaternion)
         {
             auto Q = IdentityQuaternion<double>();
-            Assert::IsTrue(Q == TQuaternion(1., 0., 0., 0.));
+            Assert::IsTrue(Q == DoubleQuaternion(0, 0, 0, 1));
             auto M = IdentityMatrix<double, 4, 4>();
             auto N = QuaternionToRotationMatrix(Q);
             Assert::IsTrue(AlmostEqual(M, N));
@@ -317,7 +317,7 @@ namespace CanvasUnitTest
 
                             auto InvR = Conjugate(R);
                             auto Ident = R * InvR;
-                            Assert::IsTrue(AlmostEqual(Ident, TQuaternion<double>(0, 0, 0, 1)));
+                            Assert::IsTrue(AlmostEqual(Ident, DoubleQuaternion(0, 0, 0, 1)));
 
                             // Quaternion transform
                             auto VByQ = R * V * InvR;
