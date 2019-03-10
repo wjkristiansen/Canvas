@@ -213,7 +213,7 @@ TVector<_Type, _Dim> operator*(const TVector<_Type, _Dim> &a, const TVector<_Typ
 // need to report this to the msvc compiler team.
 //
 // Only need to do this for FloatVector4 since the is where SSE can be useful.
-TVector<float, 4> operator*(const TVector<float, 4> &a, const TVector<float, 4> &b)
+inline TVector<float, 4> operator*(const TVector<float, 4> &a, const TVector<float, 4> &b)
 {
     TVector<float, 4> result =
     {
