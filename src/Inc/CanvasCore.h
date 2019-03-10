@@ -247,7 +247,7 @@ enum RotationType
     EulerZXY,
     EulerZYX,
     QuaternionWXYZ,
-    Matrix,
+    AxisAngle,
 };
 
 //------------------------------------------------------------------------------------------------

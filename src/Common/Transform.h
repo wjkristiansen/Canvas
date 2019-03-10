@@ -11,7 +11,6 @@ class CTransform :
 {
     FloatVector4 m_Translation;
     FloatVector4 m_Rotation;
-    FloatMatrix4x4 m_RotScaleMatrix;
     RotationType m_RotationType;
     inline static const FloatVector4 m_WorldUp = FloatVector4( 0.f, 1.f, 0.f, 0.f );
 
