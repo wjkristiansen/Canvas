@@ -212,7 +212,7 @@ GEMMETHODIMP CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **p
             for (UINT i = 0; i < pMeshData->NumVertices; ++i)
             {
                 const FloatVector3 &SrcPos = pMeshData->pVertices[i];
-                pVertexPos[i] = FloatVector4(SrcPos.X(), SrcPos.Y(), SrcPos.Z(), 0.f);
+                pVertexPos[i] = FloatVector4(SrcPos[0], SrcPos[1], SrcPos[2], 0.f);
             }
         }
     }
