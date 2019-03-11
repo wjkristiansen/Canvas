@@ -5,6 +5,24 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
+class CDataSource
+{
+    virtual void *GetData() const = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+class CFunctionSource : public CDataSource
+{
+    bool m_IsDirty = false;
+    std::vector<CDataSource *> m_InputSources;
+
+public:
+    // Changes the input source for the given slot
+    Gem::Result SetInputSource(CDataSource *pSource, int index);
+    virtual Gem::Result Evaluate() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
 inline Result HResultToResult(HRESULT hr)
 {
     switch (hr)
