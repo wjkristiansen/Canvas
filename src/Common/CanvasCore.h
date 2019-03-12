@@ -5,21 +5,85 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-class CDataSource
+class CTimeline
 {
-    virtual void *GetData() const = 0;
+public:
+    enum class Mode
+    {
+        Limited,
+        Repeating,
+        Reversing,
+    };
+
+protected:
+    double m_BaseTime;
+    float m_Duration;
+    Mode m_Mode;
+
+public:
+    float Evaluate(double ActualTime)
+    {
+        double Delta = ActualTime - m_BaseTime;
+        switch (m_Mode)
+        {
+        case Mode::Limited:
+            return min(Delta, m_Duration);
+            break;
+
+        case Mode::Repeating:
+            return std::fmod(Delta, m_Duration);
+            break;
+
+        case Mode::Reversing:
+            return m_Duration - std::abs(std::fmod(Delta, m_Duration * 2) - m_Duration);
+            break;
+        }
+    }
+};
+
+class CConstantFunction
+{
+    const float m_c;
+    
+public:
+    CConstantFunction(float c) :
+        m_c(c) {}
+
+    float Evaluate() const { return m_c; }
+};
+
+class CUnitFunctionbcz
+{
+    float Evaluate(float t) const { return t; }
+};
+
+class CMidpointFunction
+{
+    float Evaluate(float x, float y) const { return (x + y) / 2; }
+};
+
+class CKeyedCurveFunction
+{
+    float Evaluate(float t) { return 0; }
 };
 
 //------------------------------------------------------------------------------------------------
-class CFunctionSource : public CDataSource
+class CDataSource
 {
-    bool m_IsDirty = false;
-    std::vector<CDataSource *> m_InputSources;
+public:
+    virtual float Evaluate() const = 0;
+};
+
+class CMidpointFunctionDataSource : public CDataSource
+{
+    CDataSource *m_pSourceA = nullptr;
+    CDataSource *m_pSourceB = nullptr;
 
 public:
-    // Changes the input source for the given slot
-    Gem::Result SetInputSource(CDataSource *pSource, int index);
-    virtual Gem::Result Evaluate() = 0;
+    CMidpointFunctionDataSource(CDataSource *pSourceA, CDataSource *pSourceB) :
+        m_pSourceA(pSourceA),
+        m_pSourceB(pSourceB)
+    {}
 };
 
 //------------------------------------------------------------------------------------------------
