@@ -23,7 +23,7 @@ protected:
 public:
     float Evaluate(double ActualTime)
     {
-        double Delta = ActualTime - m_BaseTime;
+        float Delta = float(ActualTime - m_BaseTime);
         switch (m_Mode)
         {
         case Mode::Limited:
@@ -41,49 +41,54 @@ public:
     }
 };
 
+template<class _DataType>
 class CConstantFunction
 {
-    const float m_c;
+    const _DataType m_c;
     
 public:
     CConstantFunction(float c) :
         m_c(c) {}
 
-    float Evaluate() const { return m_c; }
+    _DataType Evaluate() const { return m_c; }
 };
 
-class CUnitFunctionbcz
-{
-    float Evaluate(float t) const { return t; }
-};
-
+template<class _DataType>
 class CMidpointFunction
 {
-    float Evaluate(float x, float y) const { return (x + y) / 2; }
+    _DataType Evaluate(_DataType x, _DataType y) const { return (x + y) / 2; }
 };
 
+template<class _DataType>
 class CKeyedCurveFunction
 {
-    float Evaluate(float t) { return 0; }
+    _DataType Evaluate(_DataType t) { return 0; }
 };
 
 //------------------------------------------------------------------------------------------------
+template<class _DataType>
 class CDataSource
 {
 public:
-    virtual float Evaluate() const = 0;
+    virtual _DataType Evaluate() const = 0;
 };
 
-class CMidpointFunctionDataSource : public CDataSource
+template<class _DataType>
+class CMidpointFunctionDataSource : public CDataSource<_DataType>
 {
-    CDataSource *m_pSourceA = nullptr;
-    CDataSource *m_pSourceB = nullptr;
+    CDataSource<_DataType> *m_pSourceA = nullptr;
+    CDataSource<_DataType> *m_pSourceB = nullptr;
 
 public:
-    CMidpointFunctionDataSource(CDataSource *pSourceA, CDataSource *pSourceB) :
+    CMidpointFunctionDataSource(CDataSource<_DataType> *pSourceA, CDataSource<_DataType> *pSourceB) :
         m_pSourceA(pSourceA),
         m_pSourceB(pSourceB)
     {}
+
+    virtual _DataType Evaluate() const final
+    {
+        return m_pSourceA->Evaluate() + m_pSourceB->Evaluate();
+    }
 };
 
 //------------------------------------------------------------------------------------------------
