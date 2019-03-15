@@ -9,6 +9,8 @@ class CTransform :
     public XTransform,
     public CInnerGenericBase
 {
+    CTranslationDataSource *m_pTranslationDataSource = nullptr;
+    CRotationDataSource *m_pRotationDataSource = nullptr;
     FloatVector4 m_Translation;
     FloatVector4 m_Rotation;
     RotationType m_RotationType;

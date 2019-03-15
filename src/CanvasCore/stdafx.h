@@ -37,6 +37,8 @@
 using namespace Canvas;
 using namespace Gem;
 
+#include "Timer.h"
+#include "DataSource.h"
 #include "CanvasObject.h"
 #include "NamedObject.h"
 #include "Transform.h"
@@ -46,7 +48,6 @@ using namespace Gem;
 #include "Model.h"
 #include "Scene.h"
 #include "CanvasGraphics.h"
-#include "Timer.h"
 #include "CanvasCore.h"
 
 #include "CanvasGraphics12.h"
