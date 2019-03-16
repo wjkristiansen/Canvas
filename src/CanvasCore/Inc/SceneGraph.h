@@ -7,7 +7,7 @@
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
     public XSceneGraphNode,
-    public CCanvasObjectBase
+    public CObjectBase
 {
 public:
     TInnerGeneric<CName> m_ObjectName;
