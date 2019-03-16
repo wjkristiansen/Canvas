@@ -29,18 +29,18 @@ public:
     GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) final;
     GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial);
     GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight);
-    GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) final;
+    GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CGraphicsUploadBuffer **ppUploadBuffer) final;
 };
 
 //------------------------------------------------------------------------------------------------
-class CUploadBuffer12 : public CUploadBuffer
+class CGraphicsUploadBuffer12 : public CGraphicsUploadBuffer
 {
     CComPtr<ID3D12Resource> m_pResource;
     UINT64 m_OffsetToStart = 0;
     void *m_pData = 0;
 
 public:
-    CUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size);
+    CGraphicsUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size);
     GEMMETHOD_(void *, Data)() final;
 };
 

@@ -170,7 +170,7 @@ GEMMETHODIMP CGraphicsDevice12::RenderFrame()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer)
+GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CGraphicsUploadBuffer **ppUploadBuffer)
 {
     try
     {
@@ -179,7 +179,7 @@ GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CUpload
         CComPtr<ID3D12Resource> pD3DBuffer;
         CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
         ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource1(&HeapProp, D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, nullptr, IID_PPV_ARGS(&pD3DBuffer)));
-        TGemPtr<CUploadBuffer> pUploadBuffer = new CUploadBuffer12(pD3DBuffer, 0, SizeInBytes); // throw(std::bad_alloc), throw(_com_error)
+        TGemPtr<CGraphicsUploadBuffer> pUploadBuffer = new CGraphicsUploadBuffer12(pD3DBuffer, 0, SizeInBytes); // throw(std::bad_alloc), throw(_com_error)
         *ppUploadBuffer = pUploadBuffer;
         pUploadBuffer.Detach();
     }
@@ -204,7 +204,7 @@ GEMMETHODIMP CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **p
     {
         if (pMeshData->pVertices)
         {
-            TGemPtr<CUploadBuffer> pVertexBuffer;
+            TGemPtr<CGraphicsUploadBuffer> pVertexBuffer;
             AllocateUploadBuffer(pMeshData->NumVertices * sizeof(FloatVector4), &pVertexBuffer);
             FloatVector4 *pVertexPos = reinterpret_cast<FloatVector4 *>(pVertexBuffer->Data());
 
@@ -272,7 +272,7 @@ Result GEMAPI CreateGraphicsDevice12(CCanvas *pCanvas, CGraphicsDevice **ppGraph
 }
 
 //------------------------------------------------------------------------------------------------
-CUploadBuffer12::CUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size) :
+CGraphicsUploadBuffer12::CGraphicsUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size) :
     m_pResource(pResource),
     m_OffsetToStart(OffsetToStart)
 {
@@ -284,7 +284,7 @@ CUploadBuffer12::CUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void *) CUploadBuffer12::Data()
+GEMMETHODIMP_(void *) CGraphicsUploadBuffer12::Data()
 {
     return m_pData;
 }

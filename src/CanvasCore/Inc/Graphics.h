@@ -98,7 +98,7 @@ public:
         CObjectBase(pCanvas)
     {}
     GEMMETHOD(RenderFrame)() = 0;
-    GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) = 0;
+    GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CGraphicsUploadBuffer **ppUploadBuffer) = 0;
 };
 
 }
