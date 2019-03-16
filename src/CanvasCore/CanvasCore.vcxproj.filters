@@ -72,9 +72,6 @@
     <ClInclude Include="Inc\Model.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Inc\NamedObject.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Inc\Object.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -91,6 +88,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Inc\Transform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Inc\Name.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
