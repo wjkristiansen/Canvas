@@ -37,7 +37,7 @@
 using namespace Canvas;
 using namespace Gem;
 
-#include "NamedObject.h"
+#include "Name.h"
 #include "Object.h"
 #include "Camera.h"
 #include "Graphics.h"
