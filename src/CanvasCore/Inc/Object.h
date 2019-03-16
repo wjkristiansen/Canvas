@@ -1,5 +1,5 @@
 //================================================================================================
-// CanvasObject
+// Object
 //================================================================================================
 
 #pragma once
@@ -85,13 +85,13 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-class CCanvasObjectBase :
+class CObjectBase :
     public CGenericBase
 {
 public:
     class CCanvas *m_pCanvas; // Weak pointer
 
-    TAutoListNode<TStaticPtr<CCanvasObjectBase>> m_OutstandingNode;
+    TAutoListNode<TStaticPtr<CObjectBase>> m_OutstandingNode;
 
-    CCanvasObjectBase(class CCanvas *pCanvas);
+    CObjectBase(class CCanvas *pCanvas);
 };

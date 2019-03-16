@@ -42,3 +42,4 @@ public:
     static UINT64 Nanoseconds(UINT64 Ticks) { return Ticks * 1000000000 / m_Frequency; }
     static double DPSeconds(UINT64 Ticks) { return Ticks * m_InvFreq; }
 };
+

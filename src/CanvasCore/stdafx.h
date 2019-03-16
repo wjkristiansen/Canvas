@@ -32,21 +32,26 @@
 #include <CanvasMath.hpp>
 #include <Canvas.h>
 
-#include <SlimLog.h>
+#include "SlimLog.h"
 
 using namespace Canvas;
 using namespace Gem;
 
-#include "CanvasObject.h"
-#include "NamedObject.h"
-#include "Transform.h"
-#include "SceneGraph.h"
+#include "Name.h"
+#include "Object.h"
 #include "Camera.h"
+#include "Graphics.h"
 #include "Light.h"
 #include "Model.h"
 #include "Scene.h"
-#include "CanvasGraphics.h"
+#include "DataSource.h"
+#include "Transform.h"
+#include "SceneGraph.h"
+#include "Timeline.h"
 #include "Timer.h"
+#include "Logger.h"
 #include "CanvasCore.h"
+
+#include "Object.inl"
 
 #include "CanvasGraphics12.h"

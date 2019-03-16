@@ -70,11 +70,11 @@ void CCanvas::ReportObjectLeaks()
     for (auto pNode = m_OutstandingObjects.GetFirst(); pNode != m_OutstandingObjects.GetEnd(); pNode = pNode->GetNext())
     {
         std::wostringstream ostr;
-        CCanvasObjectBase *pObject = pNode->Ptr();
+        CObjectBase *pObject = pNode->Ptr();
 
         std::wcout << L"Leaked object: ";
         //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
-        XObjectName *pObjectName;
+        XName *pObjectName;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pObjectName))))
         {
             pObjectName->Release();

@@ -8,7 +8,7 @@ using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
 CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas, PCWSTR szName) :
-    CCanvasObjectBase(pCanvas),
+    CObjectBase(pCanvas),
     m_Transform(this),
     m_ObjectName(this, szName, pCanvas)
 {
@@ -16,7 +16,7 @@ CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas, PCWSTR szName) :
 
 //------------------------------------------------------------------------------------------------
 CScene::CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
-    CCanvasObjectBase(pCanvas),
+    CObjectBase(pCanvas),
     m_ObjectName(this, szName, pCanvas) // throw(Gem::GemError)
 {
     TGemPtr<XSceneGraphNode> pNode;
@@ -35,7 +35,7 @@ GEMMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **ppU
         return Result::Success;
     }
 
-    if (XObjectName::IId == iid)
+    if (XName::IId == iid)
     {
         return m_ObjectName.InternalQueryInterface(iid, ppUnk);
     }
