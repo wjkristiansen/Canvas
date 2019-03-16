@@ -12,7 +12,8 @@ namespace Canvas
 // Manages synchronization with other command contexts and
 // the CPU.
 // In D3D12, this wraps a command queue and a pool of command lists and command allocators.
-class CCommandContext :
+// In D3D11, this is wraps an ID3D11DeviceContext
+class CGraphicsCommandContext :
     public TGeneric<CGenericBase>
 {
 
@@ -21,7 +22,7 @@ class CCommandContext :
 
 //------------------------------------------------------------------------------------------------
 // Batches up work for submission to the GPU
-class CCommandStream :
+class CGraphicsCommandStream :
     public TGeneric<CGenericBase>
 {
 
@@ -31,8 +32,8 @@ class CCommandStream :
 // Buffers that are CPU-writable and GPU readable.
 // Typically used for uploading data.  May also be used for constant
 // data, vertex buffers or index buffers depending on access frequency.
-// GPU access to these is not as fast as CBuffer.
-class CUploadBuffer :
+// GPU access to these is not as fast as CGraphicsBuffer.
+class CGraphicsUploadBuffer :
     public TGeneric<CGenericBase>
 {
 public:
@@ -41,9 +42,8 @@ public:
 
 //------------------------------------------------------------------------------------------------
 // Buffers that are GPU accessible only.  Typically
-// GPU reads from CBuffer data is faster than CUploadBuffer data.
-// CBuffers are stateful.
-class CBuffer :
+// GPU reads from CGraphicsBuffer data is faster than CUploadBuffer data.
+class CGraphicsBuffer :
     public TGeneric<CGenericBase>
 {
 

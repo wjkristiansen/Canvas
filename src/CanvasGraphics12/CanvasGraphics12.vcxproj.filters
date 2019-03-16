@@ -21,7 +21,7 @@
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="CanvasGraphics12.h">
+    <ClInclude Include="Inc\CanvasGraphics12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
