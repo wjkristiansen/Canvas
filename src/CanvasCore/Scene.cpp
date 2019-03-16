@@ -35,7 +35,7 @@ GEMMETHODIMP CSceneGraphNode::InternalQueryInterface(InterfaceId iid, void **ppU
         return Result::Success;
     }
 
-    if (XObjectName::IId == iid)
+    if (XName::IId == iid)
     {
         return m_ObjectName.InternalQueryInterface(iid, ppUnk);
     }

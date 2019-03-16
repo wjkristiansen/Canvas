@@ -163,7 +163,7 @@ GEM_INTERFACE XIterator : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XObjectName : public Gem::XGeneric
+XName : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XObjectName);
 

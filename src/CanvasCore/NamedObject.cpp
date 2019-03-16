@@ -5,7 +5,7 @@
 #include "stdafx.h"
 
 //------------------------------------------------------------------------------------------------
-CObjectName::CObjectName(XGeneric *pOuterGeneric, PCWSTR szName, CCanvas *pCanvas) :
+CName::CName(XGeneric *pOuterGeneric, PCWSTR szName, CCanvas *pCanvas) :
     CInnerGenericBase(pOuterGeneric),
     m_Name(szName ? szName : L""),
     m_pCanvas(pCanvas)
@@ -17,7 +17,7 @@ CObjectName::CObjectName(XGeneric *pOuterGeneric, PCWSTR szName, CCanvas *pCanva
 }
 
 //------------------------------------------------------------------------------------------------
-CObjectName::~CObjectName()
+CName::~CName()
 {
     if (!m_Name.empty())
     {
@@ -26,7 +26,7 @@ CObjectName::~CObjectName()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CObjectName::SetName(PCWSTR szName)
+GEMMETHODIMP CName::SetName(PCWSTR szName)
 {
     try
     {
@@ -46,7 +46,7 @@ GEMMETHODIMP CObjectName::SetName(PCWSTR szName)
     }
     catch (std::bad_alloc &)
     {
-        m_pCanvas->Logger().LogErrorF(L"Out of memory: CObjectName::SetName: szName = %s", szName);
+        m_pCanvas->Logger().LogErrorF(L"Out of memory: CName::SetName: szName = %s", szName);
         return Result::OutOfMemory;
     }
 
