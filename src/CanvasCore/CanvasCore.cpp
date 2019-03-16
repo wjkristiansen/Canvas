@@ -74,7 +74,7 @@ void CCanvas::ReportObjectLeaks()
 
         std::wcout << L"Leaked object: ";
         //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
-        XObjectName *pObjectName;
+        XName *pObjectName;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pObjectName))))
         {
             pObjectName->Release();

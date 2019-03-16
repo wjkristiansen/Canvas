@@ -7,17 +7,17 @@
 class CCanvas;
 
 //------------------------------------------------------------------------------------------------
-class CObjectName :
-    public XObjectName,
+class CName :
+    public XName,
     public CInnerGenericBase
 {
 public:
     std::wstring m_Name;
     CCanvas *m_pCanvas; // Weak pointer
 
-    CObjectName(XGeneric *pOuterGeneric, PCWSTR szName, CCanvas *pCanvas);
+    CName(XGeneric *pOuterGeneric, PCWSTR szName, CCanvas *pCanvas);
 
-    virtual ~CObjectName();
+    virtual ~CName();
 
     GEMMETHOD_(PCWSTR, GetName)() final
     {
@@ -28,7 +28,7 @@ public:
 
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
-        if (XObjectName::IId == iid)
+        if (XName::IId == iid)
         {
             *ppObj = this;
             AddRef();

@@ -11,7 +11,7 @@ class CScene :
 {
 public:
     TGemPtr<XSceneGraphNode> m_pRootSceneGraphNode;
-    TInnerGeneric<CObjectName> m_ObjectName;
+    TInnerGeneric<CName> m_ObjectName;
 
     CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName);
 
@@ -24,7 +24,7 @@ public:
             return Result::Success;
         }
 
-        if (XObjectName::IId == iid)
+        if (XName::IId == iid)
         {
             return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }

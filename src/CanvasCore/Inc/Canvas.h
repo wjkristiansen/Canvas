@@ -54,7 +54,7 @@ public:
 
     ~CCanvas();
 
-    std::map<std::wstring, CObjectName *> m_ObjectNames;
+    std::map<std::wstring, CName *> m_ObjectNames;
     struct Sentinel {};
     TAutoList<TStaticPtr<CCanvasObjectBase>> m_OutstandingObjects;
 

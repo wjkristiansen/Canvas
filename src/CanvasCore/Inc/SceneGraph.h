@@ -10,7 +10,7 @@ class CSceneGraphNode :
     public CCanvasObjectBase
 {
 public:
-    TInnerGeneric<CObjectName> m_ObjectName;
+    TInnerGeneric<CName> m_ObjectName;
     TInnerGeneric<CTransform> m_Transform;
 
     using _ListType = std::vector<TGemPtr<CSceneGraphNode>>;
