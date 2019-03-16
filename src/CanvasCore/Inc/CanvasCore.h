@@ -56,7 +56,7 @@ public:
 
     std::map<std::wstring, CName *> m_ObjectNames;
     struct Sentinel {};
-    TAutoList<TStaticPtr<CCanvasObjectBase>> m_OutstandingObjects;
+    TAutoList<TStaticPtr<CObjectBase>> m_OutstandingObjects;
 
     GEMMETHOD_(int, SetLogCategoryMask)(int Mask)
     {

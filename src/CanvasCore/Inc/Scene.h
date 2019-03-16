@@ -7,7 +7,7 @@
 //------------------------------------------------------------------------------------------------
 class CScene :
     public XScene,
-    public CCanvasObjectBase
+    public CObjectBase
 {
 public:
     TGemPtr<XSceneGraphNode> m_pRootSceneGraphNode;

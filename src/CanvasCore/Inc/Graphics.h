@@ -91,11 +91,11 @@ class CDescriptorHeap :
 // Abstract graphics device class
 class CGraphicsDevice :
     public XGraphicsDevice,
-    public CCanvasObjectBase
+    public CObjectBase
 {
 public:
     CGraphicsDevice(CCanvas *pCanvas) :
-        CCanvasObjectBase(pCanvas)
+        CObjectBase(pCanvas)
     {}
     GEMMETHOD(RenderFrame)() = 0;
     GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer) = 0;

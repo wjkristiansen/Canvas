@@ -5,7 +5,7 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-inline CCanvasObjectBase::CCanvasObjectBase(CCanvas *pCanvas) :
+inline CObjectBase::CObjectBase(CCanvas *pCanvas) :
     CGenericBase(),
     m_pCanvas(pCanvas),
     m_OutstandingNode(pCanvas->m_OutstandingObjects.GetLast(), this)
