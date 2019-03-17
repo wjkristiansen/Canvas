@@ -25,7 +25,7 @@ public:
     Result Initialize(HWND hWnd, bool Windowed);
 
     GEMMETHOD(RenderFrame)() final;
-    GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) final;
+    GEMMETHOD(CreateStaticMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) final;
     GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) final;
     GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial);
     GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight);

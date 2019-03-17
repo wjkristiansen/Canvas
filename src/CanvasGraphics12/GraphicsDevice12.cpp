@@ -198,27 +198,88 @@ GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CGraphi
 
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::CreateMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
+// Static mesh vertex data uses 16 32-bit floats (size = 512 bytes):
+// -------------------------------------------------
+// |     PosX      |     PosY      |     PosZ      |
+// -------------------------------------------------
+// |    NormX      |    NormY      |    NormZ      |
+// -------------------------------------------------
+// |      U0       |      V0       |
+// ---------------------------------
+// |      U1       |      V1       |
+// ---------------------------------
+// |      U2       |      V2       |
+// ---------------------------------
+// |      U3       |      V3       |
+// ---------------------------------
+// |   Material    |     Pad       |
+// ---------------------------------
+//
+// Vertex data does not use per-vertex colors.  All color data
+// comes from the material.
+//
+// Bone indices from the source mesh are ignored.  Use
+// CreateSkinMesh for meshes with bone weights.
+struct Vertex
+{
+    float Position[3];
+    float Normal[3];
+    float TexCoords[4][2];
+    int MaterialId;
+    int Pad; // Power of two in size
+};
+
+GEMMETHODIMP CGraphicsDevice12::CreateStaticMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
 {
     try
     {
         if (pMeshData->pVertices)
         {
+            UINT64 BufferSize = sizeof(Vertex) * pMeshData->NumVertices;
             TGemPtr<CGraphicsUploadBuffer> pVertexBuffer;
-            AllocateUploadBuffer(pMeshData->NumVertices * sizeof(FloatVector4), &pVertexBuffer);
-            FloatVector4 *pVertexPos = reinterpret_cast<FloatVector4 *>(pVertexBuffer->Data());
+            AllocateUploadBuffer(BufferSize, &pVertexBuffer);
+            Vertex *pVertices = reinterpret_cast<Vertex *>(pVertexBuffer->Data());
 
             // Copy the vertex data into the buffer, converting from float3 to float4 format
             for (UINT i = 0; i < pMeshData->NumVertices; ++i)
             {
-                const FloatVector3 &SrcPos = pMeshData->pVertices[i];
-                pVertexPos[i] = FloatVector4(SrcPos[0], SrcPos[1], SrcPos[2], 0.f);
+                pVertices[i].Position[0] = pMeshData->pVertices[i][0];
+                pVertices[i].Position[1] = pMeshData->pVertices[i][1];
+                pVertices[i].Position[2] = pMeshData->pVertices[i][2];
+
+                if (pMeshData->pNormals)
+                {
+                    pVertices[i].Normal[0] = pMeshData->pNormals[i][0];
+                    pVertices[i].Normal[1] = pMeshData->pNormals[i][1];
+                    pVertices[i].Normal[2] = pMeshData->pNormals[i][2];
+                }
+                else
+                {
+                    // Material needs to handle zero-length normal
+                    pVertices[i].Normal[0] = 0;
+                    pVertices[i].Normal[1] = 0;
+                    pVertices[i].Normal[2] = 0;
+                }
+
+                if (pMeshData->pTextureUVs[i])
+                {
+                    for (UINT j = 0; j < 4; ++j)
+                    {
+                        pVertices[i].TexCoords[j][0] = pMeshData->pTextureUVs[i][j][0];
+                        pVertices[i].TexCoords[j][1] = pMeshData->pTextureUVs[i][j][1];
+                    }
+                }
+                else
+                {
+                    // Set all texture coordinates to zero
+                    ZeroMemory(pVertices[i].TexCoords, sizeof(pVertices[i].TexCoords));
+                }
             }
         }
     }
     catch (_com_error &e)
     {
-        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::CreateMesh: HRESULT 0x%08x", e.Error());
+        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
     return Result::Success;
