@@ -49,7 +49,7 @@ enum CanvasIId
     CanvasIId_XAmination = 12U,
     CanvasIId_XSkeleton = 13U,
     CanvasIId_XIterator = 14U,
-    CanvasIId_XObjectName = 15U,
+    CanvasIId_XName = 15U,
     CanvasIId_XModel = 16U,
     CanvasIId_XGraphicsDevice = 17U,
 };
@@ -165,7 +165,7 @@ GEM_INTERFACE XIterator : public Gem::XGeneric
 GEM_INTERFACE
 XName : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XObjectName);
+    GEM_INTERFACE_DECLARE(CanvasIId_XName);
 
     GEMMETHOD_(PCWSTR, GetName)() = 0;
 };
@@ -176,7 +176,7 @@ XGraphicsDevice : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
 
-    GEMMETHOD(CreateMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
+    GEMMETHOD(CreateStaticMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
     GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) = 0;
     GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) = 0;
     GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight) = 0;

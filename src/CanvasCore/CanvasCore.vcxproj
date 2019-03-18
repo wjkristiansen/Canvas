@@ -201,9 +201,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CanvasCore.cpp" />
-    <ClCompile Include="CanvasObject.cpp" />
+    <ClCompile Include="Object.cpp" />
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="NamedObject.cpp" />
+    <ClCompile Include="Name.cpp" />
     <ClCompile Include="Scene.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
