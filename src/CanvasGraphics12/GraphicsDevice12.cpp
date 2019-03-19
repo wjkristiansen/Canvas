@@ -261,18 +261,18 @@ GEMMETHODIMP CGraphicsDevice12::CreateStaticMesh(const MESH_DATA *pMeshData, XMe
                     pVertices[i].Normal[2] = 0;
                 }
 
-                if (pMeshData->pTextureUVs[i])
+                for (UINT j = 0; j < 4; ++j)
                 {
-                    for (UINT j = 0; j < 4; ++j)
+                    if (pMeshData->pTextureUVs[j])
                     {
-                        pVertices[i].TexCoords[j][0] = pMeshData->pTextureUVs[i][j][0];
-                        pVertices[i].TexCoords[j][1] = pMeshData->pTextureUVs[i][j][1];
+                        pVertices[i].TexCoords[j][0] = pMeshData->pTextureUVs[j][i][0];
+                        pVertices[i].TexCoords[j][1] = pMeshData->pTextureUVs[j][i][1];
                     }
-                }
-                else
-                {
-                    // Set all texture coordinates to zero
-                    ZeroMemory(pVertices[i].TexCoords, sizeof(pVertices[i].TexCoords));
+                    else
+                    {
+                        // Set all texture coordinates to zero
+                        ZeroMemory(pVertices[i].TexCoords, sizeof(pVertices[i].TexCoords));
+                    }
                 }
             }
         }
