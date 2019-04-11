@@ -123,6 +123,47 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(CANVAS_GRAPHICS_OPTIONS *pGraphicsOpt
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
+{
+    Logger().LogMessage(L"CCanvas::CreateGraphicsDevice");
+    Result result = Result::NotImplemented;
+
+    try
+    {
+        CModule Module(LoadLibraryExW(szDLLPath, NULL, 0));
+
+        if (Module.Get() == NULL)
+        {
+            throw(std::exception("LoadLibrary"));
+        }
+
+        CreateCanvasGraphicsDevice pCreate = reinterpret_cast<CreateCanvasGraphicsDevice>(
+            GetProcAddress(Module.Get(), "CreateCanvasGraphicsDevice"));
+        if (pCreate == nullptr)
+        {
+            throw(std::exception("GetProcAddress"));
+        }
+
+        Gem::TGemPtr<XGraphicsDevice> pGraphicsDevice;
+        ThrowGemError(pCreate(this, &pGraphicsDevice));
+
+        result = Result::Success;
+    }
+    catch(const std::exception &e)
+    {
+        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %S", e.what());
+        result = Result::NotFound;
+    }
+    catch (const Gem::GemError &e)
+    {
+        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %s", Gem::ResultToString(e.Result()));
+        result = Result::NotFound;
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
 // Updates application logic and submits work to the graphics engine
 GEMMETHODIMP CCanvas::FrameTick()
 {

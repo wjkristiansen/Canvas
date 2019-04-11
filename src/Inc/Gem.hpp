@@ -40,6 +40,37 @@ enum class Result : UINT32
 };
 
 //------------------------------------------------------------------------------------------------
+inline PCWSTR ResultToString(Result res)
+{
+    switch (res)
+    {
+    case Result::Success:
+        return L"Success";
+    case Result::End:
+        return L"End";
+    case Result::Fail:
+        return L"Fail";
+    case Result::InvalidArg:
+        return L"IncalidArg";
+    case Result::NotFound:
+        return L"NotFound";
+    case Result::OutOfMemory:
+        return L"OutOfMemory";
+    case Result::NoInterface:
+        return L"NoInterface";
+    case Result::BadPointer:
+        return L"BadPointer";
+    case Result::NotImplemented:
+        return L"NotImplemented";
+    case Result::Unavailable:
+        return L"Unavailable";
+    case Result::Uninitialized:
+        return L"Uninitialized";
+    }
+    return L"(Unknown)";
+}
+
+//------------------------------------------------------------------------------------------------
 inline bool Succeeded(Result result)
 {
     return result < Result::Fail;
