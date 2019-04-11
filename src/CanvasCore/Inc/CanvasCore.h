@@ -5,6 +5,32 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
+class CModule
+{
+    HMODULE m_hModule = NULL;
+
+public:
+    CModule() = default;
+    explicit CModule(HMODULE hModule) :
+        m_hModule(hModule) {}
+    CModule(CModule &&o) :
+        m_hModule(std::move(o.m_hModule))
+    {
+        o.m_hModule = NULL;
+    }
+    CModule(const CModule &o) = delete;
+    ~CModule()
+    {
+        if (m_hModule)
+        {
+            FreeLibrary(m_hModule);
+        }
+    }
+
+    HMODULE Get() const { return m_hModule; }
+};
+
+//------------------------------------------------------------------------------------------------
 inline Result HResultToResult(HRESULT hr)
 {
     switch (hr)
@@ -41,6 +67,7 @@ class CCanvas :
 {
     std::mutex m_Mutex;
     CCanvasLogger m_Logger;
+    HMODULE m_hGraphicsModule = NULL;
 
     CTimer m_FrameTimer;
     UINT64 m_FrameEndTimeLast = 0;
@@ -80,6 +107,7 @@ public:
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
 
     GEMMETHOD(CreateGraphicsDevice)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) final;
+    GEMMETHOD(CreateGraphicsDevice)(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) final;
     GEMMETHOD(FrameTick)() final;
 
     Result SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice);
@@ -92,3 +120,4 @@ public:
     TGemPtr<class CGraphicsDevice> m_pGraphicsDevice;
 };
 
+typedef Gem::Result (*CreateCanvasGraphicsDevice)(_In_ XCanvas *pCanvas, _Outptr_ XGraphicsDevice **pGraphicsDevice);
