@@ -198,8 +198,6 @@ GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CGraphi
 
 
 //------------------------------------------------------------------------------------------------
-// Static mesh vertex data uses 16 32-bit floats (size = 512 bytes):
-// -------------------------------------------------
 // |     PosX      |     PosY      |     PosZ      |
 // -------------------------------------------------
 // |    NormX      |    NormY      |    NormZ      |
@@ -209,10 +207,6 @@ GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CGraphi
 // |      U1       |      V1       |
 // ---------------------------------
 // |      U2       |      V2       |
-// ---------------------------------
-// |      U3       |      V3       |
-// ---------------------------------
-// |   Material    |     Pad       |
 // ---------------------------------
 //
 // Vertex data does not use per-vertex colors.  All color data
@@ -224,9 +218,7 @@ struct Vertex
 {
     float Position[3];
     float Normal[3];
-    float TexCoords[4][2];
-    int MaterialId;
-    int Pad; // Power of two in size
+    float TexCoords[3][2];
 };
 
 GEMMETHODIMP CGraphicsDevice12::CreateStaticMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
