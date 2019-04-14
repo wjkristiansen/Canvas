@@ -27,6 +27,15 @@ public:
         }
     }
 
+    CModule &operator=(CModule &&o)
+    {
+        m_hModule = o.m_hModule;
+        o.m_hModule = NULL;
+        return *this;
+    }
+
+    CModule &operator=(const CModule &o) = delete;
+
     HMODULE Get() const { return m_hModule; }
 };
 
@@ -67,7 +76,7 @@ class CCanvas :
 {
     std::mutex m_Mutex;
     CCanvasLogger m_Logger;
-    HMODULE m_hGraphicsModule = NULL;
+    CModule m_GraphicsModule;
 
     CTimer m_FrameTimer;
     UINT64 m_FrameEndTimeLast = 0;
@@ -106,11 +115,8 @@ public:
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) final;
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
 
-    GEMMETHOD(CreateGraphicsDevice)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) final;
     GEMMETHOD(CreateGraphicsDevice)(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) final;
     GEMMETHOD(FrameTick)() final;
-
-    Result SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice);
 
     void ReportObjectLeaks();
 
@@ -120,4 +126,4 @@ public:
     TGemPtr<class CGraphicsDevice> m_pGraphicsDevice;
 };
 
-typedef Gem::Result (*CreateCanvasGraphicsDevice)(_In_ XCanvas *pCanvas, _Outptr_ XGraphicsDevice **pGraphicsDevice);
+typedef Result (*CreateCanvasGraphicsDeviceProc)(_In_ CCanvas *pCanvas, _Outptr_ CGraphicsDevice **pGraphicsDevice, HWND hWnd);

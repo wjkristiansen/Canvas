@@ -4,6 +4,6 @@
 
 #pragma once
 
-extern Result GEMAPI CreateGraphicsDevice12(CCanvas *pCanvas, CGraphicsDevice **ppGraphicsDevice, HWND hWnd);
+extern Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_ CGraphicsDevice **pGraphicsDevice, HWND hWnd);
 
 

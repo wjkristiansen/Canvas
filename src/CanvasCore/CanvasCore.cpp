@@ -121,23 +121,6 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutput
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGraphicsDevice(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
-{
-    Result result = Result::NotImplemented;
-
-    Logger().LogMessage(L"CCanvas::CreateGraphicsDevice");
-
-    switch (pGraphicsOptions->Subsystem)
-    {
-    case GraphicsSubsystem::D3D12:
-        result = SetupD3D12(pGraphicsOptions, hWnd, ppGraphicsDevice);
-        break;
-    }
-
-    return result;
-}
-
-//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
     Logger().LogMessage(L"CCanvas::CreateGraphicsDevice");
@@ -152,17 +135,26 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_
             throw(std::exception("LoadLibrary"));
         }
 
-        CreateCanvasGraphicsDevice pCreate = reinterpret_cast<CreateCanvasGraphicsDevice>(
+        CreateCanvasGraphicsDeviceProc pCreate = reinterpret_cast<CreateCanvasGraphicsDeviceProc>(
             GetProcAddress(Module.Get(), "CreateCanvasGraphicsDevice"));
         if (pCreate == nullptr)
         {
             throw(std::exception("GetProcAddress"));
         }
 
-        Gem::TGemPtr<XGraphicsDevice> pGraphicsDevice;
-        ThrowGemError(pCreate(this, &pGraphicsDevice));
+        Gem::TGemPtr<CGraphicsDevice> pGraphicsDevice;
+        ThrowGemError(pCreate(this, &pGraphicsDevice, hWnd));
+        Gem::TGemPtr<XGraphicsDevice> pXGraphicsDevice = pGraphicsDevice.Get();
+
+        if (ppGraphicsDevice)
+        {
+            *ppGraphicsDevice = pXGraphicsDevice.Get();
+        }
+        m_pGraphicsDevice = pGraphicsDevice;
+        pGraphicsDevice.Detach();
 
         result = Result::Success;
+        m_GraphicsModule = std::move(Module);
     }
     catch(const std::exception &e)
     {
@@ -213,37 +205,6 @@ GEMMETHODIMP CCanvas::FrameTick()
     Logger().LogInfo(L"End CCanvas::FrameTick");
 
     return result;
-}
-
-//------------------------------------------------------------------------------------------------
-Result CCanvas::SetupD3D12(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
-{
-    if (ppGraphicsDevice)
-    {
-        *ppGraphicsDevice = nullptr;
-    }
-
-    TGemPtr<CGraphicsDevice> pGraphicsDevice;
-    try
-    {
-        Logger().LogMessage(L"CCanvas::SetupD3D12");
-        ThrowGemError(CreateGraphicsDevice12(this, &pGraphicsDevice, hWnd));
-
-        if (ppGraphicsDevice)
-        {
-            pGraphicsDevice->AddRef();
-            *ppGraphicsDevice = pGraphicsDevice;
-        }
-    }
-    catch (GemError &gomError)
-    {
-        Logger().LogError(L"ERROR in CCanvas::SetupD3D12");
-        return gomError.Result();
-    }
-
-    m_pGraphicsDevice = std::move(pGraphicsDevice);
-
-    return Result::Success;
 }
 
 
