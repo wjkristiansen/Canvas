@@ -296,7 +296,7 @@ GEMMETHODIMP CGraphicsDevice12::CreateLight(const LIGHT_DATA *pLightData, XLight
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateGraphicsDevice12(CCanvas *pCanvas, CGraphicsDevice **ppGraphicsDevice, HWND hWnd)
+Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_ CGraphicsDevice **ppGraphicsDevice, HWND hWnd)
 {
     *ppGraphicsDevice = nullptr;
 
