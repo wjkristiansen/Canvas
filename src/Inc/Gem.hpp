@@ -69,7 +69,7 @@ public:
             m_p->AddRef();
         }
     }
-    TGemPtr(TGemPtr &&o) :
+    TGemPtr(TGemPtr &&o) noexcept :
         m_p(o.m_p)
     {
         o.m_p = nullptr;
@@ -126,7 +126,7 @@ public:
         return *this;
     }
 
-    TGemPtr &operator=(TGemPtr &&o)
+    TGemPtr &operator=(TGemPtr &&o) noexcept
     {
         if (m_p != o.m_p)
         {

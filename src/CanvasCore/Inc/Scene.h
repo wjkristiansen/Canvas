@@ -7,10 +7,10 @@
 //------------------------------------------------------------------------------------------------
 class CScene :
     public XScene,
-    public CObjectBase
+    public CObjectBase,
+    public CSceneGraphNode
 {
 public:
-    TGemPtr<XSceneGraphNode> m_pRootSceneGraphNode;
     TInnerGeneric<CName> m_ObjectName;
 
     CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName);
@@ -32,8 +32,8 @@ public:
         return __super::InternalQueryInterface(iid, ppObj);
     }
 
-    GEMMETHOD(GetRootSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj)
-    {
-        return m_pRootSceneGraphNode->QueryInterface(iid, ppObj);
-    }
+    //GEMMETHOD(GetRootSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj)
+    //{
+    //    return m_pRootSceneGraphNode->QueryInterface(iid, ppObj);
+    //}
 };

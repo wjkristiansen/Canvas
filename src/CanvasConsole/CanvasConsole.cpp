@@ -77,23 +77,6 @@ int main()
     TGemPtr<XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
-    TGemPtr<XSceneGraphNode> pTransformNode1;
-    result = pCanvas->CreateSceneGraphNode(GEM_IID_PPV_ARGS(&pTransformNode1), L"TransformNode1");
-
-    TGemPtr<XSceneGraphNode> pTransformNode2;
-    result = pCanvas->CreateSceneGraphNode(GEM_IID_PPV_ARGS(&pTransformNode2), L"TransformNode2");
-
-    TGemPtr<XSceneGraphNode> pTransformNode3;
-    result = pCanvas->CreateSceneGraphNode(GEM_IID_PPV_ARGS(&pTransformNode3), L"TransformNode3");
-
-    TGemPtr<XSceneGraphNode> pTransformNode4;
-    result = pCanvas->CreateSceneGraphNode(GEM_IID_PPV_ARGS(&pTransformNode4), L"TransformNode4");
-
-    pRootSceneGraphNode->AddChild(pTransformNode1);
-    pTransformNode1->AddChild(pTransformNode2);
-    pTransformNode1->AddChild(pTransformNode3);
-    pRootSceneGraphNode->AddChild(pTransformNode4);
-
     DumpNode(pRootSceneGraphNode, L"");
 
     TGemPtr<XGeneric> pGeneric1;

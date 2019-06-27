@@ -6,22 +6,22 @@
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public XLight,
-    public CGenericBase
+    public CSceneGraphNode,
+    public XLight
 {
 public:
-    CLight() :
-        CGenericBase() {}
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    CLight(CCanvas* pCanvas, PCWSTR szName) :
+        CSceneGraphNode(pCanvas) {}
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (XLight::IId == iid)
         {
             *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
+            AddRef();
             return Result::Success;
         }
 
-        return __super::InternalQueryInterface(iid, ppObj);
+        return CSceneGraphNode::InternalQueryInterface(iid, ppObj);
     }
 };
 
