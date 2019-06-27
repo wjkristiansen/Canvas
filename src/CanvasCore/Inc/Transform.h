@@ -5,8 +5,7 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-class CTransform :
-    public CGenericBase
+class CTransform
 {
     CTranslationDataSource *m_pTranslationDataSource = nullptr;
     CRotationDataSource *m_pRotationDataSource = nullptr;

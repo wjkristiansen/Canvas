@@ -7,7 +7,6 @@
 //------------------------------------------------------------------------------------------------
 class CScene :
     public XScene,
-    public CObjectBase,
     public CSceneGraphNode
 {
 public:
@@ -24,12 +23,19 @@ public:
             return Result::Success;
         }
 
+        if (XSceneGraphNode::IId == iid)
+        {
+            *ppObj = reinterpret_cast<XSceneGraphNode *>(this);
+            AddRef();
+            return Result::Success;
+        }
+
         if (XName::IId == iid)
         {
             return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
 
-        return __super::InternalQueryInterface(iid, ppObj);
+        return CSceneGraphNode::InternalQueryInterface(iid, ppObj);
     }
 
     //GEMMETHOD(GetRootSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj)
