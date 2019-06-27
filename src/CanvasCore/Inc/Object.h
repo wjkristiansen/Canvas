@@ -32,6 +32,10 @@ class TAutoListNode : public _Base
     TAutoListNode *m_pNext;
     
 public:
+    TAutoListNode() = delete;
+    TAutoListNode(TAutoListNode&&) = default;
+    TAutoListNode(const TAutoListNode&) = delete;
+
     template<typename ... Args>
     TAutoListNode(TAutoListNode *pPrev, Args... args) :
         _Base(args...),
