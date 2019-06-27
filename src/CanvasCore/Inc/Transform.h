@@ -6,8 +6,7 @@
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
-    public XTransform,
-    public CInnerGenericBase
+    public CGenericBase
 {
     CTranslationDataSource *m_pTranslationDataSource = nullptr;
     CRotationDataSource *m_pRotationDataSource = nullptr;
@@ -17,19 +16,7 @@ class CTransform :
     inline static const FloatVector4 m_WorldUp = FloatVector4( 0.f, 1.f, 0.f, 0.f );
 
 public:
-    CTransform(XGeneric *pOuterObj) :
-        CInnerGenericBase(pOuterObj) {}
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
-    {
-        if (XTransform::IId == iid)
-        {
-            *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return __super::InternalQueryInterface(iid, ppObj);
-    }
+    CTransform() {}
 
     GEMMETHOD_(RotationType, GetRotationType)() const final
     {
