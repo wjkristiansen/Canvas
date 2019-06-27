@@ -5,7 +5,8 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-class CTransform
+template<class _Base>
+class CTransform : public _Base
 {
     CTranslationDataSource *m_pTranslationDataSource = nullptr;
     CRotationDataSource *m_pRotationDataSource = nullptr;

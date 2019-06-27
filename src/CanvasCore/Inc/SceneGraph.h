@@ -5,27 +5,12 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-class CSceneGraphNode :
-    public CTransform,
-    public CObjectBase
-{
-public:
-    using _ListType = std::vector<TGemPtr<XSceneGraphNode>>;
-    _ListType m_ChildList;
-
-    CSceneGraphNode(CCanvas *pCanvas);
-
-    GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
-    GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) final;
-};
-
-//------------------------------------------------------------------------------------------------
 class CSceneGraphNodeIterator :
     public XIterator,
     public CGenericBase
 {
 public:
-    using _ListType = CSceneGraphNode::_ListType;
+    using _ListType = std::vector<TGemPtr<XSceneGraphNode>>;
     _ListType::iterator m_it;
     _ListType& m_List;
 
@@ -102,3 +87,24 @@ public:
         return __super::InternalQueryInterface(iid, ppUnk);
     }
 };
+
+//------------------------------------------------------------------------------------------------
+template<class _Base>
+class CSceneGraphNode :
+    public CTransform<_Base>,
+    public CObjectBase
+{
+public:
+    using _ListType = CSceneGraphNodeIterator::_ListType;
+    _ListType m_ChildList;
+
+    CSceneGraphNode(CCanvas* pCanvas) :
+        CTransform<_Base>(),
+        CObjectBase(pCanvas)
+    {
+    }
+
+    GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;
+    GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator** ppIterator) final;
+};
+
