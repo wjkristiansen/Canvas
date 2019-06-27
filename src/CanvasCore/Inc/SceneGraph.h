@@ -6,7 +6,8 @@
 
 //------------------------------------------------------------------------------------------------
 class CSceneGraphNode :
-    public CTransform
+    public CTransform,
+    public CObjectBase
 {
 public:
     using _ListType = std::vector<TGemPtr<XSceneGraphNode>>;

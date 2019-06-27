@@ -231,7 +231,6 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD_(int, SetLogCategoryMask)(int Mask) = 0;
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
     GEMMETHOD(CreateGraphicsDevice)(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
@@ -279,7 +278,7 @@ XLight : public XSceneGraphNode
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XScene : public Gem::XGeneric
+XScene : public XSceneGraphNode
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XScene);
 
