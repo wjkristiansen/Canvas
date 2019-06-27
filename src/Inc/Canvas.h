@@ -142,63 +142,27 @@ struct LIGHT_DATA
 };
 
 //------------------------------------------------------------------------------------------------
-enum RotationType
-{
-    EulerXYZ,
-    EulerXZY,
-    EulerYXZ,
-    EulerYZX,
-    EulerZXY,
-    EulerZYX,
-    QuaternionWXYZ,
-    AxisAngle,
-};
-
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE
-XTransform : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XTransform);
-
-    GEMMETHOD_(RotationType, GetRotationType)() const = 0;
-    GEMMETHOD_(const FloatVector4&, GetRotation)() const = 0;
-    GEMMETHOD_(const FloatVector4&, GetTranslation)() const = 0;
-    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4& Rotation) = 0;
-    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector4& Translation) = 0;
-    GEMMETHOD(LookAt)(_In_ const FloatVector4& Location) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
 
-// Resets the iterator to the start of the collection
-GEMMETHOD(Reset)() = 0;
+    // Resets the iterator to the start of the collection
+    GEMMETHOD(Reset)() = 0;
 
-// Returns true if the the iterator is at the end of the collection
-GEMMETHOD_(bool, IsAtEnd)() = 0;
+    // Returns true if the the iterator is at the end of the collection
+    GEMMETHOD_(bool, IsAtEnd)() = 0;
 
-// Moves the iterator to the next element
-GEMMETHOD(MoveNext)() = 0;
+    // Moves the iterator to the next element
+    GEMMETHOD(MoveNext)() = 0;
 
-// Moves the iterator to the previous element
-GEMMETHOD(MovePrev)() = 0;
+    // Moves the iterator to the previous element
+    GEMMETHOD(MovePrev)() = 0;
 
-// QI's the current element (if exists)
-GEMMETHOD(Select)(Gem::InterfaceId iid, _Outptr_ void** ppObj) = 0;
-
-// Removes the current element and the iterator to the next element
-GEMMETHOD(Prune)() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE
-XSceneGraphNode : public XTransform
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
-    GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) = 0;
-    GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator** ppIterator) = 0;
+    // QI's the current element (if exists)
+    GEMMETHOD(Select)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    
+    // Removes the current element and the iterator to the next element
+    GEMMETHOD(Prune)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -255,7 +219,7 @@ XMesh : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XMeshInstance : public XSceneGraphNode
+XMeshInstance : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
 
@@ -264,25 +228,63 @@ XMeshInstance : public XSceneGraphNode
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XCamera : public XSceneGraphNode
+XCamera : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCamera);
 };
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XLight : public XSceneGraphNode
+XLight : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XLight);
 };
 
 //------------------------------------------------------------------------------------------------
+enum RotationType
+{
+    EulerXYZ,
+    EulerXZY,
+    EulerYXZ,
+    EulerYZX,
+    EulerZXY,
+    EulerZYX,
+    QuaternionWXYZ,
+    AxisAngle,
+};
+
+//------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XScene : public XSceneGraphNode
+XTransform : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XTransform);
+
+    GEMMETHOD_(RotationType, GetRotationType)() const = 0;
+    GEMMETHOD_(const FloatVector4 &, GetRotation)() const = 0;
+    GEMMETHOD_(const FloatVector4 &, GetTranslation)() const = 0;
+    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4 &Rotation) = 0;
+    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector4 &Translation) = 0;
+    GEMMETHOD(LookAt)(_In_ const FloatVector4 &Location) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
+XSceneGraphNode : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
+    GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
+    GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) = 0;
+
+    //GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
+    //GEMMETHOD_(void, SetCamera)(XCamera *pCamera) = 0;
+    //GEMMETHOD_(void, SetLight)(XLight *pLight) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
+XScene : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XScene);
-
-//    GEMMETHOD(GetRootSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 };
 
 }

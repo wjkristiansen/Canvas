@@ -6,8 +6,7 @@
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public XScene,
-    public CSceneGraphNode
+    public CSceneGraphNode<XScene>
 {
 public:
     TInnerGeneric<CName> m_ObjectName;
@@ -37,9 +36,4 @@ public:
 
         return CSceneGraphNode::InternalQueryInterface(iid, ppObj);
     }
-
-    //GEMMETHOD(GetRootSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj)
-    //{
-    //    return m_pRootSceneGraphNode->QueryInterface(iid, ppObj);
-    //}
 };

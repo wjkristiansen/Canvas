@@ -99,6 +99,9 @@
     <None Include="Inc\Object.inl">
       <Filter>Header Files</Filter>
     </None>
+    <None Include="Inc\SceneGraph.inl">
+      <Filter>Header Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header Files">

@@ -39,12 +39,12 @@ using namespace Gem;
 
 #include "Name.h"
 #include "Object.h"
-#include "Camera.h"
 #include "Graphics.h"
 #include "DataSource.h"
 #include "Transform.h"
 #include "SceneGraph.h"
 #include "Scene.h"
+#include "Camera.h"
 #include "Light.h"
 #include "Model.h"
 #include "Timeline.h"
@@ -53,5 +53,6 @@ using namespace Gem;
 #include "CanvasCore.h"
 
 #include "Object.inl"
+#include "SceneGraph.inl"
 
 #include "CanvasGraphics12.h"

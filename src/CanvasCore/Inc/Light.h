@@ -6,8 +6,7 @@
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public CSceneGraphNode,
-    public XLight
+    public CSceneGraphNode<XLight>
 {
 public:
     CLight(CCanvas* pCanvas, PCWSTR szName) :
