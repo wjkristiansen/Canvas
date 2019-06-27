@@ -85,12 +85,28 @@ struct CANVAS_GRAPHICS_OPTIONS
 };
 
 //------------------------------------------------------------------------------------------------
+struct TEXTURE_DATA
+{
+
+};
+
+//------------------------------------------------------------------------------------------------
+struct MATERIAL_DATA
+{
+    UIntVector4 TextureIndices;
+    FloatVector3 AmbientColor;
+    FloatVector3 DiffuseColor;
+    FloatVector3 SpecularColor;
+};
+
+//------------------------------------------------------------------------------------------------
 // An indexed triangle list with common material and texture attributes
 // The actual layout of pixels depends on the material
 struct MATERIAL_GROUP_DATA
 {
     UINT NumTriangles = 0;
    _In_count_(NumTriangles)  UIntVector3 *pTriangles = nullptr;
+   UINT MaterialIndex = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -104,18 +120,6 @@ struct MESH_DATA
     _In_opt_count_(NumVertices) FloatVector4 *pBoneWeights = nullptr;
     UINT NumMaterialGroups = 0;
     _In_count_(NumMaterialGroups) MATERIAL_GROUP_DATA *pMaterialGroups = nullptr;
-};
-
-//------------------------------------------------------------------------------------------------
-struct MATERIAL_DATA
-{
-
-};
-
-//------------------------------------------------------------------------------------------------
-struct TEXTURE_DATA
-{
-
 };
 
 //------------------------------------------------------------------------------------------------
@@ -230,7 +234,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
 
-    GEMMETHOD(CreateGraphicsDevice)(CANVAS_GRAPHICS_OPTIONS *pGraphicsOptions, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
+    GEMMETHOD(CreateGraphicsDevice)(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
 
