@@ -71,7 +71,7 @@ public:
         {
             return it->second->QueryInterface(iid, ppObj);
         }
-        
+
         *ppObj = nullptr;
 
         return Result::NotFound;
