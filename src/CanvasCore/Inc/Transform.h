@@ -48,4 +48,16 @@ public:
     {
         return Result::NotImplemented;
     }
+
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        if (XTransform::IId == iid)
+        {
+            *ppObj = reinterpret_cast<XTransform *>(this);
+            _Base::AddRef();
+            return Result::Success;
+        }
+
+        return Result::NoInterface;
+    }
 };

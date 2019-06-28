@@ -20,7 +20,7 @@ public:
             return Result::Success;
         }
 
-        return CSceneGraphNode::InternalQueryInterface(iid, ppObj);
+        return CSceneGraphNode<XLight>::InternalQueryInterface(iid, ppObj);
     }
 };
 
