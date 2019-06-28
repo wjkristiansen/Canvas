@@ -104,6 +104,18 @@ public:
     {
     }
 
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        if (XSceneGraphNode::IId == iid)
+        {
+            *ppObj = reinterpret_cast<XSceneGraphNode *>(this);
+            _Base::AddRef();
+            return Result::Success;
+        }
+
+        return CTransform<_Base>::InternalQueryInterface(iid, ppObj);
+    }
+
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;
     GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator** ppIterator) final;
 };

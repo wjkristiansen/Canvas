@@ -22,13 +22,6 @@ public:
             return Result::Success;
         }
 
-        if (XSceneGraphNode::IId == iid)
-        {
-            *ppObj = reinterpret_cast<XSceneGraphNode *>(this);
-            AddRef();
-            return Result::Success;
-        }
-
         if (XName::IId == iid)
         {
             return m_ObjectName.InternalQueryInterface(iid, ppObj);

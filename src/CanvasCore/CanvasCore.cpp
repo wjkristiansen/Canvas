@@ -45,6 +45,23 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
     catch(std::bad_alloc &)
     {
         Logger().LogError(L"Out of memory XCanvas::CreateScene");
+        *ppObj = nullptr;
+        return Result::OutOfMemory;
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName)
+{
+    try
+    {
+        TGemPtr<XSceneGraphNode> pNode;
+        pNode = new TGeneric<CSceneGraphNode<XSceneGraphNode>>(this);
+        return pNode->QueryInterface(iid, ppObj);
+    }
+    catch (std::bad_alloc &)
+    {
+        *ppObj = nullptr;
         return Result::OutOfMemory;
     }
 }
