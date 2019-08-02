@@ -109,7 +109,7 @@ public:
         if (XSceneGraphNode::IId == iid)
         {
             *ppObj = reinterpret_cast<XSceneGraphNode *>(this);
-            _Base::AddRef();
+            this->AddRef();
             return Result::Success;
         }
 
