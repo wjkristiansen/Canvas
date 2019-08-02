@@ -21,20 +21,6 @@ public:
             return Result::Success;
         }
 
-        if (XSceneGraphNode::IId == iid)
-        {
-            *ppObj = reinterpret_cast<XSceneGraphNode *>(this);
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        if (XTransform::IId == iid)
-        {
-            *ppObj = reinterpret_cast<XTransform *>(this);
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return __super::InternalQueryInterface(iid, ppObj);
+        return CSceneGraphNode<XCamera>::InternalQueryInterface(iid, ppObj);
     }
 };
