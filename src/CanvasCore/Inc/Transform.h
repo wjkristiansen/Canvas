@@ -54,7 +54,7 @@ public:
         if (XTransform::IId == iid)
         {
             *ppObj = reinterpret_cast<XTransform *>(this);
-            _Base::AddRef();
+            this->AddRef();
             return Result::Success;
         }
 
