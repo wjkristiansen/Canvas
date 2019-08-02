@@ -283,7 +283,7 @@ XSceneGraphNode : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XScene : public Gem::XGeneric
+XScene : public XSceneGraphNode
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XScene);
 };
