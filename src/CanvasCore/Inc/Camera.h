@@ -7,12 +7,11 @@
 
 //------------------------------------------------------------------------------------------------
 class CCamera :
-    public XCamera,
-    public CGenericBase
+    public CSceneGraphNode<XCamera>
 {
 public:
-    CCamera() :
-        CGenericBase() {}
+    CCamera(CCanvas *pCanvas) :
+        CSceneGraphNode<XCamera>(pCanvas) {}
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (XCamera::IId == iid)
@@ -22,6 +21,6 @@ public:
             return Result::Success;
         }
 
-        return __super::InternalQueryInterface(iid, ppObj);
+        return CSceneGraphNode<XCamera>::InternalQueryInterface(iid, ppObj);
     }
 };

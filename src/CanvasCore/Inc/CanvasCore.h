@@ -99,7 +99,7 @@ public:
         return m_Logger.SetCategoryMask(Mask);
     }
 
-    GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) _Ret_writes_maybenull_(ppObj)
     {
         std::unique_lock<std::mutex> Lock(m_Mutex);
         auto it = m_ObjectNames.find(szName);
@@ -107,7 +107,7 @@ public:
         {
             return it->second->QueryInterface(iid, ppObj);
         }
-
+        
         *ppObj = nullptr;
 
         return Result::NotFound;
@@ -116,7 +116,7 @@ public:
     // XCanvas methods
     GEMMETHOD(InternalQueryInterface)(Gem::InterfaceId iid, _Outptr_ void **ppObj);
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) final;
-    GEMMETHOD(CreateSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
+    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) final;
 
     GEMMETHOD(CreateGraphicsDevice)(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) final;
     GEMMETHOD(FrameTick)() final;

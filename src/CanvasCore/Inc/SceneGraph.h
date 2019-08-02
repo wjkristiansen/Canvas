@@ -5,56 +5,38 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-class CSceneGraphNode :
-    public XSceneGraphNode,
-    public CObjectBase
-{
-public:
-    TInnerGeneric<CName> m_ObjectName;
-    TInnerGeneric<CTransform> m_Transform;
-
-    using _ListType = std::vector<TGemPtr<CSceneGraphNode>>;
-    _ListType m_ChildList;
-
-    CSceneGraphNode(CCanvas *pCanvas, PCWSTR szName);
-
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk);
-    GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) final;
-    GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator **ppIterator) final;
-};
-
-//------------------------------------------------------------------------------------------------
 class CSceneGraphNodeIterator :
     public XIterator,
     public CGenericBase
 {
 public:
-    CSceneGraphNode::_ListType::iterator m_it;
-    TGemPtr<CSceneGraphNode> m_pNode;
+    using _ListType = std::vector<TGemPtr<XSceneGraphNode>>;
+    _ListType::iterator m_it;
+    _ListType& m_List;
 
-    CSceneGraphNodeIterator(CSceneGraphNode *pNode) :
-        m_pNode(pNode)
+    CSceneGraphNodeIterator(_ListType &List) :
+        m_List(List)
     {
-        m_it = pNode->m_ChildList.begin();
+        m_it = m_List.begin();
     }
 
     GEMMETHOD_(bool, IsAtEnd)() final
     {
-        return m_it == m_pNode->m_ChildList.end();
+        return m_it == m_List.end();
     }
 
     GEMMETHOD(Reset)() final
     {
-        m_it = m_pNode->m_ChildList.begin();
+        m_it = m_List.begin();
         return Result::Success;
     }
 
     GEMMETHOD(MoveNext)() final
     {
-        if (m_it != m_pNode->m_ChildList.end())
+        if (m_it != m_List.end())
         {
             ++m_it;
-            return m_it != m_pNode->m_ChildList.end() ? Result::Success : Result::End;
+            return m_it != m_List.end() ? Result::Success : Result::End;
         }
 
         return Result::End;
@@ -62,7 +44,7 @@ public:
 
     GEMMETHOD(MovePrev)() final
     {
-        if (m_it != m_pNode->m_ChildList.begin())
+        if (m_it != m_List.begin())
         {
             --m_it;
             return Result::Success;
@@ -73,19 +55,21 @@ public:
 
     GEMMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
-        if (m_it != m_pNode->m_ChildList.end())
+        if (m_it != m_List.end())
         {
-            return (*m_it)->QueryInterface(iid, ppObj);
+            return reinterpret_cast<XSceneGraphNode *>((*m_it).Get())->QueryInterface(iid, ppObj);
         }
+
+        *ppObj = nullptr;
 
         return Result::End;
     }
 
     GEMMETHOD(Prune)() final
     {
-        if (m_it != m_pNode->m_ChildList.end())
+        if (m_it != m_List.end())
         {
-            m_pNode->m_ChildList.erase(m_it);
+            m_List.erase(m_it);
             return Result::Success;
         }
 
@@ -103,3 +87,36 @@ public:
         return __super::InternalQueryInterface(iid, ppUnk);
     }
 };
+
+//------------------------------------------------------------------------------------------------
+template<class _Base>
+class CSceneGraphNode :
+    public CTransform<_Base>,
+    public CObjectBase
+{
+public:
+    using _ListType = CSceneGraphNodeIterator::_ListType;
+    _ListType m_ChildList;
+
+    CSceneGraphNode(CCanvas* pCanvas) :
+        CTransform<_Base>(),
+        CObjectBase(pCanvas)
+    {
+    }
+
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    {
+        if (XSceneGraphNode::IId == iid)
+        {
+            *ppObj = reinterpret_cast<XSceneGraphNode *>(this);
+            this->AddRef();
+            return Result::Success;
+        }
+
+        return CTransform<_Base>::InternalQueryInterface(iid, ppObj);
+    }
+
+    GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;
+    GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator** ppIterator) final;
+};
+
