@@ -19,7 +19,7 @@ GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **pp
         break;
 
     default:
-        return __super::InternalQueryInterface(iid, ppObj);
+        return CGenericBase::InternalQueryInterface(iid, ppObj);
     }
 
     return Result::Success;
