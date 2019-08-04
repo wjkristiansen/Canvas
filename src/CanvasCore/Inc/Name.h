@@ -7,28 +7,28 @@
 class CCanvas;
 
 //------------------------------------------------------------------------------------------------
-class CNamedObjectTable
+class CNameTagTable
 {
     using MapType = std::map<std::wstring, XGeneric*>;
 
-    MapType m_NamedObjectMap;
+    MapType m_NameTagMap;
 
 public:
     using IteratorType = MapType::iterator;
 
-    CNamedObjectTable() = default;
+    CNameTagTable() = default;
 
     // Returns the iterator of first object.
     // Returns End() if there are no objects
     IteratorType Begin()
     {
-        return m_NamedObjectMap.begin();
+        return m_NameTagMap.begin();
     }
 
     // Returns the logical iterator representing the end of the collection.
     IteratorType End()
     {
-        return m_NamedObjectMap.end();
+        return m_NameTagMap.end();
     }
 
     // Inserts a new element into the collection.
@@ -36,7 +36,7 @@ public:
     // Returns End() if an object of that name is already present.
     IteratorType Insert(const std::wstring& Name, XGeneric* pGeneric)
     {
-        auto result = m_NamedObjectMap.insert(std::make_pair(Name, pGeneric));
+        auto result = m_NameTagMap.insert(std::make_pair(Name, pGeneric));
         if (result.second)
         {
             return result.first;
@@ -49,21 +49,21 @@ public:
     // Returns the iterator of the next element or End() if this is the last element.
     IteratorType RemoveAt(IteratorType it)
     {
-        return m_NamedObjectMap.erase(it);
+        return m_NameTagMap.erase(it);
     }
 
     // Removes the element with the given name.
     // Returns 'true' if a matching element was found and removed.
     bool Remove(const std::wstring& Name)
     {
-        return m_NamedObjectMap.erase(Name) == 1;
+        return m_NameTagMap.erase(Name) == 1;
     }
 
     // Returns the iterator of the element with the given name.
     // Returns End() if not found. 
     IteratorType Find(const std::wstring& Name)
     {
-        return m_NamedObjectMap.find(Name);
+        return m_NameTagMap.find(Name);
     }
 
     // Returns the name at the given iterator location.
@@ -80,15 +80,15 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-class CNamedObjectElement
+class CNameTag
 {
-    CNamedObjectTable *m_pTable = nullptr;
-    CNamedObjectTable::IteratorType m_Location;
+    CNameTagTable *m_pTable = nullptr;
+    CNameTagTable::IteratorType m_Location;
 
 public:
-    CNamedObjectElement(CNamedObjectTable* pTable) :
+    CNameTag(CNameTagTable* pTable) :
         m_pTable(pTable) {}
-    CNamedObjectElement(CNamedObjectTable* pTable, const std::wstring &Name, XGeneric *pGeneric) :
+    CNameTag(CNameTagTable* pTable, const std::wstring &Name, XGeneric *pGeneric) :
         m_pTable(pTable),
         m_Location(pTable->Insert(Name, pGeneric))
     {
