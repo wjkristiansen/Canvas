@@ -41,7 +41,7 @@ public:
     {
         Unassign();
 
-        auto result = m_pMap->insert(std::make_pair(Key, Value)); // throw(std::bad_alloc)
+        auto result = pMap->insert(std::make_pair(Key, Value)); // throw(std::bad_alloc)
         if (!result.second)
         {
             throw std::exception(); // insert failed (e.g. name collision)

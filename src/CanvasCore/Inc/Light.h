@@ -10,7 +10,7 @@ class CLight :
 {
 public:
     CLight(CCanvas* pCanvas, PCWSTR szName) :
-        CSceneGraphNode(pCanvas) {}
+        CSceneGraphNode(pCanvas, szName) {}
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (XLight::IId == iid)

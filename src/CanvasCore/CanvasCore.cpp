@@ -56,7 +56,7 @@ GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_ void **
     try
     {
         TGemPtr<XSceneGraphNode> pNode;
-        pNode = new TGeneric<CSceneGraphNode<XSceneGraphNode>>(this);
+        pNode = new TGeneric<CSceneGraphNode<XSceneGraphNode>>(this, szName);
         return pNode->QueryInterface(iid, ppObj);
     }
     catch (std::bad_alloc &)
