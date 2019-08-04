@@ -270,7 +270,7 @@ XTransform : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XSceneGraphNode : public Gem::XGeneric
+XSceneGraphNode : public XTransform
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
