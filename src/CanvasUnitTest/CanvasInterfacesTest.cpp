@@ -38,8 +38,8 @@ namespace CanvasUnitTest
             // Make sure QI works for all the camera parts
             TGemPtr<XNameTag> pCameraName;
             Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraName)));
-            TGemPtr<XCamera> pCamera;
-            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCamera)));
+            //TGemPtr<XCamera> pCamera;
+            //Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCamera)));
             TGemPtr<XTransform> pCameraTransform;
             Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraTransform)));
             TGemPtr<XTransform> pCameraSceneGraphNode;

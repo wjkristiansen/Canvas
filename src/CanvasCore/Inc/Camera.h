@@ -10,8 +10,8 @@ class CCamera :
     public CSceneGraphNode<XCamera>
 {
 public:
-    CCamera(CCanvas *pCanvas) :
-        CSceneGraphNode<XCamera>(pCanvas) {}
+    CCamera(CCanvas *pCanvas, PCWSTR szName) :
+        CSceneGraphNode<XCamera>(pCanvas, szName) {}
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
         if (XCamera::IId == iid)
