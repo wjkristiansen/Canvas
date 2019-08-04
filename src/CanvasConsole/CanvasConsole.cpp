@@ -13,10 +13,10 @@ float DoVectorThing(float v[2])
 
 void DumpNode(XSceneGraphNode *pNode, const std::wstring &indent)
 {
-    TGemPtr<XName> pName;
-    if (Succeeded(pNode->QueryInterface(GEM_IID_PPV_ARGS(&pName))))
+    TGemPtr<XNameTag> pNameTag;
+    if (Succeeded(pNode->QueryInterface(GEM_IID_PPV_ARGS(&pNameTag))))
     {
-        std::wcout << indent << pName->GetName() << std::endl;
+        std::wcout << indent << pNameTag->GetName() << std::endl;
     }
     else
     {

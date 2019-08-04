@@ -90,8 +90,7 @@ public:
 
     ~CCanvas();
 
-    std::map<std::wstring, CName *> m_ObjectNames;
-    struct Sentinel {};
+    std::map<std::wstring, XGeneric *> m_ObjectNames;
     TAutoList<TStaticPtr<CObjectBase>> m_OutstandingObjects;
 
     GEMMETHOD_(int, SetLogCategoryMask)(int Mask)

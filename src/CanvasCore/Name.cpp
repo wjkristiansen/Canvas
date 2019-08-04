@@ -5,51 +5,59 @@
 #include "stdafx.h"
 
 //------------------------------------------------------------------------------------------------
-CName::CName(XGeneric *pOuterGeneric, PCWSTR szName, CCanvas *pCanvas) :
+CNameTag::CNameTag(XGeneric *pOuterGeneric, CCanvas *pCanvas, PCWSTR szName) :
     CInnerGenericBase(pOuterGeneric),
-    m_Name(szName ? szName : L""),
     m_pCanvas(pCanvas)
 {
-    if (!m_Name.empty())
+    if (nullptr != szName)
     {
-        pCanvas->m_ObjectNames.emplace(m_Name, this);
+        SetName(szName);
     }
 }
 
 //------------------------------------------------------------------------------------------------
-CName::~CName()
+GEMMETHODIMP_(PCWSTR) CNameTag::GetName()
 {
-    if (!m_Name.empty())
-    {
-        m_pCanvas->m_ObjectNames.erase(m_Name);
-    }
+    return m_Tag.IsAssigned() ? m_Tag.GetKey().c_str() : nullptr;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CName::SetName(PCWSTR szName)
+GEMMETHODIMP CNameTag::SetName(PCWSTR szName)
 {
-    try
+    Gem::Result result = Gem::Result::Success;
+
+    if (szName)
     {
-        // Erase old entry
-        if (!m_Name.empty())
+        try
         {
-            m_pCanvas->m_ObjectNames.erase(m_Name);
+            m_Tag.Assign(szName, m_pOuterGeneric, &m_pCanvas->m_ObjectNames); // throw(std::bad_alloc)
         }
-
-        m_Name = std::wstring(szName); // throw(std::bad_alloc)
-
-        // Add new entry
-        if (!m_Name.empty())
+        catch(std::bad_alloc &)
         {
-            m_pCanvas->m_ObjectNames.emplace(m_Name, this); // throw(std::bad_alloc)
+            result = Gem::Result::OutOfMemory;
+        }
+        catch (std::exception &)
+        {
+            result = Gem::Result::InvalidArg; // Consider adding Result::Duplicate
         }
     }
-    catch (std::bad_alloc &)
+    else
     {
-        m_pCanvas->Logger().LogErrorF(L"Out of memory: CName::SetName: szName = %s", szName);
-        return Result::OutOfMemory;
+        m_Tag.Unassign();
     }
 
-    return Result::Success;
+    return result;
 }
 
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CNameTag::InternalQueryInterface(InterfaceId iid, _Outptr_ void **ppObj)
+{
+    if (XNameTag::IId == iid)
+    {
+        *ppObj = this;
+        AddRef();
+        return Result::Success;
+    }
+
+    return __super::InternalQueryInterface(iid, ppObj);
+}

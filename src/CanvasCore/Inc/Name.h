@@ -7,134 +7,87 @@
 class CCanvas;
 
 //------------------------------------------------------------------------------------------------
-class CNameTagTable
+// Represents a key/value pair that automatically removes itself from
+// a key/value map.
+template<class _KeyType, class _ValueType>
+class TScopedKeyValuePair
 {
-    using MapType = std::map<std::wstring, XGeneric*>;
-
-    MapType m_NameTagMap;
+    using MapType = std::map<_KeyType, _ValueType>;
+    using MapIteratorType = typename MapType::iterator;
+    MapType *m_pMap = nullptr;
+    MapIteratorType m_Location;
 
 public:
-    using IteratorType = MapType::iterator;
-
-    CNameTagTable() = default;
-
-    // Returns the iterator of first object.
-    // Returns End() if there are no objects
-    IteratorType Begin()
+    TScopedKeyValuePair() = default;
+    TScopedKeyValuePair(const _KeyType &Key, const _ValueType &Value, MapType *pMap)
     {
-        return m_NameTagMap.begin();
+        Assign(Key, Value, pMap);
+    }
+    ~TScopedKeyValuePair()
+    {
+        Unassign();
     }
 
-    // Returns the logical iterator representing the end of the collection.
-    IteratorType End()
+    void Unassign()
     {
-        return m_NameTagMap.end();
-    }
-
-    // Inserts a new element into the collection.
-    // Returns the iterator of the inserted element.
-    // Returns End() if an object of that name is already present.
-    IteratorType Insert(const std::wstring& Name, XGeneric* pGeneric)
-    {
-        auto result = m_NameTagMap.insert(std::make_pair(Name, pGeneric));
-        if (result.second)
+        if (m_pMap)
         {
-            return result.first;
+            m_pMap->erase(m_Location);
+            m_pMap = nullptr;
+        }
+    }
+
+    void Assign(const _KeyType &Key, const _ValueType &Value, MapType *pMap)
+    {
+        Unassign();
+
+        auto result = m_pMap->insert(std::make_pair(Key, Value)); // throw(std::bad_alloc)
+        if (!result.second)
+        {
+            throw std::exception(); // insert failed (e.g. name collision)
+        }
+        m_pMap = pMap;
+        m_Location = result.first;
+    }
+
+    bool IsAssigned() const
+    {
+        return m_pMap != nullptr;
+    }
+
+    const _KeyType &GetKey() const
+    {
+        if (!m_pMap)
+        {
+            throw(std::exception()); // Unassigned
         }
 
-        return End();
+        return m_Location->first;
     }
 
-    // Removes the element at the given location.
-    // Returns the iterator of the next element or End() if this is the last element.
-    IteratorType RemoveAt(IteratorType it)
+    const _ValueType &GetValue() const
     {
-        return m_NameTagMap.erase(it);
-    }
+        if (!m_pMap)
+        {
+            throw(std::exception()); // Unassigned
+        }
 
-    // Removes the element with the given name.
-    // Returns 'true' if a matching element was found and removed.
-    bool Remove(const std::wstring& Name)
-    {
-        return m_NameTagMap.erase(Name) == 1;
-    }
-
-    // Returns the iterator of the element with the given name.
-    // Returns End() if not found. 
-    IteratorType Find(const std::wstring& Name)
-    {
-        return m_NameTagMap.find(Name);
-    }
-
-    // Returns the name at the given iterator location.
-    const std::wstring& GetName(const IteratorType it) const
-    {
-        return it->first;
-    }
-
-    // Returns the XGeneric pointer at the given iterator location
-    XGeneric* GetGenericPtr(const IteratorType it) const
-    {
-        return it->second;
+        return m_Location->second;
     }
 };
 
 //------------------------------------------------------------------------------------------------
-class CNameTag
-{
-    CNameTagTable *m_pTable = nullptr;
-    CNameTagTable::IteratorType m_Location;
-
-public:
-    CNameTag(CNameTagTable* pTable) :
-        m_pTable(pTable) {}
-    CNameTag(CNameTagTable* pTable, const std::wstring &Name, XGeneric *pGeneric) :
-        m_pTable(pTable),
-        m_Location(pTable->Insert(Name, pGeneric))
-    {
-    }
-
-    const std::wstring& GetName() const
-    {
-        return m_pTable->GetName(m_Location);
-    }
-
-    XGeneric* GetGenericPtr() const
-    {
-        return m_pTable->GetGenericPtr(m_Location);
-    }
-};
-
-//------------------------------------------------------------------------------------------------
-class CName :
-    public XName,
+class CNameTag :
+    public XNameTag,
     public CInnerGenericBase
 {
+    CCanvas *m_pCanvas = nullptr; // Weak pointer
+    TScopedKeyValuePair<std::wstring, XGeneric *> m_Tag;
+
 public:
-    std::wstring m_Name;
-    CCanvas *m_pCanvas; // Weak pointer
+    CNameTag(XGeneric *pOuterGeneric, CCanvas *pCanvas, PCWSTR szName = nullptr);
 
-    CName(XGeneric *pOuterGeneric, PCWSTR szName, CCanvas *pCanvas);
-
-    virtual ~CName();
-
-    GEMMETHOD_(PCWSTR, GetName)() final
-    {
-        return m_Name.c_str();
-    }
-
+    GEMMETHOD_(PCWSTR, GetName)() final;
     GEMMETHOD(SetName)(PCWSTR szName) final;
-
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
-    {
-        if (XName::IId == iid)
-        {
-            *ppObj = this;
-            AddRef();
-            return Result::Success;
-        }
-
-        return __super::InternalQueryInterface(iid, ppObj);
-    }
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final;
 };
-

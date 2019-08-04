@@ -36,10 +36,10 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pGeneric), szCameraName)));
 
             // Make sure QI works for all the camera parts
-            TGemPtr<XName> pCameraName;
+            TGemPtr<XNameTag> pCameraName;
             Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraName)));
-            //TGemPtr<XCamera> pCamera;
-            //Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCamera)));
+            TGemPtr<XCamera> pCamera;
+            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCamera)));
             TGemPtr<XTransform> pCameraTransform;
             Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraTransform)));
             TGemPtr<XTransform> pCameraSceneGraphNode;
