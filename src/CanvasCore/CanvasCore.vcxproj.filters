@@ -45,9 +45,6 @@
     <ClInclude Include="..\Common\Timeline.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\Common\Logger.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\SlimLog\Inc\SlimLog.h">
       <Filter>Header Files</Filter>
     </ClInclude>
