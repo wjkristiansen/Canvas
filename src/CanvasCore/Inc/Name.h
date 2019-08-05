@@ -9,10 +9,10 @@ class CCanvas;
 //------------------------------------------------------------------------------------------------
 // Represents a key/value pair that automatically removes itself from
 // a key/value map.
-template<class _KeyType, class _ValueType>
+template<class _KeyType, class _ValueType, class _MapType = std::map<_KeyType, _ValueType>>
 class TScopedKeyValuePair
 {
-    using MapType = std::map<_KeyType, _ValueType>;
+    using MapType = _MapType;
     using MapIteratorType = typename MapType::iterator;
     MapType *m_pMap = nullptr;
     MapIteratorType m_Location;
