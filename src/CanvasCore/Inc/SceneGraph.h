@@ -5,7 +5,7 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-class CSceneGraphNodeIterator :
+class TSceneGraphNodeIterator :
     public XIterator,
     public CGenericBase
 {
@@ -14,7 +14,7 @@ public:
     _ListType::iterator m_it;
     _ListType& m_List;
 
-    CSceneGraphNodeIterator(_ListType &List) :
+    TSceneGraphNodeIterator(_ListType &List) :
         m_List(List)
     {
         m_it = m_List.begin();
@@ -90,16 +90,20 @@ public:
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
-class CSceneGraphNode :
-    public CTransform<_Base>,
+class TSceneGraphNode :
+    public TTransform<_Base>,
     public CObjectBase
 {
+
+    TInnerGeneric<CNameTag> m_NameTag;
+
 public:
-    using _ListType = CSceneGraphNodeIterator::_ListType;
+    using _ListType = TSceneGraphNodeIterator::_ListType;
     _ListType m_ChildList;
 
-    CSceneGraphNode(CCanvas* pCanvas) :
-        CTransform<_Base>(),
+    TSceneGraphNode(CCanvas* pCanvas, PCWSTR szName) :
+        TTransform<_Base>(),
+        m_NameTag(this, pCanvas, szName),
         CObjectBase(pCanvas)
     {
     }
@@ -113,7 +117,12 @@ public:
             return Result::Success;
         }
 
-        return CTransform<_Base>::InternalQueryInterface(iid, ppObj);
+        if (CanvasIId_XNameTag == iid)
+        {
+            return m_NameTag.InternalQueryInterface(iid, ppObj);
+        }
+
+        return TTransform<_Base>::InternalQueryInterface(iid, ppObj);
     }
 
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;

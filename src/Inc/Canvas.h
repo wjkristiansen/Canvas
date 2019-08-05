@@ -49,7 +49,7 @@ enum CanvasIId
     CanvasIId_XAmination = 12U,
     CanvasIId_XSkeleton = 13U,
     CanvasIId_XIterator = 14U,
-    CanvasIId_XName = 15U,
+    CanvasIId_XNameTag = 15U,
     CanvasIId_XModel = 16U,
     CanvasIId_XGraphicsDevice = 17U,
 };
@@ -167,11 +167,12 @@ GEM_INTERFACE XIterator : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XName : public Gem::XGeneric
+XNameTag : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XName);
+    GEM_INTERFACE_DECLARE(CanvasIId_XNameTag);
 
     GEMMETHOD_(PCWSTR, GetName)() = 0;
+    GEMMETHOD(SetName)(PCWSTR) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -270,7 +271,7 @@ XTransform : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
-XSceneGraphNode : public Gem::XGeneric
+XSceneGraphNode : public XTransform
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;

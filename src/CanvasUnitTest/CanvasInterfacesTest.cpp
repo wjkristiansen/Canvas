@@ -24,34 +24,33 @@ namespace CanvasUnitTest
             TGemPtr<XScene> pScene;
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(GEM_IID_PPV_ARGS(&pScene))));
 
-            // Create transform XSceneGraphNode
-            TGemPtr<XTransform> pTransform;
+            // Create a null XSceneGraphNode
             TGemPtr<XSceneGraphNode> pSceneGraphNode;
-            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pSceneGraphNode), L"Transform")));
-            Assert::IsTrue(Succeeded(pSceneGraphNode->QueryInterface(&pTransform)));
+            const wchar_t szNodeName[] = L"NullNode";
+            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pSceneGraphNode), szNodeName)));
 
-            // Create a camera XSceneGraphNode
+            // Verify QI for XGeneric
             TGemPtr<XGeneric> pGeneric;
-            const wchar_t szCameraName[] = L"Camera";
-            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pGeneric), szCameraName)));
+            Assert::IsTrue(Succeeded(pSceneGraphNode->QueryInterface(&pGeneric)));
 
-            // Make sure QI works for all the camera parts
-            TGemPtr<XName> pCameraName;
-            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraName)));
-            //TGemPtr<XCamera> pCamera;
-            //Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCamera)));
-            TGemPtr<XTransform> pCameraTransform;
-            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraTransform)));
-            TGemPtr<XTransform> pCameraSceneGraphNode;
-            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pCameraSceneGraphNode)));
+            // Verify pGeneric QI works for XNameTag
+            TGemPtr<XNameTag> pNameTag;
+            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pNameTag)));
 
             // Validate the name
-            Assert::IsTrue(0 == wcsncmp(pCameraName->GetName(), szCameraName, _countof(szCameraName)));
+            Assert::IsTrue(0 == wcsncmp(pNameTag->GetName(), szNodeName, _countof(szNodeName)));
 
-            // QI rules
-            TGemPtr<XGeneric> pGeneric2;
-            Assert::IsTrue(Succeeded(pCameraTransform->QueryInterface(&pGeneric2)));
-            Assert::IsTrue(pGeneric.Get() == pGeneric2.Get());
+            // Verify QI for XSceneGraphNode from XNameTag return the original interface pointer
+            TGemPtr<XSceneGraphNode> pSceneGraphNodeFromNameTag;
+            Assert::IsTrue(Succeeded(pNameTag->QueryInterface(&pSceneGraphNodeFromNameTag)));
+            Assert::IsTrue(pSceneGraphNode.Get() == pSceneGraphNodeFromNameTag.Get());
+
+            // Verify QI for XTransform from XGeneric matches QI for XTransform from XSceneGraphNode
+            TGemPtr<XTransform> pTransformFromGeneric;
+            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pTransformFromGeneric)));
+            TGemPtr<XTransform> pTransformFromSceneGraphNode;
+            Assert::IsTrue(Succeeded(pSceneGraphNode->QueryInterface(&pTransformFromSceneGraphNode)));
+            Assert::IsTrue(pTransformFromGeneric.Get() == pTransformFromSceneGraphNode.Get());
         }
 
         TEST_METHOD(SceneGraphNodesTest)

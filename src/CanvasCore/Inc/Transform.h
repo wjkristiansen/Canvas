@@ -6,7 +6,7 @@
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
-class CTransform : public _Base
+class TTransform : public _Base
 {
     CTranslationDataSource *m_pTranslationDataSource = nullptr;
     CRotationDataSource *m_pRotationDataSource = nullptr;
@@ -16,7 +16,7 @@ class CTransform : public _Base
     inline static const FloatVector4 m_WorldUp = FloatVector4( 0.f, 1.f, 0.f, 0.f );
 
 public:
-    CTransform() {}
+    TTransform() {}
 
     GEMMETHOD_(RotationType, GetRotationType)() const final
     {

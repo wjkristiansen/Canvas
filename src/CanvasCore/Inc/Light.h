@@ -6,11 +6,11 @@
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public CSceneGraphNode<XLight>
+    public TSceneGraphNode<XLight>
 {
 public:
     CLight(CCanvas* pCanvas, PCWSTR szName) :
-        CSceneGraphNode(pCanvas) {}
+        TSceneGraphNode(pCanvas, szName) {}
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {
         if (XLight::IId == iid)
@@ -20,7 +20,7 @@ public:
             return Result::Success;
         }
 
-        return CSceneGraphNode<XLight>::InternalQueryInterface(iid, ppObj);
+        return TSceneGraphNode<XLight>::InternalQueryInterface(iid, ppObj);
     }
 };
 
