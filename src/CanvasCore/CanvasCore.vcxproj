@@ -180,7 +180,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\Gem\src\Inc\Gem.hpp" />
-    <ClInclude Include="..\Common\Logger.h" />
     <ClInclude Include="..\Common\Timeline.h" />
     <ClInclude Include="..\Inc\Canvas.h" />
     <ClInclude Include="..\Inc\CanvasMath.hpp" />
