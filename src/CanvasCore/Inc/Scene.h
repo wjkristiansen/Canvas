@@ -6,7 +6,7 @@
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public CSceneGraphNode<XScene>
+    public TSceneGraphNode<XScene>
 {
 public:
     CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName);
@@ -20,6 +20,6 @@ public:
             return Result::Success;
         }
 
-        return CSceneGraphNode::InternalQueryInterface(iid, ppObj);
+        return TSceneGraphNode::InternalQueryInterface(iid, ppObj);
     }
 };

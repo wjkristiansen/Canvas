@@ -6,32 +6,32 @@
 
 //------------------------------------------------------------------------------------------------
 template<class _DataType>
-class CConstantFunction
+class TConstantFunction
 {
     const _DataType m_c;
     
 public:
-    CConstantFunction(float c) :
+    TConstantFunction(float c) :
         m_c(c) {}
 
     _DataType Evaluate() const { return m_c; }
 };
 
 template<class _DataType>
-class CMidpointFunction
+class TMidpointFunction
 {
     _DataType Evaluate(_DataType x, _DataType y) const { return (x + y) / 2; }
 };
 
 template<class _DataType>
-class CKeyedCurveFunction
+class TKeyedCurveFunction
 {
     _DataType Evaluate(_DataType t) { return 0; }
 };
 
 //------------------------------------------------------------------------------------------------
 template<class _DataType>
-class CDataSource
+class TDataSource
 {
 public:
     virtual _DataType Evaluate() const = 0;
@@ -39,13 +39,13 @@ public:
 
 //------------------------------------------------------------------------------------------------
 template<class _DataType>
-class CMidpointFunctionDataSource : public CDataSource<_DataType>
+class TMidpointFunctionDataSource : public TDataSource<_DataType>
 {
-    CDataSource<_DataType> *m_pSourceA = nullptr;
-    CDataSource<_DataType> *m_pSourceB = nullptr;
+    TDataSource<_DataType> *m_pSourceA = nullptr;
+    TDataSource<_DataType> *m_pSourceB = nullptr;
 
 public:
-    CMidpointFunctionDataSource(CDataSource<_DataType> *pSourceA, CDataSource<_DataType> *pSourceB) :
+    TMidpointFunctionDataSource(TDataSource<_DataType> *pSourceA, TDataSource<_DataType> *pSourceB) :
         m_pSourceA(pSourceA),
         m_pSourceB(pSourceB)
     {}
@@ -57,7 +57,7 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-class CRotationDataSource : public CDataSource<FloatVector4>
+class CRotationDataSource : public TDataSource<FloatVector4>
 {
 
 };
@@ -65,7 +65,7 @@ class CRotationDataSource : public CDataSource<FloatVector4>
 //------------------------------------------------------------------------------------------------
 class CEulerRotationDataSource : public CRotationDataSource
 {
-    CDataSource<float> *m_pEulerAngles[4] = {};
+    TDataSource<float> *m_pEulerAngles[4] = {};
     FloatVector4 m_DefaultAngles;
 
 public:
@@ -98,7 +98,7 @@ class CQuaternionRotationDataSource : public CRotationDataSource
 
 };
 
-class CTranslationDataSource : public CDataSource<FloatVector4>
+class CTranslationDataSource : public TDataSource<FloatVector4>
 {
 
 };
