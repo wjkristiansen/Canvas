@@ -1,0 +1,6 @@
+LIBRARY QLog
+EXPORTS
+	QLogCreateLogHost
+	QLogDestroyLogHost
+	QLogCreateLogClient
+	QLogDestroyLogClient
