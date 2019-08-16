@@ -18,31 +18,6 @@ namespace QLog
         }
     }
 
-    static const wchar_t *CategoryString(LOG_CATEGORY Category)
-    {
-        switch (Category)
-        {
-        default:
-            return L"<INVALID>";
-
-        case LOG_CATEGORY_NONE:
-            return L"NONE";
-
-        case LOG_CATEGORY_ERROR:
-            return L"ERROR";
-
-        case LOG_CATEGORY_WARNING:
-            return L"WARNING";
-
-        case LOG_CATEGORY_INFO:
-            return L"INFO";
-
-        case LOG_CATEGORY_VERBOSE:
-            return L"VERBOSE";
-        }
-    }
-
-
     template<class _Type>
     class CLogSerializer
     {
@@ -95,7 +70,7 @@ namespace QLog
 
         static void ListenerThread(CLogOutput *pLogOutput, HANDLE hPipe)
         {
-            LOG_CATEGORY Category;
+            LogCategory Category;
             wchar_t Source[1024];
             wchar_t Message[1024];
 
@@ -118,8 +93,8 @@ namespace QLog
                     Sleep(10);
 
                     // Read the message category
-                    CLogSerializer<LOG_CATEGORY>::Deserialize(hPipe, Category);
-                    if (LOG_CATEGORY_NONE == Category)
+                    CLogSerializer<LogCategory>::Deserialize(hPipe, Category);
+                    if (LogCategory::None == Category)
                     {
                         // Terminate logger thread
                         break;
@@ -204,14 +179,14 @@ namespace QLog
         {
         }
 
-        virtual void Write(LOG_CATEGORY Category, const wchar_t *szLogSource, const wchar_t *szMessage)
+        virtual void Write(LogCategory Category, const wchar_t *szLogSource, const wchar_t *szMessage)
         {
             DWORD BytesWritten = 0;
 
             try
             {
                 // Write the message category
-                CLogSerializer<LOG_CATEGORY>::Serialize(m_hPipeFile, Category);
+                CLogSerializer<LogCategory>::Serialize(m_hPipeFile, Category);
                 CLogSerializer<wchar_t *>::Serialize(m_hPipeFile, szLogSource, 1023);
                 CLogSerializer<wchar_t *>::Serialize(m_hPipeFile, szMessage, 1023);
             }
