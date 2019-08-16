@@ -7,17 +7,17 @@
 //------------------------------------------------------------------------------------------------
 class CCanvasLogger
 {
-    QLog::CLogClient *m_pLogOutput;
+    QLog::CLogClient *m_pLogClient;
 
 public:
-    CCanvasLogger(QLog::CLogClient *pLogOutput) :
-        m_pLogOutput(pLogOutput) {}
+    CCanvasLogger(QLog::CLogClient *pLogClient) :
+        m_pLogClient(pLogClient) {}
 
     void LogError(PCWSTR szOutput)
     {
-        if (m_pLogOutput)
+        if (m_pLogClient)
         {
-            m_pLogOutput->Write(QLog::LOG_CATEGORY_ERROR, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::LOG_CATEGORY_ERROR, L"CANVAS", szOutput);
         }
     }
 
@@ -31,9 +31,9 @@ public:
 
     void LogWarning(PCWSTR szOutput)
     {
-        if (m_pLogOutput)
+        if (m_pLogClient)
         {
-            m_pLogOutput->Write(QLog::LOG_CATEGORY_WARNING, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::LOG_CATEGORY_WARNING, L"CANVAS", szOutput);
         }
     }
 
@@ -47,9 +47,9 @@ public:
 
     void LogInfo(PCWSTR szOutput)
     {
-        if (m_pLogOutput)
+        if (m_pLogClient)
         {
-            m_pLogOutput->Write(QLog::LOG_CATEGORY_INFO, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::LOG_CATEGORY_INFO, L"CANVAS", szOutput);
         }
     }
 
@@ -63,9 +63,9 @@ public:
 
     void LogVerbose(PCWSTR szOutput)
     {
-        if (m_pLogOutput)
+        if (m_pLogClient)
         {
-            m_pLogOutput->Write(QLog::LOG_CATEGORY_VERBOSE, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::LOG_CATEGORY_VERBOSE, L"CANVAS", szOutput);
         }
     }
 

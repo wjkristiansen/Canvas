@@ -94,7 +94,7 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *pLogOutput)
+Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *pLogClient)
 {
     *ppCanvas = nullptr;
 
@@ -102,19 +102,19 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *p
     {
         if (iid == XCanvas::IId)
         {
-            if (pLogOutput)
+            if (pLogClient)
             {
-                pLogOutput->Write(QLog::LOG_CATEGORY_INFO, L"CANVAS", L"CreateCanvas: Creating canvas object...");
+                pLogClient->Write(QLog::LOG_CATEGORY_INFO, L"CANVAS", L"CreateCanvas: Creating canvas object...");
             }
-            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogOutput); // throw(bad_alloc)
+            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogClient); // throw(bad_alloc)
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
     catch (std::bad_alloc &)
     {
-        if (pLogOutput)
+        if (pLogClient)
         {
-            pLogOutput->Write(QLog::LOG_CATEGORY_ERROR, L"CANVAS: ", L"FAILURE in CreateCanvas");
+            pLogClient->Write(QLog::LOG_CATEGORY_ERROR, L"CANVAS: ", L"FAILURE in CreateCanvas");
         }
         return Result::OutOfMemory;
     }

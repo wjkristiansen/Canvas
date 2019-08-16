@@ -83,8 +83,8 @@ class CCanvas :
     UINT m_FrameCounter = 0;
 
 public:
-    CCanvas(QLog::CLogClient *pLogOutput) :
-        m_Logger(pLogOutput),
+    CCanvas(QLog::CLogClient *pLogClient) :
+        m_Logger(pLogClient),
         CGenericBase()
     {}
 
