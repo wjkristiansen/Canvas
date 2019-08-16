@@ -94,7 +94,7 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutputBase *pLogOutput)
+Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *pLogOutput)
 {
     *ppCanvas = nullptr;
 
@@ -104,7 +104,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutput
         {
             if (pLogOutput)
             {
-                pLogOutput->Output(L"CANVAS", L"CreateCanvas: Creating canvas object...");
+                pLogOutput->Write(QLog::LOG_CATEGORY_INFO, L"CANVAS", L"CreateCanvas: Creating canvas object...");
             }
             TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogOutput); // throw(bad_alloc)
             return pCanvas->QueryInterface(iid, ppCanvas);
@@ -114,7 +114,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutput
     {
         if (pLogOutput)
         {
-            pLogOutput->Output(L"CANVAS ERROR: ", L"FAILURE in CreateCanvas");
+            pLogOutput->Write(QLog::LOG_CATEGORY_ERROR, L"CANVAS: ", L"FAILURE in CreateCanvas");
         }
         return Result::OutOfMemory;
     }
@@ -125,7 +125,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutput
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
-    Logger().LogMessage(L"CCanvas::CreateGraphicsDevice");
+    Logger().LogInfo(L"CCanvas::CreateGraphicsDevice");
     Result result = Result::NotImplemented;
 
     try
@@ -158,14 +158,16 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_
         result = Result::Success;
         m_GraphicsModule = std::move(Module);
     }
-    catch(const std::exception &e)
+    catch(const std::exception &/*e*/)
     {
-        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %S", e.what());
+//        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %S", e.what());
+        Logger().LogError(L"XCanvas::CreateGraphicsDevice failed: %S");
         result = Result::NotFound;
     }
-    catch (const Gem::GemError &e)
+    catch (const Gem::GemError &/*e*/)
     {
-        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %s", Gem::ResultToString(e.Result()));
+        //Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %s", Gem::ResultToString(e.Result()));
+        Logger().LogError(L"XCanvas::CreateGraphicsDevice failed: %s");
         result = Result::NotFound;
     }
 

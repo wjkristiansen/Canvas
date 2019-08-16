@@ -32,7 +32,7 @@
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
 
-#include "SlimLog.h"
+#include "QLog.h"
 
 using namespace Canvas;
 using namespace Gem;

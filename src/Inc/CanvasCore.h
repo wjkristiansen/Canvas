@@ -3,8 +3,7 @@
 //================================================================================================
 
 #pragma once
-
-#include <SlimLog.h>
+#include <QLog.h>
 
 namespace Canvas
 {
@@ -193,8 +192,6 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
-    GEMMETHOD_(int, SetLogCategoryMask)(int Mask) = 0;
-
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
     GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
@@ -291,5 +288,5 @@ XScene : public XSceneGraphNode
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, SlimLog::CLogOutputBase *pLogOutput = nullptr);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_ void **ppCanvas, QLog::CLogClient *pLogOutput = nullptr);
 
