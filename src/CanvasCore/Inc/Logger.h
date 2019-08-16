@@ -17,7 +17,7 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::LOG_CATEGORY_ERROR, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::LogCategory::Error, L"CANVAS", szOutput);
         }
     }
 
@@ -25,7 +25,7 @@ public:
     //{
     //    va_list args;
     //    va_start(args, szOutput);
-    //    LogOutputVA<SlimLog::LOG_CATEGORY_ERROR>(L"CANVAS ERROR", szOutput, args);
+    //    LogOutputVA<SlimLog::Error>(L"CANVAS ERROR", szOutput, args);
     //    va_end(args);
     //}
 
@@ -33,7 +33,7 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::LOG_CATEGORY_WARNING, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::LogCategory::Warning, L"CANVAS", szOutput);
         }
     }
 
@@ -41,7 +41,7 @@ public:
     //{
     //    va_list args;
     //    va_start(args, szOutput);
-    //    LogOutputVA<SlimLog::LOG_CATEGORY_WARNING>(L"CANVAS WARNING", szOutput, args);
+    //    LogOutputVA<SlimLog::Warning>(L"CANVAS WARNING", szOutput, args);
     //    va_end(args);
     //}
 
@@ -49,7 +49,7 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::LOG_CATEGORY_INFO, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::LogCategory::Info, L"CANVAS", szOutput);
         }
     }
 
@@ -57,7 +57,7 @@ public:
     //{
     //    va_list args;
     //    va_start(args, szOutput);
-    //    LogOutputVA<SlimLog::LOG_CATEGORY_MESSAGE>(L"CANVAS", szOutput, args);
+    //    LogOutputVA<SlimLog::MESSAGE>(L"CANVAS", szOutput, args);
     //    va_end(args);
     //}
 
@@ -65,7 +65,7 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::LOG_CATEGORY_VERBOSE, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::LogCategory::Verbose, L"CANVAS", szOutput);
         }
     }
 
@@ -73,7 +73,7 @@ public:
     //{
     //    va_list args;
     //    va_start(args, szOutput);
-    //    LogOutputVA<SlimLog::LOG_CATEGORY_INFO>(L"CANVAS INFO", szOutput, args);
+    //    LogOutputVA<SlimLog::Info>(L"CANVAS INFO", szOutput, args);
     //    va_end(args);
     //}
 };

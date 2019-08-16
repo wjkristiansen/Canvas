@@ -4,21 +4,21 @@
 
 namespace QLog
 {
-    enum LOG_CATEGORY
+    enum class LogCategory
     {
-        LOG_CATEGORY_NONE = 0x00000000,
-        LOG_CATEGORY_ERROR = 0x00000001,
-        LOG_CATEGORY_WARNING = 0x00000002,
-        LOG_CATEGORY_INFO = 0x00000004,
-        LOG_CATEGORY_VERBOSE = 0x00000008,
-        LOG_CATEGORY_MASK = 0x0000000f
+        None = 0x00000000,
+        Error = 0x00000001,
+        Warning = 0x00000002,
+        Info = 0x00000004,
+        Verbose = 0x00000008,
+        Mask = 0x0000000f
     };
 
     class CLogOutput
     {
     public:
         virtual ~CLogOutput() {}
-        virtual void Write(LOG_CATEGORY Category, const wchar_t *szLogSource, const wchar_t *szMessage) = 0;
+        virtual void Write(LogCategory Category, const wchar_t *szLogSource, const wchar_t *szMessage) = 0;
     };
 
     class CLogHost
@@ -32,7 +32,7 @@ namespace QLog
     {
     public:
         virtual ~CLogClient() {}
-        virtual void Write(LOG_CATEGORY Category, const wchar_t *szLogSource, const wchar_t *szMessage) = 0;
+        virtual void Write(LogCategory Category, const wchar_t *szLogSource, const wchar_t *szMessage) = 0;
     };
 }
 
