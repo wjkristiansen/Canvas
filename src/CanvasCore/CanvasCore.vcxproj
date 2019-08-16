@@ -183,7 +183,6 @@
     <ClInclude Include="..\Common\Timeline.h" />
     <ClInclude Include="..\Inc\Canvas.h" />
     <ClInclude Include="..\Inc\CanvasMath.hpp" />
-    <ClInclude Include="..\SlimLog\Inc\SlimLog.h" />
     <ClInclude Include="Inc\Camera.h" />
     <ClInclude Include="Inc\Canvas.h" />
     <ClInclude Include="Inc\DataSource.h" />
