@@ -14,13 +14,22 @@ namespace QLog
         Mask = 0x0000000f
     };
 
+    class CLogValue
+    {
+    public:
+        virtual void SerializeNameAsString(HANDLE hFile) = 0;
+        virtual void SerializeValueAsString(HANDLE hFile) = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
     class CLogOutput
     {
     public:
         virtual ~CLogOutput() {}
-        virtual void Write(LogCategory Category, const wchar_t *szLogSource, const wchar_t *szMessage) = 0;
+        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage) = 0;
     };
 
+    //------------------------------------------------------------------------------------------------
     class CLogHost
     {
     public:
@@ -32,11 +41,15 @@ namespace QLog
     {
     public:
         virtual ~CLogClient() {}
-        virtual void Write(LogCategory Category, const wchar_t *szLogSource, const wchar_t *szMessage) = 0;
+        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumValues, CLogValue *pLogValues) = 0;
+        void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
+        {
+            Write(Category, szLogSource, szMessage, 0, nullptr);
+        }
     };
 }
 
-extern QLog::CLogHost * QLOGAPI QLogCreateLogHost(const wchar_t *szPipeName, unsigned int PipeBufferSize);
+extern QLog::CLogHost * QLOGAPI QLogCreateLogHost(PCWSTR szPipeName, unsigned int PipeBufferSize);
 extern void QLOGAPI QLogDestroyLogHost(QLog::CLogHost *pLogHost);
-extern QLog::CLogClient * QLOGAPI QLogCreateLogClient(const wchar_t *szPipeName);
+extern QLog::CLogClient * QLOGAPI QLogCreateLogClient(PCWSTR szPipeName);
 extern void QLOGAPI QLogDestroyLogClient(QLog::CLogClient *pLogClient);

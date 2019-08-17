@@ -35,13 +35,13 @@ namespace QLog
     };
 
     template<>
-    class CLogSerializer<wchar_t *>
+    class CLogSerializer<PWSTR>
     {
     public:
-        static void Serialize(HANDLE hFile, const wchar_t *szString, DWORD MaxChars)
+        static void Serialize(HANDLE hFile, PCWSTR szString)
         {
             DWORD BytesWritten;
-            DWORD Len = std::min<DWORD>(MaxChars, szString ? sizeof(wchar_t) * lstrlenW(szString) : 0);
+            DWORD Len = szString ? lstrlenW(szString) : 0;
             ThrowLastErrorOnFalse(WriteFile(hFile, &Len, sizeof(Len), &BytesWritten, nullptr));
             if (Len)
             {
@@ -49,16 +49,23 @@ namespace QLog
             }
         }
 
-        static void Deserialize(HANDLE hFile, wchar_t *szString, DWORD MaxChars)
+        static void Deserialize(HANDLE hFile, PWSTR szStringBuffer, DWORD BufferSizeInBytes)
         {
             DWORD BytesRead;
-            DWORD Len;
-            ThrowLastErrorOnFalse(ReadFile(hFile, &Len, sizeof(Len), &BytesRead, nullptr));
-            Len = std::min<DWORD>(MaxChars - 1, Len);
-            if (Len)
+            DWORD OrigLen;
+            ThrowLastErrorOnFalse(ReadFile(hFile, &OrigLen, sizeof(OrigLen), &BytesRead, nullptr));
+            if (OrigLen)
             {
-                ThrowLastErrorOnFalse(ReadFile(hFile, szString, Len * sizeof(wchar_t), &BytesRead, nullptr));
-                szString[Len] = 0; // Null terminate
+                DWORD CharsToRead = std::min<DWORD>(BufferSizeInBytes - sizeof(wchar_t), OrigLen);
+                DWORD BytesToRead = CharsToRead * sizeof(wchar_t);
+                ThrowLastErrorOnFalse(ReadFile(hFile, szStringBuffer, BytesToRead, &BytesRead, nullptr));
+                szStringBuffer[CharsToRead] = 0; // Null terminate
+
+                if (BytesToRead > BytesRead)
+                {
+                    // Move to the end of the stored string
+                    SetFilePointer(hFile, BytesToRead - BytesRead, nullptr, FILE_CURRENT);
+                }
             }
         }
     };
@@ -77,6 +84,7 @@ namespace QLog
             // Serialize messages
             try
             {
+                // Wait for connection...
                 bool Connect = ConnectNamedPipe(hPipe, nullptr);
                 if (!Connect)
                 {
@@ -90,8 +98,6 @@ namespace QLog
 
                 for (;;)
                 {
-                    Sleep(10);
-
                     // Read the message category
                     CLogSerializer<LogCategory>::Deserialize(hPipe, Category);
                     if (LogCategory::None == Category)
@@ -100,11 +106,11 @@ namespace QLog
                         break;
                     }
 
-                    CLogSerializer<wchar_t *>::Deserialize(hPipe, Source, 1024);
-                    CLogSerializer<wchar_t *>::Deserialize(hPipe, Message, 1024);
+                    CLogSerializer<PWSTR >::Deserialize(hPipe, Source, 1024);
+                    CLogSerializer<PWSTR >::Deserialize(hPipe, Message, 1024);
 
                     // Write to the log output
-                    pLogOutput->Write(Category, reinterpret_cast<const wchar_t *>(Source), reinterpret_cast<wchar_t *>(Message));
+                    pLogOutput->Write(Category, reinterpret_cast<PCWSTR>(Source), reinterpret_cast<PWSTR >(Message));
                 }
             }
             catch (HRESULT hr)
@@ -122,7 +128,7 @@ namespace QLog
         }
 
     public:
-        CLogHostImpl(const wchar_t *szPipeName, unsigned int BufferSize)
+        CLogHostImpl(PCWSTR szPipeName, unsigned int BufferSize)
         {
             CScopedHandle hPipe = CreateNamedPipe(
                 szPipeName,
@@ -150,8 +156,6 @@ namespace QLog
         {
             m_Thread = std::thread(ListenerThread, pLogOutput, m_hPipe.Get());
         }
-
-
     };
 
     class CLogClientImpl : public CLogClient
@@ -159,7 +163,7 @@ namespace QLog
         HANDLE m_hPipeFile;
 
     public:
-        CLogClientImpl(const wchar_t *szPipeName)
+        CLogClientImpl(PCWSTR szPipeName)
         {
             // Connect to the log host via pipe name
             CScopedHandle hPipeFile = CreateFile(
@@ -179,7 +183,7 @@ namespace QLog
         {
         }
 
-        virtual void Write(LogCategory Category, const wchar_t *szLogSource, const wchar_t *szMessage)
+        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumValues, CLogValue *pLogValues)
         {
             DWORD BytesWritten = 0;
 
@@ -187,8 +191,14 @@ namespace QLog
             {
                 // Write the message category
                 CLogSerializer<LogCategory>::Serialize(m_hPipeFile, Category);
-                CLogSerializer<wchar_t *>::Serialize(m_hPipeFile, szLogSource, 1023);
-                CLogSerializer<wchar_t *>::Serialize(m_hPipeFile, szMessage, 1023);
+                CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szLogSource);
+                CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szMessage);
+                //CLogSerializer<UINT>::Serialize(m_hPipeFile, NumValues);
+                //for (UINT i = 0; i < NumValues; ++i)
+                //{
+                //    pLogValues[i].SerializeNameAsString(m_hPipeFile);
+                //    pLogValues[i].SerializeValueAsString(m_hPipeFile);
+                //}
             }
             catch (HRESULT hr)
             {
@@ -200,7 +210,7 @@ namespace QLog
     };
 }
 
-QLog::CLogHost *QLogCreateLogHost(const wchar_t *szPipeName, unsigned int PipeBufferSize)
+QLog::CLogHost *QLogCreateLogHost(PCWSTR szPipeName, unsigned int PipeBufferSize)
 {
     return new QLog::CLogHostImpl(szPipeName, PipeBufferSize);
 }
@@ -209,7 +219,7 @@ void QLogDestroyLogHost(QLog::CLogHost *pLogHost)
 {
     delete(pLogHost);
 }
-QLog::CLogClient *QLogCreateLogClient(const wchar_t *szPipeName)
+QLog::CLogClient *QLogCreateLogClient(PCWSTR szPipeName)
 {
     return new QLog::CLogClientImpl(szPipeName);
 }
