@@ -35,6 +35,7 @@ namespace QLog
     public:
         virtual ~CLogHost() {}
         virtual void Execute(CLogOutput *pLogOutput) = 0;
+        virtual void FlushAndFinish() = 0;
     };
 
     class CLogClient

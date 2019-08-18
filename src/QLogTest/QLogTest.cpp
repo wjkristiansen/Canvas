@@ -81,12 +81,17 @@ namespace QLogTest
 
         ~CTestLogger()
         {
-            Log(QLog::LogCategory::None, nullptr, nullptr); // Terminate logging
         }
 
         void Log(QLog::LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
         {
             m_pLogClient->Write(Category, szLogSource, szMessage);
+        }
+
+        void WaitFinish()
+        {
+            Log(QLog::LogCategory::None, nullptr, nullptr); // Terminate logging
+            m_pLogHost->FlushAndFinish();
         }
     };
 
@@ -104,13 +109,13 @@ namespace QLogTest
                 { QLog::LogCategory::Warning, {L"Provider B"}, {L"Message Four"}},
             };
 
+            CTestLogger Logger(&LogOutput);
+            for (int i = 0; i < 4; ++i)
             {
-                CTestLogger Logger(&LogOutput);
-                for (int i = 0; i < 4; ++i)
-                {
-                    Logger.Log(TestData[i].Category, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str());
-                }
+                Logger.Log(TestData[i].Category, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str());
             }
+
+            Logger.WaitFinish();
 
             LogData Data;
             for (int i = 0; i < 4; ++i)
