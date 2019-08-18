@@ -143,13 +143,19 @@ namespace QLog
 
             m_hPipe = hPipe.Detach();
         };
-        ~CLogHostImpl()
+
+        virtual void FlushAndFinish()
         {
             if (m_Thread.joinable())
             {
                 // Wait for thread to finish
                 m_Thread.join();
             }
+        }
+
+        ~CLogHostImpl()
+        {
+            FlushAndFinish();
         }
 
         void Execute(CLogOutput *pLogOutput)
