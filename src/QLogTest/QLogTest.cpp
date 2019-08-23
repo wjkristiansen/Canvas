@@ -91,7 +91,7 @@ namespace QLogTest
 
         void WaitFinish()
         {
-            Log(QLog::LogCategory::None, nullptr, nullptr); // Terminate logging
+//            Log(QLog::LogCategory::None, nullptr, nullptr); // Terminate logging
             m_pLogClient = nullptr;
             m_pLogHost->FlushAndFinish();
         }
