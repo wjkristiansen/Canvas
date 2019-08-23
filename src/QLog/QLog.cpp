@@ -85,18 +85,6 @@ namespace QLog
             // Serialize messages
             try
             {
-                // Wait for connection...
-                bool Connect = ConnectNamedPipe(hPipe, nullptr);
-                if (!Connect)
-                {
-                    auto LastError = GetLastError();
-
-                    if (LastError != ERROR_PIPE_CONNECTED)
-                    {
-                        throw(HRESULT_FROM_WIN32(LastError));
-                    }
-                }
-
                 for (;;)
                 {
                     // Read the message category
@@ -116,7 +104,7 @@ namespace QLog
             }
             catch (HRESULT hr)
             {
-                if (hr == HRESULT_FROM_WIN32(ERROR_NO_DATA))
+                if (hr == HRESULT_FROM_WIN32(ERROR_NO_DATA) || hr == HRESULT_FROM_WIN32(ERROR_BROKEN_PIPE))
                 {
                     // Write end of the pipe is closed
                     return;
@@ -166,7 +154,19 @@ namespace QLog
 
         void Execute(CLogOutput *pLogOutput)
         {
-            m_Thread = std::thread(ListenerThread, pLogOutput, m_hPipe.Get());
+			// Wait for connection...
+			bool Connect = ConnectNamedPipe(m_hPipe, nullptr);
+			if (!Connect)
+			{
+				auto LastError = GetLastError();
+
+				if (LastError != ERROR_PIPE_CONNECTED)
+				{
+					throw(HRESULT_FROM_WIN32(LastError));
+				}
+			}
+
+			m_Thread = std::thread(ListenerThread, pLogOutput, m_hPipe.Get());
         }
     };
 
@@ -184,16 +184,20 @@ namespace QLog
                 0,
                 nullptr,
                 OPEN_EXISTING,
-                0,
+				FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH,
                 NULL);
 
-            ThrowLastErrorOnFalse(hPipeFile.Get() != NULL);
+			if (INVALID_HANDLE_VALUE == hPipeFile.Get())
+			{
+				HRESULT hr = HRESULT_FROM_WIN32(GetLastError());
+				ThrowHResultError(hr);
+			}
 
             m_hPipeFile = hPipeFile.Detach();
         }
         ~CLogClientImpl()
         {
-            FlushFileBuffers(m_hPipeFile);
+            //FlushFileBuffers(m_hPipeFile);
         }
 
         virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumValues, CLogValue *pLogValues)
