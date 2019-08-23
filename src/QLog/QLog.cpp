@@ -14,7 +14,8 @@ namespace QLog
     {
         if (!b)
         {
-            throw(HRESULT_FROM_WIN32(GetLastError()));
+            auto LastError = GetLastError();
+            throw(HRESULT_FROM_WIN32(LastError));
         }
     }
 
@@ -115,6 +116,12 @@ namespace QLog
             }
             catch (HRESULT hr)
             {
+                if (hr == HRESULT_FROM_WIN32(ERROR_NO_DATA))
+                {
+                    // Write end of the pipe is closed
+                    return;
+                }
+
                 // Write log communication error to log output...
                 OutputDebugString(L"LogHost uh oh");
                 throw(hr);
@@ -123,8 +130,6 @@ namespace QLog
             {
                 OutputDebugString(L"???");
             }
-
-            FlushFileBuffers(hPipe);
         }
 
     public:
@@ -146,6 +151,7 @@ namespace QLog
 
         virtual void FlushAndFinish()
         {
+            FlushFileBuffers(m_hPipe);
             if (m_Thread.joinable())
             {
                 // Wait for thread to finish
@@ -166,7 +172,7 @@ namespace QLog
 
     class CLogClientImpl : public CLogClient
     {
-        HANDLE m_hPipeFile;
+        CScopedHandle m_hPipeFile;
 
     public:
         CLogClientImpl(PCWSTR szPipeName)
@@ -187,6 +193,7 @@ namespace QLog
         }
         ~CLogClientImpl()
         {
+            FlushFileBuffers(m_hPipeFile);
         }
 
         virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumValues, CLogValue *pLogValues)
