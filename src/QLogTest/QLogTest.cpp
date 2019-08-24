@@ -48,9 +48,17 @@ namespace QLogTest
         std::deque<LogData> m_LogData;
 
     public:
-        virtual void Write(QLog::LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
+        virtual void BeginOutput(QLog::LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
         {
             m_LogData.emplace_back(Category, szLogSource, szMessage);
+        }
+        virtual void WriteValue(PCWSTR szName, PCWSTR szValue)
+        {
+
+        }
+        virtual void EndOutput()
+        {
+
         }
 
         bool PopFront(LogData &Data)
