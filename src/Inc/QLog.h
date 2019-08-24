@@ -27,7 +27,9 @@ namespace QLog
     {
     public:
         virtual ~CLogOutput() {}
-        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage) = 0;
+        virtual void BeginOutput(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage) = 0;
+        virtual void WriteValue(PCWSTR szName, PCWSTR szValue) = 0;
+        virtual void EndOutput() = 0;
     };
 
     //------------------------------------------------------------------------------------------------

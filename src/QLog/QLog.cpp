@@ -98,8 +98,18 @@ namespace QLog
                     CLogSerializer<PWSTR >::Deserialize(hPipe, Source, 1024);
                     CLogSerializer<PWSTR >::Deserialize(hPipe, Message, 1024);
 
+                    pLogOutput->BeginOutput(Category, reinterpret_cast<PCWSTR>(Source), reinterpret_cast<PWSTR>(Message));
+
+                    UINT NumValues;
+                    CLogSerializer<UINT>::Deserialize(hPipe, NumValues);
+                    for (UINT i = 0; i < NumValues; ++i)
+                    {
+                        //pLogValues[i].SerializeNameAsString(m_hPipeFile);
+                        //pLogValues[i].SerializeValueAsString(m_hPipeFile);
+                    }
+
                     // Write to the log output
-                    pLogOutput->Write(Category, reinterpret_cast<PCWSTR>(Source), reinterpret_cast<PWSTR >(Message));
+                    pLogOutput->EndOutput();
                 }
             }
             catch (HRESULT hr)
@@ -210,12 +220,12 @@ namespace QLog
                 CLogSerializer<LogCategory>::Serialize(m_hPipeFile, Category);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szLogSource);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szMessage);
-                //CLogSerializer<UINT>::Serialize(m_hPipeFile, NumValues);
-                //for (UINT i = 0; i < NumValues; ++i)
-                //{
-                //    pLogValues[i].SerializeNameAsString(m_hPipeFile);
-                //    pLogValues[i].SerializeValueAsString(m_hPipeFile);
-                //}
+                CLogSerializer<UINT>::Serialize(m_hPipeFile, NumValues);
+                for (UINT i = 0; i < NumValues; ++i)
+                {
+                    pLogValues[i].SerializeNameAsString(m_hPipeFile);
+                    pLogValues[i].SerializeValueAsString(m_hPipeFile);
+                }
             }
             catch (HRESULT hr)
             {
