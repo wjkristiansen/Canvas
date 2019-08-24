@@ -7,11 +7,12 @@ namespace QLog
     enum class LogCategory
     {
         None = 0x00000000,
-        Error = 0x00000001,
-        Warning = 0x00000002,
-        Info = 0x00000004,
-        Verbose = 0x00000008,
-        Mask = 0x0000000f
+        Critical = 0x00000001,
+        Error = 0x00000002,
+        Warning = 0x00000004,
+        Info = 0x00000008,
+        Verbose = 0x00000010,
+        Mask = 0x00000001f
     };
 
     class CLogValue
