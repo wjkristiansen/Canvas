@@ -17,7 +17,10 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::Category::Error, L"CANVAS", szOutput);
+            if (m_pLogClient->LogEntryBegin(QLog::Category::Error, L"CANVAS", szOutput))
+            {
+                m_pLogClient->LogEntryEnd();
+            }
         }
     }
 
@@ -33,7 +36,10 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::Category::Warning, L"CANVAS", szOutput);
+            if (m_pLogClient->LogEntryBegin(QLog::Category::Warning, L"CANVAS", szOutput))
+            {
+                m_pLogClient->LogEntryEnd();
+            }
         }
     }
 
@@ -49,7 +55,10 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::Category::Info, L"CANVAS", szOutput);
+            if(m_pLogClient->LogEntryBegin(QLog::Category::Info, L"CANVAS", szOutput))
+            {
+                m_pLogClient->LogEntryEnd();
+            }
         }
     }
 
@@ -65,7 +74,10 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::Category::Debug, L"CANVAS", szOutput);
+            if (m_pLogClient->LogEntryBegin(QLog::Category::Debug, L"CANVAS", szOutput))
+            {
+                m_pLogClient->LogEntryEnd();
+            }
         }
     }
 

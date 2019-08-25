@@ -2,6 +2,14 @@
 
 namespace QLog
 {
+    enum class LogTag : unsigned char
+    {
+        EndLog,
+        BeginEntry,
+        EndEntry,
+        Property,
+    };
+
     static inline void ThrowHResultError(HRESULT hr)
     {
         if (FAILED(hr))
@@ -81,36 +89,71 @@ namespace QLog
             Category Cat;
             static thread_local wchar_t Buffer1[1024];
             static thread_local wchar_t Buffer2[1024];
+            bool ActiveEntry = false;
 
             // Serialize messages
             try
             {
                 for (;;)
                 {
-                    // Read the message category
-                    CLogSerializer<Category>::Deserialize(hPipe, Cat);
-                    if (Category::None == Cat)
+                    LogTag Tag;
+
+                    // Get the log tag
+                    CLogSerializer<LogTag>::Deserialize(hPipe, Tag);
+
+                    if (Tag == LogTag::EndLog)
                     {
-                        // Terminate logger thread
+                        if (ActiveEntry)
+                        {
+                            throw(std::exception());
+                        }
+
+                        // Terminate the logger thread
                         break;
                     }
-
-                    CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
-                    CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
-
-                    pLogOutput->OutputBegin(Cat, reinterpret_cast<PCWSTR>(Buffer1), reinterpret_cast<PWSTR>(Buffer2));
-
-                    UINT NumProperties;
-                    CLogSerializer<UINT>::Deserialize(hPipe, NumProperties);
-                    for (UINT i = 0; i < NumProperties; ++i)
+                    else
+                    if (Tag == LogTag::BeginEntry)
                     {
+                        if (ActiveEntry)
+                        {
+                            throw(std::exception());
+                        }
+
+                        ActiveEntry = true;
+
+                        // Read the message category
+                        CLogSerializer<Category>::Deserialize(hPipe, Cat);
+                        CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
+                        CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
+                        pLogOutput->OutputBegin(Cat, reinterpret_cast<PCWSTR>(Buffer1), reinterpret_cast<PWSTR>(Buffer2));
+                    }
+                    else
+                    if (Tag == LogTag::Property)
+                    {
+                        if (!ActiveEntry)
+                        {
+                            throw(std::exception());
+                        }
                         CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
                         CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
                         pLogOutput->OutputProperty(Buffer1, Buffer2);
                     }
+                    else
+                    if(Tag == LogTag::EndEntry)
+                    {
+                        if (!ActiveEntry)
+                        {
+                            throw(std::exception());
+                        }
 
-                    // Write to the log output
-                    pLogOutput->OutputEnd();
+                        // Completeexisting entry
+                        pLogOutput->OutputEnd();
+                        ActiveEntry = false;
+                    }
+                    else
+                    {
+                        throw(std::exception());
+                    }
                 }
             }
             catch (HRESULT hr)
@@ -184,6 +227,7 @@ namespace QLog
     class CLogClientImpl : public CLogClient
     {
         CScopedHandle m_hPipeFile;
+        bool m_ActiveEntry = false;
 
     public:
         CLogClientImpl(PCWSTR szPipeName)
@@ -208,31 +252,20 @@ namespace QLog
         }
         ~CLogClientImpl()
         {
-            //FlushFileBuffers(m_hPipeFile);
+            CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::EndLog);
         }
 
-        virtual void Write(Category Cat, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, const CProperty *pProperties[])
+        void LogEntryBeginImpl(Category Cat, PCWSTR szLogSource, PCWSTR szMessage)
         {
-            DWORD BytesWritten = 0;
-
-            if (0 == (m_CategoryMask & UINT(Cat)))
-            {
-                // Discard write
-                return;
-            }
-
             try
             {
-                // Write the message category
+                // Write the tag for new log entry
+                CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::BeginEntry);
+
+                // Write the message category, source and message
                 CLogSerializer<Category>::Serialize(m_hPipeFile, Cat);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szLogSource);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szMessage);
-                CLogSerializer<UINT>::Serialize(m_hPipeFile, NumProperties);
-                for (UINT i = 0; i < NumProperties; ++i)
-                {
-                    CLogSerializer<PWSTR>::Serialize(m_hPipeFile, pProperties[i]->GetNameString());
-                    CLogSerializer<PWSTR>::Serialize(m_hPipeFile, pProperties[i]->GetValueString());
-                }
             }
             catch (HRESULT hr)
             {
@@ -240,6 +273,83 @@ namespace QLog
                 OutputDebugString(L"Log Write uh oh");
                 throw(hr);
             }
+        }
+
+        virtual bool LogEntryBegin(Category Cat, PCWSTR szLogSource, PCWSTR szMessage)
+        {
+            if (m_ActiveEntry)
+            {
+                throw std::exception();
+            }
+
+            if (0 == (m_CategoryMask & UINT(Cat)))
+            {
+                // Discard write
+                return false;
+            }
+
+            m_ActiveEntry = true;
+
+            LogEntryBeginImpl(Cat, szLogSource, szMessage);
+
+            return true;
+        }
+
+        virtual bool LogEntryBeginVA(Category Cat, PCWSTR szLogSource, PCWSTR szFormat, va_list args)
+        {
+            if (m_ActiveEntry)
+            {
+                throw std::exception();
+            }
+
+            m_ActiveEntry = true;
+
+            if (0 == (m_CategoryMask & UINT(Cat)))
+            {
+                // Discard write
+                return false;
+            }
+
+            return true;
+        }
+
+        virtual void LogEntryAddProperty(PCWSTR szName, PCWSTR szValue)
+        {
+            try
+            {
+                // Write the property tag
+                CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::Property);
+
+                CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szName);
+                CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szValue);
+            }
+            catch (HRESULT hr)
+            {
+                // Write log communication error to log output...
+                OutputDebugString(L"Log Write uh oh");
+                throw(hr);
+            }
+        }
+
+        virtual void LogEntryEnd()
+        {
+            if (!m_ActiveEntry)
+            {
+                throw std::exception();
+            }
+
+            try
+            {
+                CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::EndEntry);
+            }
+            catch (HRESULT hr)
+            {
+                // Write log communication error to log output...
+                OutputDebugString(L"Log Write uh oh");
+                throw(hr);
+            }
+    
+            m_ActiveEntry = false;
         }
     };
 }

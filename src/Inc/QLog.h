@@ -27,27 +27,6 @@ namespace QLog
     const UINT CategoryMaskAll(0xffffffff);
 
     //------------------------------------------------------------------------------------------------
-    class CProperty
-    {
-    public:
-        virtual PCWSTR GetNameString() const = 0;
-        virtual PCWSTR GetValueString() const = 0;
-    };
-
-    //------------------------------------------------------------------------------------------------
-    class CStringProperty : public CProperty
-    {
-        PCWSTR m_szName;
-        PCWSTR m_szValue;
-    public:
-        CStringProperty(PCWSTR szName, PCWSTR szValue) :
-            m_szName(szName),
-            m_szValue(szValue) {}
-        virtual PCWSTR GetNameString() const { return m_szName; }
-        virtual PCWSTR GetValueString() const { return m_szValue; }
-    };
-
-    //------------------------------------------------------------------------------------------------
     class CLogOutput
     {
     public:
@@ -82,14 +61,10 @@ namespace QLog
         }
         UINT GetCategoryMask() const { return m_CategoryMask; }
 
-        virtual void Write(Category Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, const CProperty *pProperties[]) = 0;
-        //virtual void WriteWithTimestamp(Category Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, const CProperty *pProperties[]) = 0;
-        //virtual void WriteVA(Category Category, PCWSTR szLogSource, PCWSTR szFormatMessage, va_list args) = 0;
-        //virtual void WriteWithTimestampVA(Category Category, PCWSTR szLogSource, PCWSTR szFormatMessage, va_list args) = 0;
-        void Write(Category Category, PCWSTR szLogSource, PCWSTR szMessage)
-        {
-            Write(Category, szLogSource, szMessage, 0, nullptr);
-        }
+        virtual bool LogEntryBegin(Category Cat, PCWSTR szLogSource, PCWSTR szMessage) = 0;
+        virtual bool LogEntryBeginVA(Category Cat, PCWSTR szLogSource, PCWSTR szFormat, va_list args) = 0;
+        virtual void LogEntryAddProperty(PCWSTR szName, PCWSTR szValue) = 0;
+        virtual void LogEntryEnd() = 0;
     };
 }
 
