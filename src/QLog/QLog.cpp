@@ -43,7 +43,7 @@ namespace QLog
         {
             DWORD BytesWritten;
             DWORD Len = szString ? lstrlenW(szString) : 0;
-            ThrowLastErrorOnFalse(WriteFile(hFile, &Len, sizeof(Len), &BytesWritten, nullptr));
+            CLogSerializer<DWORD>::Serialize(hFile, Len);
             if (Len)
             {
                 ThrowLastErrorOnFalse(WriteFile(hFile, szString, Len * sizeof(wchar_t), &BytesWritten, nullptr));
@@ -54,7 +54,7 @@ namespace QLog
         {
             DWORD BytesRead;
             DWORD OrigLen;
-            ThrowLastErrorOnFalse(ReadFile(hFile, &OrigLen, sizeof(OrigLen), &BytesRead, nullptr));
+            CLogSerializer<DWORD>::Deserialize(hFile, OrigLen);
             if (OrigLen)
             {
                 DWORD CharsToRead = std::min<DWORD>(BufferSizeInBytes - sizeof(wchar_t), OrigLen);
@@ -79,8 +79,8 @@ namespace QLog
         static void ListenerThread(CLogOutput *pLogOutput, HANDLE hPipe)
         {
             LogCategory Category;
-            wchar_t Source[1024];
-            wchar_t Message[1024];
+            static thread_local wchar_t Buffer1[1024];
+            static thread_local wchar_t Buffer2[1024];
 
             // Serialize messages
             try
@@ -95,21 +95,22 @@ namespace QLog
                         break;
                     }
 
-                    CLogSerializer<PWSTR >::Deserialize(hPipe, Source, 1024);
-                    CLogSerializer<PWSTR >::Deserialize(hPipe, Message, 1024);
+                    CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
+                    CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
 
-                    pLogOutput->BeginOutput(Category, reinterpret_cast<PCWSTR>(Source), reinterpret_cast<PWSTR>(Message));
+                    pLogOutput->OutputBegin(Category, reinterpret_cast<PCWSTR>(Buffer1), reinterpret_cast<PWSTR>(Buffer2));
 
-                    UINT NumValues;
-                    CLogSerializer<UINT>::Deserialize(hPipe, NumValues);
-                    for (UINT i = 0; i < NumValues; ++i)
+                    UINT NumProperties;
+                    CLogSerializer<UINT>::Deserialize(hPipe, NumProperties);
+                    for (UINT i = 0; i < NumProperties; ++i)
                     {
-                        //pLogValues[i].SerializeNameAsString(m_hPipeFile);
-                        //pLogValues[i].SerializeValueAsString(m_hPipeFile);
+                        CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
+                        CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
+                        pLogOutput->OutputProperty(Buffer1, Buffer2);
                     }
 
                     // Write to the log output
-                    pLogOutput->EndOutput();
+                    pLogOutput->OutputEnd();
                 }
             }
             catch (HRESULT hr)
@@ -210,7 +211,7 @@ namespace QLog
             //FlushFileBuffers(m_hPipeFile);
         }
 
-        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumValues, CLogValue *pLogValues)
+        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, CProperty *pProperties[])
         {
             DWORD BytesWritten = 0;
 
@@ -220,11 +221,11 @@ namespace QLog
                 CLogSerializer<LogCategory>::Serialize(m_hPipeFile, Category);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szLogSource);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szMessage);
-                CLogSerializer<UINT>::Serialize(m_hPipeFile, NumValues);
-                for (UINT i = 0; i < NumValues; ++i)
+                CLogSerializer<UINT>::Serialize(m_hPipeFile, NumProperties);
+                for (UINT i = 0; i < NumProperties; ++i)
                 {
-                    pLogValues[i].SerializeNameAsString(m_hPipeFile);
-                    pLogValues[i].SerializeValueAsString(m_hPipeFile);
+                    CLogSerializer<PWSTR>::Serialize(m_hPipeFile, pProperties[i]->GetNameString());
+                    CLogSerializer<PWSTR>::Serialize(m_hPipeFile, pProperties[i]->GetValueString());
                 }
             }
             catch (HRESULT hr)
@@ -254,3 +255,4 @@ void QLogDestroyLogClient(QLog::CLogClient *pLogClient)
 {
     delete(pLogClient);
 }
+

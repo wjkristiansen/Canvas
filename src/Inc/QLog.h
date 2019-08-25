@@ -15,11 +15,25 @@ namespace QLog
         Mask = 0x00000001f
     };
 
-    class CLogValue
+    //------------------------------------------------------------------------------------------------
+    class CProperty
     {
     public:
-        virtual void SerializeNameAsString(HANDLE hFile) = 0;
-        virtual void SerializeValueAsString(HANDLE hFile) = 0;
+        virtual PCWSTR GetNameString() const = 0;
+        virtual PCWSTR GetValueString() const = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    class CStringProperty : public CProperty
+    {
+        PCWSTR m_szName;
+        PCWSTR m_szValue;
+    public:
+        CStringProperty(PCWSTR szName, PCWSTR szValue) :
+            m_szName(szName),
+            m_szValue(szValue) {}
+        virtual PCWSTR GetNameString() const { return m_szName; }
+        virtual PCWSTR GetValueString() const { return m_szValue; }
     };
 
     //------------------------------------------------------------------------------------------------
@@ -27,9 +41,9 @@ namespace QLog
     {
     public:
         virtual ~CLogOutput() {}
-        virtual void BeginOutput(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage) = 0;
-        virtual void WriteValue(PCWSTR szName, PCWSTR szValue) = 0;
-        virtual void EndOutput() = 0;
+        virtual void OutputBegin(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage) = 0;
+        virtual void OutputProperty(PCWSTR szName, PCWSTR szValue) = 0;
+        virtual void OutputEnd() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -45,7 +59,7 @@ namespace QLog
     {
     public:
         virtual ~CLogClient() {}
-        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumValues, CLogValue *pLogValues) = 0;
+        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, CProperty *pProperties[]) = 0;
         void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
         {
             Write(Category, szLogSource, szMessage, 0, nullptr);
