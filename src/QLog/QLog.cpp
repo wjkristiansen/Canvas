@@ -228,6 +228,9 @@ namespace QLog
     {
         CScopedHandle m_hPipeFile;
         bool m_ActiveEntry = false;
+        std::mutex m_Mutex;
+        UINT m_CategoryMask = 0xffffffff;
+
 
     public:
         CLogClientImpl(PCWSTR szPipeName)
@@ -255,6 +258,20 @@ namespace QLog
             CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::EndLog);
         }
 
+        virtual UINT SetCategoryMask(UINT Mask)
+        {
+            std::lock_guard<std::mutex> lock(m_Mutex);
+            auto OldMask = m_CategoryMask;
+            m_CategoryMask = Mask;
+            return OldMask;
+        }
+
+        virtual UINT GetCategoryMask() const 
+        {
+            return m_CategoryMask; 
+        }
+
+        _Requires_lock_held_(this->m_Mutex)
         void LogEntryBeginImpl(Category Cat, PCWSTR szLogSource, PCWSTR szMessage)
         {
             try
@@ -275,44 +292,57 @@ namespace QLog
             }
         }
 
-        virtual bool LogEntryBegin(Category Cat, PCWSTR szLogSource, PCWSTR szMessage)
+        _When_(return == true, _Acquires_lock_(this->m_Mutex))
+        bool PreLogEntry(Category Cat)
         {
             if (m_ActiveEntry)
             {
                 throw std::exception();
             }
 
+            m_Mutex.lock();
+
             if (0 == (m_CategoryMask & UINT(Cat)))
             {
                 // Discard write
+                m_Mutex.unlock();
                 return false;
             }
 
             m_ActiveEntry = true;
+
+            return true;
+        }
+
+        _When_(return == true, _Acquires_lock_(this->m_Mutex))
+        virtual bool LogEntryBegin(Category Cat, PCWSTR szLogSource, PCWSTR szMessage)
+        {
+            if (!PreLogEntry(Cat))
+            {
+                return false;
+            }
 
             LogEntryBeginImpl(Cat, szLogSource, szMessage);
 
             return true;
         }
 
+        _When_(return == true, _Acquires_lock_(this->m_Mutex))
         virtual bool LogEntryBeginVA(Category Cat, PCWSTR szLogSource, PCWSTR szFormat, va_list args)
         {
-            if (m_ActiveEntry)
+            if (!PreLogEntry(Cat))
             {
-                throw std::exception();
-            }
-
-            m_ActiveEntry = true;
-
-            if (0 == (m_CategoryMask & UINT(Cat)))
-            {
-                // Discard write
                 return false;
             }
+
+            static thread_local wchar_t Buffer[1024];
+            vswprintf_s(Buffer, szFormat, args);
+            LogEntryBeginImpl(Cat, szLogSource, Buffer);
 
             return true;
         }
 
+        _Requires_lock_held_(this->m_Mutex)
         virtual void LogEntryAddProperty(PCWSTR szName, PCWSTR szValue)
         {
             try
@@ -331,6 +361,7 @@ namespace QLog
             }
         }
 
+        _Releases_lock_(this->m_Mutex) _Requires_lock_held_(this->m_Mutex)
         virtual void LogEntryEnd()
         {
             if (!m_ActiveEntry)
@@ -350,6 +381,7 @@ namespace QLog
             }
     
             m_ActiveEntry = false;
+            m_Mutex.unlock();
         }
     };
 }

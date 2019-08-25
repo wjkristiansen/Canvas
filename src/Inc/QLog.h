@@ -47,19 +47,11 @@ namespace QLog
 
     class CLogClient
     {
-    protected:
-        UINT m_CategoryMask = 0xffffffff;
-
     public:
         virtual ~CLogClient() {}
 
-        UINT SetCategoryMask(UINT Mask)
-        {
-            auto OldMask = m_CategoryMask;
-            m_CategoryMask = Mask;
-            return OldMask;
-        }
-        UINT GetCategoryMask() const { return m_CategoryMask; }
+        virtual UINT SetCategoryMask(UINT Mask) = 0;
+        virtual UINT GetCategoryMask() const = 0;
 
         virtual bool LogEntryBegin(Category Cat, PCWSTR szLogSource, PCWSTR szMessage) = 0;
         virtual bool LogEntryBeginVA(Category Cat, PCWSTR szLogSource, PCWSTR szFormat, va_list args) = 0;
