@@ -28,6 +28,7 @@ namespace QLogTest
         QLog::LogCategory Category = QLog::LogCategory::None;
         std::wstring LogSource;
         std::wstring LogMessage;
+        std::vector<std::pair<std::wstring, std::wstring>> LogProperties;
 
         LogData() = default;
         LogData(QLog::LogCategory category, PCWSTR szLogSource, PCWSTR szMessage) :
@@ -39,7 +40,8 @@ namespace QLogTest
             return
                 Category == o.Category &&
                 LogSource == o.LogSource &&
-                LogMessage == o.LogMessage;
+                LogMessage == o.LogMessage &&
+                LogProperties == o.LogProperties;
         }
     };
 
@@ -48,15 +50,15 @@ namespace QLogTest
         std::deque<LogData> m_LogData;
 
     public:
-        virtual void BeginOutput(QLog::LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
+        virtual void OutputBegin(QLog::LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
         {
             m_LogData.emplace_back(Category, szLogSource, szMessage);
         }
-        virtual void WriteValue(PCWSTR szName, PCWSTR szValue)
+        virtual void OutputProperty(PCWSTR szName, PCWSTR szValue)
         {
-
+            m_LogData.back().LogProperties.emplace_back(std::make_pair(szName, szValue));
         }
-        virtual void EndOutput()
+        virtual void OutputEnd()
         {
 
         }
@@ -92,9 +94,9 @@ namespace QLogTest
             WaitFinish();
         }
 
-        void Log(QLog::LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
+        void Log(QLog::LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties = 0, QLog::CProperty *pProperties[] = nullptr)
         {
-            m_pLogClient->Write(Category, szLogSource, szMessage);
+            m_pLogClient->Write(Category, szLogSource, szMessage, NumProperties, pProperties);
         }
 
         void WaitFinish()
@@ -108,8 +110,8 @@ namespace QLogTest
 	TEST_CLASS(QLogTest)
 	{
 	public:
-		TEST_METHOD(BasicLogTest)
-		{
+        TEST_METHOD(BasicLogTest)
+        {
             CTestLogOutput LogOutput;
             const LogData TestData[4] =
             {
@@ -136,5 +138,36 @@ namespace QLogTest
             }
             Assert::IsFalse(LogOutput.PopFront(Data));
         }
-	};
+
+        TEST_METHOD(PropertiesLogTest)
+        {
+            CTestLogOutput LogOutput;
+            LogData TestData[4] =
+            {
+                { QLog::LogCategory::Info, {L"Provider A"}, {L"Message One"}},
+                { QLog::LogCategory::Error, {L"Provider A"}, {L"Message Two"}},
+                { QLog::LogCategory::Verbose, {L"Provider B"}, {L"Message Three"}},
+                { QLog::LogCategory::Warning, {L"Provider B"}, {L"Message Four"}},
+            };
+
+            TestData[0].LogProperties.emplace_back(std::make_pair(L"Number", L"Five"));
+            TestData[0].LogProperties.emplace_back(std::make_pair(L"Letter", L"X"));
+
+            {
+                CTestLogger Logger(&LogOutput);
+                QLog::CProperty *pProperties[] =
+                {
+                    &QLog::CStringProperty(TestData[0].LogProperties[0].first.c_str(), TestData[0].LogProperties[0].second.c_str()),
+                    &QLog::CStringProperty(TestData[0].LogProperties[1].first.c_str(), TestData[0].LogProperties[1].second.c_str()),
+                };
+                Logger.Log(TestData[0].Category, TestData[0].LogSource.c_str(), TestData[0].LogMessage.c_str(),
+                    2,
+                    pProperties
+                );
+            }
+            LogData Data;
+            Assert::IsTrue(LogOutput.PopFront(Data));
+            Assert::IsTrue(Data == TestData[0]);
+        }
+    };
 }
