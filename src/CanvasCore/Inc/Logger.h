@@ -17,7 +17,7 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::LogCategory::Error, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::Category::Error, L"CANVAS", szOutput);
         }
     }
 
@@ -33,7 +33,7 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::LogCategory::Warning, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::Category::Warning, L"CANVAS", szOutput);
         }
     }
 
@@ -49,7 +49,7 @@ public:
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::LogCategory::Info, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::Category::Info, L"CANVAS", szOutput);
         }
     }
 
@@ -61,15 +61,15 @@ public:
     //    va_end(args);
     //}
 
-    void LogVerbose(PCWSTR szOutput)
+    void LogDebug(PCWSTR szOutput)
     {
         if (m_pLogClient)
         {
-            m_pLogClient->Write(QLog::LogCategory::Verbose, L"CANVAS", szOutput);
+            m_pLogClient->Write(QLog::Category::Debug, L"CANVAS", szOutput);
         }
     }
 
-    void LogVerboseF(PCWSTR szOutput, ...);
+    void LogDebugF(PCWSTR szOutput, ...);
     //{
     //    va_list args;
     //    va_start(args, szOutput);

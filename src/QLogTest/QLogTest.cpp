@@ -25,13 +25,13 @@ namespace QLogTest
 
     struct LogData
     {
-        QLog::LogCategory Category = QLog::LogCategory::None;
+        QLog::Category Category = QLog::Category::None;
         std::wstring LogSource;
         std::wstring LogMessage;
         std::vector<std::pair<std::wstring, std::wstring>> LogProperties;
 
         LogData() = default;
-        LogData(QLog::LogCategory category, PCWSTR szLogSource, PCWSTR szMessage) :
+        LogData(QLog::Category category, PCWSTR szLogSource, PCWSTR szMessage) :
             Category(category),
             LogSource(szLogSource),
             LogMessage(szMessage) {}
@@ -50,7 +50,7 @@ namespace QLogTest
         std::deque<LogData> m_LogData;
 
     public:
-        virtual void OutputBegin(QLog::LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
+        virtual void OutputBegin(QLog::Category Category, PCWSTR szLogSource, PCWSTR szMessage)
         {
             m_LogData.emplace_back(Category, szLogSource, szMessage);
         }
@@ -94,14 +94,11 @@ namespace QLogTest
             WaitFinish();
         }
 
-        void Log(QLog::LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties = 0, QLog::CProperty *pProperties[] = nullptr)
-        {
-            m_pLogClient->Write(Category, szLogSource, szMessage, NumProperties, pProperties);
-        }
+        QLog::CLogClient *GetClient() { return m_pLogClient.get(); }
 
         void WaitFinish()
         {
-//            Log(QLog::LogCategory::None, nullptr, nullptr); // Terminate logging
+//            Log(QLog::Category::None, nullptr, nullptr); // Terminate logging
             m_pLogClient = nullptr;
             m_pLogHost->FlushAndFinish();
         }
@@ -112,31 +109,52 @@ namespace QLogTest
 	public:
         TEST_METHOD(BasicLogTest)
         {
-            CTestLogOutput LogOutput;
-            const LogData TestData[4] =
+            UINT LogMasks[] =
             {
-                { QLog::LogCategory::Info, {L"Provider A"}, {L"Message One"}},
-                { QLog::LogCategory::Error, {L"Provider A"}, {L"Message Two"}},
-                { QLog::LogCategory::Verbose, {L"Provider B"}, {L"Message Three"}},
-                { QLog::LogCategory::Warning, {L"Provider B"}, {L"Message Four"}},
+                QLog::CategoryMaskAll,
+                QLog::CategoryMaskAllErrors,
+                UINT(QLog::Category::Warning),
+                QLog::Category::Debug | QLog::Category::Critical,
+                0
             };
 
+            constexpr UINT MaskCount = sizeof(LogMasks) / sizeof(LogMasks[0]);
+
+            for (UINT m = 0; m < MaskCount; ++m)
             {
-                CTestLogger Logger(&LogOutput);
-                for (int i = 0; i < 4; ++i)
+                CTestLogOutput LogOutput;
+
+                const LogData TestData[] =
                 {
-                    Logger.Log(TestData[i].Category, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str());
+                    { QLog::Category::Info, {L"Provider A"}, {L"Message One"}},
+                    { QLog::Category::Error, {L"Provider A"}, {L"Message Two"}},
+                    { QLog::Category::Debug, {L"Provider B"}, {L"Message Three"}},
+                    { QLog::Category::Warning, {L"Provider B"}, {L"Message Four"}},
+                    { QLog::Category::Critical, {L"Provider C"}, {L"Message Five"}},
+                };
+
+                constexpr UINT TestDataCount = sizeof(TestData) / sizeof(TestData[0]);
+
+                {
+                    CTestLogger Logger(&LogOutput);
+                    Logger.GetClient()->SetCategoryMask(LogMasks[m]);
+                    for (int i = 0; i < TestDataCount; ++i)
+                    {
+                        Logger.GetClient()->Write(TestData[i].Category, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str());
+                    }
                 }
-            }
 
-
-            LogData Data;
-            for (int i = 0; i < 4; ++i)
-            {
-                Assert::IsTrue(LogOutput.PopFront(Data));
-                Assert::IsTrue(Data == TestData[i]);
+                LogData Data;
+                for (int i = 0; i < TestDataCount; ++i)
+                {
+                    if (0 != (TestData[i].Category & LogMasks[m]))
+                    {
+                        Assert::IsTrue(LogOutput.PopFront(Data));
+                        Assert::IsTrue(Data == TestData[i]);
+                    }
+                }
+                Assert::IsFalse(LogOutput.PopFront(Data));
             }
-            Assert::IsFalse(LogOutput.PopFront(Data));
         }
 
         TEST_METHOD(PropertiesLogTest)
@@ -144,10 +162,10 @@ namespace QLogTest
             CTestLogOutput LogOutput;
             LogData TestData[4] =
             {
-                { QLog::LogCategory::Info, {L"Provider A"}, {L"Message One"}},
-                { QLog::LogCategory::Error, {L"Provider A"}, {L"Message Two"}},
-                { QLog::LogCategory::Verbose, {L"Provider B"}, {L"Message Three"}},
-                { QLog::LogCategory::Warning, {L"Provider B"}, {L"Message Four"}},
+                { QLog::Category::Info, {L"Provider A"}, {L"Message One"}},
+                { QLog::Category::Error, {L"Provider A"}, {L"Message Two"}},
+                { QLog::Category::Debug, {L"Provider B"}, {L"Message Three"}},
+                { QLog::Category::Warning, {L"Provider B"}, {L"Message Four"}},
             };
 
             TestData[0].LogProperties.emplace_back(std::make_pair(L"Number", L"Five"));
@@ -155,12 +173,12 @@ namespace QLogTest
 
             {
                 CTestLogger Logger(&LogOutput);
-                QLog::CProperty *pProperties[] =
+                const QLog::CProperty *pProperties[] =
                 {
                     &QLog::CStringProperty(TestData[0].LogProperties[0].first.c_str(), TestData[0].LogProperties[0].second.c_str()),
                     &QLog::CStringProperty(TestData[0].LogProperties[1].first.c_str(), TestData[0].LogProperties[1].second.c_str()),
                 };
-                Logger.Log(TestData[0].Category, TestData[0].LogSource.c_str(), TestData[0].LogMessage.c_str(),
+                Logger.GetClient()->Write(TestData[0].Category, TestData[0].LogSource.c_str(), TestData[0].LogMessage.c_str(),
                     2,
                     pProperties
                 );

@@ -4,16 +4,27 @@
 
 namespace QLog
 {
-    enum class LogCategory
+    enum class Category : UINT
     {
         None = 0x00000000,
         Critical = 0x00000001,
         Error = 0x00000002,
         Warning = 0x00000004,
         Info = 0x00000008,
-        Verbose = 0x00000010,
-        Mask = 0x00000001f
+        Debug = 0x00000010,
     };
+    
+    inline UINT operator|(Category a, Category b) { return UINT(a) | UINT(b); }
+    inline UINT operator|(UINT a, Category b) { return a | UINT(b); }
+    inline UINT operator|(Category a, UINT b) { return UINT(a) | b; }
+    inline UINT operator&(Category a, Category b) { return UINT(a) & UINT(b); }
+    inline UINT operator&(UINT a, Category b) { return a & UINT(b); }
+    inline UINT operator&(Category a, UINT b) { return UINT(a) & b; }
+
+    const UINT CategoryMaskAllErrors(Category::Error | Category::Critical);
+    const UINT CategoryMaskAlerts(CategoryMaskAllErrors | Category::Warning);
+    const UINT CategoryMaskNotice(CategoryMaskAlerts | Category::Info);
+    const UINT CategoryMaskAll(0xffffffff);
 
     //------------------------------------------------------------------------------------------------
     class CProperty
@@ -41,7 +52,7 @@ namespace QLog
     {
     public:
         virtual ~CLogOutput() {}
-        virtual void OutputBegin(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage) = 0;
+        virtual void OutputBegin(Category Category, PCWSTR szLogSource, PCWSTR szMessage) = 0;
         virtual void OutputProperty(PCWSTR szName, PCWSTR szValue) = 0;
         virtual void OutputEnd() = 0;
     };
@@ -57,10 +68,25 @@ namespace QLog
 
     class CLogClient
     {
+    protected:
+        UINT m_CategoryMask = 0xffffffff;
+
     public:
         virtual ~CLogClient() {}
-        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, CProperty *pProperties[]) = 0;
-        void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage)
+
+        UINT SetCategoryMask(UINT Mask)
+        {
+            auto OldMask = m_CategoryMask;
+            m_CategoryMask = Mask;
+            return OldMask;
+        }
+        UINT GetCategoryMask() const { return m_CategoryMask; }
+
+        virtual void Write(Category Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, const CProperty *pProperties[]) = 0;
+        //virtual void WriteWithTimestamp(Category Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, const CProperty *pProperties[]) = 0;
+        //virtual void WriteVA(Category Category, PCWSTR szLogSource, PCWSTR szFormatMessage, va_list args) = 0;
+        //virtual void WriteWithTimestampVA(Category Category, PCWSTR szLogSource, PCWSTR szFormatMessage, va_list args) = 0;
+        void Write(Category Category, PCWSTR szLogSource, PCWSTR szMessage)
         {
             Write(Category, szLogSource, szMessage, 0, nullptr);
         }

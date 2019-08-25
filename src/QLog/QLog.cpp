@@ -78,7 +78,7 @@ namespace QLog
 
         static void ListenerThread(CLogOutput *pLogOutput, HANDLE hPipe)
         {
-            LogCategory Category;
+            Category Cat;
             static thread_local wchar_t Buffer1[1024];
             static thread_local wchar_t Buffer2[1024];
 
@@ -88,8 +88,8 @@ namespace QLog
                 for (;;)
                 {
                     // Read the message category
-                    CLogSerializer<LogCategory>::Deserialize(hPipe, Category);
-                    if (LogCategory::None == Category)
+                    CLogSerializer<Category>::Deserialize(hPipe, Cat);
+                    if (Category::None == Cat)
                     {
                         // Terminate logger thread
                         break;
@@ -98,7 +98,7 @@ namespace QLog
                     CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
                     CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
 
-                    pLogOutput->OutputBegin(Category, reinterpret_cast<PCWSTR>(Buffer1), reinterpret_cast<PWSTR>(Buffer2));
+                    pLogOutput->OutputBegin(Cat, reinterpret_cast<PCWSTR>(Buffer1), reinterpret_cast<PWSTR>(Buffer2));
 
                     UINT NumProperties;
                     CLogSerializer<UINT>::Deserialize(hPipe, NumProperties);
@@ -211,14 +211,20 @@ namespace QLog
             //FlushFileBuffers(m_hPipeFile);
         }
 
-        virtual void Write(LogCategory Category, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, CProperty *pProperties[])
+        virtual void Write(Category Cat, PCWSTR szLogSource, PCWSTR szMessage, UINT NumProperties, const CProperty *pProperties[])
         {
             DWORD BytesWritten = 0;
+
+            if (0 == (m_CategoryMask & UINT(Cat)))
+            {
+                // Discard write
+                return;
+            }
 
             try
             {
                 // Write the message category
-                CLogSerializer<LogCategory>::Serialize(m_hPipeFile, Category);
+                CLogSerializer<Category>::Serialize(m_hPipeFile, Cat);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szLogSource);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szMessage);
                 CLogSerializer<UINT>::Serialize(m_hPipeFile, NumProperties);
