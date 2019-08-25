@@ -17,5 +17,8 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
+#include <mutex>
+
+#include <sal.h>
 
 #endif //PCH_H

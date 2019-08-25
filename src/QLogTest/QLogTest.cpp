@@ -96,6 +96,14 @@ namespace QLogTest
 
         QLog::CLogClient *GetClient() { return m_pLogClient.get(); }
 
+        void Write(QLog::Category Cat, PCWSTR szSource, PCWSTR szMessage)
+        {
+            if (m_pLogClient->LogEntryBegin(Cat, szSource, szMessage))
+            {
+                m_pLogClient->LogEntryEnd();
+            }
+        }
+
         void WaitFinish()
         {
             m_pLogClient = nullptr;
@@ -139,10 +147,7 @@ namespace QLogTest
                     Logger.GetClient()->SetCategoryMask(LogMasks[m]);
                     for (int i = 0; i < TestDataCount; ++i)
                     {
-                        if (Logger.GetClient()->LogEntryBegin(TestData[i].Category, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str()))
-                        {
-                            Logger.GetClient()->LogEntryEnd();
-                        }
+                        Logger.Write(TestData[i].Category, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str());
                     }
                 }
 
