@@ -98,7 +98,6 @@ namespace QLogTest
 
         void WaitFinish()
         {
-//            Log(QLog::Category::None, nullptr, nullptr); // Terminate logging
             m_pLogClient = nullptr;
             m_pLogHost->FlushAndFinish();
         }
@@ -140,7 +139,10 @@ namespace QLogTest
                     Logger.GetClient()->SetCategoryMask(LogMasks[m]);
                     for (int i = 0; i < TestDataCount; ++i)
                     {
-                        Logger.GetClient()->Write(TestData[i].Category, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str());
+                        if (Logger.GetClient()->LogEntryBegin(TestData[i].Category, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str()))
+                        {
+                            Logger.GetClient()->LogEntryEnd();
+                        }
                     }
                 }
 
@@ -173,15 +175,10 @@ namespace QLogTest
 
             {
                 CTestLogger Logger(&LogOutput);
-                const QLog::CProperty *pProperties[] =
-                {
-                    &QLog::CStringProperty(TestData[0].LogProperties[0].first.c_str(), TestData[0].LogProperties[0].second.c_str()),
-                    &QLog::CStringProperty(TestData[0].LogProperties[1].first.c_str(), TestData[0].LogProperties[1].second.c_str()),
-                };
-                Logger.GetClient()->Write(TestData[0].Category, TestData[0].LogSource.c_str(), TestData[0].LogMessage.c_str(),
-                    2,
-                    pProperties
-                );
+                Logger.GetClient()->LogEntryBegin(TestData[0].Category, TestData[0].LogSource.c_str(), TestData[0].LogMessage.c_str());
+                Logger.GetClient()->LogEntryAddProperty(TestData[0].LogProperties[0].first.c_str(), TestData[0].LogProperties[0].second.c_str());
+                Logger.GetClient()->LogEntryAddProperty(TestData[0].LogProperties[1].first.c_str(), TestData[0].LogProperties[1].second.c_str());
+                Logger.GetClient()->LogEntryEnd();
             }
             LogData Data;
             Assert::IsTrue(LogOutput.PopFront(Data));
