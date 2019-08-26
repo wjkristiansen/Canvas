@@ -166,7 +166,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_o
     }
     catch(const std::exception &e)
     {
-        Logger().LogErrorF("XCanvas::CreateGraphicsDevice failed: %S", e.what());
+        Logger().LogErrorF("XCanvas::CreateGraphicsDevice failed: %s", e.what());
         result = Result::NotFound;
     }
     catch (const Gem::GemError &e)
