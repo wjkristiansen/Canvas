@@ -7,9 +7,9 @@
 using namespace ThinWin;
 
 //------------------------------------------------------------------------------------------------
-ATOM CWindow::RegisterWindowClass(HINSTANCE hInstance, PCWSTR pszMenuName, HCURSOR hCursor, HICON hIcon, HICON hIconSm, HBRUSH hbrBackground)
+ATOM CWindow::RegisterWindowClass(HINSTANCE hInstance, PCSTR pszMenuName, HCURSOR hCursor, HICON hIcon, HICON hIconSm, HBRUSH hbrBackground)
 {
-    WNDCLASSEXW wcex = {};
+    WNDCLASSEXA wcex = {};
 
     wcex.cbSize = sizeof(WNDCLASSEX);
 
@@ -22,10 +22,10 @@ ATOM CWindow::RegisterWindowClass(HINSTANCE hInstance, PCWSTR pszMenuName, HCURS
     wcex.hCursor        = hCursor;
     wcex.hbrBackground  = hbrBackground;
     wcex.lpszMenuName   = nullptr;
-    wcex.lpszClassName  = L"ThinWinDefault";
+    wcex.lpszClassName  = "ThinWinDefault";
     wcex.hIconSm        = hIconSm;
 
-    return RegisterClassExW(&wcex);
+    return RegisterClassExA(&wcex);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -53,7 +53,7 @@ LRESULT CALLBACK CWindow::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 
 //------------------------------------------------------------------------------------------------
 CWindow::CWindow(
-    _In_opt_ LPCWSTR lpWindowName,
+    _In_opt_ LPCSTR lpWindowName,
     HINSTANCE hInstance, 
     _In_ DWORD dwStyle,
     _In_ int X,
@@ -66,7 +66,7 @@ CWindow::CWindow(
     _In_ DWORD dwExStyle
 )
 {
-    HWND hWnd = CreateWindowExW(dwExStyle, L"ThinWinDefault", lpWindowName, dwStyle, X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, this);
+    HWND hWnd = CreateWindowExA(dwExStyle, "ThinWinDefault", lpWindowName, dwStyle, X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, this);
     if (hWnd == NULL)
     {
         throw(_com_error(HRESULT_FROM_WIN32(GetLastError())));
