@@ -31,7 +31,7 @@ namespace QLog
     {
     public:
         virtual ~CLogOutput() {}
-        virtual void OutputBegin(Category Category, PCWSTR szLogSource, PCWSTR szMessage) = 0;
+        virtual void OutputBegin(Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage) = 0;
         virtual void OutputProperty(PCWSTR szName, PCWSTR szValue) = 0;
         virtual void OutputEnd() = 0;
     };
@@ -53,8 +53,8 @@ namespace QLog
         virtual UINT SetCategoryMask(UINT Mask) = 0;
         virtual UINT GetCategoryMask() const = 0;
 
-        virtual bool LogEntryBegin(Category Cat, PCWSTR szLogSource, PCWSTR szMessage) = 0;
-        virtual bool LogEntryBeginVA(Category Cat, PCWSTR szLogSource, PCWSTR szFormat, va_list args) = 0;
+        virtual bool LogEntryBegin(Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage) = 0;
+        virtual bool LogEntryBeginVA(Category LogCategory, PCWSTR szLogSource, PCWSTR szFormat, va_list args) = 0;
         virtual void LogEntryAddProperty(PCWSTR szName, PCWSTR szValue) = 0;
         virtual void LogEntryEnd() = 0;
     };

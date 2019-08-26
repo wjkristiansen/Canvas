@@ -90,8 +90,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
     }
     catch (_com_error &e)
     {
-        //m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::Initialize: HRESULT 0x%08x", e.Error());
-        m_pCanvas->Logger().LogError(L"CGraphicsDevice12::Initialize: HRESULT 0x%08x");
+        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::Initialize: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
 
@@ -163,8 +162,7 @@ GEMMETHODIMP CGraphicsDevice12::RenderFrame()
     }
     catch (_com_error &e)
     {
-//        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::RenderFrame: HRESULT 0x%08x", e.Error());
-        m_pCanvas->Logger().LogError(L"CGraphicsDevice12::RenderFrame: HRESULT 0x%08x");
+        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::RenderFrame: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
 
@@ -192,8 +190,7 @@ GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CGraphi
     }
     catch (_com_error &e)
     {
-//        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
-        m_pCanvas->Logger().LogError(L"CGraphicsDevice12::AllocateUploadBuffer: HRESULT 0x%08x");
+        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
     return Result::Success;
@@ -274,8 +271,7 @@ GEMMETHODIMP CGraphicsDevice12::CreateStaticMesh(const MESH_DATA *pMeshData, XMe
     }
     catch (_com_error &e)
     {
-//        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
-        m_pCanvas->Logger().LogError(L"CGraphicsDevice12::CreateStaticMesh: HRESULT 0x%08x");
+        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
     return Result::Success;

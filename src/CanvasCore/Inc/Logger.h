@@ -13,79 +13,98 @@ public:
     CCanvasLogger(QLog::CLogClient *pLogClient) :
         m_pLogClient(pLogClient) {}
 
-    void LogError(PCWSTR szOutput)
+    void Log(QLog::Category LogCategory, PCWSTR szOutput)
     {
         if (m_pLogClient)
         {
-            if (m_pLogClient->LogEntryBegin(QLog::Category::Error, L"CANVAS", szOutput))
+            if (m_pLogClient->LogEntryBegin(LogCategory, L"CANVAS", szOutput))
             {
                 m_pLogClient->LogEntryEnd();
             }
         }
     }
 
-    void LogErrorF(PCWSTR szOutput, ...);
-    //{
-    //    va_list args;
-    //    va_start(args, szOutput);
-    //    LogOutputVA<SlimLog::Error>(L"CANVAS ERROR", szOutput, args);
-    //    va_end(args);
-    //}
+    void Log(QLog::Category LogCategory, PCWSTR szFormat, va_list args)
+    {
+        if (m_pLogClient)
+        {
+            if (m_pLogClient->LogEntryBeginVA(LogCategory, L"CANVAS", szFormat, args))
+            {
+                m_pLogClient->LogEntryEnd();
+            }
+        }
+    }
+
+    void LogF(QLog::Category LogCategory, PCWSTR szFormat, ...)
+    {
+        va_list args;
+        va_start(args, szFormat);
+        Log(LogCategory, szFormat, args);
+        va_end(args);
+    }
+
+    void LogCritical(PCWSTR szOutput)
+    {
+        Log(QLog::Category::Critical, szOutput);
+    }
+
+    void LogCriticalF(PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        Log(QLog::Category::Critical, szOutput, args);
+        va_end(args);
+    }
+
+    void LogError(PCWSTR szOutput)
+    {
+        Log(QLog::Category::Error, szOutput);
+    }
+
+    void LogErrorF(PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        Log(QLog::Category::Error, szOutput, args);
+        va_end(args);
+    }
 
     void LogWarning(PCWSTR szOutput)
     {
-        if (m_pLogClient)
-        {
-            if (m_pLogClient->LogEntryBegin(QLog::Category::Warning, L"CANVAS", szOutput))
-            {
-                m_pLogClient->LogEntryEnd();
-            }
-        }
+        Log(QLog::Category::Warning, szOutput);
     }
 
-    void LogWarningF(PCWSTR szOutput, ...);
-    //{
-    //    va_list args;
-    //    va_start(args, szOutput);
-    //    LogOutputVA<SlimLog::Warning>(L"CANVAS WARNING", szOutput, args);
-    //    va_end(args);
-    //}
+    void LogWarningF(PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        Log(QLog::Category::Warning, szOutput, args);
+        va_end(args);
+    }
 
     void LogInfo(PCWSTR szOutput)
     {
-        if (m_pLogClient)
-        {
-            if(m_pLogClient->LogEntryBegin(QLog::Category::Info, L"CANVAS", szOutput))
-            {
-                m_pLogClient->LogEntryEnd();
-            }
-        }
+        Log(QLog::Category::Info, szOutput);
     }
 
-    void LogInfoF(PCWSTR szOutput, ...);
-    //{
-    //    va_list args;
-    //    va_start(args, szOutput);
-    //    LogOutputVA<SlimLog::MESSAGE>(L"CANVAS", szOutput, args);
-    //    va_end(args);
-    //}
-
-    void LogDebug(PCWSTR szOutput)
+    void LogInfoF(PCWSTR szOutput, ...)
     {
-        if (m_pLogClient)
-        {
-            if (m_pLogClient->LogEntryBegin(QLog::Category::Debug, L"CANVAS", szOutput))
-            {
-                m_pLogClient->LogEntryEnd();
-            }
-        }
+        va_list args;
+        va_start(args, szOutput);
+        Log(QLog::Category::Info, szOutput, args);
+        va_end(args);
     }
 
-    void LogDebugF(PCWSTR szOutput, ...);
-    //{
-    //    va_list args;
-    //    va_start(args, szOutput);
-    //    LogOutputVA<SlimLog::Info>(L"CANVAS INFO", szOutput, args);
-    //    va_end(args);
-    //}
+    void LogDebug(PCWSTR szFile, UINT LineNumber, PCWSTR szOutput)
+    {
+        Log(QLog::Category::Debug, szOutput);
+    }
+
+    void LogDebugF(PCWSTR szFile, UINT LineNumber, PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        Log(QLog::Category::Debug, szOutput, args);
+        va_end(args);
+    }
 };

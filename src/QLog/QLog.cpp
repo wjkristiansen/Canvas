@@ -86,7 +86,7 @@ namespace QLog
 
         static void ListenerThread(CLogOutput *pLogOutput, HANDLE hPipe)
         {
-            Category Cat;
+            Category LogCategory;
             static thread_local wchar_t Buffer1[1024];
             static thread_local wchar_t Buffer2[1024];
             bool ActiveEntry = false;
@@ -122,10 +122,10 @@ namespace QLog
                         ActiveEntry = true;
 
                         // Read the message category
-                        CLogSerializer<Category>::Deserialize(hPipe, Cat);
+                        CLogSerializer<Category>::Deserialize(hPipe, LogCategory);
                         CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
                         CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
-                        pLogOutput->OutputBegin(Cat, reinterpret_cast<PCWSTR>(Buffer1), reinterpret_cast<PWSTR>(Buffer2));
+                        pLogOutput->OutputBegin(LogCategory, reinterpret_cast<PCWSTR>(Buffer1), reinterpret_cast<PWSTR>(Buffer2));
                     }
                     else
                     if (Tag == LogTag::Property)
@@ -255,7 +255,14 @@ namespace QLog
         }
         ~CLogClientImpl()
         {
-            CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::EndLog);
+            try
+            {
+                CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::EndLog);
+            }
+            catch (...)
+            {
+                // Do nothing
+            }
         }
 
         virtual UINT SetCategoryMask(UINT Mask)
@@ -272,7 +279,7 @@ namespace QLog
         }
 
         _Requires_lock_held_(this->m_Mutex)
-        void LogEntryBeginImpl(Category Cat, PCWSTR szLogSource, PCWSTR szMessage)
+        void LogEntryBeginImpl(Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage)
         {
             try
             {
@@ -280,7 +287,7 @@ namespace QLog
                 CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::BeginEntry);
 
                 // Write the message category, source and message
-                CLogSerializer<Category>::Serialize(m_hPipeFile, Cat);
+                CLogSerializer<Category>::Serialize(m_hPipeFile, LogCategory);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szLogSource);
                 CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szMessage);
             }
@@ -293,16 +300,11 @@ namespace QLog
         }
 
         _When_(return == true, _Acquires_lock_(this->m_Mutex))
-        bool PreLogEntry(Category Cat)
+        bool PreLogEntry(Category LogCategory)
         {
-            if (m_ActiveEntry)
-            {
-                throw std::exception();
-            }
-
             m_Mutex.lock();
 
-            if (0 == (m_CategoryMask & UINT(Cat)))
+            if (0 == (m_CategoryMask & UINT(LogCategory)))
             {
                 // Discard write
                 m_Mutex.unlock();
@@ -315,29 +317,29 @@ namespace QLog
         }
 
         _When_(return == true, _Acquires_lock_(this->m_Mutex))
-        virtual bool LogEntryBegin(Category Cat, PCWSTR szLogSource, PCWSTR szMessage)
+        virtual bool LogEntryBegin(Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage)
         {
-            if (!PreLogEntry(Cat))
+            if (!PreLogEntry(LogCategory))
             {
                 return false;
             }
 
-            LogEntryBeginImpl(Cat, szLogSource, szMessage);
+            LogEntryBeginImpl(LogCategory, szLogSource, szMessage);
 
             return true;
         }
 
         _When_(return == true, _Acquires_lock_(this->m_Mutex))
-        virtual bool LogEntryBeginVA(Category Cat, PCWSTR szLogSource, PCWSTR szFormat, va_list args)
+        virtual bool LogEntryBeginVA(Category LogCategory, PCWSTR szLogSource, PCWSTR szFormat, va_list args)
         {
-            if (!PreLogEntry(Cat))
+            if (!PreLogEntry(LogCategory))
             {
                 return false;
             }
 
             static thread_local wchar_t Buffer[1024];
             vswprintf_s(Buffer, szFormat, args);
-            LogEntryBeginImpl(Cat, szLogSource, Buffer);
+            LogEntryBeginImpl(LogCategory, szLogSource, Buffer);
 
             return true;
         }
