@@ -4,89 +4,107 @@
 
 #pragma once
 
-using CanvasLogOutput = SlimLog::CLogOutputBase;
-
 //------------------------------------------------------------------------------------------------
-class CCanvasLogger : 
-    public SlimLog::TLogger<CanvasLogOutput>
+class CCanvasLogger
 {
+    QLog::CLogClient *m_pLogClient;
+
 public:
-    CCanvasLogger(CanvasLogOutput *pLogOutput) :
-        SlimLog::TLogger<CanvasLogOutput>(pLogOutput) {}
+    CCanvasLogger(QLog::CLogClient *pLogClient) :
+        m_pLogClient(pLogClient) {}
+
+    void Log(QLog::Category LogCategory, PCWSTR szOutput)
+    {
+        if (m_pLogClient)
+        {
+            if (m_pLogClient->LogEntryBegin(LogCategory, L"CANVAS", szOutput))
+            {
+                m_pLogClient->LogEntryEnd();
+            }
+        }
+    }
+
+    void Log(QLog::Category LogCategory, PCWSTR szFormat, va_list args)
+    {
+        if (m_pLogClient)
+        {
+            if (m_pLogClient->LogEntryBeginVA(LogCategory, L"CANVAS", szFormat, args))
+            {
+                m_pLogClient->LogEntryEnd();
+            }
+        }
+    }
+
+    void LogF(QLog::Category LogCategory, PCWSTR szFormat, ...)
+    {
+        va_list args;
+        va_start(args, szFormat);
+        Log(LogCategory, szFormat, args);
+        va_end(args);
+    }
+
+    void LogCritical(PCWSTR szOutput)
+    {
+        Log(QLog::Category::Critical, szOutput);
+    }
+
+    void LogCriticalF(PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        Log(QLog::Category::Critical, szOutput, args);
+        va_end(args);
+    }
 
     void LogError(PCWSTR szOutput)
     {
-        LogOutput<SlimLog::LOG_CATEGORY_ERROR>(L"CANVAS ERROR", szOutput);
+        Log(QLog::Category::Error, szOutput);
     }
 
     void LogErrorF(PCWSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
-        LogOutputVA<SlimLog::LOG_CATEGORY_ERROR>(L"CANVAS ERROR", szOutput, args);
+        Log(QLog::Category::Error, szOutput, args);
         va_end(args);
     }
 
     void LogWarning(PCWSTR szOutput)
     {
-        LogOutput<SlimLog::LOG_CATEGORY_WARNING>(L"CANVAS WARNING", szOutput);
+        Log(QLog::Category::Warning, szOutput);
     }
 
     void LogWarningF(PCWSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
-        LogOutputVA<SlimLog::LOG_CATEGORY_WARNING>(L"CANVAS WARNING", szOutput, args);
-        va_end(args);
-    }
-
-    void LogMessage(PCWSTR szOutput)
-    {
-        LogOutput<SlimLog::LOG_CATEGORY_MESSAGE>(L"CANVAS MESSAGE", szOutput);
-    }
-
-    void LogMessageF(PCWSTR szOutput, ...)
-    {
-        va_list args;
-        va_start(args, szOutput);
-        LogOutputVA<SlimLog::LOG_CATEGORY_MESSAGE>(L"CANVAS MESSAGE", szOutput, args);
+        Log(QLog::Category::Warning, szOutput, args);
         va_end(args);
     }
 
     void LogInfo(PCWSTR szOutput)
     {
-        LogOutput<SlimLog::LOG_CATEGORY_INFO>(L"CANVAS INFO", szOutput);
+        Log(QLog::Category::Info, szOutput);
     }
 
     void LogInfoF(PCWSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
-        LogOutputVA<SlimLog::LOG_CATEGORY_INFO>(L"CANVAS INFO", szOutput, args);
+        Log(QLog::Category::Info, szOutput, args);
         va_end(args);
     }
-};
 
-//------------------------------------------------------------------------------------------------
-class CDefaultLogOutput : public SlimLog::CLogOutputBase
-{
-    std::mutex m_Mutex;
-
-public:
-    CDefaultLogOutput() = default;
-
-    virtual void Output(PCWSTR szHeader, PCWSTR szString)
+    void LogDebug(PCWSTR szFile, UINT LineNumber, PCWSTR szOutput)
     {
-        std::unique_lock<std::mutex> lock(m_Mutex);
+        Log(QLog::Category::Debug, szOutput);
+    }
 
-        // Debugger
-        OutputDebugStringW(L"[");
-        OutputDebugStringW(szHeader);
-        OutputDebugStringW(L"] ");
-        OutputDebugStringW(szString);
-        OutputDebugStringW(L"[END]\n");
-
-        // Console
-        wprintf_s(L"%s: %s\n", szHeader, szString);
+    void LogDebugF(PCWSTR szFile, UINT LineNumber, PCWSTR szOutput, ...)
+    {
+        va_list args;
+        va_start(args, szOutput);
+        Log(QLog::Category::Debug, szOutput, args);
+        va_end(args);
     }
 };

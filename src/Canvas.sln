@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.28307.102
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29209.62
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasCore", "CanvasCore\CanvasCore.vcxproj", "{EA57EEF8-E2C3-403E-ADFB-BCC7E08DEA22}"
 EndProject
@@ -20,6 +20,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Inc", "Inc", "{66481EAC-E4B
 		Inc\Canvas.h = Inc\Canvas.h
 		Inc\CanvasMath.hpp = Inc\CanvasMath.hpp
 		..\..\Gem\src\Inc\Gem.hpp = ..\..\Gem\src\Inc\Gem.hpp
+		Inc\QLog.h = Inc\QLog.h
+		Inc\ScopedUtils.h = Inc\ScopedUtils.h
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasModelViewer", "CanvasModelViewer\CanvasModelViewer.vcxproj", "{6C7EFAF8-C6B0-410E-A5FD-2B7FE5B3C83C}"
@@ -29,6 +31,10 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThinWin", "ThinWin\ThinWin.vcxproj", "{27F5356B-4424-4129-8C24-2757B56A4C8D}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasFbx", "CanvasFbx\CanvasFbx.vcxproj", "{01D6D15D-0842-4A1E-97CF-7B57222E7F64}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "QLog", "QLog\QLog.vcxproj", "{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "QLogTest", "QLogTest\QLogTest.vcxproj", "{B76CA9E1-963C-461B-8BE8-D7CCD132A945}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -94,6 +100,22 @@ Global
 		{01D6D15D-0842-4A1E-97CF-7B57222E7F64}.Release|x64.Build.0 = Release|x64
 		{01D6D15D-0842-4A1E-97CF-7B57222E7F64}.Release|x86.ActiveCfg = Release|Win32
 		{01D6D15D-0842-4A1E-97CF-7B57222E7F64}.Release|x86.Build.0 = Release|Win32
+		{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}.Debug|x64.ActiveCfg = Debug|x64
+		{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}.Debug|x64.Build.0 = Debug|x64
+		{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}.Debug|x86.ActiveCfg = Debug|Win32
+		{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}.Debug|x86.Build.0 = Debug|Win32
+		{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}.Release|x64.ActiveCfg = Release|x64
+		{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}.Release|x64.Build.0 = Release|x64
+		{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}.Release|x86.ActiveCfg = Release|Win32
+		{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}.Release|x86.Build.0 = Release|Win32
+		{B76CA9E1-963C-461B-8BE8-D7CCD132A945}.Debug|x64.ActiveCfg = Debug|x64
+		{B76CA9E1-963C-461B-8BE8-D7CCD132A945}.Debug|x64.Build.0 = Debug|x64
+		{B76CA9E1-963C-461B-8BE8-D7CCD132A945}.Debug|x86.ActiveCfg = Debug|Win32
+		{B76CA9E1-963C-461B-8BE8-D7CCD132A945}.Debug|x86.Build.0 = Debug|Win32
+		{B76CA9E1-963C-461B-8BE8-D7CCD132A945}.Release|x64.ActiveCfg = Release|x64
+		{B76CA9E1-963C-461B-8BE8-D7CCD132A945}.Release|x64.Build.0 = Release|x64
+		{B76CA9E1-963C-461B-8BE8-D7CCD132A945}.Release|x86.ActiveCfg = Release|Win32
+		{B76CA9E1-963C-461B-8BE8-D7CCD132A945}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -74,7 +74,7 @@ void CCanvas::ReportObjectLeaks()
         std::wostringstream ostr;
         CObjectBase *pObject = pNode->Ptr();
 
-        std::wcout << L"Leaked object: ";
+        ostr << L"Leaked object: ";
         //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
         XNameTag *pNameTag;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pNameTag))))
@@ -94,7 +94,7 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutputBase *pLogOutput)
+Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *pLogClient)
 {
     *ppCanvas = nullptr;
 
@@ -102,19 +102,25 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutput
     {
         if (iid == XCanvas::IId)
         {
-            if (pLogOutput)
+            if (pLogClient)
             {
-                pLogOutput->Output(L"CANVAS", L"CreateCanvas: Creating canvas object...");
+                if (pLogClient->LogEntryBegin(QLog::Category::Info, L"CANVAS", L"CreateCanvas: Creating canvas object..."))
+                {
+                    pLogClient->LogEntryEnd();
+                }
             }
-            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogOutput); // throw(bad_alloc)
+            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogClient); // throw(bad_alloc)
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
     }
     catch (std::bad_alloc &)
     {
-        if (pLogOutput)
+        if (pLogClient)
         {
-            pLogOutput->Output(L"CANVAS ERROR: ", L"FAILURE in CreateCanvas");
+            if (pLogClient->LogEntryBegin(QLog::Category::Error, L"CANVAS: ", L"FAILURE in CreateCanvas"))
+            {
+                pLogClient->LogEntryEnd();
+            }
         }
         return Result::OutOfMemory;
     }
@@ -125,7 +131,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, SlimLog::CLogOutput
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
-    Logger().LogMessage(L"CCanvas::CreateGraphicsDevice");
+    Logger().LogInfo(L"CCanvas::CreateGraphicsDevice");
     Result result = Result::NotImplemented;
 
     try

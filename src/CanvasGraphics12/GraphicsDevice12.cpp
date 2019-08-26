@@ -185,7 +185,7 @@ GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CGraphi
     }
     catch (std::bad_alloc)
     {
-        m_pCanvas->Logger().LogErrorF(L"CGraphicsDevice12::AllocateUploadBuffer: Out of memory");
+        m_pCanvas->Logger().LogError(L"CGraphicsDevice12::AllocateUploadBuffer: Out of memory");
         return Result::OutOfMemory;
     }
     catch (_com_error &e)
@@ -302,24 +302,24 @@ Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_ CGraphi
 
     try
     {
-        pCanvas->Logger().LogMessage(L"CreateGraphicsDevice12: Creating D3D12 Graphics Device...");
+        pCanvas->Logger().LogInfo(L"CreateGraphicsDevice12: Creating D3D12 Graphics Device...");
         TGemPtr<CGraphicsDevice12> pGraphicsDevice = new TGeneric<CGraphicsDevice12>(pCanvas); // throw(bad_alloc)
         auto result = pGraphicsDevice->Initialize(hWnd, true);
         if (result == Result::Success)
         {
             *ppGraphicsDevice = pGraphicsDevice;
             pGraphicsDevice.Detach();
-            pCanvas->Logger().LogMessage(L"CreateGraphicsDevice12: D3D12 Graphics Device Creation succeeded");
+            pCanvas->Logger().LogInfo(L"CreateGraphicsDevice12: D3D12 Graphics Device Creation succeeded");
         }
         else
         {
-            pCanvas->Logger().LogErrorF(L"CreateGraphicsDevice12: Failed");
+            pCanvas->Logger().LogError(L"CreateGraphicsDevice12: Failed");
         }
         return result;
     }
     catch (std::bad_alloc &)
     {
-        pCanvas->Logger().LogErrorF(L"CreateGraphicsDevice12: Out of memory");
+        pCanvas->Logger().LogError(L"CreateGraphicsDevice12: Out of memory");
         return Result::OutOfMemory;
     }
 }

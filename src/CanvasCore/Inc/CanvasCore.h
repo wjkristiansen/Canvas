@@ -83,8 +83,8 @@ class CCanvas :
     UINT m_FrameCounter = 0;
 
 public:
-    CCanvas(SlimLog::CLogOutputBase *pLogOutput) :
-        m_Logger(pLogOutput),
+    CCanvas(QLog::CLogClient *pLogClient) :
+        m_Logger(pLogClient),
         CGenericBase()
     {}
 
@@ -92,11 +92,6 @@ public:
 
     std::map<std::wstring, XGeneric *> m_ObjectNames;
     TAutoList<TStaticPtr<CObjectBase>> m_OutstandingObjects;
-
-    GEMMETHOD_(int, SetLogCategoryMask)(int Mask)
-    {
-        return m_Logger.SetCategoryMask(Mask);
-    }
 
     GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) _Ret_writes_maybenull_(ppObj)
     {

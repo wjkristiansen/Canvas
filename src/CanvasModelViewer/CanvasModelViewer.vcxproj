@@ -155,7 +155,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\Common\SlimLog.h" />
     <ClInclude Include="CanvasModelViewer.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="stdafx.h" />
@@ -180,6 +179,9 @@
   <ItemGroup>
     <ProjectReference Include="..\CanvasCore\CanvasCore.vcxproj">
       <Project>{ea57eef8-e2c3-403e-adfb-bcc7e08dea22}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\QLog\QLog.vcxproj">
+      <Project>{f7857abb-59dd-437f-9579-4e43fde4cbe1}</Project>
     </ProjectReference>
     <ProjectReference Include="..\ThinWin\ThinWin.vcxproj">
       <Project>{27f5356b-4424-4129-8c24-2757b56a4c8d}</Project>
