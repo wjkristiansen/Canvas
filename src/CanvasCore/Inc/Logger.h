@@ -13,29 +13,29 @@ public:
     CCanvasLogger(QLog::CLogClient *pLogClient) :
         m_pLogClient(pLogClient) {}
 
-    void Log(QLog::Category LogCategory, PCWSTR szOutput)
+    void Log(QLog::Category LogCategory, PCSTR szOutput)
     {
         if (m_pLogClient)
         {
-            if (m_pLogClient->LogEntryBegin(LogCategory, L"CANVAS", szOutput))
+            if (m_pLogClient->LogEntryBegin(LogCategory, "CANVAS", szOutput))
             {
                 m_pLogClient->LogEntryEnd();
             }
         }
     }
 
-    void Log(QLog::Category LogCategory, PCWSTR szFormat, va_list args)
+    void Log(QLog::Category LogCategory, PCSTR szFormat, va_list args)
     {
         if (m_pLogClient)
         {
-            if (m_pLogClient->LogEntryBeginVA(LogCategory, L"CANVAS", szFormat, args))
+            if (m_pLogClient->LogEntryBeginVA(LogCategory, "CANVAS", szFormat, args))
             {
                 m_pLogClient->LogEntryEnd();
             }
         }
     }
 
-    void LogF(QLog::Category LogCategory, PCWSTR szFormat, ...)
+    void LogF(QLog::Category LogCategory, PCSTR szFormat, ...)
     {
         va_list args;
         va_start(args, szFormat);
@@ -43,12 +43,12 @@ public:
         va_end(args);
     }
 
-    void LogCritical(PCWSTR szOutput)
+    void LogCritical(PCSTR szOutput)
     {
         Log(QLog::Category::Critical, szOutput);
     }
 
-    void LogCriticalF(PCWSTR szOutput, ...)
+    void LogCriticalF(PCSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
@@ -56,12 +56,12 @@ public:
         va_end(args);
     }
 
-    void LogError(PCWSTR szOutput)
+    void LogError(PCSTR szOutput)
     {
         Log(QLog::Category::Error, szOutput);
     }
 
-    void LogErrorF(PCWSTR szOutput, ...)
+    void LogErrorF(PCSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
@@ -69,12 +69,12 @@ public:
         va_end(args);
     }
 
-    void LogWarning(PCWSTR szOutput)
+    void LogWarning(PCSTR szOutput)
     {
         Log(QLog::Category::Warning, szOutput);
     }
 
-    void LogWarningF(PCWSTR szOutput, ...)
+    void LogWarningF(PCSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
@@ -82,12 +82,12 @@ public:
         va_end(args);
     }
 
-    void LogInfo(PCWSTR szOutput)
+    void LogInfo(PCSTR szOutput)
     {
         Log(QLog::Category::Info, szOutput);
     }
 
-    void LogInfoF(PCWSTR szOutput, ...)
+    void LogInfoF(PCSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);
@@ -95,12 +95,12 @@ public:
         va_end(args);
     }
 
-    void LogDebug(PCWSTR szFile, UINT LineNumber, PCWSTR szOutput)
+    void LogDebug(PCSTR szFile, UINT LineNumber, PCSTR szOutput)
     {
         Log(QLog::Category::Debug, szOutput);
     }
 
-    void LogDebugF(PCWSTR szFile, UINT LineNumber, PCWSTR szOutput, ...)
+    void LogDebugF(PCSTR szFile, UINT LineNumber, PCSTR szOutput, ...)
     {
         va_list args;
         va_start(args, szOutput);

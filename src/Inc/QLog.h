@@ -31,8 +31,8 @@ namespace QLog
     {
     public:
         virtual ~CLogOutput() {}
-        virtual void OutputBegin(Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage) = 0;
-        virtual void OutputProperty(PCWSTR szName, PCWSTR szValue) = 0;
+        virtual void OutputBegin(Category LogCategory, PCSTR szLogSource, PCSTR szMessage) = 0;
+        virtual void OutputProperty(PCSTR szName, PCSTR szValue) = 0;
         virtual void OutputEnd() = 0;
     };
 
@@ -53,14 +53,14 @@ namespace QLog
         virtual UINT SetCategoryMask(UINT Mask) = 0;
         virtual UINT GetCategoryMask() const = 0;
 
-        virtual bool LogEntryBegin(Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage) = 0;
-        virtual bool LogEntryBeginVA(Category LogCategory, PCWSTR szLogSource, PCWSTR szFormat, va_list args) = 0;
-        virtual void LogEntryAddProperty(PCWSTR szName, PCWSTR szValue) = 0;
+        virtual bool LogEntryBegin(Category LogCategory, PCSTR szLogSource, PCSTR szMessage) = 0;
+        virtual bool LogEntryBeginVA(Category LogCategory, PCSTR szLogSource, PCSTR szFormat, va_list args) = 0;
+        virtual void LogEntryAddProperty(PCSTR szName, PCSTR szValue) = 0;
         virtual void LogEntryEnd() = 0;
     };
 }
 
-extern QLog::CLogHost * QLOGAPI QLogCreateLogHost(PCWSTR szPipeName, unsigned int PipeBufferSize);
+extern QLog::CLogHost * QLOGAPI QLogCreateLogHost(PCSTR szPipeName, unsigned int PipeBufferSize);
 extern void QLOGAPI QLogDestroyLogHost(QLog::CLogHost *pLogHost);
-extern QLog::CLogClient * QLOGAPI QLogCreateLogClient(PCWSTR szPipeName);
+extern QLog::CLogClient * QLOGAPI QLogCreateLogClient(PCSTR szPipeName);
 extern void QLOGAPI QLogDestroyLogClient(QLog::CLogClient *pLogClient);

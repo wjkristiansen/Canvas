@@ -26,12 +26,12 @@ namespace QLogTest
     struct LogData
     {
         QLog::Category LogCategory = QLog::Category::None;
-        std::wstring LogSource;
-        std::wstring LogMessage;
-        std::vector<std::pair<std::wstring, std::wstring>> LogProperties;
+        std::string LogSource;
+        std::string LogMessage;
+        std::vector<std::pair<std::string, std::string>> LogProperties;
 
         LogData() = default;
-        LogData(QLog::Category category, PCWSTR szLogSource, PCWSTR szMessage) :
+        LogData(QLog::Category category, PCSTR szLogSource, PCSTR szMessage) :
             LogCategory(category),
             LogSource(szLogSource),
             LogMessage(szMessage) {}
@@ -50,11 +50,11 @@ namespace QLogTest
         std::deque<LogData> m_LogData;
 
     public:
-        virtual void OutputBegin(QLog::Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage)
+        virtual void OutputBegin(QLog::Category LogCategory, PCSTR szLogSource, PCSTR szMessage)
         {
             m_LogData.emplace_back(LogCategory, szLogSource, szMessage);
         }
-        virtual void OutputProperty(PCWSTR szName, PCWSTR szValue)
+        virtual void OutputProperty(PCSTR szName, PCSTR szValue)
         {
             m_LogData.back().LogProperties.emplace_back(std::make_pair(szName, szValue));
         }
@@ -83,8 +83,8 @@ namespace QLogTest
 
     public:
         CTestLogger(QLog::CLogOutput *pLogOutput) :
-            m_pLogHost(QLogCreateLogHost(L"\\\\.\\pipe\\Test", 4096)),
-            m_pLogClient(QLogCreateLogClient(L"\\\\.\\pipe\\Test"))
+            m_pLogHost(QLogCreateLogHost("\\\\.\\pipe\\Test", 4096)),
+            m_pLogClient(QLogCreateLogClient("\\\\.\\pipe\\Test"))
         {
             m_pLogHost->Execute(pLogOutput);
         }
@@ -96,7 +96,7 @@ namespace QLogTest
 
         QLog::CLogClient *GetClient() { return m_pLogClient.get(); }
 
-        void Write(QLog::Category LogCategory, PCWSTR szSource, PCWSTR szMessage)
+        void Write(QLog::Category LogCategory, PCSTR szSource, PCSTR szMessage)
         {
             if (m_pLogClient->LogEntryBegin(LogCategory, szSource, szMessage))
             {
@@ -133,11 +133,11 @@ namespace QLogTest
 
                 const LogData TestData[] =
                 {
-                    { QLog::Category::Info, {L"Provider A"}, {L"Message One"}},
-                    { QLog::Category::Error, {L"Provider A"}, {L"Message Two"}},
-                    { QLog::Category::Debug, {L"Provider B"}, {L"Message Three"}},
-                    { QLog::Category::Warning, {L"Provider B"}, {L"Message Four"}},
-                    { QLog::Category::Critical, {L"Provider C"}, {L"Message Five"}},
+                    { QLog::Category::Info, {"Provider A"}, {"Message One"}},
+                    { QLog::Category::Error, {"Provider A"}, {"Message Two"}},
+                    { QLog::Category::Debug, {"Provider B"}, {"Message Three"}},
+                    { QLog::Category::Warning, {"Provider B"}, {"Message Four"}},
+                    { QLog::Category::Critical, {"Provider C"}, {"Message Five"}},
                 };
 
                 constexpr UINT TestDataCount = sizeof(TestData) / sizeof(TestData[0]);
@@ -169,14 +169,14 @@ namespace QLogTest
             CTestLogOutput LogOutput;
             LogData TestData[4] =
             {
-                { QLog::Category::Info, {L"Provider A"}, {L"Message One"}},
-                { QLog::Category::Error, {L"Provider A"}, {L"Message Two"}},
-                { QLog::Category::Debug, {L"Provider B"}, {L"Message Three"}},
-                { QLog::Category::Warning, {L"Provider B"}, {L"Message Four"}},
+                { QLog::Category::Info, {"Provider A"}, {"Message One"}},
+                { QLog::Category::Error, {"Provider A"}, {"Message Two"}},
+                { QLog::Category::Debug, {"Provider B"}, {"Message Three"}},
+                { QLog::Category::Warning, {"Provider B"}, {"Message Four"}},
             };
 
-            TestData[0].LogProperties.emplace_back(std::make_pair(L"Number", L"Five"));
-            TestData[0].LogProperties.emplace_back(std::make_pair(L"Letter", L"X"));
+            TestData[0].LogProperties.emplace_back(std::make_pair("Number", "Five"));
+            TestData[0].LogProperties.emplace_back(std::make_pair("Letter", "X"));
 
             {
                 CTestLogger Logger(&LogOutput);

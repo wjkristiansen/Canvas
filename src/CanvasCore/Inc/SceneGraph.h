@@ -101,7 +101,7 @@ public:
     using _ListType = TSceneGraphNodeIterator::_ListType;
     _ListType m_ChildList;
 
-    TSceneGraphNode(CCanvas* pCanvas, PCWSTR szName) :
+    TSceneGraphNode(CCanvas* pCanvas, PCSTR szName) :
         TTransform<_Base>(),
         m_NameTag(this, pCanvas, szName),
         CObjectBase(pCanvas)

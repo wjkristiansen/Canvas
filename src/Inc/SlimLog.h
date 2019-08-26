@@ -18,7 +18,7 @@ namespace SlimLog
     class CLogOutputBase
     {
     public:
-        virtual void Output(PCWSTR szHeader, PCWSTR szString) = 0;
+        virtual void Output(PCSTR szHeader, PCSTR szString) = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -42,7 +42,7 @@ namespace SlimLog
 
         // Write to log output
         template<LOG_Group Group>
-        void LogOutput(PCWSTR szPrefix, PCWSTR szOutputString)
+        void LogOutput(PCSTR szPrefix, PCSTR szOutputString)
         {
             if (m_pOutput && 0 != (m_GroupMask & Group))
             {
@@ -52,7 +52,7 @@ namespace SlimLog
 
         // Write to log output
         template<LOG_Group Group>
-        void LogOutputVA(PCWSTR szPrefix, PCWSTR szFormat, va_list args)
+        void LogOutputVA(PCSTR szPrefix, PCSTR szFormat, va_list args)
         {
             if (m_pOutput && 0 != (m_GroupMask & Group))
             {

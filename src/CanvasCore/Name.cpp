@@ -5,7 +5,7 @@
 #include "stdafx.h"
 
 //------------------------------------------------------------------------------------------------
-CNameTag::CNameTag(XGeneric *pOuterGeneric, CCanvas *pCanvas, PCWSTR szName) :
+CNameTag::CNameTag(XGeneric *pOuterGeneric, CCanvas *pCanvas, PCSTR szName) :
     CInnerGenericBase(pOuterGeneric),
     m_pCanvas(pCanvas)
 {
@@ -16,13 +16,13 @@ CNameTag::CNameTag(XGeneric *pOuterGeneric, CCanvas *pCanvas, PCWSTR szName) :
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(PCWSTR) CNameTag::GetName()
+GEMMETHODIMP_(PCSTR) CNameTag::GetName()
 {
     return m_Tag.IsAssigned() ? m_Tag.GetKey().c_str() : nullptr;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CNameTag::SetName(PCWSTR szName)
+GEMMETHODIMP CNameTag::SetName(PCSTR szName)
 {
     Gem::Result result = Gem::Result::Success;
 

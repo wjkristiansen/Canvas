@@ -9,7 +9,7 @@ class CLight :
     public TSceneGraphNode<XLight>
 {
 public:
-    CLight(CCanvas* pCanvas, PCWSTR szName) :
+    CLight(CCanvas* pCanvas, PCSTR szName) :
         TSceneGraphNode(pCanvas, szName) {}
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
     {

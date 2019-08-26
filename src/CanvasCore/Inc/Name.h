@@ -82,12 +82,12 @@ class CNameTag :
     public CInnerGenericBase
 {
     CCanvas *m_pCanvas = nullptr; // Weak pointer
-    TScopedKeyValuePair<std::wstring, XGeneric *> m_Tag;
+    TScopedKeyValuePair<std::string, XGeneric *> m_Tag;
 
 public:
-    CNameTag(XGeneric *pOuterGeneric, CCanvas *pCanvas, PCWSTR szName = nullptr);
+    CNameTag(XGeneric *pOuterGeneric, CCanvas *pCanvas, PCSTR szName = nullptr);
 
-    GEMMETHOD_(PCWSTR, GetName)() final;
-    GEMMETHOD(SetName)(PCWSTR szName) final;
+    GEMMETHOD_(PCSTR, GetName)() final;
+    GEMMETHOD(SetName)(PCSTR szName) final;
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final;
 };

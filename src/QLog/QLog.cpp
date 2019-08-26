@@ -44,29 +44,29 @@ namespace QLog
     };
 
     template<>
-    class CLogSerializer<PWSTR>
+    class CLogSerializer<PSTR>
     {
     public:
-        static void Serialize(HANDLE hFile, PCWSTR szString)
+        static void Serialize(HANDLE hFile, PCSTR szString)
         {
             DWORD BytesWritten;
-            DWORD Len = szString ? lstrlenW(szString) : 0;
+            DWORD Len = szString ? DWORD(strnlen_s(szString, 1024)) : 0;
             CLogSerializer<DWORD>::Serialize(hFile, Len);
             if (Len)
             {
-                ThrowLastErrorOnFalse(WriteFile(hFile, szString, Len * sizeof(wchar_t), &BytesWritten, nullptr));
+                ThrowLastErrorOnFalse(WriteFile(hFile, szString, Len * sizeof(char), &BytesWritten, nullptr));
             }
         }
 
-        static void Deserialize(HANDLE hFile, PWSTR szStringBuffer, DWORD BufferSizeInBytes)
+        static void Deserialize(HANDLE hFile, PSTR szStringBuffer, DWORD BufferSizeInBytes)
         {
             DWORD BytesRead;
             DWORD OrigLen;
             CLogSerializer<DWORD>::Deserialize(hFile, OrigLen);
             if (OrigLen)
             {
-                DWORD CharsToRead = std::min<DWORD>(BufferSizeInBytes - sizeof(wchar_t), OrigLen);
-                DWORD BytesToRead = CharsToRead * sizeof(wchar_t);
+                DWORD CharsToRead = std::min<DWORD>(BufferSizeInBytes - sizeof(char), OrigLen);
+                DWORD BytesToRead = CharsToRead * sizeof(char);
                 ThrowLastErrorOnFalse(ReadFile(hFile, szStringBuffer, BytesToRead, &BytesRead, nullptr));
                 szStringBuffer[CharsToRead] = 0; // Null terminate
 
@@ -87,8 +87,8 @@ namespace QLog
         static void ListenerThread(CLogOutput *pLogOutput, HANDLE hPipe)
         {
             Category LogCategory;
-            static thread_local wchar_t Buffer1[1024];
-            static thread_local wchar_t Buffer2[1024];
+            static thread_local char Buffer1[1024];
+            static thread_local char Buffer2[1024];
             bool ActiveEntry = false;
 
             // Serialize messages
@@ -123,9 +123,9 @@ namespace QLog
 
                         // Read the message category
                         CLogSerializer<Category>::Deserialize(hPipe, LogCategory);
-                        CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
-                        CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
-                        pLogOutput->OutputBegin(LogCategory, reinterpret_cast<PCWSTR>(Buffer1), reinterpret_cast<PWSTR>(Buffer2));
+                        CLogSerializer<PSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
+                        CLogSerializer<PSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
+                        pLogOutput->OutputBegin(LogCategory, reinterpret_cast<PCSTR>(Buffer1), reinterpret_cast<PSTR>(Buffer2));
                     }
                     else
                     if (Tag == LogTag::Property)
@@ -134,8 +134,8 @@ namespace QLog
                         {
                             throw(std::exception());
                         }
-                        CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
-                        CLogSerializer<PWSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
+                        CLogSerializer<PSTR >::Deserialize(hPipe, Buffer1, sizeof(Buffer1));
+                        CLogSerializer<PSTR >::Deserialize(hPipe, Buffer2, sizeof(Buffer2));
                         pLogOutput->OutputProperty(Buffer1, Buffer2);
                     }
                     else
@@ -165,19 +165,19 @@ namespace QLog
                 }
 
                 // Write log communication error to log output...
-                OutputDebugString(L"LogHost uh oh");
+                OutputDebugStringA("LogHost uh oh");
                 throw(hr);
             }
             catch (...)
             {
-                OutputDebugString(L"???");
+                OutputDebugStringA("???");
             }
         }
 
     public:
-        CLogHostImpl(PCWSTR szPipeName, unsigned int BufferSize)
+        CLogHostImpl(PCSTR szPipeName, unsigned int BufferSize)
         {
-            CScopedHandle hPipe = CreateNamedPipe(
+            CScopedHandle hPipe = CreateNamedPipeA(
                 szPipeName,
                 PIPE_ACCESS_INBOUND,
                 PIPE_READMODE_BYTE | PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_ACCEPT_REMOTE_CLIENTS,
@@ -233,10 +233,10 @@ namespace QLog
 
 
     public:
-        CLogClientImpl(PCWSTR szPipeName)
+        CLogClientImpl(PCSTR szPipeName)
         {
             // Connect to the log host via pipe name
-            CScopedHandle hPipeFile = CreateFile(
+            CScopedHandle hPipeFile = CreateFileA(
                 szPipeName,
                 GENERIC_WRITE,
                 0,
@@ -279,7 +279,7 @@ namespace QLog
         }
 
         _Requires_lock_held_(this->m_Mutex)
-        void LogEntryBeginImpl(Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage)
+        void LogEntryBeginImpl(Category LogCategory, PCSTR szLogSource, PCSTR szMessage)
         {
             try
             {
@@ -288,13 +288,13 @@ namespace QLog
 
                 // Write the message category, source and message
                 CLogSerializer<Category>::Serialize(m_hPipeFile, LogCategory);
-                CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szLogSource);
-                CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szMessage);
+                CLogSerializer<PSTR>::Serialize(m_hPipeFile, szLogSource);
+                CLogSerializer<PSTR>::Serialize(m_hPipeFile, szMessage);
             }
             catch (HRESULT hr)
             {
                 // Write log communication error to log output...
-                OutputDebugString(L"Log Write uh oh");
+                OutputDebugStringA("Log Write uh oh");
                 throw(hr);
             }
         }
@@ -317,7 +317,7 @@ namespace QLog
         }
 
         _When_(return == true, _Acquires_lock_(this->m_Mutex))
-        virtual bool LogEntryBegin(Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage)
+        virtual bool LogEntryBegin(Category LogCategory, PCSTR szLogSource, PCSTR szMessage)
         {
             if (!PreLogEntry(LogCategory))
             {
@@ -330,35 +330,35 @@ namespace QLog
         }
 
         _When_(return == true, _Acquires_lock_(this->m_Mutex))
-        virtual bool LogEntryBeginVA(Category LogCategory, PCWSTR szLogSource, PCWSTR szFormat, va_list args)
+        virtual bool LogEntryBeginVA(Category LogCategory, PCSTR szLogSource, PCSTR szFormat, va_list args)
         {
             if (!PreLogEntry(LogCategory))
             {
                 return false;
             }
 
-            static thread_local wchar_t Buffer[1024];
-            vswprintf_s(Buffer, szFormat, args);
+            static thread_local char Buffer[1024];
+            vsprintf_s(Buffer, szFormat, args);
             LogEntryBeginImpl(LogCategory, szLogSource, Buffer);
 
             return true;
         }
 
         _Requires_lock_held_(this->m_Mutex)
-        virtual void LogEntryAddProperty(PCWSTR szName, PCWSTR szValue)
+        virtual void LogEntryAddProperty(PCSTR szName, PCSTR szValue)
         {
             try
             {
                 // Write the property tag
                 CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::Property);
 
-                CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szName);
-                CLogSerializer<PWSTR>::Serialize(m_hPipeFile, szValue);
+                CLogSerializer<PSTR>::Serialize(m_hPipeFile, szName);
+                CLogSerializer<PSTR>::Serialize(m_hPipeFile, szValue);
             }
             catch (HRESULT hr)
             {
                 // Write log communication error to log output...
-                OutputDebugString(L"Log Write uh oh");
+                OutputDebugStringA("Log Write uh oh");
                 throw(hr);
             }
         }
@@ -378,7 +378,7 @@ namespace QLog
             catch (HRESULT hr)
             {
                 // Write log communication error to log output...
-                OutputDebugString(L"Log Write uh oh");
+                OutputDebugStringA("Log Write uh oh");
                 throw(hr);
             }
     
@@ -388,7 +388,7 @@ namespace QLog
     };
 }
 
-QLog::CLogHost *QLogCreateLogHost(PCWSTR szPipeName, unsigned int PipeBufferSize)
+QLog::CLogHost *QLogCreateLogHost(PCSTR szPipeName, unsigned int PipeBufferSize)
 {
     return new QLog::CLogHostImpl(szPipeName, PipeBufferSize);
 }
@@ -397,7 +397,7 @@ void QLogDestroyLogHost(QLog::CLogHost *pLogHost)
 {
     delete(pLogHost);
 }
-QLog::CLogClient *QLogCreateLogClient(PCWSTR szPipeName)
+QLog::CLogClient *QLogCreateLogClient(PCSTR szPipeName)
 {
     return new QLog::CLogClientImpl(szPipeName);
 }

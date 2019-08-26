@@ -10,7 +10,7 @@ GEMMETHODIMP TSceneGraphNode<_Base>::AddChild(_In_ XSceneGraphNode* pChild)
     }
     catch (std::bad_alloc&)
     {
-        m_pCanvas->Logger().LogError(L"Out of memory: TSceneGraphNode::AddChild");
+        m_pCanvas->Logger().LogError("Out of memory: TSceneGraphNode::AddChild");
         return Result::OutOfMemory;
     }
     return Result::Success;
@@ -29,7 +29,7 @@ GEMMETHODIMP TSceneGraphNode<_Base>::CreateChildIterator(_Outptr_ XIterator** pp
     }
     catch (std::bad_alloc&)
     {
-        m_pCanvas->Logger().LogError(L"Out of memory: TSceneGraphNode::CreateChildIterator");
+        m_pCanvas->Logger().LogError("Out of memory: TSceneGraphNode::CreateChildIterator");
         *ppIterator = nullptr;
         return Result::OutOfMemory;
     }
