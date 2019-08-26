@@ -25,20 +25,20 @@ namespace QLogTest
 
     struct LogData
     {
-        QLog::Category Category = QLog::Category::None;
+        QLog::Category LogCategory = QLog::Category::None;
         std::wstring LogSource;
         std::wstring LogMessage;
         std::vector<std::pair<std::wstring, std::wstring>> LogProperties;
 
         LogData() = default;
         LogData(QLog::Category category, PCWSTR szLogSource, PCWSTR szMessage) :
-            Category(category),
+            LogCategory(category),
             LogSource(szLogSource),
             LogMessage(szMessage) {}
         bool operator==(const LogData &o)
         {
             return
-                Category == o.Category &&
+                LogCategory == o.LogCategory &&
                 LogSource == o.LogSource &&
                 LogMessage == o.LogMessage &&
                 LogProperties == o.LogProperties;
@@ -50,9 +50,9 @@ namespace QLogTest
         std::deque<LogData> m_LogData;
 
     public:
-        virtual void OutputBegin(QLog::Category Category, PCWSTR szLogSource, PCWSTR szMessage)
+        virtual void OutputBegin(QLog::Category LogCategory, PCWSTR szLogSource, PCWSTR szMessage)
         {
-            m_LogData.emplace_back(Category, szLogSource, szMessage);
+            m_LogData.emplace_back(LogCategory, szLogSource, szMessage);
         }
         virtual void OutputProperty(PCWSTR szName, PCWSTR szValue)
         {
@@ -96,9 +96,9 @@ namespace QLogTest
 
         QLog::CLogClient *GetClient() { return m_pLogClient.get(); }
 
-        void Write(QLog::Category Cat, PCWSTR szSource, PCWSTR szMessage)
+        void Write(QLog::Category LogCategory, PCWSTR szSource, PCWSTR szMessage)
         {
-            if (m_pLogClient->LogEntryBegin(Cat, szSource, szMessage))
+            if (m_pLogClient->LogEntryBegin(LogCategory, szSource, szMessage))
             {
                 m_pLogClient->LogEntryEnd();
             }
@@ -147,14 +147,14 @@ namespace QLogTest
                     Logger.GetClient()->SetCategoryMask(LogMasks[m]);
                     for (int i = 0; i < TestDataCount; ++i)
                     {
-                        Logger.Write(TestData[i].Category, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str());
+                        Logger.Write(TestData[i].LogCategory, TestData[i].LogSource.c_str(), TestData[i].LogMessage.c_str());
                     }
                 }
 
                 LogData Data;
                 for (int i = 0; i < TestDataCount; ++i)
                 {
-                    if (0 != (TestData[i].Category & LogMasks[m]))
+                    if (0 != (TestData[i].LogCategory & LogMasks[m]))
                     {
                         Assert::IsTrue(LogOutput.PopFront(Data));
                         Assert::IsTrue(Data == TestData[i]);
@@ -180,7 +180,7 @@ namespace QLogTest
 
             {
                 CTestLogger Logger(&LogOutput);
-                Logger.GetClient()->LogEntryBegin(TestData[0].Category, TestData[0].LogSource.c_str(), TestData[0].LogMessage.c_str());
+                Logger.GetClient()->LogEntryBegin(TestData[0].LogCategory, TestData[0].LogSource.c_str(), TestData[0].LogMessage.c_str());
                 Logger.GetClient()->LogEntryAddProperty(TestData[0].LogProperties[0].first.c_str(), TestData[0].LogProperties[0].second.c_str());
                 Logger.GetClient()->LogEntryAddProperty(TestData[0].LogProperties[1].first.c_str(), TestData[0].LogProperties[1].second.c_str());
                 Logger.GetClient()->LogEntryEnd();

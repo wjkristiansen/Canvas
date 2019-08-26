@@ -74,7 +74,7 @@ void CCanvas::ReportObjectLeaks()
         std::wostringstream ostr;
         CObjectBase *pObject = pNode->Ptr();
 
-        std::wcout << L"Leaked object: ";
+        ostr << L"Leaked object: ";
         //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
         XNameTag *pNameTag;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pNameTag))))
@@ -164,16 +164,14 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_
         result = Result::Success;
         m_GraphicsModule = std::move(Module);
     }
-    catch(const std::exception &/*e*/)
+    catch(const std::exception &e)
     {
-//        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %S", e.what());
-        Logger().LogError(L"XCanvas::CreateGraphicsDevice failed: %S");
+        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %S", e.what());
         result = Result::NotFound;
     }
-    catch (const Gem::GemError &/*e*/)
+    catch (const Gem::GemError &e)
     {
-        //Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %s", Gem::ResultToString(e.Result()));
-        Logger().LogError(L"XCanvas::CreateGraphicsDevice failed: %s");
+        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %s", Gem::ResultToString(e.Result()));
         result = Result::NotFound;
     }
 
