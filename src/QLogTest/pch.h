@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 #include <deque>
+#include <thread>
 
 #include "QLog.h"
 

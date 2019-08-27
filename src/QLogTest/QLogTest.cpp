@@ -104,6 +104,17 @@ namespace QLogTest
             }
         }
 
+        void WriteF(QLog::Category LogCategory, PCSTR szSource, PCSTR szFormat, ...)
+        {
+            va_list args;
+            va_start(args, szFormat);
+            if (m_pLogClient->LogEntryBeginVA(LogCategory, szSource, szFormat, args))
+            {
+                m_pLogClient->LogEntryEnd();
+            }
+            va_end(args);
+        }
+
         void WaitFinish()
         {
             m_pLogClient = nullptr;
@@ -188,6 +199,72 @@ namespace QLogTest
             LogData Data;
             Assert::IsTrue(LogOutput.PopFront(Data));
             Assert::IsTrue(Data == TestData[0]);
+        }
+        //static void ThreadProc(int ThreadIndex, CTestLogger &Logger, const char *ThreadNames[])
+        //{
+        //    for (int i = 0; i < 100; ++i)
+        //    {
+        //        Logger.WriteF(QLog::Category::Info, ThreadNames[ThreadIndex], "Message[%i,%i]", ThreadIndex, i);
+        //    }
+        //};
+
+        TEST_METHOD(MultithreadLogging)
+        {
+            CTestLogOutput LogOutput;
+
+            std::string ThreadNames[] =
+            {
+                "Thread0",
+                "Thread1",
+                "Thread2",
+                "Thread3",
+            };
+
+            auto ThreadProc = [&ThreadNames](int ThreadIndex, CTestLogger *pLogger)
+            {
+                for (int i = 0; i < 100; ++i)
+                {
+                    pLogger->WriteF(QLog::Category::Info, ThreadNames[ThreadIndex].c_str(), "Message[%i,%i]", ThreadIndex, i);
+                }
+            };
+
+            {
+                std::thread Threads[4];
+                CTestLogger Logger(&LogOutput);
+                for (int i = 0; i < 4; ++i)
+                {
+                    std::thread Thread(ThreadProc, i, &Logger);
+                    Threads[i].swap(Thread);
+                }
+
+                // Wait for all four threads to finish
+                for (int i = 0; i < 4; ++i)
+                {
+                    Threads[i].join();
+                }
+            }
+
+            LogData Data;
+            int MessageCounts[4] = { 0 };
+            for (int i = 0; i < 400; ++i)
+            {
+                Assert::IsTrue(LogOutput.PopFront(Data));
+                std::string Source = Data.LogSource;
+
+                int ThreadIndex;
+                for (ThreadIndex = 0; ThreadIndex < 4; ++ThreadIndex)
+                {
+                    if (Source == ThreadNames[ThreadIndex])
+                    {
+                        break;
+                    }
+                }
+                Assert::IsTrue(ThreadIndex < 4);
+                std::ostringstream ExpectedMessage;
+                ExpectedMessage << "Message[" << ThreadIndex << "," << MessageCounts[ThreadIndex] << "]";
+                Assert::IsTrue(ExpectedMessage.str() == std::string(Data.LogMessage));
+                MessageCounts[ThreadIndex]++;
+            }
         }
     };
 }
