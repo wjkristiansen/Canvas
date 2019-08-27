@@ -62,6 +62,7 @@ namespace QLogTest
         case QLog::Category::Debug:
             return "Debug";
         }
+        return nullptr;
     }
 
     class CTestLogOutput : public QLog::CLogOutput
