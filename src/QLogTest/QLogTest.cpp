@@ -45,22 +45,58 @@ namespace QLogTest
         }
     };
 
+    static const char *CategoryString(QLog::Category LogCategory)
+    {
+        switch (LogCategory)
+        {
+        case QLog::Category::None:
+            return "None";
+        case QLog::Category::Critical:
+            return "Critical";
+        case QLog::Category::Error:
+            return "Error";
+        case QLog::Category::Warning:
+            return "Warning";
+        case QLog::Category::Info:
+            return "Info";
+        case QLog::Category::Debug:
+            return "Debug";
+        }
+    }
+
     class CTestLogOutput : public QLog::CLogOutput
     {
         std::deque<LogData> m_LogData;
+        int PropertyCount = 0;
 
     public:
         virtual void OutputBegin(QLog::Category LogCategory, PCSTR szLogSource, PCSTR szMessage)
         {
+            PropertyCount = 0;
             m_LogData.emplace_back(LogCategory, szLogSource, szMessage);
+
+            OutputDebugStringA(CategoryString(LogCategory));
+            OutputDebugStringA(": ");
+            OutputDebugStringA(szLogSource);
+            OutputDebugStringA(": ");
+            OutputDebugStringA(szMessage);
+            OutputDebugStringA(": ");
         }
         virtual void OutputProperty(PCSTR szName, PCSTR szValue)
         {
+            if (PropertyCount > 0)
+            {
+                OutputDebugStringA(", ");
+            }
+            OutputDebugStringA(szName);
+            OutputDebugStringA("=");
+            OutputDebugStringA(szValue);
+            PropertyCount++;
             m_LogData.back().LogProperties.emplace_back(std::make_pair(szName, szValue));
         }
         virtual void OutputEnd()
         {
-
+            OutputDebugStringA("\n");
         }
 
         bool PopFront(LogData &Data)
@@ -200,13 +236,6 @@ namespace QLogTest
             Assert::IsTrue(LogOutput.PopFront(Data));
             Assert::IsTrue(Data == TestData[0]);
         }
-        //static void ThreadProc(int ThreadIndex, CTestLogger &Logger, const char *ThreadNames[])
-        //{
-        //    for (int i = 0; i < 100; ++i)
-        //    {
-        //        Logger.WriteF(QLog::Category::Info, ThreadNames[ThreadIndex], "Message[%i,%i]", ThreadIndex, i);
-        //    }
-        //};
 
         TEST_METHOD(MultithreadLogging)
         {
