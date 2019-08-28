@@ -7,10 +7,10 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-CScene::CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName) :
+CScene::CScene(CCanvas *pCanvas, _In_z_ PCSTR szName) :
     TSceneGraphNode(pCanvas, szName)
 {
     TGemPtr<XSceneGraphNode> pNode;
-    std::wstring RootNodeName = std::wstring(szName) + L"_Root";
+    std::string RootNodeName = std::string(szName) + "_Root";
 }
 

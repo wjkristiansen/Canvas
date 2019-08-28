@@ -26,7 +26,7 @@ namespace CanvasUnitTest
 
             // Create a null XSceneGraphNode
             TGemPtr<XSceneGraphNode> pSceneGraphNode;
-            const wchar_t szNodeName[] = L"NullNode";
+            const char szNodeName[] = "NullNode";
             Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pSceneGraphNode), szNodeName)));
 
             // Verify QI for XGeneric
@@ -38,7 +38,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pNameTag)));
 
             // Validate the name
-            Assert::IsTrue(0 == wcsncmp(pNameTag->GetName(), szNodeName, _countof(szNodeName)));
+            Assert::IsTrue(0 == strncmp(pNameTag->GetName(), szNodeName, _countof(szNodeName)));
 
             // Verify QI for XSceneGraphNode from XNameTag return the original interface pointer
             TGemPtr<XSceneGraphNode> pSceneGraphNodeFromNameTag;
@@ -65,12 +65,12 @@ namespace CanvasUnitTest
 
             // Create nodes
             TGemPtr<XSceneGraphNode> pNodes[6];
-            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[0]), L"Node0")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[1]), L"Node1")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[2]), L"Node2")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[3]), L"Node3")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[4]), L"Node4")));
-            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[5]), L"Node5")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[0]), "Node0")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[1]), "Node1")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[2]), "Node2")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[3]), "Node3")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[4]), "Node4")));
+            Assert::IsTrue(Succeeded(pCanvas->CreateNullSceneGraphNode(GEM_IID_PPV_ARGS(&pNodes[5]), "Node5")));
 
             // Build the following tree
             // Root

@@ -39,19 +39,19 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
     try
     {
         TGemPtr<XGeneric> pObj;
-        pObj = new TGeneric<CScene>(this, L"Scene"); // throw(std::bad_alloc)
+        pObj = new TGeneric<CScene>(this, "Scene"); // throw(std::bad_alloc)
         return pObj->QueryInterface(iid, ppObj);
     }
     catch(std::bad_alloc &)
     {
-        Logger().LogError(L"Out of memory XCanvas::CreateScene");
+        Logger().LogError("Out of memory XCanvas::CreateScene");
         *ppObj = nullptr;
         return Result::OutOfMemory;
     }
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName)
+GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
 {
     try
     {
@@ -71,22 +71,22 @@ void CCanvas::ReportObjectLeaks()
 {
     for (auto pNode = m_OutstandingObjects.GetFirst(); pNode != m_OutstandingObjects.GetEnd(); pNode = pNode->GetNext())
     {
-        std::wostringstream ostr;
+        std::ostringstream ostr;
         CObjectBase *pObject = pNode->Ptr();
 
-        ostr << L"Leaked object: ";
-        //std::wcout << L"Type=" << to_string(pObject->GetType()) << L", ";
+        ostr << "Leaked object: ";
+        //std::cout << "Type=" << to_string(pObject->GetType()) << ", ";
         XNameTag *pNameTag;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pNameTag))))
         {
             pNameTag->Release();
-            ostr << L"Name=\"" << pNameTag->GetName() << L"\", ";
+            ostr << "Name=\"" << pNameTag->GetName() << "\", ";
         }
         XGeneric *pXGeneric;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pXGeneric))))
         {
             ULONG RefCount = pXGeneric->Release();
-            ostr << L"RefCount=" << RefCount;
+            ostr << "RefCount=" << RefCount;
         }
         
         Logger().LogError(ostr.str().c_str());
@@ -104,7 +104,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *p
         {
             if (pLogClient)
             {
-                if (pLogClient->LogEntryBegin(QLog::Category::Info, L"CANVAS", L"CreateCanvas: Creating canvas object..."))
+                if (pLogClient->LogEntryBegin(QLog::Category::Info, "CANVAS", "CreateCanvas: Creating canvas object..."))
                 {
                     pLogClient->LogEntryEnd();
                 }
@@ -117,7 +117,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *p
     {
         if (pLogClient)
         {
-            if (pLogClient->LogEntryBegin(QLog::Category::Error, L"CANVAS: ", L"FAILURE in CreateCanvas"))
+            if (pLogClient->LogEntryBegin(QLog::Category::Error, "CANVAS: ", "FAILURE in CreateCanvas"))
             {
                 pLogClient->LogEntryEnd();
             }
@@ -129,14 +129,14 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *p
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
+GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
 {
-    Logger().LogInfo(L"CCanvas::CreateGraphicsDevice");
+    Logger().LogInfo("CCanvas::CreateGraphicsDevice");
     Result result = Result::NotImplemented;
 
     try
     {
-        CModule Module(LoadLibraryExW(szDLLPath, NULL, 0));
+        CModule Module(LoadLibraryExA(szDLLPath, NULL, 0));
 
         if (Module.Get() == NULL)
         {
@@ -166,12 +166,12 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_
     }
     catch(const std::exception &e)
     {
-        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %S", e.what());
+        Logger().LogErrorF("XCanvas::CreateGraphicsDevice failed: %s", e.what());
         result = Result::NotFound;
     }
     catch (const Gem::GemError &e)
     {
-        Logger().LogErrorF(L"XCanvas::CreateGraphicsDevice failed: %s", Gem::ResultToString(e.Result()));
+        Logger().LogErrorF("XCanvas::CreateGraphicsDevice failed: %s", Gem::ResultToString(e.Result()));
         result = Result::NotFound;
     }
 
@@ -183,7 +183,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCWSTR szDLLPath, HWND hWnd, _Outptr_
 GEMMETHODIMP CCanvas::FrameTick()
 {
     Result result = Result::Success;
-    Logger().LogInfo(L"Begin CCanvas::FrameTick");
+    Logger().LogInfo("Begin CCanvas::FrameTick");
 
     // Elapse time
 
@@ -204,13 +204,13 @@ GEMMETHODIMP CCanvas::FrameTick()
         {
             UINT64 DTime = FrameEndTime - m_FrameEndTimeLast;
             UINT64 FramesPerSecond = m_FrameCounter * 1000 / CTimer::Milliseconds(DTime);
-            std::wcout << L"FPS: " << FramesPerSecond << std::endl;
+            std::cout << "FPS: " << FramesPerSecond << std::endl;
         }
         m_FrameEndTimeLast = FrameEndTime;
         m_FrameCounter = 0;
     }
 
-    Logger().LogInfo(L"End CCanvas::FrameTick");
+    Logger().LogInfo("End CCanvas::FrameTick");
 
     return result;
 }

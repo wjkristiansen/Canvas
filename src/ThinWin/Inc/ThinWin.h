@@ -12,13 +12,13 @@ class CWindow
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 public:
-    static ATOM RegisterWindowClass(HINSTANCE hInstance, PCWSTR pszMenuName = nullptr, HCURSOR hCursor = NULL, HICON hIcon = NULL, HICON hIconSm = NULL, HBRUSH hbrBackground = (HBRUSH)(COLOR_WINDOW + 1));
+    static ATOM RegisterWindowClass(HINSTANCE hInstance, PCSTR pszMenuName = nullptr, HCURSOR hCursor = NULL, HICON hIcon = NULL, HICON hIconSm = NULL, HBRUSH hbrBackground = (HBRUSH)(COLOR_WINDOW + 1));
 
 public:
     HWND m_hWnd = NULL;
 
     CWindow(
-        _In_opt_ LPCWSTR lpWindowName,
+        _In_opt_ LPCSTR lpWindowName,
         _In_ HINSTANCE hInstance, 
         _In_ DWORD dwStyle = WS_OVERLAPPEDWINDOW,
         _In_ int X = CW_USEDEFAULT,

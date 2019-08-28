@@ -170,8 +170,8 @@ XNameTag : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XNameTag);
 
-    GEMMETHOD_(PCWSTR, GetName)() = 0;
-    GEMMETHOD(SetName)(PCWSTR) = 0;
+    GEMMETHOD_(PCSTR, GetName)() = 0;
+    GEMMETHOD(SetName)(PCSTR) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -193,10 +193,10 @@ XCanvas : public Gem::XGeneric
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    GEMMETHOD(GetNamedObject)(_In_z_ PCWSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
-    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCWSTR szName = nullptr) = 0;
+    GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_ void **ppObj) = 0;
+    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) = 0;
 
-    GEMMETHOD(CreateGraphicsDevice)(PCWSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
+    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
 

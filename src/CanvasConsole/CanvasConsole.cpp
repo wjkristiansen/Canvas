@@ -11,16 +11,16 @@ float DoVectorThing(float v[2])
     return v[0] + v[1];
 }
 
-void DumpNode(XSceneGraphNode *pNode, const std::wstring &indent)
+void DumpNode(XSceneGraphNode *pNode, const std::string &indent)
 {
     TGemPtr<XNameTag> pNameTag;
     if (Succeeded(pNode->QueryInterface(GEM_IID_PPV_ARGS(&pNameTag))))
     {
-        std::wcout << indent << pNameTag->GetName() << std::endl;
+        std::cout << indent << pNameTag->GetName() << std::endl;
     }
     else
     {
-        std::wcout << indent << L"<unnamed node>" << std::endl;
+        std::cout << indent << "<unnamed node>" << std::endl;
     }
 
     // Dump children
@@ -31,7 +31,7 @@ void DumpNode(XSceneGraphNode *pNode, const std::wstring &indent)
         {
             TGemPtr<XSceneGraphNode> pChildNode;
             pChildIterator->Select(GEM_IID_PPV_ARGS(&pChildNode));
-            DumpNode(pChildNode, indent + L"  ");
+            DumpNode(pChildNode, indent + "  ");
         }
     }
 }
@@ -77,7 +77,7 @@ int main()
     TGemPtr<XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);
 
-    DumpNode(pRootSceneGraphNode, L"");
+    DumpNode(pRootSceneGraphNode, "");
 
     TGemPtr<XGeneric> pGeneric1;
     TGemPtr<XGeneric> pGeneric2;

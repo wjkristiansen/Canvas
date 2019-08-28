@@ -10,7 +10,7 @@ class CCamera :
     public TSceneGraphNode<XCamera>
 {
 public:
-    CCamera(CCanvas *pCanvas, PCWSTR szName) :
+    CCamera(CCanvas *pCanvas, PCSTR szName) :
         TSceneGraphNode<XCamera>(pCanvas, szName) {}
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
     {
