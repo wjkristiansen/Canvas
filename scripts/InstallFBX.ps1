@@ -4,7 +4,7 @@ $fbx_sdk_url="https://www.autodesk.com/content/dam/autodesk/www/adn/fbx/20192/fb
 Invoke-WebRequest -Uri $fbx_sdk_url -OutFile ./fbxinstall.exe
 
 $cwd=(Resolve-path ./).Path
-$fbx_install_dir=$cwd + "\fbxsdx"
+$fbx_install_dir=$cwd + "\fbxsdk"
 echo "Installing FBX SDK to '$fbx_install_dir'..."
 .\fbxinstall.exe /S /D=$fbx_install_dir
 dir $fbx_install_dir
