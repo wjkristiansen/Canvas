@@ -9,3 +9,7 @@ $fbx_inc_dir=$fbx_install_dir+"\include"
 $fbx_lib_dir=$fbx_install_dir+"\lib\vs2017"
 [System.Environment]::SetEnvironmentVariable("FBX_SDK_INC_DIR", $fbx_inc_dir, [System.EnvironmentVariableTarget]::User)
 [System.Environment]::SetEnvironmentVariable("FBX_SDK_LIB_DIR", $fbx_lib_dir, [System.EnvironmentVariableTarget]::User)
+
+dir env:FBX_*
+dir $env:FBX_SDK_INC_DIR
+dir $env:FBX_SDK_LIB_DIR
