@@ -12,5 +12,8 @@ echo "Installing FBX SDK to '$fbx_install_dir'..."
 echo "Setting FBX_SDK_* environment variables"
 $fbx_inc_dir=$fbx_install_dir+"\include"
 $fbx_lib_dir=$fbx_install_dir+"\lib\vs2017"
-[System.Environment]::SetEnvironmentVariable("FBX_SDK_INC_DIR", $fbx_inc_dir, "Machine")
-[System.Environment]::SetEnvironmentVariable("FBX_SDK_LIB_DIR", $fbx_lib_dir, "Machine")
+#[System.Environment]::SetEnvironmentVariable("FBX_SDK_INC_DIR", $fbx_inc_dir, "Machine")
+#[System.Environment]::SetEnvironmentVariable("FBX_SDK_LIB_DIR", $fbx_lib_dir, "Machine")
+Write-Host "##vso[task.setvariable variable=FBX_SDK_INC_DIR;]$fbx_inc_dir"
+Write-Host "##vso[task.setvariable variable=FBX_SDK_LIB_DIR;]$fbx_lib_dir"
+ 
