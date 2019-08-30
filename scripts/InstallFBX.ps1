@@ -3,8 +3,9 @@ echo "Downloading FBX SDK..."
 $fbx_sdk_url="https://www.autodesk.com/content/dam/autodesk/www/adn/fbx/20192/fbx20192_fbxsdk_vs2017_win.exe"
 Invoke-WebRequest -Uri $fbx_sdk_url -OutFile ./fbxinstall.exe
 
-echo "Installing FBX SDK..."
-$fbx_install_dir="c:\fbxsdx"
+$cwd=(Resolve-path ./).Path
+$fbx_install_dir=$cwd + "\fbxsdx"
+echo "Installing FBX SDK to '$fbx_install_dir'..."
 .\fbxinstall.exe /S /D=$fbx_install_dir
 dir $fbx_install_dir
 
