@@ -7,15 +7,10 @@ $cwd=(Resolve-path ./).Path
 $fbx_install_dir=$cwd + "\fbxsdk"
 echo "Installing FBX SDK to '$fbx_install_dir'..."
 .\fbxinstall.exe /S /D=$fbx_install_dir
-dir $fbx_install_dir
 
 # Set the environment variables for FBX
 echo "Setting FBX_SDK_* environment variables"
 $fbx_inc_dir=$fbx_install_dir+"\include"
 $fbx_lib_dir=$fbx_install_dir+"\lib\vs2017"
-[System.Environment]::SetEnvironmentVariable("FBX_SDK_INC_DIR", $fbx_inc_dir, [System.EnvironmentVariableTarget]::User)
-[System.Environment]::SetEnvironmentVariable("FBX_SDK_LIB_DIR", $fbx_lib_dir, [System.EnvironmentVariableTarget]::User)
-
-dir env:FBX_*
-dir $env:FBX_SDK_INC_DIR
-dir $env:FBX_SDK_LIB_DIR
+[System.Environment]::SetEnvironmentVariable("FBX_SDK_INC_DIR", $fbx_inc_dir, "Machine")
+[System.Environment]::SetEnvironmentVariable("FBX_SDK_LIB_DIR", $fbx_lib_dir, "Machine")
