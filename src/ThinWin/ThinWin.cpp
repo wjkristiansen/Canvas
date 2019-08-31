@@ -54,7 +54,7 @@ LRESULT CALLBACK CWindow::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
 //------------------------------------------------------------------------------------------------
 CWindow::CWindow(
     _In_opt_ LPCSTR lpWindowName,
-    HINSTANCE hInstance, 
+    _In_ HINSTANCE hInstance, 
     _In_ DWORD dwStyle,
     _In_ int X,
     _In_ int Y,
