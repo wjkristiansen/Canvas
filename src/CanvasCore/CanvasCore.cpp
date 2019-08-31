@@ -8,21 +8,17 @@ using namespace Canvas;
 
     
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_ void **ppObj)
+GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
 {
-    *ppObj = nullptr;
     switch (iid)
     {
     case XCanvas::IId:
         *ppObj = reinterpret_cast<XCanvas *>(this);
         AddRef();
-        break;
-
-    default:
-        return CGenericBase::InternalQueryInterface(iid, ppObj);
+        return Result::Success;
     }
 
-    return Result::Success;
+    return CGenericBase::InternalQueryInterface(iid, ppObj);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -34,7 +30,7 @@ CCanvas::~CCanvas()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
+GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
 {
     try
     {
@@ -51,7 +47,7 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_ void **ppObj)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName)
+GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj, PCSTR szName)
 {
     try
     {
@@ -94,7 +90,7 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *pLogClient)
+Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_maybenull_ void **ppCanvas, QLog::CLogClient *pLogClient)
 {
     *ppCanvas = nullptr;
 
@@ -129,10 +125,15 @@ Result GEMAPI CreateCanvas(InterfaceId iid, void **ppCanvas, QLog::CLogClient *p
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice)
+GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_maybenull_ XGraphicsDevice **ppGraphicsDevice)
 {
     Logger().LogInfo("CCanvas::CreateGraphicsDevice");
     Result result = Result::NotImplemented;
+
+    if (ppGraphicsDevice)
+    {
+        *ppGraphicsDevice = nullptr;
+    }
 
     try
     {
@@ -203,7 +204,7 @@ GEMMETHODIMP CCanvas::FrameTick()
         if (m_FrameEndTimeLast > 0)
         {
             UINT64 DTime = FrameEndTime - m_FrameEndTimeLast;
-            UINT64 FramesPerSecond = m_FrameCounter * 1000 / CTimer::Milliseconds(DTime);
+            UINT64 FramesPerSecond = (m_FrameCounter * 1000ULL) / CTimer::Milliseconds(DTime);
             std::cout << "FPS: " << FramesPerSecond << std::endl;
         }
         m_FrameEndTimeLast = FrameEndTime;

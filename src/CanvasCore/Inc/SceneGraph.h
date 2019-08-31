@@ -53,7 +53,7 @@ public:
         return Result::End;
     }
 
-    GEMMETHOD(Select)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(Select)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final
     {
         if (m_it != m_List.end())
         {
@@ -84,7 +84,7 @@ public:
             return Result::Success;
         }
 
-        return __super::InternalQueryInterface(iid, ppUnk);
+        return CGenericBase::InternalQueryInterface(iid, ppUnk);
     }
 };
 
@@ -108,7 +108,7 @@ public:
     {
     }
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
     {
         if (XSceneGraphNode::IId == iid)
         {
@@ -126,6 +126,6 @@ public:
     }
 
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;
-    GEMMETHOD(CreateChildIterator)(_Outptr_ XIterator** ppIterator) final;
+    GEMMETHOD(CreateChildIterator)(_Outptr_result_maybenull_ XIterator** ppIterator) final;
 };
 

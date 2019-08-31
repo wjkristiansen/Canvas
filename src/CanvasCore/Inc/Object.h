@@ -38,9 +38,7 @@ public:
 
     template<typename ... Args>
     TAutoListNode(TAutoListNode *pPrev, Args... args) :
-        _Base(args...),
-        m_pPrev(this),
-        m_pNext(this)
+        _Base(args...)
     {
         if (pPrev)
         {
@@ -48,6 +46,11 @@ public:
             m_pNext = pPrev->m_pNext;
             pPrev->m_pNext->m_pPrev = this;
             pPrev->m_pNext = this;
+        }
+        else
+        {
+            m_pPrev = this;
+            m_pNext = this;
         }
     }
     ~TAutoListNode()

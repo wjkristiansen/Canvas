@@ -89,5 +89,5 @@ public:
 
     GEMMETHOD_(PCSTR, GetName)() final;
     GEMMETHOD(SetName)(PCSTR szName) final;
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final;
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final;
 };

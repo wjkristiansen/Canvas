@@ -13,7 +13,7 @@ public:
     CModule() = default;
     explicit CModule(HMODULE hModule) :
         m_hModule(hModule) {}
-    CModule(CModule &&o) :
+    CModule(CModule &&o) noexcept :
         m_hModule(std::move(o.m_hModule))
     {
         o.m_hModule = NULL;
@@ -27,7 +27,7 @@ public:
         }
     }
 
-    CModule &operator=(CModule &&o)
+    CModule &operator=(CModule &&o) noexcept
     {
         m_hModule = o.m_hModule;
         o.m_hModule = NULL;
@@ -93,7 +93,7 @@ public:
     std::map<std::string, XGeneric *> m_ObjectNames;
     TAutoList<TStaticPtr<CObjectBase>> m_OutstandingObjects;
 
-    GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) _Ret_writes_maybenull_(ppObj)
+    GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
     {
         std::unique_lock<std::mutex> Lock(m_Mutex);
         auto it = m_ObjectNames.find(szName);
@@ -108,11 +108,11 @@ public:
     }
 
     // XCanvas methods
-    GEMMETHOD(InternalQueryInterface)(Gem::InterfaceId iid, _Outptr_ void **ppObj);
-    GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_ void **ppObj) final;
-    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_ void **ppObj, PCSTR szName = nullptr) final;
+    GEMMETHOD(InternalQueryInterface)(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj);
+    GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final;
+    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj, PCSTR szName = nullptr) final;
 
-    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_ XGraphicsDevice **ppGraphicsDevice) final;
+    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_maybenull_ XGraphicsDevice **ppGraphicsDevice) final;
     GEMMETHOD(FrameTick)() final;
 
     void ReportObjectLeaks();
@@ -123,4 +123,4 @@ public:
     TGemPtr<class CGraphicsDevice> m_pGraphicsDevice;
 };
 
-typedef Result (*CreateCanvasGraphicsDeviceProc)(_In_ CCanvas *pCanvas, _Outptr_ CGraphicsDevice **pGraphicsDevice, HWND hWnd);
+typedef Result (*CreateCanvasGraphicsDeviceProc)(_In_ CCanvas *pCanvas, _Outptr_opt_result_maybenull_ CGraphicsDevice **pGraphicsDevice, HWND hWnd);

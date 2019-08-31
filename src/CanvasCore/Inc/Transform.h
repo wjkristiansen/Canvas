@@ -12,7 +12,7 @@ class TTransform : public _Base
     CRotationDataSource *m_pRotationDataSource = nullptr;
     FloatVector4 m_Translation;
     FloatVector4 m_Rotation;
-    RotationType m_RotationType;
+    RotationType m_RotationType = RotationType::EulerXYZ;
     inline static const FloatVector4 m_WorldUp = FloatVector4( 0.f, 1.f, 0.f, 0.f );
 
 public:
@@ -49,8 +49,10 @@ public:
         return Result::NotImplemented;
     }
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
     {
+        *ppObj = nullptr;
+
         if (XTransform::IId == iid)
         {
             *ppObj = reinterpret_cast<XTransform *>(this);

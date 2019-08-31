@@ -18,7 +18,7 @@ GEMMETHODIMP TSceneGraphNode<_Base>::AddChild(_In_ XSceneGraphNode* pChild)
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
-GEMMETHODIMP TSceneGraphNode<_Base>::CreateChildIterator(_Outptr_ XIterator** ppIterator)
+GEMMETHODIMP TSceneGraphNode<_Base>::CreateChildIterator(_Outptr_result_maybenull_ XIterator** ppIterator)
 {
     try
     {
