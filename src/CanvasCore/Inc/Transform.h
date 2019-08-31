@@ -10,10 +10,10 @@ class TTransform : public _Base
 {
     CTranslationDataSource *m_pTranslationDataSource = nullptr;
     CRotationDataSource *m_pRotationDataSource = nullptr;
-    FloatVector4 m_Translation;
-    FloatVector4 m_Rotation;
+    Math::FloatVector4 m_Translation;
+    Math::FloatVector4 m_Rotation;
     RotationType m_RotationType = RotationType::EulerXYZ;
-    inline static const FloatVector4 m_WorldUp = FloatVector4( 0.f, 1.f, 0.f, 0.f );
+    inline static const Math::FloatVector4 m_WorldUp = Math::FloatVector4( 0.f, 1.f, 0.f, 0.f );
 
 public:
     TTransform() {}
@@ -23,28 +23,28 @@ public:
         return m_RotationType;
     }
 
-    GEMMETHOD_(const FloatVector4 &, GetRotation)() const final
+    GEMMETHOD_(const Math::FloatVector4 &, GetRotation)() const final
     {
         return m_Rotation;
     }
 
-    GEMMETHOD_(const FloatVector4 &, GetTranslation)() const final
+    GEMMETHOD_(const Math::FloatVector4 &, GetTranslation)() const final
     {
         return m_Translation;
     }
 
-    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4 &Rotation) final
+    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const Math::FloatVector4 &Rotation) final
     {
         m_RotationType = Type;
         m_Rotation = Rotation;
     }
 
-    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector4 &Translation) final
+    GEMMETHOD_(void, SetTranslation)(_In_ const Math::FloatVector4 &Translation) final
     {
         m_Translation = Translation;
     }
 
-    GEMMETHOD(LookAt)(_In_ const FloatVector4 &Location) final
+    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location) final
     {
         return Result::NotImplemented;
     }
