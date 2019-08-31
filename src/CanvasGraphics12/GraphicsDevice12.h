@@ -4,6 +4,8 @@
 
 #pragma once
 
+using namespace CanvasGraphics;
+
 //------------------------------------------------------------------------------------------------
 class CGraphicsDevice12 :
     public CGraphicsDevice
@@ -46,7 +48,7 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CMaterial12 :
-    public Canvas::CMaterial
+    public CanvasGraphics::CMaterial
 {
 
 };
