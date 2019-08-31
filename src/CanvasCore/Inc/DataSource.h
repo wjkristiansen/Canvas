@@ -9,7 +9,7 @@ template<class _DataType>
 class TConstantFunction
 {
     const _DataType m_c;
-    
+
 public:
     TConstantFunction(float c) :
         m_c(c) {}
@@ -70,7 +70,7 @@ class CEulerRotationDataSource : public CRotationDataSource
 
 public:
     CEulerRotationDataSource(float DefaultRotX, float DefaultRotY, float DefaultRotZ)
-        : m_DefaultAngles( DefaultRotX, DefaultRotY, DefaultRotZ, 0 ) {}
+        : m_DefaultAngles(DefaultRotX, DefaultRotY, DefaultRotZ, 0) {}
 
     virtual FloatVector4 Evaluate() final
     {
@@ -102,4 +102,3 @@ class CTranslationDataSource : public TDataSource<FloatVector4>
 {
 
 };
-
