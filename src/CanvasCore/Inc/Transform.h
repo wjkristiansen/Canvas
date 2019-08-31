@@ -49,7 +49,7 @@ public:
         return Result::NotImplemented;
     }
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
         *ppObj = nullptr;
 

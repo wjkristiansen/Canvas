@@ -75,7 +75,7 @@ public:
 
         return Result::End;
     }
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppUnk)
     {
         if (iid == XIterator::IId)
         {
@@ -108,7 +108,7 @@ public:
     {
     }
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
         if (XSceneGraphNode::IId == iid)
         {
@@ -126,6 +126,6 @@ public:
     }
 
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;
-    GEMMETHOD(CreateChildIterator)(_Outptr_result_maybenull_ XIterator** ppIterator) final;
+    GEMMETHOD(CreateChildIterator)(_Outptr_result_nullonfailure_ XIterator** ppIterator) final;
 };
 

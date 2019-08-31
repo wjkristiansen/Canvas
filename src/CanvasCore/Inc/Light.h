@@ -11,7 +11,7 @@ class CLight :
 public:
     CLight(CCanvas* pCanvas, PCSTR szName) :
         TSceneGraphNode(pCanvas, szName) {}
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
         if (XLight::IId == iid)
         {

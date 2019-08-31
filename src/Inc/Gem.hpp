@@ -24,6 +24,7 @@ typedef UINT InterfaceId;
 GEM_INTERFACE XGeneric;
 
 //------------------------------------------------------------------------------------------------
+_Return_type_success_(return < 0x80000000)
 enum class Result : UINT32
 {
     Success = 0,
@@ -258,7 +259,7 @@ public:
         return result;
     }
 
-    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final
+    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) final
     {
         if (!ppObj)
         {
@@ -268,7 +269,7 @@ public:
         return InternalQueryInterface(iid, ppObj);
     }
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) final
     {
         if (XGeneric::IId == iid)
         {
@@ -306,7 +307,7 @@ public:
     }
 
     // Delegate Query interface to outer generic
-    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final
+    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) final
     {
         return _Base::m_pOuterGeneric->QueryInterface(iid, ppObj);
     }
@@ -318,8 +319,9 @@ class CGenericBase
 {
 public:
     virtual ~CGenericBase() = default;
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, void **ppUnk)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppUnk)
     {
+        *ppUnk = nullptr;
         return Result::NoInterface;
     }
 };
@@ -341,7 +343,7 @@ GEM_INTERFACE XGeneric
 
     GEMMETHOD_(ULONG, AddRef)() = 0;
     GEMMETHOD_(ULONG, Release)() = 0;
-    GEMMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
+    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
 
     template<class _XFace>
     Gem::Result QueryInterface(_XFace **ppObj)

@@ -12,7 +12,7 @@ class CMeshInstance :
 public:
     CMeshInstance() :
         CGenericBase() {}
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) final
     {
         if (XMeshInstance::IId == iid)
         {
