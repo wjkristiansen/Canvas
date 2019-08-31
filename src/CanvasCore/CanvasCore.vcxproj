@@ -202,6 +202,7 @@
     <ClInclude Include="Inc\Light.h" />
     <ClInclude Include="Inc\Logger.h" />
     <ClInclude Include="Inc\Model.h" />
+    <ClInclude Include="Inc\Module.h" />
     <ClInclude Include="Inc\Name.h" />
     <ClInclude Include="Inc\Object.h" />
     <ClInclude Include="Inc\Scene.h" />

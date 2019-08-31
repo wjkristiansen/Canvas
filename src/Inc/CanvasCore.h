@@ -175,7 +175,7 @@ XNameTag : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+GEM_INTERFACE 
 XGraphicsDevice : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
