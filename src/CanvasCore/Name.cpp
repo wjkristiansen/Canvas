@@ -50,7 +50,7 @@ GEMMETHODIMP CNameTag::SetName(PCSTR szName)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CNameTag::InternalQueryInterface(InterfaceId iid, _Outptr_ void **ppObj)
+GEMMETHODIMP CNameTag::InternalQueryInterface(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
 {
     if (XNameTag::IId == iid)
     {
@@ -59,5 +59,5 @@ GEMMETHODIMP CNameTag::InternalQueryInterface(InterfaceId iid, _Outptr_ void **p
         return Result::Success;
     }
 
-    return __super::InternalQueryInterface(iid, ppObj);
+    return CInnerGenericBase::InternalQueryInterface(iid, ppObj);
 }

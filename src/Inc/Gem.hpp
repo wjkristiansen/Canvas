@@ -258,19 +258,17 @@ public:
         return result;
     }
 
-    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final
     {
         if (!ppObj)
         {
             return Result::BadPointer;
         }
 
-        *ppObj = nullptr;
-
         return InternalQueryInterface(iid, ppObj);
     }
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final
     {
         if (XGeneric::IId == iid)
         {
@@ -279,7 +277,7 @@ public:
             return Result::Success;
         }
 
-        return __super::InternalQueryInterface(iid, ppObj);
+        return _Base::InternalQueryInterface(iid, ppObj);
     }
 };
 
@@ -308,7 +306,7 @@ public:
     }
 
     // Delegate Query interface to outer generic
-    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_ void **ppObj) final
+    GEMMETHOD(QueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final
     {
         return _Base::m_pOuterGeneric->QueryInterface(iid, ppObj);
     }
