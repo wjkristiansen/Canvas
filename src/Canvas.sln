@@ -19,7 +19,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Inc", "Inc", "{66481EAC-E4B
 	ProjectSection(SolutionItems) = preProject
 		Inc\Canvas.h = Inc\Canvas.h
 		Inc\CanvasMath.hpp = Inc\CanvasMath.hpp
-		..\..\Gem\src\Inc\Gem.hpp = ..\..\Gem\src\Inc\Gem.hpp
 		Inc\QLog.h = Inc\QLog.h
 		Inc\ScopedUtils.h = Inc\ScopedUtils.h
 	EndProjectSection
