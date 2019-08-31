@@ -57,7 +57,7 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-class CRotationDataSource : public TDataSource<FloatVector4>
+class CRotationDataSource : public TDataSource<Math::FloatVector4>
 {
 
 };
@@ -66,15 +66,15 @@ class CRotationDataSource : public TDataSource<FloatVector4>
 class CEulerRotationDataSource : public CRotationDataSource
 {
     TDataSource<float> *m_pEulerAngles[4] = {};
-    FloatVector4 m_DefaultAngles;
+    Math::FloatVector4 m_DefaultAngles;
 
 public:
     CEulerRotationDataSource(float DefaultRotX, float DefaultRotY, float DefaultRotZ)
         : m_DefaultAngles(DefaultRotX, DefaultRotY, DefaultRotZ, 0) {}
 
-    virtual FloatVector4 Evaluate() final
+    virtual Math::FloatVector4 Evaluate() final
     {
-        FloatVector4 Value;
+        Math::FloatVector4 Value;
 
         for (int i = 0; i < 4; ++i)
         {
@@ -98,7 +98,7 @@ class CQuaternionRotationDataSource : public CRotationDataSource
 
 };
 
-class CTranslationDataSource : public TDataSource<FloatVector4>
+class CTranslationDataSource : public TDataSource<Math::FloatVector4>
 {
 
 };

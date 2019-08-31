@@ -4,9 +4,11 @@
 
 #include "stdafx.h"
 
+using namespace Canvas;
+using namespace Canvas::Graphics;
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
+Result CDevice12::Initialize(HWND hWnd, bool Windowed)
 {
     try
     {
@@ -90,7 +92,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
     }
     catch (_com_error &e)
     {
-        m_pCanvas->Logger().LogErrorF("CGraphicsDevice12::Initialize: HRESULT 0x%08x", e.Error());
+        m_pCanvas->Logger().LogErrorF("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
 
@@ -98,7 +100,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::RenderFrame()
+GEMMETHODIMP CDevice12::RenderFrame()
 {
     try
     {
@@ -162,7 +164,7 @@ GEMMETHODIMP CGraphicsDevice12::RenderFrame()
     }
     catch (_com_error &e)
     {
-        m_pCanvas->Logger().LogErrorF("CGraphicsDevice12::RenderFrame: HRESULT 0x%08x", e.Error());
+        m_pCanvas->Logger().LogErrorF("CDevice12::RenderFrame: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
 
@@ -170,7 +172,7 @@ GEMMETHODIMP CGraphicsDevice12::RenderFrame()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CGraphicsUploadBuffer **ppUploadBuffer)
+GEMMETHODIMP CDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CUploadBuffer **ppUploadBuffer)
 {
     try
     {
@@ -179,18 +181,18 @@ GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CGraphi
         CComPtr<ID3D12Resource> pD3DBuffer;
         CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
         ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource1(&HeapProp, D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, nullptr, IID_PPV_ARGS(&pD3DBuffer)));
-        TGemPtr<CGraphicsUploadBuffer> pUploadBuffer = new CGraphicsUploadBuffer12(pD3DBuffer, 0, SizeInBytes); // throw(std::bad_alloc), throw(_com_error)
+        TGemPtr<CUploadBuffer> pUploadBuffer = new CUploadBuffer12(pD3DBuffer, 0, SizeInBytes); // throw(std::bad_alloc), throw(_com_error)
         *ppUploadBuffer = pUploadBuffer;
         pUploadBuffer.Detach();
     }
     catch (std::bad_alloc)
     {
-        m_pCanvas->Logger().LogError("CGraphicsDevice12::AllocateUploadBuffer: Out of memory");
+        m_pCanvas->Logger().LogError("CDevice12::AllocateUploadBuffer: Out of memory");
         return Result::OutOfMemory;
     }
     catch (_com_error &e)
     {
-        m_pCanvas->Logger().LogErrorF("CGraphicsDevice12::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
+        m_pCanvas->Logger().LogErrorF("CDevice12::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
     return Result::Success;
@@ -221,14 +223,14 @@ struct Vertex
     float TexCoords[3][2];
 };
 
-GEMMETHODIMP CGraphicsDevice12::CreateStaticMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
+GEMMETHODIMP CDevice12::CreateStaticMesh(const Model::MESH_DATA *pMeshData, XMesh **ppMesh)
 {
     try
     {
         if (pMeshData->pVertices)
         {
             UINT64 BufferSize = sizeof(Vertex) * pMeshData->NumVertices;
-            TGemPtr<CGraphicsUploadBuffer> pVertexBuffer;
+            TGemPtr<CUploadBuffer> pVertexBuffer;
             AllocateUploadBuffer(BufferSize, &pVertexBuffer);
             Vertex *pVertices = reinterpret_cast<Vertex *>(pVertexBuffer->Data());
 
@@ -271,39 +273,39 @@ GEMMETHODIMP CGraphicsDevice12::CreateStaticMesh(const MESH_DATA *pMeshData, XMe
     }
     catch (_com_error &e)
     {
-        m_pCanvas->Logger().LogErrorF("CGraphicsDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
+        m_pCanvas->Logger().LogErrorF("CDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
     return Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::CreateCamera(const CAMERA_DATA *pCameraData, XCamera **ppCamera)
+GEMMETHODIMP CDevice12::CreateCamera(const Model::CAMERA_DATA *pCameraData, XCamera **ppCamera)
 {
     return Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::CreateMaterial(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
+GEMMETHODIMP CDevice12::CreateMaterial(const Model::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
 {
     return Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::CreateLight(const LIGHT_DATA *pLightData, XLight **ppLight)
+GEMMETHODIMP CDevice12::CreateLight(const Model::LIGHT_DATA *pLightData, XLight **ppLight)
 {
     return Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_result_nullonfailure_ CGraphicsDevice **ppGraphicsDevice, HWND hWnd)
+Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_result_nullonfailure_ CDevice **ppGraphicsDevice, HWND hWnd)
 {
     *ppGraphicsDevice = nullptr;
 
     try
     {
         pCanvas->Logger().LogInfo("CreateGraphicsDevice12: Creating D3D12 Graphics Device...");
-        TGemPtr<CGraphicsDevice12> pGraphicsDevice = new TGeneric<CGraphicsDevice12>(pCanvas); // throw(bad_alloc)
+        TGemPtr<CDevice12> pGraphicsDevice = new TGeneric<CDevice12>(pCanvas); // throw(bad_alloc)
         auto result = pGraphicsDevice->Initialize(hWnd, true);
         if (result == Result::Success)
         {
@@ -325,7 +327,7 @@ Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_result_n
 }
 
 //------------------------------------------------------------------------------------------------
-CGraphicsUploadBuffer12::CGraphicsUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size) :
+CUploadBuffer12::CUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size) :
     m_pResource(pResource),
     m_OffsetToStart(OffsetToStart)
 {
@@ -337,7 +339,7 @@ CGraphicsUploadBuffer12::CGraphicsUploadBuffer12(ID3D12Resource *pResource, UINT
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void *) CGraphicsUploadBuffer12::Data()
+GEMMETHODIMP_(void *) CUploadBuffer12::Data()
 {
     return m_pData;
 }

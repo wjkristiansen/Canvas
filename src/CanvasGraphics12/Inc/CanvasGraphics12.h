@@ -4,6 +4,9 @@
 
 #pragma once
 
-extern Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_result_nullonfailure_ CanvasGraphics::CGraphicsDevice **pGraphicsDevice, HWND hWnd);
+using namespace Canvas;
+using namespace Canvas::Graphics;
+
+extern Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_result_nullonfailure_ Canvas::Graphics::CDevice **pGraphicsDevice, HWND hWnd);
 
 

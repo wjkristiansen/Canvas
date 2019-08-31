@@ -4,6 +4,7 @@
 
 #pragma once
 #include <QLog.h>
+#include "CanvasModel.h"
 
 namespace Canvas
 {
@@ -54,93 +55,6 @@ enum CanvasIId
 };
 
 //------------------------------------------------------------------------------------------------
-enum class LightType : unsigned
-{
-    Null,
-    Point,
-    Directional,
-    Spot,
-    Area,
-    Volume
-};
-
-//------------------------------------------------------------------------------------------------
-enum class GraphicsSubsystem
-{
-    Null = 0,
-    D3D12 = 1,
-    D3D11 = 2,
-    Vulcan = 3,
-    Metal = 4,
-};
-
-//------------------------------------------------------------------------------------------------
-struct CANVAS_GRAPHICS_OPTIONS
-{
-    GraphicsSubsystem Subsystem;
-    bool Windowed;
-    UINT DisplayWidth;
-    UINT DisplayHeight;
-};
-
-//------------------------------------------------------------------------------------------------
-struct TEXTURE_DATA
-{
-
-};
-
-//------------------------------------------------------------------------------------------------
-struct MATERIAL_DATA
-{
-    UIntVector4 TextureIndices;
-    FloatVector3 AmbientColor;
-    FloatVector3 DiffuseColor;
-    FloatVector3 SpecularColor;
-};
-
-//------------------------------------------------------------------------------------------------
-// An indexed triangle list with common material and texture attributes
-// The actual layout of pixels depends on the material
-struct MATERIAL_GROUP_DATA
-{
-    UINT NumTriangles = 0;
-   _In_count_(NumTriangles)  UIntVector3 *pTriangles = nullptr;
-   UINT MaterialIndex = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct MESH_DATA
-{
-    UINT NumVertices = 0;
-    _In_count_(NumVertices) FloatVector3 *pVertices = nullptr;
-    _In_opt_count_(NumVertices) FloatVector3 *pNormals = nullptr;
-    _In_opt_count_(NumVertices) FloatVector2 *pTextureUVs[4] = {0};
-    _In_opt_count_(NumVertices) UIntVector4 *pBoneIndices = nullptr;
-    _In_opt_count_(NumVertices) FloatVector4 *pBoneWeights = nullptr;
-    UINT NumMaterialGroups = 0;
-    _In_count_(NumMaterialGroups) MATERIAL_GROUP_DATA *pMaterialGroups = nullptr;
-};
-
-//------------------------------------------------------------------------------------------------
-struct CAMERA_DATA
-{
-    float NearClip;
-    float FarClip;
-    float FovAngle;
-};
-
-//------------------------------------------------------------------------------------------------
-struct LIGHT_DATA
-{
-    LightType Type;
-    float Intensity;
-    FloatVector4 Color;
-    float InnerAngle; // For spot light
-    float OuterAngle; // For spot light
-
-};
-
-//------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
@@ -180,10 +94,10 @@ XGraphicsDevice : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
 
-    GEMMETHOD(CreateStaticMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
-    GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) = 0;
-    GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) = 0;
-    GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight) = 0;
+    GEMMETHOD(CreateStaticMesh)(const Model::MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
+    GEMMETHOD(CreateCamera)(const Model::CAMERA_DATA *pCameraData, XCamera **ppCamera) = 0;
+    GEMMETHOD(CreateMaterial)(const Model::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) = 0;
+    GEMMETHOD(CreateLight)(const Model::LIGHT_DATA *pLightData, XLight **ppLight) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -259,11 +173,11 @@ XTransform : public Gem::XGeneric
     GEM_INTERFACE_DECLARE(CanvasIId_XTransform);
 
     GEMMETHOD_(RotationType, GetRotationType)() const = 0;
-    GEMMETHOD_(const FloatVector4 &, GetRotation)() const = 0;
-    GEMMETHOD_(const FloatVector4 &, GetTranslation)() const = 0;
-    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4 &Rotation) = 0;
-    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector4 &Translation) = 0;
-    GEMMETHOD(LookAt)(_In_ const FloatVector4 &Location) = 0;
+    GEMMETHOD_(const Math::FloatVector4 &, GetRotation)() const = 0;
+    GEMMETHOD_(const Math::FloatVector4 &, GetTranslation)() const = 0;
+    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const Math::FloatVector4 &Rotation) = 0;
+    GEMMETHOD_(void, SetTranslation)(_In_ const Math::FloatVector4 &Translation) = 0;
+    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
