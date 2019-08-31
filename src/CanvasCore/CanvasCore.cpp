@@ -151,7 +151,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_o
             throw(std::exception("GetProcAddress"));
         }
 
-        Gem::TGemPtr<CGraphicsDevice> pGraphicsDevice;
+        Gem::TGemPtr<CanvasGraphics::CGraphicsDevice> pGraphicsDevice;
         ThrowGemError(pCreate(this, &pGraphicsDevice, hWnd));
         Gem::TGemPtr<XGraphicsDevice> pXGraphicsDevice = pGraphicsDevice.Get();
 

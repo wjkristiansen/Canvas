@@ -87,7 +87,7 @@ public:
     CCanvasLogger &Logger() { return m_Logger; }
 
 public:
-    TGemPtr<class CGraphicsDevice> m_pGraphicsDevice;
+    TGemPtr<class CanvasGraphics::CGraphicsDevice> m_pGraphicsDevice;
 };
 
-typedef Result (*CreateCanvasGraphicsDeviceProc)(_In_ CCanvas *pCanvas, _Outptr_opt_result_nullonfailure_ CGraphicsDevice **pGraphicsDevice, HWND hWnd);
+typedef Result (*CreateCanvasGraphicsDeviceProc)(_In_ CCanvas *pCanvas, _Outptr_opt_result_nullonfailure_ CanvasGraphics::CGraphicsDevice **pGraphicsDevice, HWND hWnd);
