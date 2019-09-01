@@ -46,7 +46,7 @@ using namespace Gem;
 #include "Scene.h"
 #include "Camera.h"
 #include "Light.h"
-#include "Model.h"
+#include "Mesh.h"
 #include "Timeline.h"
 #include "Timer.h"
 #include "Logger.h"
