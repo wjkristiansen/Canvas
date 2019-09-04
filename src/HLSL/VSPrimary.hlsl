@@ -49,8 +49,9 @@ PS_INPUT VSPrimary(VS_INPUT Input)
     PS_INPUT Output;
     
     Output.Normal = TransformVec3x3(World[0], Vertices[Input.VertexId].Normal);
-    Output.WorldPosition = TransformVec4x3(World[0], float4(Vertices[Input.VertexId].Position, 1.0)).xyz;
-    Output.ClipPosition = TransformVec4x4(ViewProj, float4(Vertices[Input.VertexId].Position, 1.0));
+    float4 WorldPos = TransformVec4x3(World[0], float4(Vertices[Input.VertexId].Position, 1.0));
+    Output.WorldPosition = WorldPos.xyz;
+    Output.ClipPosition = TransformVec4x4(ViewProj, WorldPos);
 
     return Output;
 }
