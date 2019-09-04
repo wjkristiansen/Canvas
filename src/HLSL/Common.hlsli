@@ -7,7 +7,8 @@ struct VS_INPUT
 struct PS_INPUT
 {
     float3 Normal : Normal;
-    float4 Position : SV_Position;
+    float3 WorldPosition : WorldPosition;
+    float4 ClipPosition : SV_Position;
 };
 
 struct PS_OUTPUT

@@ -6,7 +6,7 @@ PS_OUTPUT PSPrimary(PS_INPUT Input)
 
     Output.DiffuseColor = float3(1.0, 1.0, 1.0);
     Output.Normal = Input.Normal;
-    Output.Position = Input.Position.xyz;
+    Output.Position = Input.WorldPosition.xyz;
 
 	return Output;
 }
