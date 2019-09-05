@@ -94,7 +94,7 @@ XGraphicsDevice : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
 
-    GEMMETHOD(CreateStaticMesh)(const Model::MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
+    GEMMETHOD(CreateStaticMesh)(const Model::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
     GEMMETHOD(CreateCamera)(const Model::CAMERA_DATA *pCameraData, XCamera **ppCamera) = 0;
     GEMMETHOD(CreateMaterial)(const Model::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) = 0;
     GEMMETHOD(CreateLight)(const Model::LIGHT_DATA *pLightData, XLight **ppLight) = 0;
