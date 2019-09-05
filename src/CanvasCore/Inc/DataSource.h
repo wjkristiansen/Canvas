@@ -11,7 +11,7 @@ class TConstantFunction
     const _DataType m_c;
 
 public:
-    TConstantFunction(float c) :
+    TConstantFunction(_DataType c) :
         m_c(c) {}
 
     _DataType Evaluate() const { return m_c; }
