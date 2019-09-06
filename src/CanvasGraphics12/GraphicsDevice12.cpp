@@ -231,7 +231,7 @@ namespace Canvas
             float TexCoords[3][2];
         };
 
-        GEMMETHODIMP CDevice12::CreateStaticMesh(const Model::MESH_DATA *pMeshData, XMesh **ppMesh)
+        GEMMETHODIMP CDevice12::CreateStaticMesh(const Model::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh)
         {
             try
             {
