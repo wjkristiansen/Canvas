@@ -6,8 +6,35 @@
 
 namespace Canvas
 {
-    namespace Model
+    namespace ModelData
     {
+        struct ModelHeader
+        {
+            UINT NumStrings;
+            UINT NumMeshes;
+            UINT NumLights;
+            UINT NumCameras;
+            UINT NumFunctions;
+            UINT NumNodes;
+        };
+
+        enum NodeType
+        {
+            Null,
+            Bone,
+            Mesh,
+            Light,
+            Camera,
+        };
+
+        struct NodeData
+        {
+            UINT NameIndex; // Index in string table of node name
+            UINT NodeType;
+            float Rotation[4];
+            float Translation[3];
+        };
+
         //------------------------------------------------------------------------------------------------
         enum LIGHT_TYPE
         {
