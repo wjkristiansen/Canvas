@@ -44,14 +44,26 @@ float4 TransformVec4x4(matrix<float, 4, 4> m, float4 v)
         );
 }
 
+static float3 TriangleVerts[] =
+{
+    float3(1, 0, 0),
+    float3(-1, -1, 0),
+    float3(-1, 1, 0)
+};
+
 PS_INPUT VSPrimary(VS_INPUT Input)
 {
     PS_INPUT Output;
     
-    Output.Normal = TransformVec3x3(World[0], Vertices[Input.VertexId].Normal);
-    float4 WorldPos = TransformVec4x3(World[0], float4(Vertices[Input.VertexId].Position, 1.0));
-    Output.WorldPosition = WorldPos.xyz;
-    Output.ClipPosition = TransformVec4x4(ViewProj, WorldPos);
+//    Output.Normal = TransformVec3x3(World[0], Vertices[Input.VertexId].Normal);
+//    float4 WorldPos = TransformVec4x3(World[0], float4(Vertices[Input.VertexId].Position, 1.0));
+//    Output.WorldPosition = WorldPos.xyz;
+//    Output.ClipPosition = TransformVec4x4(ViewProj, WorldPos);
+
+    float3 WorldPos = TriangleVerts[Input.VertexId];
+    Output.WorldPosition = WorldPos;
+    Output.Normal = float3(0, 0, 1);
+    Output.ClipPosition = TransformVec4x4(ViewProj, float4(WorldPos, 1));
 
     return Output;
 }
