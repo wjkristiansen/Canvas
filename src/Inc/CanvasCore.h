@@ -131,29 +131,6 @@ XMesh : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
-XMeshInstance : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
-
-    GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE
-XCamera : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XCamera);
-};
-
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE
-XLight : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XLight);
-};
-
-//------------------------------------------------------------------------------------------------
 enum RotationType
 {
     EulerXYZ,
@@ -198,6 +175,29 @@ GEM_INTERFACE
 XScene : public XSceneGraphNode
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XScene);
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
+XMeshInstance : public XSceneGraphNode
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
+
+    GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
+XCamera : public XSceneGraphNode
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XCamera);
+};
+
+//------------------------------------------------------------------------------------------------
+GEM_INTERFACE
+XLight : public XSceneGraphNode
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XLight);
 };
 
 }
