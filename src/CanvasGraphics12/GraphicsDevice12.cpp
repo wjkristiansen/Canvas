@@ -231,7 +231,7 @@ namespace Canvas
             float TexCoords[3][2];
         };
 
-        GEMMETHODIMP CDevice12::CreateStaticMesh(const Model::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh)
+        GEMMETHODIMP CDevice12::CreateStaticMesh(const ModelData::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh)
         {
             try
             {
@@ -288,19 +288,19 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        GEMMETHODIMP CDevice12::CreateCamera(const Model::CAMERA_DATA *pCameraData, XCamera **ppCamera)
+        GEMMETHODIMP CDevice12::CreateCamera(const ModelData::CAMERA_DATA *pCameraData, XCamera **ppCamera)
         {
             return Result::NotImplemented;
         }
 
         //------------------------------------------------------------------------------------------------
-        GEMMETHODIMP CDevice12::CreateMaterial(const Model::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
+        GEMMETHODIMP CDevice12::CreateMaterial(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
         {
             return Result::NotImplemented;
         }
 
         //------------------------------------------------------------------------------------------------
-        GEMMETHODIMP CDevice12::CreateLight(const Model::LIGHT_DATA *pLightData, XLight **ppLight)
+        GEMMETHODIMP CDevice12::CreateLight(const ModelData::LIGHT_DATA *pLightData, XLight **ppLight)
         {
             return Result::NotImplemented;
         }

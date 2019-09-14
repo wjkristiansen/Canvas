@@ -29,10 +29,10 @@ namespace Canvas
             Result Initialize(HWND hWnd, bool Windowed);
 
             GEMMETHOD(RenderFrame)() final;
-            GEMMETHOD(CreateStaticMesh)(const Model::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh) final;
-            GEMMETHOD(CreateCamera)(const Model::CAMERA_DATA *pCameraData, XCamera **ppCamera) final;
-            GEMMETHOD(CreateMaterial)(const Model::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial);
-            GEMMETHOD(CreateLight)(const Model::LIGHT_DATA *pLightData, XLight **ppLight);
+            GEMMETHOD(CreateStaticMesh)(const ModelData::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh) final;
+            GEMMETHOD(CreateCamera)(const ModelData::CAMERA_DATA *pCameraData, XCamera **ppCamera) final;
+            GEMMETHOD(CreateMaterial)(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial);
+            GEMMETHOD(CreateLight)(const ModelData::LIGHT_DATA *pLightData, XLight **ppLight);
             GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, Graphics::CUploadBuffer **ppUploadBuffer) final;
         };
 
