@@ -115,9 +115,11 @@ public:
         }
     }
 
-    void Detach()
+    _Type *Detach()
     {
+        _Type *pOut = m_p;
         m_p = nullptr;
+        return m_p;
     }
 
     TGemPtr &operator=(_Type *p)

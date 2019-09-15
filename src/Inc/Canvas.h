@@ -95,9 +95,7 @@ XGraphicsDevice : public Gem::XGeneric
     GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
 
     GEMMETHOD(CreateStaticMesh)(const ModelData::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
-    GEMMETHOD(CreateCamera)(const ModelData::CAMERA_DATA *pCameraData, XCamera **ppCamera) = 0;
     GEMMETHOD(CreateMaterial)(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) = 0;
-    GEMMETHOD(CreateLight)(const ModelData::LIGHT_DATA *pLightData, XLight **ppLight) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -108,7 +106,9 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
-    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, PCSTR szName = nullptr) = 0;
+    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, _In_z_ PCSTR szName = nullptr) = 0;
+    GEMMETHOD(CreateCameraNode)(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName = nullptr) = 0;
+    GEMMETHOD(CreateLightNode)(const ModelData::LIGHT_DATA *pLightData, _Outptr_result_nullonfailure_ XLight **ppLight, _In_z_ PCSTR szName = nullptr) = 0;
 
     GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
