@@ -288,19 +288,7 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        GEMMETHODIMP CDevice12::CreateCamera(const ModelData::CAMERA_DATA *pCameraData, XCamera **ppCamera)
-        {
-            return Result::NotImplemented;
-        }
-
-        //------------------------------------------------------------------------------------------------
         GEMMETHODIMP CDevice12::CreateMaterial(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
-        {
-            return Result::NotImplemented;
-        }
-
-        //------------------------------------------------------------------------------------------------
-        GEMMETHODIMP CDevice12::CreateLight(const ModelData::LIGHT_DATA *pLightData, XLight **ppLight)
         {
             return Result::NotImplemented;
         }

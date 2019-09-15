@@ -63,6 +63,42 @@ GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_result_n
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateCameraNode(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName)
+{
+    try
+    {
+        TGemPtr<XCamera> pNode;
+        pNode = new TGeneric<CCamera>(this, pCameraData, szName);
+        *ppCamera = pNode.Detach();
+    }
+    catch (std::bad_alloc &)
+    {
+        *ppCamera = nullptr;
+        return Result::OutOfMemory;
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateLightNode(const ModelData::LIGHT_DATA *pLightData, _Outptr_result_nullonfailure_ XLight **ppLight, _In_z_ PCSTR szName)
+{
+    try
+    {
+        TGemPtr<XLight> pNode;
+        pNode = new TGeneric<CLight>(this, szName);
+        *ppLight = pNode.Detach();
+    }
+    catch (std::bad_alloc &)
+    {
+        *ppLight = nullptr;
+        return Result::OutOfMemory;
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 void CCanvas::ReportObjectLeaks()
 {
     for (auto pNode = m_OutstandingObjects.GetFirst(); pNode != m_OutstandingObjects.GetEnd(); pNode = pNode->GetNext())
