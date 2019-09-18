@@ -52,6 +52,21 @@ enum CanvasIId
     CanvasIId_XNameTag = 15U,
     CanvasIId_XModel = 16U,
     CanvasIId_XGraphicsDevice = 17U,
+    CanvasIId_XGraphicsContext = 18U,
+    CanvasIId_XGraphicsResource = 19U,
+    CanvasIId_XGraphicsBuffer = 20U,
+    CanvasIId_XGraphicsTexture1D = 21U,
+    CanvasIId_XGraphicsTexture2D = 22U,
+    CanvasIId_XGraphicsTexture3D = 23U,
+    CanvasIId_XGraphicsPipelineState = 24U,
+    CanvasIId_XGraphicsShaderResourceView = 25U,
+    CanvasIId_XGraphicsUnorderedAccessView = 26U,
+    CanvasIId_XGraphicsConstantBufferView = 27U,
+    CanvasIId_XGraphicsDepthStencilView = 28U,
+    CanvasIId_XGraphicsRenderTargetView = 29U,
+    CanvasIId_XConstantBuffer = 30U,
+    CanvasIId_XUploadBuffer = 31U,
+    CanvasIId_XReadbackBuffer = 32U,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -86,6 +101,12 @@ XNameTag : public Gem::XGeneric
 
     GEMMETHOD_(PCSTR, GetName)() = 0;
     GEMMETHOD(SetName)(PCSTR) = 0;
+};
+
+GEM_INTERFACE
+XGraphicsContext : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsContext);
 };
 
 //------------------------------------------------------------------------------------------------
