@@ -300,7 +300,7 @@ namespace Canvas
             try
             {
                 pCanvas->Logger().LogInfo("CreateGraphicsDevice12: Creating D3D12 Graphics Device...");
-                TGemPtr<CDevice12> pGraphicsDevice = new TGeneric<CDevice12>(pCanvas); // throw(bad_alloc)
+                TGemPtr<CDevice12> pGraphicsDevice = new TGeneric<CDevice12>(); // throw(bad_alloc)
                 auto result = pGraphicsDevice->Initialize(hWnd, true);
                 if (result == Result::Success)
                 {
