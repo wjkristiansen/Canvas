@@ -10,7 +10,8 @@ namespace Canvas
     {
         //------------------------------------------------------------------------------------------------
         class CDevice12 :
-            public Gem::TGeneric<XGraphicsDevice>
+            public XGraphicsDevice,
+            public Gem::CGenericBase
         {
             CComPtr<ID3D12Resource> m_pVertices;
             CComPtr<ID3D12Resource> m_pNormals;
