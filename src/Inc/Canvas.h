@@ -64,9 +64,9 @@ enum CanvasIId
     CanvasIId_XGraphicsConstantBufferView = 27U,
     CanvasIId_XGraphicsDepthStencilView = 28U,
     CanvasIId_XGraphicsRenderTargetView = 29U,
-    CanvasIId_XConstantBuffer = 30U,
-    CanvasIId_XUploadBuffer = 31U,
-    CanvasIId_XReadbackBuffer = 32U,
+    CanvasIId_XGraphicsConstantBuffer = 30U,
+    CanvasIId_XGraphicsUploadBuffer = 31U,
+    CanvasIId_XGraphicsReadbackBuffer = 32U,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -109,14 +109,33 @@ XGraphicsContext : public Gem::XGeneric
     GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsContext);
 };
 
+GEM_INTERFACE
+XGraphicsResource : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsResource);
+};
+
+GEM_INTERFACE
+XGraphicsBuffer : public XGraphicsResource
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsBuffer);
+};
+
+GEM_INTERFACE
+XGraphicsUploadBuffer : public XGraphicsBuffer
+{
+    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsUploadBuffer);
+};
+
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE 
 XGraphicsDevice : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
 
-    GEMMETHOD(CreateStaticMesh)(const ModelData::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
-    GEMMETHOD(CreateMaterial)(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) = 0;
+    GEMMETHOD(Present)() = 0;
+    GEMMETHOD(Initialize)(HWND hWnd, bool Windowed) = 0;
+    // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XGraphicsUploadBuffer **ppUploadBuffer) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
