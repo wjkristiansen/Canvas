@@ -187,7 +187,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_o
             throw(std::exception("GetProcAddress"));
         }
 
-        Gem::TGemPtr<Graphics::CDevice> pGraphicsDevice;
+        Gem::TGemPtr<XGraphicsDevice> pGraphicsDevice;
         ThrowGemError(pCreate(this, &pGraphicsDevice, hWnd));
         Gem::TGemPtr<XGraphicsDevice> pXGraphicsDevice = pGraphicsDevice.Get();
 
@@ -230,7 +230,9 @@ GEMMETHODIMP CCanvas::FrameTick()
 
     // Render the display list
 
-    m_pGraphicsDevice->RenderFrame();
+    // Present
+
+    m_pGraphicsDevice->Present();
 
     ++m_FrameCounter;
     if (m_FrameCounter == 1200)

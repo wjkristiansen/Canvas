@@ -10,7 +10,7 @@ namespace Canvas
     {
         //------------------------------------------------------------------------------------------------
         class CDevice12 :
-            public CDevice
+            public Gem::TGeneric<XGraphicsDevice>
         {
             CComPtr<ID3D12Resource> m_pVertices;
             CComPtr<ID3D12Resource> m_pNormals;
@@ -24,18 +24,16 @@ namespace Canvas
             CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
 
 
-            CDevice12(CCanvas *pCanvas);
+            CDevice12();
 
             Result Initialize(HWND hWnd, bool Windowed);
 
-            GEMMETHOD(RenderFrame)() final;
-            GEMMETHOD(CreateStaticMesh)(const ModelData::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh) final;
-            GEMMETHOD(CreateMaterial)(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial);
-            GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, Graphics::CUploadBuffer **ppUploadBuffer) final;
+            GEMMETHOD(Present)() final;
+            // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XGraphicsUploadBuffer **ppUploadBuffer) final;
         };
 
         //------------------------------------------------------------------------------------------------
-        class CUploadBuffer12 : public Graphics::CUploadBuffer
+        class CUploadBuffer12 : public XGraphicsUploadBuffer
         {
             CComPtr<ID3D12Resource> m_pResource;
             UINT64 m_OffsetToStart = 0;
@@ -44,13 +42,6 @@ namespace Canvas
         public:
             CUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size);
             GEMMETHOD_(void *, Data)() final;
-        };
-
-        //------------------------------------------------------------------------------------------------
-        class CMaterial12 :
-            public Canvas::Graphics::CMaterial
-        {
-
         };
     }
 }
