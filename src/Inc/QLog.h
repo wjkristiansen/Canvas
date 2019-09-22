@@ -67,7 +67,9 @@ namespace QLog
 
     public:
         CBasicLogger(QLog::CLogClient *pLogClient, PCSTR szSourceName) :
-            m_pLogClient(pLogClient) {}
+            m_pLogClient(pLogClient),
+            m_szSourceName(szSourceName)
+        {}
 
         QLog::CLogClient *GetLogClient() const { return m_pLogClient; }
 
