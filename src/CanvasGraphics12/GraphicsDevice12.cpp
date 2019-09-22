@@ -9,9 +9,9 @@ namespace Canvas
     namespace Graphics
     {
         //------------------------------------------------------------------------------------------------
-        CDevice12::CDevice12()
+        CDevice12::CDevice12(QLog::CLogClient *pLogClient) :
+            m_Logger(pLogClient, "CANVAS GRAPHICS")
         {
-
         }
 
         //------------------------------------------------------------------------------------------------
@@ -99,8 +99,8 @@ namespace Canvas
             }
             catch (_com_error &e)
             {
-                //m_pCanvas->Logger().LogErrorF("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
-                //return HResultToResult(e.Error());
+                m_Logger.LogErrorF("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
+                return HResultToResult(e.Error());
             }
 
             return Result::Success;
@@ -171,8 +171,8 @@ namespace Canvas
             }
             catch (_com_error &e)
             {
-                //m_pCanvas->Logger().LogErrorF("CDevice12::Present: HRESULT 0x%08x", e.Error());
-                //return HResultToResult(e.Error());
+                m_Logger.LogErrorF("CDevice12::Present: HRESULT 0x%08x", e.Error());
+                return HResultToResult(e.Error());
             }
 
             return Result::Success;
@@ -194,12 +194,12 @@ namespace Canvas
         //    }
         //    catch (std::bad_alloc)
         //    {
-        //        m_pCanvas->Logger().LogError("CDevice12::AllocateUploadBuffer: Out of memory");
+        //        m_Logger.LogError("CDevice12::AllocateUploadBuffer: Out of memory");
         //        return Result::OutOfMemory;
         //    }
         //    catch (_com_error &e)
         //    {
-        //        m_pCanvas->Logger().LogErrorF("CDevice12::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
+        //        m_Logger.LogErrorF("CDevice12::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
         //        return HResultToResult(e.Error());
         //    }
         //    return Result::Success;
@@ -280,7 +280,7 @@ namespace Canvas
         //    }
         //    catch (_com_error &e)
         //    {
-        //        m_pCanvas->Logger().LogErrorF("CDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
+        //        m_Logger.LogErrorF("CDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
         //        return HResultToResult(e.Error());
         //    }
         //    return Result::Success;
@@ -293,30 +293,23 @@ namespace Canvas
         //}
 
         //------------------------------------------------------------------------------------------------
-        Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice, HWND hWnd)
+        Result GEMAPI CreateCanvasGraphicsDevice(_Outptr_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice, HWND hWnd, QLog::CLogClient *pLogClient)
         {
             *ppGraphicsDevice = nullptr;
 
             try
             {
-                pCanvas->Logger().LogInfo("CreateGraphicsDevice12: Creating D3D12 Graphics Device...");
-                TGemPtr<CDevice12> pGraphicsDevice = new TGeneric<CDevice12>(); // throw(bad_alloc)
+                TGemPtr<CDevice12> pGraphicsDevice = new TGeneric<CDevice12>(pLogClient); // throw(bad_alloc)
                 auto result = pGraphicsDevice->Initialize(hWnd, true);
                 if (result == Result::Success)
                 {
                     *ppGraphicsDevice = pGraphicsDevice;
                     pGraphicsDevice.Detach();
-                    pCanvas->Logger().LogInfo("CreateGraphicsDevice12: D3D12 Graphics Device Creation succeeded");
-                }
-                else
-                {
-                    pCanvas->Logger().LogError("CreateGraphicsDevice12: Failed");
                 }
                 return result;
             }
             catch (std::bad_alloc &)
             {
-                pCanvas->Logger().LogError("CreateGraphicsDevice12: Out of memory");
                 return Result::OutOfMemory;
             }
         }
