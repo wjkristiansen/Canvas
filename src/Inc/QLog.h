@@ -57,6 +57,7 @@ namespace QLog
         virtual bool LogEntryBeginVA(Category LogCategory, PCSTR szLogSource, PCSTR szFormat, va_list args) = 0;
         virtual void LogEntryAddProperty(PCSTR szName, PCSTR szValue) = 0;
         virtual void LogEntryEnd() = 0;
+        virtual void Close() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
