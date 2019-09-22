@@ -257,12 +257,21 @@ namespace QLog
         {
             try
             {
-                CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::EndLog);
+                if (m_hPipeFile)
+                {
+                    CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::EndLog);
+                }
             }
             catch (...)
             {
                 // Do nothing
             }
+        }
+
+        virtual void Close()
+        {
+            CLogSerializer<LogTag>::Serialize(m_hPipeFile, LogTag::EndLog);
+            m_hPipeFile = NULL;
         }
 
         virtual UINT SetCategoryMask(UINT Mask)
