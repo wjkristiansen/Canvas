@@ -33,40 +33,45 @@ GEM_INTERFACE XMesh;
 GEM_INTERFACE XAmination;
 GEM_INTERFACE XSkeleton;
 
+#define FOR_EACH_CANVAS_INTERFACE(macro) \
+    macro(XCanvas) \
+    macro(XScene) \
+    macro(XSceneGraphNode) \
+    macro(XSceneGraphIterator) \
+    macro(XMeshInstance) \
+    macro(XLight) \
+    macro(XTransform) \
+    macro(XCamera) \
+    macro(XTexture) \
+    macro(XMaterial) \
+    macro(XMesh) \
+    macro(XAmination) \
+    macro(XSkeleton) \
+    macro(XIterator) \
+    macro(XNameTag) \
+    macro(XModel) \
+    macro(XGraphicsDevice) \
+    macro(XGraphicsContext) \
+    macro(XGraphicsResource) \
+    macro(XGraphicsBuffer) \
+    macro(XGraphicsTexture1D) \
+    macro(XGraphicsTexture2D) \
+    macro(XGraphicsTexture3D) \
+    macro(XGraphicsPipelineState) \
+    macro(XGraphicsShaderResourceView) \
+    macro(XGraphicsUnorderedAccessView) \
+    macro(XGraphicsConstantBufferView) \
+    macro(XGraphicsDepthStencilView) \
+    macro(XGraphicsRenderTargetView) \
+    macro(XGraphicsConstantBuffer) \
+    macro(XGraphicsUploadBuffer) \
+    macro(XGraphicsReadbackBuffer) \
+
+#define ENUM_INTERFACE_ID(iface) CanvasIId_##iface,
+
 enum CanvasIId
 {
-    CanvasIId_XCanvas = 1U,
-    CanvasIId_XScene = 2U,
-    CanvasIId_XSceneGraphNode = 3U,
-    CanvasIId_XSceneGraphIterator = 4U,
-    CanvasIId_XMeshInstance = 5U,
-    CanvasIId_XCamera = 6U,
-    CanvasIId_XLight = 7U,
-    CanvasIId_XTransform = 8U,
-    CanvasIId_XTexture = 9U,
-    CanvasIId_XMaterial = 10U,
-    CanvasIId_XMesh = 11U,
-    CanvasIId_XAmination = 12U,
-    CanvasIId_XSkeleton = 13U,
-    CanvasIId_XIterator = 14U,
-    CanvasIId_XNameTag = 15U,
-    CanvasIId_XModel = 16U,
-    CanvasIId_XGraphicsDevice = 17U,
-    CanvasIId_XGraphicsContext = 18U,
-    CanvasIId_XGraphicsResource = 19U,
-    CanvasIId_XGraphicsBuffer = 20U,
-    CanvasIId_XGraphicsTexture1D = 21U,
-    CanvasIId_XGraphicsTexture2D = 22U,
-    CanvasIId_XGraphicsTexture3D = 23U,
-    CanvasIId_XGraphicsPipelineState = 24U,
-    CanvasIId_XGraphicsShaderResourceView = 25U,
-    CanvasIId_XGraphicsUnorderedAccessView = 26U,
-    CanvasIId_XGraphicsConstantBufferView = 27U,
-    CanvasIId_XGraphicsDepthStencilView = 28U,
-    CanvasIId_XGraphicsRenderTargetView = 29U,
-    CanvasIId_XGraphicsConstantBuffer = 30U,
-    CanvasIId_XGraphicsUploadBuffer = 31U,
-    CanvasIId_XGraphicsReadbackBuffer = 32U,
+    FOR_EACH_CANVAS_INTERFACE(ENUM_INTERFACE_ID)
 };
 
 //------------------------------------------------------------------------------------------------
