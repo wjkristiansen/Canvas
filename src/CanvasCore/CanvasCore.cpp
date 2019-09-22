@@ -107,12 +107,13 @@ void CCanvas::ReportObjectLeaks()
         CObjectBase *pObject = pNode->Ptr();
 
         ostr << "Leaked object: ";
-        //std::cout << "Type=" << to_string(pObject->GetType()) << ", ";
+        // std::cout << "Type=" << to_string(pObject->GetType()) << ", ";
         XNameTag *pNameTag;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pNameTag))))
         {
             pNameTag->Release();
-            ostr << "Name=\"" << pNameTag->GetName() << "\", ";
+            auto *pName = pNameTag->GetName();
+            ostr << "Name=\"" << (pName ? pName : "<Unnamed>") << "\", ";
         }
         XGeneric *pXGeneric;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pXGeneric))))
