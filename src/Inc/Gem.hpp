@@ -147,7 +147,7 @@ public:
     {
         _Type *pOut = m_p;
         m_p = nullptr;
-        return m_p;
+        return pOut;
     }
 
     TGemPtr &operator=(_Type *p)
