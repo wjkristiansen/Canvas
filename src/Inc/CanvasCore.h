@@ -34,45 +34,56 @@ GEM_INTERFACE XAmination;
 GEM_INTERFACE XSkeleton;
 
 #define FOR_EACH_CANVAS_INTERFACE(macro) \
-    macro(XCanvas) \
-    macro(XScene) \
-    macro(XSceneGraphNode) \
-    macro(XSceneGraphIterator) \
-    macro(XMeshInstance) \
-    macro(XLight) \
-    macro(XTransform) \
-    macro(XCamera) \
-    macro(XTexture) \
-    macro(XMaterial) \
-    macro(XMesh) \
-    macro(XAmination) \
-    macro(XSkeleton) \
-    macro(XIterator) \
-    macro(XNameTag) \
-    macro(XModel) \
-    macro(XGraphicsDevice) \
-    macro(XGraphicsContext) \
-    macro(XGraphicsResource) \
-    macro(XGraphicsBuffer) \
-    macro(XGraphicsTexture1D) \
-    macro(XGraphicsTexture2D) \
-    macro(XGraphicsTexture3D) \
-    macro(XGraphicsPipelineState) \
-    macro(XGraphicsShaderResourceView) \
-    macro(XGraphicsUnorderedAccessView) \
-    macro(XGraphicsConstantBufferView) \
-    macro(XGraphicsDepthStencilView) \
-    macro(XGraphicsRenderTargetView) \
-    macro(XGraphicsConstantBuffer) \
-    macro(XGraphicsUploadBuffer) \
-    macro(XGraphicsReadbackBuffer) \
+    macro(XCanvas, 1) \
+    macro(XScene, 2) \
+    macro(XSceneGraphNode, 3) \
+    macro(XMeshInstance, 5) \
+    macro(XLight, 6) \
+    macro(XTransform, 7) \
+    macro(XCamera, 8) \
+    macro(XTexture, 9) \
+    macro(XMaterial, 10) \
+    macro(XMesh, 11) \
+    macro(XAmination, 12) \
+    macro(XSkeleton, 13) \
+    macro(XIterator, 14) \
+    macro(XNameTag, 15) \
+    macro(XModel, 16) \
+    macro(XGraphicsDevice, 17) \
+    macro(XGraphicsContext, 18) \
+    macro(XGraphicsResource, 19) \
+    macro(XGraphicsBuffer, 20) \
+    macro(XGraphicsTexture1D, 21) \
+    macro(XGraphicsTexture2D, 22) \
+    macro(XGraphicsTexture3D, 23) \
+    macro(XGraphicsPipelineState, 24) \
+    macro(XGraphicsShaderResourceView, 25) \
+    macro(XGraphicsUnorderedAccessView, 26) \
+    macro(XGraphicsConstantBufferView, 27) \
+    macro(XGraphicsDepthStencilView, 28) \
+    macro(XGraphicsRenderTargetView, 29) \
+    macro(XGraphicsConstantBuffer, 30) \
+    macro(XGraphicsUploadBuffer, 31) \
+    macro(XGraphicsReadbackBuffer, 32) \
 
-#define ENUM_INTERFACE_ID(iface) CanvasIId_##iface,
-
+//------------------------------------------------------------------------------------------------
+#define ENUM_INTERFACE_ID(iface, value) CanvasIId_##iface=value,
 enum CanvasIId
 {
     FOR_EACH_CANVAS_INTERFACE(ENUM_INTERFACE_ID)
 };
+
+//------------------------------------------------------------------------------------------------
+#define INTERFACE_ID_STRING_CASE(iface, unused) case CanvasIId_##iface: return #iface;
+inline const char* CanvasIIdToString(CanvasIId id)
+{
+	switch (id)
+	{
+		FOR_EACH_CANVAS_INTERFACE(INTERFACE_ID_STRING_CASE);
+	}
+
+	return nullptr;
+}
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric

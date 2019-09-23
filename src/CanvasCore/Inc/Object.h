@@ -103,4 +103,6 @@ public:
     TAutoListNode<TStaticPtr<CObjectBase>> m_OutstandingNode;
 
     CObjectBase(class CCanvas *pCanvas);
+
+	virtual Gem::InterfaceId GetMostDerivedType() const = 0;
 };
