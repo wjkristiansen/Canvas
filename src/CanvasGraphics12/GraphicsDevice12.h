@@ -8,6 +8,15 @@ namespace Canvas
 {
     namespace Graphics
     {
+        class CContext12 :
+            public XGraphicsContext,
+            public Gem::CGenericBase
+        {
+            CComPtr<ID3D12CommandQueue> m_pCommandQueue;
+            TGemPtr<XGraphicsDevice> m_pXDevice;
+            CComPtr<ID3D12Device> m_pDevice12;
+        };
+
         //------------------------------------------------------------------------------------------------
         class CDevice12 :
             public XGraphicsDevice,
@@ -31,11 +40,14 @@ namespace Canvas
             Result Initialize(HWND hWnd, bool Windowed);
 
             GEMMETHOD(Present)() final;
+            GEMMETHOD(CreateGraphicsContext)(XGraphicsContext **ppGraphicsContext) final;
             // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XGraphicsUploadBuffer **ppUploadBuffer) final;
         };
 
         //------------------------------------------------------------------------------------------------
-        class CUploadBuffer12 : public XGraphicsUploadBuffer
+        class CUploadBuffer12 : 
+            public XGraphicsUploadBuffer,
+            public Gem::CGenericBase
         {
             CComPtr<ID3D12Resource> m_pResource;
             UINT64 m_OffsetToStart = 0;
