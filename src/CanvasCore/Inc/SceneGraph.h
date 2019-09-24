@@ -117,7 +117,7 @@ public:
             return Result::Success;
         }
 
-        if (CanvasIId_XNameTag == iid)
+        if (XNameTag::IId == iid)
         {
             return m_NameTag.InternalQueryInterface(iid, ppObj);
         }

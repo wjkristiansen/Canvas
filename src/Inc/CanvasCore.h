@@ -85,10 +85,12 @@ inline const char* CanvasIIdToString(CanvasIId id)
 	return nullptr;
 }
 
+#define CANVAS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasIId_##iface)
+
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE XIterator : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
+    CANVAS_INTERFACE_DECLARE(XIterator);
 
     // Resets the iterator to the start of the collection
     GEMMETHOD(Reset)() = 0;
@@ -113,7 +115,7 @@ GEM_INTERFACE XIterator : public Gem::XGeneric
 GEM_INTERFACE
 XNameTag : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XNameTag);
+    CANVAS_INTERFACE_DECLARE(XNameTag);
 
     GEMMETHOD_(PCSTR, GetName)() = 0;
     GEMMETHOD(SetName)(PCSTR) = 0;
@@ -122,32 +124,32 @@ XNameTag : public Gem::XGeneric
 GEM_INTERFACE
 XGraphicsContext : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsContext);
+    CANVAS_INTERFACE_DECLARE(XGraphicsContext);
 };
 
 GEM_INTERFACE
 XGraphicsResource : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsResource);
+    CANVAS_INTERFACE_DECLARE(XGraphicsResource);
 };
 
 GEM_INTERFACE
 XGraphicsBuffer : public XGraphicsResource
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsBuffer);
+    CANVAS_INTERFACE_DECLARE(XGraphicsBuffer);
 };
 
 GEM_INTERFACE
 XGraphicsUploadBuffer : public XGraphicsBuffer
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsUploadBuffer);
+    CANVAS_INTERFACE_DECLARE(XGraphicsUploadBuffer);
 };
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE 
 XGraphicsDevice : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
+    CANVAS_INTERFACE_DECLARE(XGraphicsDevice);
 
     GEMMETHOD(Present)() = 0;
     GEMMETHOD(Initialize)(HWND hWnd, bool Windowed) = 0;
@@ -158,7 +160,7 @@ XGraphicsDevice : public Gem::XGeneric
 GEM_INTERFACE
 XCanvas : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
+    CANVAS_INTERFACE_DECLARE(XCanvas);
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
@@ -174,7 +176,7 @@ XCanvas : public Gem::XGeneric
 GEM_INTERFACE
 XMaterial : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XMaterial);
+    CANVAS_INTERFACE_DECLARE(XMaterial);
 
     GEMMETHOD(Initialize)() = 0;
 };
@@ -183,7 +185,7 @@ XMaterial : public Gem::XGeneric
 GEM_INTERFACE
 XMesh : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XMesh);
+    CANVAS_INTERFACE_DECLARE(XMesh);
 };
 
 //------------------------------------------------------------------------------------------------
@@ -203,7 +205,7 @@ enum RotationType
 GEM_INTERFACE
 XTransform : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XTransform);
+    CANVAS_INTERFACE_DECLARE(XTransform);
 
     GEMMETHOD_(RotationType, GetRotationType)() const = 0;
     GEMMETHOD_(const Math::FloatVector4 &, GetRotation)() const = 0;
@@ -217,7 +219,7 @@ XTransform : public Gem::XGeneric
 GEM_INTERFACE
 XSceneGraphNode : public XTransform
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
+    CANVAS_INTERFACE_DECLARE(XSceneGraphNode);
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
     GEMMETHOD(CreateChildIterator)(_Outptr_result_nullonfailure_ XIterator **ppIterator) = 0;
 
@@ -230,14 +232,14 @@ XSceneGraphNode : public XTransform
 GEM_INTERFACE
 XScene : public XSceneGraphNode
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XScene);
+    CANVAS_INTERFACE_DECLARE(XScene);
 };
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
 XMeshInstance : public XSceneGraphNode
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
+    CANVAS_INTERFACE_DECLARE(XMeshInstance);
 
     GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
 };
@@ -246,14 +248,14 @@ XMeshInstance : public XSceneGraphNode
 GEM_INTERFACE
 XCamera : public XSceneGraphNode
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XCamera);
+    CANVAS_INTERFACE_DECLARE(XCamera);
 };
 
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
 XLight : public XSceneGraphNode
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XLight);
+    CANVAS_INTERFACE_DECLARE(XLight);
 };
 
 }
