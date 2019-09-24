@@ -178,6 +178,11 @@ namespace Canvas
             return Result::Success;
         }
 
+        GEMMETHODIMP CDevice12::CreateGraphicsContext(XGraphicsContext **ppContext)
+        {
+            return Result::NotImplemented;
+        }
+
         //------------------------------------------------------------------------------------------------
         //GEMMETHODIMP CDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, XGraphicsUploadBuffer **ppUploadBuffer)
         //{
