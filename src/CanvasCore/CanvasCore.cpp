@@ -10,9 +10,9 @@ using namespace Canvas;
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
 {
-    switch (iid)
+    switch (iid.Value)
     {
-    case XCanvas::IId:
+	case XCanvas::IId:
         *ppObj = reinterpret_cast<XCanvas *>(this);
         AddRef();
         return Result::Success;
@@ -107,7 +107,7 @@ void CCanvas::ReportObjectLeaks()
         CObjectBase *pObject = pNode->Ptr();
 
         ostr << "Leaked object: ";
-		ostr << "Type=" << CanvasIIdToString(CanvasIId(pObject->GetMostDerivedType())) << ", ";
+		ostr << "Type=" << IIdToString(Gem::InterfaceId(pObject->GetMostDerivedType())) << ", ";
         XNameTag *pNameTag;
         if (Succeeded(pObject->InternalQueryInterface(GEM_IID_PPV_ARGS(&pNameTag))))
         {
@@ -228,7 +228,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_o
 GEMMETHODIMP CCanvas::FrameTick()
 {
     Result result = Result::Success;
-    Logger().LogInfo("Begin CCanvas::FrameTick");
+//    Logger().LogInfo("Begin CCanvas::FrameTick");
 
     // Elapse time
 
@@ -257,7 +257,7 @@ GEMMETHODIMP CCanvas::FrameTick()
         m_FrameCounter = 0;
     }
 
-    Logger().LogInfo("End CCanvas::FrameTick");
+//    Logger().LogInfo("End CCanvas::FrameTick");
 
     return result;
 }

@@ -75,9 +75,9 @@ enum CanvasIId
 
 //------------------------------------------------------------------------------------------------
 #define INTERFACE_ID_STRING_CASE(iface, unused) case CanvasIId_##iface: return #iface;
-inline const char* CanvasIIdToString(CanvasIId id)
+inline const char* IIdToString(Gem::InterfaceId id)
 {
-	switch (id)
+	switch (id.Value)
 	{
 		FOR_EACH_CANVAS_INTERFACE(INTERFACE_ID_STRING_CASE);
 	}
@@ -189,7 +189,7 @@ XMesh : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-enum RotationType
+enum class RotationType
 {
     EulerXYZ,
     EulerXZY,

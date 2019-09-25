@@ -11,14 +11,23 @@
 #define GEMMETHODIMP Gem::Result
 #define GEMMETHODIMP_(retType) retType
 #define GEM_INTERFACE struct
-#define GEM_INTERFACE_DECLARE(iid) static const Gem::InterfaceId IId = iid
+#define GEM_INTERFACE_DECLARE(iid) static constexpr Gem::InterfaceId IId{iid}
 
 #define GEM_IID_PPV_ARGS(ppObj) \
     std::remove_reference_t<decltype(**ppObj)>::IId, reinterpret_cast<void **>(ppObj)
 
 namespace Gem
 {
-typedef UINT InterfaceId;
+struct InterfaceId
+{
+	const UINT64 Value;
+	InterfaceId() = default;
+	InterfaceId(const InterfaceId& o) = default;
+	constexpr InterfaceId(UINT64 i) :
+		Value(i) {}
+	bool operator==(const InterfaceId& o) const { return Value == o.Value; }
+	constexpr operator UINT64() const { return Value; }
+};
 
 // Forward decl XGeneric
 GEM_INTERFACE XGeneric;
