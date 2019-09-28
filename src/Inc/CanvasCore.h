@@ -4,6 +4,7 @@
 
 #pragma once
 #include <QLog.h>
+#include "CanvasGS.h"
 #include "CanvasModel.h"
 
 namespace Canvas
@@ -49,22 +50,6 @@ GEM_INTERFACE XSkeleton;
     macro(XIterator, 14) \
     macro(XNameTag, 15) \
     macro(XModel, 16) \
-    macro(XGraphicsDevice, 17) \
-    macro(XGraphicsContext, 18) \
-    macro(XGraphicsResource, 19) \
-    macro(XGraphicsBuffer, 20) \
-    macro(XGraphicsTexture1D, 21) \
-    macro(XGraphicsTexture2D, 22) \
-    macro(XGraphicsTexture3D, 23) \
-    macro(XGraphicsPipelineState, 24) \
-    macro(XGraphicsShaderResourceView, 25) \
-    macro(XGraphicsUnorderedAccessView, 26) \
-    macro(XGraphicsConstantBufferView, 27) \
-    macro(XGraphicsDepthStencilView, 28) \
-    macro(XGraphicsRenderTargetView, 29) \
-    macro(XGraphicsConstantBuffer, 30) \
-    macro(XGraphicsUploadBuffer, 31) \
-    macro(XGraphicsReadbackBuffer, 32) \
 
 //------------------------------------------------------------------------------------------------
 #define ENUM_INTERFACE_ID(iface, value) CanvasIId_##iface=value,
@@ -75,11 +60,13 @@ enum CanvasIId
 
 //------------------------------------------------------------------------------------------------
 #define INTERFACE_ID_STRING_CASE(iface, unused) case CanvasIId_##iface: return #iface;
+#define GS_INTERFACE_ID_STRING_CASE(iface, unused) case CanvasGSIId_##iface: return #iface;
 inline const char* IIdToString(Gem::InterfaceId id)
 {
 	switch (id.Value)
 	{
-		FOR_EACH_CANVAS_INTERFACE(INTERFACE_ID_STRING_CASE);
+        FOR_EACH_CANVAS_INTERFACE(INTERFACE_ID_STRING_CASE);
+        FOR_EACH_CANVAS_GS_INTERFACE(GS_INTERFACE_ID_STRING_CASE);
 	}
 
 	return nullptr;
@@ -121,41 +108,6 @@ XNameTag : public Gem::XGeneric
     GEMMETHOD(SetName)(PCSTR) = 0;
 };
 
-GEM_INTERFACE
-XGraphicsContext : public Gem::XGeneric
-{
-    CANVAS_INTERFACE_DECLARE(XGraphicsContext);
-};
-
-GEM_INTERFACE
-XGraphicsResource : public Gem::XGeneric
-{
-    CANVAS_INTERFACE_DECLARE(XGraphicsResource);
-};
-
-GEM_INTERFACE
-XGraphicsBuffer : public XGraphicsResource
-{
-    CANVAS_INTERFACE_DECLARE(XGraphicsBuffer);
-};
-
-GEM_INTERFACE
-XGraphicsUploadBuffer : public XGraphicsBuffer
-{
-    CANVAS_INTERFACE_DECLARE(XGraphicsUploadBuffer);
-};
-
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE 
-XGraphicsDevice : public Gem::XGeneric
-{
-    CANVAS_INTERFACE_DECLARE(XGraphicsDevice);
-
-    GEMMETHOD(Present)() = 0;
-    GEMMETHOD(Initialize)(HWND hWnd, bool Windowed) = 0;
-    // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XGraphicsUploadBuffer **ppUploadBuffer) = 0;
-};
-
 //------------------------------------------------------------------------------------------------
 GEM_INTERFACE
 XCanvas : public Gem::XGeneric
@@ -168,7 +120,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateCameraNode)(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName = nullptr) = 0;
     GEMMETHOD(CreateLightNode)(const ModelData::LIGHT_DATA *pLightData, _Outptr_result_nullonfailure_ XLight **ppLight, _In_z_ PCSTR szName = nullptr) = 0;
 
-    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice) = 0;
+    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XCanvasGSDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
 
