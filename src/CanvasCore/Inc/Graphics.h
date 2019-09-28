@@ -92,7 +92,7 @@ namespace Canvas
         ////------------------------------------------------------------------------------------------------
         //// Abstract graphics device class
         //class CDevice :
-        //    public XGraphicsDevice,
+        //    public XCanvasGSDevice,
         //    public CObjectBase
         //{
         //public:

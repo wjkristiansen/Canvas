@@ -178,13 +178,13 @@ namespace Canvas
             return Result::Success;
         }
 
-        GEMMETHODIMP CDevice12::CreateGraphicsContext(XGraphicsContext **ppContext)
+        GEMMETHODIMP CDevice12::CreateGraphicsContext(XCanvasGSContext **ppContext)
         {
             return Result::NotImplemented;
         }
 
         //------------------------------------------------------------------------------------------------
-        //GEMMETHODIMP CDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, XGraphicsUploadBuffer **ppUploadBuffer)
+        //GEMMETHODIMP CDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, XCanvasGSUploadBuffer **ppUploadBuffer)
         //{
         //    try
         //    {
@@ -298,7 +298,7 @@ namespace Canvas
         //}
 
         //------------------------------------------------------------------------------------------------
-        Result GEMAPI CreateCanvasGraphicsDevice(_Outptr_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice, HWND hWnd, QLog::CLogClient *pLogClient)
+        Result GEMAPI CreateCanvasGraphicsDevice(_Outptr_result_nullonfailure_ XCanvasGSDevice **ppGraphicsDevice, HWND hWnd, QLog::CLogClient *pLogClient)
         {
             *ppGraphicsDevice = nullptr;
 

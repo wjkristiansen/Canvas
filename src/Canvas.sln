@@ -13,6 +13,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Inc", "Inc", "{66481EAC-E4B3-475B-A7E7-845BA0EA636D}"
 	ProjectSection(SolutionItems) = preProject
 		Inc\Canvas.h = Inc\Canvas.h
+		Inc\CanvasGS.h = Inc\CanvasGS.h
 		Inc\CanvasMath.hpp = Inc\CanvasMath.hpp
 		Inc\CanvasModel.h = Inc\CanvasModel.h
 		..\..\Gem\src\Inc\Gem.hpp = ..\..\Gem\src\Inc\Gem.hpp
