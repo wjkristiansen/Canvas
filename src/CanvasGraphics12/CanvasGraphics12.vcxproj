@@ -163,6 +163,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Context.h" />
     <ClInclude Include="GraphicsDevice12.h" />
     <ClInclude Include="Inc\CanvasGraphics12.h" />
     <ClInclude Include="stdafx.h" />
@@ -170,6 +171,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CanvasGraphics12.cpp" />
+    <ClCompile Include="Context.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="GraphicsDevice12.cpp" />
     <ClCompile Include="stdafx.cpp">

@@ -176,9 +176,23 @@ GEMMETHODIMP CDevice::Present()
     return Result::Success;
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice::CreateGraphicsContext(XCanvasGSContext **ppContext)
 {
-    return Result::NotImplemented;
+    try
+    {
+        Gem::TGemPtr<XCanvasGSContext> pContext(new TGeneric<CContext>(this, D3D12_COMMAND_LIST_TYPE_DIRECT));
+    }
+    catch (const Gem::GemError &e)
+    {
+        return e.Result();
+    }
+    catch(const _com_error &e)
+    {
+        return HResultToResult(e.Error());
+    }
+
+    return Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
