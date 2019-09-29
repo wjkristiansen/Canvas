@@ -6,7 +6,21 @@
 
 using namespace Canvas;
 
-    
+
+//------------------------------------------------------------------------------------------------
+#define INTERFACE_ID_STRING_CASE(iface, unused) case CanvasIId_##iface: return #iface;
+#define GS_INTERFACE_ID_STRING_CASE(iface, unused) case CanvasGSIId_##iface: return #iface;
+inline const char *IIdToString(Gem::InterfaceId id)
+{
+    switch (id.Value)
+    {
+        FOR_EACH_CANVAS_INTERFACE(INTERFACE_ID_STRING_CASE);
+        FOR_EACH_CANVAS_GS_INTERFACE(GS_INTERFACE_ID_STRING_CASE);
+    }
+
+    return nullptr;
+}
+
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
 {

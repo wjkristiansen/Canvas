@@ -58,20 +58,6 @@ enum CanvasIId
     FOR_EACH_CANVAS_INTERFACE(ENUM_INTERFACE_ID)
 };
 
-//------------------------------------------------------------------------------------------------
-#define INTERFACE_ID_STRING_CASE(iface, unused) case CanvasIId_##iface: return #iface;
-#define GS_INTERFACE_ID_STRING_CASE(iface, unused) case CanvasGSIId_##iface: return #iface;
-inline const char* IIdToString(Gem::InterfaceId id)
-{
-	switch (id.Value)
-	{
-        FOR_EACH_CANVAS_INTERFACE(INTERFACE_ID_STRING_CASE);
-        FOR_EACH_CANVAS_GS_INTERFACE(GS_INTERFACE_ID_STRING_CASE);
-	}
-
-	return nullptr;
-}
-
 #define CANVAS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasIId_##iface)
 
 //------------------------------------------------------------------------------------------------
