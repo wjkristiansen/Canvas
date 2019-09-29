@@ -191,15 +191,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\Gem\src\Inc\Gem.hpp" />
-    <ClInclude Include="..\Common\Timeline.h" />
     <ClInclude Include="..\Inc\Canvas.h" />
     <ClInclude Include="..\Inc\CanvasGS.h" />
     <ClInclude Include="..\Inc\CanvasMath.hpp" />
     <ClInclude Include="Inc\Camera.h" />
     <ClInclude Include="Inc\Canvas.h" />
     <ClInclude Include="Inc\DataSource.h" />
-    <ClInclude Include="Inc\Graphics.h" />
     <ClInclude Include="Inc\Light.h" />
     <ClInclude Include="Inc\Mesh.h" />
     <ClInclude Include="Inc\Module.h" />
@@ -212,7 +209,6 @@
     <ClInclude Include="Inc\Transform.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
-    <ClInclude Include="Timer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CanvasCore.cpp" />

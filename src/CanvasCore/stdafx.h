@@ -39,7 +39,6 @@ using namespace Gem;
 
 #include "Name.h"
 #include "Object.h"
-#include "Graphics.h"
 #include "DataSource.h"
 #include "Transform.h"
 #include "SceneGraph.h"
