@@ -36,15 +36,6 @@
     <ClInclude Include="..\Inc\CanvasMath.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\Gem\src\Inc\Gem.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Timer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Common\Timeline.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Inc\Camera.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -52,9 +43,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Inc\DataSource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Inc\Graphics.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Inc\Light.h">

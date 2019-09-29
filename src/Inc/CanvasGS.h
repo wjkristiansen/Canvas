@@ -34,27 +34,40 @@ namespace Canvas
 
 #define CANVAS_GS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasGSIId_##iface)
 
+    //------------------------------------------------------------------------------------------------
+    // Submits command streams to the GPU.
+    // Manages synchronization with other command contexts and
+    // the CPU.
+    // In D3D12, this wraps a command queue and command lists and command allocators.
+    // In D3D11, this is wraps an ID3D11DeviceContext
     struct XCanvasGSContext : public Gem::XGeneric
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSContext);
     };
 
+    //------------------------------------------------------------------------------------------------
+    // Base interface for a CanvasGS resource.  Inherited by all buffer and texture resource interfaces.
     struct XCanvasGSResource : public Gem::XGeneric
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSResource);
     };
 
+    //------------------------------------------------------------------------------------------------
+    // Buffer resource
     struct XCanvasGSBuffer : public XCanvasGSResource
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSBuffer);
     };
 
+    //------------------------------------------------------------------------------------------------
+    // CPU-Writable resource used for uploading data to GPU memory
     struct XCanvasGSUploadBuffer : public XCanvasGSBuffer
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSUploadBuffer);
     };
 
     //------------------------------------------------------------------------------------------------
+    // Interface to a GPU device
     struct XCanvasGSDevice : public Gem::XGeneric
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSDevice);
