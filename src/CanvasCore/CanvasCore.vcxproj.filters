@@ -87,6 +87,9 @@
     <ClInclude Include="Inc\Mesh.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\Inc\CanvasGS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="CanvasCore.def" />

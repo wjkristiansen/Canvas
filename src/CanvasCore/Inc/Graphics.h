@@ -6,8 +6,8 @@
 
 namespace Canvas
 {
-    namespace Graphics
-    {
+    //namespace Graphics
+    //{
 
         ////------------------------------------------------------------------------------------------------
         //// Submits command streams to the GPU.
@@ -101,5 +101,5 @@ namespace Canvas
         //    {}
         //};
 
-    }
+    //}
 }

@@ -194,6 +194,7 @@
     <ClInclude Include="..\..\..\Gem\src\Inc\Gem.hpp" />
     <ClInclude Include="..\Common\Timeline.h" />
     <ClInclude Include="..\Inc\Canvas.h" />
+    <ClInclude Include="..\Inc\CanvasGS.h" />
     <ClInclude Include="..\Inc\CanvasMath.hpp" />
     <ClInclude Include="Inc\Camera.h" />
     <ClInclude Include="Inc\CanvasCore.h" />

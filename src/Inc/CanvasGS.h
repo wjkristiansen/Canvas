@@ -34,33 +34,28 @@ namespace Canvas
 
 #define CANVAS_GS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasGSIId_##iface)
 
-    GEM_INTERFACE
-        XCanvasGSContext : public Gem::XGeneric
+    struct XCanvasGSContext : public Gem::XGeneric
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSContext);
     };
 
-    GEM_INTERFACE
-        XCanvasGSResource : public Gem::XGeneric
+    struct XCanvasGSResource : public Gem::XGeneric
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSResource);
     };
 
-    GEM_INTERFACE
-        XCanvasGSBuffer : public XCanvasGSResource
+    struct XCanvasGSBuffer : public XCanvasGSResource
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSBuffer);
     };
 
-    GEM_INTERFACE
-        XCanvasGSUploadBuffer : public XCanvasGSBuffer
+    struct XCanvasGSUploadBuffer : public XCanvasGSBuffer
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSUploadBuffer);
     };
 
     //------------------------------------------------------------------------------------------------
-    GEM_INTERFACE
-        XCanvasGSDevice : public Gem::XGeneric
+    struct XCanvasGSDevice : public Gem::XGeneric
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSDevice);
 
