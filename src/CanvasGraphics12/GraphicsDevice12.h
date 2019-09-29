@@ -4,15 +4,6 @@
 
 #pragma once
 
-class CContext :
-    public Canvas::XCanvasGSContext,
-    public Gem::CGenericBase
-{
-    CComPtr<ID3D12CommandQueue> m_pCommandQueue;
-    TGemPtr<XCanvasGSDevice> m_pXDevice;
-    CComPtr<ID3D12Device> m_pDevice12;
-};
-
 //------------------------------------------------------------------------------------------------
 class CDevice :
     public Canvas::XCanvasGSDevice,
@@ -38,6 +29,8 @@ public:
     GEMMETHOD(Present)() final;
     GEMMETHOD(CreateGraphicsContext)(Canvas::XCanvasGSContext **ppGraphicsContext) final;
     // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGSUploadBuffer **ppUploadBuffer) final;
+
+    ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
 };
 
 //------------------------------------------------------------------------------------------------

@@ -1,0 +1,18 @@
+//================================================================================================
+// Context
+//================================================================================================
+
+#pragma once
+
+class CContext :
+    public Canvas::XCanvasGSContext,
+    public Gem::CGenericBase
+{
+    CComPtr<ID3D12CommandQueue> m_pCommandQueue;
+    CDevice *m_pDevice = nullptr; // weak pointer
+
+public:
+    CContext(CDevice *pDevice, D3D12_COMMAND_LIST_TYPE Type, D3D12_COMMAND_QUEUE_PRIORITY Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL);
+};
+
+    
