@@ -187,10 +187,6 @@ GEMMETHODIMP CDevice::CreateGraphicsContext(XCanvasGSContext **ppContext)
     {
         return e.Result();
     }
-    catch(const _com_error &e)
-    {
-        return HResultToResult(e.Error());
-    }
 
     return Result::Success;
 }

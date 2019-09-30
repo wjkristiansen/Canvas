@@ -28,6 +28,7 @@ public:
 
     GEMMETHOD(Present)() final;
     GEMMETHOD(CreateGraphicsContext)(Canvas::XCanvasGSContext **ppGraphicsContext) final;
+    GEMMETHOD(CreateRenderTargetView)(Canvas::XCanvasGSRenderTargetView **ppRTView, Canvas::XCanvasGSTexture2D *pTex2D)
     // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGSUploadBuffer **ppUploadBuffer) final;
 
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
