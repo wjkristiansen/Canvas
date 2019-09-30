@@ -15,7 +15,7 @@ CContext::CContext(CDevice *pDevice, D3D12_COMMAND_LIST_TYPE Type, D3D12_COMMAND
     CQDesc.NodeMask = 1;
     CQDesc.Priority = Priority;
     CQDesc.Type = Type;
-    ThrowFailedHResult(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ)));
+    ThrowGemError(HResultToResult(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
     m_pCommandQueue.Attach(pCQ.Detach());
 }
 
