@@ -13,6 +13,11 @@ class CContext :
 
 public:
     CContext(CDevice *pDevice, D3D12_COMMAND_LIST_TYPE Type, D3D12_COMMAND_QUEUE_PRIORITY Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL);
+
+    // XCanvasGSContext methods
+    GEMMETHOD_(void, Begin)() final;
+    GEMMETHOD_(void, End)() final;
+    GEMMETHOD_(void, CopyResource(XCanvasGSResource *pDest, XCanvasGSResource *pSource)) final;
 };
 
     
