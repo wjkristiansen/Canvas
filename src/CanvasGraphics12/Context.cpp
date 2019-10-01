@@ -19,3 +19,14 @@ CContext::CContext(CDevice *pDevice, D3D12_COMMAND_LIST_TYPE Type, D3D12_COMMAND
     m_pCommandQueue.Attach(pCQ.Detach());
 }
 
+GEMMETHODIMP_(void) CContext::Begin()
+{
+}
+
+GEMMETHODIMP_(void) CContext::End()
+{
+}
+
+GEMMETHODIMP_(void) CContext::CopyResource(XCanvasGSResource *pDest, XCanvasGSResource *pSource)
+{
+}

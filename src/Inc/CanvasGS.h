@@ -7,126 +7,62 @@
 
 namespace Canvas
 {
-#define FOR_EACH_CANVAS_GS_FORMAT(macro) \
-    macro(UNKNOWN) \
-    macro(R32G32B32A32_TYPELESS) \
-    macro(R32G32B32A32_FLOAT) \
-    macro(R32G32B32A32_UINT) \
-    macro(R32G32B32A32_SINT) \
-    macro(R32G32B32_TYPELESS) \
-    macro(R32G32B32_FLOAT) \
-    macro(R32G32B32_UINT) \
-    macro(R32G32B32_SINT) \
-    macro(R16G16B16A16_TYPELESS) \
-    macro(R16G16B16A16_FLOAT) \
-    macro(R16G16B16A16_UNORM) \
-    macro(R16G16B16A16_UINT) \
-    macro(R16G16B16A16_SNORM) \
-    macro(R16G16B16A16_SINT) \
-    macro(R32G32_TYPELESS) \
-    macro(R32G32_FLOAT) \
-    macro(R32G32_UINT) \
-    macro(R32G32_SINT) \
-    macro(R32G8X24_TYPELESS) \
-    macro(D32_FLOAT_S8X24_UINT) \
-    macro(R32_FLOAT_X8X24_TYPELESS) \
-    macro(X32_TYPELESS_G8X24_UINT) \
-    macro(R10G10B10A2_TYPELESS) \
-    macro(R10G10B10A2_UNORM) \
-    macro(R10G10B10A2_UINT) \
-    macro(R11G11B10_FLOAT) \
-    macro(R8G8B8A8_TYPELESS) \
-    macro(R8G8B8A8_UNORM) \
-    macro(R8G8B8A8_UNORM_SRGB) \
-    macro(R8G8B8A8_UINT) \
-    macro(R8G8B8A8_SNORM) \
-    macro(R8G8B8A8_SINT) \
-    macro(R16G16_TYPELESS) \
-    macro(R16G16_FLOAT) \
-    macro(R16G16_UNORM) \
-    macro(R16G16_UINT) \
-    macro(R16G16_SNORM) \
-    macro(R16G16_SINT) \
-    macro(R32_TYPELESS) \
-    macro(D32_FLOAT) \
-    macro(R32_FLOAT) \
-    macro(R32_UINT) \
-    macro(R32_SINT) \
-    macro(R24G8_TYPELESS) \
-    macro(D24_UNORM_S8_UINT) \
-    macro(R24_UNORM_X8_TYPELESS) \
-    macro(X24_TYPELESS_G8_UINT) \
-    macro(R8G8_TYPELESS) \
-    macro(R8G8_UNORM) \
-    macro(R8G8_UINT) \
-    macro(R8G8_SNORM) \
-    macro(R8G8_SINT) \
-    macro(R16_TYPELESS) \
-    macro(R16_FLOAT) \
-    macro(D16_UNORM) \
-    macro(R16_UNORM) \
-    macro(R16_UINT) \
-    macro(R16_SNORM) \
-    macro(R16_SINT) \
-    macro(R8_TYPELESS) \
-    macro(R8_UNORM) \
-    macro(R8_UINT) \
-    macro(R8_SNORM) \
-    macro(R8_SINT) \
-    macro(A8_UNORM) \
-    macro(R1_UNORM) \
-    macro(R9G9B9E5_SHAREDEXP) \
-    macro(R8G8_B8G8_UNORM) \
-    macro(G8R8_G8B8_UNORM) \
-    macro(BC1_TYPELESS) \
-    macro(BC1_UNORM) \
-    macro(BC1_UNORM_SRGB) \
-    macro(BC2_TYPELESS) \
-    macro(BC2_UNORM) \
-    macro(BC2_UNORM_SRGB) \
-    macro(BC3_TYPELESS) \
-    macro(BC3_UNORM) \
-    macro(BC3_UNORM_SRGB) \
-    macro(BC4_TYPELESS) \
-    macro(BC4_UNORM) \
-    macro(BC4_SNORM) \
-    macro(BC5_TYPELESS) \
-    macro(BC5_UNORM) \
-    macro(BC5_SNORM) \
-    macro(B5G6R5_UNORM) \
-    macro(B5G5R5A1_UNORM) \
-    macro(B8G8R8A8_UNORM) \
-    macro(B8G8R8X8_UNORM) \
-    macro(R10G10B10_XR_BIAS_A2_UNORM) \
-    macro(B8G8R8A8_TYPELESS) \
-    macro(B8G8R8A8_UNORM_SRGB) \
-    macro(B8G8R8X8_TYPELESS) \
-    macro(B8G8R8X8_UNORM_SRGB) \
-    macro(BC6H_TYPELESS) \
-    macro(BC6H_UF16) \
-    macro(BC6H_SF16) \
-    macro(BC7_TYPELESS) \
-    macro(BC7_UNORM) \
-    macro(BC7_UNORM_SRGB) \
-    macro(AYUV) \
-    macro(Y410) \
-    macro(Y416) \
-    macro(NV12) \
-    macro(P010) \
-    macro(P016) \
-    macro(420_OPAQUE) \
-    macro(YUY2) \
-    macro(Y210) \
-    macro(Y216) \
-    macro(NV11) \
-    macro(AI44) \
-    macro(IA44) \
-    macro(P8) \
-    macro(A8P8) \
-    macro(B4G4R4A4_UNORM) \
-    macro(P208) \
-    macro(V208) \
-    macro(V408) \
+    enum class Format : int
+    {
+        Unknown,
+        RGBA32_Float,
+        RGBA32_UInt,
+        RGBA32_Int,
+        RGB32_Float,
+        RGB32_UInt,
+        RGB32_Int,
+        RG32_Float,
+        RG32_UInt,
+        RG32_Int,
+        D32_Float,
+        R32_Float,
+        R32_UInt,
+        R32_Int,
+        RGBA16_Float,
+        RGBA16_UInt,
+        RGBA16_Int,
+        RGBA16_UNorm,
+        RGBA16_Norm,
+        RG16_Float,
+        RG16_UInt,
+        RG16_Int,
+        RG16_UNorm,
+        RG16_Norm,
+        R16_Float,
+        R16_UInt,
+        R16_Int,
+        D16_UNorm,
+        R16_UNorm,
+        R16_Norm,
+        D32_Float_S8_UInt_X24,
+        R32_Float_X32,
+        D24_Unorm_S8_Uint,
+        R24_Unorm_X8,
+        X24_S8_UInt,
+        RGB10A2_UNorm,
+        RGB10A2_UInt,
+        RGBA8_UNorm,
+        RGBA8_UInt,
+        RGBA8_Norm,
+        RGBA8_Int,
+        RG8_UNorm,
+        RG8_UInt,
+        RG8_Norm,
+        RG8_Int,
+        BC1_UNorm,
+        BC2_UNorm,
+        BC3_UNorm,
+        BC4_UNorm,
+        BC4_Norm,
+        BC5_UNorm,
+        BC5_Norm,
+        BC7_UNorm,
+    };
 
 #define FOR_EACH_CANVAS_GS_INTERFACE(macro) \
     macro(XCanvasGSDevice, 0x1017) \
@@ -156,6 +92,13 @@ namespace Canvas
 #define CANVAS_GS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasGSIId_##iface)
 
     //------------------------------------------------------------------------------------------------
+    // Base interface for a CanvasGS resource.  Inherited by all buffer and texture resource interfaces.
+    struct XCanvasGSResource : public Gem::XGeneric
+    {
+        CANVAS_GS_INTERFACE_DECLARE(XCanvasGSResource);
+    };
+
+    //------------------------------------------------------------------------------------------------
     // Submits command streams to the GPU.
     // Manages synchronization with other command contexts and
     // the CPU.
@@ -166,21 +109,14 @@ namespace Canvas
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGSContext);
 
         // Begins a series of commands
-        GEMMETHOD(Begin)() = 0;
+        GEMMETHOD_(void, Begin)() = 0;
 
         // Ends a series of commands
-        GEMMETHOD(End)() = 0;
+        GEMMETHOD_(void, End)() = 0;
 
         // Copies an entire resource
-        GEMMETHOD(CopyResource(XCanvasGSResource *pDest, XCanvasGSResource *pSource)) = 0;
+        GEMMETHOD_(void, CopyResource(XCanvasGSResource *pDest, XCanvasGSResource *pSource)) = 0;
 
-    };
-
-    //------------------------------------------------------------------------------------------------
-    // Base interface for a CanvasGS resource.  Inherited by all buffer and texture resource interfaces.
-    struct XCanvasGSResource : public Gem::XGeneric
-    {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGSResource);
     };
 
     //------------------------------------------------------------------------------------------------
