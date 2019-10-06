@@ -239,7 +239,7 @@ GEMMETHODIMP CDevice::Present()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice::CreateGraphicsContext(XCanvasGSContext **ppContext)
+GEMMETHODIMP CDevice::AllocateGraphicsContext(XCanvasGSContext **ppContext)
 {
     try
     {

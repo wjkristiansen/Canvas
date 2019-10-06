@@ -141,7 +141,14 @@ namespace Canvas
 
         GEMMETHOD(Present)() = 0;
         GEMMETHOD(Initialize)(HWND hWnd, bool Windowed) = 0;
-        GEMMETHOD(CreateGraphicsContext)(Canvas::XCanvasGSContext **ppGraphicsContext) = 0;
+        GEMMETHOD(AllocateGraphicsContext)(Canvas::XCanvasGSContext **ppGraphicsContext) = 0;
+        //GEMMETHOD(AllocateBuffer)() - 0;
+        //GEMMETHOD(AllocateTexture1D) = 0;
+        //GEMMETHOD(AllocateTexture1DArray) = 0;
+        //GEMMETHOD(AllocateTexture2D) = 0;
+        //GEMMETHOD(AllocateTexture2DArray) = 0;
+        //GEMMETHOD(AllocateTexture3D) = 0;
+        //GEMMETHOD(AllocateTextureCube) = 0;
         // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGSUploadBuffer **ppUploadBuffer) = 0;
     };
 
