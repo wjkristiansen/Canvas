@@ -7,11 +7,6 @@
 #include <math.h>
 #include <float.h>
 
-#define EVAL4(macro) EVAL3(macro)
-#define EVAL3(macro) EVAL2(macro)
-#define EVAL2(macro) EVAL1(macro)
-#define EVAL1(macro) macro
-
 namespace Canvas
 {
     namespace Math
