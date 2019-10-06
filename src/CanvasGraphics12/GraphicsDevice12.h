@@ -29,7 +29,7 @@ public:
     Result Initialize(HWND hWnd, bool Windowed);
 
     GEMMETHOD(Present)() final;
-    GEMMETHOD(CreateGraphicsContext)(Canvas::XCanvasGSContext **ppGraphicsContext) final;
+    GEMMETHOD(AllocateGraphicsContext)(Canvas::XCanvasGSContext **ppGraphicsContext) final;
     // GEMMETHOD(CreateRenderTargetView)(Canvas::XCanvasGSRenderTargetView **ppRTView, Canvas::XCanvasGSTexture2D *pTex2D)
     // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGSUploadBuffer **ppUploadBuffer) final;
 
