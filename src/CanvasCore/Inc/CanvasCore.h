@@ -6,35 +6,7 @@
 
 #include "Module.h"
 
-//------------------------------------------------------------------------------------------------
-inline Result HResultToResult(HRESULT hr)
-{
-    switch (hr)
-    {
-    case S_OK:
-        return Result::Success;
-
-    case E_FAIL:
-        return Result::Fail;
-
-    case E_OUTOFMEMORY:
-        return Result::OutOfMemory;
-
-    case E_INVALIDARG:
-    case DXGI_ERROR_INVALID_CALL:
-        return Result::InvalidArg;
-
-    case DXGI_ERROR_DEVICE_REMOVED:
-        // BUGBUG: TODO...
-        return Result::Fail;
-
-    case E_NOINTERFACE:
-        return Result::NoInterface;
-
-    default:
-        return Result::Fail;
-    }
-}
+using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
 class CCanvas :
@@ -42,7 +14,7 @@ class CCanvas :
     public CGenericBase
 {
     std::mutex m_Mutex;
-    CCanvasLogger m_Logger;
+    QLog::CBasicLogger m_Logger;
     CModule m_GraphicsModule;
 
     CTimer m_FrameTimer;
@@ -51,7 +23,7 @@ class CCanvas :
 
 public:
     CCanvas(QLog::CLogClient *pLogClient) :
-        m_Logger(pLogClient),
+        m_Logger(pLogClient, "CANVAS"),
         CGenericBase()
     {}
 
@@ -78,16 +50,18 @@ public:
     GEMMETHOD(InternalQueryInterface)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj);
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) final;
     GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, PCSTR szName = nullptr) final;
+    GEMMETHOD(CreateCameraNode)(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName = nullptr);
+    GEMMETHOD(CreateLightNode)(const ModelData::LIGHT_DATA *pLightData, _Outptr_result_nullonfailure_ XLight **ppLight, _In_z_ PCSTR szName = nullptr);
 
-    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice) final;
+    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XCanvasGSDevice **ppGraphicsDevice) final;
     GEMMETHOD(FrameTick)() final;
 
     void ReportObjectLeaks();
 
-    CCanvasLogger &Logger() { return m_Logger; }
+    QLog::CBasicLogger &Logger() { return m_Logger; }
 
 public:
-    TGemPtr<class CanvasGraphics::CGraphicsDevice> m_pGraphicsDevice;
+    TGemPtr<XCanvasGSDevice> m_pGraphicsDevice;
 };
 
-typedef Result (*CreateCanvasGraphicsDeviceProc)(_In_ CCanvas *pCanvas, _Outptr_opt_result_nullonfailure_ CanvasGraphics::CGraphicsDevice **pGraphicsDevice, HWND hWnd);
+typedef Result (*CreateCanvasGraphicsDeviceProc)(_Outptr_opt_result_nullonfailure_ XCanvasGSDevice **pGraphicsDevice, HWND hWnd, QLog::CLogClient *pLogClient);

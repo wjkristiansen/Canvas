@@ -35,9 +35,9 @@ LRESULT CALLBACK CWindow::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
     {
     case WM_CREATE:
         {
-            LPCREATESTRUCT pCreateStruct = reinterpret_cast<LPCREATESTRUCT>(lParam);
+            LPCREATESTRUCTA pCreateStruct = reinterpret_cast<LPCREATESTRUCTA>(lParam);
             // Handle WM_CREATE to set the CWindow pointer
-            SetWindowLongPtrW(hWnd, 0, reinterpret_cast<LPARAM>(pCreateStruct->lpCreateParams));
+            SetWindowLongPtrA(hWnd, 0, reinterpret_cast<LPARAM>(pCreateStruct->lpCreateParams));
             break;
         }
     }
@@ -48,7 +48,7 @@ LRESULT CALLBACK CWindow::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lP
         return pWindow->WindowProc(uMsg, wParam, lParam);
     }
 
-    return DefWindowProcW(hWnd, uMsg, wParam, lParam);
+    return DefWindowProcA(hWnd, uMsg, wParam, lParam);
 }
 
 //------------------------------------------------------------------------------------------------

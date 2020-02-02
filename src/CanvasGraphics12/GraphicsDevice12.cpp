@@ -4,9 +4,78 @@
 
 #include "stdafx.h"
 
+using namespace Canvas;
+
+DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GSFormat Fmt)
+{
+    switch (Fmt)
+    {
+        case GSFormat::Unknown: return DXGI_FORMAT_UNKNOWN;
+        case GSFormat::RGBA32_Float: return DXGI_FORMAT_R32G32B32A32_FLOAT;
+        case GSFormat::RGBA32_UInt: return DXGI_FORMAT_R32G32B32A32_UINT;
+        case GSFormat::RGBA32_Int: return DXGI_FORMAT_R32G32B32A32_SINT;
+        case GSFormat::RGB32_Float: return DXGI_FORMAT_R32G32B32_FLOAT;
+        case GSFormat::RGB32_UInt: return DXGI_FORMAT_R32G32B32_UINT;
+        case GSFormat::RGB32_Int: return DXGI_FORMAT_R32G32B32_SINT;
+        case GSFormat::RG32_Float: return DXGI_FORMAT_R32G32_FLOAT;
+        case GSFormat::RG32_UInt: return DXGI_FORMAT_R32G32_UINT;
+        case GSFormat::RG32_Int: return DXGI_FORMAT_R32G32_SINT;
+        case GSFormat::D32_Float: return DXGI_FORMAT_D32_FLOAT;
+        case GSFormat::R32_Float: return DXGI_FORMAT_R32_FLOAT;
+        case GSFormat::R32_UInt: return DXGI_FORMAT_R32_UINT;
+        case GSFormat::R32_Int: return DXGI_FORMAT_R32_SINT;
+        case GSFormat::RGBA16_Float: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case GSFormat::RGBA16_UInt: return DXGI_FORMAT_R16G16B16A16_UINT;
+        case GSFormat::RGBA16_Int: return DXGI_FORMAT_R16G16B16A16_SINT;
+        case GSFormat::RGBA16_UNorm: return DXGI_FORMAT_R16G16B16A16_UNORM;
+        case GSFormat::RGBA16_Norm: return DXGI_FORMAT_R16G16B16A16_SNORM;
+        case GSFormat::RG16_Float: return DXGI_FORMAT_R16G16_FLOAT;
+        case GSFormat::RG16_UInt: return DXGI_FORMAT_R16G16_UINT;
+        case GSFormat::RG16_Int: return DXGI_FORMAT_R16G16_SINT;
+        case GSFormat::RG16_UNorm: return DXGI_FORMAT_R16G16_UNORM;
+        case GSFormat::RG16_Norm: return DXGI_FORMAT_R16G16_SNORM;
+        case GSFormat::R16_Float: return DXGI_FORMAT_R16_FLOAT;
+        case GSFormat::R16_UInt: return DXGI_FORMAT_R16_UINT;
+        case GSFormat::R16_Int: return DXGI_FORMAT_R16_SINT;
+        case GSFormat::D16_UNorm: return DXGI_FORMAT_D16_UNORM;
+        case GSFormat::R16_UNorm: return DXGI_FORMAT_R16_UNORM;
+        case GSFormat::R16_Norm: return DXGI_FORMAT_R16_SNORM;
+        case GSFormat::D32_Float_S8_UInt_X24: return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+        case GSFormat::R32_Float_X32: return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+        case GSFormat::D24_Unorm_S8_Uint: return DXGI_FORMAT_D24_UNORM_S8_UINT;
+        case GSFormat::R24_Unorm_X8: return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+        case GSFormat::X24_S8_UInt: return DXGI_FORMAT_X24_TYPELESS_G8_UINT;
+        case GSFormat::RGB10A2_UNorm: return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case GSFormat::RGB10A2_UInt: return DXGI_FORMAT_R8G8B8A8_UINT;
+        case GSFormat::RGBA8_UNorm: return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case GSFormat::RGBA8_UInt: return DXGI_FORMAT_R8G8B8A8_UINT;
+        case GSFormat::RGBA8_Norm: return DXGI_FORMAT_R8G8B8A8_SNORM;
+        case GSFormat::RGBA8_Int: return DXGI_FORMAT_R8G8B8A8_SINT;
+        case GSFormat::RG8_UNorm: return DXGI_FORMAT_R8G8_UNORM;
+        case GSFormat::RG8_UInt: return DXGI_FORMAT_R8G8_UINT;
+        case GSFormat::RG8_Norm: return DXGI_FORMAT_R8G8_SNORM;
+        case GSFormat::RG8_Int: return DXGI_FORMAT_R8G8_SINT;
+        case GSFormat::BC1_UNorm: return DXGI_FORMAT_BC1_UNORM;
+        case GSFormat::BC2_UNorm: return DXGI_FORMAT_BC2_UNORM;
+        case GSFormat::BC3_UNorm: return DXGI_FORMAT_BC3_UNORM;
+        case GSFormat::BC4_UNorm: return DXGI_FORMAT_BC4_UNORM;
+        case GSFormat::BC4_Norm: return DXGI_FORMAT_BC4_SNORM;
+        case GSFormat::BC5_UNorm: return DXGI_FORMAT_BC5_UNORM;
+        case GSFormat::BC5_Norm: return DXGI_FORMAT_BC5_SNORM;
+        case GSFormat::BC7_UNorm: return DXGI_FORMAT_BC7_UNORM;
+        default: return DXGI_FORMAT_UNKNOWN;
+    }
+}
+
 
 //------------------------------------------------------------------------------------------------
-Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
+CDevice::CDevice(QLog::CLogClient *pLogClient) :
+    m_Logger(pLogClient, "CANVAS GRAPHICS")
+{
+}
+
+//------------------------------------------------------------------------------------------------
+Result CDevice::Initialize(HWND hWnd, bool Windowed)
 {
     try
     {
@@ -34,9 +103,9 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
         CComPtr<IDXGISwapChain1> pSwapChain1;
         DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
         swapChainDesc.BufferCount = 4;
-        swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING|DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+        swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING | DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
         swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-        swapChainDesc.BufferUsage = DXGI_USAGE_SHADER_INPUT|DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        swapChainDesc.BufferUsage = DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_RENDER_TARGET_OUTPUT;
         swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
         swapChainDesc.SampleDesc.Count = 1;
         swapChainDesc.SampleDesc.Quality = 0;
@@ -74,7 +143,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
         DefaultRootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
         DefaultRootParams[3].InitAsDescriptorTable(1, DefaultDescriptorRanges.data(), D3D12_SHADER_VISIBILITY_ALL);
 
-        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc (4U, DefaultRootParams.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc(4U, DefaultRootParams.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
         CComPtr<ID3DBlob> pRSBlob;
         ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&DefaultRootSigDesc, &pRSBlob, nullptr));
@@ -90,7 +159,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
     }
     catch (_com_error &e)
     {
-        m_pCanvas->Logger().LogErrorF("CGraphicsDevice12::Initialize: HRESULT 0x%08x", e.Error());
+        m_Logger.LogErrorF("CDevice::Initialize: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
 
@@ -98,7 +167,7 @@ Result CGraphicsDevice12::Initialize(HWND hWnd, bool Windowed)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::RenderFrame()
+GEMMETHODIMP CDevice::Present()
 {
     try
     {
@@ -112,9 +181,9 @@ GEMMETHODIMP CGraphicsDevice12::RenderFrame()
         ThrowFailedHResult(m_pD3DDevice->CreateDescriptorHeap(&dhDesc, IID_PPV_ARGS(&pRTVHeap)));
         D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
         rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-        rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D; 
+        rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
         m_pD3DDevice->CreateRenderTargetView(pBackBuffer, &rtvDesc, pRTVHeap->GetCPUDescriptorHandleForHeapStart());
-        
+
         CComPtr<ID3D12GraphicsCommandList> pCommandList;
         CComPtr<ID3D12CommandAllocator> pCommandAllocator;
         ThrowFailedHResult(m_pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pCommandAllocator)));
@@ -162,7 +231,7 @@ GEMMETHODIMP CGraphicsDevice12::RenderFrame()
     }
     catch (_com_error &e)
     {
-        m_pCanvas->Logger().LogErrorF("CGraphicsDevice12::RenderFrame: HRESULT 0x%08x", e.Error());
+        m_Logger.LogErrorF("CDevice::Present: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
 
@@ -170,31 +239,46 @@ GEMMETHODIMP CGraphicsDevice12::RenderFrame()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, CGraphicsUploadBuffer **ppUploadBuffer)
+GEMMETHODIMP CDevice::AllocateGraphicsContext(XCanvasGSContext **ppContext)
 {
     try
     {
-        // Allocate a buffer to contain the vertex data
-        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(SizeInBytes);
-        CComPtr<ID3D12Resource> pD3DBuffer;
-        CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
-        ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource1(&HeapProp, D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, nullptr, IID_PPV_ARGS(&pD3DBuffer)));
-        TGemPtr<CGraphicsUploadBuffer> pUploadBuffer = new CGraphicsUploadBuffer12(pD3DBuffer, 0, SizeInBytes); // throw(std::bad_alloc), throw(_com_error)
-        *ppUploadBuffer = pUploadBuffer;
-        pUploadBuffer.Detach();
+        Gem::TGemPtr<XCanvasGSContext> pContext(new TGeneric<CContext>(this, D3D12_COMMAND_LIST_TYPE_DIRECT));
     }
-    catch (std::bad_alloc)
+    catch (const Gem::GemError &e)
     {
-        m_pCanvas->Logger().LogError("CGraphicsDevice12::AllocateUploadBuffer: Out of memory");
-        return Result::OutOfMemory;
+        return e.Result();
     }
-    catch (_com_error &e)
-    {
-        m_pCanvas->Logger().LogErrorF("CGraphicsDevice12::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
-        return HResultToResult(e.Error());
-    }
+
     return Result::Success;
 }
+
+//------------------------------------------------------------------------------------------------
+//GEMMETHODIMP CDevice::AllocateUploadBuffer(UINT64 SizeInBytes, XCanvasGSUploadBuffer **ppUploadBuffer)
+//{
+//    try
+//    {
+//        // Allocate a buffer to contain the vertex data
+//        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(SizeInBytes);
+//        CComPtr<ID3D12Resource> pD3DBuffer;
+//        CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
+//        ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource1(&HeapProp, D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, nullptr, IID_PPV_ARGS(&pD3DBuffer)));
+//        TGemPtr<CUploadBuffer> pUploadBuffer = new CUploadBuffer(pD3DBuffer, 0, SizeInBytes); // throw(std::bad_alloc), throw(_com_error)
+//        *ppUploadBuffer = pUploadBuffer;
+//        pUploadBuffer.Detach();
+//    }
+//    catch (std::bad_alloc)
+//    {
+//        m_Logger.LogError("CDevice::AllocateUploadBuffer: Out of memory");
+//        return Result::OutOfMemory;
+//    }
+//    catch (_com_error &e)
+//    {
+//        m_Logger.LogErrorF("CDevice::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
+//        return HResultToResult(e.Error());
+//    }
+//    return Result::Success;
+//}
 
 
 //------------------------------------------------------------------------------------------------
@@ -221,111 +305,92 @@ struct Vertex
     float TexCoords[3][2];
 };
 
-GEMMETHODIMP CGraphicsDevice12::CreateStaticMesh(const MESH_DATA *pMeshData, XMesh **ppMesh)
-{
-    try
-    {
-        if (pMeshData->pVertices)
-        {
-            UINT64 BufferSize = sizeof(Vertex) * pMeshData->NumVertices;
-            TGemPtr<CGraphicsUploadBuffer> pVertexBuffer;
-            AllocateUploadBuffer(BufferSize, &pVertexBuffer);
-            Vertex *pVertices = reinterpret_cast<Vertex *>(pVertexBuffer->Data());
+//GEMMETHODIMP CDevice::CreateStaticMesh(const ModelData::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh)
+//{
+//    try
+//    {
+//        if (pMeshData->pVertices)
+//        {
+//            UINT64 BufferSize = sizeof(Vertex) * pMeshData->NumVertices;
+//            TGemPtr<CUploadBuffer> pVertexBuffer;
+//            AllocateUploadBuffer(BufferSize, &pVertexBuffer);
+//            Vertex *pVertices = reinterpret_cast<Vertex *>(pVertexBuffer->Data());
 
-            // Copy the vertex data into the buffer, converting from float3 to float4 format
-            for (UINT i = 0; i < pMeshData->NumVertices; ++i)
-            {
-                pVertices[i].Position[0] = pMeshData->pVertices[i][0];
-                pVertices[i].Position[1] = pMeshData->pVertices[i][1];
-                pVertices[i].Position[2] = pMeshData->pVertices[i][2];
+//            // Copy the vertex data into the buffer, converting from float3 to float4 format
+//            for (UINT i = 0; i < pMeshData->NumVertices; ++i)
+//            {
+//                pVertices[i].Position[0] = pMeshData->pVertices[i][0];
+//                pVertices[i].Position[1] = pMeshData->pVertices[i][1];
+//                pVertices[i].Position[2] = pMeshData->pVertices[i][2];
 
-                if (pMeshData->pNormals)
-                {
-                    pVertices[i].Normal[0] = pMeshData->pNormals[i][0];
-                    pVertices[i].Normal[1] = pMeshData->pNormals[i][1];
-                    pVertices[i].Normal[2] = pMeshData->pNormals[i][2];
-                }
-                else
-                {
-                    // Material needs to handle zero-length normal
-                    pVertices[i].Normal[0] = 0;
-                    pVertices[i].Normal[1] = 0;
-                    pVertices[i].Normal[2] = 0;
-                }
+//                if (pMeshData->pNormals)
+//                {
+//                    pVertices[i].Normal[0] = pMeshData->pNormals[i][0];
+//                    pVertices[i].Normal[1] = pMeshData->pNormals[i][1];
+//                    pVertices[i].Normal[2] = pMeshData->pNormals[i][2];
+//                }
+//                else
+//                {
+//                    // Material needs to handle zero-length normal
+//                    pVertices[i].Normal[0] = 0;
+//                    pVertices[i].Normal[1] = 0;
+//                    pVertices[i].Normal[2] = 0;
+//                }
 
-                for (UINT j = 0; j < 4; ++j)
-                {
-                    if (pMeshData->pTextureUVs[j])
-                    {
-                        pVertices[i].TexCoords[j][0] = pMeshData->pTextureUVs[j][i][0];
-                        pVertices[i].TexCoords[j][1] = pMeshData->pTextureUVs[j][i][1];
-                    }
-                    else
-                    {
-                        // Set all texture coordinates to zero
-                        ZeroMemory(pVertices[i].TexCoords, sizeof(pVertices[i].TexCoords));
-                    }
-                }
-            }
-        }
-    }
-    catch (_com_error &e)
-    {
-        m_pCanvas->Logger().LogErrorF("CGraphicsDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
-        return HResultToResult(e.Error());
-    }
-    return Result::Success;
-}
+//                for (UINT j = 0; j < 4; ++j)
+//                {
+//                    if (pMeshData->pTextureUVs[j])
+//                    {
+//                        pVertices[i].TexCoords[j][0] = pMeshData->pTextureUVs[j][i][0];
+//                        pVertices[i].TexCoords[j][1] = pMeshData->pTextureUVs[j][i][1];
+//                    }
+//                    else
+//                    {
+//                        // Set all texture coordinates to zero
+//                        ZeroMemory(pVertices[i].TexCoords, sizeof(pVertices[i].TexCoords));
+//                    }
+//                }
+//            }
+//        }
+//    }
+//    catch (_com_error &e)
+//    {
+//        m_Logger.LogErrorF("CDevice::CreateStaticMesh: HRESULT 0x%08x", e.Error());
+//        return HResultToResult(e.Error());
+//    }
+//    return Result::Success;
+//}
 
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::CreateCamera(const CAMERA_DATA *pCameraData, XCamera **ppCamera)
-{
-    return Result::NotImplemented;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::CreateMaterial(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
-{
-    return Result::NotImplemented;
-}
+////------------------------------------------------------------------------------------------------
+//GEMMETHODIMP CDevice::CreateMaterial(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
+//{
+//    return Result::NotImplemented;
+//}
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsDevice12::CreateLight(const LIGHT_DATA *pLightData, XLight **ppLight)
-{
-    return Result::NotImplemented;
-}
-
-//------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_result_nullonfailure_ CGraphicsDevice **ppGraphicsDevice, HWND hWnd)
+Result GEMAPI CreateCanvasGraphicsDevice(_Outptr_result_nullonfailure_ XCanvasGSDevice **ppGraphicsDevice, HWND hWnd, QLog::CLogClient *pLogClient)
 {
     *ppGraphicsDevice = nullptr;
 
     try
     {
-        pCanvas->Logger().LogInfo("CreateGraphicsDevice12: Creating D3D12 Graphics Device...");
-        TGemPtr<CGraphicsDevice12> pGraphicsDevice = new TGeneric<CGraphicsDevice12>(pCanvas); // throw(bad_alloc)
+        TGemPtr<CDevice> pGraphicsDevice = new TGeneric<CDevice>(pLogClient); // throw(bad_alloc)
         auto result = pGraphicsDevice->Initialize(hWnd, true);
         if (result == Result::Success)
         {
             *ppGraphicsDevice = pGraphicsDevice;
             pGraphicsDevice.Detach();
-            pCanvas->Logger().LogInfo("CreateGraphicsDevice12: D3D12 Graphics Device Creation succeeded");
-        }
-        else
-        {
-            pCanvas->Logger().LogError("CreateGraphicsDevice12: Failed");
         }
         return result;
     }
     catch (std::bad_alloc &)
     {
-        pCanvas->Logger().LogError("CreateGraphicsDevice12: Out of memory");
         return Result::OutOfMemory;
     }
 }
 
 //------------------------------------------------------------------------------------------------
-CGraphicsUploadBuffer12::CGraphicsUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size) :
+CUploadBuffer::CUploadBuffer(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size) :
     m_pResource(pResource),
     m_OffsetToStart(OffsetToStart)
 {
@@ -337,7 +402,7 @@ CGraphicsUploadBuffer12::CGraphicsUploadBuffer12(ID3D12Resource *pResource, UINT
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void *) CGraphicsUploadBuffer12::Data()
+GEMMETHODIMP_(void *) CUploadBuffer::Data()
 {
     return m_pData;
 }

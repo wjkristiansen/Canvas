@@ -10,18 +10,26 @@
 #define GEMMETHOD_(retType, method) virtual GEMNOTHROW retType GEMAPI method
 #define GEMMETHODIMP Gem::Result
 #define GEMMETHODIMP_(retType) retType
-#define GEM_INTERFACE struct
-#define GEM_INTERFACE_DECLARE(iid) static const Gem::InterfaceId IId = iid
+#define GEM_INTERFACE_DECLARE(iid) static constexpr Gem::InterfaceId IId{iid}
 
 #define GEM_IID_PPV_ARGS(ppObj) \
     std::remove_reference_t<decltype(**ppObj)>::IId, reinterpret_cast<void **>(ppObj)
 
 namespace Gem
 {
-typedef UINT InterfaceId;
+struct InterfaceId
+{
+	const UINT64 Value;
+	InterfaceId() = default;
+	InterfaceId(const InterfaceId& o) = default;
+	constexpr InterfaceId(UINT64 i) :
+		Value(i) {}
+	bool operator==(const InterfaceId& o) const { return Value == o.Value; }
+	constexpr operator UINT64() const { return Value; }
+};
 
 // Forward decl XGeneric
-GEM_INTERFACE XGeneric;
+struct XGeneric;
 
 //------------------------------------------------------------------------------------------------
 _Return_type_success_(return < 0x80000000)
@@ -71,6 +79,37 @@ inline PCSTR ResultToString(Result res)
     return "(Unknown)";
 }
 
+
+//------------------------------------------------------------------------------------------------
+inline Result HResultToResult(HRESULT hr)
+{
+    switch (hr)
+    {
+    case S_OK:
+        return Result::Success;
+
+    case E_FAIL:
+        return Result::Fail;
+
+    case E_OUTOFMEMORY:
+        return Result::OutOfMemory;
+
+    case E_INVALIDARG:
+    case DXGI_ERROR_INVALID_CALL:
+        return Result::InvalidArg;
+
+    case DXGI_ERROR_DEVICE_REMOVED:
+        // BUGBUG: TODO...
+        return Result::Fail;
+
+    case E_NOINTERFACE:
+        return Result::NoInterface;
+
+    default:
+        return Result::Fail;
+    }
+}
+
 //------------------------------------------------------------------------------------------------
 inline bool Succeeded(Result result)
 {
@@ -115,9 +154,11 @@ public:
         }
     }
 
-    void Detach()
+    _Type *Detach()
     {
+        _Type *pOut = m_p;
         m_p = nullptr;
+        return pOut;
     }
 
     TGemPtr &operator=(_Type *p)
@@ -337,7 +378,7 @@ public:
 };
     
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE XGeneric
+struct XGeneric
 {
     GEM_INTERFACE_DECLARE(0xffffffffU);
 

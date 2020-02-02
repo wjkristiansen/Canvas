@@ -39,17 +39,15 @@ using namespace Gem;
 
 #include "Name.h"
 #include "Object.h"
-#include "Graphics.h"
 #include "DataSource.h"
 #include "Transform.h"
 #include "SceneGraph.h"
 #include "Scene.h"
 #include "Camera.h"
 #include "Light.h"
-#include "Model.h"
+#include "Mesh.h"
 #include "Timeline.h"
 #include "Timer.h"
-#include "Logger.h"
 #include "CanvasCore.h"
 
 #include "Object.inl"

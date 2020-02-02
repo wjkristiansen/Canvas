@@ -4,12 +4,14 @@
 
 #pragma once
 
-using namespace CanvasGraphics;
+extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GSFormat Fmt);
 
 //------------------------------------------------------------------------------------------------
-class CGraphicsDevice12 :
-    public CGraphicsDevice
+class CDevice :
+    public Canvas::XCanvasGSDevice,
+    public Gem::CGenericBase
 {
+    QLog::CBasicLogger m_Logger;
     CComPtr<ID3D12Resource> m_pVertices;
     CComPtr<ID3D12Resource> m_pNormals;
     CComPtr<ID3D12Resource> m_pTextureUVs[4];
@@ -22,33 +24,29 @@ public:
     CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
 
 
-    CGraphicsDevice12(CCanvas *pCanvas);
+    CDevice(QLog::CLogClient *pLogClient);
 
     Result Initialize(HWND hWnd, bool Windowed);
 
-    GEMMETHOD(RenderFrame)() final;
-    GEMMETHOD(CreateStaticMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) final;
-    GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) final;
-    GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial);
-    GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight);
-    GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, CGraphicsUploadBuffer **ppUploadBuffer) final;
+    GEMMETHOD(Present)() final;
+    GEMMETHOD(AllocateGraphicsContext)(Canvas::XCanvasGSContext **ppGraphicsContext) final;
+    // GEMMETHOD(CreateRenderTargetView)(Canvas::XCanvasGSRenderTargetView **ppRTView, Canvas::XCanvasGSTexture2D *pTex2D)
+    // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGSUploadBuffer **ppUploadBuffer) final;
+
+    ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
 };
 
 //------------------------------------------------------------------------------------------------
-class CGraphicsUploadBuffer12 : public CGraphicsUploadBuffer
+class CUploadBuffer : 
+    public Canvas::XCanvasGSUploadBuffer,
+    public Gem::CGenericBase
 {
     CComPtr<ID3D12Resource> m_pResource;
     UINT64 m_OffsetToStart = 0;
     void *m_pData = 0;
 
 public:
-    CGraphicsUploadBuffer12(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size);
+    CUploadBuffer(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size);
     GEMMETHOD_(void *, Data)() final;
 };
 
-//------------------------------------------------------------------------------------------------
-class CMaterial12 :
-    public CanvasGraphics::CMaterial
-{
-
-};

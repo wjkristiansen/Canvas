@@ -4,146 +4,66 @@
 
 #pragma once
 #include <QLog.h>
+#include "CanvasGS.h"
+#include "CanvasModel.h"
 
 namespace Canvas
 {
 // Canvas core interfaces
-GEM_INTERFACE XCanvas;
+struct XCanvas;
 
-// Scene GEM_INTERFACE
-GEM_INTERFACE XScene;
+// Scene struct
+struct XScene;
 
 // Scene graph node
-GEM_INTERFACE XSceneGraphNode;
+struct XSceneGraphNode;
 
 // Camera GEM_INTERFACEs
-GEM_INTERFACE XCamera;
+struct XCamera;
 
 // Light GEM_INTERFACEs
-GEM_INTERFACE XLight;
+struct XLight;
 
 // Transform GEM_INTERFACEs
-GEM_INTERFACE XTransform;
+struct XTransform;
 
 // Assets
-GEM_INTERFACE XTexture;
-GEM_INTERFACE XMaterial;
-GEM_INTERFACE XMesh;
-GEM_INTERFACE XAmination;
-GEM_INTERFACE XSkeleton;
+struct XTexture;
+struct XMaterial;
+struct XMesh;
+struct XAmination;
+struct XSkeleton;
 
+#define FOR_EACH_CANVAS_INTERFACE(macro) \
+    macro(XCanvas, 1) \
+    macro(XScene, 2) \
+    macro(XSceneGraphNode, 3) \
+    macro(XMeshInstance, 5) \
+    macro(XLight, 6) \
+    macro(XTransform, 7) \
+    macro(XCamera, 8) \
+    macro(XTexture, 9) \
+    macro(XMaterial, 10) \
+    macro(XMesh, 11) \
+    macro(XAmination, 12) \
+    macro(XSkeleton, 13) \
+    macro(XIterator, 14) \
+    macro(XNameTag, 15) \
+    macro(XModel, 16) \
+
+//------------------------------------------------------------------------------------------------
+#define ENUM_INTERFACE_ID(iface, value) CanvasIId_##iface=value,
 enum CanvasIId
 {
-    CanvasIId_XCanvas = 1U,
-    CanvasIId_XScene = 2U,
-    CanvasIId_XSceneGraphNode = 3U,
-    CanvasIId_XSceneGraphIterator = 4U,
-    CanvasIId_XMeshInstance = 5U,
-    CanvasIId_XCamera = 6U,
-    CanvasIId_XLight = 7U,
-    CanvasIId_XTransform = 8U,
-    CanvasIId_XTexture = 9U,
-    CanvasIId_XMaterial = 10U,
-    CanvasIId_XMesh = 11U,
-    CanvasIId_XAmination = 12U,
-    CanvasIId_XSkeleton = 13U,
-    CanvasIId_XIterator = 14U,
-    CanvasIId_XNameTag = 15U,
-    CanvasIId_XModel = 16U,
-    CanvasIId_XGraphicsDevice = 17U,
+    FOR_EACH_CANVAS_INTERFACE(ENUM_INTERFACE_ID)
 };
 
-//------------------------------------------------------------------------------------------------
-enum class LightType : unsigned
-{
-    Null,
-    Point,
-    Directional,
-    Spot,
-    Area,
-    Volume
-};
+#define CANVAS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasIId_##iface)
 
 //------------------------------------------------------------------------------------------------
-enum class GraphicsSubsystem
+struct XIterator : public Gem::XGeneric
 {
-    Null = 0,
-    D3D12 = 1,
-    D3D11 = 2,
-    Vulcan = 3,
-    Metal = 4,
-};
-
-//------------------------------------------------------------------------------------------------
-struct CANVAS_GRAPHICS_OPTIONS
-{
-    GraphicsSubsystem Subsystem;
-    bool Windowed;
-    UINT DisplayWidth;
-    UINT DisplayHeight;
-};
-
-//------------------------------------------------------------------------------------------------
-struct TEXTURE_DATA
-{
-
-};
-
-//------------------------------------------------------------------------------------------------
-struct MATERIAL_DATA
-{
-    UIntVector4 TextureIndices;
-    FloatVector3 AmbientColor;
-    FloatVector3 DiffuseColor;
-    FloatVector3 SpecularColor;
-};
-
-//------------------------------------------------------------------------------------------------
-// An indexed triangle list with common material and texture attributes
-// The actual layout of pixels depends on the material
-struct MATERIAL_GROUP_DATA
-{
-    UINT NumTriangles = 0;
-   _In_count_(NumTriangles)  UIntVector3 *pTriangles = nullptr;
-   UINT MaterialIndex = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct MESH_DATA
-{
-    UINT NumVertices = 0;
-    _In_count_(NumVertices) FloatVector3 *pVertices = nullptr;
-    _In_opt_count_(NumVertices) FloatVector3 *pNormals = nullptr;
-    _In_opt_count_(NumVertices) FloatVector2 *pTextureUVs[4] = {0};
-    _In_opt_count_(NumVertices) UIntVector4 *pBoneIndices = nullptr;
-    _In_opt_count_(NumVertices) FloatVector4 *pBoneWeights = nullptr;
-    UINT NumMaterialGroups = 0;
-    _In_count_(NumMaterialGroups) MATERIAL_GROUP_DATA *pMaterialGroups = nullptr;
-};
-
-//------------------------------------------------------------------------------------------------
-struct CAMERA_DATA
-{
-    float NearClip;
-    float FarClip;
-    float FovAngle;
-};
-
-//------------------------------------------------------------------------------------------------
-struct LIGHT_DATA
-{
-    LightType Type;
-    float Intensity;
-    FloatVector4 Color;
-    float InnerAngle; // For spot light
-    float OuterAngle; // For spot light
-
-};
-
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE XIterator : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XIterator);
+    CANVAS_INTERFACE_DECLARE(XIterator);
 
     // Resets the iterator to the start of the collection
     GEMMETHOD(Reset)() = 0;
@@ -165,82 +85,49 @@ GEM_INTERFACE XIterator : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XNameTag : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XNameTag);
+    CANVAS_INTERFACE_DECLARE(XNameTag);
 
     GEMMETHOD_(PCSTR, GetName)() = 0;
     GEMMETHOD(SetName)(PCSTR) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE 
-XGraphicsDevice : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XGraphicsDevice);
-
-    GEMMETHOD(CreateStaticMesh)(const MESH_DATA *pMeshData, XMesh **ppMesh) = 0;
-    GEMMETHOD(CreateCamera)(const CAMERA_DATA *pCameraData, XCamera **ppCamera) = 0;
-    GEMMETHOD(CreateMaterial)(const MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial) = 0;
-    GEMMETHOD(CreateLight)(const LIGHT_DATA *pLightData, XLight **ppLight) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XCanvas : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
+    CANVAS_INTERFACE_DECLARE(XCanvas);
 
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
     GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
-    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, PCSTR szName = nullptr) = 0;
+    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, _In_z_ PCSTR szName = nullptr) = 0;
+    GEMMETHOD(CreateCameraNode)(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName = nullptr) = 0;
+    GEMMETHOD(CreateLightNode)(const ModelData::LIGHT_DATA *pLightData, _Outptr_result_nullonfailure_ XLight **ppLight, _In_z_ PCSTR szName = nullptr) = 0;
 
-    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice) = 0;
+    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XCanvasGSDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XMaterial : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XMaterial);
+    CANVAS_INTERFACE_DECLARE(XMaterial);
 
     GEMMETHOD(Initialize)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XMesh : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XMesh);
+    CANVAS_INTERFACE_DECLARE(XMesh);
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
-XMeshInstance : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XMeshInstance);
-
-    GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE
-XCamera : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XCamera);
-};
-
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE
-XLight : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(CanvasIId_XLight);
-};
-
-//------------------------------------------------------------------------------------------------
-enum RotationType
+enum class RotationType
 {
     EulerXYZ,
     EulerXZY,
@@ -253,24 +140,24 @@ enum RotationType
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XTransform : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XTransform);
+    CANVAS_INTERFACE_DECLARE(XTransform);
 
     GEMMETHOD_(RotationType, GetRotationType)() const = 0;
-    GEMMETHOD_(const FloatVector4 &, GetRotation)() const = 0;
-    GEMMETHOD_(const FloatVector4 &, GetTranslation)() const = 0;
-    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const FloatVector4 &Rotation) = 0;
-    GEMMETHOD_(void, SetTranslation)(_In_ const FloatVector4 &Translation) = 0;
-    GEMMETHOD(LookAt)(_In_ const FloatVector4 &Location) = 0;
+    GEMMETHOD_(const Math::FloatVector4 &, GetRotation)() const = 0;
+    GEMMETHOD_(const Math::FloatVector4 &, GetTranslation)() const = 0;
+    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const Math::FloatVector4 &Rotation) = 0;
+    GEMMETHOD_(void, SetTranslation)(_In_ const Math::FloatVector4 &Translation) = 0;
+    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XSceneGraphNode : public XTransform
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
+    CANVAS_INTERFACE_DECLARE(XSceneGraphNode);
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
     GEMMETHOD(CreateChildIterator)(_Outptr_result_nullonfailure_ XIterator **ppIterator) = 0;
 
@@ -280,10 +167,33 @@ XSceneGraphNode : public XTransform
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XScene : public XSceneGraphNode
 {
-    GEM_INTERFACE_DECLARE(CanvasIId_XScene);
+    CANVAS_INTERFACE_DECLARE(XScene);
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XMeshInstance : public XSceneGraphNode
+{
+    CANVAS_INTERFACE_DECLARE(XMeshInstance);
+
+    GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XCamera : public XSceneGraphNode
+{
+    CANVAS_INTERFACE_DECLARE(XCamera);
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XLight : public XSceneGraphNode
+{
+    CANVAS_INTERFACE_DECLARE(XLight);
 };
 
 }

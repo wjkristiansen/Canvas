@@ -15,41 +15,21 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="stdafx.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="targetver.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="CanvasModelViewer.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Inc\Canvas.h">
+    <ClInclude Include="Primary.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="stdafx.cpp">
+    <FxCompile Include="VSPrimary.hlsl">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="CanvasModelViewer.cpp">
+    </FxCompile>
+    <FxCompile Include="PSPrimary.hlsl">
       <Filter>Source Files</Filter>
-    </ClCompile>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="CanvasModelViewer.rc">
-      <Filter>Resource Files</Filter>
-    </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="small.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="CanvasModelViewer.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
+    <None Include="Common.hlsli">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

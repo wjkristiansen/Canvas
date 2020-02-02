@@ -5,6 +5,7 @@
 #include <iostream>
 
 using namespace Canvas;
+using namespace Canvas::Math;
 
 float DoVectorThing(float v[2])
 {

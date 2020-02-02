@@ -117,7 +117,7 @@ public:
             return Result::Success;
         }
 
-        if (CanvasIId_XNameTag == iid)
+        if (XNameTag::IId == iid)
         {
             return m_NameTag.InternalQueryInterface(iid, ppObj);
         }
@@ -127,5 +127,7 @@ public:
 
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;
     GEMMETHOD(CreateChildIterator)(_Outptr_result_nullonfailure_ XIterator** ppIterator) final;
+
+	virtual Gem::InterfaceId GetMostDerivedType() const { return _Base::IId; }
 };
 
