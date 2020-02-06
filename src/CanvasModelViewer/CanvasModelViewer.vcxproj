@@ -90,7 +90,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\ThinWin\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\ThinWin\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -106,7 +106,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\ThinWin\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\ThinWin\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -124,7 +124,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\ThinWin\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\ThinWin\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -144,7 +144,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\ThinWin\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Inc;..\ThinWin\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -178,14 +178,14 @@
     <Image Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\CanvasCore\CanvasCore.vcxproj">
-      <Project>{ea57eef8-e2c3-403e-adfb-bcc7e08dea22}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\QLog\QLog.vcxproj">
+    <ProjectReference Include="..\..\..\QLog\Lib\QLog.vcxproj">
       <Project>{f7857abb-59dd-437f-9579-4e43fde4cbe1}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\ThinWin\ThinWin.vcxproj">
+    <ProjectReference Include="..\..\..\ThinWin\Lib\ThinWin.vcxproj">
       <Project>{27f5356b-4424-4129-8c24-2757b56a4c8d}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\CanvasCore\CanvasCore.vcxproj">
+      <Project>{ea57eef8-e2c3-403e-adfb-bcc7e08dea22}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
