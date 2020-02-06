@@ -1,0 +1,3 @@
+[submodule "src/GEM"]
+	path = src/GEM
+	url = https://wjkristiansen.visualstudio.com/DefaultCollection/GEM/_git/GEM
