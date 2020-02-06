@@ -1,3 +1,6 @@
 [submodule "src/GEM"]
 	path = src/GEM
 	url = https://wjkristiansen.visualstudio.com/DefaultCollection/GEM/_git/GEM
+[submodule ".\\src\\ThinWin"]
+	path = .\\src\\ThinWin
+	url = https://wjkristiansen.visualstudio.com/DefaultCollection/ThinWin/_git/ThinWin
