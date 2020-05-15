@@ -204,6 +204,7 @@
     <ClInclude Include="Object.h" />
     <ClInclude Include="Scene.h" />
     <ClInclude Include="SceneGraph.h" />
+    <ClInclude Include="ScopedUtils.h" />
     <ClInclude Include="Timeline.h" />
     <ClInclude Include="Timer.h" />
     <ClInclude Include="Transform.h" />
