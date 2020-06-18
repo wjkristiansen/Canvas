@@ -156,6 +156,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Canvas.h" />
+    <ClInclude Include="Generic.hpp" />
     <ClInclude Include="NamedObject.h" />
     <ClInclude Include="Scene.h" />
     <ClInclude Include="stdafx.h" />

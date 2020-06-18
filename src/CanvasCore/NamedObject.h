@@ -6,13 +6,13 @@
 
 class CObjectName :
     public XObjectName,
-    public CGenericBase
+    public CInnerGenericBase
 {
 public:
     std::string m_Name;
-    class CNamedObjectList *m_pNamedObjectList = nullptr;
 
-    CObjectName(class CNamedObjectList *pNamedObjectList);
+    CObjectName(XGeneric *pOuterGeneric);
+
     virtual ~CObjectName();
 
     CANVASMETHOD_(PCSTR, GetName)() final
