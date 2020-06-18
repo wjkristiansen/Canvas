@@ -60,9 +60,6 @@
     <ClInclude Include="Inc\Light.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Inc\Logger.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Inc\Object.h">
       <Filter>Header Files</Filter>
     </ClInclude>

@@ -49,7 +49,6 @@ using namespace Gem;
 #include "Mesh.h"
 #include "Timeline.h"
 #include "Timer.h"
-#include "Logger.h"
 #include "Canvas.h"
 
 #include "Object.inl"

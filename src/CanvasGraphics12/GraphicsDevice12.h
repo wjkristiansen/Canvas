@@ -13,6 +13,7 @@ namespace Canvas
             public XGraphicsDevice,
             public Gem::CGenericBase
         {
+            QLog::CBasicLogger m_Logger;
             CComPtr<ID3D12Resource> m_pVertices;
             CComPtr<ID3D12Resource> m_pNormals;
             CComPtr<ID3D12Resource> m_pTextureUVs[4];
@@ -25,7 +26,7 @@ namespace Canvas
             CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
 
 
-            CDevice12();
+            CDevice12(QLog::CLogClient *pLogClient);
 
             Result Initialize(HWND hWnd, bool Windowed);
 

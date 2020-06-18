@@ -188,7 +188,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_o
         }
 
         Gem::TGemPtr<XGraphicsDevice> pGraphicsDevice;
-        ThrowGemError(pCreate(this, &pGraphicsDevice, hWnd));
+        ThrowGemError(pCreate(&pGraphicsDevice, hWnd, m_Logger.GetLogClient()));
         Gem::TGemPtr<XGraphicsDevice> pXGraphicsDevice = pGraphicsDevice.Get();
 
         if (ppGraphicsDevice)
@@ -201,7 +201,7 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_o
         result = Result::Success;
         m_GraphicsModule = std::move(Module);
     }
-    catch(const std::exception &e)
+    catch (const std::exception &e)
     {
         Logger().LogErrorF("XCanvas::CreateGraphicsDevice failed: %s", e.what());
         result = Result::NotFound;
