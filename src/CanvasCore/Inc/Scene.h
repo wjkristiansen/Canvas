@@ -11,7 +11,7 @@ class CScene :
 public:
     CScene(CCanvas *pCanvas, _In_z_ PCSTR szName);
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
         if (XScene::IId == iid)
         {

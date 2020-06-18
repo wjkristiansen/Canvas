@@ -93,7 +93,7 @@ public:
     std::map<std::string, XGeneric *> m_ObjectNames;
     TAutoList<TStaticPtr<CObjectBase>> m_OutstandingObjects;
 
-    GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
+    GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
         std::unique_lock<std::mutex> Lock(m_Mutex);
         auto it = m_ObjectNames.find(szName);
@@ -108,11 +108,11 @@ public:
     }
 
     // XCanvas methods
-    GEMMETHOD(InternalQueryInterface)(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj);
-    GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) final;
-    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj, PCSTR szName = nullptr) final;
+    GEMMETHOD(InternalQueryInterface)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj);
+    GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) final;
+    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, PCSTR szName = nullptr) final;
 
-    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_maybenull_ XGraphicsDevice **ppGraphicsDevice) final;
+    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice) final;
     GEMMETHOD(FrameTick)() final;
 
     void ReportObjectLeaks();
@@ -123,4 +123,4 @@ public:
     TGemPtr<class CGraphicsDevice> m_pGraphicsDevice;
 };
 
-typedef Result (*CreateCanvasGraphicsDeviceProc)(_In_ CCanvas *pCanvas, _Outptr_opt_result_maybenull_ CGraphicsDevice **pGraphicsDevice, HWND hWnd);
+typedef Result (*CreateCanvasGraphicsDeviceProc)(_In_ CCanvas *pCanvas, _Outptr_opt_result_nullonfailure_ CGraphicsDevice **pGraphicsDevice, HWND hWnd);

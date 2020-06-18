@@ -8,7 +8,7 @@ using namespace Canvas;
 
     
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
+GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
 {
     switch (iid)
     {
@@ -30,7 +30,7 @@ CCanvas::~CCanvas()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj)
+GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
 {
     try
     {
@@ -47,7 +47,7 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_result_maybenull_ voi
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_result_maybenull_ void **ppObj, PCSTR szName)
+GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, PCSTR szName)
 {
     try
     {
@@ -90,7 +90,7 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_maybenull_ void **ppCanvas, QLog::CLogClient *pLogClient)
+Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, QLog::CLogClient *pLogClient)
 {
     *ppCanvas = nullptr;
 
@@ -125,7 +125,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_maybenull_ void **ppC
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_maybenull_ XGraphicsDevice **ppGraphicsDevice)
+GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice)
 {
     Logger().LogInfo("CCanvas::CreateGraphicsDevice");
     Result result = Result::NotImplemented;

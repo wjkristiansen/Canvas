@@ -158,7 +158,7 @@ GEM_INTERFACE XIterator : public Gem::XGeneric
     GEMMETHOD(MovePrev)() = 0;
 
     // QI's the current element (if exists)
-    GEMMETHOD(Select)(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) = 0;
+    GEMMETHOD(Select)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
     
     // Removes the current element and the iterator to the next element
     GEMMETHOD(Prune)() = 0;
@@ -192,11 +192,11 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XCanvas);
 
-    GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) = 0;
-    GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj) = 0;
-    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppObj, PCSTR szName = nullptr) = 0;
+    GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
+    GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
+    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, PCSTR szName = nullptr) = 0;
 
-    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_maybenull_ XGraphicsDevice **ppGraphicsDevice) = 0;
+    GEMMETHOD(CreateGraphicsDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XGraphicsDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
 
@@ -272,7 +272,7 @@ XSceneGraphNode : public XTransform
 {
     GEM_INTERFACE_DECLARE(CanvasIId_XSceneGraphNode);
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
-    GEMMETHOD(CreateChildIterator)(_Outptr_result_maybenull_ XIterator **ppIterator) = 0;
+    GEMMETHOD(CreateChildIterator)(_Outptr_result_nullonfailure_ XIterator **ppIterator) = 0;
 
     //GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
     //GEMMETHOD_(void, SetCamera)(XCamera *pCamera) = 0;
@@ -288,5 +288,5 @@ XScene : public XSceneGraphNode
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_result_maybenull_ void **ppCanvas, QLog::CLogClient *pLogOutput = nullptr);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, QLog::CLogClient *pLogOutput = nullptr);
 

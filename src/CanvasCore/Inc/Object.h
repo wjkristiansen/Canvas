@@ -38,7 +38,9 @@ public:
 
     template<typename ... Args>
     TAutoListNode(TAutoListNode *pPrev, Args... args) :
-        _Base(args...)
+        _Base(args...),
+        m_pPrev(nullptr),
+        m_pNext(nullptr)
     {
         if (pPrev)
         {
