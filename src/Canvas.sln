@@ -20,9 +20,9 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasModel", "CanvasModel\
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HLSL", "HLSL\HLSL.vcxproj", "{11334B99-6CE6-48DF-BBF1-8A9FF931F40C}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "QLog", "..\..\QLog\Lib\QLog.vcxproj", "{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "QLog", "QLog\Lib\QLog.vcxproj", "{F7857ABB-59DD-437F-9579-4E43FDE4CBE1}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThinWin", "..\..\ThinWin\Lib\ThinWin.vcxproj", "{27F5356B-4424-4129-8C24-2757B56A4C8D}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThinWin", "ThinWin\Lib\ThinWin.vcxproj", "{27F5356B-4424-4129-8C24-2757B56A4C8D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

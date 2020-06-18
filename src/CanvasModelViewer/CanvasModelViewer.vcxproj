@@ -23,7 +23,7 @@
     <ProjectGuid>{6C7EFAF8-C6B0-410E-A5FD-2B7FE5B3C83C}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>CanvasModelViewer</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -178,14 +178,14 @@
     <Image Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\QLog\Lib\QLog.vcxproj">
-      <Project>{f7857abb-59dd-437f-9579-4e43fde4cbe1}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\..\..\ThinWin\Lib\ThinWin.vcxproj">
-      <Project>{27f5356b-4424-4129-8c24-2757b56a4c8d}</Project>
-    </ProjectReference>
     <ProjectReference Include="..\CanvasCore\CanvasCore.vcxproj">
       <Project>{ea57eef8-e2c3-403e-adfb-bcc7e08dea22}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\QLog\Lib\QLog.vcxproj">
+      <Project>{f7857abb-59dd-437f-9579-4e43fde4cbe1}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\ThinWin\Lib\ThinWin.vcxproj">
+      <Project>{27f5356b-4424-4129-8c24-2757b56a4c8d}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
