@@ -26,18 +26,16 @@ namespace SlimLog
     class TLogger
     {
         static inline __declspec(thread) WCHAR m_szBuffer[4096];
-        CLogOutputBase *m_pOutput = nullptr;
-        int m_OutputMask = LOG_LEVEL_ERROR | LOG_LEVEL_WARNING | LOG_LEVEL_MESSAGE;
+        _LogOutputClass *m_pOutput = nullptr;
+        long m_OutputMask = LOG_LEVEL_ERROR | LOG_LEVEL_WARNING | LOG_LEVEL_MESSAGE;
 
     public:
         TLogger(_LogOutputClass *pOutput) :
             m_pOutput(pOutput) {}
 
-        int SetOutputMask(int FilterMask)
+        int SetOutputMask(long FilterMask)
         {
-            int OldMask = m_OutputMask;
-            m_OutputMask = FilterMask;
-            return OldMask;
+            return InterlockedExchange(&m_OutputMask, FilterMask);
         }
 
         int GetOutputMask() const { return m_OutputMask; }
