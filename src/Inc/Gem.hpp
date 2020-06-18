@@ -20,9 +20,6 @@ namespace Gem
 {
 typedef UINT InterfaceId;
 
-// Forward decl XGeneric
-GEM_INTERFACE XGeneric;
-
 //------------------------------------------------------------------------------------------------
 enum class Result : UINT32
 {
@@ -220,6 +217,22 @@ inline void ThrowGemError(Result result)
 }
 
 //------------------------------------------------------------------------------------------------
+GEM_INTERFACE XGeneric
+{
+    GEM_INTERFACE_DECLARE(0xffffffffU);
+
+    GEMMETHOD_(ULONG, AddRef)() = 0;
+    GEMMETHOD_(ULONG, Release)() = 0;
+    GEMMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
+
+    template<class _XFace>
+    Gem::Result QueryInterface(_XFace **ppObj)
+    {
+        return QueryInterface(_XFace::IId, reinterpret_cast<void **>(ppObj));
+    }
+};
+
+//------------------------------------------------------------------------------------------------
 template<class _Base>
 class TGeneric : public _Base
 {
@@ -336,20 +349,4 @@ public:
         m_pOuterGeneric(pOuterGeneric) {}
 };
     
-//------------------------------------------------------------------------------------------------
-GEM_INTERFACE XGeneric
-{
-    GEM_INTERFACE_DECLARE(0xffffffffU);
-
-    GEMMETHOD_(ULONG, AddRef)() = 0;
-    GEMMETHOD_(ULONG, Release)() = 0;
-    GEMMETHOD(QueryInterface)(InterfaceId iid, void **ppObj) = 0;
-
-    template<class _XFace>
-    Gem::Result QueryInterface(_XFace **ppObj)
-    {
-        return QueryInterface(_XFace::IId, reinterpret_cast<void **>(ppObj));
-    }
-};
-
 }

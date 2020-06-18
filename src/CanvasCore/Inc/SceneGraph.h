@@ -94,12 +94,16 @@ class CSceneGraphNode :
     public CTransform<_Base>,
     public CObjectBase
 {
+
+    TInnerGeneric<CNameTag> m_NameTag;
+
 public:
     using _ListType = CSceneGraphNodeIterator::_ListType;
     _ListType m_ChildList;
 
     CSceneGraphNode(CCanvas* pCanvas) :
         CTransform<_Base>(),
+        m_NameTag(this, pCanvas),
         CObjectBase(pCanvas)
     {
     }
@@ -111,6 +115,11 @@ public:
             *ppObj = reinterpret_cast<XSceneGraphNode *>(this);
             this->AddRef();
             return Result::Success;
+        }
+
+        if (CanvasIId_XNameTag == iid)
+        {
+            return m_NameTag.InternalQueryInterface(iid, ppObj);
         }
 
         return CTransform<_Base>::InternalQueryInterface(iid, ppObj);

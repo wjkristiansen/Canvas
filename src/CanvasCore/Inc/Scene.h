@@ -9,8 +9,6 @@ class CScene :
     public CSceneGraphNode<XScene>
 {
 public:
-    TInnerGeneric<CName> m_ObjectName;
-
     CScene(CCanvas *pCanvas, _In_z_ PCWSTR szName);
 
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_ void **ppObj)
@@ -20,11 +18,6 @@ public:
             *ppObj = this;
             AddRef();
             return Result::Success;
-        }
-
-        if (XName::IId == iid)
-        {
-            return m_ObjectName.InternalQueryInterface(iid, ppObj);
         }
 
         return CSceneGraphNode::InternalQueryInterface(iid, ppObj);
