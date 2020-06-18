@@ -25,6 +25,7 @@
 #include <iostream>
 #include <sstream>
 #include <mutex>
+#include <chrono>
 
 // reference additional headers your program requires here
 #include <Gem.hpp>
@@ -45,6 +46,8 @@ using namespace Gem;
 #include "Model.h"
 #include "Scene.h"
 #include "CanvasGraphics.h"
+#include "GraphicsDevice.h"
+#include "Timer.h"
 #include "Canvas.h"
 
 #include "CanvasGraphics12.h"
