@@ -46,7 +46,6 @@ using namespace Gem;
 #include "Model.h"
 #include "Scene.h"
 #include "CanvasGraphics.h"
-#include "GraphicsDevice.h"
 #include "Timer.h"
 #include "Canvas.h"
 
