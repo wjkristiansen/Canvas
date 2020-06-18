@@ -10,29 +10,29 @@
 namespace Canvas
 {
 // Canvas core interfaces
-GEM_INTERFACE XCanvas;
+struct XCanvas;
 
-// Scene GEM_INTERFACE
-GEM_INTERFACE XScene;
+// Scene struct
+struct XScene;
 
 // Scene graph node
-GEM_INTERFACE XSceneGraphNode;
+struct XSceneGraphNode;
 
 // Camera GEM_INTERFACEs
-GEM_INTERFACE XCamera;
+struct XCamera;
 
 // Light GEM_INTERFACEs
-GEM_INTERFACE XLight;
+struct XLight;
 
 // Transform GEM_INTERFACEs
-GEM_INTERFACE XTransform;
+struct XTransform;
 
 // Assets
-GEM_INTERFACE XTexture;
-GEM_INTERFACE XMaterial;
-GEM_INTERFACE XMesh;
-GEM_INTERFACE XAmination;
-GEM_INTERFACE XSkeleton;
+struct XTexture;
+struct XMaterial;
+struct XMesh;
+struct XAmination;
+struct XSkeleton;
 
 #define FOR_EACH_CANVAS_INTERFACE(macro) \
     macro(XCanvas, 1) \
@@ -75,7 +75,7 @@ inline const char* IIdToString(Gem::InterfaceId id)
 #define CANVAS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasIId_##iface)
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE XIterator : public Gem::XGeneric
+struct XIterator : public Gem::XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XIterator);
 
@@ -99,7 +99,7 @@ GEM_INTERFACE XIterator : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XNameTag : public Gem::XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XNameTag);
@@ -109,7 +109,7 @@ XNameTag : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XCanvas : public Gem::XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XCanvas);
@@ -125,7 +125,7 @@ XCanvas : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XMaterial : public Gem::XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XMaterial);
@@ -134,7 +134,7 @@ XMaterial : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XMesh : public Gem::XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XMesh);
@@ -154,7 +154,7 @@ enum class RotationType
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XTransform : public Gem::XGeneric
 {
     CANVAS_INTERFACE_DECLARE(XTransform);
@@ -168,7 +168,7 @@ XTransform : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XSceneGraphNode : public XTransform
 {
     CANVAS_INTERFACE_DECLARE(XSceneGraphNode);
@@ -181,14 +181,14 @@ XSceneGraphNode : public XTransform
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XScene : public XSceneGraphNode
 {
     CANVAS_INTERFACE_DECLARE(XScene);
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XMeshInstance : public XSceneGraphNode
 {
     CANVAS_INTERFACE_DECLARE(XMeshInstance);
@@ -197,14 +197,14 @@ XMeshInstance : public XSceneGraphNode
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XCamera : public XSceneGraphNode
 {
     CANVAS_INTERFACE_DECLARE(XCamera);
 };
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE
+struct
 XLight : public XSceneGraphNode
 {
     CANVAS_INTERFACE_DECLARE(XLight);

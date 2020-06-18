@@ -10,7 +10,6 @@
 #define GEMMETHOD_(retType, method) virtual GEMNOTHROW retType GEMAPI method
 #define GEMMETHODIMP Gem::Result
 #define GEMMETHODIMP_(retType) retType
-#define GEM_INTERFACE struct
 #define GEM_INTERFACE_DECLARE(iid) static constexpr Gem::InterfaceId IId{iid}
 
 #define GEM_IID_PPV_ARGS(ppObj) \
@@ -260,7 +259,7 @@ inline void ThrowGemError(Result result)
 }
 
 //------------------------------------------------------------------------------------------------
-GEM_INTERFACE XGeneric
+struct XGeneric
 {
     GEM_INTERFACE_DECLARE(0xffffffffU);
 
