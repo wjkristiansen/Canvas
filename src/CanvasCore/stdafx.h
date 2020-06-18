@@ -23,5 +23,5 @@
 #include <CanvasCore.h>
 
 using namespace Canvas;
-#include "CanvasCore.h"
+#include "Canvas.h"
 #include "Scene.h"

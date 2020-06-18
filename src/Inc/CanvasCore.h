@@ -1,5 +1,5 @@
 //================================================================================================
-// CanvasMath
+// CanvasCore
 //================================================================================================
 
 #pragma once
@@ -60,11 +60,11 @@ enum class InterfaceId : int
 
 enum NODE_ELEMENT_FLAGS
 {
-    NODE_ELEMENT_FLAGS_NONE        = 0x0,
-    NODE_ELEMENT_FLAGS_CAMERA      = 0x1,
-    NODE_ELEMENT_FLAGS_LIGHT       = 0x2,
-    NODE_ELEMENT_FLAGS_MODEL       = 0x4,
-    NODE_ELEMENT_FLAGS_TRANSFORM   = 0x8,
+    NODE_ELEMENT_FLAGS_NONE             = 0x0,
+    NODE_ELEMENT_FLAGS_CAMERA           = 0x1,
+    NODE_ELEMENT_FLAGS_LIGHT            = 0x2,
+    NODE_ELEMENT_FLAGS_MODELINSTANCE    = 0x4,
+    NODE_ELEMENT_FLAGS_TRANSFORM        = 0x8,
 };
 
 // Generic
