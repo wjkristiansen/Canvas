@@ -28,23 +28,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasGraphics12", "CanvasG
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThinWin", "ThinWin\ThinWin.vcxproj", "{27F5356B-4424-4129-8C24-2757B56A4C8D}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Common", "Common", "{F01739B3-B7F5-4B6D-A93A-94E5B2A0CCC3}"
-	ProjectSection(SolutionItems) = preProject
-		Common\Camera.h = Common\Camera.h
-		Common\CanvasCore.h = Common\CanvasCore.h
-		Common\CanvasGraphics.h = Common\CanvasGraphics.h
-		Common\CanvasObject.h = Common\CanvasObject.h
-		Common\DataSource.h = Common\DataSource.h
-		Common\Light.h = Common\Light.h
-		Common\Model.h = Common\Model.h
-		Common\NamedObject.h = Common\NamedObject.h
-		Common\Scene.h = Common\Scene.h
-		Common\SceneGraph.h = Common\SceneGraph.h
-		Common\SlimLog.h = Common\SlimLog.h
-		Common\Timer.h = Common\Timer.h
-		Common\Transform.h = Common\Transform.h
-	EndProjectSection
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasFbx", "CanvasFbx\CanvasFbx.vcxproj", "{01D6D15D-0842-4A1E-97CF-7B57222E7F64}"
 EndProject
 Global

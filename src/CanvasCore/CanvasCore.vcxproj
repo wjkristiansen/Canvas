@@ -98,7 +98,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Common;..\Inc;..\..\..\wintl\Src\Inc;..\..\..\GEM\Src\Inc;..\CanvasGraphics12</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Inc;..\Inc;..\CanvasGraphics12\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -117,7 +117,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Common;..\Inc;..\..\..\wintl\Src\Inc;..\..\..\GEM\Src\Inc;..\CanvasGraphics12</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Inc;..\Inc;..\CanvasGraphics12\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -138,7 +138,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Common;..\Inc;..\..\..\wintl\Src\Inc;..\..\..\GEM\Src\Inc;..\CanvasGraphics12</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Inc;..\Inc;..\CanvasGraphics12\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -161,7 +161,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Common;..\Inc;..\..\..\wintl\Src\Inc;..\..\..\GEM\Src\Inc;..\CanvasGraphics12</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\Inc;..\Inc;..\CanvasGraphics12\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -176,20 +176,25 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\Gem\src\Inc\Gem.hpp" />
-    <ClInclude Include="..\Common\Camera.h" />
-    <ClInclude Include="..\Common\Canvas.h" />
-    <ClInclude Include="..\Common\CanvasGraphics.h" />
-    <ClInclude Include="..\Common\CanvasObject.h" />
-    <ClInclude Include="..\Common\DataSource.h" />
-    <ClInclude Include="..\Common\Light.h" />
-    <ClInclude Include="..\Common\Model.h" />
-    <ClInclude Include="..\Common\NamedObject.h" />
-    <ClInclude Include="..\Common\Scene.h" />
-    <ClInclude Include="..\Common\SceneGraph.h" />
-    <ClInclude Include="..\Common\SlimLog.h" />
-    <ClInclude Include="..\Common\Transform.h" />
+    <ClInclude Include="..\Common\Logger.h" />
+    <ClInclude Include="..\Common\Timeline.h" />
     <ClInclude Include="..\Inc\Canvas.h" />
     <ClInclude Include="..\Inc\CanvasMath.hpp" />
+    <ClInclude Include="..\SlimLog\Inc\SlimLog.h" />
+    <ClInclude Include="Inc\Camera.h" />
+    <ClInclude Include="Inc\Canvas.h" />
+    <ClInclude Include="Inc\DataSource.h" />
+    <ClInclude Include="Inc\Graphics.h" />
+    <ClInclude Include="Inc\Light.h" />
+    <ClInclude Include="Inc\Logger.h" />
+    <ClInclude Include="Inc\Model.h" />
+    <ClInclude Include="Inc\NamedObject.h" />
+    <ClInclude Include="Inc\Object.h" />
+    <ClInclude Include="Inc\Scene.h" />
+    <ClInclude Include="Inc\SceneGraph.h" />
+    <ClInclude Include="Inc\Timeline.h" />
+    <ClInclude Include="Inc\Timer.h" />
+    <ClInclude Include="Inc\Transform.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="Timer.h" />
@@ -210,6 +215,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="CanvasCore.def" />
+    <None Include="Inc\Object.inl" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\CanvasGraphics12\CanvasGraphics12.vcxproj">
