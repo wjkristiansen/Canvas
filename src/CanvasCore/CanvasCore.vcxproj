@@ -176,20 +176,21 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\Gem\src\Inc\Gem.hpp" />
+    <ClInclude Include="..\Common\Camera.h" />
+    <ClInclude Include="..\Common\Canvas.h" />
+    <ClInclude Include="..\Common\CanvasGraphics.h" />
+    <ClInclude Include="..\Common\CanvasObject.h" />
+    <ClInclude Include="..\Common\Light.h" />
+    <ClInclude Include="..\Common\Model.h" />
+    <ClInclude Include="..\Common\NamedObject.h" />
+    <ClInclude Include="..\Common\Scene.h" />
+    <ClInclude Include="..\Common\SceneGraph.h" />
+    <ClInclude Include="..\Common\SlimLog.h" />
+    <ClInclude Include="..\Common\Transform.h" />
     <ClInclude Include="..\Inc\Canvas.h" />
     <ClInclude Include="..\Inc\CanvasMath.hpp" />
-    <ClInclude Include="Camera.h" />
-    <ClInclude Include="Canvas.h" />
-    <ClInclude Include="CanvasObject.h" />
-    <ClInclude Include="GraphicsDevice.h" />
-    <ClInclude Include="Light.h" />
-    <ClInclude Include="Model.h" />
-    <ClInclude Include="NamedObject.h" />
-    <ClInclude Include="Scene.h" />
-    <ClInclude Include="SceneGraph.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
-    <ClInclude Include="Transform.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CanvasCore.cpp" />
