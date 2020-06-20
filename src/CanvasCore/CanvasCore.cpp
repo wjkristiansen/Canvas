@@ -263,8 +263,8 @@ GEMMETHODIMP CCanvas::FrameTick()
 
         if (m_FrameEndTimeLast > 0)
         {
-            UINT64 DTime = FrameEndTime - m_FrameEndTimeLast;
-            UINT64 FramesPerSecond = (m_FrameCounter * 1000ULL) / CTimer::Milliseconds(DTime);
+            UINT64 DTime = CTimer::Microseconds(FrameEndTime - m_FrameEndTimeLast);
+            UINT64 FramesPerSecond = DTime > 0 ? (m_FrameCounter * 1000000ULL) / DTime : UINT64_MAX;
             std::cout << "FPS: " << FramesPerSecond << std::endl;
         }
         m_FrameEndTimeLast = FrameEndTime;
