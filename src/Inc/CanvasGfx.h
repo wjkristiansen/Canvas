@@ -7,7 +7,7 @@
 
 namespace Canvas
 {
-    enum class GSFormat : int
+    enum class GfxFormat : int
     {
         Unknown,
         RGBA32_Float,

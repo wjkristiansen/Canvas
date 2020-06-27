@@ -4,7 +4,7 @@
 
 #pragma once
 
-extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GSFormat Fmt);
+extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt);
 
 //------------------------------------------------------------------------------------------------
 class CDevice :
