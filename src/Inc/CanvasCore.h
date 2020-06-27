@@ -4,7 +4,7 @@
 
 #pragma once
 #include <QLog.h>
-#include "CanvasGS.h"
+#include "CanvasGfx.h"
 #include "CanvasModel.h"
 
 namespace Canvas

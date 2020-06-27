@@ -36,7 +36,7 @@
     <ClInclude Include="..\Inc\CanvasMath.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\Inc\CanvasGS.h">
+    <ClInclude Include="..\Inc\CanvasGfx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ScopedUtils.h">
