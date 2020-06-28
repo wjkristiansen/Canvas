@@ -21,7 +21,7 @@ Result CDevice::Initialize()
 #if defined(_DEBUG)
         CComPtr<ID3D12Debug3> pDebug;
         ThrowFailedHResult(D3D12GetDebugInterface(IID_PPV_ARGS(&pDebug)));
-        pDebug->EnableDebugLayer();
+        //pDebug->EnableDebugLayer();
 #endif
         // Create the device
         CComPtr<ID3D12Device5> pDevice;
