@@ -106,7 +106,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateCameraNode)(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName = nullptr) = 0;
     GEMMETHOD(CreateLightNode)(const ModelData::LIGHT_DATA *pLightData, _Outptr_result_nullonfailure_ XLight **ppLight, _In_z_ PCSTR szName = nullptr) = 0;
 
-    GEMMETHOD(CreateGfxDevice)(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ XCanvasGfxDevice **ppGraphicsDevice) = 0;
+    GEMMETHOD(CreateGfxDevice)(PCSTR szDLLPath, _Outptr_opt_result_nullonfailure_ XCanvasGfxDevice **ppGraphicsDevice) = 0;
     GEMMETHOD(FrameTick)() = 0;
 };
 
@@ -196,6 +196,38 @@ XLight : public XSceneGraphNode
     CANVAS_INTERFACE_DECLARE(XLight);
 };
 
+//------------------------------------------------------------------------------------------------
+// Helper classes
+class CFunctionSentinel
+{
+    QLog::CBasicLogger &m_Logger;
+    QLog::Category m_DefaultLogCategory;
+    const char *m_FunctionName;
+
+public:
+    CFunctionSentinel(QLog::CBasicLogger &Logger, const char *FunctionName, QLog::Category DefaultLogCategory = QLog::Category::Info) :
+        m_FunctionName(FunctionName),
+        m_Logger(Logger),
+        m_DefaultLogCategory(DefaultLogCategory)
+    {
+        m_Logger.LogF(m_DefaultLogCategory, "Begin: %s", m_FunctionName);
+    }
+    ~CFunctionSentinel()
+    {
+        m_Logger.LogF(m_DefaultLogCategory, "End: %s", m_FunctionName);
+    }
+    void ReportError(Gem::Result result, const char *Message = nullptr)
+    {
+        if (Message)
+        {
+            m_Logger.LogErrorF("%s: %s: %s", m_FunctionName, GemResultString(result), Message);
+        }
+        else
+        {
+            m_Logger.LogErrorF("%s: %s", m_FunctionName, GemResultString(result));
+        }
+    }
+};
 }
 
 extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, QLog::CLogClient *pLogOutput = nullptr);

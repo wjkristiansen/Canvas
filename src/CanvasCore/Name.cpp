@@ -24,6 +24,7 @@ GEMMETHODIMP_(PCSTR) CNameTag::GetName()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CNameTag::SetName(PCSTR szName)
 {
+    CFunctionSentinel Sentinel(m_pCanvas->Logger(), "XNameTag::SetName");
     Gem::Result result = Gem::Result::Success;
 
     if (szName)
@@ -35,10 +36,12 @@ GEMMETHODIMP CNameTag::SetName(PCSTR szName)
         catch(std::bad_alloc &)
         {
             result = Gem::Result::OutOfMemory;
+            Sentinel.ReportError(result);
         }
         catch (std::exception &)
         {
             result = Gem::Result::InvalidArg; // Consider adding Result::Duplicate
+            Sentinel.ReportError(result);
         }
     }
     else

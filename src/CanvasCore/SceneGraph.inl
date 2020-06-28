@@ -8,13 +8,14 @@
 template<class _Base>
 GEMMETHODIMP TSceneGraphNode<_Base>::AddChild(_In_ XSceneGraphNode* pChild)
 {
+    CFunctionSentinel Sentinel(m_pCanvas->Logger(), "XSceneGraphNode::AddChild");
     try
     {
         m_ChildList.emplace_back(pChild); // throw(std::bad_alloc)
     }
     catch (std::bad_alloc&)
     {
-        m_pCanvas->Logger().LogError("Out of memory: TSceneGraphNode::AddChild");
+        Sentinel.ReportError(Result::OutOfMemory);
         return Result::OutOfMemory;
     }
     return Result::Success;
@@ -24,6 +25,7 @@ GEMMETHODIMP TSceneGraphNode<_Base>::AddChild(_In_ XSceneGraphNode* pChild)
 template<class _Base>
 GEMMETHODIMP TSceneGraphNode<_Base>::CreateChildIterator(_Outptr_result_nullonfailure_ XIterator** ppIterator)
 {
+    CFunctionSentinel Sentinel(m_pCanvas->Logger(), "XSceneGraphNode::CreateChildIterator");
     try
     {
         TSceneGraphNodeIterator* pIterator = new TGeneric<TSceneGraphNodeIterator>(m_ChildList); // throw(std::bad_alloc)
@@ -33,7 +35,7 @@ GEMMETHODIMP TSceneGraphNode<_Base>::CreateChildIterator(_Outptr_result_nullonfa
     }
     catch (std::bad_alloc&)
     {
-        m_pCanvas->Logger().LogError("Out of memory: TSceneGraphNode::CreateChildIterator");
+        Sentinel.ReportError(Result::OutOfMemory);
         *ppIterator = nullptr;
         return Result::OutOfMemory;
     }

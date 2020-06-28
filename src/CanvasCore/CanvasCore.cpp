@@ -46,6 +46,8 @@ CCanvas::~CCanvas()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
 {
+    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateScene");
+
     try
     {
         TGemPtr<XGeneric> pObj;
@@ -54,7 +56,7 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_result_nullonfailure_
     }
     catch(std::bad_alloc &)
     {
-        Logger().LogError("Out of memory XCanvas::CreateScene");
+        Sentinel.ReportError(Result::OutOfMemory);
         *ppObj = nullptr;
         return Result::OutOfMemory;
     }
@@ -63,6 +65,8 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_result_nullonfailure_
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, PCSTR szName)
 {
+    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateNullSceneGraphNode");
+
     try
     {
         TGemPtr<XSceneGraphNode> pNode;
@@ -71,6 +75,7 @@ GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_result_n
     }
     catch (std::bad_alloc &)
     {
+        Sentinel.ReportError(Result::OutOfMemory);
         *ppObj = nullptr;
         return Result::OutOfMemory;
     }
@@ -79,6 +84,8 @@ GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_result_n
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateCameraNode(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName)
 {
+    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateCameraNode");
+
     try
     {
         TGemPtr<XCamera> pNode;
@@ -87,6 +94,7 @@ GEMMETHODIMP CCanvas::CreateCameraNode(_In_ const ModelData::CAMERA_DATA *pCamer
     }
     catch (std::bad_alloc &)
     {
+        Sentinel.ReportError(Result::OutOfMemory);
         *ppCamera = nullptr;
         return Result::OutOfMemory;
     }
@@ -97,6 +105,8 @@ GEMMETHODIMP CCanvas::CreateCameraNode(_In_ const ModelData::CAMERA_DATA *pCamer
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateLightNode(const ModelData::LIGHT_DATA *pLightData, _Outptr_result_nullonfailure_ XLight **ppLight, _In_z_ PCSTR szName)
 {
+    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateLightNode");
+
     try
     {
         TGemPtr<XLight> pNode;
@@ -105,6 +115,7 @@ GEMMETHODIMP CCanvas::CreateLightNode(const ModelData::LIGHT_DATA *pLightData, _
     }
     catch (std::bad_alloc &)
     {
+        Sentinel.ReportError(Result::OutOfMemory);
         *ppLight = nullptr;
         return Result::OutOfMemory;
     }
@@ -183,9 +194,10 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ Canvas::XCanvasGfxDevice **ppGraphicsDevice)
+GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, _Outptr_opt_result_nullonfailure_ Canvas::XCanvasGfxDevice **ppGraphicsDevice)
 {
-    Logger().LogInfo("CCanvas::CreateGfxDevice");
+    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateGfxDevice");
+
     Result result = Result::NotImplemented;
 
     if (ppGraphicsDevice)
@@ -199,18 +211,18 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_re
 
         if (Module.Get() == NULL)
         {
-            throw(std::exception("LoadLibrary"));
+            throw(GemError(Result::NotFound));
         }
 
         CreateCanvasGraphicsDeviceProc pCreate = reinterpret_cast<CreateCanvasGraphicsDeviceProc>(
             GetProcAddress(Module.Get(), "CreateCanvasGraphicsDevice"));
         if (pCreate == nullptr)
         {
-            throw(std::exception("GetProcAddress"));
+            throw(GemError(Result::NotFound));
         }
 
         Gem::TGemPtr<XCanvasGfxDevice> pGraphicsDevice;
-        ThrowGemError(pCreate(&pGraphicsDevice, hWnd, m_Logger.GetLogClient()));
+        ThrowGemError(pCreate(&pGraphicsDevice, m_Logger.GetLogClient()));
         Gem::TGemPtr<XCanvasGfxDevice> pXCanvasGfxDevice = pGraphicsDevice.Get();
 
         if (ppGraphicsDevice)
@@ -223,15 +235,10 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_re
         result = Result::Success;
         m_GraphicsModule = std::move(Module);
     }
-    catch (const std::exception &e)
-    {
-        Logger().LogErrorF("XCanvas::CreateGfxDevice failed: %s", e.what());
-        result = Result::NotFound;
-    }
     catch (const Gem::GemError &e)
     {
-        Logger().LogErrorF("XCanvas::CreateGfxDevice failed: %s", Gem::GemResultString(e.Result()));
-        result = Result::NotFound;
+        result = e.Result();
+        Sentinel.ReportError(result);
     }
 
     return result;

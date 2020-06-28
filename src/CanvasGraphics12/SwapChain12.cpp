@@ -51,6 +51,7 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12Co
 
 GEMMETHODIMP CSwapChain::Present()
 {
+    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxSwapChain::Present", QLog::Category::Debug);
     try
     {
         //D3D12_DESCRIPTOR_HEAP_DESC dhDesc = {};
@@ -115,7 +116,7 @@ GEMMETHODIMP CSwapChain::Present()
     }
     catch (_com_error &e)
     {
-        //m_Logger.LogErrorF("CDevice::Present: HRESULT 0x%08x", e.Error());
+        Sentinel.ReportError(GemResult(e.Error()));
         return GemResult(e.Error());
     }
 

@@ -91,6 +91,7 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
 
 GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain)
 {
+    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxContext::CreateSwapChain");
     try
     {
         // Create the swapchain
@@ -99,6 +100,7 @@ GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XCanvas
     }
     catch (GemError &e)
     {
+        Sentinel.ReportError(e.Result());
         return e.Result();
     }
 }
@@ -147,6 +149,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext::CreateRenderTargetView(class CSurf
 
 GEMMETHODIMP CGraphicsContext::FlushAndFinish()
 {
+    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxContext::FlushAndFinish", QLog::Category::Debug);
     try
     {
         ThrowFailedHResult(m_pCommandList->Close());
@@ -164,6 +167,7 @@ GEMMETHODIMP CGraphicsContext::FlushAndFinish()
     }
     catch (_com_error &e)
     {
+        Sentinel.ReportError(GemResult(e.Error()));
         return GemResult(e.Error());
     }
 }
