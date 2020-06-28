@@ -34,7 +34,7 @@ Result CDevice::Initialize()
         CComPtr<ID3D12CommandQueue> pCommandQueue;
         ThrowFailedHResult(pDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&pCommandQueue)));
 
-        m_pD3DDevice = std::move(pDevice);
+        m_pD3DDevice.Attach(pDevice.Detach());
     }
     catch (_com_error &e)
     {

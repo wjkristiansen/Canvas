@@ -46,7 +46,7 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12Co
     m_pFence.Attach(pFence.Detach());
     m_pDXGIFactory.Attach(pFactory.Detach());
     m_pSwapChain.Attach(pSwapChain4.Detach());
-    m_pSurface = std::move(pSurface.Detach());
+    m_pSurface.Attach(pSurface.Detach());
 }
 
 GEMMETHODIMP CSwapChain::Present()
