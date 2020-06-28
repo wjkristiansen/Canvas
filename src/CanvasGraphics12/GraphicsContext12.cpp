@@ -107,7 +107,63 @@ GEMMETHODIMP_(void) CGraphicsContext::CopyBuffer(XCanvasGfxBuffer *pDest, XCanva
 {
 }
 
-GEMMETHODIMP_(void) CGraphicsContext::ClearSurface(XCanvasGfxSurface *pSurface, const float Color[4])
+GEMMETHODIMP_(void) CGraphicsContext::ClearSurface(XCanvasGfxSurface *pGfxSurface, const float Color[4])
 {
+    CSurface *pSurface = reinterpret_cast<CSurface *>(pGfxSurface);
+    ID3D12Resource *pResource = pSurface->GetD3DResource();
+    
+    D3D12_RESOURCE_BARRIER Barriers[1] = {};
+    Barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    Barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    Barriers[0].Transition.Subresource = 0;
+    Barriers[0].Transition.pResource = pResource;
+    Barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+    Barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    m_pCommandList->ResourceBarrier(1, Barriers);
+    m_pCommandList->ClearRenderTargetView(CreateRenderTargetView(pSurface, 0, 0, 0), Color, 0, nullptr);
+    Barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    Barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+    m_pCommandList->ResourceBarrier(1, Barriers);
+}
 
+D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext::CreateRenderTargetView(class CSurface *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
+{
+    ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
+    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    UINT slot = m_NextRTVSlot;
+    m_NextRTVSlot = (m_NextRTVSlot) % NumRTVDescriptors;
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
+    cpuHandle.ptr= m_pRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+    rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+    rtvDesc.Texture2DArray.ArraySize = 1;
+    rtvDesc.Texture2DArray.FirstArraySlice = ArraySlice;
+    rtvDesc.Texture2DArray.MipSlice = MipSlice;
+    rtvDesc.Texture2DArray.PlaneSlice = PlaneSlice;
+    ID3D12Resource *pD3DResource = pSurface->GetD3DResource();
+    m_pDevice->GetD3DDevice()->CreateRenderTargetView(pD3DResource, &rtvDesc, cpuHandle);
+    return cpuHandle;
+}
+
+GEMMETHODIMP CGraphicsContext::FlushAndFinish()
+{
+    try
+    {
+        ThrowFailedHResult(m_pCommandList->Close());
+
+        ID3D12CommandList *exlist[] =
+        {
+            m_pCommandList
+        };
+
+        m_pCommandQueue->ExecuteCommandLists(1, exlist);
+
+        ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
+
+        return Result::Success;
+    }
+    catch (_com_error &e)
+    {
+        return HResultToResult(e.Error());
+    }
 }

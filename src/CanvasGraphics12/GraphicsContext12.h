@@ -24,6 +24,8 @@ class CGraphicsContext :
     static const UINT NumRTVDescriptors = 64;
     static const UINT NumDSVDescriptors = 64;
 
+    UINT m_NextRTVSlot = 0;
+
 public:
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
@@ -43,6 +45,10 @@ public:
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain) final;
     GEMMETHOD_(void, CopyBuffer)(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource) final;
     GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) final;
+    GEMMETHOD(FlushAndFinish)() final;
+
+    // Helper functions
+    D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
 };
 
     
