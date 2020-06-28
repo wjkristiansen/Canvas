@@ -27,13 +27,6 @@ Result CDevice::Initialize()
         CComPtr<ID3D12Device5> pDevice;
         ThrowFailedHResult(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice)));
 
-        // Create the direct command queue
-        D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-        queueDesc.NodeMask = 0x1;
-        queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-        CComPtr<ID3D12CommandQueue> pCommandQueue;
-        ThrowFailedHResult(pDevice->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&pCommandQueue)));
-
         m_pD3DDevice.Attach(pDevice.Detach());
     }
     catch (_com_error &e)
