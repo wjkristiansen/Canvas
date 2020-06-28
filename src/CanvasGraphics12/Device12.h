@@ -9,7 +9,6 @@ class CDevice :
     public Canvas::XCanvasGfxDevice,
     public Gem::CGenericBase
 {
-    QLog::CBasicLogger m_Logger;
     CComPtr<ID3D12Resource> m_pVertices;
     CComPtr<ID3D12Resource> m_pNormals;
     CComPtr<ID3D12Resource> m_pTextureUVs[4];
@@ -29,7 +28,7 @@ public:
         return CGenericBase::InternalQueryInterface(iid, ppObj);
     }
 
-    CDevice(QLog::CLogClient *pLogClient);
+    CDevice();
 
     Result Initialize();
 

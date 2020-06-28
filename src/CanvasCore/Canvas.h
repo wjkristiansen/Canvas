@@ -62,7 +62,6 @@ public:
 
 public:
     TGemPtr<XCanvasGfxDevice> m_pGraphicsDevice;
-    TGemPtr<XCanvasGfxSwapChain> m_pSwapChain;
 };
 
 typedef Result (*CreateCanvasGraphicsDeviceProc)(_Outptr_opt_result_nullonfailure_ XCanvasGfxDevice **pGraphicsDevice, HWND hWnd, QLog::CLogClient *pLogClient);

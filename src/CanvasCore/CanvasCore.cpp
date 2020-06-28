@@ -252,10 +252,6 @@ GEMMETHODIMP CCanvas::FrameTick()
 
     // Render the display list
 
-    // Present
-
-    m_pSwapChain->Present();
-
     ++m_FrameCounter;
     if (m_FrameCounter == 1200)
     {

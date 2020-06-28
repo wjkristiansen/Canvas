@@ -9,8 +9,7 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-CDevice::CDevice(QLog::CLogClient *pLogClient) :
-    m_Logger(pLogClient, "CANVAS GRAPHICS")
+CDevice::CDevice()
 {
 }
 
@@ -39,7 +38,7 @@ Result CDevice::Initialize()
     }
     catch (_com_error &e)
     {
-        m_Logger.LogErrorF("CDevice::Initialize: HRESULT 0x%08x", e.Error());
+        g_Logger.LogErrorF("CDevice::Initialize: HRESULT 0x%08x", e.Error());
         return HResultToResult(e.Error());
     }
 

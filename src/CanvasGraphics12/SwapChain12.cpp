@@ -34,6 +34,11 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12Co
     CComPtr<IDXGISwapChain4> pSwapChain4;
     ThrowFailedHResult(pSwapChain1->QueryInterface(&pSwapChain4));
 
+    CComPtr<ID3D12Resource> pBackBuffer;
+    UINT bbindex = pSwapChain4->GetCurrentBackBufferIndex();
+    ThrowFailedHResult(pSwapChain4->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
+    TGemPtr<CSurface> pSurface = new TGeneric<CSurface>(pBackBuffer);
+        
     CComPtr<ID3D12Fence> pFence;
     ThrowFailedHResult(pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence)));
 
@@ -41,6 +46,7 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12Co
     m_pFence.Attach(pFence.Detach());
     m_pDXGIFactory.Attach(pFactory.Detach());
     m_pSwapChain.Attach(pSwapChain4.Detach());
+    m_pSurface = std::move(pSurface.Detach());
 }
 
 GEMMETHODIMP CSwapChain::Present()
