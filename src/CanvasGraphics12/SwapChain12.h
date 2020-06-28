@@ -11,8 +11,9 @@ class CSwapChain :
     public Canvas::XCanvasGfxSwapChain,
     public Gem::CGenericBase
 {
+    std::mutex m_mutex;
     CComPtr<IDXGIFactory7> m_pDXGIFactory;
-    CComPtr<IDXGISwapChain1> m_pSwapChain;
+    CComPtr<IDXGISwapChain4> m_pSwapChain;
     CComPtr<ID3D12Fence> m_pFence;
     UINT64 m_FenceValue = 0;
     TGemPtr<CSurface> m_pSurface;
@@ -36,6 +37,7 @@ public:
 
     GEMMETHOD(Present)() final;
     GEMMETHOD(GetSurface)(XCanvasGfxSurface **ppSurface) final;
+    GEMMETHOD(WaitForLastPresent)() final;
 };
 
     

@@ -40,16 +40,13 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12Co
     m_pCommandQueue = pCommandQueue;
     m_pFence.Attach(pFence.Detach());
     m_pDXGIFactory.Attach(pFactory.Detach());
-    m_pSwapChain.Attach(pSwapChain1.Detach());
+    m_pSwapChain.Attach(pSwapChain4.Detach());
 }
 
 GEMMETHODIMP CSwapChain::Present()
 {
     try
     {
-        //CComPtr<ID3D12Resource> pBackBuffer;
-        //UINT bbindex = m_pSwapChain->GetCurrentBackBufferIndex();
-        //ThrowFailedHResult(m_pSwapChain->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
         //D3D12_DESCRIPTOR_HEAP_DESC dhDesc = {};
         //dhDesc.NumDescriptors = 1;
         //dhDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -95,14 +92,20 @@ GEMMETHODIMP CSwapChain::Present()
 
         //m_pDirectCommandQueue->ExecuteCommandLists(1, pExList);
 
+        std::unique_lock<std::mutex> Lock(m_mutex);
+
+        // Queue the Present
         ThrowFailedHResult(m_pSwapChain->Present(0, 0));
 
+        // Get the new back buffer
+        CComPtr<ID3D12Resource> pBackBuffer;
+        UINT bbindex = m_pSwapChain->GetCurrentBackBufferIndex();
+        ThrowFailedHResult(m_pSwapChain->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
+        m_pSurface->Rename(pBackBuffer);
+
+        // Increment the swapchain fence value and queue a signal
         m_FenceValue++;
         m_pCommandQueue->Signal(m_pFence, m_FenceValue);
-        //HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
-        //pFence->SetEventOnCompletion(1, hEvent);
-        //WaitForSingleObject(hEvent, INFINITE);
-        //CloseHandle(hEvent);
     }
     catch (_com_error &e)
     {
@@ -115,7 +118,15 @@ GEMMETHODIMP CSwapChain::Present()
 
 GEMMETHODIMP CSwapChain::GetSurface(XCanvasGfxSurface **ppSurface)
 {
-    *ppSurface = nullptr;
+    return m_pSurface->QueryInterface(ppSurface);
+}
 
-    return Result::NotFound;
+GEMMETHODIMP CSwapChain::WaitForLastPresent()
+{
+    std::unique_lock<std::mutex> Lock(m_mutex);
+    HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
+    m_pFence->SetEventOnCompletion(m_FenceValue, hEvent);
+    WaitForSingleObject(hEvent, INFINITE);
+    CloseHandle(hEvent);
+    return Result::Success;
 }

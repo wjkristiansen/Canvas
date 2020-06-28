@@ -101,6 +101,7 @@ namespace Canvas
 
         GEMMETHOD(Present)() = 0;
         GEMMETHOD(GetSurface)(XCanvasGfxSurface **ppSurface) = 0;
+        GEMMETHOD(WaitForLastPresent)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------

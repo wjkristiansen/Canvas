@@ -24,6 +24,11 @@ public:
         return CGenericBase::InternalQueryInterface(iid, ppObj);
     }
 
+    CSurface(ID3D12Resource *pResource) :
+        m_pResource(pResource) {}
+
+    void Rename(ID3D12Resource *pResource) { m_pResource = pResource; }
+
     ID3D12Resource *GetD3DResource() { return m_pResource; }
 };
 
