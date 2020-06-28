@@ -4,6 +4,7 @@
 
 #pragma once
 
-extern Result GEMAPI CreateCanvasGraphicsDevice(_In_ CCanvas *pCanvas, _Outptr_result_nullonfailure_ XCanvasGfxDevice **pGraphicsDevice, HWND hWnd);
+extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt);
+extern Result GEMAPI CreateCanvasGraphicsDevice(_In_ class CCanvas *pCanvas, _Outptr_result_nullonfailure_ XCanvasGfxDevice **pGraphicsDevice, HWND hWnd);
 
 

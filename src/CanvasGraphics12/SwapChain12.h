@@ -19,6 +19,19 @@ class CSwapChain :
     ID3D12CommandQueue *m_pCommandQueue = nullptr; // weak
 
 public:
+
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
+    {
+        if (XCanvasGfxSwapChain::IId == iid)
+        {
+            *ppObj = this;
+            AddRef(); // This will actually AddRef the outer generic
+            return Result::Success;
+        }
+
+        return CGenericBase::InternalQueryInterface(iid, ppObj);
+    }
+
     CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12CommandQueue *pCommandQueue);
 
     GEMMETHOD(Present)() final;

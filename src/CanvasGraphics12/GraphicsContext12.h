@@ -20,12 +20,24 @@ class CGraphicsContext :
     CDevice *m_pDevice = nullptr; // weak pointer
 
     static const UINT NumShaderResourceDescriptors = 65536;
-    static const UINT NumSamplerDescriptors = 65536;
+    static const UINT NumSamplerDescriptors = 1024;
     static const UINT NumRTVDescriptors = 64;
     static const UINT NumDSVDescriptors = 64;
 
 public:
-    CGraphicsContext(HWND hWnd, bool Windowed, ID3D12Device *pDevice);
+    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
+    {
+        if (XCanvasGfxContext::IId == iid)
+        {
+            *ppObj = this;
+            AddRef(); // This will actually AddRef the outer generic
+            return Result::Success;
+        }
+
+        return CGenericBase::InternalQueryInterface(iid, ppObj);
+    }
+
+    CGraphicsContext(CDevice *pDevice);
 
     // XCanvasGfxContext methods
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain) final;

@@ -113,7 +113,7 @@ namespace Canvas
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxContext);
 
-        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSurface) = 0;
+        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain) = 0;
         GEMMETHOD_(void, CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)) = 0;
         GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) = 0;
     };
@@ -124,6 +124,6 @@ namespace Canvas
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxDevice);
 
-        GEMMETHOD(CreateGfxContext)(HWND hWnd, bool Windowed, Canvas::XCanvasGfxContext **ppGraphicsContext) = 0;
+        GEMMETHOD(CreateGfxContext)(Canvas::XCanvasGfxContext **ppGraphicsContext) = 0;
     };
 }
