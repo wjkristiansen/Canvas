@@ -147,9 +147,9 @@ D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext::CreateRenderTargetView(class CSurf
     return cpuHandle;
 }
 
-GEMMETHODIMP CGraphicsContext::FlushAndFinish()
+GEMMETHODIMP CGraphicsContext::Flush()
 {
-    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxContext::FlushAndFinish", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxContext::Flush", QLog::Category::Debug);
     try
     {
         ThrowFailedHResult(m_pCommandList->Close());

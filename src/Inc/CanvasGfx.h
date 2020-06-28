@@ -117,7 +117,7 @@ namespace Canvas
         GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain) = 0;
         GEMMETHOD_(void, CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)) = 0;
         GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) = 0;
-        GEMMETHOD(FlushAndFinish)() = 0;
+        GEMMETHOD(Flush)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
