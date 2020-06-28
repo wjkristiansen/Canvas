@@ -116,7 +116,7 @@ GEMMETHODIMP CSwapChain::Present()
     catch (_com_error &e)
     {
         //m_Logger.LogErrorF("CDevice::Present: HRESULT 0x%08x", e.Error());
-        return HResultToResult(e.Error());
+        return GemResult(e.Error());
     }
 
     return Result::Success;

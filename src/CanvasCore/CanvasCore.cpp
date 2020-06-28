@@ -230,7 +230,7 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_re
     }
     catch (const Gem::GemError &e)
     {
-        Logger().LogErrorF("XCanvas::CreateGfxDevice failed: %s", Gem::ResultToString(e.Result()));
+        Logger().LogErrorF("XCanvas::CreateGfxDevice failed: %s", Gem::GemResultString(e.Result()));
         result = Result::NotFound;
     }
 

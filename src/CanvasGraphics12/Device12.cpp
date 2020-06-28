@@ -32,7 +32,7 @@ Result CDevice::Initialize()
     catch (_com_error &e)
     {
         g_Logger.LogErrorF("CDevice::Initialize: HRESULT 0x%08x", e.Error());
-        return HResultToResult(e.Error());
+        return GemResult(e.Error());
     }
 
     return Result::Success;
@@ -74,7 +74,7 @@ GEMMETHODIMP CDevice::CreateGfxContext(XCanvasGfxContext **ppContext)
 //    catch (_com_error &e)
 //    {
 //        m_Logger.LogErrorF("CDevice::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
-//        return HResultToResult(e.Error());
+//        return GemResult(e.Error());
 //    }
 //    return Result::Success;
 //}
@@ -155,7 +155,7 @@ struct Vertex
 //    catch (_com_error &e)
 //    {
 //        m_Logger.LogErrorF("CDevice::CreateStaticMesh: HRESULT 0x%08x", e.Error());
-//        return HResultToResult(e.Error());
+//        return GemResult(e.Error());
 //    }
 //    return Result::Success;
 //}

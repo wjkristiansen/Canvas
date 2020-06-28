@@ -17,38 +17,38 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
     CQDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     auto *pD3DDevice = pDevice->GetD3DDevice();
 
-    ThrowGemError(HResultToResult(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
+    ThrowGemError(GemResult(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
 
     CComPtr<ID3D12CommandAllocator> pCA;
-    ThrowGemError(HResultToResult(pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pCA))));
+    ThrowGemError(GemResult(pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pCA))));
 
     CComPtr<ID3D12GraphicsCommandList> pCL;
-    ThrowGemError(HResultToResult(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
+    ThrowGemError(GemResult(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
 
     CComPtr<ID3D12DescriptorHeap> pResDH;
     D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     DHDesc.NumDescriptors = NumShaderResourceDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(HResultToResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pResDH))));
+    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pResDH))));
 
     CComPtr<ID3D12DescriptorHeap> pSamplerDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
     DHDesc.NumDescriptors = NumSamplerDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(HResultToResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pSamplerDH))));
+    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pSamplerDH))));
 
     CComPtr<ID3D12DescriptorHeap> pRTVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     DHDesc.NumDescriptors = NumRTVDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(HResultToResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pRTVDH))));
+    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pRTVDH))));
 
     CComPtr<ID3D12DescriptorHeap> pDSVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     DHDesc.NumDescriptors = NumDSVDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(HResultToResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pDSVDH))));
+    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pDSVDH))));
 
     // The default root signature uses the following parameters
     //  Root CBV (descriptor static)
@@ -164,6 +164,6 @@ GEMMETHODIMP CGraphicsContext::FlushAndFinish()
     }
     catch (_com_error &e)
     {
-        return HResultToResult(e.Error());
+        return GemResult(e.Error());
     }
 }
