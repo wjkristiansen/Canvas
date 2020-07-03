@@ -5,7 +5,7 @@
             "includePath": [
                 "${workspaceFolder}",
                 "${workspaceFolder}/../Inc",
-                "${workspaceFolder}/../CanvasGraphics12",
+                "${workspaceFolder}/../CanvasGraphics12/Lib",
                 "${env:FBX_SDK_INC_DIR}"
             ],
             "defines": [
