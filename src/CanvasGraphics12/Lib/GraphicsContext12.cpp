@@ -51,6 +51,9 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
     DHDesc.NumDescriptors = NumDSVDescriptors; // BUGBUG: This needs to be a well-known constant
     ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pDSVDH))));
 
+    CComPtr<ID3D12Fence> pFence;
+    ThrowGemError(GemResult(pD3DDevice->CreateFence(m_FenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence))));
+
     // The default root signature uses the following parameters
     //  Root CBV (descriptor static)
     //  Root SRV (descriptor static)
@@ -88,6 +91,7 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
     m_pCommandAllocator.Attach(pCA.Detach());
     m_pCommandList.Attach(pCL.Detach());
     m_pCommandQueue.Attach(pCQ.Detach());
+    m_pFence.Attach(pFence.Detach());
 }
 
 //------------------------------------------------------------------------------------------------
@@ -110,11 +114,13 @@ GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XCanvas
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CGraphicsContext::CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)
 {
+    std::unique_lock<std::mutex> Lock(m_mutex);
 }
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CGraphicsContext::ClearSurface(XCanvasGfxSurface *pGfxSurface, const float Color[4])
 {
+    std::unique_lock<std::mutex> Lock(m_mutex);
     CSurface *pSurface = reinterpret_cast<CSurface *>(pGfxSurface);
     pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_RENDER_TARGET);
     ApplyResourceBarriers();
@@ -142,9 +148,8 @@ D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext::CreateRenderTargetView(class CSurf
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsContext::Flush()
+Gem::Result CGraphicsContext::FlushImpl()
 {
-    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::Flush", QLog::Category::Debug);
     try
     {
         ThrowFailedHResult(m_pCommandList->Close());
@@ -158,42 +163,80 @@ GEMMETHODIMP CGraphicsContext::Flush()
 
         ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
 
+        m_pFence->Signal(++m_FenceValue);
+
         return Result::Success;
     }
     catch (_com_error &e)
     {
-        Sentinel.ReportError(GemResult(e.Error()));
         return GemResult(e.Error());
     }
 }
 
 //------------------------------------------------------------------------------------------------
+Gem::Result CGraphicsContext::Flush()
+{
+    std::unique_lock<std::mutex> Lock(m_mutex);
+    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::Flush", QLog::Category::Debug);
+    try
+    {
+        ThrowGemError(FlushImpl());
+    }
+    catch (_com_error &e)
+    {
+        return GemResult(e.Error());
+    }
+
+    return Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CGraphicsContext::FlushAndPresent(XCanvasGfxSwapChain *pSwapChain)
 {
+    std::unique_lock<std::mutex> Lock(m_mutex);
     CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::FlushAndPresent", QLog::Category::Debug);
 
-    CSwapChain *pIntSwapChain = reinterpret_cast<CSwapChain *>(pSwapChain);
-    pIntSwapChain->m_pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_COMMON);
-    ApplyResourceBarriers();
+    try
+    {
+        CSwapChain *pIntSwapChain = reinterpret_cast<CSwapChain *>(pSwapChain);
+        pIntSwapChain->m_pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_COMMON);
+        ApplyResourceBarriers();
 
-    Flush();
+        ThrowGemError(FlushImpl());
 
-    return pIntSwapChain->Present();
+        ThrowGemError(pIntSwapChain->Present());
+
+        m_pFence->Signal(++m_FenceValue);
+    }
+    catch (GemError &e)
+    {
+        Sentinel.ReportError(e.Result());
+    }
+
+    return Result::Success;
+}
+
+GEMMETHODIMP CGraphicsContext::Wait()
+{
+    std::unique_lock<std::mutex> Lock(m_mutex);
+    HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
+    m_pFence->SetEventOnCompletion(m_FenceValue, hEvent);
+    WaitForSingleObject(hEvent, INFINITE);
+    CloseHandle(hEvent);
+    return Result::Success;
 }
 
 CGraphicsContext::~CGraphicsContext()
 {
     m_pCommandList->Close();
 
-    // TODO: Wait for outstanding work to finish...
+    Wait();
 }
 
 //------------------------------------------------------------------------------------------------
 void CGraphicsContext::ApplyResourceBarriers()
 {
     std::vector<D3D12_RESOURCE_BARRIER> resourceBarriers;
-
     m_pDevice->m_ResourceStateManager.ResolveResourceBarriers(resourceBarriers);
-
     m_pCommandList->ResourceBarrier((UINT)resourceBarriers.size(), resourceBarriers.data());
 }

@@ -118,6 +118,7 @@ namespace Canvas
         GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) = 0;
         GEMMETHOD(Flush)() = 0;
         GEMMETHOD(FlushAndPresent)(XCanvasGfxSwapChain *pSwapChain) = 0;
+        GEMMETHOD(Wait)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------

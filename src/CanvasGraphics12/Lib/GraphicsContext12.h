@@ -9,6 +9,7 @@ class CGraphicsContext :
     public Canvas::XCanvasGfxGraphicsContext,
     public Gem::CGenericBase
 {
+    std::mutex m_mutex;
     CComPtr<ID3D12CommandQueue> m_pCommandQueue;
     CComPtr<ID3D12GraphicsCommandList> m_pCommandList;
     CComPtr<ID3D12CommandAllocator> m_pCommandAllocator;
@@ -17,6 +18,8 @@ class CGraphicsContext :
     CComPtr<ID3D12DescriptorHeap> m_pRTVDescriptorHeap;
     CComPtr<ID3D12DescriptorHeap> m_pDSVDescriptorHeap;
     CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
+    UINT64 m_FenceValue = 0;
+    CComPtr<ID3D12Fence> m_pFence;
     CDevice *m_pDevice = nullptr; // weak pointer
 
     static const UINT NumShaderResourceDescriptors = 65536;
@@ -48,10 +51,12 @@ public:
     GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) final;
     GEMMETHOD(Flush)() final;
     GEMMETHOD(FlushAndPresent)(XCanvasGfxSwapChain *pSwapChain) final;
+    GEMMETHOD(Wait)() final;
 
     // Internal functions
     CDevice *GetDevice() const { return m_pDevice; }
     ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
+    Gem::Result FlushImpl();
 
     D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
 
