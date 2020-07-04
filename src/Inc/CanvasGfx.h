@@ -113,7 +113,7 @@ namespace Canvas
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxGraphicsContext);
 
-        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain) = 0;
+        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) = 0;
         GEMMETHOD_(void, CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)) = 0;
         GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) = 0;
         GEMMETHOD(Flush)() = 0;

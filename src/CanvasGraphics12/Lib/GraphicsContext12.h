@@ -46,7 +46,7 @@ public:
     ~CGraphicsContext();
 
     // XCanvasGfxGraphicsContext methods
-    GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain) final;
+    GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) final;
     GEMMETHOD_(void, CopyBuffer)(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource) final;
     GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) final;
     GEMMETHOD(Flush)() final;

@@ -6,7 +6,7 @@
 
 using namespace Canvas;
 
-CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContext) :
+CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContext, DXGI_FORMAT Format, UINT NumBuffers) :
     m_pContext(pContext)
 {
     // Create the DXGI factory
@@ -19,7 +19,7 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContex
     // Create the swap chain
     CComPtr<IDXGISwapChain1> pSwapChain1;
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
-    swapChainDesc.BufferCount = 4;
+    swapChainDesc.BufferCount = NumBuffers;
     swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING | DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
     swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
     swapChainDesc.BufferUsage = DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_RENDER_TARGET_OUTPUT;
@@ -29,7 +29,7 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContex
     swapChainDesc.Scaling = DXGI_SCALING_NONE;
     swapChainDesc.Width = 0;
     swapChainDesc.Height = 0;
-    swapChainDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    swapChainDesc.Format = Format; // BUGBUG: Need to use GfxFormat
     DXGI_SWAP_CHAIN_FULLSCREEN_DESC swapChainDescFS = {};
     swapChainDescFS.RefreshRate.Denominator = 1;
     swapChainDescFS.Windowed = Windowed;

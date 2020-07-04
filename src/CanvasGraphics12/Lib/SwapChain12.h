@@ -34,7 +34,7 @@ public:
         return CGenericBase::InternalQueryInterface(iid, ppObj);
     }
 
-    CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContext);
+    CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContext, DXGI_FORMAT Format, UINT NumBuffers);
 
     GEMMETHOD(GetSurface)(XCanvasGfxSurface **ppSurface) final;
     GEMMETHOD(WaitForLastPresent)() final;

@@ -95,13 +95,14 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain)
+GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers)
 {
     CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::CreateSwapChain");
     try
     {
         // Create the swapchain
-        TGemPtr<CSwapChain> pSwapChain = new TGeneric<CSwapChain>(hWnd, Windowed, this);
+        DXGI_FORMAT dxgiFormat = CanvasFormatToDXGIFormat(Format);
+        TGemPtr<CSwapChain> pSwapChain = new TGeneric<CSwapChain>(hWnd, Windowed, this, dxgiFormat, NumBuffers);
         return pSwapChain->QueryInterface(ppSwapChain);
     }
     catch (GemError &e)
