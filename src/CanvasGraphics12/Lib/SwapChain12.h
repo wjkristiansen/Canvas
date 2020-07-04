@@ -16,10 +16,11 @@ class CSwapChain :
     CComPtr<IDXGISwapChain4> m_pSwapChain;
     CComPtr<ID3D12Fence> m_pFence;
     UINT64 m_FenceValue = 0;
-    TGemPtr<CSurface> m_pSurface;
-    ID3D12CommandQueue *m_pCommandQueue = nullptr; // weak
+    class CGraphicsContext *m_pContext = nullptr; // weak pointer
 
 public:
+
+    TGemPtr<CSurface> m_pSurface;
 
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
@@ -33,11 +34,13 @@ public:
         return CGenericBase::InternalQueryInterface(iid, ppObj);
     }
 
-    CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12CommandQueue *pCommandQueue);
+    CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContext);
 
-    GEMMETHOD(Present)() final;
     GEMMETHOD(GetSurface)(XCanvasGfxSurface **ppSurface) final;
     GEMMETHOD(WaitForLastPresent)() final;
+
+    // Internal functions
+    Gem::Result Present();
 };
 
     

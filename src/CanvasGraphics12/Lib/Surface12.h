@@ -4,13 +4,14 @@
 
 #pragma once
 
+#include "D3D12ResourceUtils.h"
+
 //------------------------------------------------------------------------------------------------
 class CSurface :
     public Canvas::XCanvasGfxSurface,
+    public CResource,
     public Gem::CGenericBase
 {
-    CComPtr<ID3D12Resource> m_pResource;
-
 public:
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
@@ -24,11 +25,9 @@ public:
         return CGenericBase::InternalQueryInterface(iid, ppObj);
     }
 
-    CSurface(ID3D12Resource *pResource) :
-        m_pResource(pResource) {}
+    CSurface(ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState) :
+        CResource(pResource, InitState) {}
 
-    void Rename(ID3D12Resource *pResource) { m_pResource = pResource; }
-
-    ID3D12Resource *GetD3DResource() { return m_pResource; }
+    void Rename(ID3D12Resource *pResource) { m_pD3DResource = pResource; }
 };
 

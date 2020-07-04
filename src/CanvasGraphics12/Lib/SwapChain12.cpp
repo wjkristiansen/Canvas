@@ -6,11 +6,15 @@
 
 using namespace Canvas;
 
-CSwapChain::CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12CommandQueue *pCommandQueue)
+CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContext) :
+    m_pContext(pContext)
 {
     // Create the DXGI factory
     CComPtr<IDXGIFactory7> pFactory;
     ThrowFailedHResult(CreateDXGIFactory2(0, IID_PPV_ARGS(&pFactory)));
+
+    CDevice *pDevice = pContext->GetDevice();
+    ID3D12Device *pD3DDevice = pDevice->GetD3DDevice();
 
     // Create the swap chain
     CComPtr<IDXGISwapChain1> pSwapChain1;
@@ -29,7 +33,7 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12Co
     DXGI_SWAP_CHAIN_FULLSCREEN_DESC swapChainDescFS = {};
     swapChainDescFS.RefreshRate.Denominator = 1;
     swapChainDescFS.Windowed = Windowed;
-    ThrowFailedHResult(pFactory->CreateSwapChainForHwnd(pCommandQueue, hWnd, &swapChainDesc, &swapChainDescFS, nullptr, &pSwapChain1));
+    ThrowFailedHResult(pFactory->CreateSwapChainForHwnd(pContext->GetD3DCommandQueue(), hWnd, &swapChainDesc, &swapChainDescFS, nullptr, &pSwapChain1));
 
     CComPtr<IDXGISwapChain4> pSwapChain4;
     ThrowFailedHResult(pSwapChain1->QueryInterface(&pSwapChain4));
@@ -37,68 +41,24 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, ID3D12Device *pDevice, ID3D12Co
     CComPtr<ID3D12Resource> pBackBuffer;
     UINT bbindex = pSwapChain4->GetCurrentBackBufferIndex();
     ThrowFailedHResult(pSwapChain4->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
-    TGemPtr<CSurface> pSurface = new TGeneric<CSurface>(pBackBuffer);
+
+    // Craft a D3D12_RESOURCE_DESC to match the swap chain
+    TGemPtr<CSurface> pSurface = new TGeneric<CSurface>(pBackBuffer, D3D12_RESOURCE_STATE_COMMON);
         
     CComPtr<ID3D12Fence> pFence;
-    ThrowFailedHResult(pDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence)));
+    ThrowFailedHResult(pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence)));
 
-    m_pCommandQueue = pCommandQueue;
     m_pFence.Attach(pFence.Detach());
     m_pDXGIFactory.Attach(pFactory.Detach());
     m_pSwapChain.Attach(pSwapChain4.Detach());
     m_pSurface.Attach(pSurface.Detach());
 }
 
-GEMMETHODIMP CSwapChain::Present()
+Gem::Result CSwapChain::Present()
 {
     CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxSwapChain::Present", QLog::Category::Debug);
     try
     {
-        //D3D12_DESCRIPTOR_HEAP_DESC dhDesc = {};
-        //dhDesc.NumDescriptors = 1;
-        //dhDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        //CComPtr<ID3D12DescriptorHeap> pRTVHeap;
-        //ThrowFailedHResult(m_pD3DDevice->CreateDescriptorHeap(&dhDesc, IID_PPV_ARGS(&pRTVHeap)));
-        //D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-        //rtvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
-        //rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-        //m_pD3DDevice->CreateRenderTargetView(pBackBuffer, &rtvDesc, pRTVHeap->GetCPUDescriptorHandleForHeapStart());
-
-        //CComPtr<ID3D12GraphicsCommandList> pCommandList;
-        //CComPtr<ID3D12CommandAllocator> pCommandAllocator;
-        //ThrowFailedHResult(m_pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pCommandAllocator)));
-        //ThrowFailedHResult(m_pD3DDevice->CreateCommandList1(1, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&pCommandList)));
-
-        //const float ClearColors[2][4] =
-        //{
-        //    { 1.f, 0.f, 0.f, 0.f },
-        //    { 0.f, 0.f, 1.f, 0.f },
-        //};
-
-        //static UINT clearColorIndex = 0;
-
-        //pCommandList->Reset(pCommandAllocator, nullptr);
-        //D3D12_RESOURCE_BARRIER RTBarrier[1] = {};
-        //RTBarrier[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        //RTBarrier[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        //RTBarrier[0].Transition.pResource = pBackBuffer;
-        //RTBarrier[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-        //RTBarrier[0].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        //pCommandList->ResourceBarrier(1, RTBarrier);
-        //pCommandList->ClearRenderTargetView(pRTVHeap->GetCPUDescriptorHandleForHeapStart(), ClearColors[clearColorIndex], 0, nullptr);
-        //RTBarrier[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        //RTBarrier[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-        //pCommandList->ResourceBarrier(1, RTBarrier);
-        //clearColorIndex ^= 1;
-        //ThrowFailedHResult(pCommandList->Close());
-
-        //ID3D12CommandList *pExList[] =
-        //{
-        //    pCommandList
-        //};
-
-        //m_pDirectCommandQueue->ExecuteCommandLists(1, pExList);
-
         std::unique_lock<std::mutex> Lock(m_mutex);
 
         // Queue the Present
@@ -112,7 +72,8 @@ GEMMETHODIMP CSwapChain::Present()
 
         // Increment the swapchain fence value and queue a signal
         m_FenceValue++;
-        m_pCommandQueue->Signal(m_pFence, m_FenceValue);
+        ID3D12CommandQueue *pCommandQueue = m_pContext->GetD3DCommandQueue();
+        pCommandQueue->Signal(m_pFence, m_FenceValue);
     }
     catch (_com_error &e)
     {

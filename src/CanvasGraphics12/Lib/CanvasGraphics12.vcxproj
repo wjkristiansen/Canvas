@@ -193,7 +193,7 @@
     <None Include="CanvasGraphics12.def" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\ResourceStateManager12\ResourceStateManager12.vcxproj">
+    <ProjectReference Include="..\D3D12ResourceUtils\D3D12ResourceUtils.vcxproj">
       <Project>{7d750d79-0f9f-49fb-9aef-86ec849bd4ba}</Project>
     </ProjectReference>
   </ItemGroup>

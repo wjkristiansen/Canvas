@@ -6,6 +6,7 @@
 
 using namespace Canvas;
 
+//------------------------------------------------------------------------------------------------
 CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
     m_pDevice(pDevice)
 {
@@ -89,13 +90,14 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
     m_pCommandQueue.Attach(pCQ.Detach());
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain)
 {
     CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::CreateSwapChain");
     try
     {
         // Create the swapchain
-        TGemPtr<CSwapChain> pSwapChain = new TGeneric<CSwapChain>(hWnd, Windowed, m_pDevice->GetD3DDevice(), m_pCommandQueue);
+        TGemPtr<CSwapChain> pSwapChain = new TGeneric<CSwapChain>(hWnd, Windowed, this);
         return pSwapChain->QueryInterface(ppSwapChain);
     }
     catch (GemError &e)
@@ -105,29 +107,21 @@ GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XCanvas
     }
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CGraphicsContext::CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)
 {
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CGraphicsContext::ClearSurface(XCanvasGfxSurface *pGfxSurface, const float Color[4])
 {
     CSurface *pSurface = reinterpret_cast<CSurface *>(pGfxSurface);
-    ID3D12Resource *pResource = pSurface->GetD3DResource();
-    
-    D3D12_RESOURCE_BARRIER Barriers[1] = {};
-    Barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    Barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    Barriers[0].Transition.Subresource = 0;
-    Barriers[0].Transition.pResource = pResource;
-    Barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
-    Barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    m_pCommandList->ResourceBarrier(1, Barriers);
+    pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    ApplyResourceBarriers();
     m_pCommandList->ClearRenderTargetView(CreateRenderTargetView(pSurface, 0, 0, 0), Color, 0, nullptr);
-    Barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    Barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
-    m_pCommandList->ResourceBarrier(1, Barriers);
 }
 
+//------------------------------------------------------------------------------------------------
 D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext::CreateRenderTargetView(class CSurface *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
@@ -147,6 +141,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext::CreateRenderTargetView(class CSurf
     return cpuHandle;
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CGraphicsContext::Flush()
 {
     CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::Flush", QLog::Category::Debug);
@@ -170,4 +165,35 @@ GEMMETHODIMP CGraphicsContext::Flush()
         Sentinel.ReportError(GemResult(e.Error()));
         return GemResult(e.Error());
     }
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CGraphicsContext::FlushAndPresent(XCanvasGfxSwapChain *pSwapChain)
+{
+    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::FlushAndPresent", QLog::Category::Debug);
+
+    CSwapChain *pIntSwapChain = reinterpret_cast<CSwapChain *>(pSwapChain);
+    pIntSwapChain->m_pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_COMMON);
+    ApplyResourceBarriers();
+
+    Flush();
+
+    return pIntSwapChain->Present();
+}
+
+CGraphicsContext::~CGraphicsContext()
+{
+    m_pCommandList->Close();
+
+    // TODO: Wait for outstanding work to finish...
+}
+
+//------------------------------------------------------------------------------------------------
+void CGraphicsContext::ApplyResourceBarriers()
+{
+    std::vector<D3D12_RESOURCE_BARRIER> resourceBarriers;
+
+    m_pDevice->m_ResourceStateManager.ResolveResourceBarriers(resourceBarriers);
+
+    m_pCommandList->ResourceBarrier((UINT)resourceBarriers.size(), resourceBarriers.data());
 }

@@ -40,15 +40,22 @@ public:
     }
 
     CGraphicsContext(CDevice *pDevice);
+    ~CGraphicsContext();
 
     // XCanvasGfxGraphicsContext methods
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain) final;
     GEMMETHOD_(void, CopyBuffer)(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource) final;
     GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) final;
     GEMMETHOD(Flush)() final;
+    GEMMETHOD(FlushAndPresent)(XCanvasGfxSwapChain *pSwapChain) final;
 
-    // Helper functions
+    // Internal functions
+    CDevice *GetDevice() const { return m_pDevice; }
+    ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
+
     D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
+
+    void ApplyResourceBarriers();
 };
 
     

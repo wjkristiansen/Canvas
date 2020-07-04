@@ -15,6 +15,7 @@ class CDevice :
     CComPtr<ID3D12Resource> m_pBoneWeights;
 public:
     CComPtr<ID3D12Device5> m_pD3DDevice;
+    CResourceStateManager m_ResourceStateManager;
 
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {

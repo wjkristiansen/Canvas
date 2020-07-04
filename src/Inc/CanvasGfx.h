@@ -99,7 +99,6 @@ namespace Canvas
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxSwapChain);
 
-        GEMMETHOD(Present)() = 0;
         GEMMETHOD(GetSurface)(XCanvasGfxSurface **ppSurface) = 0;
         GEMMETHOD(WaitForLastPresent)() = 0;
     };
@@ -118,6 +117,7 @@ namespace Canvas
         GEMMETHOD_(void, CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)) = 0;
         GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) = 0;
         GEMMETHOD(Flush)() = 0;
+        GEMMETHOD(FlushAndPresent)(XCanvasGfxSwapChain *pSwapChain) = 0;
     };
 
     //------------------------------------------------------------------------------------------------
