@@ -90,7 +90,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;CANVASGRAPHICS12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/experimental:external /external:I ..\..\wil /external:I ..\d3dx12 /external:W0 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -109,7 +109,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;CANVASGRAPHICS12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/experimental:external /external:I ..\..\wil /external:I ..\d3dx12 /external:W0 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -130,7 +130,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;CANVASGRAPHICS12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/experimental:external /external:I ..\..\wil /external:I ..\d3dx12 /external:W0 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -153,7 +153,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;CANVASGRAPHICS12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/experimental:external /external:I ..\..\wil /external:I ..\d3dx12 /external:W0 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -191,6 +191,11 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="CanvasGraphics12.def" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ResourceStateManager12\ResourceStateManager12.vcxproj">
+      <Project>{7d750d79-0f9f-49fb-9aef-86ec849bd4ba}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
