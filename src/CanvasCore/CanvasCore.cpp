@@ -159,6 +159,7 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
+_Success_(return < Gem::Result::Fail)
 Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, QLog::CLogClient *pLogClient)
 {
     *ppCanvas = nullptr;
@@ -196,14 +197,14 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, _Outptr_opt_result_nullonfailure_ Canvas::XCanvasGfxDevice **ppGraphicsDevice)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateGfxDevice");
-
-    Result result = Result::NotImplemented;
-
     if (ppGraphicsDevice)
     {
         *ppGraphicsDevice = nullptr;
     }
+
+    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateGfxDevice");
+
+    Result result = Result::NotImplemented;
 
     try
     {
@@ -223,14 +224,13 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, _Outptr_opt_result_nullon
 
         Gem::TGemPtr<XCanvasGfxDevice> pGraphicsDevice;
         ThrowGemError(pCreate(&pGraphicsDevice, m_Logger.GetLogClient()));
-        Gem::TGemPtr<XCanvasGfxDevice> pXCanvasGfxDevice = pGraphicsDevice.Get();
+
+        m_pGraphicsDevice.Attach(pGraphicsDevice.Detach());
 
         if (ppGraphicsDevice)
         {
-            *ppGraphicsDevice = pXCanvasGfxDevice.Get();
+            *ppGraphicsDevice = m_pGraphicsDevice.Get();
         }
-        m_pGraphicsDevice = pGraphicsDevice;
-        pGraphicsDevice.Detach();
 
         result = Result::Success;
         m_GraphicsModule = std::move(Module);

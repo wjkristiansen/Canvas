@@ -230,5 +230,6 @@ public:
 };
 }
 
+_Success_(return < Gem::Result::Fail)
 extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, QLog::CLogClient *pLogOutput = nullptr);
 
