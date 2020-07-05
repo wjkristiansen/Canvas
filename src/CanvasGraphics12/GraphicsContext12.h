@@ -6,7 +6,7 @@
 
 //------------------------------------------------------------------------------------------------
 class CGraphicsContext :
-    public Canvas::XCanvasGfxContext,
+    public Canvas::XCanvasGfxGraphicsContext,
     public Gem::CGenericBase
 {
     CComPtr<ID3D12CommandQueue> m_pCommandQueue;
@@ -29,7 +29,7 @@ class CGraphicsContext :
 public:
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
-        if (XCanvasGfxContext::IId == iid)
+        if (XCanvasGfxGraphicsContext::IId == iid)
         {
             *ppObj = this;
             AddRef(); // This will actually AddRef the outer generic
@@ -41,7 +41,7 @@ public:
 
     CGraphicsContext(CDevice *pDevice);
 
-    // XCanvasGfxContext methods
+    // XCanvasGfxGraphicsContext methods
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain) final;
     GEMMETHOD_(void, CopyBuffer)(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource) final;
     GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) final;

@@ -32,7 +32,7 @@ public:
 
     Result Initialize();
 
-    GEMMETHOD(CreateGfxContext)(Canvas::XCanvasGfxContext **ppGraphicsContext) final;
+    GEMMETHOD(CreateGfxContext)(Canvas::XCanvasGfxGraphicsContext **ppGraphicsContext) final;
     // GEMMETHOD(CreateRenderTargetView)(Canvas::XCanvasGfxRenderTargetView **ppRTView, Canvas::XCanvasGfxTexture2D *pTex2D)
     // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGfxUploadBuffer **ppUploadBuffer) final;
 

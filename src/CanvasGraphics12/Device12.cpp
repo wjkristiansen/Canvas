@@ -39,12 +39,12 @@ Result CDevice::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice::CreateGfxContext(XCanvasGfxContext **ppContext)
+GEMMETHODIMP CDevice::CreateGfxContext(XCanvasGfxGraphicsContext **ppContext)
 {
     CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxDevice::CreateGfxContext");
     try
     {
-        Gem::TGemPtr<XCanvasGfxContext> pContext(new TGeneric<CGraphicsContext>(this));
+        Gem::TGemPtr<XCanvasGfxGraphicsContext> pContext(new TGeneric<CGraphicsContext>(this));
         return pContext->QueryInterface(ppContext);
     }
     catch (const Gem::GemError &e)

@@ -91,7 +91,7 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
 
 GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain)
 {
-    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxContext::CreateSwapChain");
+    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::CreateSwapChain");
     try
     {
         // Create the swapchain
@@ -149,7 +149,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext::CreateRenderTargetView(class CSurf
 
 GEMMETHODIMP CGraphicsContext::Flush()
 {
-    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxContext::Flush", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::Flush", QLog::Category::Debug);
     try
     {
         ThrowFailedHResult(m_pCommandList->Close());

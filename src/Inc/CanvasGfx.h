@@ -66,7 +66,7 @@ namespace Canvas
 
 #define FOR_EACH_CANVAS_GS_INTERFACE(macro) \
     macro(XCanvasGfxDevice, 0x1017) \
-    macro(XCanvasGfxContext, 0x1018) \
+    macro(XCanvasGfxGraphicsContext, 0x1018) \
     macro(XCanvasGfxBuffer, 0x1020) \
     macro(XCanvasGfxSurface, 0x1021) \
     macro(XCanvasGfxSwapChain, 0x1022) \
@@ -110,9 +110,9 @@ namespace Canvas
     // the CPU.
     // In D3D12, this wraps a command queue and command lists and command allocators.
     // In D3D11, this is wraps an ID3D11DeviceContext
-    struct XCanvasGfxContext : public Gem::XGeneric
+    struct XCanvasGfxGraphicsContext : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxContext);
+        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxGraphicsContext);
 
         GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain) = 0;
         GEMMETHOD_(void, CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)) = 0;
@@ -126,6 +126,6 @@ namespace Canvas
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxDevice);
 
-        GEMMETHOD(CreateGfxContext)(Canvas::XCanvasGfxContext **ppGraphicsContext) = 0;
+        GEMMETHOD(CreateGfxContext)(Canvas::XCanvasGfxGraphicsContext **ppGraphicsContext) = 0;
     };
 }
