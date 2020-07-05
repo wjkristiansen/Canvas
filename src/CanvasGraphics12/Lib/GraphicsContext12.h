@@ -5,14 +5,36 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
+class CCommandAllocatorPool
+{
+    struct AllocatorElement
+    {
+        CComPtr<ID3D12CommandAllocator> pCommandAllocator;
+        UINT64 FenceValue;
+    };
+
+    std::vector<AllocatorElement> CommandAllocators;
+    UINT AllocatorIndex = 0;
+
+public:
+    CCommandAllocatorPool();
+
+    ID3D12CommandAllocator *Init(CDevice *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators);
+    ID3D12CommandAllocator *RotateAllocators(class CGraphicsContext *pContext);
+};
+
+//------------------------------------------------------------------------------------------------
 class CGraphicsContext :
     public Canvas::XCanvasGfxGraphicsContext,
     public Gem::CGenericBase
 {
     std::mutex m_mutex;
+
+public:
     CComPtr<ID3D12CommandQueue> m_pCommandQueue;
     CComPtr<ID3D12GraphicsCommandList> m_pCommandList;
     CComPtr<ID3D12CommandAllocator> m_pCommandAllocator;
+    CCommandAllocatorPool m_CommandAllocatorPool;
     CComPtr<ID3D12DescriptorHeap> m_pShaderResourceDescriptorHeap;
     CComPtr<ID3D12DescriptorHeap> m_pSamplerDescriptorHeap;
     CComPtr<ID3D12DescriptorHeap> m_pRTVDescriptorHeap;
@@ -29,7 +51,6 @@ class CGraphicsContext :
 
     UINT m_NextRTVSlot = 0;
 
-public:
     GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
     {
         if (XCanvasGfxGraphicsContext::IId == iid)

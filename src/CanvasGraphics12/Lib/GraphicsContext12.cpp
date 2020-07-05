@@ -4,7 +4,48 @@
 
 #include "stdafx.h"
 
+#include "GraphicsContext12.h"
+
 using namespace Canvas;
+
+//------------------------------------------------------------------------------------------------
+CCommandAllocatorPool::CCommandAllocatorPool()
+{
+}
+
+//------------------------------------------------------------------------------------------------
+ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators)
+{
+    for (UINT i = 0; i < NumAllocators; ++i)
+    {
+        CComPtr<ID3D12CommandAllocator> pAllocator;
+        ID3D12Device *pD3DDevice = pDevice->GetD3DDevice();
+        pD3DDevice->CreateCommandAllocator(Type, IID_PPV_ARGS(&pAllocator));
+        CommandAllocators.push_back({ pAllocator, 0 });
+    }
+
+    AllocatorIndex = 0;
+    return CommandAllocators[0].pCommandAllocator;
+}
+
+//------------------------------------------------------------------------------------------------
+ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CGraphicsContext *pContext)
+{
+    ID3D12CommandQueue *pCQ = pContext->m_pCommandQueue;
+
+    CommandAllocators[AllocatorIndex].FenceValue = pContext->m_FenceValue;
+    AllocatorIndex = (AllocatorIndex + 1) % CommandAllocators.size();
+
+    if (CommandAllocators[AllocatorIndex].FenceValue > pContext->m_pFence->GetCompletedValue())
+    {
+        HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
+        pContext->m_pFence->SetEventOnCompletion(CommandAllocators[AllocatorIndex].FenceValue, hEvent);
+        WaitForSingleObject(hEvent, INFINITE);
+        CloseHandle(hEvent);
+    }
+
+    return CommandAllocators[AllocatorIndex].pCommandAllocator;
+}
 
 //------------------------------------------------------------------------------------------------
 CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
@@ -20,8 +61,7 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
 
     ThrowGemError(GemResult(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
 
-    CComPtr<ID3D12CommandAllocator> pCA;
-    ThrowGemError(GemResult(pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pCA))));
+    CComPtr<ID3D12CommandAllocator> pCA = m_CommandAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
 
     CComPtr<ID3D12GraphicsCommandList> pCL;
     ThrowGemError(GemResult(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
@@ -163,13 +203,6 @@ Gem::Result CGraphicsContext::FlushImpl()
         m_pCommandQueue->ExecuteCommandLists(1, exlist);
 
         m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
-        HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
-        m_pFence->SetEventOnCompletion(m_FenceValue, hEvent);
-        WaitForSingleObject(hEvent, INFINITE);
-        CloseHandle(hEvent);
-        m_pCommandAllocator->Reset();
-
-        ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
 
         return Result::Success;
     }
@@ -187,6 +220,8 @@ Gem::Result CGraphicsContext::Flush()
     try
     {
         ThrowGemError(FlushImpl());
+
+        ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
     }
     catch (_com_error &e)
     {
@@ -213,6 +248,12 @@ GEMMETHODIMP CGraphicsContext::FlushAndPresent(XCanvasGfxSwapChain *pSwapChain)
         ThrowGemError(pIntSwapChain->Present());
 
         m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
+
+        // Rotate command allocators
+        m_pCommandAllocator = m_CommandAllocatorPool.RotateAllocators(this);
+        m_pCommandAllocator->Reset();
+
+        ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
     }
     catch (GemError &e)
     {
