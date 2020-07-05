@@ -9,7 +9,7 @@ using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
 #define INTERFACE_ID_STRING_CASE(iface, unused) case CanvasIId_##iface: return #iface;
-#define GS_INTERFACE_ID_STRING_CASE(iface, unused) case CanvasGSIId_##iface: return #iface;
+#define GS_INTERFACE_ID_STRING_CASE(iface, unused) case CanvasGfxIId_##iface: return #iface;
 inline const char *IIdToString(Gem::InterfaceId id)
 {
     switch (id.Value)
@@ -183,7 +183,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ Canvas::XCanvasGSDevice **ppGraphicsDevice)
+GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ Canvas::XCanvasGfxDevice **ppGraphicsDevice)
 {
     Logger().LogInfo("CCanvas::CreateGraphicsDevice");
     Result result = Result::NotImplemented;
@@ -209,13 +209,13 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_o
             throw(std::exception("GetProcAddress"));
         }
 
-        Gem::TGemPtr<XCanvasGSDevice> pGraphicsDevice;
+        Gem::TGemPtr<XCanvasGfxDevice> pGraphicsDevice;
         ThrowGemError(pCreate(&pGraphicsDevice, hWnd, m_Logger.GetLogClient()));
-        Gem::TGemPtr<XCanvasGSDevice> pXCanvasGSDevice = pGraphicsDevice.Get();
+        Gem::TGemPtr<XCanvasGfxDevice> pXCanvasGfxDevice = pGraphicsDevice.Get();
 
         if (ppGraphicsDevice)
         {
-            *ppGraphicsDevice = pXCanvasGSDevice.Get();
+            *ppGraphicsDevice = pXCanvasGfxDevice.Get();
         }
         m_pGraphicsDevice = pGraphicsDevice;
         pGraphicsDevice.Detach();

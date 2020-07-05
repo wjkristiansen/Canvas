@@ -8,7 +8,7 @@ extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GSFormat Fmt);
 
 //------------------------------------------------------------------------------------------------
 class CDevice :
-    public Canvas::XCanvasGSDevice,
+    public Canvas::XCanvasGfxDevice,
     public Gem::CGenericBase
 {
     QLog::CBasicLogger m_Logger;
@@ -29,16 +29,16 @@ public:
     Result Initialize(HWND hWnd, bool Windowed);
 
     GEMMETHOD(Present)() final;
-    GEMMETHOD(AllocateGraphicsContext)(Canvas::XCanvasGSContext **ppGraphicsContext) final;
-    // GEMMETHOD(CreateRenderTargetView)(Canvas::XCanvasGSRenderTargetView **ppRTView, Canvas::XCanvasGSTexture2D *pTex2D)
-    // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGSUploadBuffer **ppUploadBuffer) final;
+    GEMMETHOD(AllocateGraphicsContext)(Canvas::XCanvasGfxContext **ppGraphicsContext) final;
+    // GEMMETHOD(CreateRenderTargetView)(Canvas::XCanvasGfxRenderTargetView **ppRTView, Canvas::XCanvasGfxTexture2D *pTex2D)
+    // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGfxUploadBuffer **ppUploadBuffer) final;
 
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
 };
 
 //------------------------------------------------------------------------------------------------
 class CUploadBuffer : 
-    public Canvas::XCanvasGSUploadBuffer,
+    public Canvas::XCanvasGfxUploadBuffer,
     public Gem::CGenericBase
 {
     CComPtr<ID3D12Resource> m_pResource;

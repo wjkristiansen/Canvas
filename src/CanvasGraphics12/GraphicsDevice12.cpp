@@ -239,11 +239,11 @@ GEMMETHODIMP CDevice::Present()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice::AllocateGraphicsContext(XCanvasGSContext **ppContext)
+GEMMETHODIMP CDevice::AllocateGraphicsContext(XCanvasGfxContext **ppContext)
 {
     try
     {
-        Gem::TGemPtr<XCanvasGSContext> pContext(new TGeneric<CContext>(this, D3D12_COMMAND_LIST_TYPE_DIRECT));
+        Gem::TGemPtr<XCanvasGfxContext> pContext(new TGeneric<CContext>(this, D3D12_COMMAND_LIST_TYPE_DIRECT));
     }
     catch (const Gem::GemError &e)
     {
@@ -254,7 +254,7 @@ GEMMETHODIMP CDevice::AllocateGraphicsContext(XCanvasGSContext **ppContext)
 }
 
 //------------------------------------------------------------------------------------------------
-//GEMMETHODIMP CDevice::AllocateUploadBuffer(UINT64 SizeInBytes, XCanvasGSUploadBuffer **ppUploadBuffer)
+//GEMMETHODIMP CDevice::AllocateUploadBuffer(UINT64 SizeInBytes, XCanvasGfxUploadBuffer **ppUploadBuffer)
 //{
 //    try
 //    {
@@ -368,7 +368,7 @@ struct Vertex
 //}
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvasGraphicsDevice(_Outptr_result_nullonfailure_ XCanvasGSDevice **ppGraphicsDevice, HWND hWnd, QLog::CLogClient *pLogClient)
+Result GEMAPI CreateCanvasGraphicsDevice(_Outptr_result_nullonfailure_ XCanvasGfxDevice **ppGraphicsDevice, HWND hWnd, QLog::CLogClient *pLogClient)
 {
     *ppGraphicsDevice = nullptr;
 

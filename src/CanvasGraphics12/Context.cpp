@@ -27,6 +27,6 @@ GEMMETHODIMP_(void) CContext::End()
 {
 }
 
-GEMMETHODIMP_(void) CContext::CopyResource(XCanvasGSResource *pDest, XCanvasGSResource *pSource)
+GEMMETHODIMP_(void) CContext::CopyResource(XCanvasGfxResource *pDest, XCanvasGfxResource *pSource)
 {
 }
