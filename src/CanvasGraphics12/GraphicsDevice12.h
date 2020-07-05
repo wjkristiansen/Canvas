@@ -36,17 +36,3 @@ public:
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
 };
 
-//------------------------------------------------------------------------------------------------
-class CUploadBuffer : 
-    public Canvas::XCanvasGfxUploadBuffer,
-    public Gem::CGenericBase
-{
-    CComPtr<ID3D12Resource> m_pResource;
-    UINT64 m_OffsetToStart = 0;
-    void *m_pData = 0;
-
-public:
-    CUploadBuffer(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size);
-    GEMMETHOD_(void *, Data)() final;
-};
-

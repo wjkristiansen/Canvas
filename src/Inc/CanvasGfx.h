@@ -67,20 +67,8 @@ namespace Canvas
 #define FOR_EACH_CANVAS_GS_INTERFACE(macro) \
     macro(XCanvasGfxDevice, 0x1017) \
     macro(XCanvasGfxContext, 0x1018) \
-    macro(XCanvasGfxResource, 0x1019) \
     macro(XCanvasGfxBuffer, 0x1020) \
-    macro(XCanvasGfxTexture1D, 0x1021) \
-    macro(XCanvasGfxTexture2D, 0x1022) \
-    macro(XCanvasGfxTexture3D, 0x1023) \
-    macro(XCanvasGfxPipelineState, 0x1024) \
-    macro(XCanvasGfxShaderResourceView, 0x1025) \
-    macro(XCanvasGfxUnorderedAccessView, 0x1026) \
-    macro(XCanvasGfxConstantBufferView, 0x1027) \
-    macro(XCanvasGfxDepthStencilView, 0x1028) \
-    macro(XCanvasGfxRenderTargetView, 0x1029) \
-    macro(XCanvasGfxConstantBuffer, 0x1030) \
-    macro(XCanvasGfxUploadBuffer, 0x1031) \
-    macro(XCanvasGfxReadbackBuffer, 0x1032) \
+    macro(XCanvasGfxSurface, 0x1021) \
 
     //------------------------------------------------------------------------------------------------
 #define ENUM_GS_INTERFACE_ID(iface, value) CanvasGfxIId_##iface=value,
@@ -92,10 +80,17 @@ namespace Canvas
 #define CANVAS_GS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasGfxIId_##iface)
 
     //------------------------------------------------------------------------------------------------
-    // Base interface for a CanvasGfx resource.  Inherited by all buffer and texture resource interfaces.
-    struct XCanvasGfxResource : public Gem::XGeneric
+    // Buffer resource
+    struct XCanvasGfxSurface : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxResource);
+        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxSurface);
+    };
+
+    //------------------------------------------------------------------------------------------------
+    // Buffer resource
+    struct XCanvasGfxBuffer : public Gem::XGeneric
+    {
+        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxBuffer);
     };
 
     //------------------------------------------------------------------------------------------------
@@ -115,22 +110,8 @@ namespace Canvas
         GEMMETHOD_(void, End)() = 0;
 
         // Copies an entire resource
-        GEMMETHOD_(void, CopyResource(XCanvasGfxResource *pDest, XCanvasGfxResource *pSource)) = 0;
+        GEMMETHOD_(void, CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)) = 0;
 
-    };
-
-    //------------------------------------------------------------------------------------------------
-    // Buffer resource
-    struct XCanvasGfxBuffer : public XCanvasGfxResource
-    {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxBuffer);
-    };
-
-    //------------------------------------------------------------------------------------------------
-    // CPU-Writable resource used for uploading data to GPU memory
-    struct XCanvasGfxUploadBuffer : public XCanvasGfxBuffer
-    {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxUploadBuffer);
     };
 
     //------------------------------------------------------------------------------------------------
@@ -151,5 +132,4 @@ namespace Canvas
         //GEMMETHOD(AllocateTextureCube) = 0;
         // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGfxUploadBuffer **ppUploadBuffer) = 0;
     };
-
 }

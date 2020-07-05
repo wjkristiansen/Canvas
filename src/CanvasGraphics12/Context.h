@@ -17,7 +17,7 @@ public:
     // XCanvasGfxContext methods
     GEMMETHOD_(void, Begin)() final;
     GEMMETHOD_(void, End)() final;
-    GEMMETHOD_(void, CopyResource(XCanvasGfxResource *pDest, XCanvasGfxResource *pSource)) final;
+    GEMMETHOD_(void, CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)) final;
 };
 
     

@@ -388,21 +388,3 @@ Result GEMAPI CreateCanvasGraphicsDevice(_Outptr_result_nullonfailure_ XCanvasGf
         return Result::OutOfMemory;
     }
 }
-
-//------------------------------------------------------------------------------------------------
-CUploadBuffer::CUploadBuffer(ID3D12Resource *pResource, UINT64 OffsetToStart, UINT64 Size) :
-    m_pResource(pResource),
-    m_OffsetToStart(OffsetToStart)
-{
-    // Persistently map the data
-    D3D12_RANGE ReadRange;
-    ReadRange.Begin = SIZE_T(OffsetToStart);
-    ReadRange.End = SIZE_T(OffsetToStart + Size);
-    ThrowFailedHResult(pResource->Map(0, &ReadRange, &m_pData));
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void *) CUploadBuffer::Data()
-{
-    return m_pData;
-}
