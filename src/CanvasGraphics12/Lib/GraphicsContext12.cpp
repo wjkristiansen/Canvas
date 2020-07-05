@@ -162,9 +162,14 @@ Gem::Result CGraphicsContext::FlushImpl()
 
         m_pCommandQueue->ExecuteCommandLists(1, exlist);
 
-        ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
+        m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
+        HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
+        m_pFence->SetEventOnCompletion(m_FenceValue, hEvent);
+        WaitForSingleObject(hEvent, INFINITE);
+        CloseHandle(hEvent);
+        m_pCommandAllocator->Reset();
 
-        m_pFence->Signal(++m_FenceValue);
+        ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
 
         return Result::Success;
     }
@@ -207,7 +212,7 @@ GEMMETHODIMP CGraphicsContext::FlushAndPresent(XCanvasGfxSwapChain *pSwapChain)
 
         ThrowGemError(pIntSwapChain->Present());
 
-        m_pFence->Signal(++m_FenceValue);
+        m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
     }
     catch (GemError &e)
     {
