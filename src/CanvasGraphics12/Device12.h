@@ -1,5 +1,5 @@
 //================================================================================================
-// GraphicsDevice12
+// Device12
 //================================================================================================
 
 #pragma once
@@ -18,18 +18,13 @@ class CDevice :
     CComPtr<ID3D12Resource> m_pBoneWeights;
 public:
     CComPtr<ID3D12Device5> m_pD3DDevice;
-    CComPtr<ID3D12CommandQueue> m_pDirectCommandQueue;
-    CComPtr<IDXGIFactory7> m_pDXGIFactory;
-    CComPtr<IDXGISwapChain4> m_pSwapChain;
-    CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
 
 
     CDevice(QLog::CLogClient *pLogClient);
 
-    Result Initialize(HWND hWnd, bool Windowed);
+    Result Initialize();
 
-    GEMMETHOD(Present)() final;
-    GEMMETHOD(AllocateGraphicsContext)(Canvas::XCanvasGfxContext **ppGraphicsContext) final;
+    GEMMETHOD(CreateGfxContext)(HWND hWnd, bool Windowed, Canvas::XCanvasGfxContext **ppGraphicsContext) final;
     // GEMMETHOD(CreateRenderTargetView)(Canvas::XCanvasGfxRenderTargetView **ppRTView, Canvas::XCanvasGfxTexture2D *pTex2D)
     // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGfxUploadBuffer **ppUploadBuffer) final;
 

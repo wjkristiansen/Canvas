@@ -52,5 +52,3 @@ using namespace Gem;
 
 #include "Object.inl"
 #include "SceneGraph.inl"
-
-#include "CanvasGraphics12.h"

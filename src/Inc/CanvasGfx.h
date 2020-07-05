@@ -69,6 +69,7 @@ namespace Canvas
     macro(XCanvasGfxContext, 0x1018) \
     macro(XCanvasGfxBuffer, 0x1020) \
     macro(XCanvasGfxSurface, 0x1021) \
+    macro(XCanvasGfxSwapChain, 0x1022) \
 
     //------------------------------------------------------------------------------------------------
 #define ENUM_GS_INTERFACE_ID(iface, value) CanvasGfxIId_##iface=value,
@@ -94,6 +95,15 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    struct XCanvasGfxSwapChain : public Gem::XGeneric
+    {
+        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxSwapChain);
+
+        GEMMETHOD(Present)() = 0;
+        GEMMETHOD(GetSurface)(XCanvasGfxSurface **ppSurface) = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
     // Submits command streams to the GPU.
     // Manages synchronization with other command contexts and
     // the CPU.
@@ -103,15 +113,9 @@ namespace Canvas
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxContext);
 
-        // Begins a series of commands
-        GEMMETHOD_(void, Begin)() = 0;
-
-        // Ends a series of commands
-        GEMMETHOD_(void, End)() = 0;
-
-        // Copies an entire resource
+        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSurface) = 0;
         GEMMETHOD_(void, CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)) = 0;
-
+        GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -120,16 +124,6 @@ namespace Canvas
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxDevice);
 
-        GEMMETHOD(Present)() = 0;
-        GEMMETHOD(Initialize)(HWND hWnd, bool Windowed) = 0;
-        GEMMETHOD(AllocateGraphicsContext)(Canvas::XCanvasGfxContext **ppGraphicsContext) = 0;
-        //GEMMETHOD(AllocateBuffer)() - 0;
-        //GEMMETHOD(AllocateTexture1D) = 0;
-        //GEMMETHOD(AllocateTexture1DArray) = 0;
-        //GEMMETHOD(AllocateTexture2D) = 0;
-        //GEMMETHOD(AllocateTexture2DArray) = 0;
-        //GEMMETHOD(AllocateTexture3D) = 0;
-        //GEMMETHOD(AllocateTextureCube) = 0;
-        // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XCanvasGfxUploadBuffer **ppUploadBuffer) = 0;
+        GEMMETHOD(CreateGfxContext)(HWND hWnd, bool Windowed, Canvas::XCanvasGfxContext **ppGraphicsContext) = 0;
     };
 }

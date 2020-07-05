@@ -183,9 +183,9 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ Canvas::XCanvasGfxDevice **ppGraphicsDevice)
+GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_opt_result_nullonfailure_ Canvas::XCanvasGfxDevice **ppGraphicsDevice)
 {
-    Logger().LogInfo("CCanvas::CreateGraphicsDevice");
+    Logger().LogInfo("CCanvas::CreateGfxDevice");
     Result result = Result::NotImplemented;
 
     if (ppGraphicsDevice)
@@ -225,12 +225,12 @@ GEMMETHODIMP CCanvas::CreateGraphicsDevice(PCSTR szDLLPath, HWND hWnd, _Outptr_o
     }
     catch (const std::exception &e)
     {
-        Logger().LogErrorF("XCanvas::CreateGraphicsDevice failed: %s", e.what());
+        Logger().LogErrorF("XCanvas::CreateGfxDevice failed: %s", e.what());
         result = Result::NotFound;
     }
     catch (const Gem::GemError &e)
     {
-        Logger().LogErrorF("XCanvas::CreateGraphicsDevice failed: %s", Gem::ResultToString(e.Result()));
+        Logger().LogErrorF("XCanvas::CreateGfxDevice failed: %s", Gem::ResultToString(e.Result()));
         result = Result::NotFound;
     }
 
@@ -254,7 +254,7 @@ GEMMETHODIMP CCanvas::FrameTick()
 
     // Present
 
-    m_pGraphicsDevice->Present();
+    m_pSwapChain->Present();
 
     ++m_FrameCounter;
     if (m_FrameCounter == 1200)
