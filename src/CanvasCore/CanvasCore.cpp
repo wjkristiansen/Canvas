@@ -229,6 +229,7 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, _Outptr_opt_result_nullon
 
         if (ppGraphicsDevice)
         {
+            m_pGraphicsDevice->AddRef();
             *ppGraphicsDevice = m_pGraphicsDevice.Get();
         }
 
