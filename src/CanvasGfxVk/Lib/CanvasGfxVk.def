@@ -1,0 +1,3 @@
+LIBRARY CanvasGfxVk
+EXPORTS
+	CreateGfxInstance

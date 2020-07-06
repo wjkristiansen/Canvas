@@ -26,6 +26,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "D3D12ResourceUtils", "Canva
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AllocatorsTest", "Allocators\AllocatorsTest\AllocatorsTest.vcxproj", "{8BCC44B6-0AE9-410B-BCC8-54303790EE97}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasGfxVk", "CanvasGfxVk\Lib\CanvasGfxVk.vcxproj", "{16BC4464-F69E-46F1-9EC5-10AF5024D761}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -114,6 +116,14 @@ Global
 		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Release|x64.Build.0 = Release|x64
 		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Release|x86.ActiveCfg = Release|Win32
 		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Release|x86.Build.0 = Release|Win32
+		{16BC4464-F69E-46F1-9EC5-10AF5024D761}.Debug|x64.ActiveCfg = Debug|x64
+		{16BC4464-F69E-46F1-9EC5-10AF5024D761}.Debug|x64.Build.0 = Debug|x64
+		{16BC4464-F69E-46F1-9EC5-10AF5024D761}.Debug|x86.ActiveCfg = Debug|Win32
+		{16BC4464-F69E-46F1-9EC5-10AF5024D761}.Debug|x86.Build.0 = Debug|Win32
+		{16BC4464-F69E-46F1-9EC5-10AF5024D761}.Release|x64.ActiveCfg = Release|x64
+		{16BC4464-F69E-46F1-9EC5-10AF5024D761}.Release|x64.Build.0 = Release|x64
+		{16BC4464-F69E-46F1-9EC5-10AF5024D761}.Release|x86.ActiveCfg = Release|Win32
+		{16BC4464-F69E-46F1-9EC5-10AF5024D761}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
