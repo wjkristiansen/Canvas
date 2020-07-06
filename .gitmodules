@@ -14,3 +14,6 @@
 [submodule "src/wil"]
 	path = src/wil
 	url = https://github.com/microsoft/wil.git
+[submodule "src/LinkedList"]
+	path = src/LinkedList
+	url = https://wjkristiansen.visualstudio.com/DefaultCollection/LinkedList/_git/LinkedList
