@@ -208,15 +208,15 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, _Outptr_opt_result_nullon
 
     try
     {
-        CModule Module(LoadLibraryExA(szDLLPath, NULL, 0));
+        wil::unique_hmodule graphicsModule(LoadLibraryExA(szDLLPath, NULL, 0));
 
-        if (Module.Get() == NULL)
+        if (graphicsModule.get() == NULL)
         {
             throw(GemError(Result::NotFound));
         }
 
         CreateCanvasGraphicsDeviceProc pCreate = reinterpret_cast<CreateCanvasGraphicsDeviceProc>(
-            GetProcAddress(Module.Get(), "CreateCanvasGraphicsDevice"));
+            GetProcAddress(graphicsModule.get(), "CreateCanvasGraphicsDevice"));
         if (pCreate == nullptr)
         {
             throw(GemError(Result::NotFound));
@@ -234,7 +234,7 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, _Outptr_opt_result_nullon
         }
 
         result = Result::Success;
-        m_GraphicsModule = std::move(Module);
+        graphicsModule.swap(m_GraphicsModule);
     }
     catch (const Gem::GemError &e)
     {

@@ -106,7 +106,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\wil\include;..\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <EnablePREfast>true</EnablePREfast>
     </ClCompile>
@@ -127,7 +127,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\wil\include;..\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <EnablePREfast>true</EnablePREfast>
     </ClCompile>
@@ -150,7 +150,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\wil\include;..\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <EnablePREfast>true</EnablePREfast>
     </ClCompile>
@@ -175,7 +175,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;CANVASCORE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\wil\include;..\Inc;..\GEM\Inc;..\QLog\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <EnablePREfast>true</EnablePREfast>
     </ClCompile>
@@ -199,7 +199,6 @@
     <ClInclude Include="DataSource.h" />
     <ClInclude Include="Light.h" />
     <ClInclude Include="Mesh.h" />
-    <ClInclude Include="Module.h" />
     <ClInclude Include="Name.h" />
     <ClInclude Include="Object.h" />
     <ClInclude Include="Scene.h" />

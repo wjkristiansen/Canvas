@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include "Module.h"
-
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
@@ -15,7 +13,7 @@ class CCanvas :
 {
     std::mutex m_Mutex;
     QLog::CBasicLogger m_Logger;
-    CModule m_GraphicsModule;
+    wil::unique_hmodule m_GraphicsModule;
 
     CTimer m_FrameTimer;
     UINT64 m_FrameEndTimeLast = 0;
