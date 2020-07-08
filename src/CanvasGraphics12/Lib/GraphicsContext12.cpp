@@ -137,7 +137,7 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers)
 {
-    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::CreateSwapChain");
+    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XCanvasGfxGraphicsContext::CreateSwapChain");
     try
     {
         // Create the swapchain
@@ -216,7 +216,7 @@ Gem::Result CGraphicsContext::FlushImpl()
 Gem::Result CGraphicsContext::Flush()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::Flush", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XCanvasGfxGraphicsContext::Flush", QLog::Category::Debug);
     try
     {
         ThrowGemError(FlushImpl());
@@ -235,7 +235,7 @@ Gem::Result CGraphicsContext::Flush()
 GEMMETHODIMP CGraphicsContext::FlushAndPresent(XCanvasGfxSwapChain *pSwapChain)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxGraphicsContext::FlushAndPresent", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XCanvasGfxGraphicsContext::FlushAndPresent", QLog::Category::Debug);
 
     try
     {

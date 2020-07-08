@@ -70,6 +70,7 @@ namespace Canvas
     macro(XCanvasGfxBuffer, 0x1020) \
     macro(XCanvasGfxSurface, 0x1021) \
     macro(XCanvasGfxSwapChain, 0x1022) \
+    macro(XCanvasGfx, 0x1023) \
 
     //------------------------------------------------------------------------------------------------
 #define ENUM_GS_INTERFACE_ID(iface, value) CanvasGfxIId_##iface=value,
@@ -122,11 +123,18 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    // Interface to a GPU device
+    // Interface to a graphics device
     struct XCanvasGfxDevice : public Gem::XGeneric
     {
         CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxDevice);
 
         GEMMETHOD(CreateGfxContext)(Canvas::XCanvasGfxGraphicsContext **ppGraphicsContext) = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct XCanvasGfx : public Gem::XGeneric
+    {
+        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfx);
+        GEMMETHOD(CreateCanvasGfxDevice)(Canvas::XCanvasGfxDevice **ppDevice) = 0;
     };
 }

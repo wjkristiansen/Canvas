@@ -38,7 +38,7 @@ GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_result_nul
 //------------------------------------------------------------------------------------------------
 CCanvas::~CCanvas()
 {
-    m_pGraphicsDevice = nullptr;
+    m_pCanvasGfx = nullptr;
 
     ReportObjectLeaks();
 }
@@ -195,14 +195,14 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, _Outptr_opt_result_nullonfailure_ Canvas::XCanvasGfxDevice **ppGraphicsDevice)
+GEMMETHODIMP CCanvas::CreateCanvasGfx(PCSTR szDLLPath, _Outptr_opt_result_nullonfailure_ XCanvasGfx **ppCanvasGfx)
 {
-    if (ppGraphicsDevice)
+    if (ppCanvasGfx)
     {
-        *ppGraphicsDevice = nullptr;
+        *ppCanvasGfx = nullptr;
     }
 
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateGfxDevice");
+    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateCanvasGfx");
 
     Result result = Result::NotImplemented;
 
@@ -215,22 +215,23 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(PCSTR szDLLPath, _Outptr_opt_result_nullon
             throw(GemError(Result::NotFound));
         }
 
-        CreateCanvasGraphicsDeviceProc pCreate = reinterpret_cast<CreateCanvasGraphicsDeviceProc>(
-            GetProcAddress(graphicsModule.get(), "CreateCanvasGraphicsDevice"));
+        // Create XCanvasGfx interface
+        CreateCanvasGfxProc pCreate = reinterpret_cast<CreateCanvasGfxProc>(
+            GetProcAddress(graphicsModule.get(), "CreateCanvasGfx"));
         if (pCreate == nullptr)
         {
             throw(GemError(Result::NotFound));
         }
 
-        Gem::TGemPtr<XCanvasGfxDevice> pGraphicsDevice;
-        ThrowGemError(pCreate(&pGraphicsDevice, m_Logger.GetLogClient()));
+        Gem::TGemPtr<XCanvasGfx> pCanvasGfx;
+        ThrowGemError(pCreate(&pCanvasGfx, m_Logger.GetLogClient()));
 
-        m_pGraphicsDevice.Attach(pGraphicsDevice.Detach());
+        m_pCanvasGfx.Attach(pCanvasGfx.Detach());
 
-        if (ppGraphicsDevice)
+        if (ppCanvasGfx)
         {
-            m_pGraphicsDevice->AddRef();
-            *ppGraphicsDevice = m_pGraphicsDevice.Get();
+            m_pCanvasGfx->AddRef();
+            *ppCanvasGfx = m_pCanvasGfx.Get();
         }
 
         result = Result::Success;

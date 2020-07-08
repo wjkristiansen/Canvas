@@ -31,7 +31,7 @@ Result CDevice::Initialize()
     }
     catch (_com_error &e)
     {
-        g_Logger.LogErrorF("CDevice::Initialize: HRESULT 0x%08x", e.Error());
+        CCanvasGfx::GetSingleton()->Logger().LogErrorF("CDevice::Initialize: HRESULT 0x%08x", e.Error());
         return GemResult(e.Error());
     }
 
@@ -41,7 +41,7 @@ Result CDevice::Initialize()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice::CreateGfxContext(XCanvasGfxGraphicsContext **ppContext)
 {
-    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxDevice::CreateGfxContext");
+    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XCanvasGfxDevice::CreateGfxContext");
     try
     {
         Gem::TGemPtr<XCanvasGfxGraphicsContext> pContext(new TGeneric<CGraphicsContext>(this));

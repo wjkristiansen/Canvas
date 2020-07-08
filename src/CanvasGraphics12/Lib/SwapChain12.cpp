@@ -56,7 +56,7 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContex
 
 Gem::Result CSwapChain::Present()
 {
-    CFunctionSentinel Sentinel(g_Logger, "XCanvasGfxSwapChain::Present", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XCanvasGfxSwapChain::Present", QLog::Category::Debug);
     try
     {
         std::unique_lock<std::mutex> Lock(m_mutex);
