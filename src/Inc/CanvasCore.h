@@ -203,6 +203,7 @@ class CFunctionSentinel
     QLog::CBasicLogger &m_Logger;
     QLog::Category m_DefaultLogCategory;
     const char *m_FunctionName;
+    Gem::Result m_Result = Gem::Result::Success;
 
 public:
     CFunctionSentinel(QLog::CBasicLogger &Logger, const char *FunctionName, QLog::Category DefaultLogCategory = QLog::Category::Info) :
@@ -214,17 +215,14 @@ public:
     }
     ~CFunctionSentinel()
     {
-        m_Logger.LogF(m_DefaultLogCategory, "End: %s", m_FunctionName);
+        QLog::Category category = Gem::Failed(m_Result) ? QLog::Category::Error : m_DefaultLogCategory;
+        m_Logger.LogF(category, "%s: %s", GemResultString(m_Result), m_FunctionName);
     }
     void ReportError(Gem::Result result, const char *Message = nullptr)
     {
         if (Message)
         {
-            m_Logger.LogErrorF("%s: %s: %s", m_FunctionName, GemResultString(result), Message);
-        }
-        else
-        {
-            m_Logger.LogErrorF("%s: %s", m_FunctionName, GemResultString(result));
+            m_Logger.LogError(Message);
         }
     }
 };
