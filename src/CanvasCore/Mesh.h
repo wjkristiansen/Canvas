@@ -10,17 +10,10 @@ class CMeshInstance :
     public CGenericBase
 {
 public:
+    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+        GEM_INTERFACE_ENTRY(XMeshInstance)
+    END_GEM_INTERFACE_MAP()
+
     CMeshInstance() :
         CGenericBase() {}
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) final
-    {
-        if (XMeshInstance::IId == iid)
-        {
-            *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return CGenericBase::InternalQueryInterface(iid, ppObj);
-    }
 };

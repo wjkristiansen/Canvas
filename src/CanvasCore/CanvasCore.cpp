@@ -22,20 +22,6 @@ inline const char *IIdToString(Gem::InterfaceId id)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::InternalQueryInterface(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
-{
-    switch (iid.Value)
-    {
-	case XCanvas::IId:
-        *ppObj = reinterpret_cast<XCanvas *>(this);
-        AddRef();
-        return Result::Success;
-    }
-
-    return CGenericBase::InternalQueryInterface(iid, ppObj);
-}
-
-//------------------------------------------------------------------------------------------------
 CCanvas::~CCanvas()
 {
     m_pCanvasGfx = nullptr;

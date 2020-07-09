@@ -17,17 +17,9 @@ public:
     CComPtr<ID3D12Device5> m_pD3DDevice;
     CResourceStateManager m_ResourceStateManager;
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
-    {
-        if (XCanvasGfxDevice::IId == iid)
-        {
-            *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return CGenericBase::InternalQueryInterface(iid, ppObj);
-    }
+    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+        GEM_INTERFACE_ENTRY(XCanvasGfxDevice)
+    END_GEM_INTERFACE_MAP()
 
     CDevice();
 

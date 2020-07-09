@@ -9,17 +9,10 @@ class CLight :
     public TSceneGraphNode<XLight>
 {
 public:
+    BEGIN_GEM_INTERFACE_MAP(TSceneGraphNode<XLight>)
+        GEM_INTERFACE_ENTRY(XLight)
+    END_GEM_INTERFACE_MAP()
+
     CLight(CCanvas *pCanvas, PCSTR szName) :
         TSceneGraphNode(pCanvas, szName) {}
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
-    {
-        if (XLight::IId == iid)
-        {
-            *ppObj = this;
-            AddRef();
-            return Result::Success;
-        }
-
-        return TSceneGraphNode<XLight>::InternalQueryInterface(iid, ppObj);
-    }
 };

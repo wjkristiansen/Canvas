@@ -14,6 +14,10 @@ public:
     _ListType::iterator m_it;
     _ListType& m_List;
 
+    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+        GEM_INTERFACE_ENTRY(XIterator)
+    END_GEM_INTERFACE_MAP()
+
     TSceneGraphNodeIterator(_ListType &List) :
         m_List(List)
     {
@@ -75,17 +79,6 @@ public:
 
         return Result::End;
     }
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppUnk)
-    {
-        if (iid == XIterator::IId)
-        {
-            *ppUnk = this;
-            AddRef();
-            return Result::Success;
-        }
-
-        return CGenericBase::InternalQueryInterface(iid, ppUnk);
-    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -98,6 +91,11 @@ class TSceneGraphNode :
     TInnerGeneric<CNameTag> m_NameTag;
 
 public:
+    BEGIN_GEM_INTERFACE_MAP(CObjectBase)
+        GEM_INTERFACE_ENTRY(XSceneGraphNode)
+        GEM_CONTAINED_INTERFACE_ENTRY(XNameTag, m_NameTag)
+    END_GEM_INTERFACE_MAP()
+
     using _ListType = TSceneGraphNodeIterator::_ListType;
     _ListType m_ChildList;
 
@@ -106,23 +104,6 @@ public:
         m_NameTag(this, pCanvas, szName),
         CObjectBase(pCanvas)
     {
-    }
-
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
-    {
-        if (XSceneGraphNode::IId == iid)
-        {
-            *ppObj = reinterpret_cast<XSceneGraphNode *>(this);
-            this->AddRef();
-            return Result::Success;
-        }
-
-        if (XNameTag::IId == iid)
-        {
-            return m_NameTag.InternalQueryInterface(iid, ppObj);
-        }
-
-        return TTransform<_Base>::InternalQueryInterface(iid, ppObj);
     }
 
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;

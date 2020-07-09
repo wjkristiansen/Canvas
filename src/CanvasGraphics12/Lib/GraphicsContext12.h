@@ -51,17 +51,9 @@ public:
 
     UINT m_NextRTVSlot = 0;
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
-    {
-        if (XCanvasGfxGraphicsContext::IId == iid)
-        {
-            *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return CGenericBase::InternalQueryInterface(iid, ppObj);
-    }
+    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+        GEM_INTERFACE_ENTRY(XCanvasGfxGraphicsContext)
+    END_GEM_INTERFACE_MAP()
 
     CGraphicsContext(CDevice *pDevice);
     ~CGraphicsContext();

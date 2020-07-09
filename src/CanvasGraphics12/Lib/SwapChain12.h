@@ -22,17 +22,9 @@ public:
 
     TGemPtr<CSurface> m_pSurface;
 
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
-    {
-        if (XCanvasGfxSwapChain::IId == iid)
-        {
-            *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return CGenericBase::InternalQueryInterface(iid, ppObj);
-    }
+    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+        GEM_INTERFACE_ENTRY(XCanvasGfxSwapChain)
+    END_GEM_INTERFACE_MAP()
 
     CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContext, DXGI_FORMAT Format, UINT NumBuffers);
 

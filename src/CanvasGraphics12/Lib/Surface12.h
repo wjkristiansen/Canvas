@@ -13,17 +13,9 @@ class CSurface :
     public Gem::CGenericBase
 {
 public:
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
-    {
-        if (XCanvasGfxSurface::IId == iid)
-        {
-            *ppObj = this;
-            AddRef(); // This will actually AddRef the outer generic
-            return Result::Success;
-        }
-
-        return CGenericBase::InternalQueryInterface(iid, ppObj);
-    }
+    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+        GEM_INTERFACE_ENTRY(XCanvasGfxSurface)
+    END_GEM_INTERFACE_MAP()
 
     CSurface(ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState) :
         CResource(pResource, InitState) {}

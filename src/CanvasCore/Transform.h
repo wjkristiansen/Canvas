@@ -16,6 +16,10 @@ class TTransform : public _Base
     inline static const Math::FloatVector4 m_WorldUp = Math::FloatVector4( 0.f, 1.f, 0.f, 0.f );
 
 public:
+    BEGIN_GEM_INTERFACE_MAP0()
+        GEM_INTERFACE_ENTRY(XTransform)
+    END_GEM_INTERFACE_MAP()
+
     TTransform() {}
 
     GEMMETHOD_(RotationType, GetRotationType)() const final
@@ -47,19 +51,5 @@ public:
     GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location) final
     {
         return Result::NotImplemented;
-    }
-
-    GEMMETHOD(InternalQueryInterface)(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj)
-    {
-        *ppObj = nullptr;
-
-        if (XTransform::IId == iid)
-        {
-            *ppObj = reinterpret_cast<XTransform *>(this);
-            this->AddRef();
-            return Result::Success;
-        }
-
-        return Result::NoInterface;
     }
 };

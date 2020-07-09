@@ -20,6 +20,10 @@ class CCanvas :
     UINT m_FrameCounter = 0;
 
 public:
+    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+        GEM_INTERFACE_ENTRY(XCanvas)
+    END_GEM_INTERFACE_MAP()
+
     CCanvas(QLog::CLogClient *pLogClient) :
         m_Logger(pLogClient, "CANVAS"),
         CGenericBase()
@@ -45,7 +49,6 @@ public:
     }
 
     // XCanvas methods
-    GEMMETHOD(InternalQueryInterface)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj);
     GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) final;
     GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, PCSTR szName = nullptr) final;
     GEMMETHOD(CreateCameraNode)(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName = nullptr);
