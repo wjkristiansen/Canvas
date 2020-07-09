@@ -145,7 +145,6 @@ void CCanvas::ReportObjectLeaks()
 }
 
 //------------------------------------------------------------------------------------------------
-_Success_(return < Gem::Result::Fail)
 Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, QLog::CLogClient *pLogClient)
 {
     *ppCanvas = nullptr;
@@ -164,6 +163,8 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
             TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogClient); // throw(bad_alloc)
             return pCanvas->QueryInterface(iid, ppCanvas);
         }
+
+        return Result::NoInterface;
     }
     catch (std::bad_alloc &)
     {
@@ -176,29 +177,22 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
         }
         return Result::OutOfMemory;
     }
-
-    return Result::NoInterface;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateCanvasGfx(PCSTR szDLLPath, _Outptr_opt_result_nullonfailure_ XCanvasGfx **ppCanvasGfx)
+GEMMETHODIMP CCanvas::CreateCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XCanvasGfx **ppCanvasGfx)
 {
-    if (ppCanvasGfx)
-    {
-        *ppCanvasGfx = nullptr;
-    }
-
     CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateCanvasGfx");
-
-    Result result = Result::NotImplemented;
 
     try
     {
+        *ppCanvasGfx = nullptr;
+
         wil::unique_hmodule graphicsModule(LoadLibraryExA(szDLLPath, NULL, 0));
 
         if (graphicsModule.get() == NULL)
         {
-            throw(GemError(Result::NotFound));
+            ThrowGemError(Result::NotFound);
         }
 
         // Create XCanvasGfx interface
@@ -212,24 +206,20 @@ GEMMETHODIMP CCanvas::CreateCanvasGfx(PCSTR szDLLPath, _Outptr_opt_result_nullon
         Gem::TGemPtr<XCanvasGfx> pCanvasGfx;
         ThrowGemError(pCreate(&pCanvasGfx, m_Logger.GetLogClient()));
 
+        pCanvasGfx->AddRef();
+        *ppCanvasGfx = pCanvasGfx.Get();
+
         m_pCanvasGfx.Attach(pCanvasGfx.Detach());
 
-        if (ppCanvasGfx)
-        {
-            m_pCanvasGfx->AddRef();
-            *ppCanvasGfx = m_pCanvasGfx.Get();
-        }
-
-        result = Result::Success;
         graphicsModule.swap(m_GraphicsModule);
+
+        return Result::Success;
     }
     catch (const Gem::GemError &e)
     {
-        result = e.Result();
-        Sentinel.ReportError(result);
+        Sentinel.ReportError(e.Result());
+        return Result::Fail;
     }
-
-    return result;
 }
 
 //------------------------------------------------------------------------------------------------

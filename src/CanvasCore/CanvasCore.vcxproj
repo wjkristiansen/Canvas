@@ -192,8 +192,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\Inc\Canvas.h" />
+    <ClInclude Include="..\Inc\CanvasCore.h" />
     <ClInclude Include="..\Inc\CanvasGfx.h" />
     <ClInclude Include="..\Inc\CanvasMath.hpp" />
+    <ClInclude Include="..\Inc\CanvasModel.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="Canvas.h" />
     <ClInclude Include="DataSource.h" />
