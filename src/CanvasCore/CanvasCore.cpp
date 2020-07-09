@@ -180,9 +180,9 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XCanvasGfx **ppCanvasGfx)
+GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XCanvasGfx **ppCanvasGfx)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateCanvasGfx");
+    CFunctionSentinel Sentinel(Logger(), "XCanvas::InitCanvasGfx");
 
     try
     {
