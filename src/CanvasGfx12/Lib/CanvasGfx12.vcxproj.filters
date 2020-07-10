@@ -36,6 +36,9 @@
     <ClInclude Include="Instance12.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="CanvasGfx12.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -57,6 +60,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Instance12.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CanvasGfx12.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

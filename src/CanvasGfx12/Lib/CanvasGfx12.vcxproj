@@ -168,6 +168,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="CanvasGfx12.h" />
     <ClInclude Include="Instance12.h" />
     <ClInclude Include="GraphicsContext12.h" />
     <ClInclude Include="Device12.h" />
@@ -177,6 +178,7 @@
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="CanvasGfx12.cpp" />
     <ClCompile Include="Instance12.cpp" />
     <ClCompile Include="Device12.cpp" />
     <ClCompile Include="GraphicsContext12.cpp" />

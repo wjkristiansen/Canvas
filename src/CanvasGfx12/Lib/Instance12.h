@@ -4,8 +4,6 @@
 
 #pragma once
 
-extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt);
-
 class CInstance12 :
 	public XGfxInstance,
 	public Gem::CGenericBase
