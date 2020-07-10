@@ -92,7 +92,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\CanvasGraphics12\d3dx12;..\LinkedList\Inc;..\CanvasGraphics12\D3D12ResourceUtils;..\Inc;..\ThinWin\Inc;..\QLog\Inc;..\GEM\Inc;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\CanvasGfx12\d3dx12;..\LinkedList\Inc;..\CanvasGfx12\D3D12ResourceUtils;..\Inc;..\ThinWin\Inc;..\QLog\Inc;..\GEM\Inc;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>true</UseFullPaths>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -111,7 +111,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\CanvasGraphics12\d3dx12;..\LinkedList\Inc;..\CanvasGraphics12\D3D12ResourceUtils;..\Inc;..\ThinWin\Inc;..\QLog\Inc;..\GEM\Inc;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\CanvasGfx12\d3dx12;..\LinkedList\Inc;..\CanvasGfx12\D3D12ResourceUtils;..\Inc;..\ThinWin\Inc;..\QLog\Inc;..\GEM\Inc;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>true</UseFullPaths>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -132,7 +132,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..\CanvasGraphics12\d3dx12;..\LinkedList\Inc;..\CanvasGraphics12\D3D12ResourceUtils;..\Inc;..\ThinWin\Inc;..\QLog\Inc;..\GEM\Inc;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\CanvasGfx12\d3dx12;..\LinkedList\Inc;..\CanvasGfx12\D3D12ResourceUtils;..\Inc;..\ThinWin\Inc;..\QLog\Inc;..\GEM\Inc;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>true</UseFullPaths>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -154,7 +154,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>..\CanvasGraphics12\d3dx12;..\LinkedList\Inc;..\CanvasGraphics12\D3D12ResourceUtils;..\Inc;..\ThinWin\Inc;..\QLog\Inc;..\GEM\Inc;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\CanvasGfx12\d3dx12;..\LinkedList\Inc;..\CanvasGfx12\D3D12ResourceUtils;..\Inc;..\ThinWin\Inc;..\QLog\Inc;..\GEM\Inc;$(VCInstallDir)UnitTest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <UseFullPaths>true</UseFullPaths>
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -189,7 +189,7 @@
     <ProjectReference Include="..\CanvasCore\CanvasCore.vcxproj">
       <Project>{ea57eef8-e2c3-403e-adfb-bcc7e08dea22}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\CanvasGraphics12\D3D12ResourceUtils\D3D12ResourceUtils.vcxproj">
+    <ProjectReference Include="..\CanvasGfx12\D3D12ResourceUtils\D3D12ResourceUtils.vcxproj">
       <Project>{7d750d79-0f9f-49fb-9aef-86ec849bd4ba}</Project>
     </ProjectReference>
   </ItemGroup>

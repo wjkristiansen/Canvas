@@ -12,7 +12,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasUnitTest", "CanvasUni
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasModelViewer", "CanvasModelViewer\CanvasModelViewer.vcxproj", "{6C7EFAF8-C6B0-410E-A5FD-2B7FE5B3C83C}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasGraphics12", "CanvasGraphics12\Lib\CanvasGraphics12.vcxproj", "{F7D2D203-E471-47FE-A644-18E36B5DDEC5}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasGfx12", "CanvasGfx12\Lib\CanvasGfx12.vcxproj", "{F7D2D203-E471-47FE-A644-18E36B5DDEC5}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CanvasModel", "CanvasModel\CanvasModel.vcxproj", "{AC3A31EF-645B-444D-9C52-1048758AD6F4}"
 EndProject
@@ -22,7 +22,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "QLog", "QLog\Lib\QLog.vcxpr
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThinWin", "ThinWin\Lib\ThinWin.vcxproj", "{27F5356B-4424-4129-8C24-2757B56A4C8D}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "D3D12ResourceUtils", "CanvasGraphics12\D3D12ResourceUtils\D3D12ResourceUtils.vcxproj", "{7D750D79-0F9F-49FB-9AEF-86EC849BD4BA}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "D3D12ResourceUtils", "CanvasGfx12\D3D12ResourceUtils\D3D12ResourceUtils.vcxproj", "{7D750D79-0F9F-49FB-9AEF-86EC849BD4BA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
