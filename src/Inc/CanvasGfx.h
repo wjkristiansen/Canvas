@@ -65,12 +65,12 @@ namespace Canvas
     };
 
 #define FOR_EACH_CANVAS_GS_INTERFACE(macro) \
-    macro(XCanvasGfxDevice, 0x1017) \
-    macro(XCanvasGfxGraphicsContext, 0x1018) \
-    macro(XCanvasGfxBuffer, 0x1020) \
-    macro(XCanvasGfxSurface, 0x1021) \
-    macro(XCanvasGfxSwapChain, 0x1022) \
-    macro(XCanvasGfx, 0x1023) \
+    macro(XGfxDevice, 0x1017) \
+    macro(XGfxGraphicsContext, 0x1018) \
+    macro(XGfxBuffer, 0x1020) \
+    macro(XGfxSurface, 0x1021) \
+    macro(XGfxSwapChain, 0x1022) \
+    macro(XGfxInstance, 0x1023) \
 
     //------------------------------------------------------------------------------------------------
 #define ENUM_GS_INTERFACE_ID(iface, value) CanvasGfxIId_##iface=value,
@@ -83,24 +83,24 @@ namespace Canvas
 
     //------------------------------------------------------------------------------------------------
     // Buffer resource
-    struct XCanvasGfxSurface : public Gem::XGeneric
+    struct XGfxSurface : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxSurface);
+        CANVAS_GS_INTERFACE_DECLARE(XGfxSurface);
     };
 
     //------------------------------------------------------------------------------------------------
     // Buffer resource
-    struct XCanvasGfxBuffer : public Gem::XGeneric
+    struct XGfxBuffer : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxBuffer);
+        CANVAS_GS_INTERFACE_DECLARE(XGfxBuffer);
     };
 
     //------------------------------------------------------------------------------------------------
-    struct XCanvasGfxSwapChain : public Gem::XGeneric
+    struct XGfxSwapChain : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxSwapChain);
+        CANVAS_GS_INTERFACE_DECLARE(XGfxSwapChain);
 
-        GEMMETHOD(GetSurface)(XCanvasGfxSurface **ppSurface) = 0;
+        GEMMETHOD(GetSurface)(XGfxSurface **ppSurface) = 0;
         GEMMETHOD(WaitForLastPresent)() = 0;
     };
 
@@ -110,31 +110,31 @@ namespace Canvas
     // the CPU.
     // In D3D12, this wraps a command queue and command lists and command allocators.
     // In D3D11, this is wraps an ID3D11DeviceContext
-    struct XCanvasGfxGraphicsContext : public Gem::XGeneric
+    struct XGfxGraphicsContext : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxGraphicsContext);
+        CANVAS_GS_INTERFACE_DECLARE(XGfxGraphicsContext);
 
-        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) = 0;
-        GEMMETHOD_(void, CopyBuffer(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource)) = 0;
-        GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) = 0;
+        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) = 0;
+        GEMMETHOD_(void, CopyBuffer(XGfxBuffer *pDest, XGfxBuffer *pSource)) = 0;
+        GEMMETHOD_(void, ClearSurface)(XGfxSurface *pSurface, const float Color[4]) = 0;
         GEMMETHOD(Flush)() = 0;
-        GEMMETHOD(FlushAndPresent)(XCanvasGfxSwapChain *pSwapChain) = 0;
+        GEMMETHOD(FlushAndPresent)(XGfxSwapChain *pSwapChain) = 0;
         GEMMETHOD(Wait)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
     // Interface to a graphics device
-    struct XCanvasGfxDevice : public Gem::XGeneric
+    struct XGfxDevice : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfxDevice);
+        CANVAS_GS_INTERFACE_DECLARE(XGfxDevice);
 
-        GEMMETHOD(CreateGfxContext)(Canvas::XCanvasGfxGraphicsContext **ppGraphicsContext) = 0;
+        GEMMETHOD(CreateGfxContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) = 0;
     };
 
     //------------------------------------------------------------------------------------------------
-    struct XCanvasGfx : public Gem::XGeneric
+    struct XGfxInstance : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XCanvasGfx);
-        GEMMETHOD(CreateCanvasGfxDevice)(Canvas::XCanvasGfxDevice **ppDevice) = 0;
+        CANVAS_GS_INTERFACE_DECLARE(XGfxInstance);
+        GEMMETHOD(CreateCanvasGfxDevice)(Canvas::XGfxDevice **ppDevice) = 0;
     };
 }

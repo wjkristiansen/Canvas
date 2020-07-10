@@ -8,13 +8,13 @@
 
 //------------------------------------------------------------------------------------------------
 class CSurface :
-    public Canvas::XCanvasGfxSurface,
+    public Canvas::XGfxSurface,
     public CResource,
     public Gem::CGenericBase
 {
 public:
     BEGIN_GEM_INTERFACE_MAP(CGenericBase)
-        GEM_INTERFACE_ENTRY(XCanvasGfxSurface)
+        GEM_INTERFACE_ENTRY(XGfxSurface)
     END_GEM_INTERFACE_MAP()
 
     CSurface(ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState) :

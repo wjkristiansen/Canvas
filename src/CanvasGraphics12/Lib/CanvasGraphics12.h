@@ -7,7 +7,7 @@
 extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt);
 
 class CCanvasGfx :
-	public XCanvasGfx,
+	public XGfxInstance,
 	public Gem::CGenericBase
 {
 	QLog::CBasicLogger m_Logger;
@@ -20,9 +20,9 @@ public:
 	QLog::CBasicLogger &Logger() { return m_Logger; }
 
     BEGIN_GEM_INTERFACE_MAP(Gem::CGenericBase)
-        GEM_INTERFACE_ENTRY(XCanvasGfx)
+        GEM_INTERFACE_ENTRY(XGfxInstance)
     END_GEM_INTERFACE_MAP()
 
     static CCanvasGfx *GetSingleton() { return m_pThis; }
-	GEMMETHOD(CreateCanvasGfxDevice)(XCanvasGfxDevice **ppDevice);
+	GEMMETHOD(CreateCanvasGfxDevice)(XGfxDevice **ppDevice);
 };

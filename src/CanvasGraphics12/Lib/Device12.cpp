@@ -39,12 +39,12 @@ Result CDevice::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice::CreateGfxContext(XCanvasGfxGraphicsContext **ppContext)
+GEMMETHODIMP CDevice::CreateGfxContext(XGfxGraphicsContext **ppContext)
 {
-    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XCanvasGfxDevice::CreateGfxContext");
+    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XGfxDevice::CreateGfxContext");
     try
     {
-        Gem::TGemPtr<XCanvasGfxGraphicsContext> pContext(new TGeneric<CGraphicsContext>(this));
+        Gem::TGemPtr<XGfxGraphicsContext> pContext(new TGeneric<CGraphicsContext>(this));
         return pContext->QueryInterface(ppContext);
     }
     catch (const Gem::GemError &e)
@@ -55,7 +55,7 @@ GEMMETHODIMP CDevice::CreateGfxContext(XCanvasGfxGraphicsContext **ppContext)
 }
 
 //------------------------------------------------------------------------------------------------
-//GEMMETHODIMP CDevice::AllocateUploadBuffer(UINT64 SizeInBytes, XCanvasGfxUploadBuffer **ppUploadBuffer)
+//GEMMETHODIMP CDevice::AllocateUploadBuffer(UINT64 SizeInBytes, XGfxUploadBuffer **ppUploadBuffer)
 //{
 //    try
 //    {

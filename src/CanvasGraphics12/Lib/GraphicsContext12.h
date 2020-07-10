@@ -25,7 +25,7 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CGraphicsContext :
-    public Canvas::XCanvasGfxGraphicsContext,
+    public Canvas::XGfxGraphicsContext,
     public Gem::CGenericBase
 {
     std::mutex m_mutex;
@@ -52,18 +52,18 @@ public:
     UINT m_NextRTVSlot = 0;
 
     BEGIN_GEM_INTERFACE_MAP(CGenericBase)
-        GEM_INTERFACE_ENTRY(XCanvasGfxGraphicsContext)
+        GEM_INTERFACE_ENTRY(XGfxGraphicsContext)
     END_GEM_INTERFACE_MAP()
 
     CGraphicsContext(CDevice *pDevice);
     ~CGraphicsContext();
 
-    // XCanvasGfxGraphicsContext methods
-    GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XCanvasGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) final;
-    GEMMETHOD_(void, CopyBuffer)(XCanvasGfxBuffer *pDest, XCanvasGfxBuffer *pSource) final;
-    GEMMETHOD_(void, ClearSurface)(XCanvasGfxSurface *pSurface, const float Color[4]) final;
+    // XGfxGraphicsContext methods
+    GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) final;
+    GEMMETHOD_(void, CopyBuffer)(XGfxBuffer *pDest, XGfxBuffer *pSource) final;
+    GEMMETHOD_(void, ClearSurface)(XGfxSurface *pSurface, const float Color[4]) final;
     GEMMETHOD(Flush)() final;
-    GEMMETHOD(FlushAndPresent)(XCanvasGfxSwapChain *pSwapChain) final;
+    GEMMETHOD(FlushAndPresent)(XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(Wait)() final;
 
     // Internal functions

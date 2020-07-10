@@ -8,7 +8,7 @@
 
 //------------------------------------------------------------------------------------------------
 class CSwapChain :
-    public Canvas::XCanvasGfxSwapChain,
+    public Canvas::XGfxSwapChain,
     public Gem::CGenericBase
 {
     std::mutex m_mutex;
@@ -23,12 +23,12 @@ public:
     TGemPtr<CSurface> m_pSurface;
 
     BEGIN_GEM_INTERFACE_MAP(CGenericBase)
-        GEM_INTERFACE_ENTRY(XCanvasGfxSwapChain)
+        GEM_INTERFACE_ENTRY(XGfxSwapChain)
     END_GEM_INTERFACE_MAP()
 
     CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContext, DXGI_FORMAT Format, UINT NumBuffers);
 
-    GEMMETHOD(GetSurface)(XCanvasGfxSurface **ppSurface) final;
+    GEMMETHOD(GetSurface)(XGfxSurface **ppSurface) final;
     GEMMETHOD(WaitForLastPresent)() final;
 
     // Internal functions

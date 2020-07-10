@@ -54,7 +54,7 @@ public:
     GEMMETHOD(CreateCameraNode)(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName = nullptr);
     GEMMETHOD(CreateLightNode)(const ModelData::LIGHT_DATA *pLightData, _Outptr_result_nullonfailure_ XLight **ppLight, _In_z_ PCSTR szName = nullptr);
 
-    GEMMETHOD(InitCanvasGfx)(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XCanvasGfx **ppCanvasGfx) final;
+    GEMMETHOD(InitCanvasGfx)(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx) final;
     GEMMETHOD(FrameTick)() final;
 
     void ReportObjectLeaks();
@@ -62,7 +62,7 @@ public:
     QLog::CBasicLogger &Logger() { return m_Logger; }
 
 public:
-    TGemPtr<XCanvasGfx> m_pCanvasGfx;
+    TGemPtr<XGfxInstance> m_pCanvasGfx;
 };
 
-typedef Result (*CreateCanvasGfxProc)(_Outptr_result_nullonfailure_ XCanvasGfx **pGraphicsGfx, QLog::CLogClient *pLogClient) noexcept;
+typedef Result (*CreateCanvasGfxProc)(_Outptr_result_nullonfailure_ XGfxInstance **pGraphicsGfx, QLog::CLogClient *pLogClient) noexcept;

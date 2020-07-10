@@ -180,7 +180,7 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XCanvasGfx **ppCanvasGfx)
+GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx)
 {
     CFunctionSentinel Sentinel(Logger(), "XCanvas::InitCanvasGfx");
 
@@ -195,7 +195,7 @@ GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailur
             ThrowGemError(Result::NotFound);
         }
 
-        // Create XCanvasGfx interface
+        // Create XGfxInstance interface
         CreateCanvasGfxProc pCreate = reinterpret_cast<CreateCanvasGfxProc>(
             GetProcAddress(graphicsModule.get(), "CreateCanvasGfx"));
         if (pCreate == nullptr)
@@ -203,7 +203,7 @@ GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailur
             throw(GemError(Result::NotFound));
         }
 
-        Gem::TGemPtr<XCanvasGfx> pCanvasGfx;
+        Gem::TGemPtr<XGfxInstance> pCanvasGfx;
         ThrowGemError(pCreate(&pCanvasGfx, m_Logger.GetLogClient()));
 
         pCanvasGfx->AddRef();

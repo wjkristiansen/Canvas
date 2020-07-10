@@ -56,7 +56,7 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContex
 
 Gem::Result CSwapChain::Present()
 {
-    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XCanvasGfxSwapChain::Present", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XGfxSwapChain::Present", QLog::Category::Debug);
     try
     {
         std::unique_lock<std::mutex> Lock(m_mutex);
@@ -84,7 +84,7 @@ Gem::Result CSwapChain::Present()
     return Result::Success;
 }
 
-GEMMETHODIMP CSwapChain::GetSurface(XCanvasGfxSurface **ppSurface)
+GEMMETHODIMP CSwapChain::GetSurface(XGfxSurface **ppSurface)
 {
     return m_pSurface->QueryInterface(ppSurface);
 }
