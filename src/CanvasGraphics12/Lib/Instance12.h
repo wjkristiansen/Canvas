@@ -24,5 +24,5 @@ public:
     END_GEM_INTERFACE_MAP()
 
     static CInstance12 *GetSingleton() { return m_pThis; }
-	GEMMETHOD(CreateCanvasGfxDevice)(XGfxDevice **ppDevice);
+	GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppDevice);
 };

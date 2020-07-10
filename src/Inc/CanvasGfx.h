@@ -128,13 +128,13 @@ namespace Canvas
     {
         CANVAS_GS_INTERFACE_DECLARE(XGfxDevice);
 
-        GEMMETHOD(CreateGfxContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) = 0;
+        GEMMETHOD(CreateGraphicsContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) = 0;
     };
 
     //------------------------------------------------------------------------------------------------
     struct XGfxInstance : public Gem::XGeneric
     {
         CANVAS_GS_INTERFACE_DECLARE(XGfxInstance);
-        GEMMETHOD(CreateCanvasGfxDevice)(Canvas::XGfxDevice **ppDevice) = 0;
+        GEMMETHOD(CreateGfxDevice)(Canvas::XGfxDevice **ppDevice) = 0;
     };
 }

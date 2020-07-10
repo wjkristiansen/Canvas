@@ -25,7 +25,7 @@ public:
 
     Result Initialize();
 
-    GEMMETHOD(CreateGfxContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) final;
+    GEMMETHOD(CreateGraphicsContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) final;
     // GEMMETHOD(CreateRenderTargetView)(Canvas::XGfxRenderTargetView **ppRTView, Canvas::XGfxTexture2D *pTex2D)
     // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XGfxUploadBuffer **ppUploadBuffer) final;
 

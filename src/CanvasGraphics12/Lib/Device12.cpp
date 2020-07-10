@@ -39,9 +39,9 @@ Result CDevice12::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateGfxContext(XGfxGraphicsContext **ppContext)
+GEMMETHODIMP CDevice12::CreateGraphicsContext(XGfxGraphicsContext **ppContext)
 {
-    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxDevice::CreateGfxContext");
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxDevice::CreateGraphicsContext");
     try
     {
         Gem::TGemPtr<XGfxGraphicsContext> pContext(new TGeneric<CGraphicsContext12>(this));

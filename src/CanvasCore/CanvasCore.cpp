@@ -197,7 +197,7 @@ GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailur
 
         // Create XGfxInstance interface
         CreateCanvasGfxProc pCreate = reinterpret_cast<CreateCanvasGfxProc>(
-            GetProcAddress(graphicsModule.get(), "CreateCanvasGfx"));
+            GetProcAddress(graphicsModule.get(), "CreateGfxInstance"));
         if (pCreate == nullptr)
         {
             throw(GemError(Result::NotFound));
