@@ -5,7 +5,7 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-class CDevice :
+class CDevice12 :
     public Canvas::XGfxDevice,
     public Gem::CGenericBase
 {
@@ -21,7 +21,7 @@ public:
         GEM_INTERFACE_ENTRY(XGfxDevice)
     END_GEM_INTERFACE_MAP()
 
-    CDevice();
+    CDevice12();
 
     Result Initialize();
 

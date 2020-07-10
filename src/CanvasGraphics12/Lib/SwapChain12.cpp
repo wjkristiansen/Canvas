@@ -6,14 +6,14 @@
 
 using namespace Canvas;
 
-CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContext, DXGI_FORMAT Format, UINT NumBuffers) :
+CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CGraphicsContext12 *pContext, DXGI_FORMAT Format, UINT NumBuffers) :
     m_pContext(pContext)
 {
     // Create the DXGI factory
     CComPtr<IDXGIFactory7> pFactory;
     ThrowFailedHResult(CreateDXGIFactory2(0, IID_PPV_ARGS(&pFactory)));
 
-    CDevice *pDevice = pContext->GetDevice();
+    CDevice12 *pDevice = pContext->GetDevice();
     ID3D12Device *pD3DDevice = pDevice->GetD3DDevice();
 
     // Create the swap chain
@@ -43,7 +43,7 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContex
     ThrowFailedHResult(pSwapChain4->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
 
     // Craft a D3D12_RESOURCE_DESC to match the swap chain
-    TGemPtr<CSurface> pSurface = new TGeneric<CSurface>(pBackBuffer, D3D12_RESOURCE_STATE_COMMON);
+    TGemPtr<CSurface12> pSurface = new TGeneric<CSurface12>(pBackBuffer, D3D12_RESOURCE_STATE_COMMON);
         
     CComPtr<ID3D12Fence> pFence;
     ThrowFailedHResult(pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence)));
@@ -54,9 +54,9 @@ CSwapChain::CSwapChain(HWND hWnd, bool Windowed, class CGraphicsContext *pContex
     m_pSurface.Attach(pSurface.Detach());
 }
 
-Gem::Result CSwapChain::Present()
+Gem::Result CSwapChain12::Present()
 {
-    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XGfxSwapChain::Present", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxSwapChain::Present", QLog::Category::Debug);
     try
     {
         std::unique_lock<std::mutex> Lock(m_mutex);
@@ -84,12 +84,12 @@ Gem::Result CSwapChain::Present()
     return Result::Success;
 }
 
-GEMMETHODIMP CSwapChain::GetSurface(XGfxSurface **ppSurface)
+GEMMETHODIMP CSwapChain12::GetSurface(XGfxSurface **ppSurface)
 {
     return m_pSurface->QueryInterface(ppSurface);
 }
 
-GEMMETHODIMP CSwapChain::WaitForLastPresent()
+GEMMETHODIMP CSwapChain12::WaitForLastPresent()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
     HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);

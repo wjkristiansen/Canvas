@@ -19,12 +19,12 @@ class CCommandAllocatorPool
 public:
     CCommandAllocatorPool();
 
-    ID3D12CommandAllocator *Init(CDevice *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators);
-    ID3D12CommandAllocator *RotateAllocators(class CGraphicsContext *pContext);
+    ID3D12CommandAllocator *Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators);
+    ID3D12CommandAllocator *RotateAllocators(class CGraphicsContext12 *pContext);
 };
 
 //------------------------------------------------------------------------------------------------
-class CGraphicsContext :
+class CGraphicsContext12 :
     public Canvas::XGfxGraphicsContext,
     public Gem::CGenericBase
 {
@@ -42,7 +42,7 @@ public:
     CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
     UINT64 m_FenceValue = 0;
     CComPtr<ID3D12Fence> m_pFence;
-    CDevice *m_pDevice = nullptr; // weak pointer
+    CDevice12 *m_pDevice = nullptr; // weak pointer
 
     static const UINT NumShaderResourceDescriptors = 65536;
     static const UINT NumSamplerDescriptors = 1024;
@@ -55,8 +55,8 @@ public:
         GEM_INTERFACE_ENTRY(XGfxGraphicsContext)
     END_GEM_INTERFACE_MAP()
 
-    CGraphicsContext(CDevice *pDevice);
-    ~CGraphicsContext();
+    CGraphicsContext12(CDevice12 *pDevice);
+    ~CGraphicsContext12();
 
     // XGfxGraphicsContext methods
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) final;
@@ -67,11 +67,11 @@ public:
     GEMMETHOD(Wait)() final;
 
     // Internal functions
-    CDevice *GetDevice() const { return m_pDevice; }
+    CDevice12 *GetDevice() const { return m_pDevice; }
     ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
     Gem::Result FlushImpl();
 
-    D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
+    D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
 
     void ApplyResourceBarriers();
 };

@@ -9,12 +9,12 @@
 using namespace Canvas;
 
 //------------------------------------------------------------------------------------------------
-CDevice::CDevice()
+CDevice12::CDevice12()
 {
 }
 
 //------------------------------------------------------------------------------------------------
-Result CDevice::Initialize()
+Result CDevice12::Initialize()
 {
     try
     {
@@ -31,7 +31,7 @@ Result CDevice::Initialize()
     }
     catch (_com_error &e)
     {
-        CCanvasGfx::GetSingleton()->Logger().LogErrorF("CDevice::Initialize: HRESULT 0x%08x", e.Error());
+        CInstance12::GetSingleton()->Logger().LogErrorF("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
         return GemResult(e.Error());
     }
 
@@ -39,12 +39,12 @@ Result CDevice::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice::CreateGfxContext(XGfxGraphicsContext **ppContext)
+GEMMETHODIMP CDevice12::CreateGfxContext(XGfxGraphicsContext **ppContext)
 {
-    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XGfxDevice::CreateGfxContext");
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxDevice::CreateGfxContext");
     try
     {
-        Gem::TGemPtr<XGfxGraphicsContext> pContext(new TGeneric<CGraphicsContext>(this));
+        Gem::TGemPtr<XGfxGraphicsContext> pContext(new TGeneric<CGraphicsContext12>(this));
         return pContext->QueryInterface(ppContext);
     }
     catch (const Gem::GemError &e)
@@ -55,7 +55,7 @@ GEMMETHODIMP CDevice::CreateGfxContext(XGfxGraphicsContext **ppContext)
 }
 
 //------------------------------------------------------------------------------------------------
-//GEMMETHODIMP CDevice::AllocateUploadBuffer(UINT64 SizeInBytes, XGfxUploadBuffer **ppUploadBuffer)
+//GEMMETHODIMP CDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, XGfxUploadBuffer **ppUploadBuffer)
 //{
 //    try
 //    {
@@ -70,12 +70,12 @@ GEMMETHODIMP CDevice::CreateGfxContext(XGfxGraphicsContext **ppContext)
 //    }
 //    catch (std::bad_alloc)
 //    {
-//        m_Logger.LogError("CDevice::AllocateUploadBuffer: Out of memory");
+//        m_Logger.LogError("CDevice12::AllocateUploadBuffer: Out of memory");
 //        return Result::OutOfMemory;
 //    }
 //    catch (_com_error &e)
 //    {
-//        m_Logger.LogErrorF("CDevice::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
+//        m_Logger.LogErrorF("CDevice12::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
 //        return GemResult(e.Error());
 //    }
 //    return Result::Success;
@@ -106,7 +106,7 @@ struct Vertex
     float TexCoords[3][2];
 };
 
-//GEMMETHODIMP CDevice::CreateStaticMesh(const ModelData::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh)
+//GEMMETHODIMP CDevice12::CreateStaticMesh(const ModelData::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh)
 //{
 //    try
 //    {
@@ -156,14 +156,14 @@ struct Vertex
 //    }
 //    catch (_com_error &e)
 //    {
-//        m_Logger.LogErrorF("CDevice::CreateStaticMesh: HRESULT 0x%08x", e.Error());
+//        m_Logger.LogErrorF("CDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
 //        return GemResult(e.Error());
 //    }
 //    return Result::Success;
 //}
 
 ////------------------------------------------------------------------------------------------------
-//GEMMETHODIMP CDevice::CreateMaterial(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
+//GEMMETHODIMP CDevice12::CreateMaterial(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
 //{
 //    return Result::NotImplemented;
 //}

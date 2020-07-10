@@ -14,7 +14,7 @@ CCommandAllocatorPool::CCommandAllocatorPool()
 }
 
 //------------------------------------------------------------------------------------------------
-ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators)
+ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators)
 {
     for (UINT i = 0; i < NumAllocators; ++i)
     {
@@ -29,7 +29,7 @@ ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice *pDevice, D3D12_COMM
 }
 
 //------------------------------------------------------------------------------------------------
-ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CGraphicsContext *pContext)
+ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CGraphicsContext12 *pContext)
 {
     ID3D12CommandQueue *pCQ = pContext->m_pCommandQueue;
 
@@ -48,7 +48,7 @@ ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CGraphicsContext
 }
 
 //------------------------------------------------------------------------------------------------
-CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
+CGraphicsContext12::CGraphicsContext12(CDevice12 *pDevice) :
     m_pDevice(pDevice)
 {
     CComPtr<ID3D12CommandQueue> pCQ;
@@ -135,14 +135,14 @@ CGraphicsContext::CGraphicsContext(CDevice *pDevice) :
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers)
+GEMMETHODIMP CGraphicsContext12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers)
 {
-    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XGfxGraphicsContext::CreateSwapChain");
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxGraphicsContext::CreateSwapChain");
     try
     {
         // Create the swapchain
         DXGI_FORMAT dxgiFormat = CanvasFormatToDXGIFormat(Format);
-        TGemPtr<CSwapChain> pSwapChain = new TGeneric<CSwapChain>(hWnd, Windowed, this, dxgiFormat, NumBuffers);
+        TGemPtr<CSwapChain12> pSwapChain = new TGeneric<CSwapChain12>(hWnd, Windowed, this, dxgiFormat, NumBuffers);
         return pSwapChain->QueryInterface(ppSwapChain);
     }
     catch (GemError &e)
@@ -153,23 +153,23 @@ GEMMETHODIMP CGraphicsContext::CreateSwapChain(HWND hWnd, bool Windowed, XGfxSwa
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CGraphicsContext::CopyBuffer(XGfxBuffer *pDest, XGfxBuffer *pSource)
+GEMMETHODIMP_(void) CGraphicsContext12::CopyBuffer(XGfxBuffer *pDest, XGfxBuffer *pSource)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CGraphicsContext::ClearSurface(XGfxSurface *pGfxSurface, const float Color[4])
+GEMMETHODIMP_(void) CGraphicsContext12::ClearSurface(XGfxSurface *pGfxSurface, const float Color[4])
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CSurface *pSurface = reinterpret_cast<CSurface *>(pGfxSurface);
+    CSurface12 *pSurface = reinterpret_cast<CSurface12 *>(pGfxSurface);
     pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_RENDER_TARGET);
     ApplyResourceBarriers();
     m_pCommandList->ClearRenderTargetView(CreateRenderTargetView(pSurface, 0, 0, 0), Color, 0, nullptr);
 }
 
 //------------------------------------------------------------------------------------------------
-D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext::CreateRenderTargetView(class CSurface *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
+D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
     UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -189,7 +189,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext::CreateRenderTargetView(class CSurf
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CGraphicsContext::FlushImpl()
+Gem::Result CGraphicsContext12::FlushImpl()
 {
     try
     {
@@ -213,10 +213,10 @@ Gem::Result CGraphicsContext::FlushImpl()
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CGraphicsContext::Flush()
+Gem::Result CGraphicsContext12::Flush()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XGfxGraphicsContext::Flush", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxGraphicsContext::Flush", QLog::Category::Debug);
     try
     {
         ThrowGemError(FlushImpl());
@@ -232,14 +232,14 @@ Gem::Result CGraphicsContext::Flush()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsContext::FlushAndPresent(XGfxSwapChain *pSwapChain)
+GEMMETHODIMP CGraphicsContext12::FlushAndPresent(XGfxSwapChain *pSwapChain)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel(CCanvasGfx::GetSingleton()->Logger(), "XGfxGraphicsContext::FlushAndPresent", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxGraphicsContext::FlushAndPresent", QLog::Category::Debug);
 
     try
     {
-        CSwapChain *pIntSwapChain = reinterpret_cast<CSwapChain *>(pSwapChain);
+        CSwapChain12 *pIntSwapChain = reinterpret_cast<CSwapChain12 *>(pSwapChain);
         pIntSwapChain->m_pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_COMMON);
         ApplyResourceBarriers();
 
@@ -263,7 +263,7 @@ GEMMETHODIMP CGraphicsContext::FlushAndPresent(XGfxSwapChain *pSwapChain)
     return Result::Success;
 }
 
-GEMMETHODIMP CGraphicsContext::Wait()
+GEMMETHODIMP CGraphicsContext12::Wait()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
     HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
@@ -273,7 +273,7 @@ GEMMETHODIMP CGraphicsContext::Wait()
     return Result::Success;
 }
 
-CGraphicsContext::~CGraphicsContext()
+CGraphicsContext12::~CGraphicsContext12()
 {
     m_pCommandList->Close();
 
@@ -281,7 +281,7 @@ CGraphicsContext::~CGraphicsContext()
 }
 
 //------------------------------------------------------------------------------------------------
-void CGraphicsContext::ApplyResourceBarriers()
+void CGraphicsContext12::ApplyResourceBarriers()
 {
     std::vector<D3D12_RESOURCE_BARRIER> resourceBarriers;
     m_pDevice->m_ResourceStateManager.ResolveResourceBarriers(resourceBarriers);
