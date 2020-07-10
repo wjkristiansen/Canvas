@@ -18,11 +18,6 @@ Result CDevice12::Initialize()
 {
     try
     {
-#if defined(_DEBUG)
-        CComPtr<ID3D12Debug3> pDebug;
-        ThrowFailedHResult(D3D12GetDebugInterface(IID_PPV_ARGS(&pDebug)));
-        pDebug->EnableDebugLayer();
-#endif
         // Create the device
         CComPtr<ID3D12Device5> pDevice;
         ThrowFailedHResult(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice)));
