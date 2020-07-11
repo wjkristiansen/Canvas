@@ -38,14 +38,16 @@ GEMMETHODIMP CCanvas::CreateScene(InterfaceId iid, _Outptr_result_nullonfailure_
     {
         TGemPtr<XGeneric> pObj;
         pObj = new TGeneric<CScene>(this, "Scene"); // throw(std::bad_alloc)
-        return pObj->QueryInterface(iid, ppObj);
+        *ppObj = pObj.Detach();
     }
     catch(std::bad_alloc &)
     {
-        Sentinel.ReportError(Result::OutOfMemory);
+        Sentinel.SetResultCode(Result::OutOfMemory);
         *ppObj = nullptr;
         return Result::OutOfMemory;
     }
+
+    return Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -57,14 +59,16 @@ GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_result_n
     {
         TGemPtr<XSceneGraphNode> pNode;
         pNode = new TGeneric<TSceneGraphNode<XSceneGraphNode>>(this, szName);
-        return pNode->QueryInterface(iid, ppObj);
+        *ppObj = pNode.Detach();
     }
     catch (std::bad_alloc &)
     {
-        Sentinel.ReportError(Result::OutOfMemory);
+        Sentinel.SetResultCode(Result::OutOfMemory);
         *ppObj = nullptr;
         return Result::OutOfMemory;
     }
+
+    return Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -80,7 +84,7 @@ GEMMETHODIMP CCanvas::CreateCameraNode(_In_ const ModelData::CAMERA_DATA *pCamer
     }
     catch (std::bad_alloc &)
     {
-        Sentinel.ReportError(Result::OutOfMemory);
+        Sentinel.SetResultCode(Result::OutOfMemory);
         *ppCamera = nullptr;
         return Result::OutOfMemory;
     }
@@ -101,7 +105,7 @@ GEMMETHODIMP CCanvas::CreateLightNode(const ModelData::LIGHT_DATA *pLightData, _
     }
     catch (std::bad_alloc &)
     {
-        Sentinel.ReportError(Result::OutOfMemory);
+        Sentinel.SetResultCode(Result::OutOfMemory);
         *ppLight = nullptr;
         return Result::OutOfMemory;
     }
@@ -212,14 +216,14 @@ GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailur
         m_pCanvasGfx.Attach(pCanvasGfx.Detach());
 
         graphicsModule.swap(m_GraphicsModule);
-
-        return Result::Success;
     }
     catch (const Gem::GemError &e)
     {
-        Sentinel.ReportError(e.Result());
+        Sentinel.SetResultCode(e.Result());
         return Result::Fail;
     }
+
+    return Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------

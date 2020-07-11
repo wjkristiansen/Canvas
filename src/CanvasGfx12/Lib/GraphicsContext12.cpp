@@ -147,7 +147,7 @@ GEMMETHODIMP CGraphicsContext12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxS
     }
     catch (GemError &e)
     {
-        Sentinel.ReportError(e.Result());
+        Sentinel.SetResultCode(e.Result());
         return e.Result();
     }
 }
@@ -257,7 +257,7 @@ GEMMETHODIMP CGraphicsContext12::FlushAndPresent(XGfxSwapChain *pSwapChain)
     }
     catch (GemError &e)
     {
-        Sentinel.ReportError(e.Result());
+        Sentinel.SetResultCode(e.Result());
     }
 
     return Result::Success;

@@ -15,7 +15,7 @@ GEMMETHODIMP TSceneGraphNode<_Base>::AddChild(_In_ XSceneGraphNode* pChild)
     }
     catch (std::bad_alloc&)
     {
-        Sentinel.ReportError(Result::OutOfMemory);
+        Sentinel.SetResultCode(Result::OutOfMemory);
         return Result::OutOfMemory;
     }
     return Result::Success;
@@ -35,7 +35,7 @@ GEMMETHODIMP TSceneGraphNode<_Base>::CreateChildIterator(_Outptr_result_nullonfa
     }
     catch (std::bad_alloc&)
     {
-        Sentinel.ReportError(Result::OutOfMemory);
+        Sentinel.SetResultCode(Result::OutOfMemory);
         *ppIterator = nullptr;
         return Result::OutOfMemory;
     }

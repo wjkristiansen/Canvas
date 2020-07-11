@@ -36,12 +36,12 @@ GEMMETHODIMP CNameTag::SetName(PCSTR szName)
         catch(std::bad_alloc &)
         {
             result = Gem::Result::OutOfMemory;
-            Sentinel.ReportError(result);
+            Sentinel.SetResultCode(result);
         }
         catch (std::exception &)
         {
             result = Gem::Result::InvalidArg; // Consider adding Result::Duplicate
-            Sentinel.ReportError(result);
+            Sentinel.SetResultCode(result);
         }
     }
     else

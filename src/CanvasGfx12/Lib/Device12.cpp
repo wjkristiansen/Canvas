@@ -44,7 +44,7 @@ GEMMETHODIMP CDevice12::CreateGraphicsContext(XGfxGraphicsContext **ppContext)
     }
     catch (const Gem::GemError &e)
     {
-        Sentinel.ReportError(e.Result());
+        Sentinel.SetResultCode(e.Result());
         return e.Result();
     }
 }

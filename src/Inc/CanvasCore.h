@@ -218,14 +218,10 @@ public:
         QLog::Category category = Gem::Failed(m_Result) ? QLog::Category::Error : m_DefaultLogCategory;
         m_Logger.LogF(category, "%s: %s", GemResultString(m_Result), m_FunctionName);
     }
-    void ReportError(Gem::Result result, const char *Message = nullptr)
-    {
-        if (Message)
-        {
-            m_Logger.LogError(Message);
-        }
-    }
+
+    void SetResultCode(Gem::Result Result) { m_Result = Result; }
 };
+
 }
 
 extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, QLog::CLogClient *pLogOutput = nullptr);

@@ -77,7 +77,7 @@ Gem::Result CSwapChain12::Present()
     }
     catch (_com_error &e)
     {
-        Sentinel.ReportError(GemResult(e.Error()));
+        Sentinel.SetResultCode(GemResult(e.Error()));
         return GemResult(e.Error());
     }
 
