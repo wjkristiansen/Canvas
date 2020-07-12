@@ -165,10 +165,12 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
                 }
             }
             TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogClient); // throw(bad_alloc)
-            return pCanvas->QueryInterface(iid, ppCanvas);
+            *ppCanvas = pCanvas.Detach();
         }
-
-        return Result::NoInterface;
+        else
+        {
+            return Result::NoInterface;
+        }
     }
     catch (std::bad_alloc &)
     {
@@ -181,6 +183,8 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
         }
         return Result::OutOfMemory;
     }
+
+    return Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
