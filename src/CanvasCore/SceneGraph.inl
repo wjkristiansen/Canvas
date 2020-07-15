@@ -28,7 +28,7 @@ GEMMETHODIMP TSceneGraphNode<_Base>::CreateChildIterator(_Outptr_result_nullonfa
     CFunctionSentinel Sentinel(m_pCanvas->Logger(), "XSceneGraphNode::CreateChildIterator");
     try
     {
-        TSceneGraphNodeIterator* pIterator = new TGeneric<TSceneGraphNodeIterator>(m_ChildList); // throw(std::bad_alloc)
+        CSceneGraphNodeIterator* pIterator = new TGeneric<CSceneGraphNodeIterator>(m_ChildList); // throw(std::bad_alloc)
         pIterator->AddRef();
         *ppIterator = pIterator;
         return Result::Success;

@@ -5,7 +5,7 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
-class TSceneGraphNodeIterator :
+class CSceneGraphNodeIterator :
     public XIterator,
     public CGenericBase
 {
@@ -18,7 +18,7 @@ public:
         GEM_INTERFACE_ENTRY(XIterator)
     END_GEM_INTERFACE_MAP()
 
-    TSceneGraphNodeIterator(_ListType &List) :
+    CSceneGraphNodeIterator(_ListType &List) :
         m_List(List)
     {
         m_it = m_List.begin();
@@ -91,7 +91,7 @@ protected:
     TInnerGeneric<CNameTag> m_NameTag;
 
 public:
-    using _ListType = TSceneGraphNodeIterator::_ListType;
+    using _ListType = CSceneGraphNodeIterator::_ListType;
     _ListType m_ChildList;
 
     TSceneGraphNode(CCanvas* pCanvas, PCSTR szName) :
