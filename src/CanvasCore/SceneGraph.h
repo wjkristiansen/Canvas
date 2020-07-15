@@ -110,7 +110,7 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CNullSceneGraphNode :
-    public TSceneGraphNode<XCamera>
+    public TSceneGraphNode<XSceneGraphNode>
 {
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -120,6 +120,6 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CNullSceneGraphNode(CCanvas *pCanvas, PCSTR szName) :
-        TSceneGraphNode<XCamera>(pCanvas, szName) {
+        TSceneGraphNode<XSceneGraphNode>(pCanvas, szName) {
     }
 };
