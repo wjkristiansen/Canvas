@@ -13,7 +13,7 @@ class CSurface12 :
     public Gem::CGenericBase
 {
 public:
-    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+    BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxSurface)
     END_GEM_INTERFACE_MAP()
 

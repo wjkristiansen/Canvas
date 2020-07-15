@@ -17,7 +17,7 @@ public:
     CComPtr<ID3D12Device5> m_pD3DDevice;
     CResourceStateManager m_ResourceStateManager;
 
-    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+    BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxDevice)
     END_GEM_INTERFACE_MAP()
 

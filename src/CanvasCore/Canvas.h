@@ -20,7 +20,7 @@ class CCanvas :
     UINT m_FrameCounter = 0;
 
 public:
-    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+    BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XCanvas)
     END_GEM_INTERFACE_MAP()
 

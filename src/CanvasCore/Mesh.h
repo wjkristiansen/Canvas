@@ -10,7 +10,7 @@ class CMeshInstance :
     public CGenericBase
 {
 public:
-    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+    BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XMeshInstance)
     END_GEM_INTERFACE_MAP()
 

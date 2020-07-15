@@ -58,7 +58,7 @@ GEMMETHODIMP CCanvas::CreateNullSceneGraphNode(InterfaceId iid, _Outptr_result_n
     try
     {
         TGemPtr<XSceneGraphNode> pNode;
-        pNode = new TGeneric<TSceneGraphNode<XSceneGraphNode>>(this, szName);
+        pNode = new TGeneric<CNullSceneGraphNode>(this, szName);
         *ppObj = pNode.Detach();
     }
     catch (std::bad_alloc &)

@@ -17,7 +17,7 @@ public:
 
 	QLog::CBasicLogger &Logger() { return m_Logger; }
 
-    BEGIN_GEM_INTERFACE_MAP(Gem::CGenericBase)
+    BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxInstance)
     END_GEM_INTERFACE_MAP()
 

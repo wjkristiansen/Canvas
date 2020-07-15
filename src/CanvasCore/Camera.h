@@ -13,8 +13,11 @@ class CCamera :
     float m_FovAngle;
 
 public:
-    BEGIN_GEM_INTERFACE_MAP(TSceneGraphNode<XCamera>)
+    BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XCamera)
+        GEM_INTERFACE_ENTRY(XTransform)
+        GEM_INTERFACE_ENTRY(XSceneGraphNode)
+        GEM_CONTAINED_INTERFACE_ENTRY(XNameTag, m_NameTag)
     END_GEM_INTERFACE_MAP()
 
     CCamera(CCanvas *pCanvas, const ModelData::CAMERA_DATA *pCameraData, PCSTR szName) :

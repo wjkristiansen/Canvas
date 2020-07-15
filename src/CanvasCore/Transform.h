@@ -16,10 +16,6 @@ class TTransform : public _Base
     inline static const Math::FloatVector4 m_WorldUp = Math::FloatVector4( 0.f, 1.f, 0.f, 0.f );
 
 public:
-    BEGIN_GEM_INTERFACE_MAP0()
-        GEM_INTERFACE_ENTRY(XTransform)
-    END_GEM_INTERFACE_MAP()
-
     TTransform() {}
 
     GEMMETHOD_(RotationType, GetRotationType)() const final

@@ -85,10 +85,6 @@ class CNameTag :
     TScopedKeyValuePair<std::string, XGeneric *> m_Tag;
 
 public:
-    BEGIN_GEM_INTERFACE_MAP(CInnerGenericBase)
-        GEM_INTERFACE_ENTRY(XNameTag)
-    END_GEM_INTERFACE_MAP()
-
     CNameTag(XGeneric *pOuterGeneric, CCanvas *pCanvas, PCSTR szName = nullptr);
 
     GEMMETHOD_(PCSTR, GetName)() final;

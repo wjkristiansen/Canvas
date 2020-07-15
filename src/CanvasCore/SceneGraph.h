@@ -14,7 +14,7 @@ public:
     _ListType::iterator m_it;
     _ListType& m_List;
 
-    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+    BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XIterator)
     END_GEM_INTERFACE_MAP()
 
@@ -87,16 +87,10 @@ class TSceneGraphNode :
     public TTransform<_Base>,
     public CObjectBase
 {
-
+protected:
     TInnerGeneric<CNameTag> m_NameTag;
 
 public:
-    BEGIN_GEM_INTERFACE_MAP(CObjectBase)
-        GEM_INTERFACE_ENTRY(XTransform)
-        GEM_INTERFACE_ENTRY(XSceneGraphNode)
-        GEM_CONTAINED_INTERFACE_ENTRY(XNameTag, m_NameTag)
-    END_GEM_INTERFACE_MAP()
-
     using _ListType = TSceneGraphNodeIterator::_ListType;
     _ListType m_ChildList;
 
@@ -113,3 +107,19 @@ public:
 	virtual Gem::InterfaceId GetMostDerivedType() const { return _Base::IId; }
 };
 
+
+//------------------------------------------------------------------------------------------------
+class CNullSceneGraphNode :
+    public TSceneGraphNode<XCamera>
+{
+public:
+    BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XTransform)
+        GEM_INTERFACE_ENTRY(XSceneGraphNode)
+        GEM_CONTAINED_INTERFACE_ENTRY(XNameTag, m_NameTag)
+    END_GEM_INTERFACE_MAP()
+
+    CNullSceneGraphNode(CCanvas *pCanvas, PCSTR szName) :
+        TSceneGraphNode<XCamera>(pCanvas, szName) {
+    }
+};

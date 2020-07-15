@@ -51,7 +51,7 @@ public:
 
     UINT m_NextRTVSlot = 0;
 
-    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+    BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxGraphicsContext)
     END_GEM_INTERFACE_MAP()
 

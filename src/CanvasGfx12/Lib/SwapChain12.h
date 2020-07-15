@@ -22,7 +22,7 @@ public:
 
     TGemPtr<CSurface12> m_pSurface;
 
-    BEGIN_GEM_INTERFACE_MAP(CGenericBase)
+    BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxSwapChain)
     END_GEM_INTERFACE_MAP()
 
