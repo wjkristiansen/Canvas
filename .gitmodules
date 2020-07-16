@@ -8,9 +8,6 @@
 [submodule "src/QLog"]
 	path = src/QLog
 	url = https://wjkristiansen.visualstudio.com/DefaultCollection/QLog/_git/QLog
-[submodule "src/BuddySuballocator"]
-	path = src/BuddySuballocator
-	url = https://wjkristiansen.visualstudio.com/DefaultCollection/Allocators/_git/BuddySuballocator
 [submodule "src/wil"]
 	path = src/wil
 	url = https://github.com/microsoft/wil.git
