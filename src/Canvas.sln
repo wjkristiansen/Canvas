@@ -24,6 +24,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThinWin", "ThinWin\Lib\Thin
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "D3D12ResourceUtils", "CanvasGfx12\D3D12ResourceUtils\D3D12ResourceUtils.vcxproj", "{7D750D79-0F9F-49FB-9AEF-86EC849BD4BA}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BuddySuballocatorTest", "Allocators\BuddySuballocatorTest\BuddySuballocatorTest.vcxproj", "{8BCC44B6-0AE9-410B-BCC8-54303790EE97}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RingSuballocatorTest", "Allocators\RingSuballocatorTest\RingSuballocatorTest.vcxproj", "{429C98DA-A377-40CC-9E55-D0A743528D7D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -104,6 +108,22 @@ Global
 		{7D750D79-0F9F-49FB-9AEF-86EC849BD4BA}.Release|x64.Build.0 = Release|x64
 		{7D750D79-0F9F-49FB-9AEF-86EC849BD4BA}.Release|x86.ActiveCfg = Release|Win32
 		{7D750D79-0F9F-49FB-9AEF-86EC849BD4BA}.Release|x86.Build.0 = Release|Win32
+		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Debug|x64.ActiveCfg = Debug|x64
+		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Debug|x64.Build.0 = Debug|x64
+		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Debug|x86.ActiveCfg = Debug|Win32
+		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Debug|x86.Build.0 = Debug|Win32
+		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Release|x64.ActiveCfg = Release|x64
+		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Release|x64.Build.0 = Release|x64
+		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Release|x86.ActiveCfg = Release|Win32
+		{8BCC44B6-0AE9-410B-BCC8-54303790EE97}.Release|x86.Build.0 = Release|Win32
+		{429C98DA-A377-40CC-9E55-D0A743528D7D}.Debug|x64.ActiveCfg = Debug|x64
+		{429C98DA-A377-40CC-9E55-D0A743528D7D}.Debug|x64.Build.0 = Debug|x64
+		{429C98DA-A377-40CC-9E55-D0A743528D7D}.Debug|x86.ActiveCfg = Debug|Win32
+		{429C98DA-A377-40CC-9E55-D0A743528D7D}.Debug|x86.Build.0 = Debug|Win32
+		{429C98DA-A377-40CC-9E55-D0A743528D7D}.Release|x64.ActiveCfg = Release|x64
+		{429C98DA-A377-40CC-9E55-D0A743528D7D}.Release|x64.Build.0 = Release|x64
+		{429C98DA-A377-40CC-9E55-D0A743528D7D}.Release|x86.ActiveCfg = Release|Win32
+		{429C98DA-A377-40CC-9E55-D0A743528D7D}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
