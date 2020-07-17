@@ -7,6 +7,65 @@
 #include "GraphicsContext12.h"
 
 using namespace Canvas;
+using namespace Gem;
+
+//------------------------------------------------------------------------------------------------
+Result CManagedGpuDescriptorHeap::Initialize(ID3D12Device *pDevice, const D3D12_DESCRIPTOR_HEAP_DESC &HeapDesc)
+{
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "CManagedGpuDescriptorHeap::Initialize");
+    try
+    {
+        CComPtr<ID3D12DescriptorHeap> pHeap;
+
+        ThrowGemError(GemResult(pDevice->CreateDescriptorHeap(&HeapDesc, IID_PPV_ARGS(&pHeap))));
+        m_HeapDesc = HeapDesc;
+        m_DescriptorIncremenent = pDevice->GetDescriptorHandleIncrementSize(HeapDesc.Type);
+        m_RingSuballocator.Reset(HeapDesc.NumDescriptors);
+        m_pHeap.Attach(pHeap.Detach());
+    }
+
+    catch (const GemError &e)
+    {
+        Sentinel.SetResultCode(e.Result());
+        return e.Result();
+    }
+
+    return Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+void CManagedGpuDescriptorHeap::FreeDescriptors(UINT64 FenceValue)
+{
+    for (auto it = m_ActiveAllocations.begin(); it != m_ActiveAllocations.end();)
+    {
+        if (it->FenceValue > FenceValue)
+            break;
+        m_RingSuballocator.Free(it->Size);
+        it = m_ActiveAllocations.erase(it);
+    }
+}
+//------------------------------------------------------------------------------------------------
+UINT CManagedGpuDescriptorHeap::AllocateDescriptors(UINT NumDescriptors, UINT64 FenceValue)
+{
+    UINT64 MaxFenceValue = GetMaxFenceValue();
+    if (FenceValue < MaxFenceValue)
+    {
+        throw(GemError(Result::InvalidArg));
+    }
+
+    UINT Index = m_RingSuballocator.Allocate(NumDescriptors); // throw std::bad_alloc
+
+    if (MaxFenceValue == FenceValue)
+    {
+        m_ActiveAllocations.rbegin()->Size += NumDescriptors;
+    }
+    else
+    {
+        m_ActiveAllocations.push_back({ NumDescriptors, FenceValue });
+    }
+
+    return Index;
+}
 
 //------------------------------------------------------------------------------------------------
 CCommandAllocatorPool::CCommandAllocatorPool()
@@ -29,14 +88,14 @@ ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice12 *pDevice, D3D12_CO
 }
 
 //------------------------------------------------------------------------------------------------
-ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CGraphicsContext12 *pContext)
+ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CGraphicsContext12 *pContext, UINT64 CompletedFenceValue)
 {
     ID3D12CommandQueue *pCQ = pContext->m_pCommandQueue;
 
     CommandAllocators[AllocatorIndex].FenceValue = pContext->m_FenceValue;
     AllocatorIndex = (AllocatorIndex + 1) % CommandAllocators.size();
 
-    if (CommandAllocators[AllocatorIndex].FenceValue > pContext->m_pFence->GetCompletedValue())
+    if (CommandAllocators[AllocatorIndex].FenceValue > CompletedFenceValue)
     {
         HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
         pContext->m_pFence->SetEventOnCompletion(CommandAllocators[AllocatorIndex].FenceValue, hEvent);
@@ -66,30 +125,26 @@ CGraphicsContext12::CGraphicsContext12(CDevice12 *pDevice) :
     CComPtr<ID3D12GraphicsCommandList> pCL;
     ThrowGemError(GemResult(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
 
-    CComPtr<ID3D12DescriptorHeap> pResDH;
     D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     DHDesc.NumDescriptors = NumShaderResourceDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pResDH))));
+    ThrowGemError(m_ShaderResourceDescriptorHeap.Initialize(pD3DDevice, DHDesc));
 
-    CComPtr<ID3D12DescriptorHeap> pSamplerDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
     DHDesc.NumDescriptors = NumSamplerDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pSamplerDH))));
+    ThrowGemError(m_SamplerDescriptorHeap.Initialize(pD3DDevice, DHDesc));
 
-    CComPtr<ID3D12DescriptorHeap> pRTVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     DHDesc.NumDescriptors = NumRTVDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pRTVDH))));
+    ThrowGemError(m_RTVDescriptorHeap.Initialize(pD3DDevice, DHDesc));
 
-    CComPtr<ID3D12DescriptorHeap> pDSVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     DHDesc.NumDescriptors = NumDSVDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pDSVDH))));
+    ThrowGemError(m_DSVDescriptorHeap.Initialize(pD3DDevice, DHDesc));
 
     CComPtr<ID3D12Fence> pFence;
     ThrowGemError(GemResult(pD3DDevice->CreateFence(m_FenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence))));
@@ -124,10 +179,6 @@ CGraphicsContext12::CGraphicsContext12(CDevice12 *pDevice) :
     CComPtr<ID3D12RootSignature> pDefaultRootSig;
     pD3DDevice->CreateRootSignature(1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pDefaultRootSig));
 
-    m_pShaderResourceDescriptorHeap.Attach(pResDH.Detach());
-    m_pSamplerDescriptorHeap.Attach(pSamplerDH.Detach());
-    m_pRTVDescriptorHeap.Attach(pRTVDH.Detach());
-    m_pDSVDescriptorHeap.Attach(pDSVDH.Detach());
     m_pCommandAllocator.Attach(pCA.Detach());
     m_pCommandList.Attach(pCL.Detach());
     m_pCommandQueue.Attach(pCQ.Detach());
@@ -165,27 +216,13 @@ GEMMETHODIMP_(void) CGraphicsContext12::ClearSurface(XGfxSurface *pGfxSurface, c
     CSurface12 *pSurface = reinterpret_cast<CSurface12 *>(pGfxSurface);
     pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_RENDER_TARGET);
     ApplyResourceBarriers();
-    m_pCommandList->ClearRenderTargetView(CreateRenderTargetView(pSurface, 0, 0, 0), Color, 0, nullptr);
-}
-
-//------------------------------------------------------------------------------------------------
-D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
-{
-    ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    UINT slot = m_NextRTVSlot;
-    m_NextRTVSlot = (m_NextRTVSlot) % NumRTVDescriptors;
-    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
-    cpuHandle.ptr= m_pRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    UINT Index = m_RTVDescriptorHeap.AllocateDescriptors(1, m_FenceValue + 1);
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
     rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
     rtvDesc.Texture2DArray.ArraySize = 1;
-    rtvDesc.Texture2DArray.FirstArraySlice = ArraySlice;
-    rtvDesc.Texture2DArray.MipSlice = MipSlice;
-    rtvDesc.Texture2DArray.PlaneSlice = PlaneSlice;
-    ID3D12Resource *pD3DResource = pSurface->GetD3DResource();
-    m_pDevice->GetD3DDevice()->CreateRenderTargetView(pD3DResource, &rtvDesc, cpuHandle);
-    return cpuHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE CpuHandle = m_RTVDescriptorHeap.CpuDescriptorHandle(Index);
+    m_pDevice->GetD3DDevice()->CreateRenderTargetView(pSurface->GetD3DResource(), &rtvDesc, CpuHandle);
+    m_pCommandList->ClearRenderTargetView(CpuHandle, Color, 0, nullptr);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -249,9 +286,13 @@ GEMMETHODIMP CGraphicsContext12::FlushAndPresent(XGfxSwapChain *pSwapChain)
 
         m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
 
+        UINT64 CompletedFenceValue = m_pFence->GetCompletedValue();
+
         // Rotate command allocators
-        m_pCommandAllocator = m_CommandAllocatorPool.RotateAllocators(this);
+        m_pCommandAllocator = m_CommandAllocatorPool.RotateAllocators(this, CompletedFenceValue);
         m_pCommandAllocator->Reset();
+
+        m_RTVDescriptorHeap.FreeDescriptors(CompletedFenceValue);
 
         ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
     }

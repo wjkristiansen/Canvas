@@ -91,7 +91,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;CANVASGFX12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\..\wil\include;..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\Allocators\Inc;..\..\wil\include;..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/experimental:external /external:I ..\..\wil /external:I ..\d3dx12 /external:W0 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -110,7 +110,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;CANVASGFX12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\..\wil\include;..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\Allocators\Inc;..\..\wil\include;..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/experimental:external /external:I ..\..\wil /external:I ..\d3dx12 /external:W0 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -131,7 +131,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;CANVASGFX12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\..\wil\include;..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\Allocators\Inc;..\..\wil\include;..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/experimental:external /external:I ..\..\wil /external:I ..\d3dx12 /external:W0 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -154,7 +154,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;CANVASGFXS12_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>..\..\wil\include;..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\Allocators\Inc;..\..\wil\include;..\D3D12ResourceUtils;.\Inc;..\..\Inc;..\..\GEM\Inc;..\..\QLog\Inc;..\..\LinkedList\Inc</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <AdditionalOptions>/experimental:external /external:I ..\..\wil /external:I ..\d3dx12 /external:W0 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
