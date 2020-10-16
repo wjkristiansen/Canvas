@@ -94,14 +94,13 @@ Result CInstanceVk::Initialize()
     }
     catch(const VkError &e)
     {
-        Gem::Result result(VkToGemResult(e.Result()));
-        Sentinel.SetResultCode(result);
+        Sentinel.SetResultCode(e.GemResult());
         if (vkInstance != VK_NULL_HANDLE)
         {
             vkDestroyInstance(vkInstance, nullptr);
         }
 
-        return result;
+        return e.GemResult();
     }
 
     return Result::Success;

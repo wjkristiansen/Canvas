@@ -82,9 +82,8 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
     }
     catch (const VkError &e)
     {
-        Gem::Result result(VkToGemResult(e.Result()));
-        Sentinel.SetResultCode(result);
-        return result;
+        Sentinel.SetResultCode(e.GemResult());
+        return e.GemResult();
     }
 
     return Result::Success;
@@ -155,7 +154,7 @@ Gem::Result CSwapChainVk::Present()
     }
     catch (const VkError &e)
     {
-        return VkToGemResult(e.Result());
+        return e.GemResult();
     }
 
     return Result::Success;
@@ -189,7 +188,7 @@ GEMMETHODIMP CSwapChainVk::WaitForLastPresent()
     }
     catch (const VkError &e)
     {
-        return VkToGemResult(e.Result());
+        return e.GemResult();
     }
 
     return Result::Success;

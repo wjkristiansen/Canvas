@@ -211,7 +211,7 @@ Result CDeviceVk::Initialize()
     }
     catch (const VkError &e)
     {
-        Gem::Result result = VkToGemResult(e.Result());
+        Gem::Result result = e.GemResult();
         Sentinel.SetResultCode(result);
         return result;
     }

@@ -56,13 +56,13 @@ Result CGraphicsContextVk::Initialize()
     }
     catch (const VkError &e)
     {
-        Gem::Result result = VkToGemResult(e.Result());
-        Sentinel.SetResultCode(result);
-        if (vkQueue != VK_NULL_HANDLE)
-        {
-            // Destroy queue???
-        }
-        return result;
+        Sentinel.SetResultCode(e.GemResult());
+        return e.GemResult();
+    }
+    catch (const GemError &e)
+    {
+        Sentinel.SetResultCode(e.Result());
+        return e.Result();
     }
 
     return Result::Success;

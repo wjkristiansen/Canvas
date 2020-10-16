@@ -318,6 +318,7 @@ public:
         m_Result(result) {}
 
     VkResult Result() const { return m_Result; }
+    Gem::Result GemResult() const { return VkToGemResult(m_Result); }
 };
 
 //------------------------------------------------------------------------------------------------
