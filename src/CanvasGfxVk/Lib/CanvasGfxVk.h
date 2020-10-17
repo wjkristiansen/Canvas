@@ -529,3 +529,15 @@ using UniqueVk##type = CUniqueVkDeviceObject<Vk##type>;
 
 FOR_EACH_VK_DEVICE_OBJECT_HANDLE_TYPE(DEFINE_UNIQUE_VK_HANDLE_WRAPPER);
 
+//------------------------------------------------------------------------------------------------
+class CFenceVk
+{
+    UniqueVkFence m_vkFence;
+
+public:
+    CFenceVk() = default;
+    CFenceVk(VkFence fence, VkDevice vkDevice, const VkAllocationCallbacks *pAllocator) :
+        m_vkFence(fence, vkDevice, pAllocator) {}
+
+    VkFence GetVkFence() const { return m_vkFence.Get(); }
+};

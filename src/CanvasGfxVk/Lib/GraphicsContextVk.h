@@ -5,17 +5,46 @@
 #pragma once
 
 //------------------------------------------------------------------------------------------------
+class CCommandBufferManager
+{
+protected:
+    UniqueVkCommandPool m_VkCommandPool;
+    struct VkCommandBufferEntry
+    {
+        VkCommandBufferEntry(VkCommandBuffer cb) :
+            vkCommandBuffer(cb) {}
+        VkCommandBufferEntry(VkCommandBuffer cb, const std::shared_ptr<CFenceVk> &pf) :
+            vkCommandBuffer(cb),
+            pFence(pf) {}
+        VkCommandBuffer vkCommandBuffer;
+        std::shared_ptr<CFenceVk> pFence;
+    };
+
+    std::deque<VkCommandBufferEntry> m_CommandBuffers;
+    uint32_t m_QueueFamilyIndex = 0;
+
+    Gem::Result Initialize(VkDevice vkDevice, uint32_t NumBuffers, uint32_t QueueFamilyIndex);
+
+    CCommandBufferManager() = default;
+    ~CCommandBufferManager();
+
+public:
+    // Unacquires the next available command buffer
+    VkCommandBuffer AcquireCommandBuffer(); // throw(Gem::GemError)
+    void UnacquireCommandBuffer(VkCommandBuffer vkCommandBuffer, const std::shared_ptr<CFenceVk> &pFence);
+};
+
+//------------------------------------------------------------------------------------------------
 class CGraphicsContextVk :
     public Canvas::XGfxGraphicsContext,
-    public Gem::CGenericBase
+    public Gem::CGenericBase,
+    public CCommandBufferManager
 {
 public:
     std::mutex m_mutex;
     class CDeviceVk *m_pDevice; // Weak pointer
     VkQueue m_VkQueue;
-    UniqueVkCommandPool m_VkCommandPool;
     VkCommandBuffer m_VkCommandBuffer;
-    uint32_t m_QueueFamilyIndex;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxGraphicsContext)
@@ -34,4 +63,6 @@ public:
     // Internal methods
     Gem::Result Initialize();
     Gem::Result FlushImpl();
+
+    VkDevice GetVkDevice() const { return m_pDevice ? m_pDevice->m_VkDevice.Get() : VK_NULL_HANDLE; }
 };

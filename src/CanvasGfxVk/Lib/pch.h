@@ -25,6 +25,8 @@
 #include <CanvasGfx.h>
 
 #include <vector>
+#include <deque>
 #include <mutex>
+#include <memory>
 
 #endif //PCH_H	

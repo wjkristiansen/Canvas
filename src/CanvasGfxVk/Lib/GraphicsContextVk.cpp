@@ -12,47 +12,108 @@
 using namespace Canvas;
 using namespace Gem;
 
-CGraphicsContextVk::CGraphicsContextVk(CDeviceVk *pVkDevice) :
-    m_pDevice(pVkDevice)
+//------------------------------------------------------------------------------------------------
+CCommandBufferManager::~CCommandBufferManager()
 {
+    if (m_VkCommandPool.Get() != VK_NULL_HANDLE)
+    {
+        VkDevice vkDevice = m_VkCommandPool.Device();
+        for (auto &entry : m_CommandBuffers)
+        {
+            vkFreeCommandBuffers(vkDevice, m_VkCommandPool.Get(), 1, &entry.vkCommandBuffer);
+        }
+    }
 }
 
-Result CGraphicsContextVk::Initialize()
+//------------------------------------------------------------------------------------------------
+Gem::Result CCommandBufferManager::Initialize(VkDevice vkDevice, uint32_t NumBuffers, uint32_t QueueFamilyIndex)
 {
-    UniqueVkCommandPool vkCommandPool;
-    VkQueue vkQueue = VK_NULL_HANDLE;
-    VkDevice vkDevice = m_pDevice->m_VkDevice.Get();
-    CInstanceVk *pInstance = CInstanceVk::GetSingleton();
-    CFunctionSentinel Sentinel(pInstance->Logger(), "CGraphicsContextVk::Initialize");
-
     try
     {
-
-        VkDeviceQueueCreateInfo &deviceQueueCreateInfo = m_pDevice->GetDeviceQueueCreateInfo(CDeviceVk::QueueFamily::Graphics);
-
-        // Cache the queue family index
-        m_QueueFamilyIndex = deviceQueueCreateInfo.queueFamilyIndex;
-
-        // Get the queue
-        vkGetDeviceQueue(vkDevice, m_QueueFamilyIndex, 0, &m_VkQueue);
+        UniqueVkCommandPool vkCommandPool;
 
         // Create command pool
         VkCommandPoolCreateInfo poolCreateInfo = {};
         poolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolCreateInfo.queueFamilyIndex = m_QueueFamilyIndex;
+        poolCreateInfo.queueFamilyIndex = QueueFamilyIndex;
         VkCommandPool vkTempCommandPool;
         ThrowVkFailure(vkCreateCommandPool(vkDevice, &poolCreateInfo, nullptr, &vkTempCommandPool));
         vkCommandPool.Attach(vkTempCommandPool, vkDevice);
 
-        // Allocate a command buffer
+        // Allocate the command buffers
+        std::vector<VkCommandBuffer> commandBuffers(NumBuffers);
+
         VkCommandBufferAllocateInfo AllocateInfo = {};
-        AllocateInfo.commandBufferCount = 1;
+        AllocateInfo.commandBufferCount = NumBuffers;
         AllocateInfo.commandPool = vkCommandPool.Get();
         AllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        ThrowVkFailure(vkAllocateCommandBuffers(vkDevice, &AllocateInfo, &m_VkCommandBuffer));
+        ThrowVkFailure(vkAllocateCommandBuffers(vkDevice, &AllocateInfo, commandBuffers.data()));
 
-        m_VkCommandPool.Attach(vkCommandPool.Detach());
+        for (VkCommandBuffer commandBuffer : commandBuffers)
+        {
+            m_CommandBuffers.emplace_back(commandBuffer);
+        }
+
+        m_QueueFamilyIndex = QueueFamilyIndex;
+
+        m_VkCommandPool.Swap(vkCommandPool);
+    }
+    catch (const VkError &e)
+    {
+        return e.GemResult();
+    }
+
+    return Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+// Acquires the next vkCommandBuffer in the rotation
+VkCommandBuffer CCommandBufferManager::AcquireCommandBuffer() // throw(Gem::GemError)
+{
+    if (0 == m_CommandBuffers.size())
+        return VK_NULL_HANDLE;
+
+    VkFence fence = m_CommandBuffers.front().pFence->GetVkFence();
+    if (VK_NULL_HANDLE != fence)
+    {
+        // Wait for the fence
+        vkWaitForFences(m_VkCommandPool.Device(), 1, &fence, VK_TRUE, UINT_MAX);
+    }
+
+    VkCommandBuffer commandBuffer = m_CommandBuffers.front().vkCommandBuffer;
+    m_CommandBuffers.pop_front();
+    return commandBuffer;
+}
+
+//------------------------------------------------------------------------------------------------
+// Unacquires a vkCommandBuffer and blocks Acquire until vkFence is signalled
+void CCommandBufferManager::UnacquireCommandBuffer(VkCommandBuffer vkCommandBuffer, const std::shared_ptr<CFenceVk> &pFence) // throw(std::bad_alloc)
+{
+    m_CommandBuffers.emplace_back(vkCommandBuffer, pFence);
+}
+
+//------------------------------------------------------------------------------------------------
+CGraphicsContextVk::CGraphicsContextVk(CDeviceVk *pVkDevice) :
+    m_pDevice(pVkDevice)
+{
+}
+
+//------------------------------------------------------------------------------------------------
+Result CGraphicsContextVk::Initialize()
+{
+    VkQueue vkQueue = VK_NULL_HANDLE;
+    CInstanceVk *pInstance = CInstanceVk::GetSingleton();
+    CFunctionSentinel Sentinel(pInstance->Logger(), "CGraphicsContextVk::Initialize");
+
+    try
+    {
+        VkDeviceQueueCreateInfo &deviceQueueCreateInfo = m_pDevice->GetDeviceQueueCreateInfo(CDeviceVk::QueueFamily::Graphics);
+
+        ThrowGemError(CCommandBufferManager::Initialize(GetVkDevice(), 16, deviceQueueCreateInfo.queueFamilyIndex));
+
+        // Get the queue
+        vkGetDeviceQueue(GetVkDevice(), deviceQueueCreateInfo.queueFamilyIndex, 0, &m_VkQueue);
     }
     catch (const VkError &e)
     {
@@ -68,6 +129,7 @@ Result CGraphicsContextVk::Initialize()
     return Result::Success;
 }
 
+//------------------------------------------------------------------------------------------------
 // XGfxGraphicsContext methods
 GEMMETHODIMP CGraphicsContextVk::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers)
 {
@@ -93,10 +155,12 @@ GEMMETHODIMP CGraphicsContextVk::CreateSwapChain(HWND hWnd, bool Windowed, Canva
     return Result::Success;
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CGraphicsContextVk::CopyBuffer(Canvas::XGfxBuffer *pDest, Canvas::XGfxBuffer *pSource)
 {
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CGraphicsContextVk::ClearSurface(Canvas::XGfxSurface *pSurface, const float Color[4])
 {
 }
@@ -125,6 +189,7 @@ Gem::Result CGraphicsContextVk::FlushImpl()
     }
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CGraphicsContextVk::Flush()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
@@ -144,6 +209,7 @@ GEMMETHODIMP CGraphicsContextVk::Flush()
     return Result::Success;
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CGraphicsContextVk::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
@@ -177,6 +243,7 @@ GEMMETHODIMP CGraphicsContextVk::FlushAndPresent(Canvas::XGfxSwapChain *pSwapCha
     return Result::Success;
 }
 
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CGraphicsContextVk::Wait()
 {
     return Result::NotImplemented;
