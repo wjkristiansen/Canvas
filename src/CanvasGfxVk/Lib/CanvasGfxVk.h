@@ -392,6 +392,18 @@ public:
         return *this;
     }
 
+    void Swap(CUniqueVkDevice &o)
+    {
+        VkDevice vkDevice = m_VkDevice;
+        const VkAllocationCallbacks *pAllocator = m_pAllocator;
+
+        m_VkDevice = o.m_VkDevice;
+        m_pAllocator = o.m_pAllocator;
+
+        o.m_VkDevice = vkDevice;
+        o.m_pAllocator = pAllocator;
+    }
+
     VkDevice Get() const { return m_VkDevice; }
 
     VkDevice *operator&() { return &m_VkDevice; }
@@ -490,6 +502,21 @@ public:
 
         Attach(o.m_VkHandle, o.m_VkDevice, o.m_pAllocator);
         o.Detach();
+    }
+
+    void Swap(CUniqueVkDeviceObject &o)
+    {
+        VkDevice vkDevice = m_VkDevice;
+        _VkHandleType vkHandle = m_VkHandle;
+        const VkAllocationCallbacks *pAllocator = m_pAllocator;
+
+        m_VkDevice = o.m_VkDevice;
+        m_VkHandle = o.m_VkHandle;
+        m_pAllocator = o.m_pAllocator;
+
+        o.m_VkDevice = vkDevice;
+        o.m_VkHandle = vkHandle;
+        o.m_pAllocator = pAllocator;
     }
 
     VkDevice Device() const { return m_VkDevice; }

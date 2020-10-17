@@ -205,7 +205,7 @@ Result CDeviceVk::Initialize()
         // Initialize global device functions
         FOR_EACH_VK_DEVICE_EXTENSION_FUNC(VK_GET_DEVICE_PROC_ADDR, vkDevice.Get());
 
-        m_VkDevice.Attach(vkDevice.Detach());
+        m_VkDevice.Swap(vkDevice);
 
         return Result::Success;
     }

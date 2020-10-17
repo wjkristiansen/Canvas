@@ -77,7 +77,7 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
         ThrowVkFailure(vkGetSwapchainImagesKHR(vkDevice, vkSwapChain.Get(), &ImageCount, Images.data()));
 
         m_VkImages = std::move(Images);
-        m_VkSwapChain.Attach(vkSwapChain.Detach());
+        m_VkSwapChain.Swap(vkSwapChain);
 
     }
     catch (const VkError &e)
