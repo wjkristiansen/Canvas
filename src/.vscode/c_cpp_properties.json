@@ -5,7 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${VK_SDK_PATH}/**",
-                "d3dx12/**"
+                "${workspaceFolder}/CanvasGfx12/d3dx12/**"
             ],
             "defines": [
                 "_DEBUG",
