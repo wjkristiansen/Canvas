@@ -11,20 +11,21 @@ class CDeviceVk :
 {
 public:
     CUniqueVkDevice m_VkDevice;
+    VkPhysicalDevice m_VkPhysicalDevice = VK_NULL_HANDLE;
     enum class QueueFamily : uint32_t
     {
         Graphics,
         Copy
     };
     static const unsigned NumRequiredQueueFamilies = 2;
-    VkDeviceQueueCreateInfo m_deviceQueueCreateInfo[NumRequiredQueueFamilies];
+    VkDeviceQueueCreateInfo m_deviceQueueCreateInfo[NumRequiredQueueFamilies] = {};
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxDevice)
     END_GEM_INTERFACE_MAP()
 
-    CDeviceVk();
+    CDeviceVk() = default;
     ~CDeviceVk();
 
     // XGfxDevice methods

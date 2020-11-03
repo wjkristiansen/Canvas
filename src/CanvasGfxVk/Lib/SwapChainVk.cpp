@@ -43,10 +43,39 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
         VkSurfaceKHR vkSurface;
         ThrowVkFailure(vkCreateWin32SurfaceKHR(vkInstance, &win32SurfaceCreateInfo, nullptr, &vkSurface));
 
+        // Make sure the surface is supported for presentation
+        VkBool32 isSurfaceSupported;
+        ThrowVkFailure(vkGetPhysicalDeviceSurfaceSupportKHR(pDevice->m_VkPhysicalDevice, m_pContext->m_QueueFamilyIndex, vkSurface, &isSurfaceSupported));
+
+        if (!isSurfaceSupported)
+        {
+            return Gem::Result::Unavailable;
+        }
+
         // Create fence
         VkFenceCreateInfo vkFenceCreateInfo = {};
         vkFenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        ThrowVkFailure(vkCreateFence(vkDevice, &vkFenceCreateInfo, nullptr, &m_VkFence));
+        VkFence vkFence;
+        ThrowVkFailure(vkCreateFence(vkDevice, &vkFenceCreateInfo, nullptr, &vkFence));
+        m_VkFence.Attach(vkFence, vkDevice, nullptr);
+
+        // Get the surface formats
+        uint32_t formatCount;
+        ThrowVkFailure(vkGetPhysicalDeviceSurfaceFormatsKHR(pDevice->m_VkPhysicalDevice, vkSurface, &formatCount, nullptr));
+        std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
+        ThrowVkFailure(vkGetPhysicalDeviceSurfaceFormatsKHR(pDevice->m_VkPhysicalDevice, vkSurface, &formatCount, surfaceFormats.data()));
+
+        // For now, select the first enumerated format
+        const uint32_t formatIndex = 0;
+
+        // Get the available present modes
+        uint32_t presentModeCount;
+        ThrowVkFailure(vkGetPhysicalDeviceSurfacePresentModesKHR(pDevice->m_VkPhysicalDevice, vkSurface, &presentModeCount, nullptr));
+        std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+        ThrowVkFailure(vkGetPhysicalDeviceSurfacePresentModesKHR(pDevice->m_VkPhysicalDevice, vkSurface, &presentModeCount, presentModes.data()));
+
+        // For now, select the first present mode
+        const uint32_t presentModeIndex = 0;
 
         // Create the swapchain
         RECT rcWnd;
@@ -56,15 +85,15 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
         swapchainCreateInfo.pNext = nullptr;
         swapchainCreateInfo.surface = vkSurface;
         swapchainCreateInfo.minImageCount = 2;
-        swapchainCreateInfo.imageFormat = VkFormat::VK_FORMAT_R16G16B16A16_SFLOAT;
-        swapchainCreateInfo.imageColorSpace = VkColorSpaceKHR::VK_COLORSPACE_SRGB_NONLINEAR_KHR;
+        swapchainCreateInfo.imageFormat = surfaceFormats[formatIndex].format;
+        swapchainCreateInfo.imageColorSpace = surfaceFormats[formatIndex].colorSpace;
         swapchainCreateInfo.imageExtent.height = rcWnd.bottom - rcWnd.top;
         swapchainCreateInfo.imageExtent.width = rcWnd.right - rcWnd.left;
         swapchainCreateInfo.imageArrayLayers = 1;
         swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
         swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        swapchainCreateInfo.presentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+        swapchainCreateInfo.presentMode = presentModes[presentModeIndex];
         swapchainCreateInfo.clipped = VK_TRUE;
 
         VkSwapchainKHR vkTempSwapChain;
@@ -79,6 +108,8 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
         m_VkImages = std::move(Images);
         m_VkSwapChain.Swap(vkSwapChain);
 
+        m_Format = surfaceFormats[0].format;
+        m_ColorSpace = surfaceFormats[0].colorSpace;
     }
     catch (const VkError &e)
     {
@@ -181,7 +212,7 @@ GEMMETHODIMP CSwapChainVk::WaitForLastPresent()
         // Wait for the swapchain fence
         VkFence Fences[] =
         {
-            m_VkFence,
+            m_VkFence.Get(),
         };
 
         ThrowVkFailure(vkWaitForFences(vkDevice, 1, Fences, VK_TRUE, UINT64_MAX));

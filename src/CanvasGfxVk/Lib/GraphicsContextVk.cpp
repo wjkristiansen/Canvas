@@ -45,6 +45,7 @@ Gem::Result CCommandBufferManager::Initialize(VkDevice vkDevice, uint32_t NumBuf
         std::vector<VkCommandBuffer> commandBuffers(NumBuffers);
 
         VkCommandBufferAllocateInfo AllocateInfo = {};
+        AllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         AllocateInfo.commandBufferCount = NumBuffers;
         AllocateInfo.commandPool = vkCommandPool.Get();
         AllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -95,7 +96,9 @@ void CCommandBufferManager::UnacquireCommandBuffer(VkCommandBuffer vkCommandBuff
 
 //------------------------------------------------------------------------------------------------
 CGraphicsContextVk::CGraphicsContextVk(CDeviceVk *pVkDevice) :
-    m_pDevice(pVkDevice)
+    m_pDevice(pVkDevice),
+    m_VkCommandBuffer(VK_NULL_HANDLE),
+    m_VkQueue(VK_NULL_HANDLE)
 {
 }
 
@@ -114,6 +117,8 @@ Result CGraphicsContextVk::Initialize()
 
         // Get the queue
         vkGetDeviceQueue(GetVkDevice(), deviceQueueCreateInfo.queueFamilyIndex, 0, &m_VkQueue);
+
+        m_QueueFamilyIndex = deviceQueueCreateInfo.queueFamilyIndex;
     }
     catch (const VkError &e)
     {

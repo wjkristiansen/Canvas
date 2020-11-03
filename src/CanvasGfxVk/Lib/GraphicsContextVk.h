@@ -43,8 +43,9 @@ class CGraphicsContextVk :
 public:
     std::mutex m_mutex;
     class CDeviceVk *m_pDevice; // Weak pointer
-    VkQueue m_VkQueue;
-    VkCommandBuffer m_VkCommandBuffer;
+    VkQueue m_VkQueue = VK_NULL_HANDLE;
+    VkCommandBuffer m_VkCommandBuffer = VK_NULL_HANDLE;
+    uint32_t m_QueueFamilyIndex = 0;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxGraphicsContext)

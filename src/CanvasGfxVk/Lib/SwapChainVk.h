@@ -14,10 +14,12 @@ class CSwapChainVk :
 	std::mutex m_mutex;
 	CGraphicsContextVk *m_pContext; // weak ptr
 	UniqueVkSwapchainKHR m_VkSwapChain;
-	VkFence m_VkFence;
+	UniqueVkFence m_VkFence;
 	std::vector<VkImage> m_VkImages;
 	Gem::TGemPtr<CSurfaceVk> m_pSurface;
 	uint32_t m_ImageIndex = 0;
+	VkFormat m_Format;
+	VkColorSpaceKHR m_ColorSpace;
 
 public:
 	BEGIN_GEM_INTERFACE_MAP()

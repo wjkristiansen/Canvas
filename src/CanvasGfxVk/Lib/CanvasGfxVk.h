@@ -382,7 +382,7 @@ public:
     }
 
     CUniqueVkDevice(const CUniqueVkDevice &o) = delete;
-    CUniqueVkDevice(CUniqueVkDevice &&o) :
+    CUniqueVkDevice(CUniqueVkDevice &&o) noexcept :
         m_VkDevice(o.m_VkDevice),
         m_pAllocator(o.m_pAllocator)
     {
@@ -390,7 +390,7 @@ public:
     }
 
     CUniqueVkDevice &operator=(const CUniqueVkDevice &o) = delete;
-    CUniqueVkDevice &operator=(CUniqueVkDevice &&o)
+    CUniqueVkDevice &operator=(CUniqueVkDevice &&o) noexcept
     {
         Attach(o.m_VkDevice, o.m_pAllocator);
         o.Detach();

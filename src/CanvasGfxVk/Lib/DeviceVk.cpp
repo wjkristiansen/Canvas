@@ -88,7 +88,7 @@ uint32_t CheckPhysicalDeviceSupportsQueues(
             if(queueRequirements[j].requiredFlags == (supportedQueueFamilies[i].queueFlags & queueRequirements[j].requiredFlags))
             {
                 deviceQueueCreateInfo[j].queueFamilyIndex = i;
-                deviceQueueCreateInfo[j].queueCount = supportedQueueFamilies[i].queueCount;
+                deviceQueueCreateInfo[j].queueCount = 1;
                 deviceQueueCreateInfo[j].flags = 0;
                 numMatches++;
                 break;
@@ -103,12 +103,6 @@ uint32_t CheckPhysicalDeviceSupportsQueues(
     }
 
     return numMatches;
-}
-
-//------------------------------------------------------------------------------------------------
-CDeviceVk::CDeviceVk()
-{
-
 }
 
 //------------------------------------------------------------------------------------------------
@@ -206,6 +200,7 @@ Result CDeviceVk::Initialize()
         FOR_EACH_VK_DEVICE_EXTENSION_FUNC(VK_GET_DEVICE_PROC_ADDR, vkDevice.Get());
 
         m_VkDevice.Swap(vkDevice);
+        m_VkPhysicalDevice = physicalDevices[deviceIndex];
 
         return Result::Success;
     }
