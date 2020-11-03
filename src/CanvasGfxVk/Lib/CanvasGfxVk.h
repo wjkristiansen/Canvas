@@ -189,6 +189,10 @@ extern VkFormat CanvasFormatToVkFormat(Canvas::GfxFormat Fmt);
     macro(vkGetPhysicalDeviceSurfaceCapabilities2KHR, ##__VA_ARGS__) \
     macro(vkGetPhysicalDeviceSurfaceFormats2KHR, ##__VA_ARGS__) \
 
+#define FOR_EACH_VK_DEBUG_UTILS_FUNC(macro, ...) \
+    macro(vkCreateDebugUtilsMessengerEXT, ##__VA_ARGS__) \
+    macro(vkDestroyDebugUtilsMessengerEXT, ##__VA_ARGS__) \
+
 #define FOR_EACH_VK_FUNC(macro, ...) \
     FOR_EACH_VK_INSTANCE_FUNC(macro, ##__VA_ARGS__) \
     FOR_EACH_VK_PHYSICAL_DEVICE_FUNC(macro, ##__VA_ARGS__) \
@@ -200,6 +204,7 @@ extern VkFormat CanvasFormatToVkFormat(Canvas::GfxFormat Fmt);
     FOR_EACH_VK_KHR_WIN32_SURFACE_FUNC(macro, ##__VA_ARGS__) \
     FOR_EACK_VK_KHR_SURFACE_FUNC(macro, ##__VA_ARGS__) \
     FOR_EACH_VK_KHR_GET_SURFACE_CAPABILITIES_2_FUNC(macro, ##__VA_ARGS__) \
+    FOR_EACH_VK_DEBUG_UTILS_FUNC(macro, ##__VA_ARGS__) \
 
 #define FOR_EACH_VK_DEVICE_EXTENSION_FUNC(macro, ...) \
     FOR_EACH_VK_KHR_SWAPCHAIN_FUNC(macro, ##__VA_ARGS__) \

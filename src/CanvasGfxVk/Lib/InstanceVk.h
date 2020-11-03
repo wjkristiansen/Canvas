@@ -10,7 +10,13 @@ class CInstanceVk :
     public Gem::CGenericBase
 {
     QLog::CBasicLogger m_Logger;
+    VkDebugUtilsMessengerEXT m_vkMessenger = VK_NULL_HANDLE;
     static CInstanceVk *m_pThis;
+#ifdef _DEBUG
+      const bool m_EnableValidationLayers = true;  
+#else
+      const bool m_EnableValidationLayers = false;  
+#endif
 
 public:
 
@@ -28,8 +34,17 @@ public:
     static CInstanceVk *GetSingleton() { return m_pThis; }
     
     Gem::Result Initialize();
+
+    bool IsValidateLayersEnabled() const { return m_EnableValidationLayers; }
     
     // XGfxInstance methods
     GEMMETHOD(CreateGfxDevice)(Canvas::XGfxDevice **ppDevice);
+
+    static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
+        VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+        VkDebugUtilsMessageTypeFlagsEXT messageType,
+        const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+        void *pUserData
+    );
 };
 
