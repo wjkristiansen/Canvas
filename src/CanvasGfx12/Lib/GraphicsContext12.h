@@ -71,7 +71,7 @@ public:
     ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
     Gem::Result FlushImpl();
 
-    D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
+    D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice, GfxFormat Format = GfxFormat::Unknown);
 
     void ApplyResourceBarriers();
 };

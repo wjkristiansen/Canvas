@@ -169,7 +169,7 @@ GEMMETHODIMP_(void) CGraphicsContext12::ClearSurface(XGfxSurface *pGfxSurface, c
 }
 
 //------------------------------------------------------------------------------------------------
-D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
+D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice, GfxFormat Format)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
     UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -178,6 +178,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext12::CreateRenderTargetView(class CSu
     D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
     cpuHandle.ptr= m_pRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+    rtvDesc.Format = CanvasFormatToDXGIFormat(Format);
     rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
     rtvDesc.Texture2DArray.ArraySize = 1;
     rtvDesc.Texture2DArray.FirstArraySlice = ArraySlice;
