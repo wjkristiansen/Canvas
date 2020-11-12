@@ -194,7 +194,7 @@ public:
 
             // Create the swapchain
             TGemPtr<Canvas::XGfxSwapChain> pSwapChain;
-            ThrowGemError(pGfxContext->CreateSwapChain(pWindow->m_hWnd, true, &pSwapChain, GfxFormat::R16G16B16A16_Float, 4));
+            ThrowGemError(pGfxContext->CreateSwapChain(pWindow->m_hWnd, true, &pSwapChain, GfxFormat::R8G8B8A8_UNorm, 4));
 
             m_pWindow = std::move(pWindow);
 

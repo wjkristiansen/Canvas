@@ -15,12 +15,15 @@ using namespace Gem;
 
 //------------------------------------------------------------------------------------------------
 CSwapChainVk::CSwapChainVk(CGraphicsContextVk *pContext) :
-    m_pContext(pContext)
+    m_pContext(pContext),
+    m_ColorSpace(VkColorSpaceKHR::VK_COLORSPACE_SRGB_NONLINEAR_KHR),
+    m_SwapchainFormat(VkFormat::VK_FORMAT_UNDEFINED),
+    m_ViewFormat(VkFormat::VK_FORMAT_UNDEFINED)
 {
 }
 
 //------------------------------------------------------------------------------------------------
-Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
+Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed, VkFormat ViewFormat)
 {
     UniqueVkSwapchainKHR vkSwapChain;
     CInstanceVk *pInstance = CInstanceVk::GetSingleton();
@@ -61,9 +64,13 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
 
         // Get the surface formats
         uint32_t formatCount;
-        ThrowVkFailure(vkGetPhysicalDeviceSurfaceFormatsKHR(pDevice->m_VkPhysicalDevice, vkSurface, &formatCount, nullptr));
-        std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
-        ThrowVkFailure(vkGetPhysicalDeviceSurfaceFormatsKHR(pDevice->m_VkPhysicalDevice, vkSurface, &formatCount, surfaceFormats.data()));
+        VkPhysicalDeviceSurfaceInfo2KHR deviceSurfaceInfo{};
+        deviceSurfaceInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR;
+        deviceSurfaceInfo.surface = vkSurface;
+        ThrowVkFailure(vkGetPhysicalDeviceSurfaceFormats2KHR(pDevice->m_VkPhysicalDevice, &deviceSurfaceInfo, &formatCount, nullptr));
+        std::vector<VkSurfaceFormat2KHR> surfaceFormats(formatCount);
+        for (auto &surfaceFormat : surfaceFormats) { surfaceFormat.sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR; }
+        ThrowVkFailure(vkGetPhysicalDeviceSurfaceFormats2KHR(pDevice->m_VkPhysicalDevice, &deviceSurfaceInfo, &formatCount, surfaceFormats.data()));
 
         // For now, select the first enumerated format
         const uint32_t formatIndex = 0;
@@ -77,16 +84,26 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
         // For now, select the first present mode
         const uint32_t presentModeIndex = 0;
 
+        std::vector<VkFormat> Formats;
+        for (const auto &surfaceFormat : surfaceFormats) { Formats.push_back(surfaceFormat.surfaceFormat.format); }
+        Formats.push_back(ViewFormat);
+        VkColorSpaceKHR ColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+
         // Create the swapchain
+        VkImageFormatListCreateInfo imageFormatListCreateInfo = {};
+        imageFormatListCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
+        imageFormatListCreateInfo.viewFormatCount = static_cast<uint32_t>(Formats.size());
+        imageFormatListCreateInfo.pViewFormats = Formats.data();
+
         RECT rcWnd;
         GetClientRect(hWnd, &rcWnd);
         VkSwapchainCreateInfoKHR swapchainCreateInfo = {};
         swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-        swapchainCreateInfo.pNext = nullptr;
+        swapchainCreateInfo.pNext = &imageFormatListCreateInfo;
         swapchainCreateInfo.surface = vkSurface;
-        swapchainCreateInfo.minImageCount = 2;
-        swapchainCreateInfo.imageFormat = surfaceFormats[formatIndex].format;
-        swapchainCreateInfo.imageColorSpace = surfaceFormats[formatIndex].colorSpace;
+        swapchainCreateInfo.minImageCount = 3;
+        swapchainCreateInfo.imageFormat = Formats[0];
+        swapchainCreateInfo.imageColorSpace = ColorSpace;
         swapchainCreateInfo.imageExtent.height = rcWnd.bottom - rcWnd.top;
         swapchainCreateInfo.imageExtent.width = rcWnd.right - rcWnd.left;
         swapchainCreateInfo.imageArrayLayers = 1;
@@ -95,6 +112,7 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
         swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         swapchainCreateInfo.presentMode = presentModes[presentModeIndex];
         swapchainCreateInfo.clipped = VK_TRUE;
+        swapchainCreateInfo.flags = VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
 
         VkSwapchainKHR vkTempSwapChain;
         ThrowVkFailure(vkCreateSwapchainKHR(vkDevice, &swapchainCreateInfo, nullptr, &vkTempSwapChain));
@@ -108,8 +126,9 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed)
         m_VkImages = std::move(Images);
         m_VkSwapChain.Swap(vkSwapChain);
 
-        m_Format = surfaceFormats[0].format;
-        m_ColorSpace = surfaceFormats[0].colorSpace;
+        m_SwapchainFormat = Formats[0];
+        m_ViewFormat = ViewFormat;
+        m_ColorSpace = ColorSpace;
     }
     catch (const VkError &e)
     {
@@ -131,34 +150,6 @@ Gem::Result CSwapChainVk::Present()
         VkQueue vkQueue = m_pContext->m_VkQueue;
         VkCommandBuffer vkCmdBuffer = m_pContext->m_VkCommandBuffer;
 /*
-        // Transition to Presentation Layout...
-        VkImageMemoryBarrier ImageBarriers[1] = {};
-        ImageBarriers[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        ImageBarriers[0].srcAccessMask = 0;
-        ImageBarriers[0].dstAccessMask = 0;
-        ImageBarriers[0].image = m_VkImages[m_ImageIndex];
-        ImageBarriers[0].srcQueueFamilyIndex = m_pContext->m_QueueFamilyIndex;
-        ImageBarriers[0].dstQueueFamilyIndex = m_pContext->m_QueueFamilyIndex;
-        ImageBarriers[0].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        ImageBarriers[0].newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        ImageBarriers[0].subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT | VK_IMAGE_ASPECT_DEPTH_BIT;
-        ImageBarriers[0].subresourceRange.baseArrayLayer = 0;
-        ImageBarriers[0].subresourceRange.baseMipLevel = 0;
-        ImageBarriers[0].subresourceRange.layerCount = 1;
-        ImageBarriers[0].subresourceRange.levelCount = 1;
-        vkCmdPipelineBarrier(
-            vkCmdBuffer,
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
-            VK_DEPENDENCY_BY_REGION_BIT,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            1,
-            ImageBarriers
-        );
-
         // Queue the Present
         VkResult vkResult;
         VkPresentInfoKHR PresentInfo = {};

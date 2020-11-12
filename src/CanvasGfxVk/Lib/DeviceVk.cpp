@@ -126,6 +126,9 @@ Result CDeviceVk::Initialize()
         static const char *requiredDeviceExtensions[] =
         {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME,
+            VK_KHR_MAINTENANCE2_EXTENSION_NAME,
+            VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME,
         };
         static const uint32_t numRequiredDeviceExtensions = _countof(requiredDeviceExtensions);
 

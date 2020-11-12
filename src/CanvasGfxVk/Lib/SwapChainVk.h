@@ -11,6 +11,7 @@ class CSwapChainVk :
 	public Canvas::XGfxSwapChain,
 	public Gem::CGenericBase
 {
+public:
 	std::mutex m_mutex;
 	CGraphicsContextVk *m_pContext; // weak ptr
 	UniqueVkSwapchainKHR m_VkSwapChain;
@@ -18,7 +19,8 @@ class CSwapChainVk :
 	std::vector<VkImage> m_VkImages;
 	Gem::TGemPtr<CSurfaceVk> m_pSurface;
 	uint32_t m_ImageIndex = 0;
-	VkFormat m_Format;
+	VkFormat m_SwapchainFormat;
+	VkFormat m_ViewFormat;
 	VkColorSpaceKHR m_ColorSpace;
 
 public:
@@ -33,6 +35,6 @@ public:
 	GEMMETHOD(WaitForLastPresent)() final;
 
 	// Internal methods
-	Gem::Result Initialize(HWND hWnd, bool Windowed);
+	Gem::Result Initialize(HWND hWnd, bool Windowed, VkFormat Format);
 	Gem::Result Present();
 };

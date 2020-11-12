@@ -140,11 +140,12 @@ GEMMETHODIMP CGraphicsContextVk::CreateSwapChain(HWND hWnd, bool Windowed, Canva
 {
     CInstanceVk *pInstance = CInstanceVk::GetSingleton();
     CFunctionSentinel Sentinel(pInstance->Logger(), "CGraphicsContextVk::CreateSwapChain");
+    VkFormat vkFormat = CanvasFormatToVkFormat(Format);
 
     try
     {
         CSwapChainVk *pSwapChain = new TGeneric<CSwapChainVk>(this); // throw std::bad_alloc()
-        ThrowGemError(pSwapChain->Initialize(hWnd, Windowed));
+        ThrowGemError(pSwapChain->Initialize(hWnd, Windowed, vkFormat));
         ThrowGemError(pSwapChain->QueryInterface(ppSwapChain));
     }
     catch (std::bad_alloc &)
