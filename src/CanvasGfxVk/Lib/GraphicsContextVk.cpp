@@ -75,15 +75,29 @@ VkCommandBuffer CCommandBufferManager::AcquireCommandBuffer() // throw(Gem::GemE
     if (0 == m_CommandBuffers.size())
         return VK_NULL_HANDLE;
 
-    VkFence fence = m_CommandBuffers.front().pFence->GetVkFence();
-    if (VK_NULL_HANDLE != fence)
+    std::shared_ptr<CFenceVk> pFence = m_CommandBuffers.front().pFence;
+    if (pFence && VK_NULL_HANDLE != pFence->GetVkFence())
     {
+        VkFence fences[] = { pFence->GetVkFence() };
         // Wait for the fence
-        vkWaitForFences(m_VkCommandPool.Device(), 1, &fence, VK_TRUE, UINT_MAX);
+        vkWaitForFences(m_VkCommandPool.Device(), 1, fences, VK_TRUE, UINT_MAX);
     }
 
     VkCommandBuffer commandBuffer = m_CommandBuffers.front().vkCommandBuffer;
     m_CommandBuffers.pop_front();
+
+    try
+    {
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        ThrowVkFailure(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+    }
+    catch (const VkError &e)
+    {
+        throw Gem::GemError(e.GemResult());
+    }
+
     return commandBuffer;
 }
 
@@ -119,6 +133,7 @@ Result CGraphicsContextVk::Initialize()
         vkGetDeviceQueue(GetVkDevice(), deviceQueueCreateInfo.queueFamilyIndex, 0, &m_VkQueue);
 
         m_QueueFamilyIndex = deviceQueueCreateInfo.queueFamilyIndex;
+        m_VkCommandBuffer = AcquireCommandBuffer();
     }
     catch (const VkError &e)
     {
@@ -227,10 +242,57 @@ GEMMETHODIMP CGraphicsContextVk::FlushAndPresent(Canvas::XGfxSwapChain *pSwapCha
         CSwapChainVk *pIntSwapChain = reinterpret_cast<CSwapChainVk *>(pSwapChain);
         //pIntSwapChain->m_pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_COMMON);
         //ApplyResourceBarriers();
+        VkImageSubresourceRange subresourceRange{};
+        subresourceRange.aspectMask = VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT;
+        subresourceRange.baseArrayLayer = 0;
+        subresourceRange.baseMipLevel = 0;
+        subresourceRange.layerCount = 1;
+        subresourceRange.levelCount = 1;
+        VkImageMemoryBarrier ImageMemoryBarriers[1] =
+        {
+            {
+                VkStructureType::VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                nullptr,
+                VkAccessFlagBits::VK_ACCESS_MEMORY_READ_BIT,
+                VkAccessFlagBits::VK_ACCESS_MEMORY_READ_BIT,
+                VkImageLayout::VK_IMAGE_LAYOUT_GENERAL,
+                VkImageLayout::VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                m_QueueFamilyIndex,
+                m_QueueFamilyIndex,
+                pIntSwapChain->m_VkImages[pIntSwapChain->m_ImageIndex],
+                subresourceRange
+            },
+        };
+        vkCmdPipelineBarrier(
+            m_VkCommandBuffer, 
+            VkPipelineStageFlagBits::VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VkPipelineStageFlagBits::VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            VkDependencyFlagBits::VK_DEPENDENCY_BY_REGION_BIT,
+            0,
+            nullptr,
+            0,
+            nullptr,
+            1,
+            ImageMemoryBarriers);
+        
 
-        ThrowGemError(FlushImpl());
+        // Submit the command buffer
+        vkEndCommandBuffer(m_VkCommandBuffer);
 
-        ThrowGemError(pIntSwapChain->Present());
+        VkCommandBuffer commandBuffers[1] =
+        {
+            m_VkCommandBuffer
+        };
+
+        VkSubmitInfo submitInfo[1]{};
+        submitInfo[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo[0].commandBufferCount = 1;
+        submitInfo[0].pCommandBuffers = commandBuffers;
+        ThrowVkFailure(vkQueueSubmit(m_VkQueue, 1, submitInfo, VK_NULL_HANDLE));
+
+        //ThrowGemError(FlushImpl());
+
+        //ThrowGemError(pIntSwapChain->Present());
 
         //m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
 
@@ -240,7 +302,12 @@ GEMMETHODIMP CGraphicsContextVk::FlushAndPresent(Canvas::XGfxSwapChain *pSwapCha
 
         //ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
     }
-    catch (GemError &e)
+    catch (const VkError &e)
+    {
+        Sentinel.SetResultCode(e.GemResult());
+        return e.GemResult();
+    }
+    catch (const GemError &e)
     {
         Sentinel.SetResultCode(e.Result());
         return e.Result();
