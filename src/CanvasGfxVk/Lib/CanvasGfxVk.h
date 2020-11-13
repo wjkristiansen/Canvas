@@ -546,3 +546,446 @@ public:
 
     VkFence GetVkFence() const { return m_vkFence.Get(); }
 };
+
+//------------------------------------------------------------------------------------------------
+template<class _VkStruct, VkStructureType _Type>
+struct CVkStruct : public _VkStruct
+{
+    CVkStruct() : _VkStruct{}
+    {
+        this->pNext = nullptr;
+        this->sType = _Type;
+    }
+
+    CVkStruct(const _VkStruct &s) : _VkStruct{ s } {}
+    CVkStruct(const CVkStruct &o) = default;
+
+    CVkStruct &operator=(const CVkStruct &o) = default;
+    CVkStruct &operator=(const _VkStruct &s)
+    {
+        _VkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkCommandBufferAllocateInfo : public CVkStruct<VkCommandBufferAllocateInfo, VkStructureType::VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO>
+{
+    CVkCommandBufferAllocateInfo() = default;
+    CVkCommandBufferAllocateInfo(const VkCommandBufferAllocateInfo &s) : CVkStruct(s) {}
+    CVkCommandBufferAllocateInfo(const CVkCommandBufferAllocateInfo &o) = default;
+    CVkCommandBufferAllocateInfo(
+        VkCommandPool           commandPool,
+        VkCommandBufferLevel    level,
+        uint32_t                commandBufferCount
+    ) : CVkStruct()
+    {
+        this->commandPool = commandPool;
+        this->level = level;
+        this->commandBufferCount = commandBufferCount;
+    }
+
+    CVkCommandBufferAllocateInfo &operator=(const CVkCommandBufferAllocateInfo &o) = default;
+    CVkCommandBufferAllocateInfo &operator=(const VkCommandBufferAllocateInfo &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkCommandBufferBeginInfo : public CVkStruct<VkCommandBufferBeginInfo, VkStructureType::VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO>
+{
+    CVkCommandBufferBeginInfo() = default;
+    CVkCommandBufferBeginInfo(const VkCommandBufferBeginInfo &s) : CVkStruct(s) {}
+    CVkCommandBufferBeginInfo(const CVkCommandBufferBeginInfo &o) = default;
+    CVkCommandBufferBeginInfo(
+        VkCommandBufferUsageFlags flags,
+        const VkCommandBufferInheritanceInfo *pInheritanceInfo = nullptr
+    ) : CVkStruct()
+    {
+        this->flags = flags;
+        this->pInheritanceInfo = pInheritanceInfo;
+    }
+
+    CVkCommandBufferBeginInfo &operator=(const CVkCommandBufferBeginInfo &o) = default;
+    CVkCommandBufferBeginInfo &operator=(const VkCommandBufferBeginInfo &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkCommandPoolCreateInfo : public CVkStruct<VkCommandPoolCreateInfo, VkStructureType::VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO>
+{
+    CVkCommandPoolCreateInfo() = default;
+    CVkCommandPoolCreateInfo(const VkCommandPoolCreateInfo &s) : CVkStruct(s) {}
+    CVkCommandPoolCreateInfo(const CVkCommandPoolCreateInfo &o) = default;
+    CVkCommandPoolCreateInfo(VkCommandPoolCreateFlags Flags, uint32_t QueueFamilyIndex) : CVkStruct()
+    {
+        flags = Flags;
+        queueFamilyIndex = QueueFamilyIndex;
+    }
+
+    CVkCommandPoolCreateInfo &operator=(const CVkCommandPoolCreateInfo &o) = default;
+    CVkCommandPoolCreateInfo &operator=(const VkCommandPoolCreateInfo &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkDebugUtilsMessengerCreateInfoEXT : public CVkStruct<VkDebugUtilsMessengerCreateInfoEXT, VkStructureType::VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT>
+{
+    CVkDebugUtilsMessengerCreateInfoEXT() = default;
+    CVkDebugUtilsMessengerCreateInfoEXT(const VkDebugUtilsMessengerCreateInfoEXT &s) : CVkStruct(s) {}
+    CVkDebugUtilsMessengerCreateInfoEXT(const CVkDebugUtilsMessengerCreateInfoEXT &o) = default;
+    CVkDebugUtilsMessengerCreateInfoEXT(
+        VkDebugUtilsMessengerCreateFlagsEXT     flags,
+        VkDebugUtilsMessageSeverityFlagsEXT     messageSeverity,
+        VkDebugUtilsMessageTypeFlagsEXT         messageType,
+        PFN_vkDebugUtilsMessengerCallbackEXT    pfnUserCallback,
+        void*                                   pUserData
+    ) : CVkStruct()
+    {
+        this->flags = flags;
+        this->messageSeverity = messageSeverity;
+        this->messageType = messageType;
+        this->pfnUserCallback = pfnUserCallback;
+        this->pUserData = pUserData;
+    }
+
+    CVkDebugUtilsMessengerCreateInfoEXT &operator=(const CVkDebugUtilsMessengerCreateInfoEXT &o) = default;
+    CVkDebugUtilsMessengerCreateInfoEXT &operator=(const VkDebugUtilsMessengerCreateInfoEXT &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkDeviceCreateInfo : public CVkStruct<VkDeviceCreateInfo, VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO>
+{
+    CVkDeviceCreateInfo() = default;
+    CVkDeviceCreateInfo(const VkDeviceCreateInfo & s) : CVkStruct(s) {}
+    CVkDeviceCreateInfo(const CVkDeviceCreateInfo & o) = default;
+    CVkDeviceCreateInfo(
+        VkDeviceCreateFlags flags,
+        uint32_t queueCreateInfoCount,
+        const VkDeviceQueueCreateInfo *pQueueCreateInfos,
+        uint32_t enabledExtensionCount,
+        const char *const *ppEnabledExtensionNames,
+        const VkPhysicalDeviceFeatures *pEnabledFeatures,
+        uint32_t enabledLayerCount = 0,
+        const char *const *ppEnabledLayerNames = nullptr) : CVkStruct()
+    {
+        this->flags = flags;
+        this->queueCreateInfoCount = queueCreateInfoCount;
+        this->pQueueCreateInfos = pQueueCreateInfos;
+        this->enabledLayerCount = enabledLayerCount;
+        this->ppEnabledLayerNames = ppEnabledLayerNames;
+        this->enabledExtensionCount = enabledExtensionCount;
+        this->ppEnabledExtensionNames = ppEnabledExtensionNames;
+        this->pEnabledFeatures = pEnabledFeatures;
+    }
+
+    CVkDeviceCreateInfo &operator=(const CVkDeviceCreateInfo & o) = default;
+    CVkDeviceCreateInfo &operator=(const VkDeviceCreateInfo &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkDeviceQueueCreateInfo : public CVkStruct<VkDeviceQueueCreateInfo, VkStructureType::VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO>
+{
+    CVkDeviceQueueCreateInfo() = default;
+    CVkDeviceQueueCreateInfo(const VkDeviceQueueCreateInfo &s) : CVkStruct(s) {}
+    CVkDeviceQueueCreateInfo(const CVkDeviceQueueCreateInfo &o) = default;
+    CVkDeviceQueueCreateInfo(
+        VkDeviceQueueCreateFlags flags, 
+        uint32_t queueFamilyIndex, 
+        uint32_t queueCount, 
+        const float *pQueuePriorities) : CVkStruct()
+    {
+        this->flags = flags;
+        this->queueFamilyIndex = queueFamilyIndex;
+        this->queueCount = queueCount;
+        this->pQueuePriorities = pQueuePriorities;
+    }
+
+    CVkDeviceQueueCreateInfo &operator=(const CVkDeviceQueueCreateInfo &o) = default;
+    CVkDeviceQueueCreateInfo &operator=(const VkDeviceQueueCreateInfo &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkFenceCreateInfo : public CVkStruct<VkFenceCreateInfo, VkStructureType::VK_STRUCTURE_TYPE_FENCE_CREATE_INFO>
+{
+    CVkFenceCreateInfo() = default;
+    CVkFenceCreateInfo(const VkFenceCreateInfo &s) : CVkStruct(s) {}
+    CVkFenceCreateInfo(const CVkFenceCreateInfo &o) = default;
+    CVkFenceCreateInfo(VkFenceCreateFlags flags) : CVkStruct()
+    {
+        this->flags = flags;
+    }
+
+    CVkFenceCreateInfo &operator=(const CVkFenceCreateInfo &o) = default;
+    CVkFenceCreateInfo &operator=(const VkFenceCreateInfo &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkImageFormatListCreateInfo : public CVkStruct<VkImageFormatListCreateInfo, VkStructureType::VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO>
+{
+    CVkImageFormatListCreateInfo() = default;
+    CVkImageFormatListCreateInfo(const VkImageFormatListCreateInfo &s) : CVkStruct(s) {}
+    CVkImageFormatListCreateInfo(const CVkImageFormatListCreateInfo &o) = default;
+    CVkImageFormatListCreateInfo(
+        uint32_t           viewFormatCount,
+        const VkFormat *pViewFormats
+    ) : CVkStruct()
+    {
+        this->viewFormatCount = viewFormatCount;
+        this->pViewFormats = pViewFormats;
+    }
+
+    CVkImageFormatListCreateInfo &operator=(const CVkImageFormatListCreateInfo &o) = default;
+    CVkImageFormatListCreateInfo &operator=(const VkImageFormatListCreateInfo &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkInstanceCreateInfo : public CVkStruct<VkInstanceCreateInfo, VkStructureType::VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO>
+{
+    CVkInstanceCreateInfo() = default;
+    CVkInstanceCreateInfo(const VkInstanceCreateInfo &s) : CVkStruct(s) {}
+    CVkInstanceCreateInfo(const CVkInstanceCreateInfo &o) = default;
+    CVkInstanceCreateInfo(
+        VkInstanceCreateFlags       flags,
+        const VkApplicationInfo*    pApplicationInfo,
+        uint32_t                    enabledLayerCount,
+        const char* const*          ppEnabledLayerNames,
+        uint32_t                    enabledExtensionCount,
+        const char* const*          ppEnabledExtensionNames
+    ) : CVkStruct()
+    {
+        this->flags = flags;
+        this->pApplicationInfo = pApplicationInfo;
+        this->enabledLayerCount = enabledLayerCount;
+        this->ppEnabledLayerNames = ppEnabledLayerNames;
+        this->enabledExtensionCount = enabledExtensionCount;
+        this->ppEnabledExtensionNames = ppEnabledExtensionNames;
+    }
+
+    CVkInstanceCreateInfo &operator=(const CVkInstanceCreateInfo &o) = default;
+    CVkInstanceCreateInfo &operator=(const VkInstanceCreateInfo &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkImageMemoryBarrier : public CVkStruct<VkImageMemoryBarrier, VkStructureType::VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER>
+{
+    CVkImageMemoryBarrier() = default;
+    CVkImageMemoryBarrier(const VkImageMemoryBarrier &s) : CVkStruct(s) {}
+    CVkImageMemoryBarrier(const CVkImageMemoryBarrier &o) = default;
+    CVkImageMemoryBarrier(
+        VkAccessFlags              srcAccessMask,
+        VkAccessFlags              dstAccessMask,
+        VkImageLayout              oldLayout,
+        VkImageLayout              newLayout,
+        uint32_t                   srcQueueFamilyIndex,
+        uint32_t                   dstQueueFamilyIndex,
+        VkImage                    image,
+        VkImageSubresourceRange    subresourceRange
+    ) : CVkStruct()
+    {
+        this->srcAccessMask = srcAccessMask;
+        this->dstAccessMask = dstAccessMask;
+        this->oldLayout = oldLayout;
+        this->newLayout = newLayout;
+        this->srcQueueFamilyIndex = srcQueueFamilyIndex;
+        this->dstQueueFamilyIndex = dstQueueFamilyIndex;
+        this->image = image;
+        this->subresourceRange = subresourceRange;
+    }
+
+    CVkImageMemoryBarrier &operator=(const CVkImageMemoryBarrier &o) = default;
+    CVkImageMemoryBarrier &operator=(const VkImageMemoryBarrier &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkPhysicalDeviceSurfaceInfo2KHR : public CVkStruct<VkPhysicalDeviceSurfaceInfo2KHR, VkStructureType::VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR >
+{
+    CVkPhysicalDeviceSurfaceInfo2KHR() = default;
+    CVkPhysicalDeviceSurfaceInfo2KHR(const VkPhysicalDeviceSurfaceInfo2KHR &s) : CVkStruct(s) {}
+    CVkPhysicalDeviceSurfaceInfo2KHR(const CVkPhysicalDeviceSurfaceInfo2KHR &o) = default;
+    CVkPhysicalDeviceSurfaceInfo2KHR(VkSurfaceKHR surface) : CVkStruct()
+    {
+        this->surface = surface;
+    }
+
+    CVkPhysicalDeviceSurfaceInfo2KHR &operator=(const CVkPhysicalDeviceSurfaceInfo2KHR &o) = default;
+    CVkPhysicalDeviceSurfaceInfo2KHR &operator=(const VkPhysicalDeviceSurfaceInfo2KHR &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkSubmitInfo : public CVkStruct<VkSubmitInfo, VkStructureType::VK_STRUCTURE_TYPE_SUBMIT_INFO>
+{
+    CVkSubmitInfo() = default;
+    CVkSubmitInfo(const VkSubmitInfo &s) : CVkStruct(s) {}
+    CVkSubmitInfo(const CVkSubmitInfo &o) = default;
+    CVkSubmitInfo(
+        uint32_t                       waitSemaphoreCount,
+        const VkSemaphore*             pWaitSemaphores,
+        const VkPipelineStageFlags*    pWaitDstStageMask,
+        uint32_t                       commandBufferCount,
+        const VkCommandBuffer*         pCommandBuffers,
+        uint32_t                       signalSemaphoreCount,
+        const VkSemaphore*             pSignalSemaphores
+    ) : CVkStruct()
+    {
+        this->waitSemaphoreCount = waitSemaphoreCount;
+        this->pWaitSemaphores = pWaitSemaphores;
+        this->pWaitDstStageMask = pWaitDstStageMask;
+        this->commandBufferCount = commandBufferCount;
+        this->pCommandBuffers = pCommandBuffers;
+        this->signalSemaphoreCount = signalSemaphoreCount;
+        this->pSignalSemaphores = pSignalSemaphores;
+    }
+    CVkSubmitInfo(
+        uint32_t commandBufferCount,
+        const VkCommandBuffer *pCommandBuffers
+    ) : CVkStruct()
+    {
+        this->commandBufferCount = commandBufferCount;
+        this->pCommandBuffers = pCommandBuffers;
+    }
+
+    CVkSubmitInfo &operator=(const CVkSubmitInfo &o) = default;
+    CVkSubmitInfo &operator=(const VkSubmitInfo &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkSurfaceFormat2KHR : public CVkStruct<VkSurfaceFormat2KHR, VkStructureType::VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR >
+{
+    CVkSurfaceFormat2KHR() = default;
+    CVkSurfaceFormat2KHR(const VkSurfaceFormat2KHR &s) : CVkStruct(s) {}
+    CVkSurfaceFormat2KHR(const CVkSurfaceFormat2KHR &o) = default;
+    CVkSurfaceFormat2KHR(VkSurfaceFormatKHR surfaceFormat) : CVkStruct()
+    {
+        this->surfaceFormat = surfaceFormat;
+    }
+
+    CVkSurfaceFormat2KHR &operator=(const CVkSurfaceFormat2KHR &o) = default;
+    CVkSurfaceFormat2KHR &operator=(const VkSurfaceFormat2KHR &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkSwapchainCreateInfoKHR : public CVkStruct<VkSwapchainCreateInfoKHR, VkStructureType::VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR>
+{
+    CVkSwapchainCreateInfoKHR() = default;
+    CVkSwapchainCreateInfoKHR(const VkSwapchainCreateInfoKHR &s) : CVkStruct(s) {}
+    CVkSwapchainCreateInfoKHR(const CVkSwapchainCreateInfoKHR &o) = default;
+    CVkSwapchainCreateInfoKHR(
+        VkSwapchainCreateFlagsKHR       flags,
+        VkSurfaceKHR                    surface,
+        uint32_t                        minImageCount,
+        VkFormat                        imageFormat,
+        VkColorSpaceKHR                 imageColorSpace,
+        uint32_t                        width,
+        uint32_t                        height,
+        uint32_t                        imageArrayLayers,
+        VkImageUsageFlags               imageUsage,
+        VkSharingMode                   imageSharingMode,
+        uint32_t                        queueFamilyIndexCount,
+        const uint32_t*                 pQueueFamilyIndices,
+        VkSurfaceTransformFlagBitsKHR   preTransform,
+        VkCompositeAlphaFlagBitsKHR     compositeAlpha,
+        VkPresentModeKHR                presentMode,
+        VkBool32                        clipped,
+        VkSwapchainKHR                  oldSwapchain
+    ) : CVkStruct()
+    {
+        this->flags = flags;
+        this->surface = surface;
+        this->minImageCount = minImageCount;
+        this->imageFormat = imageFormat;
+        this->imageColorSpace = imageColorSpace;
+        this->imageExtent.width = width;
+        this->imageExtent.height = height;
+        this->imageArrayLayers = imageArrayLayers;
+        this->imageUsage = imageUsage;
+        this->imageSharingMode = imageSharingMode;
+        this->queueFamilyIndexCount = queueFamilyIndexCount;
+        this->pQueueFamilyIndices = pQueueFamilyIndices;
+        this->preTransform = preTransform;
+        this->compositeAlpha = compositeAlpha;
+        this->presentMode = presentMode;
+        this->clipped = clipped;
+        this->oldSwapchain = oldSwapchain;
+    }
+
+    CVkSwapchainCreateInfoKHR &operator=(const CVkSwapchainCreateInfoKHR &o) = default;
+    CVkSwapchainCreateInfoKHR &operator=(const VkSwapchainCreateInfoKHR &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkWin32SurfaceCreateInfoKHR : public CVkStruct<VkWin32SurfaceCreateInfoKHR, VkStructureType::VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR>
+{
+    CVkWin32SurfaceCreateInfoKHR() = default;
+    CVkWin32SurfaceCreateInfoKHR(const VkWin32SurfaceCreateInfoKHR &s) : CVkStruct(s) {}
+    CVkWin32SurfaceCreateInfoKHR(const CVkWin32SurfaceCreateInfoKHR &o) = default;
+    CVkWin32SurfaceCreateInfoKHR(
+        VkWin32SurfaceCreateFlagsKHR    flags,
+        HINSTANCE                       hinstance,
+        HWND                            hwnd
+    ) : CVkStruct()
+    {
+        this->flags = flags;
+        this->hinstance = hinstance;
+        this->hwnd = hwnd;
+    }
+
+    CVkWin32SurfaceCreateInfoKHR &operator=(const CVkWin32SurfaceCreateInfoKHR &o) = default;
+    CVkWin32SurfaceCreateInfoKHR &operator=(const VkWin32SurfaceCreateInfoKHR &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};

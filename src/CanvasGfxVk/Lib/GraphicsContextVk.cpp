@@ -33,10 +33,7 @@ Gem::Result CCommandBufferManager::Initialize(VkDevice vkDevice, uint32_t NumBuf
         UniqueVkCommandPool vkCommandPool;
 
         // Create command pool
-        VkCommandPoolCreateInfo poolCreateInfo = {};
-        poolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolCreateInfo.queueFamilyIndex = QueueFamilyIndex;
+        CVkCommandPoolCreateInfo poolCreateInfo(VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, QueueFamilyIndex);
         VkCommandPool vkTempCommandPool;
         ThrowVkFailure(vkCreateCommandPool(vkDevice, &poolCreateInfo, nullptr, &vkTempCommandPool));
         vkCommandPool.Attach(vkTempCommandPool, vkDevice);
@@ -44,11 +41,7 @@ Gem::Result CCommandBufferManager::Initialize(VkDevice vkDevice, uint32_t NumBuf
         // Allocate the command buffers
         std::vector<VkCommandBuffer> commandBuffers(NumBuffers);
 
-        VkCommandBufferAllocateInfo AllocateInfo = {};
-        AllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        AllocateInfo.commandBufferCount = NumBuffers;
-        AllocateInfo.commandPool = vkCommandPool.Get();
-        AllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        CVkCommandBufferAllocateInfo AllocateInfo(vkCommandPool.Get(), VK_COMMAND_BUFFER_LEVEL_PRIMARY, NumBuffers);
         ThrowVkFailure(vkAllocateCommandBuffers(vkDevice, &AllocateInfo, commandBuffers.data()));
 
         for (VkCommandBuffer commandBuffer : commandBuffers)
@@ -88,9 +81,7 @@ VkCommandBuffer CCommandBufferManager::AcquireCommandBuffer() // throw(Gem::GemE
 
     try
     {
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        CVkCommandBufferBeginInfo beginInfo(VkCommandBufferUsageFlagBits::VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
         ThrowVkFailure(vkBeginCommandBuffer(commandBuffer, &beginInfo));
     }
     catch (const VkError &e)
@@ -248,11 +239,9 @@ GEMMETHODIMP CGraphicsContextVk::FlushAndPresent(Canvas::XGfxSwapChain *pSwapCha
         subresourceRange.baseMipLevel = 0;
         subresourceRange.layerCount = 1;
         subresourceRange.levelCount = 1;
-        VkImageMemoryBarrier ImageMemoryBarriers[1] =
+        CVkImageMemoryBarrier ImageMemoryBarriers[1] =
         {
             {
-                VkStructureType::VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                nullptr,
                 VkAccessFlagBits::VK_ACCESS_MEMORY_READ_BIT,
                 VkAccessFlagBits::VK_ACCESS_MEMORY_READ_BIT,
                 VkImageLayout::VK_IMAGE_LAYOUT_GENERAL,
@@ -261,7 +250,7 @@ GEMMETHODIMP CGraphicsContextVk::FlushAndPresent(Canvas::XGfxSwapChain *pSwapCha
                 m_QueueFamilyIndex,
                 pIntSwapChain->m_VkImages[pIntSwapChain->m_ImageIndex],
                 subresourceRange
-            },
+            }
         };
         vkCmdPipelineBarrier(
             m_VkCommandBuffer, 
@@ -284,10 +273,10 @@ GEMMETHODIMP CGraphicsContextVk::FlushAndPresent(Canvas::XGfxSwapChain *pSwapCha
             m_VkCommandBuffer
         };
 
-        VkSubmitInfo submitInfo[1]{};
-        submitInfo[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo[0].commandBufferCount = 1;
-        submitInfo[0].pCommandBuffers = commandBuffers;
+        VkSubmitInfo submitInfo[1] =
+        {
+            CVkSubmitInfo(1, commandBuffers)
+        };
         ThrowVkFailure(vkQueueSubmit(m_VkQueue, 1, submitInfo, VK_NULL_HANDLE));
 
         //ThrowGemError(FlushImpl());

@@ -36,12 +36,7 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed, VkFormat ViewFormat)
     try
     {
         // Create the win32 surface from the given HWND
-        VkWin32SurfaceCreateInfoKHR win32SurfaceCreateInfo = {};
-
-        win32SurfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-        win32SurfaceCreateInfo.pNext = nullptr;
-        win32SurfaceCreateInfo.hwnd = hWnd;
-        win32SurfaceCreateInfo.hinstance = GetModuleHandle(NULL);
+        CVkWin32SurfaceCreateInfoKHR win32SurfaceCreateInfo(0, GetModuleHandle(NULL), hWnd);
 
         VkSurfaceKHR vkSurface;
         ThrowVkFailure(vkCreateWin32SurfaceKHR(vkInstance, &win32SurfaceCreateInfo, nullptr, &vkSurface));
@@ -56,20 +51,16 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed, VkFormat ViewFormat)
         }
 
         // Create fence
-        VkFenceCreateInfo vkFenceCreateInfo = {};
-        vkFenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        CVkFenceCreateInfo vkFenceCreateInfo(0);
         VkFence vkFence;
         ThrowVkFailure(vkCreateFence(vkDevice, &vkFenceCreateInfo, nullptr, &vkFence));
         m_VkFence.Attach(vkFence, vkDevice, nullptr);
 
         // Get the surface formats
         uint32_t formatCount;
-        VkPhysicalDeviceSurfaceInfo2KHR deviceSurfaceInfo{};
-        deviceSurfaceInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR;
-        deviceSurfaceInfo.surface = vkSurface;
+        CVkPhysicalDeviceSurfaceInfo2KHR deviceSurfaceInfo(vkSurface);
         ThrowVkFailure(vkGetPhysicalDeviceSurfaceFormats2KHR(pDevice->m_VkPhysicalDevice, &deviceSurfaceInfo, &formatCount, nullptr));
-        std::vector<VkSurfaceFormat2KHR> surfaceFormats(formatCount);
-        for (auto &surfaceFormat : surfaceFormats) { surfaceFormat.sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR; }
+        std::vector<CVkSurfaceFormat2KHR> surfaceFormats(formatCount);
         ThrowVkFailure(vkGetPhysicalDeviceSurfaceFormats2KHR(pDevice->m_VkPhysicalDevice, &deviceSurfaceInfo, &formatCount, surfaceFormats.data()));
 
         // For now, select the first enumerated format
@@ -90,29 +81,34 @@ Result CSwapChainVk::Initialize(HWND hWnd, bool Windowed, VkFormat ViewFormat)
         VkColorSpaceKHR ColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 
         // Create the swapchain
-        VkImageFormatListCreateInfo imageFormatListCreateInfo = {};
-        imageFormatListCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO;
-        imageFormatListCreateInfo.viewFormatCount = static_cast<uint32_t>(Formats.size());
-        imageFormatListCreateInfo.pViewFormats = Formats.data();
+        CVkImageFormatListCreateInfo imageFormatListCreateInfo(static_cast<uint32_t>(Formats.size()), Formats.data());
+
+        uint32_t SwapchainQueueFamilyIndices[] =
+        {
+            m_pContext->m_QueueFamilyIndex
+        };
 
         RECT rcWnd;
         GetClientRect(hWnd, &rcWnd);
-        VkSwapchainCreateInfoKHR swapchainCreateInfo = {};
-        swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        CVkSwapchainCreateInfoKHR swapchainCreateInfo(
+            VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR,
+            vkSurface,
+            3,
+            Formats[0],
+            ColorSpace,
+            rcWnd.right - rcWnd.left,
+            rcWnd.bottom - rcWnd.top,
+            1,
+            VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+            1,
+            SwapchainQueueFamilyIndices,
+            VkSurfaceTransformFlagBitsKHR::VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+            VkCompositeAlphaFlagBitsKHR::VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            presentModes[presentModeIndex],
+            VK_TRUE,
+            VK_NULL_HANDLE);
         swapchainCreateInfo.pNext = &imageFormatListCreateInfo;
-        swapchainCreateInfo.surface = vkSurface;
-        swapchainCreateInfo.minImageCount = 3;
-        swapchainCreateInfo.imageFormat = Formats[0];
-        swapchainCreateInfo.imageColorSpace = ColorSpace;
-        swapchainCreateInfo.imageExtent.height = rcWnd.bottom - rcWnd.top;
-        swapchainCreateInfo.imageExtent.width = rcWnd.right - rcWnd.left;
-        swapchainCreateInfo.imageArrayLayers = 1;
-        swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        swapchainCreateInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-        swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        swapchainCreateInfo.presentMode = presentModes[presentModeIndex];
-        swapchainCreateInfo.clipped = VK_TRUE;
-        swapchainCreateInfo.flags = VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR;
 
         VkSwapchainKHR vkTempSwapChain;
         ThrowVkFailure(vkCreateSwapchainKHR(vkDevice, &swapchainCreateInfo, nullptr, &vkTempSwapChain));

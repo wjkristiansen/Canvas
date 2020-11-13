@@ -18,7 +18,7 @@ public:
         Copy
     };
     static const unsigned NumRequiredQueueFamilies = 2;
-    VkDeviceQueueCreateInfo m_deviceQueueCreateInfo[NumRequiredQueueFamilies] = {};
+    CVkDeviceQueueCreateInfo m_deviceQueueCreateInfo[NumRequiredQueueFamilies];
 
 public:
     BEGIN_GEM_INTERFACE_MAP()

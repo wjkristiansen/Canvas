@@ -153,11 +153,7 @@ Result CDeviceVk::Initialize()
         // Initialize m_deviceQueueCreateInfo
         for (unsigned i = 0; i < NumRequiredQueueFamilies; ++i)
         {
-            m_deviceQueueCreateInfo[i].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            m_deviceQueueCreateInfo[i].pNext = nullptr;
-            m_deviceQueueCreateInfo[i].pQueuePriorities = StandardQueuePriority;
-            m_deviceQueueCreateInfo[i].queueCount = 0;
-            m_deviceQueueCreateInfo[i].flags = 0;
+            m_deviceQueueCreateInfo[i] = CVkDeviceQueueCreateInfo(0, 0, 0, StandardQueuePriority);
         }
 
         // Find device that supports all required features (e.g. extensions, queue families, etc)
@@ -190,13 +186,14 @@ Result CDeviceVk::Initialize()
         }
 
         // Create the default device
-        VkDeviceCreateInfo deviceCreateInfo = {};
-        deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        deviceCreateInfo.pNext = nullptr;
-        deviceCreateInfo.queueCreateInfoCount = numRequiredQueueFamilies;
-        deviceCreateInfo.pQueueCreateInfos = m_deviceQueueCreateInfo;
-        deviceCreateInfo.enabledExtensionCount = numRequiredDeviceExtensions;
-        deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtensions;
+        CVkDeviceCreateInfo deviceCreateInfo(
+            0,
+            numRequiredQueueFamilies,
+            m_deviceQueueCreateInfo,
+            numRequiredDeviceExtensions,
+            requiredDeviceExtensions,
+            nullptr
+        );
         ThrowVkFailure(vkCreateDevice(physicalDevices[deviceIndex], &deviceCreateInfo, nullptr, &vkDevice));
 
         // Initialize global device functions

@@ -112,9 +112,6 @@ Result CInstanceVk::Initialize()
         // Init the null-instance Vulkan functions
         FOR_EACH_VK_NULL_INSTANCE_FUNC(VK_GET_INSTANCE_PROC_ADDR, VK_NULL_HANDLE);
 
-        // Create the Vulkan instance
-        VkInstanceCreateInfo vkCreateInfo = {};
-
         // Enumerate required interface extensions
         std::vector<const char *> requiredInstanceExtensions
         {
@@ -128,13 +125,15 @@ Result CInstanceVk::Initialize()
             requiredInstanceExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         }
 
+        // Create the Vulkan instance
         static const uint32_t numRequireInstanceExtensions = static_cast<uint32_t>(requiredInstanceExtensions.size());
-        vkCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        vkCreateInfo.pNext = nullptr;
-        vkCreateInfo.flags = 0;
-        vkCreateInfo.pApplicationInfo = nullptr;
-        vkCreateInfo.enabledExtensionCount = numRequireInstanceExtensions;
-        vkCreateInfo.ppEnabledExtensionNames = requiredInstanceExtensions.data();
+        CVkInstanceCreateInfo vkCreateInfo(
+            0, 
+            nullptr, 
+            0, 
+            nullptr, 
+            numRequireInstanceExtensions, 
+            requiredInstanceExtensions.data());
 
         if(IsValidateLayersEnabled() && CheckValidationLayersSupported())
         {
@@ -144,17 +143,16 @@ Result CInstanceVk::Initialize()
 
         ThrowVkFailure(vkCreateInstance(&vkCreateInfo, nullptr, &vkInstance));
 
-        VkDebugUtilsMessengerCreateInfoEXT dbgCreateInfo{};
-        dbgCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-        dbgCreateInfo.messageSeverity = 
+        CVkDebugUtilsMessengerCreateInfoEXT dbgCreateInfo(
+            0,
             VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
-            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
-            VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-        dbgCreateInfo.messageType = 
+                VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
+                VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
             VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
-            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | 
-            VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-        dbgCreateInfo.pfnUserCallback = DebugCallback; 
+                VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | 
+                VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            DebugCallback,
+            nullptr); 
 
         // Init the remaining Vulkan instance functions
         FOR_EACH_VK_FUNC(VK_GET_INSTANCE_PROC_ADDR, vkInstance);
