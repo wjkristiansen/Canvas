@@ -569,6 +569,39 @@ struct CVkStruct : public _VkStruct
 };
 
 //------------------------------------------------------------------------------------------------
+struct CVkBufferMemoryBarrier : public CVkStruct<VkBufferMemoryBarrier, VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER>
+{
+    CVkBufferMemoryBarrier() = default;
+    CVkBufferMemoryBarrier(const VkBufferMemoryBarrier &s) : CVkStruct(s) {}
+    CVkBufferMemoryBarrier(const CVkBufferMemoryBarrier &o) = default;
+    CVkBufferMemoryBarrier(
+        VkAccessFlags      srcAccessMask,
+        VkAccessFlags      dstAccessMask,
+        uint32_t           srcQueueFamilyIndex,
+        uint32_t           dstQueueFamilyIndex,
+        VkBuffer           buffer,
+        VkDeviceSize       offset,
+        VkDeviceSize       size
+    ) : CVkStruct()
+    {
+        this->srcAccessMask = srcAccessMask;
+        this->dstAccessMask = dstAccessMask;
+        this->srcQueueFamilyIndex = srcQueueFamilyIndex;
+        this->dstQueueFamilyIndex = dstQueueFamilyIndex;
+        this->buffer = buffer;
+        this->offset = offset;
+        this->size = size;
+    }
+
+    CVkBufferMemoryBarrier &operator=(const CVkBufferMemoryBarrier &o) = default;
+    CVkBufferMemoryBarrier &operator=(const VkBufferMemoryBarrier &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
 struct CVkCommandBufferAllocateInfo : public CVkStruct<VkCommandBufferAllocateInfo, VkStructureType::VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO>
 {
     CVkCommandBufferAllocateInfo() = default;
@@ -827,6 +860,29 @@ struct CVkImageMemoryBarrier : public CVkStruct<VkImageMemoryBarrier, VkStructur
 
     CVkImageMemoryBarrier &operator=(const CVkImageMemoryBarrier &o) = default;
     CVkImageMemoryBarrier &operator=(const VkImageMemoryBarrier &s)
+    {
+        CVkStruct::operator=(s);
+        return *this;
+    }
+};
+
+//------------------------------------------------------------------------------------------------
+struct CVkMemoryBarrier : public CVkStruct<VkMemoryBarrier, VK_STRUCTURE_TYPE_MEMORY_BARRIER>
+{
+    CVkMemoryBarrier() = default;
+    CVkMemoryBarrier(const VkMemoryBarrier &s) : CVkStruct(s) {}
+    CVkMemoryBarrier(const CVkMemoryBarrier &o) = default;
+    CVkMemoryBarrier(
+        VkAccessFlags      srcAccessMask,
+        VkAccessFlags      dstAccessMask
+    ) : CVkStruct()
+    {
+        this->srcAccessMask = srcAccessMask;
+        this->dstAccessMask = dstAccessMask;
+    }
+
+    CVkMemoryBarrier &operator=(const CVkMemoryBarrier &o) = default;
+    CVkMemoryBarrier &operator=(const VkMemoryBarrier &s)
     {
         CVkStruct::operator=(s);
         return *this;

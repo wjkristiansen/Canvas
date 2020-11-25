@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "PipelineBarrier.h"
+
 //------------------------------------------------------------------------------------------------
 class CCommandBufferManager
 {
