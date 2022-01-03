@@ -271,7 +271,7 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        TVector<float, 4> operator*(const TVector<float, 4> & v, float mul)
+        inline TVector<float, 4> operator*(const TVector<float, 4> & v, float mul)
         {
             TVector<float, 4> result(v);
             result[0] *= mul;
@@ -322,6 +322,15 @@ namespace Canvas
             TMatrix &operator=(const TMatrix &o) = default;
             const RowType &operator[](int index) const { return M[index]; }
             RowType &operator[](int index) { return M[index]; }
+            inline static TMatrix Identity()
+            {
+                TMatrix m = {};
+                for (int i = 0; i < std::min(_Rows, _Columns); ++i)
+                {
+                    m[i][i] = 1;
+                }
+                return m;
+            }
         };
 
         //------------------------------------------------------------------------------------------------
@@ -342,6 +351,15 @@ namespace Canvas
             TMatrix &operator=(const TMatrix &o) = default;
             const RowType &operator[](int index) const { return M[index]; }
             RowType &operator[](int index) { return M[index]; }
+            inline static TMatrix Identity()
+            {
+                TMatrix m = {};
+                for (int i = 0; i < std::min(2, _Columns); ++i)
+                {
+                    m[i][i] = 1;
+                }
+                return m;
+            }
         };
 
         //------------------------------------------------------------------------------------------------
@@ -362,6 +380,15 @@ namespace Canvas
             TMatrix &operator=(const TMatrix &o) = default;
             const RowType &operator[](int index) const { return M[index]; }
             RowType &operator[](int index) { return M[index]; }
+            inline static TMatrix Identity()
+            {
+                TMatrix m = {};
+                for (int i = 0; i < std::min(3, _Columns); ++i)
+                {
+                    m[i][i] = 1;
+                }
+                return m;
+            }
         };
 
         //------------------------------------------------------------------------------------------------
@@ -382,6 +409,15 @@ namespace Canvas
             TMatrix &operator=(const TMatrix &o) = default;
             const RowType &operator[](int index) const { return M[index]; }
             RowType &operator[](int index) { return M[index]; }
+            inline static TMatrix Identity()
+            {
+                TMatrix m = {};
+                for (int i = 0; i < std::min(4, _Columns); ++i)
+                {
+                    m[i][i] = 1;
+                }
+                return m;
+            }
         };
 
         //------------------------------------------------------------------------------------------------
@@ -627,7 +663,7 @@ namespace Canvas
 
         //------------------------------------------------------------------------------------------------
         // Mathematically treats the inputs as float3 vectors
-        FloatVector4 CrossProduct(const FloatVector4 &a, const FloatVector4 &b)
+        inline FloatVector4 CrossProduct(const FloatVector4 &a, const FloatVector4 &b)
         {
             FloatMatrix4x4 m;
             m[0][1] = -a[2];
