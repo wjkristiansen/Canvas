@@ -144,12 +144,14 @@ void CCanvas::ReportObjectLeaks()
             ostr << "RefCount=" << RefCount;
         }
         
-        Logger().LogError(ostr.str().c_str());
+        if (auto logger = Logger()) {
+            logger->Error(ostr.str().c_str());
+        }
     }
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, QLog::CLogClient *pLogClient)
+Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, std::shared_ptr<QLog::Logger> pLogger)
 {
     *ppCanvas = nullptr;
 
@@ -157,14 +159,11 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
     {
         if (iid == XCanvas::IId)
         {
-            if (pLogClient)
+            if (pLogger)
             {
-                if (pLogClient->LogEntryBegin(QLog::Category::Info, "CANVAS", "CreateCanvas: Creating canvas object..."))
-                {
-                    pLogClient->LogEntryEnd();
-                }
+                pLogger->Info("CANVAS: CreateCanvas: Creating canvas object...");
             }
-            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogClient); // throw(bad_alloc)
+            TGemPtr<CCanvas> pCanvas = new TGeneric<CCanvas>(pLogger); // throw(bad_alloc)
             *ppCanvas = pCanvas.Detach();
         }
         else
@@ -174,12 +173,9 @@ Result GEMAPI CreateCanvas(InterfaceId iid, _Outptr_result_nullonfailure_ void *
     }
     catch (std::bad_alloc &)
     {
-        if (pLogClient)
+        if (pLogger)
         {
-            if (pLogClient->LogEntryBegin(QLog::Category::Error, "CANVAS: ", "FAILURE in CreateCanvas"))
-            {
-                pLogClient->LogEntryEnd();
-            }
+            pLogger->Error("CANVAS: FAILURE in CreateCanvas");
         }
         return Result::OutOfMemory;
     }
@@ -212,7 +208,7 @@ GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailur
         }
 
         Gem::TGemPtr<XGfxInstance> pCanvasGfx;
-        ThrowGemError(pCreate(&pCanvasGfx, m_Logger.GetLogClient()));
+        ThrowGemError(pCreate(&pCanvasGfx, m_Logger));
 
         pCanvasGfx->AddRef();
         *ppCanvasGfx = pCanvasGfx.Get();

@@ -56,7 +56,7 @@ CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CGraphicsContext12 *p
 
 Gem::Result CSwapChain12::Present()
 {
-    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxSwapChain::Present", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxSwapChain::Present", QLog::Level::Debug);
     try
     {
         std::unique_lock<std::mutex> Lock(m_mutex);

@@ -100,7 +100,7 @@ target_precompile_headers(CanvasCore PRIVATE stdafx.h)
 target_sources(CanvasCore PRIVATE CanvasCore.def)
 
 # Installation
-install(TARGETS CanvasCore
+install(TARGETS CanvasCore QLog
     EXPORT CanvasCoreTargets
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
@@ -125,6 +125,12 @@ install(FILES
     Timer.h
     Transform.h
     DESTINATION include/CanvasCore
+)
+
+# Install QLog headers alongside CanvasCore
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../QLog/inc/
+    DESTINATION include
+    FILES_MATCHING PATTERN "*.h*"
 )
 
 install(EXPORT CanvasCoreTargets

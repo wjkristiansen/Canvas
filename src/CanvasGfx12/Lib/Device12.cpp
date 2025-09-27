@@ -26,7 +26,9 @@ Result CDevice12::Initialize()
     }
     catch (_com_error &e)
     {
-        CInstance12::GetSingleton()->Logger().LogErrorF("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
+        if (auto logger = CInstance12::GetSingleton()->Logger()) {
+            logger->Error("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
+        }
         return GemResult(e.Error());
     }
 

@@ -8,14 +8,14 @@ class CInstance12 :
 	public XGfxInstance,
 	public Gem::CGenericBase
 {
-	QLog::CBasicLogger m_Logger;
+	std::shared_ptr<QLog::Logger> m_Logger;
 
 	static CInstance12 *m_pThis;
 
 public:
-	CInstance12(QLog::CLogClient *pLogClient);
+	CInstance12(std::shared_ptr<QLog::Logger> pLogger);
 
-	QLog::CBasicLogger &Logger() { return m_Logger; }
+	std::shared_ptr<QLog::Logger> Logger() { return m_Logger; }
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxInstance)

@@ -67,14 +67,14 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateGfxInstance(_Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx, QLog::CLogClient *pLogClient)
+Result GEMAPI CreateGfxInstance(_Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx, std::shared_ptr<QLog::Logger> pLogger)
 {
     try
     {
         TGemPtr<CInstance12> pCanvasGfx = CInstance12::GetSingleton();
         if (nullptr == pCanvasGfx)
         {
-            pCanvasGfx = new TGeneric<CInstance12>(pLogClient); // throw(bad_alloc), throw(GemError)
+            pCanvasGfx = new TGeneric<CInstance12>(pLogger); // throw(bad_alloc), throw(GemError)
         }
         return pCanvasGfx->QueryInterface(ppCanvasGfx);
     }

@@ -216,7 +216,7 @@ Gem::Result CGraphicsContext12::FlushImpl()
 Gem::Result CGraphicsContext12::Flush()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxGraphicsContext::Flush", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxGraphicsContext::Flush", QLog::Level::Debug);
     try
     {
         ThrowGemError(FlushImpl());
@@ -235,7 +235,7 @@ Gem::Result CGraphicsContext12::Flush()
 GEMMETHODIMP CGraphicsContext12::FlushAndPresent(XGfxSwapChain *pSwapChain)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxGraphicsContext::FlushAndPresent", QLog::Category::Debug);
+    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxGraphicsContext::FlushAndPresent", QLog::Level::Debug);
 
     try
     {

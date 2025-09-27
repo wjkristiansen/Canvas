@@ -200,23 +200,27 @@ XLight : public XSceneGraphNode
 // Helper classes
 class CFunctionSentinel
 {
-    QLog::CBasicLogger &m_Logger;
-    QLog::Category m_DefaultLogCategory;
+    std::shared_ptr<QLog::Logger> m_Logger;
+    QLog::Level m_DefaultLogLevel;
     const char *m_FunctionName;
     Gem::Result m_Result = Gem::Result::Success;
 
 public:
-    CFunctionSentinel(QLog::CBasicLogger &Logger, const char *FunctionName, QLog::Category DefaultLogCategory = QLog::Category::Info) :
+    CFunctionSentinel(std::shared_ptr<QLog::Logger> logger, const char *FunctionName, QLog::Level DefaultLogLevel = QLog::Level::Info) :
         m_FunctionName(FunctionName),
-        m_Logger(Logger),
-        m_DefaultLogCategory(DefaultLogCategory)
+        m_Logger(logger),
+        m_DefaultLogLevel(DefaultLogLevel)
     {
-        m_Logger.LogF(m_DefaultLogCategory, "Begin: %s", m_FunctionName);
+        if (m_Logger) {
+            m_Logger->Log(m_DefaultLogLevel, "Begin: %s", m_FunctionName);
+        }
     }
     ~CFunctionSentinel()
     {
-        QLog::Category category = Gem::Failed(m_Result) ? QLog::Category::Error : m_DefaultLogCategory;
-        m_Logger.LogF(category, "%s: %s", GemResultString(m_Result), m_FunctionName);
+        if (m_Logger) {
+            QLog::Level level = Gem::Failed(m_Result) ? QLog::Level::Error : m_DefaultLogLevel;
+            m_Logger->Log(level, "%s: %s", GemResultString(m_Result), m_FunctionName);
+        }
     }
 
     void SetResultCode(Gem::Result Result) { m_Result = Result; }
@@ -224,5 +228,5 @@ public:
 
 }
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, QLog::CLogClient *pLogOutput = nullptr);
+extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, std::shared_ptr<QLog::Logger> pLogger = nullptr);
 

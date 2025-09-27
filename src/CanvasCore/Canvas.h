@@ -12,7 +12,7 @@ class CCanvas :
     public CGenericBase
 {
     std::mutex m_Mutex;
-    QLog::CBasicLogger m_Logger;
+    std::shared_ptr<QLog::Logger> m_Logger;
     wil::unique_hmodule m_GraphicsModule;
 
     CTimer m_FrameTimer;
@@ -24,8 +24,8 @@ public:
         GEM_INTERFACE_ENTRY(XCanvas)
     END_GEM_INTERFACE_MAP()
 
-    CCanvas(QLog::CLogClient *pLogClient) :
-        m_Logger(pLogClient, "CANVAS"),
+    CCanvas(std::shared_ptr<QLog::Logger> pLogger) :
+        m_Logger(pLogger),
         CGenericBase()
     {}
 
@@ -59,10 +59,10 @@ public:
 
     void ReportObjectLeaks();
 
-    QLog::CBasicLogger &Logger() { return m_Logger; }
+    std::shared_ptr<QLog::Logger> Logger() { return m_Logger; }
 
 public:
     TGemPtr<XGfxInstance> m_pCanvasGfx;
 };
 
-typedef Result (*CreateCanvasGfxProc)(_Outptr_result_nullonfailure_ XGfxInstance **pGraphicsGfx, QLog::CLogClient *pLogClient) noexcept;
+typedef Result (*CreateCanvasGfxProc)(_Outptr_result_nullonfailure_ XGfxInstance **pGraphicsGfx, std::shared_ptr<QLog::Logger> pLogger) noexcept;
