@@ -7,7 +7,6 @@
 
 #include "targetver.h"
 
-#define WIN32_LEAN_AND_MEAN             // Exclude rarely-used stuff from Windows headers
 // Windows Header Files
 #include <windows.h>
 #include <atlbase.h>
@@ -26,6 +25,7 @@
 #include <sstream>
 #include <mutex>
 #include <chrono>
+#include <algorithm>
 
 // reference additional headers your program requires here
 #include <wil/resource.h>

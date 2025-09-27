@@ -27,7 +27,7 @@ public:
         switch (m_Mode)
         {
         case Mode::Limited:
-            return min(Delta, m_Duration);
+            return std::min(Delta, m_Duration);
             break;
 
         case Mode::Repeating:

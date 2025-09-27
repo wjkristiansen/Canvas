@@ -6,6 +6,7 @@
 
 #include <math.h>
 #include <float.h>
+#include <algorithm>
 
 namespace Canvas
 {
