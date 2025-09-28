@@ -1,10 +1,10 @@
 [submodule "src/GEM"]
 	path = src/GEM
-	url = https://wjkristiansen.visualstudio.com/DefaultCollection/GEM/_git/GEM
+	url = https://github.com/wjkristiansen/GEM
 	branch = v0-0-1
 [submodule "src/ThinWin"]
 	path = src/ThinWin
-	url = https://wjkristiansen.visualstudio.com/DefaultCollection/ThinWin/_git/ThinWin
+	url = https://github.com/wjkristiansen/ThinWin
 [submodule "src/QLog"]
 	path = src/QLog
 	url = https://github.com/wjkristiansen/QLog.git
@@ -13,7 +13,7 @@
 	url = https://github.com/microsoft/wil.git
 [submodule "src/LinkedList"]
 	path = src/LinkedList
-	url = https://wjkristiansen.visualstudio.com/DefaultCollection/LinkedList/_git/LinkedList
+	url = https://github.com/wjkristiansen/LinkedList
 [submodule "src/Allocators"]
 	path = src/Allocators
-	url = https://wjkristiansen.visualstudio.com/DefaultCollection/Allocators/_git/Allocators
+	url = https://github.com/wjkristiansen/Allocators
