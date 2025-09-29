@@ -54,24 +54,18 @@ if(WIN32)
         _USRDLL
     )
     
-    # Link with DirectX 12 and Windows libraries
+    if(TARGET D3D12Agility)
+        message(STATUS "CanvasGfx12: Linking against Agility SDK")
+        target_link_libraries(CanvasGfx12 PRIVATE
+            D3D12Agility
+            kernel32 user32 gdi32 winspool comdlg32 advapi32 shell32 ole32 oleaut32 uuid odbc32 odbccp32
+        )
+    else()
     target_link_libraries(CanvasGfx12 PRIVATE
-        d3d12
-        dxgi
-        d3dcompiler
-        kernel32
-        user32
-        gdi32
-        winspool
-        comdlg32
-        advapi32
-        shell32
-        ole32
-        oleaut32
-        uuid
-        odbc32
-        odbccp32
+            d3d12 dxgi d3dcompiler
+            kernel32 user32 gdi32 winspool comdlg32 advapi32 shell32 ole32 oleaut32 uuid odbc32 odbccp32
     )
+endif()
 endif()
 
 # Link with other Canvas libraries
