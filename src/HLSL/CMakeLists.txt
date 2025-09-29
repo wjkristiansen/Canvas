@@ -104,14 +104,3 @@ configure_file(
     COPYONLY
 )
 
-# Installation
-install(FILES ${SHADER_OUTPUTS}
-    DESTINATION shaders
-    OPTIONAL
-)
-
-install(FILES 
-    Primary.h
-    Common.hlsli
-    DESTINATION include/shaders
-)

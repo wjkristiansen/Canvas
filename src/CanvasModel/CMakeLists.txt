@@ -49,22 +49,4 @@ target_link_libraries(CanvasModel PUBLIC
 # Use precompiled headers
 target_precompile_headers(CanvasModel PRIVATE pch.h)
 
-# Installation
-install(TARGETS CanvasModel
-    EXPORT CanvasModelTargets
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    INCLUDES DESTINATION include
-)
 
-install(FILES
-    framework.h
-    DESTINATION include/CanvasModel
-)
-
-install(EXPORT CanvasModelTargets
-    FILE CanvasModelTargets.cmake
-    NAMESPACE Canvas::
-    DESTINATION lib/cmake/Canvas
-)
