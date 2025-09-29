@@ -100,41 +100,15 @@ target_precompile_headers(CanvasCore PRIVATE stdafx.h)
 target_sources(CanvasCore PRIVATE CanvasCore.def)
 
 # Installation
-install(TARGETS CanvasCore QLog
-    EXPORT CanvasCoreTargets
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    INCLUDES DESTINATION include
+install(TARGETS CanvasCore
+    RUNTIME DESTINATION ${CANVAS_INSTALL_DEST}/bin
+    LIBRARY DESTINATION ${CANVAS_INSTALL_DEST}/lib
 )
 
-install(FILES
-    Camera.h
-    Canvas.h
-    DataSource.h
-    Light.h
-    Mesh.h
-    Name.h
-    Object.h
-    Object.inl
-    Scene.h
-    SceneGraph.h
-    SceneGraph.inl
-    ScopedUtils.h
-    Timeline.h
-    Timer.h
-    Transform.h
-    DESTINATION include/CanvasCore
-)
+# Install PDB files for debugging
+install(FILES $<TARGET_PDB_FILE:CanvasCore> DESTINATION ${CANVAS_INSTALL_DEST}/bin OPTIONAL)
 
-# Install QLog headers alongside CanvasCore
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../QLog/inc/
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.h*"
-)
 
-install(EXPORT CanvasCoreTargets
-    FILE CanvasCoreTargets.cmake
-    NAMESPACE Canvas::
-    DESTINATION lib/cmake/Canvas
-)
+
+
+

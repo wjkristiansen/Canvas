@@ -75,5 +75,8 @@ target_precompile_headers(CanvasModelViewer PRIVATE stdafx.h)
 
 # Installation
 install(TARGETS CanvasModelViewer
-    RUNTIME DESTINATION bin
+    RUNTIME DESTINATION ${CANVAS_INSTALL_DEST}/bin
 )
+
+# Install PDB files for debugging
+install(FILES $<TARGET_PDB_FILE:CanvasModelViewer> DESTINATION ${CANVAS_INSTALL_DEST}/bin OPTIONAL)

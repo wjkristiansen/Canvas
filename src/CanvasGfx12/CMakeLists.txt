@@ -55,8 +55,5 @@ endif()
 add_subdirectory(D3D12ResourceUtils)
 add_subdirectory(Lib)
 
-# Installation of d3dx12 headers (Microsoft helper headers)
-install(DIRECTORY d3dx12/
-    DESTINATION include/d3dx12
-    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
-)
+
+

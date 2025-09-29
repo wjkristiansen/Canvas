@@ -53,7 +53,7 @@ if(WIN32)
         _WINDOWS
         _USRDLL
     )
-    
+
     if(TARGET D3D12Agility)
         message(STATUS "CanvasGfx12: Linking against Agility SDK")
         target_link_libraries(CanvasGfx12 PRIVATE
@@ -61,11 +61,11 @@ if(WIN32)
             kernel32 user32 gdi32 winspool comdlg32 advapi32 shell32 ole32 oleaut32 uuid odbc32 odbccp32
         )
     else()
-    target_link_libraries(CanvasGfx12 PRIVATE
+        target_link_libraries(CanvasGfx12 PRIVATE
             d3d12 dxgi d3dcompiler
             kernel32 user32 gdi32 winspool comdlg32 advapi32 shell32 ole32 oleaut32 uuid odbc32 odbccp32
-    )
-endif()
+        )
+    endif()
 endif()
 
 # Link with other Canvas libraries
@@ -79,15 +79,35 @@ target_precompile_headers(CanvasGfx12 PRIVATE stdafx.h)
 
 # Installation
 install(TARGETS CanvasGfx12
-    EXPORT CanvasGfx12Targets
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    INCLUDES DESTINATION include
+    RUNTIME DESTINATION ${CANVAS_INSTALL_DEST}/bin
+    LIBRARY DESTINATION ${CANVAS_INSTALL_DEST}/lib
 )
 
-install(EXPORT CanvasGfx12Targets
-    FILE CanvasGfx12Targets.cmake
-    NAMESPACE Canvas::
-    DESTINATION lib/cmake/Canvas
-)
+# Install PDB files for debugging
+install(FILES $<TARGET_PDB_FILE:CanvasGfx12> DESTINATION ${CANVAS_INSTALL_DEST}/bin OPTIONAL)
+
+
+
+# Add post-build command to copy Agility SDK DLLs to output directory for development
+set(AGILITY_BIN_PATH "${CMAKE_BINARY_DIR}/_deps/AgilityD3D12/extracted/build/native/bin/x64")
+if(WIN32 AND EXISTS "${AGILITY_BIN_PATH}/D3D12Core.dll")
+    # Runtime deployment layout recommended by Microsoft: D3D12/<Version>/D3D12Core.dll etc.
+    set(AGILITY_RUNTIME_DIR $<TARGET_FILE_DIR:CanvasGfx12>/D3D12/1.616.1)
+    add_custom_command(TARGET CanvasGfx12 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${AGILITY_RUNTIME_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E echo "[AgilitySDK] Copying runtime DLLs to ${AGILITY_RUNTIME_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${AGILITY_BIN_PATH}/D3D12Core.dll" "${AGILITY_RUNTIME_DIR}/D3D12Core.dll"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${AGILITY_BIN_PATH}/d3d12SDKLayers.dll" "${AGILITY_RUNTIME_DIR}/d3d12SDKLayers.dll"
+        VERBATIM
+    )
+endif()
+
+# Install D3D12 Agility SDK runtime DLLs if they exist
+if(WIN32 AND EXISTS "${AGILITY_BIN_PATH}/D3D12Core.dll")
+    message(STATUS "Adding D3D12 Agility SDK DLLs to install manifest")
+    install(FILES 
+        "${AGILITY_BIN_PATH}/D3D12Core.dll"
+        "${AGILITY_BIN_PATH}/d3d12SDKLayers.dll"
+        DESTINATION ${CANVAS_INSTALL_DEST}/bin/D3D12
+    )
+endif()

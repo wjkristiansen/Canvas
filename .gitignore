@@ -1,4 +1,5 @@
 build
+install
 cmake
 
 # VS Code user settings

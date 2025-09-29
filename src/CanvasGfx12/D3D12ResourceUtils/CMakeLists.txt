@@ -46,34 +46,21 @@ if(WIN32)
         WIN32
         _LIB
     )
-    
-    # Link with DirectX 12 libraries
-    target_link_libraries(D3D12ResourceUtils PUBLIC
-        d3d12
-        dxgi
-        d3dcompiler
-    )
+
+    if(TARGET D3D12Agility)
+        message(STATUS "D3D12ResourceUtils: Using Agility SDK headers and Windows SDK libraries")
+        # Get the include directory from the parent scope
+        get_directory_property(AGILITY_INCLUDE_DIR DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/.. DEFINITION AGILITY_INCLUDE_DIR)
+        target_include_directories(D3D12ResourceUtils PRIVATE "${AGILITY_INCLUDE_DIR}")
+        target_link_libraries(D3D12ResourceUtils PUBLIC d3d12 dxgi d3dcompiler)
+    else()
+        target_link_libraries(D3D12ResourceUtils PUBLIC d3d12 dxgi d3dcompiler)
+    endif()
 endif()
 
 # Use precompiled headers
 target_precompile_headers(D3D12ResourceUtils PRIVATE pch.h)
 
 # Installation
-install(TARGETS D3D12ResourceUtils
-    EXPORT D3D12ResourceUtilsTargets
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    INCLUDES DESTINATION include
-)
 
-install(FILES
-    framework.h
-    DESTINATION include/D3D12ResourceUtils
-)
 
-install(EXPORT D3D12ResourceUtilsTargets
-    FILE D3D12ResourceUtilsTargets.cmake
-    NAMESPACE Canvas::
-    DESTINATION lib/cmake/Canvas
-)

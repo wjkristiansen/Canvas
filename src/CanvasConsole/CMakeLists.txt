@@ -67,5 +67,8 @@ target_precompile_headers(CanvasConsole PRIVATE pch.h)
 
 # Installation
 install(TARGETS CanvasConsole
-    RUNTIME DESTINATION bin
+    RUNTIME DESTINATION ${CANVAS_INSTALL_DEST}/bin
 )
+
+# Install PDB files for debugging
+install(FILES $<TARGET_PDB_FILE:CanvasConsole> DESTINATION ${CANVAS_INSTALL_DEST}/bin OPTIONAL)

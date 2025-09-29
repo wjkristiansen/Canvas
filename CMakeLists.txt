@@ -7,6 +7,42 @@ project(Canvas
     LANGUAGES CXX
 )
 
+# Function to determine architecture name from CMake variables
+function(get_architecture_name OUT_VAR_NAME)
+    # Use CMAKE_VS_PLATFORM_NAME for Visual Studio generators (most reliable for target architecture)
+    # Fall back to CMAKE_SYSTEM_PROCESSOR for other generators
+    if(CMAKE_VS_PLATFORM_NAME)
+        # Visual Studio generator provides the target platform name directly
+        set(ARCH_NAME "${CMAKE_VS_PLATFORM_NAME}")
+    else()
+        # For other generators, use CMAKE_SYSTEM_PROCESSOR (target processor type)
+        # Note: This is the target architecture, not host architecture when cross-compiling
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+            set(ARCH_NAME "x64")
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+            set(ARCH_NAME "ARM64")
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM|arm")
+            set(ARCH_NAME "ARM")
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "i[3-6]86|x86")
+            set(ARCH_NAME "x86")
+        else()
+            set(ARCH_NAME "${CMAKE_SYSTEM_PROCESSOR}")
+        endif()
+    endif()
+    set(${OUT_VAR_NAME} "${ARCH_NAME}" PARENT_SCOPE)
+endfunction()
+
+# Determine architecture
+get_architecture_name(ARCH_NAME)
+
+# Set default install prefix to local install directory with architecture and config
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "${CMAKE_SOURCE_DIR}/install" CACHE PATH "Install prefix" FORCE)
+endif()
+
+# Set up architecture/config-aware destination for runtime installation
+set(CANVAS_INSTALL_DEST "${ARCH_NAME}/$<CONFIG>")
+
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,6 +69,14 @@ enable_testing()
 set(WIL_BUILD_TESTS OFF CACHE BOOL "Disable WIL tests")
 set(WIL_BUILD_PACKAGING OFF CACHE BOOL "Disable WIL packaging")
 
+# Disable GoogleTest installation to keep install directory clean
+set(INSTALL_GTEST OFF CACHE BOOL "Disable GoogleTest installation")
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+# Test options
+option(LINKEDLIST_BUILD_TESTS "Build LinkedList unit tests" OFF)
+option(ALLOCATORS_BUILD_TESTS "Build Allocators unit tests" OFF)
+
 # If WIL has its own CMakeLists.txt, include it first
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/wil/CMakeLists.txt")
     add_subdirectory(src/wil EXCLUDE_FROM_ALL)
@@ -54,17 +98,11 @@ target_include_directories(LinkedList INTERFACE
     $<INSTALL_INTERFACE:include/LinkedList>
 )
 
-# Install LinkedList interface library
-install(TARGETS LinkedList
-    EXPORT D3D12ResourceUtilsTargets
-    INCLUDES DESTINATION include
-)
 
-# Install LinkedList headers
-install(DIRECTORY src/LinkedList/Inc/
-    DESTINATION include/LinkedList
-    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.inl"
-)
+
+
+
+
 
 # Create interface library for header-only GEM submodule
 add_library(GEM INTERFACE)
@@ -73,22 +111,20 @@ target_include_directories(GEM INTERFACE
     $<INSTALL_INTERFACE:include/GEM>
 )
 
-# Install GEM interface library
-install(TARGETS GEM
-    EXPORT CanvasCoreTargets
-    INCLUDES DESTINATION include
-)
 
-# Install GEM headers
-install(DIRECTORY src/GEM/Inc/
-    DESTINATION include/GEM
-    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp" PATTERN "*.inl"
-)
+
+
 
 # Add subdirectories for submodules first (they may be dependencies)
 add_subdirectory(src/QLog)
 add_subdirectory(src/ThinWin)
-add_subdirectory(src/Allocators)
+# Allocators is header-only, no CMakeLists.txt needed
+# Create interface library for header-only Allocators submodule
+add_library(Allocators INTERFACE)
+target_include_directories(Allocators INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/Allocators/Inc>
+    $<INSTALL_INTERFACE:include/Allocators>
+)
 
 # Add main project subdirectories
 add_subdirectory(src/CanvasCore)
@@ -97,34 +133,13 @@ add_subdirectory(src/CanvasModel)
 add_subdirectory(src/CanvasConsole)
 add_subdirectory(src/CanvasModelViewer)
 add_subdirectory(src/CanvasUnitTest)
-add_subdirectory(src/LinkedList/LinkedListTest)
+# LinkedList tests - conditionally include based on option
+if(LINKEDLIST_BUILD_TESTS)
+    add_subdirectory(src/LinkedList/LinkedListTest)
+endif()
+# Allocators tests - conditionally include based on option
+if(ALLOCATORS_BUILD_TESTS)
+    add_subdirectory(src/Allocators/AllocatorsTest)
+endif()
 add_subdirectory(src/HLSL)
 
-# Package configuration
-include(CMakePackageConfigHelpers)
-
-# Install include files
-install(DIRECTORY src/Inc/
-    DESTINATION include
-    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
-)
-
-# Create package config files
-configure_package_config_file(
-    "cmake/CanvasConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/CanvasConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/Canvas
-)
-
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/CanvasConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-# Install package config files
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/CanvasConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/CanvasConfigVersion.cmake"
-    DESTINATION lib/cmake/Canvas
-)
