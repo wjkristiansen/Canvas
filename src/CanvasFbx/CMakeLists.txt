@@ -5,8 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 add_library(CanvasFbx SHARED
     CanvasFbx.cpp
     dllmain.cpp
-    stdafx.cpp
-    stdafx.h
+    pch.h
     targetver.h
 )
 
@@ -66,7 +65,7 @@ target_link_libraries(CanvasFbx PRIVATE
 )
 
 # Use precompiled headers
-target_precompile_headers(CanvasFbx PRIVATE stdafx.h)
+target_precompile_headers(CanvasFbx PRIVATE pch.h)
 
 # Note: FBX SDK integration would need to be added here when available
 # find_package(FBX REQUIRED)

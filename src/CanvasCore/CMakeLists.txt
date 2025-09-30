@@ -9,7 +9,6 @@ add_library(CanvasCore SHARED
     dllmain.cpp
     Name.cpp
     Scene.cpp
-    stdafx.cpp
     Timer.cpp
     
     # Header files (for IDE organization)
@@ -32,7 +31,7 @@ add_library(CanvasCore SHARED
     Timeline.h
     Timer.h
     Transform.h
-    stdafx.h
+    pch.h
     targetver.h
 )
 
@@ -94,7 +93,7 @@ if(WIN32)
 endif()
 
 # Use precompiled headers
-target_precompile_headers(CanvasCore PRIVATE stdafx.h)
+target_precompile_headers(CanvasCore PRIVATE pch.h)
 
 # Add the .def file as a source to use it for exports
 target_sources(CanvasCore PRIVATE CanvasCore.def)

@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "CppUnitTest.h"
 #include "D3D12ResourceUtils.h"
 

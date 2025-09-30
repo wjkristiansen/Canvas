@@ -2,7 +2,7 @@
 // Timer
 //================================================================================================
 
-#include "stdafx.h"
+#include "pch.h"
 
 UINT64 CTimer::m_Frequency = 0;
 double CTimer::m_InvFreq = 0.0;

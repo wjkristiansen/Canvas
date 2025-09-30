@@ -10,8 +10,7 @@ add_library(CanvasGfx12 SHARED
     Surface12.cpp
     SwapChain12.cpp
     dllmain.cpp
-    stdafx.cpp
-    stdafx.h
+    pch.h
     targetver.h
 )
 
@@ -75,7 +74,7 @@ target_link_libraries(CanvasGfx12 PRIVATE
 )
 
 # Use precompiled headers
-target_precompile_headers(CanvasGfx12 PRIVATE stdafx.h)
+target_precompile_headers(CanvasGfx12 PRIVATE pch.h)
 
 # Installation
 install(TARGETS CanvasGfx12

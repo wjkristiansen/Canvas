@@ -9,8 +9,7 @@ add_library(CanvasUnitTest SHARED
     CanvasInterfacesTest.cpp
     CanvasMathTest.cpp
     D3D12ResourceUtilsTest.cpp
-    stdafx.cpp
-    stdafx.h
+    pch.h
     targetver.h
 )
 
@@ -87,7 +86,7 @@ find_library(MS_UNITTEST_FRAMEWORK
 target_link_libraries(CanvasUnitTest PRIVATE ${MS_UNITTEST_FRAMEWORK})
 
 # Use precompiled headers
-target_precompile_headers(CanvasUnitTest PRIVATE stdafx.h)
+target_precompile_headers(CanvasUnitTest PRIVATE pch.h)
 
 # Register tests with CTest using vstest.console.exe for Microsoft Test Framework
 enable_testing()

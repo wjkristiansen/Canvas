@@ -4,10 +4,9 @@ cmake_minimum_required(VERSION 3.24)
 # Define the executable
 add_executable(CanvasModelViewer WIN32
     CanvasModelViewer.cpp
-    stdafx.cpp
     CanvasModelViewer.h
     Resource.h
-    stdafx.h
+    pch.h
     targetver.h
     CanvasModelViewer.rc
 )
@@ -71,7 +70,7 @@ target_link_libraries(CanvasModelViewer PRIVATE
 )
 
 # Use precompiled headers
-target_precompile_headers(CanvasModelViewer PRIVATE stdafx.h)
+target_precompile_headers(CanvasModelViewer PRIVATE pch.h)
 
 # Installation
 install(TARGETS CanvasModelViewer
