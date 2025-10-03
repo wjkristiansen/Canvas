@@ -4,9 +4,15 @@
 
 #pragma once
 
+#include "DataSource.h"
+
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
-template<class _Base>
-class TTransform : public _Base
+class CTransform :
+    public Gem::CGenericBase,
+    public TCanvasElement<XTransform>
 {
     CTranslationDataSource *m_pTranslationDataSource = nullptr;
     CRotationDataSource *m_pRotationDataSource = nullptr;
@@ -16,7 +22,7 @@ class TTransform : public _Base
     inline static const Math::FloatVector4 m_WorldUp = Math::FloatVector4( 0.f, 1.f, 0.f, 0.f );
 
 public:
-    TTransform() {}
+    CTransform(CCanvas *pCanvas) : TCanvasElement(pCanvas) {}
 
     GEMMETHOD_(RotationType, GetRotationType)() const final
     {
@@ -46,6 +52,8 @@ public:
 
     GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location) final
     {
-        return Result::NotImplemented;
+        return Gem::Result::NotImplemented;
     }
 };
+
+}

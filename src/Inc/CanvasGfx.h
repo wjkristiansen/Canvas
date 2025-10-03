@@ -64,41 +64,31 @@ namespace Canvas
         BC7_UNorm,
     };
 
-#define FOR_EACH_CANVAS_GS_INTERFACE(macro) \
-    macro(XGfxDevice, 0x1017) \
-    macro(XGfxGraphicsContext, 0x1018) \
-    macro(XGfxBuffer, 0x1020) \
-    macro(XGfxSurface, 0x1021) \
-    macro(XGfxSwapChain, 0x1022) \
-    macro(XGfxInstance, 0x1023) \
-
-    //------------------------------------------------------------------------------------------------
-#define ENUM_GS_INTERFACE_ID(iface, value) CanvasGfxIId_##iface=value,
-    enum CanvasGfxIId
-    {
-        FOR_EACH_CANVAS_GS_INTERFACE(ENUM_GS_INTERFACE_ID)
-    };
-
-#define CANVAS_GS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasGfxIId_##iface)
+#define FOR_EACH_CANVASGFX_INTERFACE(macro, ...) \
+    macro(XGfxSurface, __VA_ARGS__) \
+    macro(XGfxBuffer, __VA_ARGS__) \
+    macro(XGfxSwapChain, __VA_ARGS__) \
+    macro(XGfxDevice, __VA_ARGS__) \
+    macro(XGfxInstance, __VA_ARGS__) \
 
     //------------------------------------------------------------------------------------------------
     // Buffer resource
     struct XGfxSurface : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XGfxSurface);
+        GEM_INTERFACE_DECLARE(0x2F05FEAC7133843B);
     };
 
     //------------------------------------------------------------------------------------------------
     // Buffer resource
     struct XGfxBuffer : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XGfxBuffer);
+        GEM_INTERFACE_DECLARE(0xA1DF297C8FA4CF13);
     };
 
     //------------------------------------------------------------------------------------------------
     struct XGfxSwapChain : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XGfxSwapChain);
+        GEM_INTERFACE_DECLARE(0x1DEDFC0646129850);
 
         GEMMETHOD(GetSurface)(XGfxSurface **ppSurface) = 0;
         GEMMETHOD(WaitForLastPresent)() = 0;
@@ -112,7 +102,7 @@ namespace Canvas
     // In D3D11, this is wraps an ID3D11DeviceContext
     struct XGfxGraphicsContext : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XGfxGraphicsContext);
+        GEM_INTERFACE_DECLARE(0x728AF985153F712D);
 
         GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) = 0;
         GEMMETHOD_(void, CopyBuffer(XGfxBuffer *pDest, XGfxBuffer *pSource)) = 0;
@@ -126,7 +116,7 @@ namespace Canvas
     // Interface to a graphics device
     struct XGfxDevice : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XGfxDevice);
+        GEM_INTERFACE_DECLARE(0x86D4ABCCCD5FB6EE);
 
         GEMMETHOD(CreateGraphicsContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) = 0;
     };
@@ -134,7 +124,7 @@ namespace Canvas
     //------------------------------------------------------------------------------------------------
     struct XGfxInstance : public Gem::XGeneric
     {
-        CANVAS_GS_INTERFACE_DECLARE(XGfxInstance);
+        GEM_INTERFACE_DECLARE(0x35CFDC3E089A6F52);
         GEMMETHOD(CreateGfxDevice)(Canvas::XGfxDevice **ppDevice) = 0;
     };
 }

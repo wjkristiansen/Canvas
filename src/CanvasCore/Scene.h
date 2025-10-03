@@ -4,17 +4,34 @@
 
 #pragma once
 
+#include "Canvas.h"
+#include "SceneGraph.h"
+
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public TSceneGraphNode<XScene>
+    public Gem::CGenericBase,
+    public TCanvasElement<XScene>
 {
+private:
+    Gem::TGemPtr<CSceneGraphNode> m_pRoot;
+    CCanvas *m_pCanvas;
+
 public:
     BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XCanvasElement)
         GEM_INTERFACE_ENTRY(XScene)
-        GEM_INTERFACE_ENTRY(XTransform)
-        GEM_INTERFACE_ENTRY(XSceneGraphNode)
-        GEM_CONTAINED_INTERFACE_ENTRY(XNameTag, m_NameTag)
     END_GEM_INTERFACE_MAP()
 
-    CScene(CCanvas *pCanvas, _In_z_ PCSTR szName);
+    CScene(CCanvas *pCanvas);
+
+public: // XScene methods
+    GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)();
+
+public: // CScene methods
+    CCanvas *GetCanvasImpl() const { return m_pCanvas; }
 };
+
+}

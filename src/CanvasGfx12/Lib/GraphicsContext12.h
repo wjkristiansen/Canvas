@@ -4,6 +4,9 @@
 
 #pragma once
 
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
 class CCommandAllocatorPool
 {
@@ -76,4 +79,4 @@ public:
     void ApplyResourceBarriers();
 };
 
-    
+}

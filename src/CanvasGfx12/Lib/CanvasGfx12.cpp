@@ -4,6 +4,9 @@
 
 #include "pch.h"
 
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
 DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
 {
@@ -67,24 +70,25 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
 }
 
 //------------------------------------------------------------------------------------------------
-Result GEMAPI CreateGfxInstance(_Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx, std::shared_ptr<QLog::Logger> pLogger)
+Gem::Result GEMAPI CreateGfxInstance(_Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx, std::shared_ptr<QLog::Logger> pLogger)
 {
     try
     {
-        TGemPtr<CInstance12> pCanvasGfx = CInstance12::GetSingleton();
+        Gem::TGemPtr<CInstance12> pCanvasGfx = CInstance12::GetSingleton();
         if (nullptr == pCanvasGfx)
         {
-            pCanvasGfx = new TGeneric<CInstance12>(pLogger); // throw(bad_alloc), throw(GemError)
+            pCanvasGfx = new Gem::TGeneric<CInstance12>(pLogger); // throw(bad_alloc), throw(GemError)
         }
         return pCanvasGfx->QueryInterface(ppCanvasGfx);
     }
-    catch (GemError &e)
+    catch (Gem::GemError &e)
     {
         return e.Result();
     }
     catch (std::bad_alloc &)
     {
-        return Result::OutOfMemory;
+        return Gem::Result::OutOfMemory;
     }
 }
 
+}

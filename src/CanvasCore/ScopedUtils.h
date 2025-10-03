@@ -1,5 +1,8 @@
 #pragma once
 
+namespace Canvas
+{
+
 class CScopedHandle
 {
     HANDLE m_Handle = NULL;
@@ -70,3 +73,4 @@ public:
     }
 };
 
+}

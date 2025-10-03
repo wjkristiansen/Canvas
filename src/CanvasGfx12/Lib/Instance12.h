@@ -4,6 +4,9 @@
 
 #pragma once
 
+namespace Canvas
+{
+
 class CInstance12 :
 	public XGfxInstance,
 	public Gem::CGenericBase
@@ -24,3 +27,5 @@ public:
     static CInstance12 *GetSingleton() { return m_pThis; }
 	GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppDevice);
 };
+
+}

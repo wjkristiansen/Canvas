@@ -71,6 +71,7 @@ endif()
 target_link_libraries(CanvasGfx12 PRIVATE
     CanvasCore
     D3D12ResourceUtils
+    GEM
 )
 
 # Use precompiled headers

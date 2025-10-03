@@ -4,13 +4,22 @@
 
 #include "pch.h"
 
-using namespace Canvas;
+#include "Scene.h"
+
+namespace Canvas
+{
 
 //------------------------------------------------------------------------------------------------
-CScene::CScene(CCanvas *pCanvas, _In_z_ PCSTR szName) :
-    TSceneGraphNode(pCanvas, szName)
+CScene::CScene(CCanvas *pCanvas) :
+    TCanvasElement(pCanvas),
+    m_pCanvas(pCanvas)
 {
-    TGemPtr<XSceneGraphNode> pNode;
-    std::string RootNodeName = std::string(szName) + "_Root";
 }
 
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(XSceneGraphNode *) CScene::GetRootSceneGraphNode()
+{
+    return m_pRoot.Get();
+}
+
+}

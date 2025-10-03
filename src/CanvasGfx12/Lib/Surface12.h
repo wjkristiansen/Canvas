@@ -6,6 +6,9 @@
 
 #include "D3D12ResourceUtils.h"
 
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
 class CSurface12 :
     public Canvas::XGfxSurface,
@@ -23,3 +26,4 @@ public:
     void Rename(ID3D12Resource *pResource) { m_pD3DResource = pResource; }
 };
 
+}

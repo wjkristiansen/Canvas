@@ -35,21 +35,3 @@
 
 #include "QLog.h"
 
-using namespace Canvas;
-using namespace Gem;
-
-#include "Name.h"
-#include "Object.h"
-#include "DataSource.h"
-#include "Transform.h"
-#include "SceneGraph.h"
-#include "Scene.h"
-#include "Camera.h"
-#include "Light.h"
-#include "Mesh.h"
-#include "Timeline.h"
-#include "Timer.h"
-#include "Canvas.h"
-
-#include "Object.inl"
-#include "SceneGraph.inl"

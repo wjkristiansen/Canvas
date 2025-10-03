@@ -4,5 +4,12 @@
 
 #include "pch.h"
 
+#include "Timer.h"
+
+namespace Canvas
+{
+
 UINT64 CTimer::m_Frequency = 0;
 double CTimer::m_InvFreq = 0.0;
+
+}

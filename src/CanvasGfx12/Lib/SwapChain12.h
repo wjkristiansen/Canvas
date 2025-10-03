@@ -6,6 +6,9 @@
 
 #include "Surface12.h"
 
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
 class CSwapChain12 :
     public Canvas::XGfxSwapChain,
@@ -20,7 +23,7 @@ class CSwapChain12 :
 
 public:
 
-    TGemPtr<CSurface12> m_pSurface;
+    Gem::TGemPtr<CSurface12> m_pSurface;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxSwapChain)
@@ -35,4 +38,4 @@ public:
     Gem::Result Present();
 };
 
-    
+}

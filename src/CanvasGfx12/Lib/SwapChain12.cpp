@@ -4,7 +4,8 @@
 
 #include "pch.h"
 
-using namespace Canvas;
+namespace Canvas
+{
 
 CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CGraphicsContext12 *pContext, DXGI_FORMAT Format, UINT NumBuffers) :
     m_pContext(pContext)
@@ -43,7 +44,7 @@ CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CGraphicsContext12 *p
     ThrowFailedHResult(pSwapChain4->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
 
     // Craft a D3D12_RESOURCE_DESC to match the swap chain
-    TGemPtr<CSurface12> pSurface = new TGeneric<CSurface12>(pBackBuffer, D3D12_RESOURCE_STATE_COMMON);
+    Gem::TGemPtr<CSurface12> pSurface = new Gem::TGeneric<CSurface12>(pBackBuffer, D3D12_RESOURCE_STATE_COMMON);
         
     CComPtr<ID3D12Fence> pFence;
     ThrowFailedHResult(pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence)));
@@ -77,11 +78,11 @@ Gem::Result CSwapChain12::Present()
     }
     catch (_com_error &e)
     {
-        Sentinel.SetResultCode(GemResult(e.Error()));
-        return GemResult(e.Error());
+        Sentinel.SetResultCode(Gem::GemResult(e.Error()));
+        return Gem::GemResult(e.Error());
     }
 
-    return Result::Success;
+    return Gem::Result::Success;
 }
 
 GEMMETHODIMP CSwapChain12::GetSurface(XGfxSurface **ppSurface)
@@ -96,5 +97,7 @@ GEMMETHODIMP CSwapChain12::WaitForLastPresent()
     m_pFence->SetEventOnCompletion(m_FenceValue, hEvent);
     WaitForSingleObject(hEvent, INFINITE);
     CloseHandle(hEvent);
-    return Result::Success;
+    return Gem::Result::Success;
+}
+
 }

@@ -4,10 +4,13 @@
 
 #pragma once
 
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
 class CMeshInstance :
     public XMeshInstance,
-    public CGenericBase
+    public Gem::CGenericBase
 {
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -17,3 +20,5 @@ public:
     CMeshInstance() :
         CGenericBase() {}
 };
+
+}

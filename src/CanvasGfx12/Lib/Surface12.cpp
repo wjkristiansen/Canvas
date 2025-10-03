@@ -4,5 +4,3 @@
 
 #include "pch.h"
 
-using namespace Canvas;
-

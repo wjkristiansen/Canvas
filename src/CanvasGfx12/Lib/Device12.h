@@ -4,6 +4,11 @@
 
 #pragma once
 
+#include "D3D12ResourceUtils.h"
+
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
 class CDevice12 :
     public Canvas::XGfxDevice,
@@ -23,7 +28,7 @@ public:
 
     CDevice12();
 
-    Result Initialize();
+    Gem::Result Initialize();
 
     GEMMETHOD(CreateGraphicsContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) final;
     // GEMMETHOD(CreateRenderTargetView)(Canvas::XGfxRenderTargetView **ppRTView, Canvas::XGfxTexture2D *pTex2D)
@@ -32,3 +37,4 @@ public:
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
 };
 
+}

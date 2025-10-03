@@ -9,121 +9,66 @@
 
 namespace Canvas
 {
-// Canvas core interfaces
-struct XCanvas;
+#define FOR_EACH_CANVAS_INTERFACE(macro, ...) \
+    macro(XCanvas, __VA_ARGS__) \
+    macro(XCanvasElement, __VA_ARGS__) \
+    macro(XScene, __VA_ARGS__) \
+    macro(XSceneGraphNode, __VA_ARGS__) \
+    macro(XMeshInstance, __VA_ARGS__) \
+    macro(XLight, __VA_ARGS__) \
+    macro(XTransform, __VA_ARGS__) \
+    macro(XCamera, __VA_ARGS__) \
+    macro(XMaterial, __VA_ARGS__) \
+    macro(XMesh, __VA_ARGS__) \
+    macro(XRenderable, __VA_ARGS__)
 
-// Scene struct
-struct XScene;
+#define FORWARD_DECLARE_INTERFACE_STRUCT(xface, _) \
+    struct xface;
 
-// Scene graph node
-struct XSceneGraphNode;
-
-// Camera GEM_INTERFACEs
-struct XCamera;
-
-// Light GEM_INTERFACEs
-struct XLight;
-
-// Transform GEM_INTERFACEs
-struct XTransform;
-
-// Assets
-struct XTexture;
-struct XMaterial;
-struct XMesh;
-struct XAmination;
-struct XSkeleton;
-
-#define FOR_EACH_CANVAS_INTERFACE(macro) \
-    macro(XCanvas, 1) \
-    macro(XScene, 2) \
-    macro(XSceneGraphNode, 3) \
-    macro(XMeshInstance, 5) \
-    macro(XLight, 6) \
-    macro(XTransform, 7) \
-    macro(XCamera, 8) \
-    macro(XTexture, 9) \
-    macro(XMaterial, 10) \
-    macro(XMesh, 11) \
-    macro(XAmination, 12) \
-    macro(XSkeleton, 13) \
-    macro(XIterator, 14) \
-    macro(XNameTag, 15) \
-    macro(XModel, 16) \
-
-//------------------------------------------------------------------------------------------------
-#define ENUM_INTERFACE_ID(iface, value) CanvasIId_##iface=value,
-enum CanvasIId
-{
-    FOR_EACH_CANVAS_INTERFACE(ENUM_INTERFACE_ID)
-};
-
-#define CANVAS_INTERFACE_DECLARE(iface) GEM_INTERFACE_DECLARE(CanvasIId_##iface)
-
-//------------------------------------------------------------------------------------------------
-struct XIterator : public Gem::XGeneric
-{
-    CANVAS_INTERFACE_DECLARE(XIterator);
-
-    // Resets the iterator to the start of the collection
-    GEMMETHOD(Reset)() = 0;
-
-    // Returns true if the the iterator is at the end of the collection
-    GEMMETHOD_(bool, IsAtEnd)() = 0;
-
-    // Moves the iterator to the next element
-    GEMMETHOD(MoveNext)() = 0;
-
-    // Moves the iterator to the previous element
-    GEMMETHOD(MovePrev)() = 0;
-
-    // QI's the current element (if exists)
-    GEMMETHOD(Select)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
-    
-    // Removes the current element and the iterator to the next element
-    GEMMETHOD(Prune)() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct
-XNameTag : public Gem::XGeneric
-{
-    CANVAS_INTERFACE_DECLARE(XNameTag);
-
-    GEMMETHOD_(PCSTR, GetName)() = 0;
-    GEMMETHOD(SetName)(PCSTR) = 0;
-};
+FOR_EACH_CANVAS_INTERFACE(FORWARD_DECLARE_INTERFACE_STRUCT)
 
 //------------------------------------------------------------------------------------------------
 struct
 XCanvas : public Gem::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XCanvas);
-
-    GEMMETHOD(CreateScene)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
-    GEMMETHOD(GetNamedObject)(_In_z_ PCSTR szName, Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj) = 0;
-    GEMMETHOD(CreateNullSceneGraphNode)(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppObj, _In_z_ PCSTR szName = nullptr) = 0;
-    GEMMETHOD(CreateCameraNode)(_In_ const ModelData::CAMERA_DATA *pCameraData, _Outptr_result_nullonfailure_ XCamera **ppCamera, _In_z_ PCSTR szName = nullptr) = 0;
-    GEMMETHOD(CreateLightNode)(const ModelData::LIGHT_DATA *pLightData, _Outptr_result_nullonfailure_ XLight **ppLight, _In_z_ PCSTR szName = nullptr) = 0;
+    GEM_INTERFACE_DECLARE(0x0F215E5907B4651D);
 
     GEMMETHOD(InitCanvasGfx)(PCSTR szDLLPath, _Outptr_opt_result_nullonfailure_ XGfxInstance **ppCanvasGfx) = 0;
     GEMMETHOD(FrameTick)() = 0;
+
+    GEMMETHOD(CreateScene)(XScene **ppScene) = 0;
+    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) = 0;
+    GEMMETHOD(CreateTransform)(XTransform **ppTransform) = 0;
+    GEMMETHOD(CreateCamera)(const ModelData::CAMERA_DATA &cameraData, XCamera **ppCamera) = 0;
+    GEMMETHOD(CreateLight)(const ModelData::LIGHT_DATA &lightData, XLight **ppLight) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
 struct
-XMaterial : public Gem::XGeneric
+XCanvasElement : public Gem::XGeneric
 {
-    CANVAS_INTERFACE_DECLARE(XMaterial);
+    GEM_INTERFACE_DECLARE(0x5604F8425EBF3A75);
+
+    GEMMETHOD_(PCSTR, GetName)() = 0;
+    GEMMETHOD_(void, SetName)(PCSTR szName) = 0;
+
+    GEMMETHOD_(XCanvas *, GetCanvas)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XMaterial : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(0xD6E17B2CB8454154);
 
     GEMMETHOD(Initialize)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
 struct
-XMesh : public Gem::XGeneric
+XMesh : public XCanvasElement
 {
-    CANVAS_INTERFACE_DECLARE(XMesh);
+    GEM_INTERFACE_DECLARE(0x7EBC2A5A40CC96D3);
 };
 
 //------------------------------------------------------------------------------------------------
@@ -141,9 +86,9 @@ enum class RotationType
 
 //------------------------------------------------------------------------------------------------
 struct
-XTransform : public Gem::XGeneric
+XTransform : public XCanvasElement
 {
-    CANVAS_INTERFACE_DECLARE(XTransform);
+    GEM_INTERFACE_DECLARE(0x2A08BD07EC525C0B);
 
     GEMMETHOD_(RotationType, GetRotationType)() const = 0;
     GEMMETHOD_(const Math::FloatVector4 &, GetRotation)() const = 0;
@@ -155,45 +100,66 @@ XTransform : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 struct
-XSceneGraphNode : public XTransform
+XRenderable : public XCanvasElement
 {
-    CANVAS_INTERFACE_DECLARE(XSceneGraphNode);
-    GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
-    GEMMETHOD(CreateChildIterator)(_Outptr_result_nullonfailure_ XIterator **ppIterator) = 0;
-
-    //GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
-    //GEMMETHOD_(void, SetCamera)(XCamera *pCamera) = 0;
-    //GEMMETHOD_(void, SetLight)(XLight *pLight) = 0;
+    GEM_INTERFACE_DECLARE(0xF0449B8912467DD4);
 };
 
 //------------------------------------------------------------------------------------------------
 struct
-XScene : public XSceneGraphNode
+XMeshInstance : public XRenderable
 {
-    CANVAS_INTERFACE_DECLARE(XScene);
-};
-
-//------------------------------------------------------------------------------------------------
-struct
-XMeshInstance : public XSceneGraphNode
-{
-    CANVAS_INTERFACE_DECLARE(XMeshInstance);
+    GEM_INTERFACE_DECLARE(0xB727EFEA527A1032);
 
     GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
 struct
-XCamera : public XSceneGraphNode
+XCamera : public XCanvasElement
 {
-    CANVAS_INTERFACE_DECLARE(XCamera);
+    GEM_INTERFACE_DECLARE(0x4F4481985210AE1E);
 };
 
 //------------------------------------------------------------------------------------------------
 struct
-XLight : public XSceneGraphNode
+XLight : public XCanvasElement
 {
-    CANVAS_INTERFACE_DECLARE(XLight);
+    GEM_INTERFACE_DECLARE(0x97EC7872FDAD30F2);
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XSceneGraphNode : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(0x86E8F764FE09E772);
+
+    GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
+
+    GEMMETHOD_(XSceneGraphNode *, GetParent)() = 0;
+    GEMMETHOD_(XSceneGraphNode *, GetSibling)() = 0;
+    GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() = 0;
+
+    GEMMETHOD_(void, SetTransform)(XTransform *pTransform) = 0;
+    GEMMETHOD_(XTransform *, GetTransform)() const = 0;
+
+    GEMMETHOD_(void, SetRenderable)(XRenderable *pRenderable) = 0;
+    GEMMETHOD_(XRenderable *, GetMesh)() = 0;
+
+    GEMMETHOD_(void, SetCamera)(XCamera *pMesh) = 0;
+    GEMMETHOD_(XCamera *, GetCamera)() = 0;
+
+    GEMMETHOD_(void, SetLight)(XLight *pMesh) = 0;
+    GEMMETHOD_(XLight *, GetLight)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XScene : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(0x0A470E86351AF96A);
+
+    GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -226,7 +192,7 @@ public:
     void SetResultCode(Gem::Result Result) { m_Result = Result; }
 };
 
-}
+extern Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger> pLogger = nullptr);
 
-extern Gem::Result GEMAPI CreateCanvas(Gem::InterfaceId iid, _Outptr_result_nullonfailure_ void **ppCanvas, std::shared_ptr<QLog::Logger> pLogger = nullptr);
+}
 

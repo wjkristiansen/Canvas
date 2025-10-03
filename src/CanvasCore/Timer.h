@@ -4,6 +4,9 @@
 
 #pragma once
 
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
 // High-resolution timer class
 class CTimer
@@ -43,3 +46,4 @@ public:
     static double DPSeconds(UINT64 Ticks) { return Ticks * m_InvFreq; }
 };
 
+}

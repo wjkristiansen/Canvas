@@ -5,11 +5,10 @@ cmake_minimum_required(VERSION 3.24)
 add_library(CanvasCore SHARED
     # Source files
     CanvasCore.cpp
-    Object.cpp
     dllmain.cpp
-    Name.cpp
     Scene.cpp
     Timer.cpp
+    SceneGraph.cpp
     
     # Header files (for IDE organization)
     ../Inc/CanvasCore.h
@@ -21,12 +20,8 @@ add_library(CanvasCore SHARED
     DataSource.h
     Light.h
     Mesh.h
-    Name.h
-    Object.h
-    Object.inl
     Scene.h
     SceneGraph.h
-    SceneGraph.inl
     ScopedUtils.h
     Timeline.h
     Timer.h

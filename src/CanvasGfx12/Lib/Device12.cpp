@@ -6,7 +6,8 @@
 
 #include "GraphicsContext12.h"
 
-using namespace Canvas;
+namespace Canvas
+{
 
 //------------------------------------------------------------------------------------------------
 CDevice12::CDevice12()
@@ -14,7 +15,7 @@ CDevice12::CDevice12()
 }
 
 //------------------------------------------------------------------------------------------------
-Result CDevice12::Initialize()
+Gem::Result CDevice12::Initialize()
 {
     try
     {
@@ -29,10 +30,10 @@ Result CDevice12::Initialize()
         if (auto logger = CInstance12::GetSingleton()->Logger()) {
             logger->Error("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
         }
-        return GemResult(e.Error());
+        return Gem::GemResult(e.Error());
     }
 
-    return Result::Success;
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -41,7 +42,7 @@ GEMMETHODIMP CDevice12::CreateGraphicsContext(XGfxGraphicsContext **ppContext)
     CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxDevice::CreateGraphicsContext");
     try
     {
-        Gem::TGemPtr<XGfxGraphicsContext> pContext(new TGeneric<CGraphicsContext12>(this));
+        Gem::TGemPtr<XGfxGraphicsContext> pContext(new Gem::TGeneric<CGraphicsContext12>(this));
         return pContext->QueryInterface(ppContext);
     }
     catch (const Gem::GemError &e)
@@ -164,3 +165,5 @@ struct Vertex
 //{
 //    return Result::NotImplemented;
 //}
+
+}

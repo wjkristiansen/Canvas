@@ -3,8 +3,6 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
-using namespace Canvas;
-
 namespace CanvasUnitTest
 {
     TEST_CLASS(CanvasCollectionsTest)
@@ -13,8 +11,8 @@ namespace CanvasUnitTest
 
         TEST_METHOD(SimpleSortedListTest)
         {
-            TGemPtr<XCanvas> pCanvas;
-            Result result = CreateCanvas(XCanvas::IId, (void **) &pCanvas);
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Result result = CreateCanvas(&pCanvas);
         }
     };
 }

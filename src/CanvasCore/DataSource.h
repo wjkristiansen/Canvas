@@ -4,6 +4,9 @@
 
 #pragma once
 
+namespace Canvas
+{
+
 //------------------------------------------------------------------------------------------------
 template<class _DataType>
 class TConstantFunction
@@ -102,3 +105,5 @@ class CTranslationDataSource : public TDataSource<Math::FloatVector4>
 {
 
 };
+
+}

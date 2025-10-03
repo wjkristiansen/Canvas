@@ -6,7 +6,8 @@
 
 #include "GraphicsContext12.h"
 
-using namespace Canvas;
+namespace Canvas
+{
 
 //------------------------------------------------------------------------------------------------
 CCommandAllocatorPool::CCommandAllocatorPool()
@@ -59,40 +60,40 @@ CGraphicsContext12::CGraphicsContext12(CDevice12 *pDevice) :
     CQDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     auto *pD3DDevice = pDevice->GetD3DDevice();
 
-    ThrowGemError(GemResult(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
+    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
 
     CComPtr<ID3D12CommandAllocator> pCA = m_CommandAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
 
     CComPtr<ID3D12GraphicsCommandList> pCL;
-    ThrowGemError(GemResult(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
+    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
 
     CComPtr<ID3D12DescriptorHeap> pResDH;
     D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     DHDesc.NumDescriptors = NumShaderResourceDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pResDH))));
+    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pResDH))));
 
     CComPtr<ID3D12DescriptorHeap> pSamplerDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
     DHDesc.NumDescriptors = NumSamplerDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pSamplerDH))));
+    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pSamplerDH))));
 
     CComPtr<ID3D12DescriptorHeap> pRTVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     DHDesc.NumDescriptors = NumRTVDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pRTVDH))));
+    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pRTVDH))));
 
     CComPtr<ID3D12DescriptorHeap> pDSVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     DHDesc.NumDescriptors = NumDSVDescriptors; // BUGBUG: This needs to be a well-known constant
-    ThrowGemError(GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pDSVDH))));
+    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pDSVDH))));
 
     CComPtr<ID3D12Fence> pFence;
-    ThrowGemError(GemResult(pD3DDevice->CreateFence(m_FenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence))));
+    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateFence(m_FenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence))));
 
     // The default root signature uses the following parameters
     //  Root CBV (descriptor static)
@@ -142,10 +143,10 @@ GEMMETHODIMP CGraphicsContext12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxS
     {
         // Create the swapchain
         DXGI_FORMAT dxgiFormat = CanvasFormatToDXGIFormat(Format);
-        TGemPtr<CSwapChain12> pSwapChain = new TGeneric<CSwapChain12>(hWnd, Windowed, this, dxgiFormat, NumBuffers);
+        Gem::TGemPtr<CSwapChain12> pSwapChain = new Gem::TGeneric<CSwapChain12>(hWnd, Windowed, this, dxgiFormat, NumBuffers);
         return pSwapChain->QueryInterface(ppSwapChain);
     }
-    catch (GemError &e)
+    catch (Gem::GemError &e)
     {
         Sentinel.SetResultCode(e.Result());
         return e.Result();
@@ -204,11 +205,11 @@ Gem::Result CGraphicsContext12::FlushImpl()
 
         m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
 
-        return Result::Success;
+        return Gem::Result::Success;
     }
     catch (_com_error &e)
     {
-        return GemResult(e.Error());
+        return Gem::GemResult(e.Error());
     }
 }
 
@@ -219,16 +220,16 @@ Gem::Result CGraphicsContext12::Flush()
     CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxGraphicsContext::Flush", QLog::Level::Debug);
     try
     {
-        ThrowGemError(FlushImpl());
+        Gem::ThrowGemError(FlushImpl());
 
         ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
     }
     catch (_com_error &e)
     {
-        return GemResult(e.Error());
+        return Gem::GemResult(e.Error());
     }
 
-    return Result::Success;
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -243,9 +244,9 @@ GEMMETHODIMP CGraphicsContext12::FlushAndPresent(XGfxSwapChain *pSwapChain)
         pIntSwapChain->m_pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_COMMON);
         ApplyResourceBarriers();
 
-        ThrowGemError(FlushImpl());
+        Gem::ThrowGemError(FlushImpl());
 
-        ThrowGemError(pIntSwapChain->Present());
+        Gem::ThrowGemError(pIntSwapChain->Present());
 
         m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
 
@@ -255,12 +256,12 @@ GEMMETHODIMP CGraphicsContext12::FlushAndPresent(XGfxSwapChain *pSwapChain)
 
         ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
     }
-    catch (GemError &e)
+    catch (Gem::GemError &e)
     {
         Sentinel.SetResultCode(e.Result());
     }
 
-    return Result::Success;
+    return Gem::Result::Success;
 }
 
 GEMMETHODIMP CGraphicsContext12::Wait()
@@ -270,7 +271,7 @@ GEMMETHODIMP CGraphicsContext12::Wait()
     m_pFence->SetEventOnCompletion(m_FenceValue, hEvent);
     WaitForSingleObject(hEvent, INFINITE);
     CloseHandle(hEvent);
-    return Result::Success;
+    return Gem::Result::Success;
 }
 
 CGraphicsContext12::~CGraphicsContext12()
@@ -286,4 +287,6 @@ void CGraphicsContext12::ApplyResourceBarriers()
     std::vector<D3D12_RESOURCE_BARRIER> resourceBarriers;
     m_pDevice->m_ResourceStateManager.ResolveResourceBarriers(resourceBarriers);
     m_pCommandList->ResourceBarrier((UINT)resourceBarriers.size(), resourceBarriers.data());
+}
+
 }

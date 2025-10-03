@@ -19,9 +19,6 @@
 #include <string>
 #include <iostream>
 
-using namespace Canvas;
-using namespace Gem;
-
 #endif //PCH_H
 #include <string>
 #include <iostream>
