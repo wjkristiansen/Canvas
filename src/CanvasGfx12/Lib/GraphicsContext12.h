@@ -28,8 +28,7 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CGraphicsContext12 :
-    public Canvas::XGfxGraphicsContext,
-    public Gem::CGenericBase
+    public Gem::TGenericBase<Canvas::XGfxGraphicsContext>
 {
     std::mutex m_mutex;
 

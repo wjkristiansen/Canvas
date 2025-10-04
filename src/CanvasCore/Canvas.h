@@ -12,8 +12,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CCanvas :
-    public Gem::CGenericBase,
-    public XCanvas
+    public Gem::TGenericBase<XCanvas>
 {
     std::mutex m_Mutex;
     std::shared_ptr<QLog::Logger> m_Logger;
@@ -29,8 +28,7 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CCanvas(std::shared_ptr<QLog::Logger> pLogger) :
-        m_Logger(pLogger),
-        CGenericBase()
+        m_Logger(pLogger)
     {}
 
     ~CCanvas();
@@ -41,9 +39,8 @@ public:
 
     GEMMETHOD(CreateScene)(XScene **ppScene) final;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) final;
-    GEMMETHOD(CreateTransform)(XTransform **ppTransform) final;
-    GEMMETHOD(CreateCamera)(const ModelData::CAMERA_DATA &cameraData, XCamera **ppCamera) final;
-    GEMMETHOD(CreateLight)(const ModelData::LIGHT_DATA &lightData, XLight **ppLight) final;
+    GEMMETHOD(CreateCamera)(XCamera **ppCamera) final;
+    GEMMETHOD(CreateLight)(XLight **ppLight) final;
 
     std::shared_ptr<QLog::Logger> Logger() { return m_Logger; }
 
@@ -54,7 +51,7 @@ public:
 //------------------------------------------------------------------------------------------------
 template<class _Base>
 class TCanvasElement :
-    public _Base
+    public Gem::TGenericBase<_Base>
 {
     std::string m_Name;
     CCanvas *m_pCanvas;
