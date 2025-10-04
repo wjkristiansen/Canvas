@@ -42,7 +42,8 @@ GEMMETHODIMP CDevice12::CreateGraphicsContext(XGfxGraphicsContext **ppContext)
     CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxDevice::CreateGraphicsContext");
     try
     {
-        Gem::TGemPtr<XGfxGraphicsContext> pContext(new Gem::TGenericImpl<CGraphicsContext12>(this));
+        Gem::TGemPtr<CGraphicsContext12> pContext;
+        Gem::ThrowGemError(Gem::TGenericImpl<CGraphicsContext12>::Create(&pContext, this)); // throw(Gem::GemError)
         return pContext->QueryInterface(ppContext);
     }
     catch (const Gem::GemError &e)

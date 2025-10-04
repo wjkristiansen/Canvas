@@ -115,19 +115,20 @@ Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger
         {
             pLogger->Info("CANVAS: CreateCanvas: Creating canvas object...");
         }
-        Gem::TGemPtr<CCanvas> pCanvas = new Gem::TGenericImpl<CCanvas>(pLogger); // throw(bad_alloc)
+        Gem::TGemPtr<CCanvas> pCanvas;
+        Gem::ThrowGemError(Gem::TGenericImpl<CCanvas>::Create(&pCanvas, pLogger)); // throw(Gem::GemError)
         *ppCanvas = pCanvas.Detach();
+
+        return Gem::Result::Success;
     }
-    catch (std::bad_alloc &)
+    catch (const Gem::GemError &e)
     {
         if (pLogger)
         {
             pLogger->Error("CANVAS: FAILURE in CreateCanvas");
         }
-        return Gem::Result::OutOfMemory;
+        return e.Result();
     }
-
-    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
