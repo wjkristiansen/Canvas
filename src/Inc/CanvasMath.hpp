@@ -1002,6 +1002,78 @@ namespace Canvas
         using FloatQuaternion = TQuaternion<float>;
         using DoubleQuaternion = TQuaternion<double>;
 
+        //------------------------------------------------------------------------------------------------
+        // Axis-Aligned Bounding Box
+        struct AABB
+        {
+            FloatVector4 Min;
+            FloatVector4 Max;
+
+            AABB()
+                : Min(FLT_MAX, FLT_MAX, FLT_MAX, 0.0f)
+                , Max(-FLT_MAX, -FLT_MAX, -FLT_MAX, 0.0f)
+            {
+            }
+
+            AABB(const FloatVector4& min, const FloatVector4& max)
+                : Min(min), Max(max)
+            {
+            }
+
+            bool IsValid() const
+            {
+                return Min.V[0] <= Max.V[0] && Min.V[1] <= Max.V[1] && Min.V[2] <= Max.V[2];
+            }
+
+            void Reset()
+            {
+                Min = FloatVector4(FLT_MAX, FLT_MAX, FLT_MAX, 0.0f);
+                Max = FloatVector4(-FLT_MAX, -FLT_MAX, -FLT_MAX, 0.0f);
+            }
+
+            void ExpandToInclude(const FloatVector4& point)
+            {
+                if (point.V[0] < Min.V[0]) Min.V[0] = point.V[0];
+                if (point.V[1] < Min.V[1]) Min.V[1] = point.V[1];
+                if (point.V[2] < Min.V[2]) Min.V[2] = point.V[2];
+                if (point.V[0] > Max.V[0]) Max.V[0] = point.V[0];
+                if (point.V[1] > Max.V[1]) Max.V[1] = point.V[1];
+                if (point.V[2] > Max.V[2]) Max.V[2] = point.V[2];
+            }
+
+            void ExpandToInclude(const AABB& other)
+            {
+                if (!other.IsValid()) return;
+                if (!IsValid())
+                {
+                    *this = other;
+                    return;
+                }
+                ExpandToInclude(other.Min);
+                ExpandToInclude(other.Max);
+            }
+
+            FloatVector4 GetCenter() const
+            {
+                return FloatVector4(
+                    (Min.V[0] + Max.V[0]) * 0.5f,
+                    (Min.V[1] + Max.V[1]) * 0.5f,
+                    (Min.V[2] + Max.V[2]) * 0.5f,
+                    0.0f
+                );
+            }
+
+            FloatVector4 GetExtents() const
+            {
+                return FloatVector4(
+                    (Max.V[0] - Min.V[0]) * 0.5f,
+                    (Max.V[1] - Min.V[1]) * 0.5f,
+                    (Max.V[2] - Min.V[2]) * 0.5f,
+                    0.0f
+                );
+            }
+        };
+
 
     }
 }
