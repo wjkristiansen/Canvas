@@ -37,8 +37,8 @@ GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
 
     try
     {
-        Gem::TGemPtr<XScene> pObj;
-        pObj = new Gem::TGeneric<CScene>(this); // throw(std::bad_alloc)
+        Gem::TGemPtr<CScene> pObj;
+        Gem::ThrowGemError(Gem::TGenericImpl<CScene>::Create(&pObj, this));
         *ppScene = pObj.Detach();
     }
     catch(std::bad_alloc &)
@@ -46,6 +46,10 @@ GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
         Sentinel.SetResultCode(Gem::Result::OutOfMemory);
         *ppScene = nullptr;
         return Gem::Result::OutOfMemory;
+    }
+    catch(const Gem::GemError &e)
+    {
+        return e.Result();
     }
 
     return Gem::Result::Success;
@@ -56,57 +60,46 @@ GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode)
 {
     CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateSceneGraphNode");
 
-    try
+    if (!ppNode)
     {
-        Gem::TGemPtr<CSceneGraphNode> pNode;
-        pNode = new Gem::TGeneric<CSceneGraphNode>(this); // throw(std::bad_alloc)
-        *ppNode = pNode.Detach();
+        return Gem::Result::BadPointer;
     }
-    catch (std::bad_alloc&)
+
+    CSceneGraphNode *pNode = nullptr;
+    auto result = Gem::TGenericImpl<CSceneGraphNode>::Create(&pNode, this);
+    
+    if (Gem::Succeeded(result))
     {
-        return Gem::Result::OutOfMemory;
+        *ppNode = pNode;
     }
-    return Gem::Result::Success;
+    else
+    {
+        *ppNode = nullptr;
+    }
+    
+    return result;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateTransform(XTransform **ppTransform)
-{
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateSceneGraphNode");
-
-    try
-    {
-        Gem::TGemPtr<CTransform> pTransform;
-        pTransform = new Gem::TGeneric<CTransform>(this); // throw(std::bad_alloc)
-        *ppTransform = pTransform.Detach();
-    }
-    catch (std::bad_alloc&)
-    {
-        return Gem::Result::OutOfMemory;
-    }
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateCamera(const ModelData::CAMERA_DATA &cameraData, XCamera **ppCamera)
+GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera)
 {
     CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateCamera");
 
     try
     {
         Gem::TGemPtr<CCamera> pCamera;
-        pCamera = new Gem::TGeneric<CCamera>(this, &cameraData); // throw(std::bad_alloc)
+        Gem::ThrowGemError(Gem::TGenericImpl<CCamera>::Create(&pCamera, this));
         *ppCamera = pCamera.Detach();
     }
-    catch (std::bad_alloc &)
+    catch (const Gem::GemError &e)
     {
-        return Gem::Result::OutOfMemory;
+
     }
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateLight(const ModelData::LIGHT_DATA &lightData, XLight **ppLight)
+GEMMETHODIMP CCanvas::CreateLight(XLight **ppLight)
 {
     return Gem::Result::NotImplemented;
 }
@@ -122,19 +115,20 @@ Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger
         {
             pLogger->Info("CANVAS: CreateCanvas: Creating canvas object...");
         }
-        Gem::TGemPtr<CCanvas> pCanvas = new Gem::TGeneric<CCanvas>(pLogger); // throw(bad_alloc)
+        Gem::TGemPtr<CCanvas> pCanvas;
+        Gem::ThrowGemError(Gem::TGenericImpl<CCanvas>::Create(&pCanvas, pLogger)); // throw(Gem::GemError)
         *ppCanvas = pCanvas.Detach();
+
+        return Gem::Result::Success;
     }
-    catch (std::bad_alloc &)
+    catch (const Gem::GemError &e)
     {
         if (pLogger)
         {
             pLogger->Error("CANVAS: FAILURE in CreateCanvas");
         }
-        return Gem::Result::OutOfMemory;
+        return e.Result();
     }
-
-    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------

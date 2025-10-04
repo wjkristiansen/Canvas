@@ -4,31 +4,34 @@
 
 #pragma once
 
+#include "SceneGraph.h"
+
 namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
 class CCamera :
-    public Gem::CGenericBase,
-    public TCanvasElement<XCamera>
+    public TSceneGraphElement<XCamera>
 {
-    float m_NearClip;
-    float m_FarClip;
-    float m_FovAngle;
+    float m_NearClip = 0;
+    float m_FarClip = 0;
+    float m_FovAngle = 0;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XCamera)
     END_GEM_INTERFACE_MAP()
 
-    CCamera(CCanvas *pCanvas, const ModelData::CAMERA_DATA *pCameraData) :
-        CGenericBase(),
-        TCanvasElement(pCanvas),
-        m_NearClip(pCameraData->NearClip),
-        m_FarClip(pCameraData->FarClip),
-        m_FovAngle(pCameraData->FovAngle)
+    // Ctor
+    CCamera(CCanvas *pCanvas) :
+        TSceneGraphElement(pCanvas)
     {
     }
+
+    // XCamera methods
+    GEMMETHOD_(void, SetNearClip)(float nearClip) final { m_NearClip = nearClip; }
+    GEMMETHOD_(void, SetFarClip)(float farClip) final { m_FarClip = farClip; }
+    GEMMETHOD_(void, SetFovAngle)(float fovAngle) final { m_FovAngle = fovAngle; }
 };
 
 }

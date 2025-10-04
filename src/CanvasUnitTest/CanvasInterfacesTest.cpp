@@ -79,8 +79,8 @@ namespace CanvasUnitTest
             //      - Node4
             //          - Node5
 
-            Gem::TGemPtr<XSceneGraphNode> pRoot;
-            Assert::IsTrue(Succeeded(pScene->QueryInterface(GEM_IID_PPV_ARGS(&pRoot))));
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Assert::IsNotNull(pRoot.Get());
             Assert::IsTrue(Succeeded(pRoot->AddChild(pNodes[0])));
             Assert::IsTrue(Succeeded(pRoot->AddChild(pNodes[1])));
             Assert::IsTrue(Succeeded(pNodes[0]->AddChild(pNodes[2])));

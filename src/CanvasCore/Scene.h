@@ -12,7 +12,6 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CScene :
-    public Gem::CGenericBase,
     public TCanvasElement<XScene>
 {
 private:
@@ -29,8 +28,10 @@ public:
 
 public: // XScene methods
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)();
+    GEMMETHOD(Initialize)();
 
 public: // CScene methods
+    CScene *CastFrom(XScene *pXScene) { return static_cast<CScene *>(pXScene); }
     CCanvas *GetCanvasImpl() const { return m_pCanvas; }
 };
 

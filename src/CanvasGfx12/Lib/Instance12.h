@@ -8,8 +8,7 @@ namespace Canvas
 {
 
 class CInstance12 :
-	public XGfxInstance,
-	public Gem::CGenericBase
+	public Gem::TGeneric<XGfxInstance>
 {
 	std::shared_ptr<QLog::Logger> m_Logger;
 

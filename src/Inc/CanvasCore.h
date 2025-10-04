@@ -20,7 +20,7 @@ namespace Canvas
     macro(XCamera, __VA_ARGS__) \
     macro(XMaterial, __VA_ARGS__) \
     macro(XMesh, __VA_ARGS__) \
-    macro(XRenderable, __VA_ARGS__)
+    macro(XSceneGraphElement, __VA_ARGS__)
 
 #define FORWARD_DECLARE_INTERFACE_STRUCT(xface, _) \
     struct xface;
@@ -38,9 +38,8 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(CreateScene)(XScene **ppScene) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) = 0;
-    GEMMETHOD(CreateTransform)(XTransform **ppTransform) = 0;
-    GEMMETHOD(CreateCamera)(const ModelData::CAMERA_DATA &cameraData, XCamera **ppCamera) = 0;
-    GEMMETHOD(CreateLight)(const ModelData::LIGHT_DATA &lightData, XLight **ppLight) = 0;
+    GEMMETHOD(CreateCamera)(XCamera **ppCamera) = 0;
+    GEMMETHOD(CreateLight)(XLight **ppLight) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -86,7 +85,7 @@ enum class RotationType
 
 //------------------------------------------------------------------------------------------------
 struct
-XTransform : public XCanvasElement
+XTransform : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(0x2A08BD07EC525C0B);
 
@@ -95,37 +94,7 @@ XTransform : public XCanvasElement
     GEMMETHOD_(const Math::FloatVector4 &, GetTranslation)() const = 0;
     GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const Math::FloatVector4 &Rotation) = 0;
     GEMMETHOD_(void, SetTranslation)(_In_ const Math::FloatVector4 &Translation) = 0;
-    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct
-XRenderable : public XCanvasElement
-{
-    GEM_INTERFACE_DECLARE(0xF0449B8912467DD4);
-};
-
-//------------------------------------------------------------------------------------------------
-struct
-XMeshInstance : public XRenderable
-{
-    GEM_INTERFACE_DECLARE(0xB727EFEA527A1032);
-
-    GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct
-XCamera : public XCanvasElement
-{
-    GEM_INTERFACE_DECLARE(0x4F4481985210AE1E);
-};
-
-//------------------------------------------------------------------------------------------------
-struct
-XLight : public XCanvasElement
-{
-    GEM_INTERFACE_DECLARE(0x97EC7872FDAD30F2);
+    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location, _In_ const Math::FloatVector4 &WorldUp) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -139,18 +108,66 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(XSceneGraphNode *, GetParent)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetSibling)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() = 0;
+};
 
-    GEMMETHOD_(void, SetTransform)(XTransform *pTransform) = 0;
-    GEMMETHOD_(XTransform *, GetTransform)() const = 0;
+//-----------------------0-------------------------------------------------------------------------
+struct
+XRenderQueue : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(0x3B35719161878DCC);
 
-    GEMMETHOD_(void, SetRenderable)(XRenderable *pRenderable) = 0;
-    GEMMETHOD_(XRenderable *, GetMesh)() = 0;
+    // BUGBUG: TODO...
+};
 
-    GEMMETHOD_(void, SetCamera)(XCamera *pMesh) = 0;
-    GEMMETHOD_(XCamera *, GetCamera)() = 0;
+//-----------------------0-------------------------------------------------------------------------
+struct
+XSceneGraphElement : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(0xD9F48C0E3F0775F0);
 
-    GEMMETHOD_(void, SetLight)(XLight *pMesh) = 0;
-    GEMMETHOD_(XLight *, GetLight)() = 0;
+    // Attach to the specified node.
+    // Automatically detaches if attached to a different node.
+    // The node holds a reference to this element
+    GEMMETHOD(AttachTo)(XSceneGraphNode *pNode) = 0;
+
+    // Detaches the element from a scene graph node.
+    // If attached, the reference is released by the node.
+    GEMMETHOD(Detach)() = 0;
+
+    // Returns a weak pointer to the scene graph node the element is attached to
+    GEMMETHOD_(XSceneGraphNode *, GetAttachedNode)() = 0;
+
+    // Dispatches the element for rendering
+    GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XMeshInstance : public XSceneGraphElement
+{
+    GEM_INTERFACE_DECLARE(0xB727EFEA527A1032);
+
+    GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XCamera : public XSceneGraphElement
+{
+    GEM_INTERFACE_DECLARE(0x4F4481985210AE1E);
+
+    GEMMETHOD_(void, SetNearClip)(float nearClip) = 0;
+    GEMMETHOD_(void, SetFarClip)(float nearClip) = 0;
+    GEMMETHOD_(void, SetFovAngle)(float fovAngle) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XLight : public XSceneGraphElement
+{
+    GEM_INTERFACE_DECLARE(0x97EC7872FDAD30F2);
+
+    // BUGBUG: Light methods here like SetColor, SetIntensity, SetType, etc...
 };
 
 //------------------------------------------------------------------------------------------------

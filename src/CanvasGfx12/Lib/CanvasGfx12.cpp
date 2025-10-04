@@ -77,17 +77,13 @@ Gem::Result GEMAPI CreateGfxInstance(_Outptr_result_nullonfailure_ XGfxInstance 
         Gem::TGemPtr<CInstance12> pCanvasGfx = CInstance12::GetSingleton();
         if (nullptr == pCanvasGfx)
         {
-            pCanvasGfx = new Gem::TGeneric<CInstance12>(pLogger); // throw(bad_alloc), throw(GemError)
+            Gem::ThrowGemError(Gem::TGenericImpl<CInstance12>::Create(&pCanvasGfx, pLogger)); // throw(Gem::GemError)
         }
         return pCanvasGfx->QueryInterface(ppCanvasGfx);
     }
     catch (Gem::GemError &e)
     {
         return e.Result();
-    }
-    catch (std::bad_alloc &)
-    {
-        return Gem::Result::OutOfMemory;
     }
 }
 

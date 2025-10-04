@@ -11,18 +11,20 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
-    public Gem::CGenericBase,
-    public TCanvasElement<XTransform>
+    public Gem::TGeneric<XTransform>
 {
     CTranslationDataSource *m_pTranslationDataSource = nullptr;
     CRotationDataSource *m_pRotationDataSource = nullptr;
     Math::FloatVector4 m_Translation;
     Math::FloatVector4 m_Rotation;
     RotationType m_RotationType = RotationType::EulerXYZ;
-    inline static const Math::FloatVector4 m_WorldUp = Math::FloatVector4( 0.f, 1.f, 0.f, 0.f );
 
 public:
-    CTransform(CCanvas *pCanvas) : TCanvasElement(pCanvas) {}
+    BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XTransform)
+    END_GEM_INTERFACE_MAP()
+
+    CTransform() {}
 
     GEMMETHOD_(RotationType, GetRotationType)() const final
     {
@@ -50,7 +52,7 @@ public:
         m_Translation = Translation;
     }
 
-    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location) final
+    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location, _In_ const Math::FloatVector4 &WorldUp) final
     {
         return Gem::Result::NotImplemented;
     }

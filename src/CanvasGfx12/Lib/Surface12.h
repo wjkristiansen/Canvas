@@ -11,9 +11,8 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CSurface12 :
-    public Canvas::XGfxSurface,
-    public CResource,
-    public Gem::CGenericBase
+    public Gem::TGeneric<Canvas::XGfxSurface>,
+    public CResource
 {
 public:
     BEGIN_GEM_INTERFACE_MAP()
