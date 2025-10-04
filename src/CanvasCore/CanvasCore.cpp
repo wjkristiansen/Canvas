@@ -27,6 +27,8 @@ inline const char *IIdToString(const Gem::InterfaceId &id)
 //------------------------------------------------------------------------------------------------
 CCanvas::~CCanvas()
 {
+    // Shutdown the render queue manager before releasing graphics
+    m_RenderQueueManager.Shutdown();
     m_pCanvasGfx = nullptr;
 }
 
@@ -162,6 +164,14 @@ GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailur
         *ppCanvasGfx = pCanvasGfx.Get();
 
         m_pCanvasGfx.Attach(pCanvasGfx.Detach());
+
+        // Initialize the render queue manager with the graphics device
+        Gem::TGemPtr<XGfxDevice> pDevice;
+        Gem::Result result = m_pCanvasGfx->CreateGfxDevice(&pDevice);
+        if (result == Gem::Result::Success)
+        {
+            m_RenderQueueManager.Initialize(pDevice.Get());
+        }
 
         graphicsModule.swap(m_GraphicsModule);
     }

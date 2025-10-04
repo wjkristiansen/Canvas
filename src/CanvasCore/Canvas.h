@@ -6,6 +6,7 @@
 
 #include "Gem.hpp"
 #include "Timer.h"
+#include "RenderQueueManager.h"
 
 namespace Canvas
 {
@@ -21,6 +22,9 @@ class CCanvas :
     CTimer m_FrameTimer;
     UINT64 m_FrameEndTimeLast = 0;
     UINT m_FrameCounter = 0;
+
+    // Render queue manager for scheduling renderable content
+    CRenderQueueManager m_RenderQueueManager;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()

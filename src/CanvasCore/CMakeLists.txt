@@ -9,12 +9,14 @@ add_library(CanvasCore SHARED
     Scene.cpp
     Timer.cpp
     SceneGraph.cpp
+    RenderQueueManager.cpp
     
     # Header files (for IDE organization)
     ../Inc/CanvasCore.h
     ../Inc/CanvasGfx.h
     ../Inc/CanvasMath.hpp
     ../Inc/CanvasModel.h
+    ../Inc/CanvasRender.h
     Camera.h
     Canvas.h
     DataSource.h
@@ -26,6 +28,7 @@ add_library(CanvasCore SHARED
     Timeline.h
     Timer.h
     Transform.h
+    RenderQueueManager.h
     pch.h
     targetver.h
 )

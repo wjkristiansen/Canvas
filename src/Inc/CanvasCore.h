@@ -6,6 +6,7 @@
 #include <QLog.h>
 #include "CanvasGfx.h"
 #include "CanvasModel.h"
+#include "CanvasRender.h"
 
 namespace Canvas
 {
