@@ -9,7 +9,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CMeshInstance :
-    public Gem::TGenericBase<XMeshInstance>
+    public Gem::TGeneric<XMeshInstance>
 {
 public:
     BEGIN_GEM_INTERFACE_MAP()

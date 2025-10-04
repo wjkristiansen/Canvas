@@ -11,7 +11,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CTransform :
-    public Gem::TGenericBase<XTransform>
+    public Gem::TGeneric<XTransform>
 {
     CTranslationDataSource *m_pTranslationDataSource = nullptr;
     CRotationDataSource *m_pRotationDataSource = nullptr;

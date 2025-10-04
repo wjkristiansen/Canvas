@@ -9,7 +9,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public Gem::TGenericBase<XLight>
+    public Gem::TGeneric<XLight>
 {
 public:
     BEGIN_GEM_INTERFACE_MAP()

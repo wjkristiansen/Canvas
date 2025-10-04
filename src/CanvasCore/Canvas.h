@@ -12,7 +12,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CCanvas :
-    public Gem::TGenericBase<XCanvas>
+    public Gem::TGeneric<XCanvas>
 {
     std::mutex m_Mutex;
     std::shared_ptr<QLog::Logger> m_Logger;
@@ -51,7 +51,7 @@ public:
 //------------------------------------------------------------------------------------------------
 template<class _Base>
 class TCanvasElement :
-    public Gem::TGenericBase<_Base>
+    public Gem::TGeneric<_Base>
 {
     std::string m_Name;
     CCanvas *m_pCanvas;

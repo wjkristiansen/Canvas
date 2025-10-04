@@ -77,7 +77,7 @@ Gem::Result GEMAPI CreateGfxInstance(_Outptr_result_nullonfailure_ XGfxInstance 
         Gem::TGemPtr<CInstance12> pCanvasGfx = CInstance12::GetSingleton();
         if (nullptr == pCanvasGfx)
         {
-            pCanvasGfx = new Gem::TGeneric<CInstance12>(pLogger); // throw(bad_alloc), throw(GemError)
+            pCanvasGfx = new Gem::TGenericImpl<CInstance12>(pLogger); // throw(bad_alloc), throw(GemError)
         }
         return pCanvasGfx->QueryInterface(ppCanvasGfx);
     }

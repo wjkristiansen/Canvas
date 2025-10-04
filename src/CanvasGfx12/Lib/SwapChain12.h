@@ -11,7 +11,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CSwapChain12 :
-    public Gem::TGenericBase<Canvas::XGfxSwapChain>
+    public Gem::TGeneric<Canvas::XGfxSwapChain>
 {
     std::mutex m_mutex;
     CComPtr<IDXGIFactory7> m_pDXGIFactory;

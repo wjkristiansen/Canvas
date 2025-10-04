@@ -44,7 +44,7 @@ CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CGraphicsContext12 *p
     ThrowFailedHResult(pSwapChain4->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
 
     // Craft a D3D12_RESOURCE_DESC to match the swap chain
-    Gem::TGemPtr<CSurface12> pSurface = new Gem::TGeneric<CSurface12>(pBackBuffer, D3D12_RESOURCE_STATE_COMMON);
+    Gem::TGemPtr<CSurface12> pSurface = new Gem::TGenericImpl<CSurface12>(pBackBuffer, D3D12_RESOURCE_STATE_COMMON);
         
     CComPtr<ID3D12Fence> pFence;
     ThrowFailedHResult(pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence)));

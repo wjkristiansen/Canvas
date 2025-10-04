@@ -38,7 +38,7 @@ GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
     try
     {
         Gem::TGemPtr<CScene> pObj;
-        Gem::ThrowGemError(Gem::TGeneric<CScene>::Create(&pObj, this));
+        Gem::ThrowGemError(Gem::TGenericImpl<CScene>::Create(&pObj, this));
         *ppScene = pObj.Detach();
     }
     catch(std::bad_alloc &)
@@ -66,7 +66,7 @@ GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode)
     }
 
     CSceneGraphNode *pNode = nullptr;
-    auto result = Gem::TGeneric<CSceneGraphNode>::Create(&pNode, this);
+    auto result = Gem::TGenericImpl<CSceneGraphNode>::Create(&pNode, this);
     
     if (Gem::Succeeded(result))
     {
@@ -88,7 +88,7 @@ GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera)
     try
     {
         Gem::TGemPtr<CCamera> pCamera;
-        Gem::ThrowGemError(Gem::TGeneric<CCamera>::Create(&pCamera, this));
+        Gem::ThrowGemError(Gem::TGenericImpl<CCamera>::Create(&pCamera, this));
         *ppCamera = pCamera.Detach();
     }
     catch (const Gem::GemError &e)
@@ -115,7 +115,7 @@ Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger
         {
             pLogger->Info("CANVAS: CreateCanvas: Creating canvas object...");
         }
-        Gem::TGemPtr<CCanvas> pCanvas = new Gem::TGeneric<CCanvas>(pLogger); // throw(bad_alloc)
+        Gem::TGemPtr<CCanvas> pCanvas = new Gem::TGenericImpl<CCanvas>(pLogger); // throw(bad_alloc)
         *ppCanvas = pCanvas.Detach();
     }
     catch (std::bad_alloc &)

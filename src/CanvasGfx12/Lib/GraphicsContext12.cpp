@@ -143,7 +143,7 @@ GEMMETHODIMP CGraphicsContext12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxS
     {
         // Create the swapchain
         DXGI_FORMAT dxgiFormat = CanvasFormatToDXGIFormat(Format);
-        Gem::TGemPtr<CSwapChain12> pSwapChain = new Gem::TGeneric<CSwapChain12>(hWnd, Windowed, this, dxgiFormat, NumBuffers);
+        Gem::TGemPtr<CSwapChain12> pSwapChain = new Gem::TGenericImpl<CSwapChain12>(hWnd, Windowed, this, dxgiFormat, NumBuffers);
         return pSwapChain->QueryInterface(ppSwapChain);
     }
     catch (Gem::GemError &e)

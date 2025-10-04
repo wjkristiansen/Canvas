@@ -19,7 +19,7 @@ CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas) : TCanvasElement(pCanvas), m_
 GEMMETHODIMP CSceneGraphNode::Initialize()
 {
     CTransform *pTransform = nullptr;
-    auto result = Gem::TAggregateGeneric<CTransform, CSceneGraphNode>::Create(&pTransform, this);
+    auto result = Gem::TAggregateImpl<CTransform, CSceneGraphNode>::Create(&pTransform, this);
     if (Gem::Succeeded(result))
     {
         try
