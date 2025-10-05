@@ -69,7 +69,7 @@ namespace Canvas
     macro(XGfxBuffer, __VA_ARGS__) \
     macro(XGfxSwapChain, __VA_ARGS__) \
     macro(XGfxDevice, __VA_ARGS__) \
-    macro(XGfxInstance, __VA_ARGS__) \
+    macro(XGfxFactory, __VA_ARGS__) \
 
     //------------------------------------------------------------------------------------------------
     // Buffer resource
@@ -122,9 +122,11 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    struct XGfxInstance : public Gem::XGeneric
+    struct XGfxFactory : public Gem::XGeneric
     {
-        GEM_INTERFACE_DECLARE(0x35CFDC3E089A6F52);
-        GEMMETHOD(CreateGfxDevice)(Canvas::XGfxDevice **ppDevice) = 0;
+        GEM_INTERFACE_DECLARE(0x3EE387780593F266);
+        GEMMETHOD(CreateDevice)(Canvas::XGfxDevice **ppDevice) = 0;
     };
 }
+
+using FnCreateGfxFactory = Canvas::XGfxFactory* (*)(Canvas::XGfxFactory**);

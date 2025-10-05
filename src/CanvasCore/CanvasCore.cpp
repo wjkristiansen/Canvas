@@ -46,11 +46,21 @@ inline const char *IIdToString(const Gem::InterfaceId &id)
 }
 
 //------------------------------------------------------------------------------------------------
-CCanvas::~CCanvas()
+GEMMETHODIMP CCanvas::Initialize()
+{
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CCanvas::Uninitialize()
 {
     // Shutdown the render queue manager before releasing graphics
     m_RenderQueueManager.Shutdown();
-    m_pCanvasGfx = nullptr;
+}
+
+//------------------------------------------------------------------------------------------------
+CCanvas::~CCanvas()
+{
 }
 
 //------------------------------------------------------------------------------------------------
@@ -157,51 +167,47 @@ Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx)
+GEMMETHODIMP CCanvas::InitGfx(PCSTR path, HWND hWnd)
 {
-    CFunctionSentinel Sentinel("XCanvas::InitCanvasGfx");
+    CFunctionSentinel Sentinel("XCanvas::InitGfx");
 
     try
     {
-        *ppCanvasGfx = nullptr;
+        std::unique_ptr<CCanvasPlugin> pPlugin = std::make_unique<CCanvasPlugin>(path);
 
-        wil::unique_hmodule graphicsModule(LoadLibraryExA(szDLLPath, NULL, 0));
-
-        if (graphicsModule.get() == NULL)
+        auto pfnCreateCanvasGfxFactory = pPlugin->GetProc<FnCreateGfxFactory>("CreateCanvasGfxFactory");
+        if(!pfnCreateCanvasGfxFactory)
         {
-            Gem::ThrowGemError(Gem::Result::NotFound);
+            Gem::ThrowGemError(Gem::Result::PluginProcNodFound);
         }
 
-        // Create XGfxInstance interface
-        CreateCanvasGfxProc pCreate = reinterpret_cast<CreateCanvasGfxProc>(
-            GetProcAddress(graphicsModule.get(), "CreateGfxInstance"));
-        if (pCreate == nullptr)
-        {
-            throw(Gem::GemError(Gem::Result::NotFound));
-        }
+        Gem::TGemPtr<Canvas::XGfxFactory> pFactory;
+        pfnCreateCanvasGfxFactory(&pFactory);
 
-        Gem::TGemPtr<XGfxInstance> pCanvasGfx;
-        Gem::ThrowGemError(pCreate(&pCanvasGfx));
+        // Create the graphics device
+        Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+        Gem::ThrowGemError(pFactory->CreateDevice(&pDevice));
 
-        pCanvasGfx->AddRef();
-        *ppCanvasGfx = pCanvasGfx.Get();
+        // Create the graphics context
+        Gem::TGemPtr<Canvas::XGfxGraphicsContext> pGfxContext;
+        Gem::ThrowGemError(pDevice->CreateGraphicsContext(&pGfxContext));
 
-        m_pCanvasGfx.Attach(pCanvasGfx.Detach());
-
+        // Create the swapchain
+        Gem::TGemPtr<Canvas::XGfxSwapChain> pSwapChain;
+        Gem::ThrowGemError(pGfxContext->CreateSwapChain(hWnd, true, &pSwapChain, Canvas::GfxFormat::R16G16B16A16_Float, 4));
         // Initialize the render queue manager with the graphics device
-        Gem::TGemPtr<XGfxDevice> pDevice;
-        Gem::Result result = m_pCanvasGfx->CreateGfxDevice(&pDevice);
-        if (result == Gem::Result::Success)
-        {
-            m_RenderQueueManager.Initialize(pDevice.Get());
-        }
+        Gem::ThrowGemError(m_RenderQueueManager.Initialize(pDevice.Get()));
 
-        graphicsModule.swap(m_GraphicsModule);
+        m_pGfxFactory.Attach(pFactory.Detach());
+        m_pGfxDevice.Attach(pDevice.Detach());
+        m_pGfxContext.Attach(pGfxContext.Detach());
+        m_pGfxSwapChain.Attach(pSwapChain.Detach());
+        m_pGfxPlugin.swap(pPlugin);
     }
     catch (const Gem::GemError &e)
     {
         Sentinel.SetResultCode(e.Result());
-        return Gem::Result::Fail;
+        return e.Result();
     }
 
     return Gem::Result::Success;
@@ -212,11 +218,28 @@ GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailur
 GEMMETHODIMP CCanvas::FrameTick()
 {
     Gem::Result result = Gem::Result::Success;
-//    Logger().LogInfo("Begin CCanvas::FrameTick");
 
     // Elapse time
 
     // Update scene graph
+
+    // BUGBUG - TEST CODE: REPLACE WITH RENDER QUEUE DISPATCH
+    const float ClearColors[2][4] =
+    {
+        { 1.f, 0.f, 0.f, 0.f },
+        { 0.f, 0.f, 1.f, 0.f },
+    };
+
+    static UINT clearColorIndex = 0;
+
+    Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+    m_pGfxSwapChain->GetSurface(&pSurface);
+    m_pGfxContext->ClearSurface(pSurface, ClearColors[clearColorIndex]);
+    clearColorIndex ^= 1;
+    m_pGfxContext->FlushAndPresent(m_pGfxSwapChain);
+    m_pGfxContext->Wait();
+    // BUGBUG - END TEST CODE
+
 
     // Build the display list
 

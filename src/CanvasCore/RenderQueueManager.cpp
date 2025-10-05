@@ -34,17 +34,17 @@ namespace Canvas
         Shutdown();
     }
 
-    HRESULT CRenderQueueManager::Initialize(XGfxDevice* pDevice)
+    Gem::Result CRenderQueueManager::Initialize(XGfxDevice* pDevice)
     {
         if (!pDevice)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         m_pDevice = pDevice;
         
         // Initialize statistics
         m_Stats = {};
         
-        return S_OK;
+        return Gem::Result::Success;
     }
 
     void CRenderQueueManager::Shutdown()
@@ -54,10 +54,10 @@ namespace Canvas
         m_pDevice = nullptr;
     }
 
-    HRESULT CRenderQueueManager::CreateRenderQueue(UINT maxPackets, UINT priority, UINT queueFlags, Canvas::RenderQueue** ppQueue)
+    Gem::Result CRenderQueueManager::CreateRenderQueue(UINT maxPackets, UINT priority, UINT queueFlags, Canvas::RenderQueue** ppQueue)
     {
         if (!ppQueue || maxPackets == 0)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         auto queueEntry = std::make_unique<QueueEntry>(maxPackets);
         queueEntry->Queue->Priority = priority;
@@ -67,13 +67,13 @@ namespace Canvas
         *ppQueue = queueEntry->Queue.get();
         m_Queues.push_back(std::move(queueEntry));
         
-        return S_OK;
+        return Gem::Result::Success;
     }
 
-    HRESULT CRenderQueueManager::SubmitQueue(Canvas::RenderQueue* pQueue)
+    Gem::Result CRenderQueueManager::SubmitQueue(Canvas::RenderQueue* pQueue)
     {
         if (!pQueue || IsQueueEmpty(pQueue))
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         // Find the queue in our managed list
         bool found = false;
@@ -87,16 +87,16 @@ namespace Canvas
         }
 
         if (!found)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         m_SubmittedQueues.push_back(pQueue);
-        return S_OK;
+        return Gem::Result::Success;
     }
 
-    HRESULT CRenderQueueManager::ProcessQueues(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext)
+    Gem::Result CRenderQueueManager::ProcessQueues(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext)
     {
         if (!pContext || !m_pDevice)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -110,8 +110,8 @@ namespace Canvas
         // Process each submitted queue
         for (Canvas::RenderQueue* pQueue : m_SubmittedQueues)
         {
-            HRESULT hr = ProcessRenderQueue(pContext, renderContext, pQueue);
-            if (SUCCEEDED(hr))
+            auto result = ProcessRenderQueue(pContext, renderContext, pQueue);
+            if (Gem::Succeeded(result))
             {
                 m_Stats.ProcessedQueues++;
                 m_Stats.ProcessedPackets += pQueue->ChunkCount;
@@ -126,7 +126,7 @@ namespace Canvas
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
         m_Stats.LastFrameTime = duration.count() / 1000.0f; // Convert to milliseconds
 
-        return S_OK;
+        return Gem::Result::Success;
     }
 
     void CRenderQueueManager::ClearQueues()
@@ -204,16 +204,16 @@ namespace Canvas
         }
     }
 
-    HRESULT CRenderQueueManager::ProcessRenderQueue(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, Canvas::RenderQueue* pQueue)
+    Gem::Result CRenderQueueManager::ProcessRenderQueue(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, Canvas::RenderQueue* pQueue)
     {
         if (!pContext || !pQueue || IsQueueEmpty(pQueue))
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         // Process each render packet in the queue
         for (UINT i = 0; i < pQueue->ChunkCount; ++i)
         {
-            HRESULT hr = ProcessRenderChunks(pContext, renderContext, *pQueue);
-            if (FAILED(hr))
+            Gem::Result result = ProcessRenderChunks(pContext, renderContext, *pQueue);
+            if (Gem::Failed(result))
             {
                 // Log error but continue with other packets
                 // TODO: Add proper logging
@@ -221,13 +221,13 @@ namespace Canvas
             }
         }
 
-        return S_OK;
+        return Gem::Result::Success;
     }
 
-    HRESULT CRenderQueueManager::ProcessRenderChunks(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::RenderQueue& queue)
+    Gem::Result CRenderQueueManager::ProcessRenderChunks(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::RenderQueue& queue)
     {
         if (!pContext)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         // Manual iteration through chunks using pointer arithmetic
         const uint8_t* pCurrent = queue.pChunkBuffer;
@@ -241,7 +241,7 @@ namespace Canvas
             if (pCurrent + pChunk->Size > pBufferEnd)
                 break; // Invalid chunk, stop processing
                 
-            HRESULT hr = S_OK;
+            Gem::Result result = Gem::Result::Success;
             
             // Dispatch based on chunk type
             switch (pChunk->Type)
@@ -251,7 +251,7 @@ namespace Canvas
                     if (pChunk->GetDataSize() >= sizeof(Canvas::MeshChunkData))
                     {
                         const Canvas::MeshChunkData* pMeshData = static_cast<const Canvas::MeshChunkData*>(pChunk->GetData());
-                        hr = ProcessMeshChunk(pContext, renderContext, *pMeshData);
+                        result = ProcessMeshChunk(pContext, renderContext, *pMeshData);
                     }
                     break;
                 }
@@ -261,7 +261,7 @@ namespace Canvas
                     if (pChunk->GetDataSize() >= sizeof(Canvas::SkinnedMeshChunkData))
                     {
                         const Canvas::SkinnedMeshChunkData* pSkinnedMeshData = static_cast<const Canvas::SkinnedMeshChunkData*>(pChunk->GetData());
-                        hr = ProcessSkinnedMeshChunk(pContext, renderContext, *pSkinnedMeshData);
+                        result = ProcessSkinnedMeshChunk(pContext, renderContext, *pSkinnedMeshData);
                     }
                     break;
                 }
@@ -271,7 +271,7 @@ namespace Canvas
                     if (pChunk->GetDataSize() >= sizeof(Canvas::ParticleChunkData))
                     {
                         const Canvas::ParticleChunkData* pParticleData = static_cast<const Canvas::ParticleChunkData*>(pChunk->GetData());
-                        hr = ProcessParticleChunk(pContext, renderContext, *pParticleData);
+                        result = ProcessParticleChunk(pContext, renderContext, *pParticleData);
                     }
                     break;
                 }
@@ -281,7 +281,7 @@ namespace Canvas
                     if (pChunk->GetDataSize() >= sizeof(Canvas::UIChunkData))
                     {
                         const Canvas::UIChunkData* pUIData = static_cast<const Canvas::UIChunkData*>(pChunk->GetData());
-                        hr = ProcessUIChunk(pContext, renderContext, *pUIData);
+                        result = ProcessUIChunk(pContext, renderContext, *pUIData);
                     }
                     break;
                 }
@@ -291,7 +291,7 @@ namespace Canvas
                     if (pChunk->GetDataSize() >= sizeof(Canvas::InstancedChunkData))
                     {
                         const Canvas::InstancedChunkData* pInstancedData = static_cast<const Canvas::InstancedChunkData*>(pChunk->GetData());
-                        hr = ProcessInstancedChunk(pContext, renderContext, *pInstancedData);
+                        result = ProcessInstancedChunk(pContext, renderContext, *pInstancedData);
                     }
                     break;
                 }
@@ -299,12 +299,12 @@ namespace Canvas
                 default:
                     // Unknown chunk type - skip gracefully (this is the beauty of the chunk system!)
                     // Note: Could log this if logger was available in this context
-                    hr = S_OK;
+                    result = Gem::Result::Success;
                     break;
             }
             
             // Continue even if individual chunks fail
-            if (FAILED(hr))
+            if (Gem::Failed(result))
             {
                 // Note: Could log this if logger was available in this context
                 // For now, just continue processing other chunks
@@ -314,18 +314,18 @@ namespace Canvas
             pCurrent += pChunk->Size;
         }
         
-        return S_OK;
+        return Gem::Result::Success;
     }
 
     //---------------------------------------------------------------------------------------------
-    HRESULT CRenderQueueManager::ProcessMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::MeshChunkData& meshData)
+    Gem::Result CRenderQueueManager::ProcessMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::MeshChunkData& meshData)
     {
         if (!pContext)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
         
         // Basic validation
         if (!meshData.pVertexBuffer || meshData.VertexCount == 0)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         // TODO: Implement actual rendering commands
         // This is where you would:
@@ -341,51 +341,51 @@ namespace Canvas
         // For now, this is a placeholder that demonstrates the interface
         // The actual implementation would depend on the specific graphics API
         
-        return S_OK;
+        return Gem::Result::Success;
     }
 
     //---------------------------------------------------------------------------------------------
-    HRESULT CRenderQueueManager::ProcessSkinnedMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::SkinnedMeshChunkData& skinnedMeshData)
+    Gem::Result CRenderQueueManager::ProcessSkinnedMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::SkinnedMeshChunkData& skinnedMeshData)
     {
         if (!pContext)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         // TODO: Implement skinned mesh rendering
         // This would handle bone transformations and skeletal animation
-        return E_NOTIMPL;
+        return Gem::Result::NotImplemented;
     }
 
     //---------------------------------------------------------------------------------------------
-    HRESULT CRenderQueueManager::ProcessParticleChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::ParticleChunkData& particleData)
+    Gem::Result CRenderQueueManager::ProcessParticleChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::ParticleChunkData& particleData)
     {
         if (!pContext)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         // TODO: Implement particle system rendering
         // This would handle GPU-based particle simulation and rendering
-        return E_NOTIMPL;
+        return Gem::Result::NotImplemented;
     }
 
     //---------------------------------------------------------------------------------------------
-    HRESULT CRenderQueueManager::ProcessUIChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::UIChunkData& uiData)
+    Gem::Result CRenderQueueManager::ProcessUIChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::UIChunkData& uiData)
     {
         if (!pContext)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         // TODO: Implement UI element rendering
         // This would handle screen-space UI quads and text
-        return E_NOTIMPL;
+        return Gem::Result::NotImplemented;
     }
 
     //---------------------------------------------------------------------------------------------
-    HRESULT CRenderQueueManager::ProcessInstancedChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::InstancedChunkData& instancedData)
+    Gem::Result CRenderQueueManager::ProcessInstancedChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::InstancedChunkData& instancedData)
     {
         if (!pContext)
-            return E_INVALIDARG;
+            return Gem::Result::InvalidArg;
 
         // TODO: Implement instanced rendering
         // This would handle GPU instancing for multiple objects
-        return E_NOTIMPL;
+        return Gem::Result::NotImplemented;
     }
 
     //---------------------------------------------------------------------------------------------

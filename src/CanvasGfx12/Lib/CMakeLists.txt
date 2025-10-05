@@ -4,7 +4,6 @@ cmake_minimum_required(VERSION 3.24)
 # Define the library
 add_library(CanvasGfx12 SHARED
     CanvasGfx12.cpp
-    Instance12.cpp
     Device12.cpp
     GraphicsContext12.cpp
     Surface12.cpp

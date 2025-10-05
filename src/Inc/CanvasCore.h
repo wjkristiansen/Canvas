@@ -47,7 +47,7 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(0x0F215E5907B4651D);
 
-    GEMMETHOD(InitCanvasGfx)(PCSTR szDLLPath, _Outptr_opt_result_nullonfailure_ XGfxInstance **ppCanvasGfx) = 0;
+    GEMMETHOD(InitGfx)(PCSTR path, HWND hWnd) = 0;
     GEMMETHOD(FrameTick)() = 0;
 
     GEMMETHOD(CreateScene)(XScene **ppScene) = 0;

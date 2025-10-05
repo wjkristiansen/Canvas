@@ -4,6 +4,9 @@
 
 #include "pch.h"
 
+#include "Canvas.h"
+#include "CanvasGfx12.h"
+
 #if defined(_WIN32)
   #if defined(CANVASGFX12_EXPORTS)
     #define CANVASGFX12_API __declspec(dllexport)
@@ -81,6 +84,38 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
     }
 }
 
+CGfxFactory::CGfxFactory()
+{
+#if defined(_DEBUG)
+    CComPtr<ID3D12Debug3> pDebug;
+    ThrowFailedHResult(D3D12GetDebugInterface(IID_PPV_ARGS(&pDebug)));
+    pDebug->EnableDebugLayer();
+#endif
+
+}
+
+GEMMETHODIMP CGfxFactory::CreateDevice(Canvas::XGfxDevice **ppDevice)
+{
+    CFunctionSentinel Sentinel("CGfxFactory::CreateDevice");
+
+    *ppDevice = nullptr;
+
+    try
+    {
+        Gem::TGemPtr<CDevice12> pGraphicsDevice;
+        Gem::ThrowGemError(Gem::TGenericImpl<CDevice12>::Create(&pGraphicsDevice)); // throw(Gem::GemError)
+        ThrowGemError(pGraphicsDevice->Initialize());
+        return pGraphicsDevice->QueryInterface(ppDevice);
+    }
+    catch (const Gem::GemError &e)
+    {
+        Sentinel.SetResultCode(e.Result());
+        return e.Result();
+    }
+}
+
+} // namespace Canvas
+
 #if defined(_WIN32)
   #if defined(CANVASGFX12_EXPORTS)
     #define CANVASGFX12_API __declspec(dllexport)
@@ -93,22 +128,19 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
   #define CANVASGFX12_API
 #endif
 
-} // namespace Canvas
-
 //------------------------------------------------------------------------------------------------
-extern "C" CANVASGFX12_API Gem::Result CreateGfxInstance(_Outptr_result_nullonfailure_ Canvas::XGfxInstance **ppCanvasGfx)
+extern "C" CANVASGFX12_API Gem::Result CreateCanvasGfxFactory(Canvas::XGfxFactory **ppFactory)
 {
     try
     {
-        Gem::TGemPtr<Canvas::CInstance12> pCanvasGfx = Canvas::CInstance12::GetSingleton();
-        if (nullptr == pCanvasGfx)
-        {
-            Gem::ThrowGemError(Gem::TGenericImpl<Canvas::CInstance12>::Create(&pCanvasGfx)); // throw(Gem::GemError)
-        }
-        return pCanvasGfx->QueryInterface(ppCanvasGfx);
+        Gem::TGemPtr<Canvas::CGfxFactory> pFactory;
+        Gem::ThrowGemError(Gem::TGenericImpl<Canvas::CGfxFactory>::Create(&pFactory));
+        *ppFactory = pFactory.Detach();
     }
-    catch (Gem::GemError &e)
+    catch(const Gem::GemError &e)
     {
         return e.Result();
     }
+
+    return Gem::Result::Success;
 }

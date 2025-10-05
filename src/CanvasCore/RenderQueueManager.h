@@ -24,19 +24,19 @@ namespace Canvas
         ~CRenderQueueManager();
 
         // Initialize the manager with a graphics device
-        HRESULT Initialize(XGfxDevice* pDevice);
+        Gem::Result Initialize(XGfxDevice* pDevice);
         
         // Shutdown and cleanup
         void Shutdown();
 
         // Create a new render queue with the specified capacity and priority
-        HRESULT CreateRenderQueue(UINT maxPackets, UINT priority, UINT queueFlags, Canvas::RenderQueue** ppQueue);
+        Gem::Result CreateRenderQueue(UINT maxPackets, UINT priority, UINT queueFlags, Canvas::RenderQueue** ppQueue);
         
         // Submit a render queue for processing
-        HRESULT SubmitQueue(Canvas::RenderQueue* pQueue);
+        Gem::Result SubmitQueue(Canvas::RenderQueue* pQueue);
         
         // Process all submitted queues (renders them)
-        HRESULT ProcessQueues(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext);
+        Gem::Result ProcessQueues(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext);
         
         // Clear all queues
         void ClearQueues();
@@ -122,15 +122,15 @@ namespace Canvas
         // Template method for adding chunks to a queue
         template<typename ChunkDataType>
         ChunkDataType* AddChunk(Canvas::RenderQueue* pQueue, Canvas::RenderChunkType type, uint32_t flags = 0);
-        HRESULT ProcessRenderQueue(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, Canvas::RenderQueue* pQueue);
-        HRESULT ProcessRenderChunks(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::RenderQueue& queue);
+        Gem::Result ProcessRenderQueue(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, Canvas::RenderQueue* pQueue);
+        Gem::Result ProcessRenderChunks(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::RenderQueue& queue);
         
         // Specific chunk processors
-        HRESULT ProcessMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::MeshChunkData& meshData);
-        HRESULT ProcessSkinnedMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::SkinnedMeshChunkData& skinnedMeshData);
-        HRESULT ProcessParticleChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::ParticleChunkData& particleData);
-        HRESULT ProcessUIChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::UIChunkData& uiData);
-        HRESULT ProcessInstancedChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::InstancedChunkData& instancedData);
+        Gem::Result ProcessMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::MeshChunkData& meshData);
+        Gem::Result ProcessSkinnedMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::SkinnedMeshChunkData& skinnedMeshData);
+        Gem::Result ProcessParticleChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::ParticleChunkData& particleData);
+        Gem::Result ProcessUIChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::UIChunkData& uiData);
+        Gem::Result ProcessInstancedChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::InstancedChunkData& instancedData);
     };
 
     //------------------------------------------------------------------------------------------------
@@ -138,7 +138,7 @@ namespace Canvas
     namespace RenderQueueUtils
     {
         // Create a mesh chunk from mesh data
-        HRESULT CreateMeshChunk(
+        Gem::Result CreateMeshChunk(
             XGfxBuffer* pVertexBuffer,
             XGfxBuffer* pIndexBuffer,
             UINT vertexCount,
@@ -160,7 +160,7 @@ namespace Canvas
         Math::AABB CreateLightInfluenceBounds(const Canvas::LightData& light);
         
         // Camera utilities
-        HRESULT UpdateCameraData(XCamera* pCamera, Canvas::CameraData& cameraData);
+        Gem::Result UpdateCameraData(XCamera* pCamera, Canvas::CameraData& cameraData);
         void CalculateViewMatrixFromWorld(const Math::FloatMatrix4x4& worldMatrix, Math::FloatMatrix4x4& viewMatrix);
         void CalculateViewMatrix(const Math::FloatVector4& eyePos, const Math::FloatVector4& target, const Math::FloatVector4& up, Math::FloatMatrix4x4& viewMatrix);
         void CalculateProjectionMatrix(float fovAngle, float aspectRatio, float nearClip, float farClip, Math::FloatMatrix4x4& projMatrix);
@@ -173,7 +173,7 @@ namespace Canvas
         Math::FloatVector4 GetCameraRight(const Math::FloatMatrix4x4& worldMatrix);
         
         // Light utilities
-        HRESULT UpdateLightData(XLight* pLight, Canvas::LightData& lightData);
+        Gem::Result UpdateLightData(XLight* pLight, Canvas::LightData& lightData);
         void SetDirectionalLight(Canvas::LightData& light, const Math::FloatVector4& direction, const Math::FloatVector4& color, float intensity);
         void SetPointLight(Canvas::LightData& light, const Math::FloatVector4& position, const Math::FloatVector4& color, float intensity, float range);
         void SetSpotLight(Canvas::LightData& light, const Math::FloatVector4& position, const Math::FloatVector4& direction, 

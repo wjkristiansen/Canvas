@@ -15,11 +15,61 @@ namespace Canvas
 extern std::unique_ptr<QLog::Logger> g_pLogger; 
 
 //------------------------------------------------------------------------------------------------
+class CCanvasPlugin
+{
+public:
+    CCanvasPlugin(const char* path)
+        : m_path(path)
+    {
+#if defined(_WIN32)
+        m_handle = LoadLibraryA(path);
+        if (!m_handle)
+        {
+            throw Gem::GemError(Gem::Result::PluginLoadFailed);
+        }
+#else
+        m_handle = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+        if (!m_handle)
+        {
+            throw Gem::GemError(Gem::Result::PluginLoadFailed);
+        }
+#endif
+    }
+
+    ~CCanvasPlugin()
+    {
+#if defined(_WIN32)
+        if (m_handle) FreeLibrary(m_handle);
+#else
+        if (m_handle) dlclose(m_handle);
+#endif
+    }
+
+    template<typename T>
+    T GetProc(const char* name) const
+    {
+#if defined(_WIN32)
+        auto* proc = GetProcAddress(m_handle, name);
+#else
+        auto* proc = dlsym(m_handle, name);
+#endif
+        return reinterpret_cast<T>(proc);
+    }
+
+protected:
+#if defined(_WIN32)
+    HMODULE m_handle = nullptr;
+#else
+    void* m_handle = nullptr;
+#endif
+    std::string m_path;
+};
+
+//------------------------------------------------------------------------------------------------
 class CCanvas :
     public Gem::TGeneric<XCanvas>
 {
     std::mutex m_Mutex;
-    wil::unique_hmodule m_GraphicsModule;
 
     CTimer m_FrameTimer;
     UINT64 m_FrameEndTimeLast = 0;
@@ -38,8 +88,12 @@ public:
 
     ~CCanvas();
 
+    // XGeneric methods
+    GEMMETHOD(Initialize)() final;
+    GEMMETHOD_(void, Uninitialize)() final;
+
     // XCanvas methods
-    GEMMETHOD(InitCanvasGfx)(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx) final;
+    GEMMETHOD(InitGfx)(PCSTR path, HWND hWnd) final;
     GEMMETHOD(FrameTick)() final;
 
     GEMMETHOD(CreateScene)(XScene **ppScene) final;
@@ -48,7 +102,13 @@ public:
     GEMMETHOD(CreateLight)(XLight **ppLight) final;
 
 public:
-    Gem::TGemPtr<XGfxInstance> m_pCanvasGfx;
+    // IMPORTANT: m_pGfxPlugin must be declared FIRST so it destructs LAST
+    // This ensures the DLL stays loaded while the graphics objects are being destroyed
+    std::unique_ptr<CCanvasPlugin> m_pGfxPlugin;
+    Gem::TGemPtr<XGfxFactory> m_pGfxFactory;
+    Gem::TGemPtr<Canvas::XGfxDevice> m_pGfxDevice;
+    Gem::TGemPtr<Canvas::XGfxGraphicsContext> m_pGfxContext;
+    Gem::TGemPtr<Canvas::XGfxSwapChain> m_pGfxSwapChain;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -73,7 +133,5 @@ public:
 public:
     CCanvas *GetCanvasImpl() { return m_pCanvas; }
 };
-
-typedef Gem::Result (*CreateCanvasGfxProc)(_Outptr_result_nullonfailure_ XGfxInstance **pGraphicsGfx) noexcept;
 
 }
