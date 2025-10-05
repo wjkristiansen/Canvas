@@ -14,6 +14,27 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
+// Global logger instance
+std::unique_ptr<QLog::Logger> g_pLogger;
+
+//------------------------------------------------------------------------------------------------
+CANVAS_API Gem::Result InitCanvasLogger(QLog::Sink &sink, QLog::Level level)
+{
+    if (g_pLogger)
+        return Gem::Result::Fail;
+
+    g_pLogger = std::make_unique<QLog::Logger>(sink, level);
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+CANVAS_API QLog::Logger *GetCanvasLogger()
+{
+    return g_pLogger.get();
+}
+
+//------------------------------------------------------------------------------------------------
 #define INTERFACE_ID_STRING_CASE(iface, id) if (iface##::IId == id) return #iface;
 #define GS_INTERFACE_ID_STRING_CASE(iface, unused) if (iface##::IId == id) return #iface;
 inline const char *IIdToString(const Gem::InterfaceId &id)
@@ -35,7 +56,7 @@ CCanvas::~CCanvas()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateScene");
+    CFunctionSentinel Sentinel("XCanvas::CreateScene");
 
     try
     {
@@ -60,7 +81,7 @@ GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateSceneGraphNode");
+    CFunctionSentinel Sentinel("XCanvas::CreateSceneGraphNode");
 
     if (!ppNode)
     {
@@ -85,7 +106,7 @@ GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode)
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateCamera");
+    CFunctionSentinel Sentinel("XCanvas::CreateCamera");
 
     try
     {
@@ -107,9 +128,11 @@ GEMMETHODIMP CCanvas::CreateLight(XLight **ppLight)
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger> pLogger)
+Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas)
 {
     *ppCanvas = nullptr;
+
+    auto pLogger = GetCanvasLogger();
 
     try
     {
@@ -118,7 +141,7 @@ Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger
             pLogger->Info("CANVAS: CreateCanvas: Creating canvas object...");
         }
         Gem::TGemPtr<CCanvas> pCanvas;
-        Gem::ThrowGemError(Gem::TGenericImpl<CCanvas>::Create(&pCanvas, pLogger)); // throw(Gem::GemError)
+        Gem::ThrowGemError(Gem::TGenericImpl<CCanvas>::Create(&pCanvas)); // throw(Gem::GemError)
         *ppCanvas = pCanvas.Detach();
 
         return Gem::Result::Success;
@@ -136,7 +159,7 @@ Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::InitCanvasGfx");
+    CFunctionSentinel Sentinel("XCanvas::InitCanvasGfx");
 
     try
     {
@@ -146,7 +169,7 @@ GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailur
 
         if (graphicsModule.get() == NULL)
         {
-            ThrowGemError(Gem::Result::NotFound);
+            Gem::ThrowGemError(Gem::Result::NotFound);
         }
 
         // Create XGfxInstance interface
@@ -158,7 +181,7 @@ GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailur
         }
 
         Gem::TGemPtr<XGfxInstance> pCanvasGfx;
-        ThrowGemError(pCreate(&pCanvasGfx, m_Logger));
+        Gem::ThrowGemError(pCreate(&pCanvasGfx));
 
         pCanvasGfx->AddRef();
         *ppCanvasGfx = pCanvasGfx.Get();

@@ -4,6 +4,18 @@
 
 #include "pch.h"
 
+#if defined(_WIN32)
+  #if defined(CANVASGFX12_EXPORTS)
+    #define CANVASGFX12_API __declspec(dllexport)
+  #else
+    #define CANVASGFX12_API __declspec(dllimport)
+  #endif
+#elif defined(__GNUC__) || defined(__clang__)
+  #define CANVASGFX12_API __attribute__((visibility("default")))
+#else
+  #define CANVASGFX12_API
+#endif
+
 namespace Canvas
 {
 
@@ -69,15 +81,29 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
     }
 }
 
+#if defined(_WIN32)
+  #if defined(CANVASGFX12_EXPORTS)
+    #define CANVASGFX12_API __declspec(dllexport)
+  #else
+    #define CANVASGFX12_API __declspec(dllimport)
+  #endif
+#elif defined(__GNUC__) || defined(__clang__)
+  #define CANVASGFX12_API __attribute__((visibility("default")))
+#else
+  #define CANVASGFX12_API
+#endif
+
+} // namespace Canvas
+
 //------------------------------------------------------------------------------------------------
-Gem::Result GEMAPI CreateGfxInstance(_Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx, std::shared_ptr<QLog::Logger> pLogger)
+extern "C" CANVASGFX12_API Gem::Result CreateGfxInstance(_Outptr_result_nullonfailure_ Canvas::XGfxInstance **ppCanvasGfx)
 {
     try
     {
-        Gem::TGemPtr<CInstance12> pCanvasGfx = CInstance12::GetSingleton();
+        Gem::TGemPtr<Canvas::CInstance12> pCanvasGfx = Canvas::CInstance12::GetSingleton();
         if (nullptr == pCanvasGfx)
         {
-            Gem::ThrowGemError(Gem::TGenericImpl<CInstance12>::Create(&pCanvasGfx, pLogger)); // throw(Gem::GemError)
+            Gem::ThrowGemError(Gem::TGenericImpl<Canvas::CInstance12>::Create(&pCanvasGfx)); // throw(Gem::GemError)
         }
         return pCanvasGfx->QueryInterface(ppCanvasGfx);
     }
@@ -85,6 +111,4 @@ Gem::Result GEMAPI CreateGfxInstance(_Outptr_result_nullonfailure_ XGfxInstance 
     {
         return e.Result();
     }
-}
-
 }

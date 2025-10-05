@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "CanvasCore.h"
 #include "Gem.hpp"
 #include "Timer.h"
 #include "RenderQueueManager.h"
@@ -11,12 +12,13 @@
 namespace Canvas
 {
 
+extern std::unique_ptr<QLog::Logger> g_pLogger; 
+
 //------------------------------------------------------------------------------------------------
 class CCanvas :
     public Gem::TGeneric<XCanvas>
 {
     std::mutex m_Mutex;
-    std::shared_ptr<QLog::Logger> m_Logger;
     wil::unique_hmodule m_GraphicsModule;
 
     CTimer m_FrameTimer;
@@ -31,8 +33,7 @@ public:
         GEM_INTERFACE_ENTRY(XCanvas)
     END_GEM_INTERFACE_MAP()
 
-    CCanvas(std::shared_ptr<QLog::Logger> pLogger) :
-        m_Logger(pLogger)
+    CCanvas()
     {}
 
     ~CCanvas();
@@ -45,8 +46,6 @@ public:
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera) final;
     GEMMETHOD(CreateLight)(XLight **ppLight) final;
-
-    std::shared_ptr<QLog::Logger> Logger() { return m_Logger; }
 
 public:
     Gem::TGemPtr<XGfxInstance> m_pCanvasGfx;
@@ -75,6 +74,6 @@ public:
     CCanvas *GetCanvasImpl() { return m_pCanvas; }
 };
 
-typedef Gem::Result (*CreateCanvasGfxProc)(_Outptr_result_nullonfailure_ XGfxInstance **pGraphicsGfx, std::shared_ptr<QLog::Logger> pLogger) noexcept;
+typedef Gem::Result (*CreateCanvasGfxProc)(_Outptr_result_nullonfailure_ XGfxInstance **pGraphicsGfx) noexcept;
 
 }

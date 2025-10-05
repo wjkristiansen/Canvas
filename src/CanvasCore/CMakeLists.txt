@@ -93,9 +93,6 @@ endif()
 # Use precompiled headers
 target_precompile_headers(CanvasCore PRIVATE pch.h)
 
-# Add the .def file as a source to use it for exports
-target_sources(CanvasCore PRIVATE CanvasCore.def)
-
 # Installation
 install(TARGETS CanvasCore
     RUNTIME DESTINATION ${CANVAS_INSTALL_DEST}/bin

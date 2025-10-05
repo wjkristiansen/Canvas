@@ -10,14 +10,10 @@ namespace Canvas
 class CInstance12 :
 	public Gem::TGeneric<XGfxInstance>
 {
-	std::shared_ptr<QLog::Logger> m_Logger;
-
 	static CInstance12 *m_pThis;
 
 public:
-	CInstance12(std::shared_ptr<QLog::Logger> pLogger);
-
-	std::shared_ptr<QLog::Logger> Logger() { return m_Logger; }
+	CInstance12();
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxInstance)

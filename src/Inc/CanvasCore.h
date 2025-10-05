@@ -10,6 +10,19 @@
 
 namespace Canvas
 {
+
+#if defined(_WIN32)
+  #if defined(CANVASCORE_EXPORTS)
+    #define CANVAS_API __declspec(dllexport)
+  #else
+    #define CANVAS_API __declspec(dllimport)
+  #endif
+#elif defined(__GNUC__) || defined(__clang__)
+  #define CANVAS_API __attribute__((visibility("default")))
+#else
+  #define CANVAS_API
+#endif
+
 #define FOR_EACH_CANVAS_INTERFACE(macro, ...) \
     macro(XCanvas, __VA_ARGS__) \
     macro(XCanvasElement, __VA_ARGS__) \
@@ -143,6 +156,12 @@ XSceneGraphElement : public XCanvasElement
 };
 
 //------------------------------------------------------------------------------------------------
+// Exports
+extern Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas);
+extern CANVAS_API Gem::Result InitCanvasLogger(QLog::Sink &, QLog::Level);
+extern CANVAS_API QLog::Logger *GetCanvasLogger();
+
+//------------------------------------------------------------------------------------------------
 struct
 XMeshInstance : public XSceneGraphElement
 {
@@ -184,33 +203,29 @@ XScene : public XCanvasElement
 // Helper classes
 class CFunctionSentinel
 {
-    std::shared_ptr<QLog::Logger> m_Logger;
     QLog::Level m_DefaultLogLevel;
     const char *m_FunctionName;
     Gem::Result m_Result = Gem::Result::Success;
 
 public:
-    CFunctionSentinel(std::shared_ptr<QLog::Logger> logger, const char *FunctionName, QLog::Level DefaultLogLevel = QLog::Level::Info) :
+    CFunctionSentinel(const char *FunctionName, QLog::Level DefaultLogLevel = QLog::Level::Info) :
         m_FunctionName(FunctionName),
-        m_Logger(logger),
         m_DefaultLogLevel(DefaultLogLevel)
     {
-        if (m_Logger) {
-            m_Logger->Log(m_DefaultLogLevel, "Begin: %s", m_FunctionName);
+        if (GetCanvasLogger()) {
+            GetCanvasLogger()->Log(m_DefaultLogLevel, "Begin: %s", m_FunctionName);
         }
     }
     ~CFunctionSentinel()
     {
-        if (m_Logger) {
-            QLog::Level level = Gem::Failed(m_Result) ? QLog::Level::Error : m_DefaultLogLevel;
-            m_Logger->Log(level, "%s: %s", GemResultString(m_Result), m_FunctionName);
+        if (GetCanvasLogger()) {
+        QLog::Level level = Gem::Failed(m_Result) ? QLog::Level::Error : m_DefaultLogLevel;
+            GetCanvasLogger()->Log(level, "%s: %s", GemResultString(m_Result), m_FunctionName);
         }
     }
 
     void SetResultCode(Gem::Result Result) { m_Result = Result; }
 };
-
-extern Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger> pLogger = nullptr);
 
 }
 

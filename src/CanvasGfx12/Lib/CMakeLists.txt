@@ -21,11 +21,6 @@ set_target_properties(CanvasGfx12 PROPERTIES
     OUTPUT_NAME "CanvasGfx12"
 )
 
-# Use explicit DEF file for exports instead of automatic generation
-set_target_properties(CanvasGfx12 PROPERTIES
-    LINK_FLAGS "/DEF:${CMAKE_CURRENT_SOURCE_DIR}/CanvasGfx12.def"
-)
-
 # Include directories
 target_include_directories(CanvasGfx12 
     PUBLIC 

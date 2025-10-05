@@ -27,8 +27,11 @@ Gem::Result CDevice12::Initialize()
     }
     catch (_com_error &e)
     {
-        if (auto logger = CInstance12::GetSingleton()->Logger()) {
-            logger->Error("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
+        auto pLogger = GetCanvasLogger();
+
+        if (pLogger)
+        {
+            pLogger->Error("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
         }
         return Gem::GemResult(e.Error());
     }
@@ -39,7 +42,7 @@ Gem::Result CDevice12::Initialize()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateGraphicsContext(XGfxGraphicsContext **ppContext)
 {
-    CFunctionSentinel Sentinel(CInstance12::GetSingleton()->Logger(), "XGfxDevice::CreateGraphicsContext");
+    CFunctionSentinel Sentinel("XGfxDevice::CreateGraphicsContext");
     try
     {
         Gem::TGemPtr<CGraphicsContext12> pContext;
