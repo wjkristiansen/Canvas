@@ -38,7 +38,7 @@ protected:
     CSceneGraphNode *m_pParent = nullptr; // Weak pointer
     Gem::TGemPtr<CSceneGraphNode> m_pSibling;
     Gem::TGemPtr<CSceneGraphNode> m_pFirstChild;
-    Gem::TGemPtr<CTransform> m_pTransform;
+    Gem::TAggregatePtr<CTransform> m_pTransform;
 
     struct SceneGraphElementPtrHash
     {

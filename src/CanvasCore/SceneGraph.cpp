@@ -18,21 +18,18 @@ CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas) : TCanvasElement(pCanvas), m_
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneGraphNode::Initialize()
 {
-    CTransform *pTransform = nullptr;
-    auto result = Gem::TAggregateImpl<CTransform, CSceneGraphNode>::Create(&pTransform, this);
-    if (Gem::Succeeded(result))
+    Gem::TAggregatePtr<CTransform> pTransform;
+    try
     {
-        try
-        {
-            m_pTransform = pTransform;
-        }
-        catch(const std::bad_alloc &)
-        {
-            result = Gem::Result::OutOfMemory;
-        }
+        Gem::ThrowGemError(Gem::TAggregateImpl<CTransform, CSceneGraphNode>::Create(&pTransform, this));
+        m_pTransform.Attach(pTransform.Detach());
     }
-    
-    return result;
+    catch(const Gem::GemError &e)
+    {
+        return e.Result();
+    }
+
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
