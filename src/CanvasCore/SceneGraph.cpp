@@ -38,6 +38,10 @@ GEMMETHODIMP CSceneGraphNode::Initialize()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CSceneGraphNode::Uninitialize()
 {
+    m_pFirstChild = nullptr;
+    m_pSibling = nullptr;
+
+    TCanvasElement<XSceneGraphNode>::Uninitialize();
 }
 
 //------------------------------------------------------------------------------------------------

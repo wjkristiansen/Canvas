@@ -56,6 +56,21 @@ GEMMETHODIMP_(void) CCanvas::Uninitialize()
 {
     // Shutdown the render queue manager before releasing graphics
     m_RenderQueueManager.Shutdown();
+    
+    // Iterate still active XCanvasElement objects and report them as leaks
+    for(XCanvasElement *pElement : m_ActiveCanvasElements)
+    {
+        auto pLogger = GetCanvasLogger();
+
+        if(pElement->GetName())
+        {
+            pLogger->Error("%s leaked, Name: %s", pElement->GetTypeName(), pElement->GetName());
+        }
+        else
+        {
+            pLogger->Error("%s leaked", pElement->GetTypeName());
+        }
+    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -64,21 +79,20 @@ CCanvas::~CCanvas()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
+template<class _Type>
+Gem::Result CCanvas::CreateElement(typename _Type::BaseType **ppElement)
 {
-    CFunctionSentinel Sentinel("XCanvas::CreateScene");
+    if (!ppElement)
+    {
+        return Gem::Result::BadPointer;
+    }
 
     try
     {
-        Gem::TGemPtr<CScene> pObj;
-        Gem::ThrowGemError(Gem::TGenericImpl<CScene>::Create(&pObj, this));
-        *ppScene = pObj.Detach();
-    }
-    catch(std::bad_alloc &)
-    {
-        Sentinel.SetResultCode(Gem::Result::OutOfMemory);
-        *ppScene = nullptr;
-        return Gem::Result::OutOfMemory;
+        Gem::TGemPtr<_Type> pObj;
+        Gem::ThrowGemError(Gem::TGenericImpl<_Type>::Create(&pObj, this));
+        m_ActiveCanvasElements.emplace(pObj);
+        *ppElement = pObj.Detach();
     }
     catch(const Gem::GemError &e)
     {
@@ -89,28 +103,27 @@ GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
 }
 
 //------------------------------------------------------------------------------------------------
+void CCanvas::CanvasElementDestroyed(XCanvasElement *pElement)
+{
+    m_ActiveCanvasElements.erase(pElement);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
+{
+    CFunctionSentinel Sentinel("XCanvas::CreateScene");
+
+    return CreateElement<CScene>(ppScene);
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode)
 {
     CFunctionSentinel Sentinel("XCanvas::CreateSceneGraphNode");
 
-    if (!ppNode)
-    {
-        return Gem::Result::BadPointer;
-    }
-
-    CSceneGraphNode *pNode = nullptr;
-    auto result = Gem::TGenericImpl<CSceneGraphNode>::Create(&pNode, this);
-    
-    if (Gem::Succeeded(result))
-    {
-        *ppNode = pNode;
-    }
-    else
-    {
-        *ppNode = nullptr;
-    }
-    
-    return result;
+    return CreateElement<CSceneGraphNode>(ppNode);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -118,23 +131,15 @@ GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera)
 {
     CFunctionSentinel Sentinel("XCanvas::CreateCamera");
 
-    try
-    {
-        Gem::TGemPtr<CCamera> pCamera;
-        Gem::ThrowGemError(Gem::TGenericImpl<CCamera>::Create(&pCamera, this));
-        *ppCamera = pCamera.Detach();
-    }
-    catch (const Gem::GemError &e)
-    {
-
-    }
-    return Gem::Result::Success;
+    return CreateElement<CCamera>(ppCamera);
 }
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateLight(XLight **ppLight)
 {
-    return Gem::Result::NotImplemented;
+    CFunctionSentinel Sentinel("XCanvas::CreateCamera");
+
+    return CreateElement<CLight>(ppLight);
 }
 
 //------------------------------------------------------------------------------------------------

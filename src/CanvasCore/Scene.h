@@ -32,7 +32,6 @@ public: // XScene methods
 
 public: // CScene methods
     CScene *CastFrom(XScene *pXScene) { return static_cast<CScene *>(pXScene); }
-    CCanvas *GetCanvasImpl() const { return m_pCanvas; }
 };
 
 }

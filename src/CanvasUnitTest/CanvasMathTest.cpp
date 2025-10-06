@@ -94,7 +94,7 @@ namespace CanvasUnitTest
             FloatVector4 a(1 * g_mul, 2 * g_mul, 3 * g_mul, 4 * g_mul);
             FloatVector4 b(.1f * g_mul, .2f * g_mul, .3f * g_mul, .4f * g_mul);
             FloatVector4 c = Mul(a, b);
-            Assert::IsTrue(AlmostEqual(c, FloatVector4(.1, .4, .9, 1.6)));
+            Assert::IsTrue(AlmostEqual(c, FloatVector4(.1f, .4f, .9f, 1.6f)));
         }
 
         TEST_METHOD(SimpleMatrices)

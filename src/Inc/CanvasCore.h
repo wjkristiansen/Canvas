@@ -45,7 +45,7 @@ FOR_EACH_CANVAS_INTERFACE(FORWARD_DECLARE_INTERFACE_STRUCT)
 struct
 XCanvas : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(0x0F215E5907B4651D);
+    GEM_INTERFACE_DECLARE(XCanvas, 0x0F215E5907B4651D);
 
     GEMMETHOD(InitGfx)(PCSTR path, HWND hWnd) = 0;
     GEMMETHOD(FrameTick)() = 0;
@@ -60,19 +60,19 @@ XCanvas : public Gem::XGeneric
 struct
 XCanvasElement : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(0x5604F8425EBF3A75);
+    GEM_INTERFACE_DECLARE(XCanvasElement, 0x5604F8425EBF3A75);
 
     GEMMETHOD_(PCSTR, GetName)() = 0;
     GEMMETHOD_(void, SetName)(PCSTR szName) = 0;
-
     GEMMETHOD_(XCanvas *, GetCanvas)() = 0;
+    GEMMETHOD_(PCSTR, GetTypeName)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
 struct
 XMaterial : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(0xD6E17B2CB8454154);
+    GEM_INTERFACE_DECLARE(XMaterial, 0xD6E17B2CB8454154);
 
     GEMMETHOD(Initialize)() = 0;
 };
@@ -81,7 +81,7 @@ XMaterial : public XCanvasElement
 struct
 XMesh : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(0x7EBC2A5A40CC96D3);
+    GEM_INTERFACE_DECLARE(XMesh, 0x7EBC2A5A40CC96D3);
 };
 
 //------------------------------------------------------------------------------------------------
@@ -101,7 +101,7 @@ enum class RotationType
 struct
 XTransform : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(0x2A08BD07EC525C0B);
+    GEM_INTERFACE_DECLARE(XTransform, 0x2A08BD07EC525C0B);
 
     GEMMETHOD_(RotationType, GetRotationType)() const = 0;
     GEMMETHOD_(const Math::FloatVector4 &, GetRotation)() const = 0;
@@ -115,7 +115,7 @@ XTransform : public Gem::XGeneric
 struct
 XSceneGraphNode : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(0x86E8F764FE09E772);
+    GEM_INTERFACE_DECLARE(XSceneGraphNode, 0x86E8F764FE09E772);
 
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
 
@@ -128,7 +128,7 @@ XSceneGraphNode : public XCanvasElement
 struct
 XRenderQueue : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(0x3B35719161878DCC);
+    GEM_INTERFACE_DECLARE(XRenderQueue, 0x3B35719161878DCC);
 
     // BUGBUG: TODO...
 };
@@ -137,7 +137,7 @@ XRenderQueue : public XCanvasElement
 struct
 XSceneGraphElement : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(0xD9F48C0E3F0775F0);
+    GEM_INTERFACE_DECLARE(XSceneGraphElement, 0xD9F48C0E3F0775F0);
 
     // Attach to the specified node.
     // Automatically detaches if attached to a different node.
@@ -165,7 +165,7 @@ extern CANVAS_API QLog::Logger *GetCanvasLogger();
 struct
 XMeshInstance : public XSceneGraphElement
 {
-    GEM_INTERFACE_DECLARE(0xB727EFEA527A1032);
+    GEM_INTERFACE_DECLARE(XMeshInstance, 0xB727EFEA527A1032);
 
     GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
 };
@@ -174,7 +174,7 @@ XMeshInstance : public XSceneGraphElement
 struct
 XCamera : public XSceneGraphElement
 {
-    GEM_INTERFACE_DECLARE(0x4F4481985210AE1E);
+    GEM_INTERFACE_DECLARE(XCamera, 0x4F4481985210AE1E);
 
     GEMMETHOD_(void, SetNearClip)(float nearClip) = 0;
     GEMMETHOD_(void, SetFarClip)(float nearClip) = 0;
@@ -185,7 +185,7 @@ XCamera : public XSceneGraphElement
 struct
 XLight : public XSceneGraphElement
 {
-    GEM_INTERFACE_DECLARE(0x97EC7872FDAD30F2);
+    GEM_INTERFACE_DECLARE(XLight, 0x97EC7872FDAD30F2);
 
     // BUGBUG: Light methods here like SetColor, SetIntensity, SetType, etc...
 };
@@ -194,7 +194,7 @@ XLight : public XSceneGraphElement
 struct
 XScene : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(0x0A470E86351AF96A);
+    GEM_INTERFACE_DECLARE(XScene, 0x0A470E86351AF96A);
 
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
 };

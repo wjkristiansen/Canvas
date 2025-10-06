@@ -75,6 +75,9 @@ class CCanvas :
     UINT64 m_FrameEndTimeLast = 0;
     UINT m_FrameCounter = 0;
 
+    // Database of active XCanvasElement objects
+    std::unordered_set<XCanvasElement *> m_ActiveCanvasElements;
+
     // Render queue manager for scheduling renderable content
     CRenderQueueManager m_RenderQueueManager;
 
@@ -88,10 +91,12 @@ public:
 
     ~CCanvas();
 
+public:
     // XGeneric methods
     GEMMETHOD(Initialize)() final;
     GEMMETHOD_(void, Uninitialize)() final;
 
+public:
     // XCanvas methods
     GEMMETHOD(InitGfx)(PCSTR path, HWND hWnd) final;
     GEMMETHOD(FrameTick)() final;
@@ -100,6 +105,13 @@ public:
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera) final;
     GEMMETHOD(CreateLight)(XLight **ppLight) final;
+
+public:
+    // CCanvas methods
+    template<class _Type>
+    Gem::Result CreateElement(typename _Type::BaseType **ppElement);
+
+    void CanvasElementDestroyed(XCanvasElement *pElement);
 
 public:
     // IMPORTANT: m_pGfxPlugin must be declared FIRST so it destructs LAST
@@ -120,18 +132,24 @@ class TCanvasElement :
     CCanvas *m_pCanvas;
 
 public:
+    using BaseType = _Base;
+
+public:
     TCanvasElement(CCanvas *pCanvas) :
         m_pCanvas(pCanvas)
     {
+    }
+
+    ~TCanvasElement()
+    {
+        m_pCanvas->CanvasElementDestroyed(this);
     }
 
     // XCanvasElement methods
     GEMMETHOD_(PCSTR, GetName)() { return m_Name.c_str(); }
     GEMMETHOD_(void, SetName)(PCSTR szName) { m_Name = szName; }
     GEMMETHOD_(XCanvas *, GetCanvas()) { return m_pCanvas; }
-
-public:
-    CCanvas *GetCanvasImpl() { return m_pCanvas; }
+    GEMMETHOD_(PCSTR, GetTypeName)() { return _Base::XFaceName; }
 };
 
 }

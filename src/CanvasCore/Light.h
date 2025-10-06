@@ -9,14 +9,15 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public Gem::TGeneric<XLight>
+    public TSceneGraphElement<XLight>
 {
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XLight)
     END_GEM_INTERFACE_MAP()
 
-    CLight(){}
+    CLight(CCanvas *pCanvas) :
+        TSceneGraphElement(pCanvas) {}
 };
 
 }

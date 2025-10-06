@@ -75,20 +75,20 @@ namespace Canvas
     // Buffer resource
     struct XGfxSurface : public Gem::XGeneric
     {
-        GEM_INTERFACE_DECLARE(0x2F05FEAC7133843B);
+        GEM_INTERFACE_DECLARE(XGfxSurface, 0x2F05FEAC7133843B);
     };
 
     //------------------------------------------------------------------------------------------------
     // Buffer resource
     struct XGfxBuffer : public Gem::XGeneric
     {
-        GEM_INTERFACE_DECLARE(0xA1DF297C8FA4CF13);
+        GEM_INTERFACE_DECLARE(XGfxBuffer, 0xA1DF297C8FA4CF13);
     };
 
     //------------------------------------------------------------------------------------------------
     struct XGfxSwapChain : public Gem::XGeneric
     {
-        GEM_INTERFACE_DECLARE(0x1DEDFC0646129850);
+        GEM_INTERFACE_DECLARE(XGfxSwapChain, 0x1DEDFC0646129850);
 
         GEMMETHOD(GetSurface)(XGfxSurface **ppSurface) = 0;
         GEMMETHOD(WaitForLastPresent)() = 0;
@@ -102,7 +102,7 @@ namespace Canvas
     // In D3D11, this is wraps an ID3D11DeviceContext
     struct XGfxGraphicsContext : public Gem::XGeneric
     {
-        GEM_INTERFACE_DECLARE(0x728AF985153F712D);
+        GEM_INTERFACE_DECLARE(XGfxGraphicsContext, 0x728AF985153F712D);
 
         GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) = 0;
         GEMMETHOD_(void, CopyBuffer(XGfxBuffer *pDest, XGfxBuffer *pSource)) = 0;
@@ -116,7 +116,7 @@ namespace Canvas
     // Interface to a graphics device
     struct XGfxDevice : public Gem::XGeneric
     {
-        GEM_INTERFACE_DECLARE(0x86D4ABCCCD5FB6EE);
+        GEM_INTERFACE_DECLARE(XGfxDevice, 0x86D4ABCCCD5FB6EE);
 
         GEMMETHOD(CreateGraphicsContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) = 0;
     };
@@ -124,7 +124,7 @@ namespace Canvas
     //------------------------------------------------------------------------------------------------
     struct XGfxFactory : public Gem::XGeneric
     {
-        GEM_INTERFACE_DECLARE(0x3EE387780593F266);
+        GEM_INTERFACE_DECLARE(XGfxFactory, 0x3EE387780593F266);
         GEMMETHOD(CreateDevice)(Canvas::XGfxDevice **ppDevice) = 0;
     };
 }
