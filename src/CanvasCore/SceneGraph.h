@@ -38,7 +38,7 @@ protected:
     CSceneGraphNode *m_pParent = nullptr; // Weak pointer
     Gem::TGemPtr<CSceneGraphNode> m_pSibling;
     Gem::TGemPtr<CSceneGraphNode> m_pFirstChild;
-    Gem::TAggregatePtr<CTransform> m_pTransform;
+    Gem::TAggregate<CTransform, CSceneGraphNode> m_Transform;
 
     struct SceneGraphElementPtrHash
     {
@@ -62,7 +62,7 @@ public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XCanvasElement)
         GEM_INTERFACE_ENTRY(XSceneGraphNode)
-        GEM_INTERFACE_ENTRY_AGGREGATE(XTransform, m_pTransform)
+        GEM_INTERFACE_ENTRY_AGGREGATE(XTransform, &m_Transform)
     END_GEM_INTERFACE_MAP()
 
     CSceneGraphNode(CCanvas *pCanvas);

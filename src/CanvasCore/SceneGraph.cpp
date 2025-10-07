@@ -11,24 +11,15 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas) : TCanvasElement(pCanvas), m_pTransform(nullptr)
+CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas) :
+    TCanvasElement(pCanvas),
+    m_Transform(this)
 {
 }
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneGraphNode::Initialize()
 {
-    Gem::TAggregatePtr<CTransform> pTransform;
-    try
-    {
-        Gem::ThrowGemError(Gem::TAggregateImpl<CTransform, CSceneGraphNode>::Create(&pTransform, this));
-        m_pTransform.Attach(pTransform.Detach());
-    }
-    catch(const Gem::GemError &e)
-    {
-        return e.Result();
-    }
-
     return Gem::Result::Success;
 }
 
