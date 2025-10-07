@@ -318,7 +318,7 @@ namespace Canvas
     }
 
     //---------------------------------------------------------------------------------------------
-    Gem::Result CRenderQueueManager::ProcessMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::MeshChunkData& meshData)
+    Gem::Result CRenderQueueManager::ProcessMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& /*renderContext*/, const Canvas::MeshChunkData& meshData)
     {
         if (!pContext)
             return Gem::Result::InvalidArg;
@@ -345,7 +345,7 @@ namespace Canvas
     }
 
     //---------------------------------------------------------------------------------------------
-    Gem::Result CRenderQueueManager::ProcessSkinnedMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::SkinnedMeshChunkData& skinnedMeshData)
+    Gem::Result CRenderQueueManager::ProcessSkinnedMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& /*renderContext*/, const Canvas::SkinnedMeshChunkData& /*skinnedMeshData*/)
     {
         if (!pContext)
             return Gem::Result::InvalidArg;
@@ -356,7 +356,7 @@ namespace Canvas
     }
 
     //---------------------------------------------------------------------------------------------
-    Gem::Result CRenderQueueManager::ProcessParticleChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::ParticleChunkData& particleData)
+    Gem::Result CRenderQueueManager::ProcessParticleChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& /*renderContext*/, const Canvas::ParticleChunkData& /*particleData*/)
     {
         if (!pContext)
             return Gem::Result::InvalidArg;
@@ -367,7 +367,7 @@ namespace Canvas
     }
 
     //---------------------------------------------------------------------------------------------
-    Gem::Result CRenderQueueManager::ProcessUIChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::UIChunkData& uiData)
+    Gem::Result CRenderQueueManager::ProcessUIChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& /*renderContext*/, const Canvas::UIChunkData& /*uiData*/)
     {
         if (!pContext)
             return Gem::Result::InvalidArg;
@@ -378,7 +378,7 @@ namespace Canvas
     }
 
     //---------------------------------------------------------------------------------------------
-    Gem::Result CRenderQueueManager::ProcessInstancedChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::InstancedChunkData& instancedData)
+    Gem::Result CRenderQueueManager::ProcessInstancedChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& /*renderContext*/, const Canvas::InstancedChunkData& /*instancedData*/)
     {
         if (!pContext)
             return Gem::Result::InvalidArg;

@@ -12,7 +12,7 @@ namespace CanvasUnitTest
         TEST_METHOD(SimpleSortedListTest)
         {
             Gem::TGemPtr<XCanvas> pCanvas;
-            Result result = CreateCanvas(&pCanvas);
+            CreateCanvas(&pCanvas);
         }
     };
 }

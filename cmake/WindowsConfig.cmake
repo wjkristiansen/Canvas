@@ -81,7 +81,7 @@ if(MSVC)
     add_compile_options(/MP)
     
     # Set warning level
-    add_compile_options(/W3)
+    add_compile_options(/W4 /WX)
     
     # Disable specific warnings that are common in graphics programming
     add_compile_options(

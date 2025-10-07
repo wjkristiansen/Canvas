@@ -87,7 +87,7 @@ public:
 // Template method implementations
 //------------------------------------------------------------------------------------------------
 template<class _Base>
-GEMMETHODIMP TSceneGraphElement<_Base>::AttachTo(XSceneGraphNode *pNode)
+GEMMETHODIMP TSceneGraphElement<_Base>::AttachTo(XSceneGraphNode */*pNode*/)
 {
     // TODO: Implement attachment logic
     return Gem::Result::Success;
@@ -108,7 +108,7 @@ GEMMETHODIMP_(XSceneGraphNode *) TSceneGraphElement<_Base>::GetAttachedNode()
 }
 
 template<class _Base>
-GEMMETHODIMP TSceneGraphElement<_Base>::DispatchForRender(XRenderQueue *pRenderQueue)
+GEMMETHODIMP TSceneGraphElement<_Base>::DispatchForRender(XRenderQueue */*pRenderQueue*/)
 {
     // TODO: Implement render dispatch logic
     return Gem::Result::Success;

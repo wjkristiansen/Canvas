@@ -32,8 +32,6 @@ ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice12 *pDevice, D3D12_CO
 //------------------------------------------------------------------------------------------------
 ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CGraphicsContext12 *pContext)
 {
-    ID3D12CommandQueue *pCQ = pContext->m_pCommandQueue;
-
     CommandAllocators[AllocatorIndex].FenceValue = pContext->m_FenceValue;
     AllocatorIndex = (AllocatorIndex + 1) % CommandAllocators.size();
 
@@ -155,7 +153,7 @@ GEMMETHODIMP CGraphicsContext12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxS
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CGraphicsContext12::CopyBuffer(XGfxBuffer *pDest, XGfxBuffer *pSource)
+GEMMETHODIMP_(void) CGraphicsContext12::CopyBuffer(XGfxBuffer * /*pDest*/, XGfxBuffer * /*pSource*/)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
 }

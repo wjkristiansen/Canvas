@@ -9,6 +9,11 @@
 #include "CanvasGfx.h"
 #include "CanvasMath.hpp"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)
+#endif
+
 namespace Canvas
 {
 
@@ -474,3 +479,7 @@ namespace Canvas
         CONTEXT_FLAG_DISABLE_SHADOWS = 1 << 3,
     };
 }
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

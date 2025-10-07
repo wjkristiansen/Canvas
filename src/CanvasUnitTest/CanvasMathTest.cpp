@@ -185,35 +185,35 @@ namespace CanvasUnitTest
             static const auto Rows = MatrixType::Rows;
             static const auto Columns = MatrixType::Columns;
 
-            MatrixType rx = XRotationMatrix<ElementType>(g_PI / 2);
+            MatrixType rx = XRotationMatrix<ElementType>(float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, -1, 0)));
             Assert::IsTrue(AlmostEqual(rx[2], VecType(0, 1, 0, 0)));
 
-            rx = XRotationMatrix<ElementType>(-g_PI / 2);
+            rx = XRotationMatrix<ElementType>(-float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, 1, 0)));
             Assert::IsTrue(AlmostEqual(rx[2], VecType(0, -1, 0, 0)));
 
-            MatrixType ry = YRotationMatrix<ElementType>(g_PI / 2);
+            MatrixType ry = YRotationMatrix<ElementType>(float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, 1, 0)));
             Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0, 0)));
             Assert::IsTrue(AlmostEqual(ry[2], VecType(-1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
-            ry = YRotationMatrix<ElementType>(-g_PI / 2);
+            ry = YRotationMatrix<ElementType>(-float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, -1, 0)));
             Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0, 0)));
             Assert::IsTrue(AlmostEqual(ry[2], VecType(1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
-            MatrixType rz = ZRotationMatrix<ElementType>(g_PI / 2);
+            MatrixType rz = ZRotationMatrix<ElementType>(float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(rz[0], VecType(0, -1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[1], VecType(1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1, 0)));
             Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
-            rz = ZRotationMatrix<ElementType>(-g_PI / 2);
+            rz = ZRotationMatrix<ElementType>(-float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(rz[0], VecType(0, 1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[1], VecType(-1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1, 0)));

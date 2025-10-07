@@ -6,6 +6,11 @@
 
 #include "DataSource.h"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)
+#endif
+
 namespace Canvas
 {
 
@@ -13,10 +18,10 @@ namespace Canvas
 class CTransform :
     public Gem::TGeneric<XTransform>
 {
-    CTranslationDataSource *m_pTranslationDataSource = nullptr;
-    CRotationDataSource *m_pRotationDataSource = nullptr;
     Math::FloatVector4 m_Translation;
     Math::FloatVector4 m_Rotation;
+    CTranslationDataSource *m_pTranslationDataSource = nullptr;
+    CRotationDataSource *m_pRotationDataSource = nullptr;
     RotationType m_RotationType = RotationType::EulerXYZ;
 
 public:
@@ -52,10 +57,14 @@ public:
         m_Translation = Translation;
     }
 
-    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location, _In_ const Math::FloatVector4 &WorldUp) final
+    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &/*Location*/, _In_ const Math::FloatVector4 &/*WorldUp*/) final
     {
         return Gem::Result::NotImplemented;
     }
 };
 
 }
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
