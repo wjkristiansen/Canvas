@@ -25,9 +25,7 @@ target_include_directories(CanvasGfx12
     PUBLIC 
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../Inc>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../d3dx12>
         $<INSTALL_INTERFACE:include>
-        $<INSTALL_INTERFACE:include/d3dx12>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )

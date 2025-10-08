@@ -24,7 +24,6 @@ set_target_properties(CanvasUnitTest PROPERTIES
 target_include_directories(CanvasUnitTest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasGfx12/d3dx12
 )
 
 # Preprocessor definitions
@@ -41,7 +40,7 @@ if(WIN32)
         _CONSOLE
     )
     
-    # Link with Windows libraries
+    # Link with Windows libraries (excluding d3d12/dxgi/d3dcompiler - inherited from D3D12ResourceUtils)
     target_link_libraries(CanvasUnitTest PRIVATE
         kernel32
         user32
@@ -55,10 +54,8 @@ if(WIN32)
         uuid
         odbc32
         odbccp32
-        d3d12
-        dxgi
-        d3dcompiler
     )
+
 endif()
 
 # Link with Canvas libraries
