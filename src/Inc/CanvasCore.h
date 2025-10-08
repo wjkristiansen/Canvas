@@ -56,16 +56,14 @@ XCanvasElement : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 struct
-XMaterial : public XCanvasElement
+XMaterial : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XMaterial, 0xD6E17B2CB8454154);
-
-    GEMMETHOD(Initialize)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
 struct
-XMesh : public XCanvasElement
+XMesh : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XMesh, 0x7EBC2A5A40CC96D3);
 };
