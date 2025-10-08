@@ -5,6 +5,7 @@
 #include "pch.h"
 
 #include "Canvas.h"
+#include "CanvasElement.h"
 #include "Camera.h"
 #include "Light.h"
 #include "Scene.h"

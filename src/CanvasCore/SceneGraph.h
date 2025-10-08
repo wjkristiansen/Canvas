@@ -7,7 +7,7 @@
 #include "pch.h"
 #include "Transform.h"
 #include "Canvas.h"
-
+#include "CanvasElement.h"
 namespace Canvas
 {
 
