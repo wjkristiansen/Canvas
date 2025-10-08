@@ -12,6 +12,6 @@
 #include <Windows.h>
 
 #include "CanvasMath.hpp"
-#include "CanvasModel.h"
+#include "CanvasRender.h"
 
 #endif //PCH_H

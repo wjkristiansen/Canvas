@@ -15,7 +15,6 @@ add_library(CanvasCore SHARED
     ../Inc/CanvasCore.h
     ../Inc/CanvasGfx.h
     ../Inc/CanvasMath.hpp
-    ../Inc/CanvasModel.h
     ../Inc/CanvasRender.h
     Camera.h
     Canvas.h

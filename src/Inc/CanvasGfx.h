@@ -4,6 +4,7 @@
 
 #pragma once
 #include <QLog.h>
+#include "Gem.hpp"
 
 namespace Canvas
 {
