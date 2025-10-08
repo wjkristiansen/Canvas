@@ -69,6 +69,54 @@ XMesh : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
+enum class AnimationAttribute
+{
+    // Transform attributes
+    PositionX,
+    PositionY,
+    PositionZ,
+    EulerRotationX,
+    EulerRotationY,
+    EulerRotationZ,
+    QuaternionRotation,
+    ScaleX,
+    ScaleY,
+    ScaleZ,
+
+    // Material attributes
+    DiffuseColor,
+    AmbientColor,
+    EmissiveColor,
+    UOffset,
+    VOffset,
+
+    // Light attributes
+    Color,
+    Intensity,
+    AttenuationConstant,
+    AttenuationLinear,
+    AttenuationQuadratic,
+    Range,
+    SpotInnerAngle,
+    SpotOuterAngle,
+
+    // Camera attributes
+    NearClip,
+    FarClip,
+    FovAngle,
+    AspectRatio,
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XAnimation : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(XAnimation, 0x2A83549FFDAF2D9D);
+
+    GEMMETHOD(Evaluate(float animationTime, AnimationAttribute attribute, float *pValues)) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
 enum class RotationType
 {
     EulerXYZ,

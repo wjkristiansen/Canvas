@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include "DataSource.h"
-
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 4324)
@@ -20,8 +18,6 @@ class CTransform :
 {
     Math::FloatVector4 m_Translation;
     Math::FloatVector4 m_Rotation;
-    CTranslationDataSource *m_pTranslationDataSource = nullptr;
-    CRotationDataSource *m_pRotationDataSource = nullptr;
     RotationType m_RotationType = RotationType::EulerXYZ;
 
 public:
