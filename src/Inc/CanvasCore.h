@@ -22,23 +22,10 @@ namespace Canvas
   #define CANVAS_API
 #endif
 
-#define FOR_EACH_CANVAS_INTERFACE(macro, ...) \
-    macro(XCanvas, __VA_ARGS__) \
-    macro(XCanvasElement, __VA_ARGS__) \
-    macro(XScene, __VA_ARGS__) \
-    macro(XSceneGraphNode, __VA_ARGS__) \
-    macro(XMeshInstance, __VA_ARGS__) \
-    macro(XLight, __VA_ARGS__) \
-    macro(XTransform, __VA_ARGS__) \
-    macro(XCamera, __VA_ARGS__) \
-    macro(XMaterial, __VA_ARGS__) \
-    macro(XMesh, __VA_ARGS__) \
-    macro(XSceneGraphElement, __VA_ARGS__)
-
-#define FORWARD_DECLARE_INTERFACE_STRUCT(xface, _) \
-    struct xface;
-
-FOR_EACH_CANVAS_INTERFACE(FORWARD_DECLARE_INTERFACE_STRUCT)
+struct XScene;
+struct XCamera;
+struct XLight;
+struct XSceneGraphNode;
 
 //------------------------------------------------------------------------------------------------
 struct

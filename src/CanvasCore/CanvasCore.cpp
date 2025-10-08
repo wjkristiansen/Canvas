@@ -36,17 +36,6 @@ CANVAS_API QLog::Logger *GetCanvasLogger()
 }
 
 //------------------------------------------------------------------------------------------------
-#define INTERFACE_ID_STRING_CASE(iface, id) if (iface##::IId == id) return #iface;
-#define GS_INTERFACE_ID_STRING_CASE(iface, unused) if (iface##::IId == id) return #iface;
-inline const char *IIdToString(const Gem::InterfaceId &id)
-{
-    FOR_EACH_CANVAS_INTERFACE(INTERFACE_ID_STRING_CASE, id)
-    FOR_EACH_CANVASGFX_INTERFACE(GS_INTERFACE_ID_STRING_CASE, id)
-
-    return nullptr;
-}
-
-//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::Initialize()
 {
     return Gem::Result::Success;
