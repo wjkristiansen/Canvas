@@ -176,32 +176,8 @@ namespace Canvas
         }
     }
 
-    void CRenderQueueManager::InitializeRenderContext(Canvas::RenderContext* pContext, Canvas::LightData* pLights, UINT maxLights)
+    void CRenderQueueManager::InitializeRenderContext(RenderContext* /*pContext*/)
     {
-        if (pContext)
-        {
-            pContext->pLights = pLights;
-            pContext->LightCount = 0;
-            pContext->MaxLights = maxLights;
-        }
-    }
-
-    bool CRenderQueueManager::AddLightToContext(Canvas::RenderContext* pContext, const Canvas::LightData& light)
-    {
-        if (!pContext || pContext->LightCount >= pContext->MaxLights || !pContext->pLights)
-            return false;
-            
-        pContext->pLights[pContext->LightCount] = light;
-        ++pContext->LightCount;
-        return true;
-    }
-
-    void CRenderQueueManager::ClearContextLights(Canvas::RenderContext* pContext)
-    {
-        if (pContext)
-        {
-            pContext->LightCount = 0;
-        }
     }
 
     Gem::Result CRenderQueueManager::ProcessRenderQueue(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, Canvas::RenderQueue* pQueue)

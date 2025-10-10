@@ -65,7 +65,6 @@ endif()
 # Link with Canvas libraries
 target_link_libraries(CanvasModelViewer PRIVATE
     CanvasCore
-    CanvasModel
     ThinWin
 )
 

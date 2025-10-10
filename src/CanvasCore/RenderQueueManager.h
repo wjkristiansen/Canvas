@@ -3,6 +3,7 @@
 //================================================================================================
 
 #pragma once
+
 #include "CanvasRender.h"
 #include <vector>
 #include <memory>
@@ -30,20 +31,20 @@ namespace Canvas
         void Shutdown();
 
         // Create a new render queue with the specified capacity and priority
-        Gem::Result CreateRenderQueue(UINT maxPackets, UINT priority, UINT queueFlags, Canvas::RenderQueue** ppQueue);
+        Gem::Result CreateRenderQueue(UINT maxPackets, UINT priority, UINT queueFlags, RenderQueue** ppQueue);
         
         // Submit a render queue for processing
-        Gem::Result SubmitQueue(Canvas::RenderQueue* pQueue);
+        Gem::Result SubmitQueue(RenderQueue* pQueue);
         
         // Process all submitted queues (renders them)
-        Gem::Result ProcessQueues(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext);
+        Gem::Result ProcessQueues(XGfxGraphicsContext* pContext, const RenderContext& renderContext);
         
         // Clear all queues
         void ClearQueues();
         
         // Chunk creation methods - these handle adding chunks to render queues
-        Canvas::MeshChunkData* CreateMeshChunk(
-            Canvas::RenderQueue* pQueue,
+        MeshChunkData* CreateMeshChunk(
+            RenderQueue* pQueue,
             XGfxBuffer* pVertexBuffer,
             XGfxBuffer* pIndexBuffer,
             uint32_t vertexCount,
@@ -54,14 +55,14 @@ namespace Canvas
             uint32_t renderFlags = 0);
             
         Canvas::UIChunkData* CreateUIChunk(
-            Canvas::RenderQueue* pQueue,
+            RenderQueue* pQueue,
             const Canvas::Math::FloatVector4& screenRect,
             const Canvas::Math::FloatVector4& color,
             uint32_t textureId = 0,
             float depth = 0.0f);
             
         Canvas::ParticleChunkData* CreateParticleChunk(
-            Canvas::RenderQueue* pQueue,
+            RenderQueue* pQueue,
             XGfxBuffer* pParticleBuffer,
             uint32_t maxParticles,
             uint32_t activeParticles,
@@ -81,21 +82,13 @@ namespace Canvas
         
         // RenderContext management methods - these handle POD RenderContext manipulation
         void InitializeRenderContext(
-            Canvas::RenderContext* pContext,
-            Canvas::LightData* pLights,
-            UINT maxLights);
-            
-        bool AddLightToContext(
-            Canvas::RenderContext* pContext,
-            const Canvas::LightData& light);
-            
-        void ClearContextLights(Canvas::RenderContext* pContext);
+            RenderContext* pContext);
 
     private:
         // Internal queue management
         struct QueueEntry
         {
-            std::unique_ptr<Canvas::RenderQueue> Queue;
+            std::unique_ptr<RenderQueue> Queue;
             std::vector<uint8_t> ChunkBuffer;
             bool IsActive;
             
@@ -106,7 +99,7 @@ namespace Canvas
         std::vector<std::unique_ptr<QueueEntry>> m_Queues;
         
         // Submitted queues for current frame
-        std::vector<Canvas::RenderQueue*> m_SubmittedQueues;
+        std::vector<RenderQueue*> m_SubmittedQueues;
         
         // Graphics device reference
         XGfxDevice* m_pDevice;
@@ -116,17 +109,17 @@ namespace Canvas
         
         // Internal helpers
         void SortQueuesByPriority();
-        bool IsQueueEmpty(const Canvas::RenderQueue* pQueue) const;
-        void ClearQueue(Canvas::RenderQueue* pQueue);
+        bool IsQueueEmpty(const RenderQueue* pQueue) const;
+        void ClearQueue(RenderQueue* pQueue);
         
         // Template method for adding chunks to a queue
         template<typename ChunkDataType>
-        ChunkDataType* AddChunk(Canvas::RenderQueue* pQueue, Canvas::RenderChunkType type, uint32_t flags = 0);
-        Gem::Result ProcessRenderQueue(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, Canvas::RenderQueue* pQueue);
-        Gem::Result ProcessRenderChunks(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::RenderQueue& queue);
+        ChunkDataType* AddChunk(RenderQueue* pQueue, Canvas::RenderChunkType type, uint32_t flags = 0);
+        Gem::Result ProcessRenderQueue(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, RenderQueue* pQueue);
+        Gem::Result ProcessRenderChunks(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const RenderQueue& queue);
         
         // Specific chunk processors
-        Gem::Result ProcessMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::MeshChunkData& meshData);
+        Gem::Result ProcessMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const MeshChunkData& meshData);
         Gem::Result ProcessSkinnedMeshChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::SkinnedMeshChunkData& skinnedMeshData);
         Gem::Result ProcessParticleChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::ParticleChunkData& particleData);
         Gem::Result ProcessUIChunk(XGfxGraphicsContext* pContext, const Canvas::RenderContext& renderContext, const Canvas::UIChunkData& uiData);
@@ -145,7 +138,7 @@ namespace Canvas
             UINT indexCount,
             const Math::FloatMatrix4x4& transform,
             const Math::AABB& localBounds,
-            Canvas::RenderQueue& queue);
+            RenderQueue& queue);
         
         // Copy transform matrix
         void CopyTransform(const Math::FloatMatrix4x4& source, Math::FloatMatrix4x4& dest);
@@ -157,10 +150,10 @@ namespace Canvas
         Math::AABB TransformAABB(const Math::AABB& localAABB, const Math::FloatMatrix4x4& transform);
         bool AABBIntersects(const Math::AABB& a, const Math::AABB& b);
         bool AABBContainsPoint(const Math::AABB& aabb, const Math::FloatVector4& point);
-        Math::AABB CreateLightInfluenceBounds(const Canvas::LightData& light);
+        // Math::AABB CreateLightInfluenceBounds(const Canvas::LightData& light);
         
         // Camera utilities
-        Gem::Result UpdateCameraData(XCamera* pCamera, Canvas::CameraData& cameraData);
+        Gem::Result UpdateCameraData(XCamera* pCamera);
         void CalculateViewMatrixFromWorld(const Math::FloatMatrix4x4& worldMatrix, Math::FloatMatrix4x4& viewMatrix);
         void CalculateViewMatrix(const Math::FloatVector4& eyePos, const Math::FloatVector4& target, const Math::FloatVector4& up, Math::FloatMatrix4x4& viewMatrix);
         void CalculateProjectionMatrix(float fovAngle, float aspectRatio, float nearClip, float farClip, Math::FloatMatrix4x4& projMatrix);
@@ -173,10 +166,10 @@ namespace Canvas
         Math::FloatVector4 GetCameraRight(const Math::FloatMatrix4x4& worldMatrix);
         
         // Light utilities
-        Gem::Result UpdateLightData(XLight* pLight, Canvas::LightData& lightData);
-        void SetDirectionalLight(Canvas::LightData& light, const Math::FloatVector4& direction, const Math::FloatVector4& color, float intensity);
-        void SetPointLight(Canvas::LightData& light, const Math::FloatVector4& position, const Math::FloatVector4& color, float intensity, float range);
-        void SetSpotLight(Canvas::LightData& light, const Math::FloatVector4& position, const Math::FloatVector4& direction, 
-                         const Math::FloatVector4& color, float intensity, float range, float innerAngle, float outerAngle);
+        // Gem::Result UpdateLightData(XLight* pLight, LightData& lightData);
+        // void SetDirectionalLight(LightData& light, const Math::FloatVector4& direction, const Math::FloatVector4& color, float intensity);
+        // void SetPointLight(LightData& light, const Math::FloatVector4& position, const Math::FloatVector4& color, float intensity, float range);
+        // void SetSpotLight(LightData& light, const Math::FloatVector4& position, const Math::FloatVector4& direction, 
+        //                  const Math::FloatVector4& color, float intensity, float range, float innerAngle, float outerAngle);
     }
 }

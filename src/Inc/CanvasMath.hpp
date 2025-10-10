@@ -12,6 +12,8 @@ namespace Canvas
 {
     namespace Math
     {
+        inline constexpr double Pi = 3.14159265358979323846;
+
         //------------------------------------------------------------------------------------------------
         template<class _Type, int _Dim>
         struct TVector

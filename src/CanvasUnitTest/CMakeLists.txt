@@ -61,7 +61,6 @@ endif()
 # Link with Canvas libraries
 target_link_libraries(CanvasUnitTest PRIVATE
     CanvasCore
-    CanvasModel
     D3D12ResourceUtils
 )
 

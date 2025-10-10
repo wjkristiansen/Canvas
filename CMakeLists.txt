@@ -129,7 +129,6 @@ target_include_directories(Allocators INTERFACE
 # Add main project subdirectories
 add_subdirectory(src/CanvasCore)
 add_subdirectory(src/CanvasGfx12)
-add_subdirectory(src/CanvasModel)
 add_subdirectory(src/CanvasConsole)
 add_subdirectory(src/CanvasModelViewer)
 add_subdirectory(src/CanvasUnitTest)

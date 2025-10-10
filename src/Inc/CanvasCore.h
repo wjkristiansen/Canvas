@@ -211,6 +211,36 @@ XCamera : public XSceneGraphElement
     GEMMETHOD_(void, SetNearClip)(float nearClip) = 0;
     GEMMETHOD_(void, SetFarClip)(float nearClip) = 0;
     GEMMETHOD_(void, SetFovAngle)(float fovAngle) = 0;
+    GEMMETHOD_(void, SetAspectRatio)(float aspectRatio) = 0;
+
+    GEMMETHOD_(float, GetNearClip)() = 0;
+    GEMMETHOD_(float, GetFarClip)() = 0;
+    GEMMETHOD_(float, GetFovAngle)() = 0;
+    GEMMETHOD_(float, GetAspectRatio)() = 0;
+
+    GEMMETHOD_(Math::FloatMatrix4x4, GetViewMatrix)() = 0;
+    GEMMETHOD_(Math::FloatMatrix4x4, GetProjectionMatrix)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+// Light types
+enum LightType : UINT
+{
+    LIGHT_TYPE_NULL = 0,
+    LIGHT_TYPE_AMBIENT = 1,
+    LIGHT_TYPE_POINT = 2,
+    LIGHT_TYPE_DIRECTIONAL = 3,
+    LIGHT_TYPE_SPOT = 4,
+    LIGHT_TYPE_AREA = 5,
+};
+
+//------------------------------------------------------------------------------------------------
+// Light flags
+enum LightFlags : UINT
+{
+    LIGHT_FLAG_NONE = 0,
+    LIGHT_FLAG_CAST_SHADOWS = 1 << 0,
+    LIGHT_FLAG_ENABLED = 1 << 1,
 };
 
 //------------------------------------------------------------------------------------------------

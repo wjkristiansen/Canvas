@@ -18,106 +18,6 @@ namespace Canvas
 {
 
     //------------------------------------------------------------------------------------------------
-    // Camera data for rendering - extends CanvasModel::CAMERA_DATA
-    struct CameraData
-    {
-        // Base camera data from CanvasModel
-        float NearClip;
-        float FarClip;
-        float FovAngle;
-        float AspectRatio;  // Additional field for rendering
-        
-        // Camera world matrix (camera's transform in world space)
-        Math::FloatMatrix4x4 WorldMatrix;
-        
-        // View matrix (inverse of WorldMatrix)
-        Math::FloatMatrix4x4 ViewMatrix;
-        
-        // Projection matrix
-        Math::FloatMatrix4x4 ProjectionMatrix;
-        
-        // View-projection matrix (combined)
-        Math::FloatMatrix4x4 ViewProjectionMatrix;
-        
-        // Constructor
-        CameraData()
-            : NearClip(0.1f)
-            , FarClip(1000.0f)
-            , FovAngle(45.0f)
-            , AspectRatio(16.0f / 9.0f)
-            , WorldMatrix(Math::FloatMatrix4x4::Identity())
-            , ViewMatrix(Math::FloatMatrix4x4::Identity())
-            , ProjectionMatrix(Math::FloatMatrix4x4::Identity())
-            , ViewProjectionMatrix(Math::FloatMatrix4x4::Identity())
-        {
-        }
-    };
-
-    //------------------------------------------------------------------------------------------------
-    // Light types - compatible with CanvasModel::LIGHT_TYPE
-    enum LightType : UINT
-    {
-        LIGHT_TYPE_NULL = 0,
-        LIGHT_TYPE_AMBIENT = 1,
-        LIGHT_TYPE_POINT = 2,
-        LIGHT_TYPE_DIRECTIONAL = 3,
-        LIGHT_TYPE_SPOT = 4,
-        LIGHT_TYPE_AREA = 5,
-    };
-
-    //------------------------------------------------------------------------------------------------
-    // Light data for rendering - extends CanvasModel::LIGHT_DATA
-    struct alignas(16) LightData
-    {
-        // Base light data from CanvasModel
-        LightType Type;
-        Math::FloatVector4 Color;  // Compatible with CanvasModel::LIGHT_DATA.Color
-        
-        // Extended rendering data
-        UINT Flags;
-        
-        // Intensity
-        float Intensity;
-        
-        // Attenuation parameters (for point/spot lights)
-        float AttenuationConstant;
-        float AttenuationLinear;
-        float AttenuationQuadratic;
-        float Range;
-        
-        // Spot light parameters (compatible with CanvasModel::SPOT_LIGHT_INFO)
-        float SpotInnerAngle;  // In radians
-        float SpotOuterAngle;  // In radians
-        
-        // Axis-aligned bounding box representing the spatial influence of the light
-        Math::AABB InfluenceBounds;
-        
-        // Constructor
-        LightData()
-            : Type(LIGHT_TYPE_DIRECTIONAL)
-            , Color(1.0f, 1.0f, 1.0f, 1.0f)
-            , Flags(0)
-            , Intensity(1.0f)
-            , AttenuationConstant(1.0f)
-            , AttenuationLinear(0.0f)
-            , AttenuationQuadratic(0.0f)
-            , Range(100.0f)
-            , SpotInnerAngle(0.52f)  // ~30 degrees
-            , SpotOuterAngle(0.785f) // ~45 degrees
-        {
-        }
-    };
-
-    //------------------------------------------------------------------------------------------------
-    // Light flags
-    enum LightFlags : UINT
-    {
-        LIGHT_FLAG_NONE = 0,
-        LIGHT_FLAG_CAST_SHADOWS = 1 << 0,
-        LIGHT_FLAG_ENABLED = 1 << 1,
-    };
-
-    //------------------------------------------------------------------------------------------------
     // Render chunk types - each chunk contains specific renderable data
     enum class RenderChunkType : uint32_t
     {
@@ -436,10 +336,10 @@ namespace Canvas
     struct RenderContext
     {
         // Active camera data
-        CameraData Camera;
+        // CameraData Camera;
         
         // Array of lights affecting this frame
-        LightData* pLights;
+        // LightData* pLights;
         UINT LightCount;
         UINT MaxLights;
         
@@ -456,8 +356,7 @@ namespace Canvas
         
         // Default constructor - POD initialization
         RenderContext()
-            : pLights(nullptr)
-            , LightCount(0)
+            : LightCount(0)
             , MaxLights(0)
             , AmbientColor(0.1f, 0.1f, 0.1f, 1.0f)  // RGB + intensity in w
             , ContextFlags(0)
