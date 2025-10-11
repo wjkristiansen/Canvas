@@ -4,7 +4,7 @@
 
 #include "pch.h"
 
-#include "GraphicsContext12.h"
+#include "RenderQueue12.h"
 
 namespace Canvas
 {
@@ -40,14 +40,14 @@ Gem::Result CDevice12::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateGraphicsContext(XGfxGraphicsContext **ppContext)
+GEMMETHODIMP CDevice12::CreateRenderQueue(XGfxRenderQueue **ppRenderQueue)
 {
-    CFunctionSentinel Sentinel("XGfxDevice::CreateGraphicsContext");
+    CFunctionSentinel Sentinel("XGfxDevice::CreateRenderQueue");
     try
     {
-        Gem::TGemPtr<CGraphicsContext12> pContext;
-        Gem::ThrowGemError(Gem::TGenericImpl<CGraphicsContext12>::Create(&pContext, this)); // throw(Gem::GemError)
-        return pContext->QueryInterface(ppContext);
+        Gem::TGemPtr<CRenderQueue12> pRenderQueue;
+        Gem::ThrowGemError(Gem::TGenericImpl<CRenderQueue12>::Create(&pRenderQueue, this)); // throw(Gem::GemError)
+        return pRenderQueue->QueryInterface(ppRenderQueue);
     }
     catch (const Gem::GemError &e)
     {
@@ -164,10 +164,10 @@ struct Vertex
 //    return Result::Success;
 //}
 
-////------------------------------------------------------------------------------------------------
-//GEMMETHODIMP CDevice12::CreateMaterial(const ModelData::MATERIAL_DATA *pMaterialData, XMaterial **ppMaterial)
-//{
-//    return Result::NotImplemented;
-//}
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::CreateMaterial()
+{
+   return Gem::Result::NotImplemented;
+}
 
 }

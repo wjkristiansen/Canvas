@@ -6,6 +6,11 @@
 #include <QLog.h>
 #include "Gem.hpp"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)
+#endif
+
 namespace Canvas
 {
     enum class GfxFormat : int
@@ -65,18 +70,66 @@ namespace Canvas
         BC7_UNorm,
     };
 
-#define FOR_EACH_CANVASGFX_INTERFACE(macro, ...) \
-    macro(XGfxSurface, __VA_ARGS__) \
-    macro(XGfxBuffer, __VA_ARGS__) \
-    macro(XGfxSwapChain, __VA_ARGS__) \
-    macro(XGfxDevice, __VA_ARGS__) \
-    macro(XGfxFactory, __VA_ARGS__) \
-
     //------------------------------------------------------------------------------------------------
     // Buffer resource
     struct XGfxSurface : public Gem::XGeneric
     {
         GEM_INTERFACE_DECLARE(XGfxSurface, 0x2F05FEAC7133843B);
+    };
+
+    //------------------------------------------------------------------------------------------------
+    enum class MaterialLayerRole
+    {
+        Albedo,
+        Normal,
+        Roughness,
+        Metallic,
+        Emissive,
+    };
+
+    //------------------------------------------------------------------------------------------------
+    enum MaterialLayerFlags : uint32_t
+    {
+        None            = 0,
+        Decal           = 1 << 0,  // Projected onto surface
+        Tiled           = 1 << 1,  // Repeats across UV space
+        LODBias         = 1 << 2,  // Applies mip bias
+        UVTransform     = 1 << 3,  // Uses custom UV matrix
+        Masked          = 1 << 4,  // Uses alpha mask
+    };
+
+    //------------------------------------------------------------------------------------------------
+    enum class MaterialBlendMode
+    {
+        Default,
+        Additive,
+        Multiply,
+        AlphaMasked,
+        Overlay,
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct MaterialLayer
+    {
+        MaterialLayerRole Role;
+        MaterialLayerFlags Flags;
+        Math::FloatVector4 BlendFactor;
+        Math::FloatVector4 Color;
+        XGfxSurface *pSurface;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct
+    XGfxMaterial : public Gem::XGeneric
+    {
+        GEM_INTERFACE_DECLARE(XGfxMaterial, 0xD6E17B2CB8454154);
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct
+    XGfxMesh : public Gem::XGeneric
+    {
+        GEM_INTERFACE_DECLARE(XGfxMesh, 0x7EBC2A5A40CC96D3);
     };
 
     //------------------------------------------------------------------------------------------------
@@ -96,14 +149,10 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    // Submits command streams to the GPU.
-    // Manages synchronization with other command contexts and
-    // the CPU.
-    // In D3D12, this wraps a command queue and command lists and command allocators.
-    // In D3D11, this is wraps an ID3D11DeviceContext
-    struct XGfxGraphicsContext : public Gem::XGeneric
+    // Submits tasks to the graphics subsystem.
+    struct XGfxRenderQueue : public Gem::XGeneric
     {
-        GEM_INTERFACE_DECLARE(XGfxGraphicsContext, 0x728AF985153F712D);
+        GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
 
         GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) = 0;
         GEMMETHOD_(void, CopyBuffer(XGfxBuffer *pDest, XGfxBuffer *pSource)) = 0;
@@ -119,15 +168,20 @@ namespace Canvas
     {
         GEM_INTERFACE_DECLARE(XGfxDevice, 0x86D4ABCCCD5FB6EE);
 
-        GEMMETHOD(CreateGraphicsContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) = 0;
+        GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) = 0;
+        GEMMETHOD(CreateMaterial)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
-    struct XGfxFactory : public Gem::XGeneric
+    struct XGfxDeviceFactory : public Gem::XGeneric
     {
-        GEM_INTERFACE_DECLARE(XGfxFactory, 0x3EE387780593F266);
+        GEM_INTERFACE_DECLARE(XGfxDeviceFactory, 0x3EE387780593F266);
         GEMMETHOD(CreateDevice)(Canvas::XGfxDevice **ppDevice) = 0;
     };
 }
 
-using FnCreateGfxFactory = Canvas::XGfxFactory* (*)(Canvas::XGfxFactory**);
+using FnCreateGfxDeviceFactory = Gem::Result (*)(Canvas::XGfxDeviceFactory**);
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

@@ -7,14 +7,14 @@
 namespace Canvas
 {
 
-CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CGraphicsContext12 *pContext, DXGI_FORMAT Format, UINT NumBuffers) :
-    m_pContext(pContext)
+CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers) :
+    m_pRenderQueue(pRenderQueue)
 {
     // Create the DXGI factory
     CComPtr<IDXGIFactory7> pFactory;
     ThrowFailedHResult(CreateDXGIFactory2(0, IID_PPV_ARGS(&pFactory)));
 
-    CDevice12 *pDevice = pContext->GetDevice();
+    CDevice12 *pDevice = pRenderQueue->GetDevice();
     ID3D12Device *pD3DDevice = pDevice->GetD3DDevice();
 
     // Create the swap chain
@@ -34,7 +34,7 @@ CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CGraphicsContext12 *p
     DXGI_SWAP_CHAIN_FULLSCREEN_DESC swapChainDescFS = {};
     swapChainDescFS.RefreshRate.Denominator = 1;
     swapChainDescFS.Windowed = Windowed;
-    ThrowFailedHResult(pFactory->CreateSwapChainForHwnd(pContext->GetD3DCommandQueue(), hWnd, &swapChainDesc, &swapChainDescFS, nullptr, &pSwapChain1));
+    ThrowFailedHResult(pFactory->CreateSwapChainForHwnd(pRenderQueue->GetD3DCommandQueue(), hWnd, &swapChainDesc, &swapChainDescFS, nullptr, &pSwapChain1));
 
     CComPtr<IDXGISwapChain4> pSwapChain4;
     ThrowFailedHResult(pSwapChain1->QueryInterface(&pSwapChain4));
@@ -74,7 +74,7 @@ Gem::Result CSwapChain12::Present()
 
         // Increment the swapchain fence value and queue a signal
         m_FenceValue++;
-        ID3D12CommandQueue *pCommandQueue = m_pContext->GetD3DCommandQueue();
+        ID3D12CommandQueue *pCommandQueue = m_pRenderQueue->GetD3DCommandQueue();
         pCommandQueue->Signal(m_pFence, m_FenceValue);
     }
     catch (_com_error &e)

@@ -7,7 +7,6 @@
 #include "CanvasCore.h"
 #include "Gem.hpp"
 #include "Timer.h"
-#include "RenderQueueManager.h"
 
 namespace Canvas
 {
@@ -78,9 +77,6 @@ class CCanvas :
     // Database of active XCanvasElement objects
     std::unordered_set<XCanvasElement *> m_ActiveCanvasElements;
 
-    // Render queue manager for scheduling renderable content
-    CRenderQueueManager m_RenderQueueManager;
-
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XCanvas)
@@ -98,7 +94,8 @@ public:
 
 public:
     // XCanvas methods
-    GEMMETHOD(InitGfx)(PCSTR path, HWND hWnd) final;
+    GEMMETHOD(InitGfx)(PCSTR path) final;
+    GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppGfxDevice) final;
     GEMMETHOD(FrameTick)() final;
 
     GEMMETHOD(CreateScene)(XScene **ppScene) final;
@@ -117,10 +114,7 @@ public:
     // IMPORTANT: m_pGfxPlugin must be declared FIRST so it destructs LAST
     // This ensures the DLL stays loaded while the graphics objects are being destroyed
     std::unique_ptr<CCanvasPlugin> m_pGfxPlugin;
-    Gem::TGemPtr<XGfxFactory> m_pGfxFactory;
-    Gem::TGemPtr<Canvas::XGfxDevice> m_pGfxDevice;
-    Gem::TGemPtr<Canvas::XGfxGraphicsContext> m_pGfxContext;
-    Gem::TGemPtr<Canvas::XGfxSwapChain> m_pGfxSwapChain;
+    Gem::TGemPtr<XGfxDeviceFactory> m_pGfxDeviceFactory;
 };
 
 }

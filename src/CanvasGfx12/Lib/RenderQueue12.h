@@ -23,12 +23,12 @@ public:
     CCommandAllocatorPool();
 
     ID3D12CommandAllocator *Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators);
-    ID3D12CommandAllocator *RotateAllocators(class CGraphicsContext12 *pContext);
+    ID3D12CommandAllocator *RotateAllocators(class CRenderQueue12 *pRenderQueue);
 };
 
 //------------------------------------------------------------------------------------------------
-class CGraphicsContext12 :
-    public Gem::TGeneric<Canvas::XGfxGraphicsContext>
+class CRenderQueue12 :
+    public Gem::TGeneric<XGfxRenderQueue>
 {
     std::mutex m_mutex;
 
@@ -54,13 +54,15 @@ public:
     UINT m_NextRTVSlot = 0;
 
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XGfxGraphicsContext)
+        GEM_INTERFACE_ENTRY(XGfxRenderQueue)
     END_GEM_INTERFACE_MAP()
 
-    CGraphicsContext12(CDevice12 *pDevice);
-    ~CGraphicsContext12();
+    CRenderQueue12(CDevice12 *pDevice);
 
-    // XGfxGraphicsContext methods
+    // XGeneric methods
+    GEMMETHOD_(void, Uninitialize)() final;
+
+    // XGfxRenderQueue methods
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) final;
     GEMMETHOD_(void, CopyBuffer)(XGfxBuffer *pDest, XGfxBuffer *pSource) final;
     GEMMETHOD_(void, ClearSurface)(XGfxSurface *pSurface, const float Color[4]) final;

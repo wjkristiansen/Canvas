@@ -44,9 +44,6 @@ GEMMETHODIMP CCanvas::Initialize()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CCanvas::Uninitialize()
 {
-    // Shutdown the render queue manager before releasing graphics
-    m_RenderQueueManager.Shutdown();
-    
     // Iterate still active XCanvasElement objects and report them as leaks
     for(XCanvasElement *pElement : m_ActiveCanvasElements)
     {
@@ -162,7 +159,7 @@ Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::InitGfx(PCSTR path, HWND hWnd)
+GEMMETHODIMP CCanvas::InitGfx(PCSTR path)
 {
     CFunctionSentinel Sentinel("XCanvas::InitGfx");
 
@@ -170,34 +167,41 @@ GEMMETHODIMP CCanvas::InitGfx(PCSTR path, HWND hWnd)
     {
         std::unique_ptr<CCanvasPlugin> pPlugin = std::make_unique<CCanvasPlugin>(path);
 
-        auto pfnCreateCanvasGfxFactory = pPlugin->GetProc<FnCreateGfxFactory>("CreateCanvasGfxFactory");
-        if(!pfnCreateCanvasGfxFactory)
+        auto pfnCreateCanvasGfxDeviceFactory = pPlugin->GetProc<FnCreateGfxDeviceFactory>("CreateCanvasGfxDeviceFactory");
+        if(!pfnCreateCanvasGfxDeviceFactory)
         {
             Gem::ThrowGemError(Gem::Result::PluginProcNodFound);
         }
 
-        Gem::TGemPtr<Canvas::XGfxFactory> pFactory;
-        pfnCreateCanvasGfxFactory(&pFactory);
+        Gem::TGemPtr<XGfxDeviceFactory> pGfxDeviceFactory;
+        pfnCreateCanvasGfxDeviceFactory(&pGfxDeviceFactory);
 
-        // Create the graphics device
-        Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
-        Gem::ThrowGemError(pFactory->CreateDevice(&pDevice));
-
-        // Create the graphics context
-        Gem::TGemPtr<Canvas::XGfxGraphicsContext> pGfxContext;
-        Gem::ThrowGemError(pDevice->CreateGraphicsContext(&pGfxContext));
-
-        // Create the swapchain
-        Gem::TGemPtr<Canvas::XGfxSwapChain> pSwapChain;
-        Gem::ThrowGemError(pGfxContext->CreateSwapChain(hWnd, true, &pSwapChain, Canvas::GfxFormat::R16G16B16A16_Float, 4));
-        // Initialize the render queue manager with the graphics device
-        Gem::ThrowGemError(m_RenderQueueManager.Initialize(pDevice.Get()));
-
-        m_pGfxFactory.Attach(pFactory.Detach());
-        m_pGfxDevice.Attach(pDevice.Detach());
-        m_pGfxContext.Attach(pGfxContext.Detach());
-        m_pGfxSwapChain.Attach(pSwapChain.Detach());
+        m_pGfxDeviceFactory.Attach(pGfxDeviceFactory.Detach());
         m_pGfxPlugin.swap(pPlugin);
+    }
+    catch (const Gem::GemError &e)
+    {
+        Sentinel.SetResultCode(e.Result());
+        return e.Result();
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateGfxDevice(XGfxDevice **ppGfxDevice)
+{
+    CFunctionSentinel Sentinel("XCanvas::CreateGfxDevice");
+
+    try
+    {
+        if(!m_pGfxDeviceFactory)
+            Gem::ThrowGemError(Gem::Result::NotFound);
+
+        Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+        Gem::ThrowGemError(m_pGfxDeviceFactory->CreateDevice(&pDevice));
+
+        *ppGfxDevice = pDevice.Detach();
     }
     catch (const Gem::GemError &e)
     {
@@ -217,24 +221,6 @@ GEMMETHODIMP CCanvas::FrameTick()
     // Elapse time
 
     // Update scene graph
-
-    // BUGBUG - TEST CODE: REPLACE WITH RENDER QUEUE DISPATCH
-    const float ClearColors[2][4] =
-    {
-        { 1.f, 0.f, 0.f, 0.f },
-        { 0.f, 0.f, 1.f, 0.f },
-    };
-
-    static UINT clearColorIndex = 0;
-
-    Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
-    m_pGfxSwapChain->GetSurface(&pSurface);
-    m_pGfxContext->ClearSurface(pSurface, ClearColors[clearColorIndex]);
-    clearColorIndex ^= 1;
-    m_pGfxContext->FlushAndPresent(m_pGfxSwapChain);
-    m_pGfxContext->Wait();
-    // BUGBUG - END TEST CODE
-
 
     // Build the display list
 

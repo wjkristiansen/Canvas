@@ -7,16 +7,16 @@
 namespace Canvas
 {
 
-extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt);
+extern DXGI_FORMAT CanvasFormatToDXGIFormat(GfxFormat Fmt);
 
-class CGfxFactory :
-	public Gem::TGeneric<XGfxFactory>
+class CGfxDeviceFactory :
+	public Gem::TGeneric<XGfxDeviceFactory>
 {
 public:
-	CGfxFactory();
+	CGfxDeviceFactory();
 
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XGfxFactory)
+        GEM_INTERFACE_ENTRY(XGfxDeviceFactory)
     END_GEM_INTERFACE_MAP()
 
 	GEMMETHOD(CreateDevice)(XGfxDevice **ppDevice);

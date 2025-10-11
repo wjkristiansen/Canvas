@@ -18,7 +18,7 @@ class CSwapChain12 :
     CComPtr<IDXGISwapChain4> m_pSwapChain;
     CComPtr<ID3D12Fence> m_pFence;
     UINT64 m_FenceValue = 0;
-    class CGraphicsContext12 *m_pContext = nullptr; // weak pointer
+    class CRenderQueue12 *m_pRenderQueue = nullptr; // weak pointer
 
 public:
 
@@ -28,7 +28,7 @@ public:
         GEM_INTERFACE_ENTRY(XGfxSwapChain)
     END_GEM_INTERFACE_MAP()
 
-    CSwapChain12(HWND hWnd, bool Windowed, class CGraphicsContext12 *pContext, DXGI_FORMAT Format, UINT NumBuffers);
+    CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers);
 
     GEMMETHOD(GetSurface)(XGfxSurface **ppSurface) final;
     GEMMETHOD(WaitForLastPresent)() final;

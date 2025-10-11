@@ -4,7 +4,7 @@
 
 #include "pch.h"
 
-#include "GraphicsContext12.h"
+#include "RenderQueue12.h"
 
 namespace Canvas
 {
@@ -30,15 +30,15 @@ ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice12 *pDevice, D3D12_CO
 }
 
 //------------------------------------------------------------------------------------------------
-ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CGraphicsContext12 *pContext)
+ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CRenderQueue12 *pRenderQueue)
 {
-    CommandAllocators[AllocatorIndex].FenceValue = pContext->m_FenceValue;
+    CommandAllocators[AllocatorIndex].FenceValue = pRenderQueue->m_FenceValue;
     AllocatorIndex = (AllocatorIndex + 1) % CommandAllocators.size();
 
-    if (CommandAllocators[AllocatorIndex].FenceValue > pContext->m_pFence->GetCompletedValue())
+    if (CommandAllocators[AllocatorIndex].FenceValue > pRenderQueue->m_pFence->GetCompletedValue())
     {
         HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
-        pContext->m_pFence->SetEventOnCompletion(CommandAllocators[AllocatorIndex].FenceValue, hEvent);
+        pRenderQueue->m_pFence->SetEventOnCompletion(CommandAllocators[AllocatorIndex].FenceValue, hEvent);
         WaitForSingleObject(hEvent, INFINITE);
         CloseHandle(hEvent);
     }
@@ -47,7 +47,7 @@ ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CGraphicsContext
 }
 
 //------------------------------------------------------------------------------------------------
-CGraphicsContext12::CGraphicsContext12(CDevice12 *pDevice) :
+CRenderQueue12::CRenderQueue12(CDevice12 *pDevice) :
     m_pDevice(pDevice)
 {
     CComPtr<ID3D12CommandQueue> pCQ;
@@ -134,9 +134,9 @@ CGraphicsContext12::CGraphicsContext12(CDevice12 *pDevice) :
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsContext12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers)
+GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers)
 {
-    CFunctionSentinel Sentinel("XGfxGraphicsContext::CreateSwapChain");
+    CFunctionSentinel Sentinel("XGfxRenderQueue::CreateSwapChain");
     try
     {
         // Create the swapchain
@@ -153,13 +153,13 @@ GEMMETHODIMP CGraphicsContext12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxS
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CGraphicsContext12::CopyBuffer(XGfxBuffer * /*pDest*/, XGfxBuffer * /*pSource*/)
+GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(XGfxBuffer * /*pDest*/, XGfxBuffer * /*pSource*/)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CGraphicsContext12::ClearSurface(XGfxSurface *pGfxSurface, const float Color[4])
+GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(XGfxSurface *pGfxSurface, const float Color[4])
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
     CSurface12 *pSurface = reinterpret_cast<CSurface12 *>(pGfxSurface);
@@ -169,7 +169,7 @@ GEMMETHODIMP_(void) CGraphicsContext12::ClearSurface(XGfxSurface *pGfxSurface, c
 }
 
 //------------------------------------------------------------------------------------------------
-D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
+D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
     UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -189,7 +189,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE CGraphicsContext12::CreateRenderTargetView(class CSu
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CGraphicsContext12::FlushImpl()
+Gem::Result CRenderQueue12::FlushImpl()
 {
     try
     {
@@ -213,10 +213,10 @@ Gem::Result CGraphicsContext12::FlushImpl()
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CGraphicsContext12::Flush()
+Gem::Result CRenderQueue12::Flush()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel("XGfxGraphicsContext::Flush", QLog::Level::Debug);
+    CFunctionSentinel Sentinel("XGfxRenderQueue::Flush", QLog::Level::Debug);
     try
     {
         Gem::ThrowGemError(FlushImpl());
@@ -232,10 +232,10 @@ Gem::Result CGraphicsContext12::Flush()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CGraphicsContext12::FlushAndPresent(XGfxSwapChain *pSwapChain)
+GEMMETHODIMP CRenderQueue12::FlushAndPresent(XGfxSwapChain *pSwapChain)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel("XGfxGraphicsContext::FlushAndPresent", QLog::Level::Debug);
+    CFunctionSentinel Sentinel("XGfxRenderQueue::FlushAndPresent", QLog::Level::Debug);
 
     try
     {
@@ -263,7 +263,8 @@ GEMMETHODIMP CGraphicsContext12::FlushAndPresent(XGfxSwapChain *pSwapChain)
     return Gem::Result::Success;
 }
 
-GEMMETHODIMP CGraphicsContext12::Wait()
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::Wait()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
     HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
@@ -273,15 +274,20 @@ GEMMETHODIMP CGraphicsContext12::Wait()
     return Gem::Result::Success;
 }
 
-CGraphicsContext12::~CGraphicsContext12()
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::Uninitialize()
 {
+    CFunctionSentinel Sentinel("XGfxRenderQueue::Uninitialize", QLog::Level::Info);
+
     m_pCommandList->Close();
 
     Wait();
+
+    return Gem::TGeneric<XGfxRenderQueue>::Uninitialize();
 }
 
 //------------------------------------------------------------------------------------------------
-void CGraphicsContext12::ApplyResourceBarriers()
+void CRenderQueue12::ApplyResourceBarriers()
 {
     std::vector<D3D12_RESOURCE_BARRIER> resourceBarriers;
     m_pDevice->m_ResourceStateManager.ResolveResourceBarriers(resourceBarriers);

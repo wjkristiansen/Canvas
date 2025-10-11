@@ -33,7 +33,9 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XCanvas, 0x0F215E5907B4651D);
 
-    GEMMETHOD(InitGfx)(PCSTR path, HWND hWnd) = 0;
+    GEMMETHOD(InitGfx)(PCSTR path) = 0;
+    GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppGfxDevice) = 0;
+    
     GEMMETHOD(FrameTick)() = 0;
 
     GEMMETHOD(CreateScene)(XScene **ppScene) = 0;
@@ -52,20 +54,6 @@ XCanvasElement : public Gem::XGeneric
     GEMMETHOD_(void, SetName)(PCSTR szName) = 0;
     GEMMETHOD_(XCanvas *, GetCanvas)() = 0;
     GEMMETHOD_(PCSTR, GetTypeName)() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct
-XMaterial : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(XMaterial, 0xD6E17B2CB8454154);
-};
-
-//------------------------------------------------------------------------------------------------
-struct
-XMesh : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(XMesh, 0x7EBC2A5A40CC96D3);
 };
 
 //------------------------------------------------------------------------------------------------
@@ -192,15 +180,6 @@ XSceneGraphElement : public XCanvasElement
 extern Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas);
 extern CANVAS_API Gem::Result InitCanvasLogger(QLog::Sink &, QLog::Level);
 extern CANVAS_API QLog::Logger *GetCanvasLogger();
-
-//------------------------------------------------------------------------------------------------
-struct
-XMeshInstance : public XSceneGraphElement
-{
-    GEM_INTERFACE_DECLARE(XMeshInstance, 0xB727EFEA527A1032);
-
-    GEMMETHOD_(void, SetMesh)(XMesh *pMesh) = 0;
-};
 
 //------------------------------------------------------------------------------------------------
 struct

@@ -84,7 +84,7 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
     }
 }
 
-CGfxFactory::CGfxFactory()
+CGfxDeviceFactory::CGfxDeviceFactory()
 {
 #if defined(_DEBUG)
     CComPtr<ID3D12Debug3> pDebug;
@@ -94,9 +94,9 @@ CGfxFactory::CGfxFactory()
 
 }
 
-GEMMETHODIMP CGfxFactory::CreateDevice(Canvas::XGfxDevice **ppDevice)
+GEMMETHODIMP CGfxDeviceFactory::CreateDevice(XGfxDevice **ppDevice)
 {
-    CFunctionSentinel Sentinel("CGfxFactory::CreateDevice");
+    CFunctionSentinel Sentinel("CGfxDeviceFactory::CreateDevice");
 
     *ppDevice = nullptr;
 
@@ -129,12 +129,12 @@ GEMMETHODIMP CGfxFactory::CreateDevice(Canvas::XGfxDevice **ppDevice)
 #endif
 
 //------------------------------------------------------------------------------------------------
-extern "C" CANVASGFX12_API Gem::Result CreateCanvasGfxFactory(Canvas::XGfxFactory **ppFactory)
+extern "C" CANVASGFX12_API Gem::Result CreateCanvasGfxDeviceFactory(Canvas::XGfxDeviceFactory **ppFactory)
 {
     try
     {
-        Gem::TGemPtr<Canvas::CGfxFactory> pFactory;
-        Gem::ThrowGemError(Gem::TGenericImpl<Canvas::CGfxFactory>::Create(&pFactory));
+        Gem::TGemPtr<Canvas::CGfxDeviceFactory> pFactory;
+        Gem::ThrowGemError(Gem::TGenericImpl<Canvas::CGfxDeviceFactory>::Create(&pFactory));
         *ppFactory = pFactory.Detach();
     }
     catch(const Gem::GemError &e)
