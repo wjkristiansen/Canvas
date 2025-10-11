@@ -17,6 +17,8 @@ CCommandAllocatorPool::CCommandAllocatorPool()
 //------------------------------------------------------------------------------------------------
 ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators)
 {
+    CFunctionSentinel Sentinel("CCommandAllocatorPool::Init");
+    
     for (UINT i = 0; i < NumAllocators; ++i)
     {
         CComPtr<ID3D12CommandAllocator> pAllocator;

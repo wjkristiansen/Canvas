@@ -69,6 +69,8 @@ CCanvas::~CCanvas()
 template<class _Type>
 Gem::Result CCanvas::CreateElement(typename _Type::BaseType **ppElement)
 {
+    CFunctionSentinel Sentinel("XCanvas::CreateElement");
+
     if (!ppElement)
     {
         return Gem::Result::BadPointer;
@@ -132,6 +134,8 @@ GEMMETHODIMP CCanvas::CreateLight(XLight **ppLight)
 //------------------------------------------------------------------------------------------------
 Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas)
 {
+    CFunctionSentinel Sentinel("CreateCanvas");
+    
     *ppCanvas = nullptr;
 
     auto pLogger = GetCanvasLogger();

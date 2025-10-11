@@ -167,6 +167,8 @@ struct Vertex
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateMaterial()
 {
+    CFunctionSentinel Sentinel("XGfxDevice::CreateMaterial");
+    
    return Gem::Result::NotImplemented;
 }
 
