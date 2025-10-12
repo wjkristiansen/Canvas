@@ -29,6 +29,9 @@ public:
     {
     }
 
+    // XSceneGraphElement methods
+    GEMMETHOD(Update)(float) final { return Gem::Result::Success; }
+
     // XCamera methods
     GEMMETHOD_(void, SetNearClip)(float nearClip) final { m_NearClip = nearClip; }
     GEMMETHOD_(void, SetFarClip)(float farClip) final { m_FarClip = farClip; }

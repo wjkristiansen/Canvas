@@ -35,9 +35,6 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(InitGfx)(PCSTR path) = 0;
     GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppGfxDevice) = 0;
-    
-    GEMMETHOD(FrameTick)() = 0;
-
     GEMMETHOD(CreateScene)(XScene **ppScene) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera) = 0;
@@ -142,6 +139,8 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(XSceneGraphNode *, GetParent)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetSibling)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() = 0;
+
+    GEMMETHOD(Update)(float dtime) = 0;
 };
 
 //-----------------------0-------------------------------------------------------------------------
@@ -173,6 +172,8 @@ XSceneGraphElement : public XCanvasElement
 
     // Dispatches the element for rendering
     GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) = 0;
+
+    GEMMETHOD(Update)(float dtime) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -238,6 +239,8 @@ XScene : public XCanvasElement
     GEM_INTERFACE_DECLARE(XScene, 0x0A470E86351AF96A);
 
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
+
+    GEMMETHOD(Update)(float dtime) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

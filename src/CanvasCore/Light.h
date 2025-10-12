@@ -43,6 +43,9 @@ public:
 
     CLight(CCanvas *pCanvas) :
         TSceneGraphElement(pCanvas) {}
+
+    // XSceneGraphElement methods
+    GEMMETHOD(Update)(float) final { return Gem::Result::Success; }
 };
 
 }

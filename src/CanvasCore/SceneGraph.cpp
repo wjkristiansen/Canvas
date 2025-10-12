@@ -33,6 +33,34 @@ GEMMETHODIMP_(void) CSceneGraphNode::Uninitialize()
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CSceneGraphNode::Update(float dtime)
+{
+    try
+    {
+        for( auto element : m_Elements)
+        {
+            Gem::ThrowGemError(element->Update(dtime));
+        }
+
+        if(m_pSibling)
+        {
+            Gem::ThrowGemError(m_pSibling->Update(dtime));
+        }
+
+        if(m_pFirstChild)
+        {
+            Gem::ThrowGemError(m_pFirstChild->Update(dtime));
+        }
+    }
+    catch(const Gem::GemError &e)
+    {
+        return e.Result();
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode* pChild)
 {
     if (!pChild)

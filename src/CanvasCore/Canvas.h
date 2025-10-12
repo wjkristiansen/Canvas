@@ -72,7 +72,6 @@ class CCanvas :
 
     CTimer m_FrameTimer;
     UINT64 m_FrameEndTimeLast = 0;
-    UINT m_FrameCounter = 0;
 
     // Database of active XCanvasElement objects
     std::unordered_set<XCanvasElement *> m_ActiveCanvasElements;
@@ -96,7 +95,6 @@ public:
     // XCanvas methods
     GEMMETHOD(InitGfx)(PCSTR path) final;
     GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppGfxDevice) final;
-    GEMMETHOD(FrameTick)() final;
 
     GEMMETHOD(CreateScene)(XScene **ppScene) final;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) final;

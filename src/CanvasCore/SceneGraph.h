@@ -75,6 +75,7 @@ public: // XSceneGraphNode methods
     GEMMETHOD_(XSceneGraphNode *, GetParent)() final;
     GEMMETHOD_(XSceneGraphNode *, GetSibling)() final;
     GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() final;
+    GEMMETHOD(Update)(float dtime) final;
 
 public:
     // CSceneGraphNode methods

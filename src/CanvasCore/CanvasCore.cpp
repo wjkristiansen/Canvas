@@ -216,38 +216,4 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(XGfxDevice **ppGfxDevice)
     return Gem::Result::Success;
 }
 
-//------------------------------------------------------------------------------------------------
-// Updates application logic and submits work to the graphics engine
-GEMMETHODIMP CCanvas::FrameTick()
-{
-    Gem::Result result = Gem::Result::Success;
-
-    // Elapse time
-
-    // Update scene graph
-
-    // Build the display list
-
-    // Render the display list
-
-    ++m_FrameCounter;
-    if (m_FrameCounter == 1200)
-    {
-        UINT64 FrameEndTime = m_FrameTimer.Now();
-
-        if (m_FrameEndTimeLast > 0)
-        {
-            UINT64 DTime = CTimer::Microseconds(FrameEndTime - m_FrameEndTimeLast);
-            UINT64 FramesPerSecond = DTime > 0 ? (m_FrameCounter * 1000000ULL) / DTime : UINT64_MAX;
-            std::cout << "FPS: " << FramesPerSecond << std::endl;
-        }
-        m_FrameEndTimeLast = FrameEndTime;
-        m_FrameCounter = 0;
-    }
-
-//    Logger().LogInfo("End CCanvas::FrameTick");
-
-    return result;
-}
-
 }
