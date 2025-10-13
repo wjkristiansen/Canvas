@@ -1064,42 +1064,45 @@ namespace Canvas
         // Note, the LookVector may be a Forward vector or a Backward vector, depending
         // on the desired direction of the OutVector.
         template<class _VectorType>
-        void ComposeLookAtBasisVectors(_In_ const _VectorType &UpAxisVector, _In_ const _VectorType &LookVector, _Out_ _VectorType &OutVector, _Out_ _VectorType &UpVector)
+        void ComposeLookAtBasisVectors(_In_ const _VectorType &localUpVector, _In_ const _VectorType &basisForwardVector, _Out_ _VectorType &basisSideVector, _Out_ _VectorType &basisUpVector)
         {
             using Type = typename _VectorType::Type;
 
             // OutVector is the cross product of UpAxisVector with LookVector
-            OutVector = CrossProduct(UpAxisVector, LookVector);
-            Type dot = DotProduct(OutVector, OutVector);
+            basisSideVector = CrossProduct(localUpVector, basisForwardVector);
+            Type dot = DotProduct(basisSideVector, basisSideVector);
             Type dotsq = dot * dot;
-            if (dotsq < MinNorm<Type>::Value)
+            constexpr Type epsilon(1e-6);
+            if (dotsq < epsilon)
             {
-                // LookVector and UpAxisVector appear to be colinear
-                // Choose an arbitrary OutVector preserving the sign
-                // of the camera up vector
-                Type d2 = DotProduct(LookVector, UpAxisVector);
+                // basisForwardVector and localUpVector are nearly colinear
+                // Choose an arbitrary basisSideVector preserving the sign
+                // of the localUpVector
+                Type d2 = DotProduct(basisForwardVector, basisForwardVector);
                 if (d2 > 0)
                 {
-                    OutVector[0] = UpAxisVector.V[2];
-                    OutVector[1] = UpAxisVector.V[0];
-                    OutVector[2] = UpAxisVector.V[1];
+                    basisSideVector[0] = localUpVector[2];
+                    basisSideVector[1] = localUpVector[0];
+                    basisSideVector[2] = localUpVector[1];
                 }
                 else
                 {
-                    OutVector = _VectorType(-UpAxisVector.V[2], UpAxisVector.V[0], -UpAxisVector.V[1]);
+                    basisSideVector[0] = -localUpVector[2];
+                    basisSideVector[1] = localUpVector[0];
+                    basisSideVector[2] = -localUpVector[1];
                 }
             }
             else
             {
                 // Normalize OutVector
-                OutVector = OutVector * Type(1. / sqrt(dotsq));
+                basisSideVector = basisSideVector * Type(1. / std::sqrt(dotsq));
             }
 
-            // The cross product of OutVector with LookVector is the UpVector.
+            // The cross product of basisSideVector with basisForwardVector is the basisUpVector.
             // There is no need to normalize the result since the
-            // LookVector and UpVector are unit vectors and are 
-            // orthogonal. The result must already be a unit vector.
-            UpVector = CrossProduct(LookVector, OutVector);
+            // basisForwardVector and basisSideVector are unit vectors and are 
+            // orthogonal. Thus, the cross product must also be a unit vector.
+            basisUpVector = CrossProduct(basisForwardVector, basisSideVector);
         }
 
         using FloatQuaternion = TQuaternion<float>;

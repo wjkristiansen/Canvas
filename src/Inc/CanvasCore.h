@@ -102,28 +102,15 @@ XAnimation : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-enum class RotationType
-{
-    EulerXYZ,
-    EulerXZY,
-    EulerYXZ,
-    EulerYZX,
-    EulerZXY,
-    EulerZYX,
-    QuaternionWXYZ,
-    AxisAngle,
-};
-
-//------------------------------------------------------------------------------------------------
 struct
 XTransform : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XTransform, 0x2A08BD07EC525C0B);
 
-    GEMMETHOD_(RotationType, GetRotationType)() const = 0;
-    GEMMETHOD_(const Math::FloatVector4 &, GetRotation)() const = 0;
+    GEMMETHOD_(const Math::FloatQuaternion &, GetRotation)() const = 0;
     GEMMETHOD_(const Math::FloatVector4 &, GetTranslation)() const = 0;
-    GEMMETHOD_(void, SetRotation)(RotationType Type, _In_ const Math::FloatVector4 &Rotation) = 0;
+    GEMMETHOD_(const Math::FloatVector4 &, GetScale)() const = 0;
+    GEMMETHOD_(void, SetRotation)(_In_ const Math::FloatQuaternion &Rotation) = 0;
     GEMMETHOD_(void, SetTranslation)(_In_ const Math::FloatVector4 &Translation) = 0;
     GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location, _In_ const Math::FloatVector4 &WorldUp) = 0;
 };
