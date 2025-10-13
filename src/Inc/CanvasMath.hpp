@@ -8,6 +8,11 @@
 #include <float.h>
 #include <algorithm>
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4201) // nameless struct/union
+#endif
+
 namespace Canvas
 {
     namespace Math
@@ -38,9 +43,18 @@ namespace Canvas
             static auto constexpr Dim = 2;
             using Type = _Type;
 
-            Type V[Dim] = {};
+            union
+            {
+                Type V[Dim];
+                struct
+                {
+                    Type X;
+                    Type Y;
+                };
+            };
+            
 
-            TVector() = default;
+            TVector() : V{} {};
             TVector(_Type x, _Type y) :
                 V{ x, y } {}
             TVector(const TVector &o) = default;
@@ -57,9 +71,18 @@ namespace Canvas
             static auto constexpr Dim = 3;
             using Type = _Type;
 
-            Type V[Dim] = {};
+            union
+            {
+                Type V[Dim];
+                struct
+                {
+                    Type X;
+                    Type Y;
+                    Type Z;
+                };
+            };
 
-            TVector() = default;
+            TVector() : V{} {};
             TVector(_Type x, _Type y, _Type z) :
                 V{ x, y, z } {}
             TVector(const TVector &o) = default;
@@ -76,9 +99,19 @@ namespace Canvas
             static auto constexpr Dim = 4;
             using Type = _Type;
 
-            Type V[Dim] = {};
+            union
+            {
+                Type V[Dim];
+                struct
+                {
+                    Type X;
+                    Type Y;
+                    Type Z;
+                    Type W;
+                };
+            };
 
-            TVector() = default;
+            TVector() : V{} {};
             TVector(_Type x, _Type y, _Type z, _Type w) :
                 V{ x, y, z, w } {}
             TVector(const TVector &o) = default;
@@ -298,8 +331,8 @@ namespace Canvas
         template<class _Type, int _Dim>
         TVector<_Type, _Dim> NormalizeVector(const TVector<_Type, _Dim> &v)
         {
-            _Type magsq = DotProduct(v, v);
-            _Type recipmag = 1 / sqrt(magsq);
+            const _Type magsq = DotProduct(v, v);
+            const _Type recipmag = 1 / std::sqrt(magsq);
             TVector<_Type, _Dim> n;
             for (int i = 0; i < _Dim; ++i)
             {
@@ -700,28 +733,133 @@ namespace Canvas
         //
         // Identity: [1, (0, 0, 0)] (when involving multiplication) and [0, (0, 0, 0)] (when involving addition) 
         template<class _Type>
-        struct TQuaternion
+        struct TQuaternion : public TVector<_Type, 4>
         {
             using Type = _Type;
 
-            TVector<Type, 4> Q; // [a, b, c, w]
-
             TQuaternion() = default;
             TQuaternion(_Type scalar) :
-                Q{ 0, 0, 0, scalar } {}
+                TVector{ 0, 0, 0, scalar } {}
             TQuaternion(const TVector<Type, 4> & v) :
-                Q(v) {}
-            TQuaternion(Type a, Type b, Type c, Type w) :
-                Q{ a, b, c, w } {}
+                TVector(v) {}
+            TQuaternion(Type x, Type y, Type z, Type w) :
+                TVector{ x, y, z, w } {}
 
             TQuaternion(const TQuaternion &o) = default;
 
             TQuaternion &operator=(const TQuaternion &o) = default;
 
-            const _Type &operator[](int index) const { return Q[index]; }
-            Type &operator[](int index) { return Q[index]; }
+            TQuaternion<Type> Normalize();
 
-            void ReNormalize();
+            // Helpers to convert from Axis+Angle and euler rotations
+            static TQuaternion<Type> FromAxisAngle(const TVector<Type, 3> &axis, Type angle)
+            {
+                Type half = angle * 0.5;
+                Type s = sin(half);
+                return TQuaternion<Type>(
+                    axis.x * s,
+                    axis.y * s,
+                    axis.z * s,
+                    cos(half)
+                );
+            }
+
+            static TQuaternion<Type> FromEulerXYZ(Type x, Type y, Type z)
+            {
+                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
+                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
+                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+
+                // XYZ order
+                Type qx = sx * cy * cz - cx * sy * sz;
+                Type qy = cx * sy * cz + sx * cy * sz;
+                Type qz = cx * cy * sz - sx * sy * cz;
+                Type qw = cx * cy * cz + sx * sy * sz;
+
+                TQuaternion<Type> q(qx, qy, qz, qw);
+                q.Normalize();
+                return q;
+            }
+
+            static TQuaternion<Type> FromEulerXZY(Type x, Type z, Type y)
+            {
+                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
+                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
+                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+
+                Type qx = sx * cy * cz + cx * sy * sz;
+                Type qy = cx * sy * cz - sx * cy * sz;
+                Type qz = cx * cy * sz - sx * sy * cz;
+                Type qw = cx * cy * cz + sx * sy * sz;
+
+                TQuaternion<Type> q(qx, qy, qz, qw);
+                q.Normalize();
+                return q;
+            }
+
+            static TQuaternion<Type> FromEulerYXZ(Type y, Type x, Type z)
+            {
+                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
+                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
+                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+
+                Type qx = sx * cy * cz + cx * sy * sz;
+                Type qy = cx * sy * cz - sx * cy * sz;
+                Type qz = cx * cy * sz - sx * sy * cz;
+                Type qw = cx * cy * cz + sx * sy * sz;
+
+                TQuaternion<Type> q(qx, qy, qz, qw);
+                q.Normalize();
+                return q;
+            }
+
+            static TQuaternion<Type> FromEulerYZX(Type y, Type z, Type x)
+            {
+                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
+                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
+                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+
+                Type qx = sx * cy * cz - cx * sy * sz;
+                Type qy = cx * sy * cz + sx * cy * sz;
+                Type qz = cx * cy * sz + sx * sy * cz;
+                Type qw = cx * cy * cz - sx * sy * sz;
+
+                TQuaternion<Type> q(qx, qy, qz, qw);
+                q.Normalize();
+                return q;
+            }
+
+            static TQuaternion<Type> FromEulerZXY(Type z, Type x, Type y)
+            {
+                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
+                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
+                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+
+                Type qx = sx * cy * cz + cx * sy * sz;
+                Type qy = cx * sy * cz - sx * cy * sz;
+                Type qz = cx * cy * sz - sx * sy * cz;
+                Type qw = cx * cy * cz + sx * sy * sz;
+
+                TQuaternion<Type> q(qx, qy, qz, qw);
+                q.Normalize();
+                return q;
+            }
+
+            static TQuaternion<Type> FromEulerZYX(Type z, Type y, Type x)
+            {
+                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
+                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
+                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+
+                Type qx = sx * cy * cz - cx * sy * sz;
+                Type qy = cx * sy * cz + sx * cy * sz;
+                Type qz = cx * cy * sz - sx * sy * cz;
+                Type qw = cx * cy * cz + sx * sy * sz;
+
+                TQuaternion<Type> q(qx, qy, qz, qw);
+                q.Normalize();
+                return q;
+            }
         };
 
         //------------------------------------------------------------------------------------------------
@@ -732,42 +870,19 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        template<class _Type>
-        bool operator==(const TQuaternion<_Type> &a, const TQuaternion<_Type> &b)
-        {
-            return a.Q == b.Q;
-        }
-
-        //------------------------------------------------------------------------------------------------
-        template<class _Type>
-        TQuaternion<_Type> operator*(_Type scale, const TQuaternion<_Type> &q)
-        {
-            return TQuaternion(scale * q.Q);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        template<class _Type>
-        TQuaternion<_Type> operator*(const TQuaternion<_Type> &q, _Type scale)
-        {
-            return TQuaternion(scale * q.Q);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        template<class _Type>
-        _Type DotProduct(const TQuaternion<_Type> &q, const TQuaternion<_Type> &r)
-        {
-            return DotProduct(q.Q, r.Q);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        // Should be a unit quaternion but may need to be renormalized to correct
+        // Should be a unit quaternion but may need to be Normalized to correct
         // for accumulated floating point errors
         template<class _Type>
-        void TQuaternion<_Type>::ReNormalize()
+        TQuaternion<_Type> TQuaternion<_Type>::Normalize()
         {
-            _Type  dot = DotProduct(Q, Q);
-            _Type  rsq = 1 / sqrt(dot);
-            Q = Q * rsq;
+            const _Type  dot = DotProduct(*this, *this);
+            constexpr _Type epsilon = _Type(1e-6);
+            if(std::abs(dot - static_cast<_Type>(1)) > epsilon)
+            {
+                const _Type  rsq = 1 / std::sqrt(dot);
+                *this = *this * rsq;
+            }
+            return *this;
         }
 
         //------------------------------------------------------------------------------------------------
@@ -778,10 +893,10 @@ namespace Canvas
         TQuaternion<_Type> Conjugate(const TQuaternion<_Type> &q)
         {
             TQuaternion<_Type> c;
-            c[0] = -q[0];
-            c[1] = -q[1];
-            c[2] = -q[2];
-            c[3] = q[3];
+            c[0] = -q.X;
+            c[1] = -q.Y;
+            c[2] = -q.Z;
+            c[3] = q.W;
             return c;
         }
 
@@ -794,8 +909,8 @@ namespace Canvas
             //_Type w = q.W * r.W - DotProduct(q.V, r.V);
             //TVector<_Type, 3> v = CrossProduct(q.V, r.V) + q.W *r.V + r.W * q.V;
             //return TQuaternion<_Type>(w, v);
-            TQuaternion<_Type> v = CrossProduct(q.Q, r.Q) + q[3] * r.Q + r[3] * q.Q; // Leaves garbage in v[3] but that gets fixed below
-            v[3] = q[3] * r[3] - (q[0] * r[0] + q[1] * r[1] + q[2] * r[2]);
+            TQuaternion<_Type> v = CrossProduct(q, r) + q.W * r + r.W * q; // Leaves garbage in v.W but that gets fixed below
+            v.W = q.W * r.W - (q.X * r.X + q.Y * r.Y + q.Z * r.Z);
             return v;
         }
 
@@ -805,24 +920,6 @@ namespace Canvas
         TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TVector<_Type, 4> & v)
         {
             return q * TQuaternion<_Type>(v);
-
-        }
-
-        //------------------------------------------------------------------------------------------------
-        // Returns the sum of two quaternions
-        template<class _Type>
-        TQuaternion<_Type> operator+(const TQuaternion<_Type> q, const TQuaternion<_Type> &r)
-        {
-            return TQuaternion<_Type>(q.Q + r.Q);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        // Returns the sum of two quaternions
-        template<class _Type>
-        TQuaternion<_Type> operator-(const TQuaternion<_Type> q, const TQuaternion<_Type> &r)
-        {
-            return TQuaternion<_Type>(q.Q - r.Q);
-
         }
 
         //------------------------------------------------------------------------------------------------
@@ -849,21 +946,21 @@ namespace Canvas
             return TMatrix<_Type, 4, 4>(
                 {
                     {
-                        1 - 2 * (q.Q[1] * q.Q[1] + q.Q[2] * q.Q[2]),
-                        2 * (q.Q[0] * q.Q[1] - q.Q[2] * q.Q[3]),
-                        2 * (q.Q[0] * q.Q[2] + q.Q[1] * q.Q[3]),
+                        1 - 2 * (q.Y * q.Y + q.Z * q.Z),
+                        2 * (q.X * q.Y - q.Z * q.W),
+                        2 * (q.X * q.Z + q.Y * q.W),
                         0
                     },
                     {
-                        2 * (q.Q[0] * q.Q[1] + q.Q[2] * q.Q[3]),
-                        1 - 2 * (q.Q[0] * q.Q[0] + q.Q[2] * q.Q[2]),
-                        2 * (q.Q[1] * q.Q[2] - q.Q[0] * q.Q[3]),
+                        2 * (q.X * q.Y + q.Z * q.W),
+                        1 - 2 * (q.X * q.X + q.Z * q.Z),
+                        2 * (q.Y * q.Z - q.X * q.W),
                         0
                     },
                     {
-                        2 * (q.Q[0] * q.Q[2] - q.Q[1] * q.Q[3]),
-                        2 * (q.Q[1] * q.Q[2] + q.Q[0] * q.Q[3]),
-                        1 - 2 * (q.Q[0] * q.Q[0] + q.Q[1] * q.Q[1]),
+                        2 * (q.X * q.Z - q.Y * q.W),
+                        2 * (q.Y * q.Z + q.X * q.W),
+                        1 - 2 * (q.X * q.X + q.Y * q.Y),
                         0
                     },
                     {
@@ -878,66 +975,70 @@ namespace Canvas
         template<class _Type>
         TQuaternion<_Type> QuaternionFromAngleAxis(const TVector<_Type, 4> & v)
         {
-            _Type HalfAngle = v[3] / 2;
-            _Type c = cos(HalfAngle);
-            _Type s = sin(HalfAngle);
+            const _Type HalfAngle = v[3] / 2;
+            const _Type c = cos(HalfAngle);
+            const _Type s = sin(HalfAngle);
             TQuaternion<_Type> q;
-            q.Q = s * v;
-            q.Q[3] = c;
-            return q;
+            q = s * v;
+            q.W = c;
+            return q.Normalize();
         }
 
         //------------------------------------------------------------------------------------------------
         // Creates a quaternion from a given matrix
-        // Assumes the matrix is rotation only affine (no scale or translation)
+        // Assumes the matrix is rotation only 3x3 or affine (no scale or translation)
         // See http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
-        template<class _Type>
-        TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 4, 4> & m)
+        template<class _MatrixType>
+        TQuaternion<typename _MatrixType::ElementType> QuaternionFromRotationMatrix(const _MatrixType &m)
         {
-            TQuaternion<_Type> q;
-            _Type t = m[0][0] + m[1][1] + m[2][2];
+            static_assert(_MatrixType::Columns >= 3);
+            static_assert(_MatrixType::Rows >= 3);
+            static_assert(_MatrixType::Columns < 5);
+            using Type = _MatrixType::ElementType;
+            TQuaternion<Type> q;
+            Type t = m[0][0] + m[1][1] + m[2][2];
 
             if (t > 0)
             {
-                _Type s = 2 * sqrt(t + 1);
-                _Type srsq = 1 / s;
-                q.Q[3] = .25 * s;
-                q.Q[0] = (m[2][1] - m[1][2]) * srsq;
-                q.Q[1] = (m[0][2] - m[2][0]) * srsq;
-                q.Q[2] = (m[1][0] - m[0][1]) * srsq;
+                const Type s = 2 * std::sqrt(t + 1);
+                const Type srsq = 1 / s;
+                q.W = .25 * s;
+                q.X = (m[2][1] - m[1][2]) * srsq;
+                q.Y = (m[0][2] - m[2][0]) * srsq;
+                q.Z = (m[1][0] - m[0][1]) * srsq;
             }
             else if (m[0][0] > m[1][1] && (m[0][0] > m[2][2]))
             {
                 t = m[0][0] - m[1][1] - m[2][2];
-                _Type s = 2 * sqrt(t + 1);
-                _Type srsq = 1 / s;
-                q.Q[3] = (m[2][1] - m[1][2]) * srsq;
-                q.Q[0] = .25 * s;
-                q.Q[1] = (m[0][1] + m[1][0]) * srsq;
-                q.Q[2] = (m[0][2] + m[2][0]) * srsq;
+                const Type s = 2 * std::sqrt(t + 1);
+                const Type srsq = 1 / s;
+                q.W = (m[2][1] - m[1][2]) * srsq;
+                q.X = .25 * s;
+                q.Y = (m[0][1] + m[1][0]) * srsq;
+                q.Z = (m[0][2] + m[2][0]) * srsq;
             }
             else if (m[1][1] > m[2][2])
             {
                 t = m[1][1] - m[0][0] - m[2][2];
-                _Type s = 2 * sqrt(t + 1);
-                _Type srsq = 1 / s;
-                q.Q[3] = (m[0][2] - m[2][0]) * srsq;
-                q.Q[0] = (m[0][1] + m[1][0]) * srsq;
-                q.Q[1] = .25 * s;
-                q.Q[2] = (m[1][2] + m[2][1]) * srsq;
+                const Type s = 2 * std::sqrt(t + 1);
+                const Type srsq = 1 / s;
+                q.W = (m[0][2] - m[2][0]) * srsq;
+                q.X = (m[0][1] + m[1][0]) * srsq;
+                q.Y = .25 * s;
+                q.Z = (m[1][2] + m[2][1]) * srsq;
             }
             else
             {
                 t = m[2][2] - m[0][0] - m[1][1];
-                _Type s = 2 * sqrt(t + 1);
-                _Type srsq = 1 / s;
-                q.Q[3] = (m[1][0] - m[0][1]) * srsq;
-                q.Q[0] = (m[0][2] + m[2][0]) * srsq;
-                q.Q[1] = (m[1][2] + m[2][1]) * srsq;
-                q.Q[2] = .25 * s;
+                const Type s = 2 * std::sqrt(t + 1);
+                const Type srsq = 1 / s;
+                q.W = (m[1][0] - m[0][1]) * srsq;
+                q.X = (m[0][2] + m[2][0]) * srsq;
+                q.Y = (m[1][2] + m[2][1]) * srsq;
+                q.Z = .25 * s;
             }
 
-            return q;
+            return q.Normalize();
         }
 
         template<class _Type>
@@ -963,7 +1064,7 @@ namespace Canvas
         // Note, the LookVector may be a Forward vector or a Backward vector, depending
         // on the desired direction of the OutVector.
         template<class _VectorType>
-        void ComposeLookBasisVectors(_In_ const _VectorType &UpAxisVector, _In_ const _VectorType &LookVector, _Out_ _VectorType &OutVector, _Out_ _VectorType &UpVector)
+        void ComposeLookAtBasisVectors(_In_ const _VectorType &UpAxisVector, _In_ const _VectorType &LookVector, _Out_ _VectorType &OutVector, _Out_ _VectorType &UpVector)
         {
             using Type = typename _VectorType::Type;
 
@@ -1079,3 +1180,7 @@ namespace Canvas
 
     }
 }
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

@@ -228,7 +228,7 @@ namespace CanvasUnitTest
             auto WorldUp = FloatVector3(0, 0, 1); // World-up is the world Z-axis
             FloatMatrix3x3 M;
             M[2] = FloatVector3(0, 1, 0); // Camera looks in the -Y direction (this is a backward vector)
-            ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
+            ComposeLookAtBasisVectors(WorldUp, M[2], M[0], M[1]);
 
             Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
                 {
@@ -243,7 +243,7 @@ namespace CanvasUnitTest
 
             // Should use default out-vector
             M[2] = FloatVector3(0, 0, 1); // Camera looks in the -Z direction
-            ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
+            ComposeLookAtBasisVectors(WorldUp, M[2], M[0], M[1]);
 
             // Assume camera-up aligns with the Y-axis
             Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
@@ -257,7 +257,7 @@ namespace CanvasUnitTest
             // Look straight up (gimbal lock).
             // Should use default out-vector
             M[2] = FloatVector3(0, 0, -1); // Camera looks in the +Z direction
-            ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
+            ComposeLookAtBasisVectors(WorldUp, M[2], M[0], M[1]);
 
             // Assume camera-up aligns with the Y-axis
             Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
@@ -335,7 +335,7 @@ namespace CanvasUnitTest
                             // Quaternion transform
                             auto VByQ = R * V * InvR;
 
-                            Assert::IsTrue(AlmostEqual(VByM, VByQ.Q));
+                            Assert::IsTrue(AlmostEqual(VByM, VByQ));
                         }
                     }
                 }
