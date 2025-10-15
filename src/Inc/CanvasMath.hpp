@@ -751,17 +751,35 @@ namespace Canvas
 
             TQuaternion<Type> Normalize();
 
-            // Helpers to convert from Axis+Angle and euler rotations
-            static TQuaternion<Type> FromAxisAngle(const TVector<Type, 3> &axis, Type angle)
+            // Returns a vector whose direction is the axis and whose magnitude is the angle
+            // AKA the quaternion Log
+            TVector<Type, 3> ToScaledAxisAngle() const
             {
-                Type half = angle * 0.5;
-                Type s = sin(half);
-                return TQuaternion<Type>(
-                    axis.x * s,
-                    axis.y * s,
-                    axis.z * s,
-                    cos(half)
-                );
+                auto qn = Normalize();
+                const Type vLen = std::sqrt(qn.X * qn.X + qn.Y * qn.Y + qn.Z * qn.Z);
+                const Type angle = std::atan2(vLen, qn.W); // angle in radians
+
+                if (vLen < 1e-6f)
+                    return TVector<Type, 3>(0, 0, 0); // zero rotation
+
+                const Type scale = angle / vLen;
+                return TVector<Type, 3>(qn.X * scale, qn.Y * scale, qn.Z * scale);
+            }
+
+            // Constructs a quaternion from scaled axis-angle representation
+            // The length of `v` represents the rotation angle
+            static TQuaternion<Type> FromScaledAxisAngle(const TVector<_Type, 3>& v)
+            {
+                const Type angle = std::sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z);
+
+                if (angle < 1e-6f)
+                    return TQuaternion<Type>(0, 0, 0, 1); // identity rotation
+
+                const Type sinAngle = std::sin(angle);
+                const Type cosAngle = std::cos(angle);
+                const Type scale = sinAngle / angle;
+
+                return TQuaternion<Type>(v.X * scale, v.Y * scale, v.Z * scale, cosAngle);
             }
 
             static TQuaternion<Type> FromEulerXYZ(Type x, Type y, Type z)
@@ -777,8 +795,7 @@ namespace Canvas
                 Type qw = cx * cy * cz + sx * sy * sz;
 
                 TQuaternion<Type> q(qx, qy, qz, qw);
-                q.Normalize();
-                return q;
+                return q.Normalize();
             }
 
             static TQuaternion<Type> FromEulerXZY(Type x, Type z, Type y)
@@ -793,8 +810,7 @@ namespace Canvas
                 Type qw = cx * cy * cz + sx * sy * sz;
 
                 TQuaternion<Type> q(qx, qy, qz, qw);
-                q.Normalize();
-                return q;
+                return q.Normalize();
             }
 
             static TQuaternion<Type> FromEulerYXZ(Type y, Type x, Type z)
@@ -809,8 +825,7 @@ namespace Canvas
                 Type qw = cx * cy * cz + sx * sy * sz;
 
                 TQuaternion<Type> q(qx, qy, qz, qw);
-                q.Normalize();
-                return q;
+                return q.Normalize();
             }
 
             static TQuaternion<Type> FromEulerYZX(Type y, Type z, Type x)
@@ -825,8 +840,7 @@ namespace Canvas
                 Type qw = cx * cy * cz - sx * sy * sz;
 
                 TQuaternion<Type> q(qx, qy, qz, qw);
-                q.Normalize();
-                return q;
+                return q.Normalize();
             }
 
             static TQuaternion<Type> FromEulerZXY(Type z, Type x, Type y)
@@ -841,8 +855,7 @@ namespace Canvas
                 Type qw = cx * cy * cz + sx * sy * sz;
 
                 TQuaternion<Type> q(qx, qy, qz, qw);
-                q.Normalize();
-                return q;
+                return q.Normalize();
             }
 
             static TQuaternion<Type> FromEulerZYX(Type z, Type y, Type x)
@@ -857,8 +870,7 @@ namespace Canvas
                 Type qw = cx * cy * cz + sx * sy * sz;
 
                 TQuaternion<Type> q(qx, qy, qz, qw);
-                q.Normalize();
-                return q;
+                return q.Normalize();
             }
         };
 
@@ -875,14 +887,15 @@ namespace Canvas
         template<class _Type>
         TQuaternion<_Type> TQuaternion<_Type>::Normalize()
         {
+            TQuaternion<_Type> qn;
             const _Type  dot = DotProduct(*this, *this);
             constexpr _Type epsilon = _Type(1e-6);
             if(std::abs(dot - static_cast<_Type>(1)) > epsilon)
             {
                 const _Type  rsq = 1 / std::sqrt(dot);
-                *this = *this * rsq;
+                qn = *this * rsq;
             }
-            return *this;
+            return qn;
         }
 
         //------------------------------------------------------------------------------------------------
@@ -1072,7 +1085,7 @@ namespace Canvas
             basisSideVector = CrossProduct(localUpVector, basisForwardVector);
             Type dot = DotProduct(basisSideVector, basisSideVector);
             Type dotsq = dot * dot;
-            constexpr Type epsilon(1e-6);
+            constexpr Type epsilon(Type(1e-6));
             if (dotsq < epsilon)
             {
                 // basisForwardVector and localUpVector are nearly colinear
