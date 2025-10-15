@@ -25,7 +25,6 @@ add_library(CanvasCore SHARED
     ScopedUtils.h
     Timeline.h
     Timer.h
-    Transform.h
     pch.h
     targetver.h
 )

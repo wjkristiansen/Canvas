@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "Transform.h"
 #include "SceneGraph.h"
 
 namespace Canvas
@@ -12,8 +11,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas) :
-    TCanvasElement(pCanvas),
-    m_Transform(this)
+    TCanvasElement(pCanvas)
 {
 }
 

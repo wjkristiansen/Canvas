@@ -103,20 +103,6 @@ XAnimation : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 struct
-XTransform : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(XTransform, 0x2A08BD07EC525C0B);
-
-    GEMMETHOD_(const Math::FloatQuaternion &, GetRotation)() const = 0;
-    GEMMETHOD_(const Math::FloatVector4 &, GetTranslation)() const = 0;
-    GEMMETHOD_(const Math::FloatVector4 &, GetScale)() const = 0;
-    GEMMETHOD_(void, SetRotation)(_In_ const Math::FloatQuaternion &Rotation) = 0;
-    GEMMETHOD_(void, SetTranslation)(_In_ const Math::FloatVector4 &Translation) = 0;
-    GEMMETHOD(LookAt)(_In_ const Math::FloatVector4 &Location, _In_ const Math::FloatVector4 &WorldUp) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct
 XSceneGraphNode : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XSceneGraphNode, 0x86E8F764FE09E772);
@@ -126,6 +112,17 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(XSceneGraphNode *, GetParent)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetSibling)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() = 0;
+
+    GEMMETHOD_(const Math::FloatQuaternion &, GetLocalRotation)() const = 0;
+    GEMMETHOD_(const Math::FloatVector4 &, GetLocalTranslation)() const = 0;
+    GEMMETHOD_(const Math::FloatVector4 &, GetLocalScale)() const = 0;
+    GEMMETHOD_(void, SetLocalRotation)(_In_ const Math::FloatQuaternion &Rotation) = 0;
+    GEMMETHOD_(void, SetLocalTranslation)(_In_ const Math::FloatVector4 &Translation) = 0;
+    GEMMETHOD_(void, SetLocalScale)(_In_ const Math::FloatVector4 &Scale) = 0;
+
+    GEMMETHOD_(const Math::FloatQuaternion, GetGlobalRotation)() const = 0;
+    GEMMETHOD_(const Math::FloatVector4, GetGlobalTranslation)() const = 0;
+    GEMMETHOD_(const Math::FloatMatrix4x4, GetGlobalMatrix)() const = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
 };

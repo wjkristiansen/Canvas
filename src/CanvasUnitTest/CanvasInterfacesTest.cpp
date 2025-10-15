@@ -36,13 +36,6 @@ namespace CanvasUnitTest
 
             // Validate the name
             Assert::IsTrue(0 == strncmp(pSceneGraphNode->GetName(), szNodeName, _countof(szNodeName)));
-
-            // Verify QI for XTransform from XGeneric matches QI for XTransform from XSceneGraphNode
-            Gem::TGemPtr<XTransform> pTransformFromGeneric;
-            Assert::IsTrue(Succeeded(pGeneric->QueryInterface(&pTransformFromGeneric)));
-            Gem::TGemPtr<XTransform> pTransformFromSceneGraphNode;
-            Assert::IsTrue(Succeeded(pSceneGraphNode->QueryInterface(&pTransformFromSceneGraphNode)));
-            Assert::IsTrue(pTransformFromGeneric.Get() == pTransformFromSceneGraphNode.Get());
         }
 
         TEST_METHOD(SceneGraphNodesTest)

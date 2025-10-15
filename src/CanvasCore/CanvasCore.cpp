@@ -9,7 +9,6 @@
 #include "Camera.h"
 #include "Light.h"
 #include "Scene.h"
-#include "Transform.h"
 
 namespace Canvas
 {

@@ -5,7 +5,6 @@
 #pragma once
 
 #include "pch.h"
-#include "Transform.h"
 #include "Canvas.h"
 #include "CanvasElement.h"
 namespace Canvas
@@ -38,8 +37,9 @@ protected:
     CSceneGraphNode *m_pParent = nullptr; // Weak pointer
     Gem::TGemPtr<CSceneGraphNode> m_pSibling;
     Gem::TGemPtr<CSceneGraphNode> m_pFirstChild;
-    Gem::TAggregate<CTransform, CSceneGraphNode> m_Transform;
-
+    Math::FloatQuaternion m_LocalRotation;
+    Math::FloatVector4 m_LocalScale; // W is ignored
+    Math::FloatVector4 m_LocalTranslation;
     struct SceneGraphElementPtrHash
     {
         size_t operator()(const Gem::TGemPtr<XSceneGraphElement> &e) const noexcept
@@ -62,7 +62,6 @@ public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XCanvasElement)
         GEM_INTERFACE_ENTRY(XSceneGraphNode)
-        GEM_INTERFACE_ENTRY_AGGREGATE(XTransform, &m_Transform)
     END_GEM_INTERFACE_MAP()
 
     CSceneGraphNode(CCanvas *pCanvas);
@@ -75,6 +74,51 @@ public: // XSceneGraphNode methods
     GEMMETHOD_(XSceneGraphNode *, GetParent)() final;
     GEMMETHOD_(XSceneGraphNode *, GetSibling)() final;
     GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() final;
+
+    GEMMETHOD_(const Math::FloatQuaternion &, GetLocalRotation)() const final
+    {
+        return m_LocalRotation;
+    }
+
+    GEMMETHOD_(const Math::FloatVector4 &, GetLocalTranslation)() const final
+    {
+        return m_LocalTranslation;
+    }
+
+    GEMMETHOD_(const Math::FloatVector4 &, GetLocalScale)() const final
+    {
+        return m_LocalScale;
+    }
+
+    GEMMETHOD_(void, SetLocalRotation)(_In_ const Math::FloatQuaternion &rotation) final
+    {
+        m_LocalRotation = rotation;
+    }
+
+    GEMMETHOD_(void, SetLocalTranslation)(_In_ const Math::FloatVector4 &translation) final
+    {
+        m_LocalTranslation = translation;
+    }
+    GEMMETHOD_(void, SetLocalScale)(_In_ const Math::FloatVector4 &scale) final
+    {
+        m_LocalScale = scale;
+    }
+
+    GEMMETHOD_(const Math::FloatQuaternion, GetGlobalRotation)() const final
+    {
+        return Math::FloatQuaternion(0, 0, 0, 1.f); // TODO
+    }
+
+    GEMMETHOD_(const Math::FloatVector4, GetGlobalTranslation)() const final
+    {
+        return Math::FloatVector4(0, 0, 0, 1.f); // TODO
+    }
+
+    GEMMETHOD_(const Math::FloatMatrix4x4, GetGlobalMatrix)() const final
+    {
+        return Math::FloatMatrix4x4::Identity(); // TODO
+    }
+
     GEMMETHOD(Update)(float dtime) final;
 
 public:

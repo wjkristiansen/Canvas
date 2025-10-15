@@ -44,19 +44,6 @@ inline GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetFirstChild()
 }
 
 //------------------------------------------------------------------------------------------------
-inline GEMMETHODIMP_(void) CSceneGraphNode::SetTransform(XTransform *pTransform)
-{
-    // TODO: Implement transform functionality
-}
-
-//------------------------------------------------------------------------------------------------
-inline GEMMETHODIMP_(XTransform *) CSceneGraphNode::GetTransform() const
-{
-    // TODO: Implement transform functionality
-    return nullptr;
-}
-
-//------------------------------------------------------------------------------------------------
 inline GEMMETHODIMP_(void) CSceneGraphNode::SetRenderable(XRenderable *pRenderable)
 {
     // TODO: Implement renderable functionality
