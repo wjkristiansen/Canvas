@@ -332,14 +332,357 @@ namespace CanvasUnitTest
                             auto Ident = R * InvR;
                             Assert::IsTrue(AlmostEqual(Ident, DoubleQuaternion(0, 0, 0, 1)));
 
-                            // Quaternion transform
-                            auto VByQ = R * V * InvR;
+                            // Quaternion transform - convert vector to quaternion with w=0
+                            DoubleQuaternion VQuat(V.X, V.Y, V.Z, 0);
+                            auto VByQ = R * VQuat * InvR;
 
                             Assert::IsTrue(AlmostEqual(VByM, VByQ));
                         }
                     }
                 }
             }
+        }
+
+        TEST_METHOD(VectorUnaryMinus)
+        {
+            IntVector3 v1(1, -2, 3);
+            IntVector3 v2 = -v1;
+            Assert::IsTrue(v2 == IntVector3(-1, 2, -3));
+
+            FloatVector4 v3(1.5f, -2.5f, 3.5f, -4.5f);
+            FloatVector4 v4 = -v3;
+            Assert::IsTrue(AlmostEqual(v4, FloatVector4(-1.5f, 2.5f, -3.5f, 4.5f)));
+        }
+
+        TEST_METHOD(VectorInequalityAndDivision)
+        {
+            IntVector3 v1(1, 2, 3);
+            IntVector3 v2(1, 2, 3);
+            IntVector3 v3(1, 2, 4);
+            
+            Assert::IsFalse(v1 != v2);
+            Assert::IsTrue(v1 != v3);
+
+            FloatVector4 v4(10.0f, 20.0f, 30.0f, 40.0f);
+            FloatVector4 v5(2.0f, 4.0f, 5.0f, 8.0f);
+            auto v6 = v4 / v5;
+            Assert::IsTrue(AlmostEqual(v6, FloatVector4(5.0f, 5.0f, 6.0f, 5.0f)));
+        }
+
+        TEST_METHOD(VectorSumTest)
+        {
+            IntVector4 v1(1, 2, 3, 4);
+            int sum = VectorSum(v1);
+            Assert::AreEqual(10, sum);
+
+            FloatVector3 v2(1.5f, 2.5f, 3.0f);
+            float fsum = VectorSum(v2);
+            Assert::IsTrue(AlmostZero(fsum - 7.0f));
+        }
+
+        TEST_METHOD(MatrixScalarMultiplication)
+        {
+            FloatMatrix3x3 m1({
+                {1.0f, 2.0f, 3.0f},
+                {4.0f, 5.0f, 6.0f},
+                {7.0f, 8.0f, 9.0f}
+            });
+
+            auto m2 = m1 * 2.0f;
+            auto m3 = 2.0f * m1;
+            
+            FloatMatrix3x3 expected({
+                {2.0f, 4.0f, 6.0f},
+                {8.0f, 10.0f, 12.0f},
+                {14.0f, 16.0f, 18.0f}
+            });
+
+            Assert::IsTrue(AlmostEqual(m2, expected));
+            Assert::IsTrue(AlmostEqual(m3, expected));
+        }
+
+        TEST_METHOD(AllRotationMatrixOrders)
+        {
+            float angleX = float(g_PI) / 6.0f;  // 30 degrees
+            float angleY = float(g_PI) / 4.0f;  // 45 degrees
+            float angleZ = float(g_PI) / 3.0f;  // 60 degrees
+
+            // Test XYZRotationMatrix
+            auto mXYZ = XYZRotationMatrix(angleX, angleY, angleZ);
+            auto mXYZ_manual = ZRotationMatrix(angleZ) * YRotationMatrix(angleY) * XRotationMatrix(angleX);
+            Assert::IsTrue(AlmostEqual(mXYZ, mXYZ_manual));
+
+            // Test XZYRotationMatrix
+            auto mXZY = XZYRotationMatrix(angleX, angleZ, angleY);
+            auto mXZY_manual = YRotationMatrix(angleY) * ZRotationMatrix(angleZ) * XRotationMatrix(angleX);
+            Assert::IsTrue(AlmostEqual(mXZY, mXZY_manual));
+
+            // Test YXZRotationMatrix
+            auto mYXZ = YXZRotationMatrix(angleY, angleX, angleZ);
+            auto mYXZ_manual = ZRotationMatrix(angleZ) * XRotationMatrix(angleX) * YRotationMatrix(angleY);
+            Assert::IsTrue(AlmostEqual(mYXZ, mYXZ_manual));
+
+            // Test YZXRotationMatrix
+            auto mYZX = YZXRotationMatrix(angleY, angleZ, angleX);
+            auto mYZX_manual = XRotationMatrix(angleX) * ZRotationMatrix(angleZ) * YRotationMatrix(angleY);
+            Assert::IsTrue(AlmostEqual(mYZX, mYZX_manual));
+
+            // Test ZXYRotationMatrix
+            auto mZXY = ZXYRotationMatrix(angleZ, angleX, angleY);
+            auto mZXY_manual = YRotationMatrix(angleY) * XRotationMatrix(angleX) * ZRotationMatrix(angleZ);
+            Assert::IsTrue(AlmostEqual(mZXY, mZXY_manual));
+
+            // Test ZYXRotationMatrix
+            auto mZYX = ZYXRotationMatrix(angleZ, angleY, angleX);
+            auto mZYX_manual = XRotationMatrix(angleX) * YRotationMatrix(angleY) * ZRotationMatrix(angleZ);
+            Assert::IsTrue(AlmostEqual(mZYX, mZYX_manual));
+        }
+
+        TEST_METHOD(QuaternionFromEulerAngles)
+        {
+            float angleX = float(g_PI) / 6.0f;
+            float angleY = float(g_PI) / 4.0f;
+            float angleZ = float(g_PI) / 3.0f;
+
+            // Test FromEulerXYZ
+            auto qXYZ = FloatQuaternion::FromEulerXYZ(angleX, angleY, angleZ);
+            auto mXYZ = XYZRotationMatrix(angleX, angleY, angleZ);
+            auto mFromQuat = QuaternionToRotationMatrix(qXYZ);
+            Assert::IsTrue(AlmostEqual(mXYZ, mFromQuat));
+
+            // Test FromEulerXZY
+            auto qXZY = FloatQuaternion::FromEulerXZY(angleX, angleZ, angleY);
+            auto mXZY = XZYRotationMatrix(angleX, angleZ, angleY);
+            mFromQuat = QuaternionToRotationMatrix(qXZY);
+            Assert::IsTrue(AlmostEqual(mXZY, mFromQuat));
+
+            // Test FromEulerYXZ
+            auto qYXZ = FloatQuaternion::FromEulerYXZ(angleY, angleX, angleZ);
+            auto mYXZ = YXZRotationMatrix(angleY, angleX, angleZ);
+            mFromQuat = QuaternionToRotationMatrix(qYXZ);
+            Assert::IsTrue(AlmostEqual(mYXZ, mFromQuat));
+
+            // Test FromEulerYZX
+            auto qYZX = FloatQuaternion::FromEulerYZX(angleY, angleZ, angleX);
+            auto mYZX = YZXRotationMatrix(angleY, angleZ, angleX);
+            mFromQuat = QuaternionToRotationMatrix(qYZX);
+            Assert::IsTrue(AlmostEqual(mYZX, mFromQuat));
+
+            // Test FromEulerZXY
+            auto qZXY = FloatQuaternion::FromEulerZXY(angleZ, angleX, angleY);
+            auto mZXY = ZXYRotationMatrix(angleZ, angleX, angleY);
+            mFromQuat = QuaternionToRotationMatrix(qZXY);
+            Assert::IsTrue(AlmostEqual(mZXY, mFromQuat));
+
+            // Test FromEulerZYX
+            auto qZYX = FloatQuaternion::FromEulerZYX(angleZ, angleY, angleX);
+            auto mZYX = ZYXRotationMatrix(angleZ, angleY, angleX);
+            mFromQuat = QuaternionToRotationMatrix(qZYX);
+            Assert::IsTrue(AlmostEqual(mZYX, mFromQuat));
+        }
+
+        TEST_METHOD(QuaternionScaledAxisAngle)
+        {
+            // Test round-trip conversion
+            FloatVector3 axis1(1.0f, 0.0f, 0.0f);
+            float angle1 = float(g_PI) / 4.0f;
+            FloatVector3 scaledAxis1(axis1.X * angle1, axis1.Y * angle1, axis1.Z * angle1);
+            
+            auto q1 = FloatQuaternion::FromScaledAxisAngle(scaledAxis1);
+            auto result1 = q1.ToScaledAxisAngle();
+            Assert::IsTrue(AlmostEqual(scaledAxis1, result1));
+
+            // Test with arbitrary axis
+            FloatVector3 axis2(1.0f, 2.0f, 3.0f);
+            float angle2 = float(g_PI) / 3.0f;
+            float len = std::sqrt(axis2.X * axis2.X + axis2.Y * axis2.Y + axis2.Z * axis2.Z);
+            axis2 = axis2 * (1.0f / len); // normalize
+            FloatVector3 scaledAxis2(axis2.X * angle2, axis2.Y * angle2, axis2.Z * angle2);
+            
+            auto q2 = FloatQuaternion::FromScaledAxisAngle(scaledAxis2);
+            auto result2 = q2.ToScaledAxisAngle();
+            Assert::IsTrue(AlmostEqual(scaledAxis2, result2));
+
+            // Test zero rotation
+            FloatVector3 scaledAxis3(0.0f, 0.0f, 0.0f);
+            auto q3 = FloatQuaternion::FromScaledAxisAngle(scaledAxis3);
+            Assert::IsTrue(AlmostEqual(q3, IdentityQuaternion<float>()));
+        }
+
+        TEST_METHOD(QuaternionMultiplication)
+        {
+            // Test that quaternion multiplication follows the expected composition
+            float angle1 = float(g_PI) / 4.0f;
+            float angle2 = float(g_PI) / 3.0f;
+            
+            auto qX = FloatQuaternion::FromEulerXYZ(angle1, 0.0f, 0.0f);
+            auto qY = FloatQuaternion::FromEulerXYZ(0.0f, angle2, 0.0f);
+            
+            // Quaternion multiplication
+            auto qResult = qY * qX;
+            
+            // Equivalent matrix multiplication
+            auto mX = XRotationMatrix(angle1);
+            auto mY = YRotationMatrix(angle2);
+            auto mResult = mY * mX;
+            
+            // Convert quaternion result to matrix
+            auto mFromQuat = QuaternionToRotationMatrix(qResult);
+            
+            Assert::IsTrue(AlmostEqual(mResult, mFromQuat));
+
+            // Test identity property
+            auto qIdentity = IdentityQuaternion<float>();
+            auto qTest = FloatQuaternion::FromEulerXYZ(0.1f, 0.2f, 0.3f);
+            auto qResult1 = qIdentity * qTest;
+            auto qResult2 = qTest * qIdentity;
+            Assert::IsTrue(AlmostEqual(qTest, qResult1));
+            Assert::IsTrue(AlmostEqual(qTest, qResult2));
+        }
+
+        TEST_METHOD(QuaternionRotateVector)
+        {
+            // Create a 90-degree rotation about the Z-axis
+            float angle = float(g_PI) / 2.0f;
+            auto qZ = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, angle);
+            
+            // Rotate a vector using quaternion multiplication: q * v * q*
+            FloatVector4 v1(1.0f, 0.0f, 0.0f, 0.0f);
+            FloatQuaternion vQuat1(v1.X, v1.Y, v1.Z, 0.0f);
+            auto qConj = Conjugate(qZ);
+            auto rotated = qZ * vQuat1 * qConj;
+            
+            // Should point along Y-axis
+            Assert::IsTrue(AlmostEqual(rotated, FloatVector4(0.0f, 1.0f, 0.0f, 0.0f)));
+
+            // Test 90-degree rotation about X-axis
+            auto qX = FloatQuaternion::FromEulerXYZ(angle, 0.0f, 0.0f);
+            FloatVector4 v2(0.0f, 1.0f, 0.0f, 0.0f);
+            FloatQuaternion vQuat2(v2.X, v2.Y, v2.Z, 0.0f);
+            auto qConjX = Conjugate(qX);
+            auto rotated2 = qX * vQuat2 * qConjX;
+            
+            // Should point along Z-axis
+            Assert::IsTrue(AlmostEqual(rotated2, FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
+        }
+
+        TEST_METHOD(CrossProductFloatVector4)
+        {
+            // Test the specialized FloatVector4 cross product
+            FloatVector4 a(1.0f, 0.0f, 0.0f, 0.0f);
+            FloatVector4 b(0.0f, 1.0f, 0.0f, 0.0f);
+            
+            auto c = CrossProduct(a, b);
+            Assert::IsTrue(AlmostEqual(c, FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
+
+            // Test arbitrary vectors
+            FloatVector4 v1(2.0f, 3.0f, 4.0f, 0.0f);
+            FloatVector4 v2(5.0f, 6.0f, 7.0f, 0.0f);
+            auto v3 = CrossProduct(v1, v2);
+            
+            // Cross product formula: (a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x)
+            FloatVector4 expected(3.0f*7.0f - 4.0f*6.0f, 4.0f*5.0f - 2.0f*7.0f, 2.0f*6.0f - 3.0f*5.0f, 0.0f);
+            Assert::IsTrue(AlmostEqual(v3, expected));
+        }
+
+        TEST_METHOD(AABBTests)
+        {
+            // Test default constructor creates invalid box
+            AABB box1;
+            Assert::IsFalse(box1.IsValid());
+
+            // Test valid constructor
+            AABB box2(FloatVector4(0.0f, 0.0f, 0.0f, 0.0f), FloatVector4(1.0f, 1.0f, 1.0f, 0.0f));
+            Assert::IsTrue(box2.IsValid());
+
+            // Test center and extents
+            auto center = box2.GetCenter();
+            auto extents = box2.GetExtents();
+            Assert::IsTrue(AlmostEqual(center, FloatVector4(0.5f, 0.5f, 0.5f, 0.0f)));
+            Assert::IsTrue(AlmostEqual(extents, FloatVector4(0.5f, 0.5f, 0.5f, 0.0f)));
+
+            // Test ExpandToInclude with point
+            AABB box3;
+            box3.ExpandToInclude(FloatVector4(1.0f, 2.0f, 3.0f, 0.0f));
+            Assert::IsTrue(box3.IsValid());
+            box3.ExpandToInclude(FloatVector4(4.0f, 5.0f, 6.0f, 0.0f));
+            Assert::IsTrue(AlmostEqual(box3.Min, FloatVector4(1.0f, 2.0f, 3.0f, 0.0f)));
+            Assert::IsTrue(AlmostEqual(box3.Max, FloatVector4(4.0f, 5.0f, 6.0f, 0.0f)));
+
+            // Test ExpandToInclude with another AABB
+            AABB box4(FloatVector4(0.0f, 0.0f, 0.0f, 0.0f), FloatVector4(2.0f, 2.0f, 2.0f, 0.0f));
+            AABB box5(FloatVector4(1.0f, 1.0f, 1.0f, 0.0f), FloatVector4(3.0f, 3.0f, 3.0f, 0.0f));
+            box4.ExpandToInclude(box5);
+            Assert::IsTrue(AlmostEqual(box4.Min, FloatVector4(0.0f, 0.0f, 0.0f, 0.0f)));
+            Assert::IsTrue(AlmostEqual(box4.Max, FloatVector4(3.0f, 3.0f, 3.0f, 0.0f)));
+
+            // Test Reset
+            box4.Reset();
+            Assert::IsFalse(box4.IsValid());
+        }
+
+        TEST_METHOD(QuaternionNormalize)
+        {
+            // Test that normalize works correctly
+            FloatQuaternion q1(0.5f, 0.5f, 0.5f, 0.5f);
+            auto qn = q1.Normalize();
+            
+            // Should be unit length
+            float len = DotProduct(qn, qn);
+            Assert::IsTrue(AlmostZero(len - 1.0f));
+
+            // Test already normalized quaternion
+            auto qIdentity = IdentityQuaternion<float>();
+            auto qIdentityNorm = qIdentity.Normalize();
+            Assert::IsTrue(AlmostEqual(qIdentity, qIdentityNorm));
+        }
+
+        TEST_METHOD(QuaternionConjugate)
+        {
+            FloatQuaternion q(0.1f, 0.2f, 0.3f, 0.9f);
+            auto qConj = Conjugate(q);
+            
+            Assert::IsTrue(AlmostEqual(qConj, FloatQuaternion(-0.1f, -0.2f, -0.3f, 0.9f)));
+
+            // Test that q * conjugate(q) = identity for unit quaternions
+            auto qNorm = q.Normalize();
+            auto qConjNorm = Conjugate(qNorm);
+            auto result = qNorm * qConjNorm;
+            Assert::IsTrue(AlmostEqual(result, IdentityQuaternion<float>()));
+        }
+
+        TEST_METHOD(VectorMatrixMultiplication)
+        {
+            // Test vector * matrix (row vector)
+            FloatVector3 v(1.0f, 2.0f, 3.0f);
+            FloatMatrix3x3 m({
+                {1.0f, 0.0f, 0.0f},
+                {0.0f, 2.0f, 0.0f},
+                {0.0f, 0.0f, 3.0f}
+            });
+            
+            auto result = v * m;
+            Assert::IsTrue(AlmostEqual(result, FloatVector3(1.0f, 4.0f, 9.0f)));
+
+            // Test matrix * vector (column vector)
+            auto result2 = m * v;
+            Assert::IsTrue(AlmostEqual(result2, FloatVector3(1.0f, 4.0f, 9.0f)));
+        }
+
+        TEST_METHOD(MatrixIdentity)
+        {
+            // Test static Identity() method
+            auto m2 = FloatMatrix2x2::Identity();
+            Assert::AreEqual(1.0f, m2[0][0]);
+            Assert::AreEqual(0.0f, m2[0][1]);
+            Assert::AreEqual(0.0f, m2[1][0]);
+            Assert::AreEqual(1.0f, m2[1][1]);
+
+            auto m3 = FloatMatrix3x3::Identity();
+            Assert::IsTrue(AlmostEqual(m3, IdentityMatrix<float, 3, 3>()));
+
+            auto m4 = FloatMatrix4x4::Identity();
+            Assert::IsTrue(AlmostEqual(m4, IdentityMatrix<float, 4, 4>()));
         }
 	};
 }
