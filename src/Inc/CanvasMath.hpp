@@ -172,7 +172,7 @@ namespace Canvas
         template<class _Type, int _Dim>
         TVector<_Type, _Dim> operator-(const TVector<_Type, _Dim> &v)
         {
-            TVector u;
+            TVector<_Type, _Dim> u;
             for (int i = 0; i < _Dim; ++i)
             {
                 u[i] = -v[i];
@@ -711,20 +711,12 @@ namespace Canvas
         // Mathematically treats the inputs as float3 vectors
         inline FloatVector4 CrossProduct(const FloatVector4 &a, const FloatVector4 &b)
         {
-            FloatMatrix4x4 m;
-            m[0][1] = -a[2];
-            m[0][2] = a[1];
-            m[1][0] = a[2];
-            m[1][2] = -a[0];
-            m[2][0] = -a[3];
-            m[2][1] = a[0];
-
-            FloatVector4 c;
-            c[0] = DotProduct(m[0], b);
-            c[1] = DotProduct(m[1], b);
-            c[2] = DotProduct(m[2], b);
-
-            return c;
+            return FloatVector4(
+                a.Y * b.Z - a.Z * b.Y,
+                a.Z * b.X - a.X * b.Z,
+                a.X * b.Y - a.Y * b.X,
+                0.0f
+            );
         }
 
 
@@ -759,7 +751,8 @@ namespace Canvas
 
             TQuaternion &operator=(const TQuaternion &o) = default;
 
-            TQuaternion<Type> Normalize();
+            TQuaternion<Type> Normalize() const;
+
 
             // Returns a vector whose direction is the axis and whose magnitude is the angle
             // AKA the quaternion Log
@@ -794,93 +787,86 @@ namespace Canvas
 
             static TQuaternion<Type> FromEulerXYZ(Type x, Type y, Type z)
             {
-                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
-                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
-                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                // XYZ order
-                Type qx = sx * cy * cz - cx * sy * sz;
-                Type qy = cx * sy * cz + sx * cy * sz;
-                Type qz = cx * cy * sz - sx * sy * cz;
-                Type qw = cx * cy * cz + sx * sy * sz;
-
-                TQuaternion<Type> q(qx, qy, qz, qw);
-                return q.Normalize();
+                // Intrinsic XYZ => q = qz * qy * qx
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qz * qy * qx).Normalize();
             }
 
             static TQuaternion<Type> FromEulerXZY(Type x, Type z, Type y)
             {
-                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
-                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
-                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                Type qx = sx * cy * cz + cx * sy * sz;
-                Type qy = cx * sy * cz - sx * cy * sz;
-                Type qz = cx * cy * sz - sx * sy * cz;
-                Type qw = cx * cy * cz + sx * sy * sz;
-
-                TQuaternion<Type> q(qx, qy, qz, qw);
-                return q.Normalize();
+                // Intrinsic XZY => q = qy * qz * qx
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qy * qz * qx).Normalize();
             }
 
             static TQuaternion<Type> FromEulerYXZ(Type y, Type x, Type z)
             {
-                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
-                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
-                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                Type qx = sx * cy * cz + cx * sy * sz;
-                Type qy = cx * sy * cz - sx * cy * sz;
-                Type qz = cx * cy * sz - sx * sy * cz;
-                Type qw = cx * cy * cz + sx * sy * sz;
-
-                TQuaternion<Type> q(qx, qy, qz, qw);
-                return q.Normalize();
+                // Intrinsic YXZ => q = qz * qx * qy
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qz * qx * qy).Normalize();
             }
 
             static TQuaternion<Type> FromEulerYZX(Type y, Type z, Type x)
             {
-                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
-                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
-                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                Type qx = sx * cy * cz - cx * sy * sz;
-                Type qy = cx * sy * cz + sx * cy * sz;
-                Type qz = cx * cy * sz + sx * sy * cz;
-                Type qw = cx * cy * cz - sx * sy * sz;
-
-                TQuaternion<Type> q(qx, qy, qz, qw);
-                return q.Normalize();
+                // Intrinsic YZX => q = qx * qz * qy
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qx * qz * qy).Normalize();
             }
 
             static TQuaternion<Type> FromEulerZXY(Type z, Type x, Type y)
             {
-                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
-                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
-                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                Type qx = sx * cy * cz + cx * sy * sz;
-                Type qy = cx * sy * cz - sx * cy * sz;
-                Type qz = cx * cy * sz - sx * sy * cz;
-                Type qw = cx * cy * cz + sx * sy * sz;
-
-                TQuaternion<Type> q(qx, qy, qz, qw);
-                return q.Normalize();
+                // Intrinsic ZXY => q = qy * qx * qz
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qy * qx * qz).Normalize();
             }
 
             static TQuaternion<Type> FromEulerZYX(Type z, Type y, Type x)
             {
-                Type cx = std::cos(x * Type(0.5)), sx = std::sin(x * Type(0.5));
-                Type cy = std::cos(y * Type(0.5)), sy = std::sin(y * Type(0.5));
-                Type cz = std::cos(z * Type(0.5)), sz = std::sin(z * Type(0.5));
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                Type qx = sx * cy * cz - cx * sy * sz;
-                Type qy = cx * sy * cz + sx * cy * sz;
-                Type qz = cx * cy * sz - sx * sy * cz;
-                Type qw = cx * cy * cz + sx * sy * sz;
-
-                TQuaternion<Type> q(qx, qy, qz, qw);
-                return q.Normalize();
+                // Intrinsic ZYX => q = qx * qy * qz
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qx * qy * qz).Normalize();
             }
         };
 
@@ -895,15 +881,15 @@ namespace Canvas
         // Should be a unit quaternion but may need to be Normalized to correct
         // for accumulated floating point errors
         template<class _Type>
-        TQuaternion<_Type> TQuaternion<_Type>::Normalize()
+        TQuaternion<_Type> TQuaternion<_Type>::Normalize() const
         {
-            TQuaternion<_Type> qn;
-            const _Type  dot = DotProduct(*this, *this);
+            TQuaternion<_Type> qn = *this;
+            const _Type  dot = DotProduct(qn, qn);
             constexpr _Type epsilon = _Type(1e-6);
             if(std::abs(dot - static_cast<_Type>(1)) > epsilon)
             {
                 const _Type  rsq = 1 / std::sqrt(dot);
-                qn = *this * rsq;
+                qn = qn * rsq;
             }
             return qn;
         }
@@ -940,7 +926,7 @@ namespace Canvas
         TVector<_Type, 3> RotateVectorByQuaternion(const TQuaternion<_Type> &q, const TVector<_Type, 3> &v)
         {
             TQuaternion<_Type> p(v.X, v.Y, v.Z, 0); // pure quaternion
-            TQuaternion<_Type> qInv = q.Inverse();  // must be unit-length
+            TQuaternion<_Type> qInv = q.Conjugate();  // must be unit-length
             TQuaternion<_Type> rotated = q * p * qInv;
             return TVector<_Type, 3>(rotated.X, rotated.Y, rotated.Z);
         }
@@ -1094,22 +1080,23 @@ namespace Canvas
             // OutVector is the cross product of UpAxisVector with LookVector
             basisSideVector = CrossProduct(localUpVector, basisForwardVector);
             Type dot = DotProduct(basisSideVector, basisSideVector);
-            Type dotsq = dot * dot;
             constexpr Type epsilon(Type(1e-6));
-            if (dotsq < epsilon)
+            if (dot < epsilon)
             {
                 // basisForwardVector and localUpVector are nearly colinear
                 // Choose an arbitrary basisSideVector preserving the sign
                 // of the localUpVector
-                Type d2 = DotProduct(basisForwardVector, basisForwardVector);
-                if (d2 > 0)
+                Type dotForwardUp = DotProduct(basisForwardVector, localUpVector);
+                if (dotForwardUp > 0)
                 {
+                    // Parallel: use default side vector
                     basisSideVector[0] = localUpVector[2];
                     basisSideVector[1] = localUpVector[0];
                     basisSideVector[2] = localUpVector[1];
                 }
                 else
                 {
+                    // Anti-parallel: flip the side vector
                     basisSideVector[0] = -localUpVector[2];
                     basisSideVector[1] = localUpVector[0];
                     basisSideVector[2] = -localUpVector[1];
@@ -1118,7 +1105,7 @@ namespace Canvas
             else
             {
                 // Normalize OutVector
-                basisSideVector = basisSideVector * Type(1. / std::sqrt(dotsq));
+                basisSideVector = basisSideVector * Type(1. / std::sqrt(dot));
             }
 
             // The cross product of basisSideVector with basisForwardVector is the basisUpVector.
