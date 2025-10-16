@@ -120,9 +120,10 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(void, SetLocalTranslation)(_In_ const Math::FloatVector4 &Translation) = 0;
     GEMMETHOD_(void, SetLocalScale)(_In_ const Math::FloatVector4 &Scale) = 0;
 
-    GEMMETHOD_(const Math::FloatQuaternion, GetGlobalRotation)() const = 0;
-    GEMMETHOD_(const Math::FloatVector4, GetGlobalTranslation)() const = 0;
-    GEMMETHOD_(const Math::FloatMatrix4x4, GetGlobalMatrix)() const = 0;
+    GEMMETHOD_(const Math::FloatQuaternion, GetGlobalRotation)() = 0;
+    GEMMETHOD_(const Math::FloatVector4, GetGlobalTranslation)() = 0;
+    GEMMETHOD_(const Math::FloatMatrix4x4, GetGlobalMatrix)() = 0;
+    GEMMETHOD_(const Math::FloatMatrix4x4, GetLocalMatrix)() = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
 };

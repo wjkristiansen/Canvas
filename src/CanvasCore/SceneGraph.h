@@ -40,6 +40,15 @@ protected:
     Math::FloatQuaternion m_LocalRotation;
     Math::FloatVector4 m_LocalScale; // W is ignored
     Math::FloatVector4 m_LocalTranslation;
+
+    bool m_LocalMatrixDirty = true;
+    bool m_GlobalRotationDirty = true;
+    bool m_GlobalTranslationDirty = true;
+    bool m_GlobalMatrixDirty = true;
+    Math::FloatMatrix4x4 m_LocalMatrix;
+    Math::FloatQuaternion m_GlobalRotation;
+    Math::FloatVector4 m_GlobalTranslation;
+    Math::FloatMatrix4x4 m_GlobalMatrix;
     struct SceneGraphElementPtrHash
     {
         size_t operator()(const Gem::TGemPtr<XSceneGraphElement> &e) const noexcept
@@ -92,32 +101,110 @@ public: // XSceneGraphNode methods
 
     GEMMETHOD_(void, SetLocalRotation)(_In_ const Math::FloatQuaternion &rotation) final
     {
+        m_LocalMatrixDirty = true;
+        m_GlobalMatrixDirty = true;
+        m_GlobalRotationDirty = true;
         m_LocalRotation = rotation;
     }
 
     GEMMETHOD_(void, SetLocalTranslation)(_In_ const Math::FloatVector4 &translation) final
     {
+        m_LocalMatrixDirty = true;
+        m_GlobalMatrixDirty = true;
+        m_GlobalRotationDirty = true;
+        m_GlobalTranslationDirty = true;
         m_LocalTranslation = translation;
     }
+
     GEMMETHOD_(void, SetLocalScale)(_In_ const Math::FloatVector4 &scale) final
     {
+        m_LocalMatrixDirty = true;
+        m_GlobalMatrixDirty = true;
+        m_GlobalRotationDirty = true;
+        m_GlobalTranslationDirty = true;
         m_LocalScale = scale;
     }
 
-    GEMMETHOD_(const Math::FloatQuaternion, GetGlobalRotation)() const final
+    GEMMETHOD_(const Math::FloatQuaternion, GetGlobalRotation)() final
     {
-        return Math::FloatQuaternion(0, 0, 0, 1.f); // TODO
+        if(m_GlobalRotationDirty)
+        {
+            if(m_pParent)
+            {
+                m_GlobalRotation = m_pParent->GetGlobalRotation() * m_LocalRotation;
+            }
+            else
+            {
+                m_GlobalRotation =  m_LocalRotation;
+            }
+            m_GlobalRotationDirty = false;
+        }
+        return m_GlobalRotation;
     }
 
-    GEMMETHOD_(const Math::FloatVector4, GetGlobalTranslation)() const final
+    GEMMETHOD_(const Math::FloatVector4, GetGlobalTranslation)() final
     {
-        return Math::FloatVector4(0, 0, 0, 1.f); // TODO
+        if(m_GlobalTranslationDirty)
+        {
+            if(m_pParent)
+            {
+                const auto parentRotation = m_pParent->GetGlobalRotation();
+                const auto parentTranslation = m_pParent->GetGlobalTranslation();
+
+                // Rotate scaled local translation
+                Math::FloatQuaternion rot = parentRotation;
+                Math::FloatVector4 rotatedLocal = rot * m_LocalTranslation;
+                // Add to parent translation
+                m_GlobalTranslation = parentTranslation + rotatedLocal;
+            }
+            else
+            {
+                m_GlobalTranslation = m_LocalTranslation;
+            }
+            m_GlobalTranslationDirty = false;
+        }
+        return m_GlobalTranslation;
     }
 
-    GEMMETHOD_(const Math::FloatMatrix4x4, GetGlobalMatrix)() const final
+    GEMMETHOD_(const Math::FloatMatrix4x4, GetGlobalMatrix)() final
     {
-        return Math::FloatMatrix4x4::Identity(); // TODO
+        if(m_GlobalMatrixDirty)
+        {
+            // Get local matrix from rotation and translation
+            Math::FloatMatrix4x4 localMatrix = GetLocalMatrix();
+
+            if(m_pParent)
+            {
+                m_GlobalMatrix = m_pParent->GetGlobalMatrix() * localMatrix;
+            }
+            else
+            {
+                m_GlobalMatrix = localMatrix;
+            }
+            m_GlobalMatrixDirty = false;
+        }
+        return m_GlobalMatrix;
     }
+
+    GEMMETHOD_(const Math::FloatMatrix4x4, GetLocalMatrix)() final
+    {
+        if(m_LocalMatrixDirty)
+        {
+            // Set affine matrix 3x3 rotation components from local rotation quaternion
+            m_LocalMatrix = Math::QuaternionToRotationMatrix(m_LocalRotation);
+
+            // Set translation part (assuming last column is translation)
+            m_LocalMatrix[0][3] = m_LocalTranslation.X;
+            m_LocalMatrix[1][3] = m_LocalTranslation.Y;
+            m_LocalMatrix[2][3] = m_LocalTranslation.Z;
+            m_LocalMatrix[3][3] = m_LocalTranslation.W;
+
+            m_LocalMatrixDirty = false;
+        }
+
+        return m_LocalMatrix;
+    }
+
 
     GEMMETHOD(Update)(float dtime) final;
 
