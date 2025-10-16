@@ -129,7 +129,17 @@ namespace Canvas
             static auto constexpr Dim = 4;
             using Type = float;
 
-            Type V[Dim] = {};
+            union
+            {
+                Type V[Dim];
+                struct
+                {
+                    Type X;
+                    Type Y;
+                    Type Z;
+                    Type W;
+                };
+            };
 
             TVector() = default;
             TVector(Type x, Type y, Type z, Type w) :
@@ -919,9 +929,6 @@ namespace Canvas
         template<class _Type>
         TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TQuaternion<_Type> &r)
         {
-            //_Type w = q.W * r.W - DotProduct(q.V, r.V);
-            //TVector<_Type, 3> v = CrossProduct(q.V, r.V) + q.W *r.V + r.W * q.V;
-            //return TQuaternion<_Type>(w, v);
             TQuaternion<_Type> v = CrossProduct(q, r) + q.W * r + r.W * q; // Leaves garbage in v.W but that gets fixed below
             v.W = q.W * r.W - (q.X * r.X + q.Y * r.Y + q.Z * r.Z);
             return v;
@@ -930,9 +937,12 @@ namespace Canvas
         //------------------------------------------------------------------------------------------------
         // Returns the product of a quaternion with a vector (treated as a quaternion with a 0 real coordinate)
         template<class _Type>
-        TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TVector<_Type, 4> & v)
+        TVector<_Type, 3> RotateVectorByQuaternion(const TQuaternion<_Type> &q, const TVector<_Type, 3> &v)
         {
-            return q * TQuaternion<_Type>(v);
+            TQuaternion<_Type> p(v.X, v.Y, v.Z, 0); // pure quaternion
+            TQuaternion<_Type> qInv = q.Inverse();  // must be unit-length
+            TQuaternion<_Type> rotated = q * p * qInv;
+            return TVector<_Type, 3>(rotated.X, rotated.Y, rotated.Z);
         }
 
         //------------------------------------------------------------------------------------------------
