@@ -145,13 +145,13 @@ namespace CanvasUnitTest
             // Verify A local matrix matches quaternion + translation
             auto mA_local = pA->GetLocalMatrix();
             auto mA_expected = QuaternionToRotationMatrix(qA);
-            mA_expected[0][3] = 1.0f; mA_expected[1][3] = 2.0f; mA_expected[2][3] = 0.0f; mA_expected[3][3] = 1.0f;
+            mA_expected[3][0] = 1.0f; mA_expected[3][1] = 2.0f; mA_expected[3][2] = 0.0f; mA_expected[3][3] = 1.0f;
             Assert::IsTrue(AlmostEqual(mA_local, mA_expected));
 
             // Verify B local matrix
             auto mB_local = pB->GetLocalMatrix();
             auto mB_expected = QuaternionToRotationMatrix(qB);
-            mB_expected[0][3] = 1.0f; mB_expected[1][3] = 0.0f; mB_expected[2][3] = 0.0f; mB_expected[3][3] = 1.0f;
+            mB_expected[3][0] = 1.0f; mB_expected[3][1] = 0.0f; mB_expected[3][2] = 0.0f; mB_expected[3][3] = 1.0f;
             Assert::IsTrue(AlmostEqual(mB_local, mB_expected));
 
             // Global rotations: Rg(A) = qA, Rg(B) = qA * qB
@@ -228,6 +228,43 @@ namespace CanvasUnitTest
             // Verify that A's child is no longer B (B was moved to C)
             auto pA_firstChild = pA->GetFirstChild();
             Assert::IsTrue(pA_firstChild == nullptr || pA_firstChild != pB.Get());
+
+            // Test that changing a parent's transform propagates to descendants
+            // B is currently a child of C. If we change C's rotation/translation,
+            // B's global transforms should update accordingly.
+            
+            // Get B's current global matrix and local matrix (local shouldn't change)
+            auto mB_before_parent_change = pB->GetGlobalMatrix();
+            auto mB_local_saved = pB->GetLocalMatrix();
+            
+            // Change C's local translation
+            pC->SetLocalTranslation(FloatVector4(5.0f, 5.0f, 5.0f, 1.0f));
+            
+            // B's local matrix should remain unchanged
+            auto mB_local_check = pB->GetLocalMatrix();
+            Assert::IsTrue(AlmostEqual(mB_local_saved, mB_local_check));
+            
+            // B's global matrix should now be different (dirty flags propagated)
+            auto mB_after_translation = pB->GetGlobalMatrix();
+            Assert::IsFalse(AlmostEqual(mB_before_parent_change, mB_after_translation));
+            
+            // Verify the new value is correct: C_new_global * B_local
+            auto mC_global_new = pC->GetGlobalMatrix();
+            auto mB_expected_new = mC_global_new * mB_local_saved;
+            Assert::IsTrue(AlmostEqual(mB_after_translation, mB_expected_new));
+            
+            // Change C's rotation
+            auto qC_new = FloatQuaternion::FromEulerXYZ(ninety, 0.0f, 0.0f);  // 90° around X instead of Y
+            pC->SetLocalRotation(qC_new);
+            
+            // B's global transforms should update again
+            auto mB_after_rotation = pB->GetGlobalMatrix();
+            Assert::IsFalse(AlmostEqual(mB_after_translation, mB_after_rotation));
+            
+            // Verify correctness after rotation change
+            auto mC_global_final = pC->GetGlobalMatrix();
+            auto mB_expected_final = mC_global_final * mB_local_saved;
+            Assert::IsTrue(AlmostEqual(mB_after_rotation, mB_expected_final));
         }
 
         TEST_METHOD(CameraTest)
