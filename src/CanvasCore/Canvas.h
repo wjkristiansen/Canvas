@@ -99,7 +99,7 @@ public:
     GEMMETHOD(CreateScene)(XScene **ppScene) final;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera) final;
-    GEMMETHOD(CreateLight)(XLight **ppLight) final;
+    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight) final;
 
 public:
     // CCanvas methods

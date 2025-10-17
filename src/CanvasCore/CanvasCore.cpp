@@ -123,11 +123,20 @@ GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateLight(XLight **ppLight)
+GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight)
 {
-    CFunctionSentinel Sentinel("XCanvas::CreateCamera");
+    CFunctionSentinel Sentinel("XCanvas::CreateLight");
 
-    return CreateElement<CLight>(ppLight);
+    // Create using the standard CreateElement pattern to ensure proper registration
+    Gem::Result result = CreateElement<CLight>(ppLight);
+    
+    if (Succeeded(result) && ppLight && *ppLight)
+    {
+        // Initialize the immutable type (must be done after creation but before user gets it)
+        static_cast<CLight*>(*ppLight)->InitializeType(type);
+    }
+    
+    return result;
 }
 
 //------------------------------------------------------------------------------------------------

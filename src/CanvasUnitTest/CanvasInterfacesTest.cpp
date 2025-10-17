@@ -548,5 +548,289 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(projMatrix2, projMatrix3));
             Assert::IsTrue(AlmostEqual(viewProjMatrix2, viewProjMatrix3));
         }
+
+        TEST_METHOD(LightTest)
+        {
+            using namespace Canvas::Math;
+
+            // Create Canvas and Scene
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+
+            // Create a hierarchy: root -> A -> B -> lightNode
+            Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
+
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Assert::IsNotNull(pRoot.Get());
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pA)));
+            Assert::IsTrue(Succeeded(pA->AddChild(pB)));
+            Assert::IsTrue(Succeeded(pB->AddChild(pLightNode)));
+
+            // Create light and attach to lightNode
+            Gem::TGemPtr<XLight> pLight;
+            Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Point, &pLight)));
+            Assert::IsTrue(Succeeded(pLight->AttachTo(pLightNode)));
+
+            // Verify light is attached to correct node
+            Assert::IsTrue(pLight->GetAttachedNode() == pLightNode.Get());
+
+            // Set transforms for the hierarchy
+            // A: rotate 90° around Z, translate (5,0,0)
+            const float ninety = float(3.14159265358979323846 / 2.0);
+            auto qA = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, ninety);
+            pA->SetLocalRotation(qA);
+            pA->SetLocalTranslation(FloatVector4(5.0f, 0.0f, 0.0f, 1.0f));
+
+            // B: rotate 90° around Y, translate (0,3,0)
+            auto qB = FloatQuaternion::FromEulerXYZ(0.0f, ninety, 0.0f);
+            pB->SetLocalRotation(qB);
+            pB->SetLocalTranslation(FloatVector4(0.0f, 3.0f, 0.0f, 1.0f));
+
+            // LightNode: translate (2,0,0)
+            pLightNode->SetLocalTranslation(FloatVector4(2.0f, 0.0f, 0.0f, 1.0f));
+
+            // Update scene to compute global transforms
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            // Verify light's world transform through its attached node
+            auto lightWorldMatrix = pLightNode->GetGlobalMatrix();
+            auto lightWorldTranslation = pLightNode->GetGlobalTranslation();
+
+            // Light position should reflect the full hierarchy transform
+            // This verifies the light properly inherits ancestor transforms
+            Assert::IsTrue(lightWorldTranslation.W == 1.0f);
+
+            // Change ancestor transform and verify light position updates
+            pA->SetLocalTranslation(FloatVector4(10.0f, 0.0f, 0.0f, 1.0f));
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            auto lightWorldTranslation2 = pLightNode->GetGlobalTranslation();
+            
+            // Light position should have changed due to ancestor change
+            Assert::IsFalse(AlmostEqual(lightWorldTranslation, lightWorldTranslation2));
+        }
+
+        TEST_METHOD(LightNodeReparenting)
+        {
+            using namespace Canvas::Math;
+
+            // Create Canvas and Scene
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+
+            // Create nodes: A, B, and lightNode
+            Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
+
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            
+            // Initial hierarchy: root -> A -> lightNode
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pA)));
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pB)));
+            Assert::IsTrue(Succeeded(pA->AddChild(pLightNode)));
+
+            // Create and attach light
+            Gem::TGemPtr<XLight> pLight;
+            Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Spot, &pLight)));
+            Assert::IsTrue(Succeeded(pLight->AttachTo(pLightNode)));
+
+            // Set different transforms for A and B
+            const float ninety = float(3.14159265358979323846 / 2.0);
+            auto qA = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, ninety); // Rotate 90° around Z
+            pA->SetLocalRotation(qA);
+            pA->SetLocalTranslation(FloatVector4(5.0f, 0.0f, 0.0f, 1.0f));
+
+            auto qB = FloatQuaternion::FromEulerXYZ(0.0f, ninety, 0.0f); // Rotate 90° around Y
+            pB->SetLocalRotation(qB);
+            pB->SetLocalTranslation(FloatVector4(0.0f, 5.0f, 0.0f, 1.0f));
+
+            pLightNode->SetLocalTranslation(FloatVector4(1.0f, 0.0f, 0.0f, 1.0f));
+
+            // Get initial light world transform (under A)
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+            auto lightTranslation1 = pLightNode->GetGlobalTranslation();
+            auto lightRotation1 = pLightNode->GetGlobalRotation();
+
+            // Move light node from A to B
+            Assert::IsTrue(Succeeded(pB->AddChild(pLightNode)));
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            // Light's world transform should be different (different parent)
+            auto lightTranslation2 = pLightNode->GetGlobalTranslation();
+            auto lightRotation2 = pLightNode->GetGlobalRotation();
+
+            Assert::IsFalse(AlmostEqual(lightTranslation1, lightTranslation2));
+            Assert::IsFalse(AlmostEqual(lightRotation1, lightRotation2));
+
+            // Move light to root (no parent transform)
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pLightNode)));
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            auto lightTranslation3 = pLightNode->GetGlobalTranslation();
+            auto lightRotation3 = pLightNode->GetGlobalRotation();
+
+            // Under root, light's world transform should equal its local transform
+            auto lightLocalTranslation = pLightNode->GetLocalTranslation();
+            auto lightLocalRotation = pLightNode->GetLocalRotation();
+
+            Assert::IsTrue(AlmostEqual(lightTranslation3, lightLocalTranslation));
+            Assert::IsTrue(AlmostEqual(lightRotation3, lightLocalRotation));
+        }
+
+        TEST_METHOD(LightTransformPropagation)
+        {
+            using namespace Canvas::Math;
+
+            // Create Canvas and Scene
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+
+            // Create hierarchy: root -> parent -> lightNode
+            Gem::TGemPtr<XSceneGraphNode> pParent, pLightNode;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
+
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pParent)));
+            Assert::IsTrue(Succeeded(pParent->AddChild(pLightNode)));
+
+            // Create and attach light
+            Gem::TGemPtr<XLight> pLight;
+            Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Directional, &pLight)));
+            Assert::IsTrue(Succeeded(pLight->AttachTo(pLightNode)));
+
+            // Set initial transforms
+            const float ninety = float(3.14159265358979323846 / 2.0);
+            auto qParent = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, ninety);
+            pParent->SetLocalRotation(qParent);
+            pParent->SetLocalTranslation(FloatVector4(5.0f, 5.0f, 0.0f, 1.0f));
+            pLightNode->SetLocalTranslation(FloatVector4(2.0f, 0.0f, 0.0f, 1.0f));
+
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+            auto lightTranslation1 = pLightNode->GetGlobalTranslation();
+
+            // Change parent's translation - light should update
+            pParent->SetLocalTranslation(FloatVector4(10.0f, 10.0f, 0.0f, 1.0f));
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            auto lightTranslation2 = pLightNode->GetGlobalTranslation();
+            Assert::IsFalse(AlmostEqual(lightTranslation1, lightTranslation2));
+
+            // Verify the light's world transform is computed correctly
+            // Row vectors: world = parent_global * light_local
+            auto parentGlobal = pParent->GetGlobalMatrix();
+            auto lightLocal = pLightNode->GetLocalMatrix();
+            auto expectedLightGlobal = parentGlobal * lightLocal;
+            auto actualLightGlobal = pLightNode->GetGlobalMatrix();
+            Assert::IsTrue(AlmostEqual(expectedLightGlobal, actualLightGlobal));
+
+            // Change parent's rotation - light should update
+            auto qParentNew = FloatQuaternion::FromEulerXYZ(0.0f, ninety, 0.0f);
+            pParent->SetLocalRotation(qParentNew);
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            auto lightTranslation3 = pLightNode->GetGlobalTranslation();
+            Assert::IsFalse(AlmostEqual(lightTranslation2, lightTranslation3));
+
+            // Verify correctness again after rotation change
+            auto parentGlobal2 = pParent->GetGlobalMatrix();
+            auto expectedLightGlobal2 = parentGlobal2 * lightLocal;
+            auto actualLightGlobal2 = pLightNode->GetGlobalMatrix();
+            Assert::IsTrue(AlmostEqual(expectedLightGlobal2, actualLightGlobal2));
+        }
+
+        TEST_METHOD(LightProperties)
+        {
+            using namespace Canvas::Math;
+
+            // Create Canvas
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+
+            // Test Point Light
+            Gem::TGemPtr<XLight> pPointLight;
+            Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Point, &pPointLight)));
+            
+            // Verify immutable type
+            Assert::IsTrue(pPointLight->GetType() == LightType::Point);
+
+            // Test Color
+            FloatVector4 testColor(1.0f, 0.5f, 0.25f, 1.0f);
+            pPointLight->SetColor(testColor);
+            auto retrievedColor = pPointLight->GetColor();
+            Assert::IsTrue(AlmostEqual(retrievedColor, testColor));
+
+            // Test Intensity
+            pPointLight->SetIntensity(2.5f);
+            Assert::AreEqual(2.5f, pPointLight->GetIntensity());
+
+            // Test Flags
+            pPointLight->SetFlags(LightFlags::CastsShadows | LightFlags::Enabled);
+            Assert::AreEqual((UINT)(LightFlags::CastsShadows | LightFlags::Enabled), pPointLight->GetFlags());
+
+            // Test Range
+            pPointLight->SetRange(500.0f);
+            Assert::AreEqual(500.0f, pPointLight->GetRange());
+
+            // Test Attenuation
+            pPointLight->SetAttenuation(1.0f, 0.09f, 0.032f);
+            float constant = 0.0f, linear = 0.0f, quadratic = 0.0f;
+            pPointLight->GetAttenuation(&constant, &linear, &quadratic);
+            Assert::AreEqual(1.0f, constant);
+            Assert::AreEqual(0.09f, linear);
+            Assert::AreEqual(0.032f, quadratic);
+
+            // Test Spot Light
+            Gem::TGemPtr<XLight> pSpotLight;
+            Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Spot, &pSpotLight)));
+            
+            // Verify type
+            Assert::IsTrue(pSpotLight->GetType() == LightType::Spot);
+
+            // Test Spot Angles
+            const float innerAngle = 0.523599f; // 30 degrees
+            const float outerAngle = 0.785398f; // 45 degrees
+            pSpotLight->SetSpotAngles(innerAngle, outerAngle);
+            float retrievedInner = 0.0f, retrievedOuter = 0.0f;
+            pSpotLight->GetSpotAngles(&retrievedInner, &retrievedOuter);
+            Assert::AreEqual(innerAngle, retrievedInner);
+            Assert::AreEqual(outerAngle, retrievedOuter);
+
+            // Test Directional Light
+            Gem::TGemPtr<XLight> pDirectionalLight;
+            Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Directional, &pDirectionalLight)));
+            Assert::IsTrue(pDirectionalLight->GetType() == LightType::Directional);
+
+            // Directional lights can still have color and intensity
+            FloatVector4 sunColor(1.0f, 0.95f, 0.8f, 1.0f);
+            pDirectionalLight->SetColor(sunColor);
+            pDirectionalLight->SetIntensity(1.5f);
+            Assert::IsTrue(AlmostEqual(pDirectionalLight->GetColor(), sunColor));
+            Assert::AreEqual(1.5f, pDirectionalLight->GetIntensity());
+
+            // Test Ambient Light
+            Gem::TGemPtr<XLight> pAmbientLight;
+            Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Ambient, &pAmbientLight)));
+            Assert::IsTrue(pAmbientLight->GetType() == LightType::Ambient);
+
+            // Ambient light should support color and intensity
+            FloatVector4 ambientColor(0.2f, 0.2f, 0.3f, 1.0f);
+            pAmbientLight->SetColor(ambientColor);
+            pAmbientLight->SetIntensity(0.5f);
+            Assert::IsTrue(AlmostEqual(pAmbientLight->GetColor(), ambientColor));
+            Assert::AreEqual(0.5f, pAmbientLight->GetIntensity());
+        }
     };
 }
+

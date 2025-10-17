@@ -39,6 +39,26 @@ struct XLight;
 struct XSceneGraphNode;
 
 //------------------------------------------------------------------------------------------------
+// Light types (immutable - set at creation time)
+enum class LightType : UINT
+{
+    Ambient = 0,
+    Point = 1,
+    Directional = 2,
+    Spot = 3,
+    Area = 4,
+};
+
+//------------------------------------------------------------------------------------------------
+// Light flags (mutable - rendering hints)
+enum LightFlags : UINT
+{
+    LightFlags_None = 0,
+    CastsShadows = 1 << 0,
+    Enabled = 1 << 1,
+};
+
+//------------------------------------------------------------------------------------------------
 struct
 XCanvas : public Gem::XGeneric
 {
@@ -49,7 +69,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateScene)(XScene **ppScene) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera) = 0;
-    GEMMETHOD(CreateLight)(XLight **ppLight) = 0;
+    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -200,33 +220,34 @@ XCamera : public XSceneGraphElement
 };
 
 //------------------------------------------------------------------------------------------------
-// Light types
-enum LightType : UINT
-{
-    LIGHT_TYPE_NULL = 0,
-    LIGHT_TYPE_AMBIENT = 1,
-    LIGHT_TYPE_POINT = 2,
-    LIGHT_TYPE_DIRECTIONAL = 3,
-    LIGHT_TYPE_SPOT = 4,
-    LIGHT_TYPE_AREA = 5,
-};
-
-//------------------------------------------------------------------------------------------------
-// Light flags
-enum LightFlags : UINT
-{
-    LIGHT_FLAG_NONE = 0,
-    LIGHT_FLAG_CAST_SHADOWS = 1 << 0,
-    LIGHT_FLAG_ENABLED = 1 << 1,
-};
-
-//------------------------------------------------------------------------------------------------
 struct
 XLight : public XSceneGraphElement
 {
     GEM_INTERFACE_DECLARE(XLight, 0x97EC7872FDAD30F2);
 
-    // BUGBUG: Light methods here like SetColor, SetIntensity, SetType, etc...
+    // Immutable attributes (set at creation)
+    GEMMETHOD_(LightType, GetType)() const = 0;
+
+    // Mutable attributes
+    GEMMETHOD_(void, SetColor)(const Math::FloatVector4& color) = 0;
+    GEMMETHOD_(Math::FloatVector4, GetColor)() const = 0;
+
+    GEMMETHOD_(void, SetIntensity)(float intensity) = 0;
+    GEMMETHOD_(float, GetIntensity)() const = 0;
+
+    GEMMETHOD_(void, SetFlags)(UINT flags) = 0;
+    GEMMETHOD_(UINT, GetFlags)() const = 0;
+
+    // Attenuation (for Point and Spot lights)
+    GEMMETHOD_(void, SetRange)(float range) = 0;
+    GEMMETHOD_(float, GetRange)() const = 0;
+
+    GEMMETHOD_(void, SetAttenuation)(float constant, float linear, float quadratic) = 0;
+    GEMMETHOD_(void, GetAttenuation)(float* pConstant, float* pLinear, float* pQuadratic) const = 0;
+
+    // Spot light parameters (only valid for Spot lights)
+    GEMMETHOD_(void, SetSpotAngles)(float innerAngle, float outerAngle) = 0;
+    GEMMETHOD_(void, GetSpotAngles)(float* pInnerAngle, float* pOuterAngle) const = 0;
 };
 
 //------------------------------------------------------------------------------------------------
