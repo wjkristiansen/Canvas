@@ -5,6 +5,7 @@
 #pragma once
 
 #include "SceneGraph.h"
+#include "Camera.h"
 
 namespace Canvas
 {
@@ -24,10 +25,7 @@ CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas) :
     m_GlobalTranslation = Canvas::Math::FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
     m_GlobalMatrix = Canvas::Math::IdentityMatrix<float, 4, 4>();
 
-    m_LocalMatrixDirty = true;
-    m_GlobalRotationDirty = true;
-    m_GlobalTranslationDirty = true;
-    m_GlobalMatrixDirty = true;
+    // All dirty flags are already set via member initialization (m_DirtyFlags = DirtyAll)
 }
 
 //------------------------------------------------------------------------------------------------
@@ -117,10 +115,11 @@ GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode* pChild)
     // Link new parent
     pChildNode->m_pParent = this;
     
-    // Mark dirty global state on child (parent changed)
-    pChildNode->m_GlobalMatrixDirty = true;
-    pChildNode->m_GlobalRotationDirty = true;
-    pChildNode->m_GlobalTranslationDirty = true;
+    // Mark dirty global state on child (parent changed - but local matrix unaffected)
+    // This will also mark cameras and propagate to descendants
+    pChildNode->InvalidateTransforms(CSceneGraphNode::DirtyGlobalMatrix | 
+                                     CSceneGraphNode::DirtyGlobalRotation | 
+                                     CSceneGraphNode::DirtyGlobalTranslation);
 
     // Append to child list (singly-linked via m_pFirstChild/m_pSibling)
     if (!m_pFirstChild)
@@ -156,6 +155,61 @@ GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetSibling()
 GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetFirstChild()
 {
     return this->m_pFirstChild.Get();
+}
+
+//------------------------------------------------------------------------------------------------
+void CSceneGraphNode::InvalidateTransforms(uint32_t flags)
+{
+    // Mark all cameras attached to this node as needing to recalculate
+    // their view matrices (since this node's world transform changed)
+    // Do this FIRST, even if this node's flags are already dirty
+    if (flags & (DirtyGlobalMatrix | DirtyGlobalRotation | DirtyGlobalTranslation))
+    {
+        for (auto& element : m_Elements)
+        {
+            // Check if this element is a camera and mark its view dirty
+            CCamera* pCamera = dynamic_cast<CCamera*>(element.Get());
+            if (pCamera)
+            {
+                pCamera->MarkViewDirty();
+            }
+        }
+    }
+
+    // Check if this node's transforms need updating
+    uint32_t requestedFlags = flags & (DirtyLocalMatrix | DirtyGlobalMatrix | 
+                                       DirtyGlobalRotation | DirtyGlobalTranslation);
+    uint32_t alreadyDirty = m_DirtyFlags & requestedFlags;
+    
+    // If all requested flags are already dirty, our subtree is already dirty too
+    if (alreadyDirty == requestedFlags)
+    {
+        return;
+    }
+    
+    // Mark this node's transforms dirty
+    m_DirtyFlags |= flags;
+    
+    // Recursively invalidate children
+    // Important: Don't propagate DirtyLocalMatrix to children - their local matrices
+    // are independent of parent transforms
+    uint32_t childFlags = flags & ~DirtyLocalMatrix;
+    
+    CSceneGraphNode* pChild = m_pFirstChild.Get();
+    while (pChild)
+    {
+        pChild->InvalidateTransforms(childFlags);
+        pChild = pChild->m_pSibling.Get();
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CSceneGraphNode::BindElement(XSceneGraphElement *pElement)
+{
+    if (pElement)
+    {
+        m_Elements.insert(pElement);
+    }
 }
 
 }

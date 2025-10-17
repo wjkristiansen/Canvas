@@ -1,6 +1,14 @@
 # Canvas
 An experimental game-like engine.  Canvas is comprised of several subprojects.
 
+## Important: Matrix Convention
+
+**Canvas uses ROW VECTORS (v' = v * M) throughout the entire codebase.**
+
+Translation is stored in the BOTTOM ROW of matrices, not the right column. This differs from most graphics libraries which use column vectors.
+
+## Subprojects
+
 [CanvasCore](./CanvasCore/CanvasCore.md)  
 High-level implementation of core Canvas interfaces.
 

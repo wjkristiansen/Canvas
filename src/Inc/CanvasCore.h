@@ -1,5 +1,16 @@
 //================================================================================================
 // CanvasCore
+//
+// IMPORTANT: Canvas uses ROW-VECTOR matrix convention throughout!
+//
+// - Vectors are row vectors: v' = v * M (not M * v)
+// - Translation is stored in the BOTTOM ROW: matrix[3][0], matrix[3][1], matrix[3][2]
+// - Matrix concatenation: child_to_world = parent_to_world * child_to_parent
+// - For view matrices: world * view = identity (not view * world)
+//
+// This convention is used consistently across all Canvas math operations, scene graph
+// transforms, and camera matrices. Do NOT assume column-vector convention when working
+// with Canvas code.
 //================================================================================================
 
 #pragma once
@@ -185,6 +196,7 @@ XCamera : public XSceneGraphElement
 
     GEMMETHOD_(Math::FloatMatrix4x4, GetViewMatrix)() = 0;
     GEMMETHOD_(Math::FloatMatrix4x4, GetProjectionMatrix)() = 0;
+    GEMMETHOD_(Math::FloatMatrix4x4, GetViewProjectionMatrix)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
