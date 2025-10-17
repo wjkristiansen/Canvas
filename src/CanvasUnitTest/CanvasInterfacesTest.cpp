@@ -229,5 +229,287 @@ namespace CanvasUnitTest
             auto pA_firstChild = pA->GetFirstChild();
             Assert::IsTrue(pA_firstChild == nullptr || pA_firstChild != pB.Get());
         }
+
+        TEST_METHOD(CameraTest)
+        {
+            using namespace Canvas::Math;
+
+            // Create Canvas and Scene
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+
+            // Create a hierarchy: root -> A -> B -> cameraNode
+            Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
+
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Assert::IsNotNull(pRoot.Get());
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pA)));
+            Assert::IsTrue(Succeeded(pA->AddChild(pB)));
+            Assert::IsTrue(Succeeded(pB->AddChild(pCameraNode)));
+
+            // Create camera and attach to cameraNode
+            Gem::TGemPtr<XCamera> pCamera;
+            Assert::IsTrue(Succeeded(pCanvas->CreateCamera(&pCamera)));
+            Assert::IsTrue(Succeeded(pCamera->AttachTo(pCameraNode)));
+
+            // Set initial camera parameters
+            const float fov = float(3.14159265358979323846 / 4.0); // 45 degrees
+            const float aspect = 16.0f / 9.0f;
+            const float nearClip = 0.1f;
+            const float farClip = 1000.0f;
+            pCamera->SetFovAngle(fov);
+            pCamera->SetAspectRatio(aspect);
+            pCamera->SetNearClip(nearClip);
+            pCamera->SetFarClip(farClip);
+
+            // Set transforms for the hierarchy
+            const float ninety = float(3.14159265358979323846 / 2.0);
+            auto qA = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, ninety);
+            pA->SetLocalRotation(qA);
+            pA->SetLocalTranslation(FloatVector4(1.0f, 0.0f, 0.0f, 1.0f));
+
+            auto qB = FloatQuaternion::FromEulerXYZ(ninety, 0.0f, 0.0f);
+            pB->SetLocalRotation(qB);
+            pB->SetLocalTranslation(FloatVector4(0.0f, 1.0f, 0.0f, 1.0f));
+
+            pCameraNode->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 5.0f, 1.0f));
+
+            // Update scene graph and camera (simulates frame update)
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            // Get initial matrices - this will compute and cache them
+            auto viewMatrix1 = pCamera->GetViewMatrix();
+            auto projMatrix1 = pCamera->GetProjectionMatrix();
+            auto viewProjMatrix1 = pCamera->GetViewProjectionMatrix();
+
+            // Verify matrices are not identity
+            auto identity = FloatMatrix4x4::Identity();
+            Assert::IsFalse(AlmostEqual(viewMatrix1, identity));
+            Assert::IsFalse(AlmostEqual(projMatrix1, identity));
+
+            // Verify view-projection is the product of view and projection
+            auto expectedViewProj = viewMatrix1 * projMatrix1;
+            Assert::IsTrue(AlmostEqual(viewProjMatrix1, expectedViewProj));
+
+            // Test 1: Modify camera node's local transform
+            // This should invalidate view matrix after Update()
+            pCameraNode->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 10.0f, 1.0f));
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            auto viewMatrix2 = pCamera->GetViewMatrix();
+            Assert::IsFalse(AlmostEqual(viewMatrix1, viewMatrix2)); // Should be different
+
+            // Projection should remain the same (no parameters changed)
+            auto projMatrix2 = pCamera->GetProjectionMatrix();
+            Assert::IsTrue(AlmostEqual(projMatrix1, projMatrix2));
+
+            // View-projection should be different
+            auto viewProjMatrix2 = pCamera->GetViewProjectionMatrix();
+            Assert::IsFalse(AlmostEqual(viewProjMatrix1, viewProjMatrix2));
+
+            // Test 2: Modify parent node B's transform
+            // This should invalidate camera's view matrix (ancestor changed)
+            pB->SetLocalTranslation(FloatVector4(0.0f, 2.0f, 0.0f, 1.0f));
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            auto viewMatrix3 = pCamera->GetViewMatrix();
+            Assert::IsFalse(AlmostEqual(viewMatrix2, viewMatrix3)); // Should be different from previous
+
+            // Test 3: Modify grandparent node A's transform
+            // This should also invalidate camera's view matrix
+            pA->SetLocalTranslation(FloatVector4(2.0f, 0.0f, 0.0f, 1.0f));
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            auto viewMatrix4 = pCamera->GetViewMatrix();
+            Assert::IsFalse(AlmostEqual(viewMatrix3, viewMatrix4)); // Should be different
+
+            // Test 4: Modify projection parameters
+            // This should invalidate projection and view-projection matrices
+            pCamera->SetFovAngle(float(3.14159265358979323846 / 3.0)); // 60 degrees
+            auto projMatrix3 = pCamera->GetProjectionMatrix();
+            Assert::IsFalse(AlmostEqual(projMatrix2, projMatrix3)); // Should be different
+
+            auto viewProjMatrix3 = pCamera->GetViewProjectionMatrix();
+            Assert::IsFalse(AlmostEqual(viewProjMatrix2, viewProjMatrix3));
+
+            // Verify new view-projection is correct product
+            auto viewMatrixCurrent = pCamera->GetViewMatrix();
+            auto projMatrixCurrent = pCamera->GetProjectionMatrix();
+            auto expectedViewProjCurrent = viewMatrixCurrent * projMatrixCurrent;
+            Assert::IsTrue(AlmostEqual(viewProjMatrix3, expectedViewProjCurrent));
+
+            // Test 5: Modify aspect ratio
+            pCamera->SetAspectRatio(4.0f / 3.0f);
+            auto projMatrix4 = pCamera->GetProjectionMatrix();
+            Assert::IsFalse(AlmostEqual(projMatrix3, projMatrix4));
+
+            // Test 6: Modify near/far clip planes
+            pCamera->SetNearClip(0.5f);
+            auto projMatrix5 = pCamera->GetProjectionMatrix();
+            Assert::IsFalse(AlmostEqual(projMatrix4, projMatrix5));
+
+            pCamera->SetFarClip(500.0f);
+            auto projMatrix6 = pCamera->GetProjectionMatrix();
+            Assert::IsFalse(AlmostEqual(projMatrix5, projMatrix6));
+        }
+
+        TEST_METHOD(CameraNodeReparenting)
+        {
+            using namespace Canvas::Math;
+
+            // Create Canvas and Scene
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+
+            // Create two separate branches: root -> A and root -> B
+            Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
+
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Assert::IsNotNull(pRoot.Get());
+            
+            // Initial setup: cameraNode is under A
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pA)));
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pB)));
+            Assert::IsTrue(Succeeded(pA->AddChild(pCameraNode)));
+
+            // Create camera and attach
+            Gem::TGemPtr<XCamera> pCamera;
+            Assert::IsTrue(Succeeded(pCanvas->CreateCamera(&pCamera)));
+            Assert::IsTrue(Succeeded(pCamera->AttachTo(pCameraNode)));
+
+            // Set different transforms for A and B
+            const float ninety = float(3.14159265358979323846 / 2.0);
+            auto qA = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, ninety); // Rotate 90° around Z
+            pA->SetLocalRotation(qA);
+            pA->SetLocalTranslation(FloatVector4(5.0f, 0.0f, 0.0f, 1.0f));
+
+            auto qB = FloatQuaternion::FromEulerXYZ(0.0f, ninety, 0.0f); // Rotate 90° around Y
+            pB->SetLocalRotation(qB);
+            pB->SetLocalTranslation(FloatVector4(0.0f, 5.0f, 0.0f, 1.0f));
+
+            pCameraNode->SetLocalTranslation(FloatVector4(1.0f, 0.0f, 0.0f, 1.0f));
+
+            // Update and get initial view matrix (camera is under A)
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+            auto viewMatrix1 = pCamera->GetViewMatrix();
+            auto viewProjMatrix1 = pCamera->GetViewProjectionMatrix();
+
+            // Move camera node from A to B
+            // This changes the camera's parent, so its world transform will change
+            Assert::IsTrue(Succeeded(pB->AddChild(pCameraNode)));
+
+            // Update scene to mark view matrix dirty
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            // Get new matrices - should be different due to different parent transform
+            auto viewMatrix2 = pCamera->GetViewMatrix();
+            auto viewProjMatrix2 = pCamera->GetViewProjectionMatrix();
+
+            // Matrices should be different (different parent transforms)
+            Assert::IsFalse(AlmostEqual(viewMatrix1, viewMatrix2));
+            Assert::IsFalse(AlmostEqual(viewProjMatrix1, viewProjMatrix2));
+
+            // Verify the view matrix is the inverse of the camera's world transform
+            auto cameraWorldMatrix = pCameraNode->GetGlobalMatrix();
+            
+            // For a proper inverse check, multiply view * world should give identity
+            // But since we're using row vectors, it's world * view = identity
+            auto shouldBeIdentity = cameraWorldMatrix * viewMatrix2;
+            
+            // Check if result is close to identity (accounting for floating point error)
+            auto identity = FloatMatrix4x4::Identity();
+            Assert::IsTrue(AlmostEqual(shouldBeIdentity, identity));
+
+            // Test moving to root (no parent transform)
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pCameraNode)));
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            auto viewMatrix3 = pCamera->GetViewMatrix();
+            Assert::IsFalse(AlmostEqual(viewMatrix2, viewMatrix3));
+
+            // With only local transform, world matrix should equal local matrix
+            auto cameraLocalMatrix = pCameraNode->GetLocalMatrix();
+            auto cameraWorldMatrix2 = pCameraNode->GetGlobalMatrix();
+            Assert::IsTrue(AlmostEqual(cameraLocalMatrix, cameraWorldMatrix2));
+        }
+
+        TEST_METHOD(CameraMatrixConsistency)
+        {
+            using namespace Canvas::Math;
+
+            // Create Canvas and Scene
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+
+            // Create camera node
+            Gem::TGemPtr<XSceneGraphNode> pCameraNode;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
+            
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Assert::IsTrue(Succeeded(pRoot->AddChild(pCameraNode)));
+
+            // Create and attach camera
+            Gem::TGemPtr<XCamera> pCamera;
+            Assert::IsTrue(Succeeded(pCanvas->CreateCamera(&pCamera)));
+            Assert::IsTrue(Succeeded(pCamera->AttachTo(pCameraNode)));
+
+            // Set camera parameters
+            pCamera->SetFovAngle(float(3.14159265358979323846 / 4.0));
+            pCamera->SetAspectRatio(16.0f / 9.0f);
+            pCamera->SetNearClip(0.1f);
+            pCamera->SetFarClip(1000.0f);
+
+            // Position camera
+            const float ninety = float(3.14159265358979323846 / 2.0);
+            auto qCamera = FloatQuaternion::FromEulerXYZ(0.0f, ninety, 0.0f);
+            pCameraNode->SetLocalRotation(qCamera);
+            pCameraNode->SetLocalTranslation(FloatVector4(10.0f, 5.0f, 0.0f, 1.0f));
+
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            // Test: Calling GetViewProjectionMatrix should compute all three matrices
+            auto viewProjMatrix = pCamera->GetViewProjectionMatrix();
+            
+            // Now calling individual getters should return cached values (not recompute)
+            auto viewMatrix = pCamera->GetViewMatrix();
+            auto projMatrix = pCamera->GetProjectionMatrix();
+
+            // Verify view-projection is the correct product
+            auto expectedViewProj = viewMatrix * projMatrix;
+            Assert::IsTrue(AlmostEqual(viewProjMatrix, expectedViewProj));
+
+            // Test: Calling individual getters first, then combined
+            pCameraNode->SetLocalTranslation(FloatVector4(20.0f, 10.0f, 0.0f, 1.0f));
+            Assert::IsTrue(Succeeded(pScene->Update(0.0f)));
+
+            auto viewMatrix2 = pCamera->GetViewMatrix();
+            auto projMatrix2 = pCamera->GetProjectionMatrix();
+            auto viewProjMatrix2 = pCamera->GetViewProjectionMatrix();
+
+            // Verify consistency
+            auto expectedViewProj2 = viewMatrix2 * projMatrix2;
+            Assert::IsTrue(AlmostEqual(viewProjMatrix2, expectedViewProj2));
+
+            // Test: Multiple calls without changes should return same matrices
+            auto viewMatrix3 = pCamera->GetViewMatrix();
+            auto projMatrix3 = pCamera->GetProjectionMatrix();
+            auto viewProjMatrix3 = pCamera->GetViewProjectionMatrix();
+
+            Assert::IsTrue(AlmostEqual(viewMatrix2, viewMatrix3));
+            Assert::IsTrue(AlmostEqual(projMatrix2, projMatrix3));
+            Assert::IsTrue(AlmostEqual(viewProjMatrix2, viewProjMatrix3));
+        }
     };
 }

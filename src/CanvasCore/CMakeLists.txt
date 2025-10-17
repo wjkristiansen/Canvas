@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.24)
 # Define the library
 add_library(CanvasCore SHARED
     # Source files
+    Camera.cpp
     CanvasCore.cpp
     dllmain.cpp
     Scene.cpp
