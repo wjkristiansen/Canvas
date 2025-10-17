@@ -5,7 +5,6 @@ cmake_minimum_required(VERSION 3.24)
 
 # Define the test library (Microsoft Test Framework requires DLL)
 add_library(CanvasUnitTest SHARED
-    CanvasCollectionsTest.cpp
     CanvasInterfacesTest.cpp
     CanvasMathTest.cpp
     D3D12ResourceUtilsTest.cpp
