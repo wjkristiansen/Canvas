@@ -151,11 +151,16 @@ public: // XSceneGraphNode methods
                 const auto parentRotation = m_pParent->GetGlobalRotation();
                 const auto parentTranslation = m_pParent->GetGlobalTranslation();
 
-                // Rotate scaled local translation
-                Math::FloatQuaternion rot = parentRotation;
-                Math::FloatVector4 rotatedLocal = rot * m_LocalTranslation;
-                // Add to parent translation
+                // Rotate local translation by parent's rotation using pure quaternion
+                const Math::FloatQuaternion vLocal(m_LocalTranslation.X, m_LocalTranslation.Y, m_LocalTranslation.Z, 0.0f);
+                const auto qConj = Conjugate(parentRotation);
+                const auto vRot = parentRotation * vLocal * qConj;
+                Math::FloatVector4 rotatedLocal(vRot.X, vRot.Y, vRot.Z, 0.0f);
+
+                // Add to parent translation (row-vector convention)
                 m_GlobalTranslation = parentTranslation + rotatedLocal;
+                // Preserve homogeneous coordinate
+                m_GlobalTranslation.W = parentTranslation.W;
             }
             else
             {
