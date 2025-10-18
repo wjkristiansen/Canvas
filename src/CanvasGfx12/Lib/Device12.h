@@ -30,6 +30,8 @@ public:
 
     GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) final;
     GEMMETHOD(CreateMaterial)() final;
+    GEMMETHOD(CreateSurface)(const SurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
+    GEMMETHOD(CreateBuffer)(UINT sizeInBytes, Canvas::XGfxBuffer **ppBuffer) final;
     // GEMMETHOD(CreateRenderTargetView)(Canvas::XGfxRenderTargetView **ppRTView, Canvas::XGfxTexture2D *pTex2D)
     // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XGfxUploadBuffer **ppUploadBuffer) final;
 

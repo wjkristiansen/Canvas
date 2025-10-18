@@ -162,6 +162,98 @@ namespace Canvas
         GEMMETHOD(Wait)() = 0;
     };
 
+    enum SurfaceFlags : uint32_t
+    {
+        SurfaceFlag_None = 0,
+        SurfaceFlag_RenderTarget = 1 << 0,
+        SurfaceFlag_DepthStencil = 1 << 1,
+        SurfaceFlag_ShaderResource = 1 << 2,
+        SurfaceFlag_UnorderedAccess = 1 << 3,
+        SurfaceFlag_CpuReadback = 1 << 4,
+        SurfaceFlag_CpuUpload = 1 << 5,
+    };
+
+    enum class SurfaceDimension : uint32_t
+    {
+        Dimension1D = 0,
+        Dimension2D = 1,
+        Dimension3D = 2,
+        DimensionCube = 3,
+    };
+
+    struct SurfaceDesc
+    {
+        GfxFormat Format;
+        SurfaceDimension Dimension;
+        SurfaceFlags Flags;
+        UINT Width;
+        UINT Height;
+        UINT Depth;
+        UINT ArraySize;
+        UINT MipLevels;
+
+        SurfaceDesc()
+            : Format(GfxFormat::Unknown)
+            , Dimension(SurfaceDimension::Dimension2D)
+            , Flags(SurfaceFlag_None)
+            , Width(0)
+            , Height(0)
+            , Depth(1)
+            , ArraySize(1)
+            , MipLevels(1)
+        {
+        }
+
+        static SurfaceDesc SurfaceDesc1D(GfxFormat format, UINT width, SurfaceFlags flags, UINT mipLevels = 1)
+        {
+            SurfaceDesc desc;
+            desc.Format = format;
+            desc.Dimension = SurfaceDimension::Dimension1D;
+            desc.Flags = flags;
+            desc.Width = width;
+            desc.MipLevels = mipLevels;
+            return desc;
+        }   
+
+        static SurfaceDesc SurfaceDesc2D(GfxFormat format, UINT width, UINT height, SurfaceFlags flags, UINT mipLevels = 1)
+        {
+            SurfaceDesc desc;
+            desc.Format = format;
+            desc.Dimension = SurfaceDimension::Dimension2D;
+            desc.Flags = flags;
+            desc.Width = width;
+            desc.Height = height;
+            desc.MipLevels = mipLevels;
+            return desc;
+        }
+
+        static SurfaceDesc SurfaceDesc3D(GfxFormat format, UINT width, UINT height, UINT depth, SurfaceFlags flags, UINT mipLevels = 1)
+        {
+            SurfaceDesc desc;
+            desc.Format = format;
+            desc.Dimension = SurfaceDimension::Dimension3D;
+            desc.Flags = flags;
+            desc.Width = width;
+            desc.Height = height;
+            desc.Depth = depth;
+            desc.MipLevels = mipLevels;
+            return desc;
+        }
+
+        static SurfaceDesc SurfaceDescCube(GfxFormat format, UINT size, UINT arraySize, SurfaceFlags flags, UINT mipLevels = 1)
+        {
+            SurfaceDesc desc;
+            desc.Format = format;
+            desc.Dimension = SurfaceDimension::DimensionCube;
+            desc.Flags = flags;
+            desc.Width = size;
+            desc.Height = size;
+            desc.ArraySize = arraySize;
+            desc.MipLevels = mipLevels;
+            return desc;
+        }   
+    };
+
     //------------------------------------------------------------------------------------------------
     // Interface to a graphics device
     struct XGfxDevice : public Gem::XGeneric
@@ -170,6 +262,8 @@ namespace Canvas
 
         GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) = 0;
         GEMMETHOD(CreateMaterial)() = 0;
+        GEMMETHOD(CreateSurface)(const SurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
+        GEMMETHOD(CreateBuffer)(UINT sizeInBytes, XGfxBuffer **ppBuffer) = 0;
     };
 
     //------------------------------------------------------------------------------------------------
