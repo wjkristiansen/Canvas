@@ -4,9 +4,6 @@
 
 #include "pch.h"
 
-namespace Canvas
-{
-
 CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers) :
     m_pRenderQueue(pRenderQueue)
 {
@@ -58,7 +55,7 @@ CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRend
 
 Gem::Result CSwapChain12::Present()
 {
-    CFunctionSentinel Sentinel("XGfxSwapChain::Present", QLog::Level::Debug);
+    Canvas::CFunctionSentinel Sentinel("XGfxSwapChain::Present", QLog::Level::Debug);
     try
     {
         std::unique_lock<std::mutex> Lock(m_mutex);
@@ -86,7 +83,7 @@ Gem::Result CSwapChain12::Present()
     return Gem::Result::Success;
 }
 
-GEMMETHODIMP CSwapChain12::GetSurface(XGfxSurface **ppSurface)
+GEMMETHODIMP CSwapChain12::GetSurface(Canvas::XGfxSurface **ppSurface)
 {
     return m_pSurface->QueryInterface(ppSurface);
 }
@@ -99,6 +96,4 @@ GEMMETHODIMP CSwapChain12::WaitForLastPresent()
     WaitForSingleObject(hEvent, INFINITE);
     CloseHandle(hEvent);
     return Gem::Result::Success;
-}
-
 }

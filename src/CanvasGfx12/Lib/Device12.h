@@ -6,11 +6,8 @@
 
 #include "D3D12ResourceUtils.h"
 
-namespace Canvas
-{
-
 //------------------------------------------------------------------------------------------------
-class CDevice12 : public Gem::TGeneric<XGfxDevice>
+class CDevice12 : public Gem::TGeneric<Canvas::XGfxDevice>
 {
     CComPtr<ID3D12Resource> m_pVertices;
     CComPtr<ID3D12Resource> m_pNormals;
@@ -30,12 +27,10 @@ public:
 
     GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) final;
     GEMMETHOD(CreateMaterial)() final;
-    GEMMETHOD(CreateSurface)(const SurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
+    GEMMETHOD(CreateSurface)(const Canvas::SurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
     GEMMETHOD(CreateBuffer)(UINT sizeInBytes, Canvas::XGfxBuffer **ppBuffer) final;
     // GEMMETHOD(CreateRenderTargetView)(Canvas::XGfxRenderTargetView **ppRTView, Canvas::XGfxTexture2D *pTex2D)
     // GEMMETHOD(AllocateUploadBuffer)(UINT64 SizeInBytes, XGfxUploadBuffer **ppUploadBuffer) final;
 
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
 };
-
-}

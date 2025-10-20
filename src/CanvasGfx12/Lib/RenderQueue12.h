@@ -4,9 +4,6 @@
 
 #pragma once
 
-namespace Canvas
-{
-
 //------------------------------------------------------------------------------------------------
 class CCommandAllocatorPool
 {
@@ -28,7 +25,7 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CRenderQueue12 :
-    public Gem::TGeneric<XGfxRenderQueue>
+    public Gem::TGeneric<Canvas::XGfxRenderQueue>
 {
     std::mutex m_mutex;
 
@@ -63,11 +60,11 @@ public:
     GEMMETHOD_(void, Uninitialize)() final;
 
     // XGfxRenderQueue methods
-    GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) final;
-    GEMMETHOD_(void, CopyBuffer)(XGfxBuffer *pDest, XGfxBuffer *pSource) final;
-    GEMMETHOD_(void, ClearSurface)(XGfxSurface *pSurface, const float Color[4]) final;
+    GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers) final;
+    GEMMETHOD_(void, CopyBuffer)(Canvas::XGfxBuffer *pDest, Canvas::XGfxBuffer *pSource) final;
+    GEMMETHOD_(void, ClearSurface)(Canvas::XGfxSurface *pSurface, const float Color[4]) final;
     GEMMETHOD(Flush)() final;
-    GEMMETHOD(FlushAndPresent)(XGfxSwapChain *pSwapChain) final;
+    GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(Wait)() final;
 
     // Internal functions
@@ -79,5 +76,3 @@ public:
 
     void ApplyResourceBarriers();
 };
-
-}

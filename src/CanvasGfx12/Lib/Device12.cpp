@@ -8,9 +8,6 @@
 #include "Surface12.h"
 #include "Buffer12.h"
 
-namespace Canvas
-{
-
 //------------------------------------------------------------------------------------------------
 CDevice12::CDevice12()
 {
@@ -29,7 +26,7 @@ Gem::Result CDevice12::Initialize()
     }
     catch (_com_error &e)
     {
-        auto pLogger = GetCanvasLogger();
+        auto pLogger = Canvas::GetCanvasLogger();
 
         if (pLogger)
         {
@@ -42,9 +39,9 @@ Gem::Result CDevice12::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateRenderQueue(XGfxRenderQueue **ppRenderQueue)
+GEMMETHODIMP CDevice12::CreateRenderQueue(Canvas::XGfxRenderQueue **ppRenderQueue)
 {
-    CFunctionSentinel Sentinel("XGfxDevice::CreateRenderQueue");
+    Canvas::CFunctionSentinel Sentinel("XGfxDevice::CreateRenderQueue");
     try
     {
         Gem::TGemPtr<CRenderQueue12> pRenderQueue;
@@ -59,125 +56,17 @@ GEMMETHODIMP CDevice12::CreateRenderQueue(XGfxRenderQueue **ppRenderQueue)
 }
 
 //------------------------------------------------------------------------------------------------
-//GEMMETHODIMP CDevice12::AllocateUploadBuffer(UINT64 SizeInBytes, XGfxUploadBuffer **ppUploadBuffer)
-//{
-//    try
-//    {
-//        // Allocate a buffer to contain the vertex data
-//        CD3DX12_RESOURCE_DESC BufferDesc = CD3DX12_RESOURCE_DESC::Buffer(SizeInBytes);
-//        CComPtr<ID3D12Resource> pD3DBuffer;
-//        CD3DX12_HEAP_PROPERTIES HeapProp(D3D12_HEAP_TYPE_UPLOAD);
-//        ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource1(&HeapProp, D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES, &BufferDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, nullptr, IID_PPV_ARGS(&pD3DBuffer)));
-//        TGemPtr<CUploadBuffer> pUploadBuffer = new CUploadBuffer(pD3DBuffer, 0, SizeInBytes); // throw(std::bad_alloc), throw(_com_error)
-//        *ppUploadBuffer = pUploadBuffer;
-//        pUploadBuffer.Detach();
-//    }
-//    catch (std::bad_alloc)
-//    {
-//        m_Logger.LogError("CDevice12::AllocateUploadBuffer: Out of memory");
-//        return Result::OutOfMemory;
-//    }
-//    catch (_com_error &e)
-//    {
-//        m_Logger.LogErrorF("CDevice12::AllocateUploadBuffer: HRESULT 0x%08x", e.Error());
-//        return GemResult(e.Error());
-//    }
-//    return Result::Success;
-//}
-
-
-//------------------------------------------------------------------------------------------------
-// |     PosX      |     PosY      |     PosZ      |
-// -------------------------------------------------
-// |    NormX      |    NormY      |    NormZ      |
-// -------------------------------------------------
-// |      U0       |      V0       |
-// ---------------------------------
-// |      U1       |      V1       |
-// ---------------------------------
-// |      U2       |      V2       |
-// ---------------------------------
-//
-// Vertex data does not use per-vertex colors.  All color data
-// comes from the material.
-//
-// Bone indices from the source mesh are ignored.  Use
-// CreateSkinMesh for meshes with bone weights.
-struct Vertex
-{
-    float Position[3];
-    float Normal[3];
-    float TexCoords[3][2];
-};
-
-//GEMMETHODIMP CDevice12::CreateStaticMesh(const ModelData::STATIC_MESH_DATA *pMeshData, XMesh **ppMesh)
-//{
-//    try
-//    {
-//        if (pMeshData->pVertices)
-//        {
-//            UINT64 BufferSize = sizeof(Vertex) * pMeshData->NumVertices;
-//            TGemPtr<CUploadBuffer> pVertexBuffer;
-//            AllocateUploadBuffer(BufferSize, &pVertexBuffer);
-//            Vertex *pVertices = reinterpret_cast<Vertex *>(pVertexBuffer->Data());
-
-//            // Copy the vertex data into the buffer, converting from float3 to float4 format
-//            for (UINT i = 0; i < pMeshData->NumVertices; ++i)
-//            {
-//                pVertices[i].Position[0] = pMeshData->pVertices[i][0];
-//                pVertices[i].Position[1] = pMeshData->pVertices[i][1];
-//                pVertices[i].Position[2] = pMeshData->pVertices[i][2];
-
-//                if (pMeshData->pNormals)
-//                {
-//                    pVertices[i].Normal[0] = pMeshData->pNormals[i][0];
-//                    pVertices[i].Normal[1] = pMeshData->pNormals[i][1];
-//                    pVertices[i].Normal[2] = pMeshData->pNormals[i][2];
-//                }
-//                else
-//                {
-//                    // Material needs to handle zero-length normal
-//                    pVertices[i].Normal[0] = 0;
-//                    pVertices[i].Normal[1] = 0;
-//                    pVertices[i].Normal[2] = 0;
-//                }
-
-//                for (UINT j = 0; j < 4; ++j)
-//                {
-//                    if (pMeshData->pTextureUVs[j])
-//                    {
-//                        pVertices[i].TexCoords[j][0] = pMeshData->pTextureUVs[j][i][0];
-//                        pVertices[i].TexCoords[j][1] = pMeshData->pTextureUVs[j][i][1];
-//                    }
-//                    else
-//                    {
-//                        // Set all texture coordinates to zero
-//                        ZeroMemory(pVertices[i].TexCoords, sizeof(pVertices[i].TexCoords));
-//                    }
-//                }
-//            }
-//        }
-//    }
-//    catch (_com_error &e)
-//    {
-//        m_Logger.LogErrorF("CDevice12::CreateStaticMesh: HRESULT 0x%08x", e.Error());
-//        return GemResult(e.Error());
-//    }
-//    return Result::Success;
-//}
-
-//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateMaterial()
 {
-    CFunctionSentinel Sentinel("XGfxDevice::CreateMaterial");
+    Canvas::CFunctionSentinel Sentinel("XGfxDevice::CreateMaterial");
     
    return Gem::Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateSurface(const SurfaceDesc &desc, Canvas::XGfxSurface **ppSurface)
+GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::XGfxSurface **ppSurface)
 {
-    CFunctionSentinel Sentinel("XGfxDevice::CreateSurface");
+    Canvas::CFunctionSentinel Sentinel("XGfxDevice::CreateSurface");
     
     if (!ppSurface)
         return Gem::Result::BadPointer;
@@ -191,25 +80,25 @@ GEMMETHODIMP CDevice12::CreateSurface(const SurfaceDesc &desc, Canvas::XGfxSurfa
         
         switch (desc.Dimension)
         {
-        case SurfaceDimension::Dimension1D:
+        case Canvas::SurfaceDimension::Dimension1D:
             resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
             resourceDesc.Width = desc.Width;
             resourceDesc.Height = 1;
             resourceDesc.DepthOrArraySize = static_cast<UINT16>(desc.ArraySize);
             break;
-        case SurfaceDimension::Dimension2D:
+        case Canvas::SurfaceDimension::Dimension2D:
             resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
             resourceDesc.Width = desc.Width;
             resourceDesc.Height = desc.Height;
             resourceDesc.DepthOrArraySize = static_cast<UINT16>(desc.ArraySize);
             break;
-        case SurfaceDimension::Dimension3D:
+        case Canvas::SurfaceDimension::Dimension3D:
             resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
             resourceDesc.Width = desc.Width;
             resourceDesc.Height = desc.Height;
             resourceDesc.DepthOrArraySize = static_cast<UINT16>(desc.Depth);
             break;
-        case SurfaceDimension::DimensionCube:
+        case Canvas::SurfaceDimension::DimensionCube:
             resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
             resourceDesc.Width = desc.Width;
             resourceDesc.Height = desc.Height;
@@ -225,23 +114,23 @@ GEMMETHODIMP CDevice12::CreateSurface(const SurfaceDesc &desc, Canvas::XGfxSurfa
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
         
         // Set resource flags based on SurfaceFlags
-        if (desc.Flags & SurfaceFlag_RenderTarget)
+        if (desc.Flags & Canvas::SurfaceFlag_RenderTarget)
             resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-        if (desc.Flags & SurfaceFlag_DepthStencil)
+        if (desc.Flags & Canvas::SurfaceFlag_DepthStencil)
             resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-        if (desc.Flags & SurfaceFlag_UnorderedAccess)
+        if (desc.Flags & Canvas::SurfaceFlag_UnorderedAccess)
             resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
         
         // Determine heap properties and initial state
         D3D12_HEAP_PROPERTIES heapProps = {};
         D3D12_RESOURCE_STATES initialState;
         
-        if (desc.Flags & SurfaceFlag_CpuUpload)
+        if (desc.Flags & Canvas::SurfaceFlag_CpuUpload)
         {
             heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
             initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
         }
-        else if (desc.Flags & SurfaceFlag_CpuReadback)
+        else if (desc.Flags & Canvas::SurfaceFlag_CpuReadback)
         {
             heapProps.Type = D3D12_HEAP_TYPE_READBACK;
             initialState = D3D12_RESOURCE_STATE_COPY_DEST;
@@ -275,7 +164,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const SurfaceDesc &desc, Canvas::XGfxSurfa
     }
     catch (const _com_error &e)
     {
-        auto pLogger = GetCanvasLogger();
+        auto pLogger = Canvas::GetCanvasLogger();
         if (pLogger)
             pLogger->Error("CDevice12::CreateSurface: HRESULT 0x%08x", e.Error());
         return Gem::GemResult(e.Error());
@@ -289,7 +178,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const SurfaceDesc &desc, Canvas::XGfxSurfa
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateBuffer(UINT sizeInBytes, Canvas::XGfxBuffer **ppBuffer)
 {
-    CFunctionSentinel Sentinel("XGfxDevice::CreateBuffer");
+    Canvas::CFunctionSentinel Sentinel("XGfxDevice::CreateBuffer");
     
     if (!ppBuffer)
         return Gem::Result::BadPointer;
@@ -338,7 +227,7 @@ GEMMETHODIMP CDevice12::CreateBuffer(UINT sizeInBytes, Canvas::XGfxBuffer **ppBu
     }
     catch (const _com_error &e)
     {
-        auto pLogger = GetCanvasLogger();
+        auto pLogger = Canvas::GetCanvasLogger();
         if (pLogger)
             pLogger->Error("CDevice12::CreateBuffer: HRESULT 0x%08x", e.Error());
         return Gem::GemResult(e.Error());
@@ -347,6 +236,4 @@ GEMMETHODIMP CDevice12::CreateBuffer(UINT sizeInBytes, Canvas::XGfxBuffer **ppBu
     {
         return e.Result();
     }
-}
-
 }

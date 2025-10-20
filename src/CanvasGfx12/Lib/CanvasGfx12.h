@@ -4,22 +4,17 @@
 
 #pragma once
 
-namespace Canvas
-{
-
-extern DXGI_FORMAT CanvasFormatToDXGIFormat(GfxFormat Fmt);
+extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt);
 
 class CGfxDeviceFactory :
-	public Gem::TGeneric<XGfxDeviceFactory>
+	public Gem::TGeneric<Canvas::XGfxDeviceFactory>
 {
 public:
 	CGfxDeviceFactory();
 
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XGfxDeviceFactory)
+        GEM_INTERFACE_ENTRY(Canvas::XGfxDeviceFactory)
     END_GEM_INTERFACE_MAP()
 
-	GEMMETHOD(CreateDevice)(XGfxDevice **ppDevice);
+	GEMMETHOD(CreateDevice)(Canvas::XGfxDevice **ppDevice);
 };
-
-}

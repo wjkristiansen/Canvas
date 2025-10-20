@@ -6,9 +6,6 @@
 
 #include "RenderQueue12.h"
 
-namespace Canvas
-{
-
 //------------------------------------------------------------------------------------------------
 CCommandAllocatorPool::CCommandAllocatorPool()
 {
@@ -17,7 +14,7 @@ CCommandAllocatorPool::CCommandAllocatorPool()
 //------------------------------------------------------------------------------------------------
 ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators)
 {
-    CFunctionSentinel Sentinel("CCommandAllocatorPool::Init");
+    Canvas::CFunctionSentinel Sentinel("CCommandAllocatorPool::Init");
     
     for (UINT i = 0; i < NumAllocators; ++i)
     {
@@ -136,9 +133,9 @@ CRenderQueue12::CRenderQueue12(CDevice12 *pDevice) :
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers)
+GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers)
 {
-    CFunctionSentinel Sentinel("XGfxRenderQueue::CreateSwapChain");
+    Canvas::CFunctionSentinel Sentinel("XGfxRenderQueue::CreateSwapChain");
     try
     {
         // Create the swapchain
@@ -155,13 +152,13 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, XGfxSwapC
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(XGfxBuffer * /*pDest*/, XGfxBuffer * /*pSource*/)
+GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer * /*pDest*/, Canvas::XGfxBuffer * /*pSource*/)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(XGfxSurface *pGfxSurface, const float Color[4])
+GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(Canvas::XGfxSurface *pGfxSurface, const float Color[4])
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
     CSurface12 *pSurface = reinterpret_cast<CSurface12 *>(pGfxSurface);
@@ -218,7 +215,7 @@ Gem::Result CRenderQueue12::FlushImpl()
 Gem::Result CRenderQueue12::Flush()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel("XGfxRenderQueue::Flush", QLog::Level::Debug);
+    Canvas::CFunctionSentinel Sentinel("XGfxRenderQueue::Flush", QLog::Level::Debug);
     try
     {
         Gem::ThrowGemError(FlushImpl());
@@ -234,10 +231,10 @@ Gem::Result CRenderQueue12::Flush()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::FlushAndPresent(XGfxSwapChain *pSwapChain)
+GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    CFunctionSentinel Sentinel("XGfxRenderQueue::FlushAndPresent", QLog::Level::Debug);
+    Canvas::CFunctionSentinel Sentinel("XGfxRenderQueue::FlushAndPresent", QLog::Level::Debug);
 
     try
     {
@@ -279,13 +276,13 @@ GEMMETHODIMP CRenderQueue12::Wait()
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::Uninitialize()
 {
-    CFunctionSentinel Sentinel("XGfxRenderQueue::Uninitialize", QLog::Level::Info);
+    Canvas::CFunctionSentinel Sentinel("XGfxRenderQueue::Uninitialize", QLog::Level::Info);
 
     m_pCommandList->Close();
 
     Wait();
 
-    return Gem::TGeneric<XGfxRenderQueue>::Uninitialize();
+    return Gem::TGeneric<Canvas::XGfxRenderQueue>::Uninitialize();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -294,6 +291,4 @@ void CRenderQueue12::ApplyResourceBarriers()
     std::vector<D3D12_RESOURCE_BARRIER> resourceBarriers;
     m_pDevice->m_ResourceStateManager.ResolveResourceBarriers(resourceBarriers);
     m_pCommandList->ResourceBarrier((UINT)resourceBarriers.size(), resourceBarriers.data());
-}
-
 }

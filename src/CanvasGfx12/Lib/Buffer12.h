@@ -6,12 +6,9 @@
 
 #include "D3D12ResourceUtils.h"
 
-namespace Canvas
-{
-
 //------------------------------------------------------------------------------------------------
 class CBuffer12 :
-    public Gem::TGeneric<XGfxBuffer>,
+    public Gem::TGeneric<Canvas::XGfxBuffer>,
     public CResource
 {
 public:
@@ -22,5 +19,3 @@ public:
     CBuffer12(ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState)
         : CResource(pResource, InitState) {}
 };
-
-}

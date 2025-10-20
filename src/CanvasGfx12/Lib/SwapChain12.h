@@ -6,9 +6,6 @@
 
 #include "Surface12.h"
 
-namespace Canvas
-{
-
 //------------------------------------------------------------------------------------------------
 class CSwapChain12 :
     public Gem::TGeneric<Canvas::XGfxSwapChain>
@@ -25,16 +22,14 @@ public:
     Gem::TGemPtr<CSurface12> m_pSurface;
 
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XGfxSwapChain)
+        GEM_INTERFACE_ENTRY(Canvas::XGfxSwapChain)
     END_GEM_INTERFACE_MAP()
 
     CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers);
 
-    GEMMETHOD(GetSurface)(XGfxSurface **ppSurface) final;
+    GEMMETHOD(GetSurface)(Canvas::XGfxSurface **ppSurface) final;
     GEMMETHOD(WaitForLastPresent)() final;
 
     // Internal functions
     Gem::Result Present();
 };
-
-}

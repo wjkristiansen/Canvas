@@ -4,9 +4,3 @@
 
 #include "pch.h"
 #include "Buffer12.h"
-
-namespace Canvas
-{
-//------------------------------------------------------------------------------------------------
-// Implementation for CBuffer12 is trivial, handled by base classes
-}
