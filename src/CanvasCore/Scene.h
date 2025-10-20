@@ -26,13 +26,14 @@ public:
 
     CScene(CCanvas *pCanvas);
 
+    Gem::Result Initialize();
+    void Uninitialize() {}
+    
 public: // XScene methods
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)();
-    GEMMETHOD(Initialize)();
 
     GEMMETHOD(Update)(float dtime) final { return m_pRoot->Update(dtime); }
 
-public: // CScene methods
     CScene *CastFrom(XScene *pXScene) { return static_cast<CScene *>(pXScene); }
 };
 

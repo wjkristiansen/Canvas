@@ -87,11 +87,6 @@ public:
     ~CCanvas();
 
 public:
-    // XGeneric methods
-    GEMMETHOD(Initialize)() final;
-    GEMMETHOD_(void, Uninitialize)() final;
-
-public:
     // XCanvas methods
     GEMMETHOD(InitGfx)(PCSTR path) final;
     GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppGfxDevice) final;
@@ -103,8 +98,33 @@ public:
 
 public:
     // CCanvas methods
-    template<class _Type>
-    Gem::Result CreateElement(typename _Type::BaseType **ppElement);
+    template<class _Type, typename... Args>
+    Gem::Result CreateElement(typename _Type::BaseType **ppElement, Args... args)
+    {
+        CFunctionSentinel Sentinel("XCanvas::CreateElement");
+
+        if (!ppElement)
+        {
+            return Gem::Result::BadPointer;
+        }
+
+        try
+        {
+            Gem::TGemPtr<_Type> pObj;
+            Gem::ThrowGemError(Gem::TGenericImpl<_Type>::Create(&pObj, this, args...));
+            m_ActiveCanvasElements.emplace(pObj);
+            *ppElement = pObj.Detach();
+        }
+        catch(const Gem::GemError &e)
+        {
+            return e.Result();
+        }
+
+        return Gem::Result::Success;
+    }
+
+    Gem::Result Initialize();
+    void Uninitialize();    
 
     void CanvasElementDestroyed(XCanvasElement *pElement);
 

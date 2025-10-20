@@ -29,18 +29,16 @@ CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas) :
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraphNode::Initialize()
+Gem::Result CSceneGraphNode::Initialize()
 {
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CSceneGraphNode::Uninitialize()
+void CSceneGraphNode::Uninitialize()
 {
     m_pFirstChild = nullptr;
     m_pSibling = nullptr;
-
-    TCanvasElement<XSceneGraphNode>::Uninitialize();
 }
 
 //------------------------------------------------------------------------------------------------

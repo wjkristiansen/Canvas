@@ -281,8 +281,6 @@ void CRenderQueue12::Uninitialize()
     m_pCommandList->Close();
 
     Wait();
-
-    return Gem::TGeneric<Canvas::XGfxRenderQueue>::Uninitialize();
 }
 
 //------------------------------------------------------------------------------------------------

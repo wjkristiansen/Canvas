@@ -57,7 +57,8 @@ public:
     CRenderQueue12(CDevice12 *pDevice);
 
     // XGeneric methods
-    GEMMETHOD_(void, Uninitialize)() final;
+    Gem::Result Initialize() { return Gem::Result::Success; }    
+    void Uninitialize();
 
     // XGfxRenderQueue methods
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers) final;

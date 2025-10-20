@@ -24,6 +24,7 @@ public:
     CDevice12();
 
     Gem::Result Initialize();
+    void Uninitialize() {}
 
     GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) final;
     GEMMETHOD(CreateMaterial)() final;

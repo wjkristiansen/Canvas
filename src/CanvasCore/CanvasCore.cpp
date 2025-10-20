@@ -35,13 +35,13 @@ CANVAS_API QLog::Logger *GetCanvasLogger()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::Initialize()
+Gem::Result CCanvas::Initialize()
 {
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CCanvas::Uninitialize()
+void CCanvas::Uninitialize()
 {
     // Iterate still active XCanvasElement objects and report them as leaks
     for(XCanvasElement *pElement : m_ActiveCanvasElements)
@@ -62,32 +62,6 @@ GEMMETHODIMP_(void) CCanvas::Uninitialize()
 //------------------------------------------------------------------------------------------------
 CCanvas::~CCanvas()
 {
-}
-
-//------------------------------------------------------------------------------------------------
-template<class _Type>
-Gem::Result CCanvas::CreateElement(typename _Type::BaseType **ppElement)
-{
-    CFunctionSentinel Sentinel("XCanvas::CreateElement");
-
-    if (!ppElement)
-    {
-        return Gem::Result::BadPointer;
-    }
-
-    try
-    {
-        Gem::TGemPtr<_Type> pObj;
-        Gem::ThrowGemError(Gem::TGenericImpl<_Type>::Create(&pObj, this));
-        m_ActiveCanvasElements.emplace(pObj);
-        *ppElement = pObj.Detach();
-    }
-    catch(const Gem::GemError &e)
-    {
-        return e.Result();
-    }
-
-    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -128,13 +102,7 @@ GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight)
     CFunctionSentinel Sentinel("XCanvas::CreateLight");
 
     // Create using the standard CreateElement pattern to ensure proper registration
-    Gem::Result result = CreateElement<CLight>(ppLight);
-    
-    if (Succeeded(result) && ppLight && *ppLight)
-    {
-        // Initialize the immutable type (must be done after creation but before user gets it)
-        static_cast<CLight*>(*ppLight)->InitializeType(type);
-    }
+    Gem::Result result = CreateElement<CLight>(ppLight, type);
     
     return result;
 }

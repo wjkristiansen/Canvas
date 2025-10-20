@@ -54,10 +54,10 @@ public:
         m_SpotInnerAngle(0.785398f), // 45 degrees
         m_SpotOuterAngle(1.047198f)  // 60 degrees
     {}
-    
-    // Internal factory method for creating with specific type
-    void InitializeType(LightType type) { const_cast<LightType&>(m_Type) = type; }
 
+    Gem::Result Initialize() { return Gem::Result::Success; }
+    void Uninitialize() {}
+    
     // XSceneGraphElement methods
     GEMMETHOD(Update)(float) final { return Gem::Result::Success; }
 

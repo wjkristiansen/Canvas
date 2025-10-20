@@ -87,10 +87,10 @@ public:
 
     CSceneGraphNode(CCanvas *pCanvas);
     
+    Gem::Result Initialize();
+    void Uninitialize();    
+
 public: // XSceneGraphNode methods
-    GEMMETHOD(Initialize)() override;
-    GEMMETHOD_(void, Uninitialize)() override;
-    
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;
     GEMMETHOD_(XSceneGraphNode *, GetParent)() final;
     GEMMETHOD_(XSceneGraphNode *, GetSibling)() final;

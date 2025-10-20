@@ -42,6 +42,9 @@ public:
     {
     }
 
+    Gem::Result Initialize() { return Gem::Result::Success; }
+    void Uninitialize() {}
+    
     // XSceneGraphElement methods
     GEMMETHOD(Update)(float /*dtime*/) final 
     { 

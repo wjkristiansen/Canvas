@@ -27,6 +27,9 @@ public:
 
     CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers);
 
+    Gem::Result Initialize() { return Gem::Result::Success; }
+    void Uninitialize() {}
+
     GEMMETHOD(GetSurface)(Canvas::XGfxSurface **ppSurface) final;
     GEMMETHOD(WaitForLastPresent)() final;
 

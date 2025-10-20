@@ -18,4 +18,7 @@ public:
 
     CBuffer12(ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState)
         : CResource(pResource, InitState) {}
+
+    Gem::Result Initialize() { return Gem::Result::Success; }    
+    void Uninitialize() {}
 };
