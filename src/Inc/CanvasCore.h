@@ -74,12 +74,20 @@ XCanvas : public Gem::XGeneric
 
 //------------------------------------------------------------------------------------------------
 struct
-XCanvasElement : public Gem::XGeneric
+XNamedElement : public Gem::XGeneric
 {
-    GEM_INTERFACE_DECLARE(XCanvasElement, 0x5604F8425EBF3A75);
+    GEM_INTERFACE_DECLARE(XNamedElement, 0x314EEA856A888F9D);
 
     GEMMETHOD_(PCSTR, GetName)() = 0;
     GEMMETHOD_(void, SetName)(PCSTR szName) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XCanvasElement : public XNamedElement
+{
+    GEM_INTERFACE_DECLARE(XCanvasElement, 0x5604F8425EBF3A75);
+
     GEMMETHOD_(XCanvas *, GetCanvas)() = 0;
     GEMMETHOD_(PCSTR, GetTypeName)() = 0;
 };

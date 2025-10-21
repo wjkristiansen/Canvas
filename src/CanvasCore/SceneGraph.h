@@ -81,6 +81,7 @@ protected:
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XNamedElement)
         GEM_INTERFACE_ENTRY(XCanvasElement)
         GEM_INTERFACE_ENTRY(XSceneGraphNode)
     END_GEM_INTERFACE_MAP()

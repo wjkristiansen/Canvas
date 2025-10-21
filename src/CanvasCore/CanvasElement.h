@@ -5,7 +5,7 @@
 #pragma once
 
 #include "Gem.hpp"
-#include "Canvas.h"
+#include "NamedElement.h"
 
 namespace Canvas
 {
@@ -13,7 +13,7 @@ namespace Canvas
 //------------------------------------------------------------------------------------------------
 template<class _Base>
 class TCanvasElement :
-    public Gem::TGeneric<_Base>
+    public TNamedElement<_Base>
 {
     std::string m_Name;
     CCanvas *m_pCanvas;
@@ -33,8 +33,6 @@ public:
     }
 
     // XCanvasElement methods
-    GEMMETHOD_(PCSTR, GetName)() { return m_Name.c_str(); }
-    GEMMETHOD_(void, SetName)(PCSTR szName) { m_Name = szName; }
     GEMMETHOD_(XCanvas *, GetCanvas()) { return m_pCanvas; }
     GEMMETHOD_(PCSTR, GetTypeName)() { return _Base::XFaceName; }
 };

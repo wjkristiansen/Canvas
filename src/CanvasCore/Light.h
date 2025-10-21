@@ -38,6 +38,8 @@ class CLight :
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XNamedElement)
+        GEM_INTERFACE_ENTRY(XCanvasElement)
         GEM_INTERFACE_ENTRY(XLight)
     END_GEM_INTERFACE_MAP()
 
