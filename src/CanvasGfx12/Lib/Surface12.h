@@ -5,15 +5,18 @@
 #pragma once
 
 #include "D3D12ResourceUtils.h"
+#include "GfxElement.h"
 
 //------------------------------------------------------------------------------------------------
 class CSurface12 :
-    public Gem::TGeneric<Canvas::XGfxSurface>,
+    public Canvas::TGfxElement<Canvas::XGfxSurface>,
     public CResource
 {
 public:
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XGfxSurface)
+        GEM_INTERFACE_ENTRY(Canvas::XGfxSurface)
+        GEM_INTERFACE_ENTRY(Canvas::XCanvasElement)
+        GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
     CSurface12(ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState) :

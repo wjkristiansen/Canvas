@@ -5,6 +5,7 @@
 #pragma once
 
 #include "CanvasCore.h"
+#include "CanvasGfx.h"
 #include "Gem.hpp"
 #include "Timer.h"
 
@@ -91,6 +92,9 @@ public:
     GEMMETHOD(InitGfx)(PCSTR path) final;
     GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppGfxDevice) final;
 
+    GEMMETHOD(RegisterElement)(XCanvasElement *) final;
+    GEMMETHOD(UnregisterElement)(XCanvasElement *) final;
+
     GEMMETHOD(CreateScene)(XScene **ppScene) final;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera) final;
@@ -98,6 +102,11 @@ public:
 
 public:
     // CCanvas methods
+    
+    // Internal methods used by TCanvasElement - do not call directly from external code
+    Gem::Result RegisterElementInternal(XCanvasElement *pElement);
+    Gem::Result UnregisterElementInternal(XCanvasElement *pElement);
+    
     template<class _Type, typename... Args>
     Gem::Result CreateElement(typename _Type::BaseType **ppElement, Args... args)
     {
@@ -111,8 +120,8 @@ public:
         try
         {
             Gem::TGemPtr<_Type> pObj;
-            Gem::ThrowGemError(Gem::TGenericImpl<_Type>::Create(&pObj, this, args...));
-            m_ActiveCanvasElements.emplace(pObj);
+            Gem::ThrowGemError(TCanvasElement<_Type>::CreateAndRegister(&pObj, this, args...));
+            
             *ppElement = pObj.Detach();
         }
         catch(const Gem::GemError &e)
@@ -123,10 +132,10 @@ public:
         return Gem::Result::Success;
     }
 
+    static CCanvas *CastFrom(XCanvas *pXCanvas) { return static_cast<CCanvas *>(pXCanvas); }
+
     Gem::Result Initialize();
     void Uninitialize();    
-
-    void CanvasElementDestroyed(XCanvasElement *pElement);
 
 public:
     // IMPORTANT: m_pGfxPlugin must be declared FIRST so it destructs LAST

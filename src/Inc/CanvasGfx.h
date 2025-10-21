@@ -5,6 +5,7 @@
 #pragma once
 #include <QLog.h>
 #include "Gem.hpp"
+#include "CanvasCore.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -13,6 +14,7 @@
 
 namespace Canvas
 {
+
     enum class GfxFormat : int
     {
         Unknown,
@@ -72,7 +74,7 @@ namespace Canvas
 
     //------------------------------------------------------------------------------------------------
     // Buffer resource
-    struct XGfxSurface : public Gem::XGeneric
+    struct XGfxSurface : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxSurface, 0x2F05FEAC7133843B);
     };
@@ -120,27 +122,27 @@ namespace Canvas
 
     //------------------------------------------------------------------------------------------------
     struct
-    XGfxMaterial : public Gem::XGeneric
+    XGfxMaterial : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxMaterial, 0xD6E17B2CB8454154);
     };
 
     //------------------------------------------------------------------------------------------------
     struct
-    XGfxMesh : public Gem::XGeneric
+    XGfxMesh : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxMesh, 0x7EBC2A5A40CC96D3);
     };
 
     //------------------------------------------------------------------------------------------------
     // Buffer resource
-    struct XGfxBuffer : public Gem::XGeneric
+    struct XGfxBuffer : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxBuffer, 0xA1DF297C8FA4CF13);
     };
 
     //------------------------------------------------------------------------------------------------
-    struct XGfxSwapChain : public Gem::XGeneric
+    struct XGfxSwapChain : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxSwapChain, 0x1DEDFC0646129850);
 
@@ -150,7 +152,7 @@ namespace Canvas
 
     //------------------------------------------------------------------------------------------------
     // Submits tasks to the graphics subsystem.
-    struct XGfxRenderQueue : public Gem::XGeneric
+    struct XGfxRenderQueue : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
 
@@ -256,7 +258,7 @@ namespace Canvas
 
     //------------------------------------------------------------------------------------------------
     // Interface to a graphics device
-    struct XGfxDevice : public Gem::XGeneric
+    struct XGfxDevice : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxDevice, 0x86D4ABCCCD5FB6EE);
 

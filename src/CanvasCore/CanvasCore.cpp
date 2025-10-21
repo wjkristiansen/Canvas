@@ -9,6 +9,7 @@
 #include "Camera.h"
 #include "Light.h"
 #include "Scene.h"
+#include "CanvasGfx.h"
 
 namespace Canvas
 {
@@ -65,9 +66,80 @@ CCanvas::~CCanvas()
 }
 
 //------------------------------------------------------------------------------------------------
-void CCanvas::CanvasElementDestroyed(XCanvasElement *pElement)
+GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 {
-    m_ActiveCanvasElements.erase(pElement);
+    return RegisterElementInternal(pElement);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
+{
+    return UnregisterElementInternal(pElement);
+}
+
+//------------------------------------------------------------------------------------------------
+Gem::Result CCanvas::RegisterElementInternal(XCanvasElement *pElement)
+{
+    if (!pElement)
+        return Gem::Result::BadPointer;
+
+    std::lock_guard<std::mutex> lock(m_Mutex);
+
+    // Check if element is already registered
+    if (m_ActiveCanvasElements.find(pElement) != m_ActiveCanvasElements.end())
+    {
+        auto pLogger = GetCanvasLogger();
+        if (pLogger)
+        {
+            if (pElement->GetName())
+            {
+                pLogger->Warn("Element already registered: %s (Name: %s)", 
+                               pElement->GetTypeName(), pElement->GetName());
+            }
+            else
+            {
+                pLogger->Warn("Element already registered: %s", pElement->GetTypeName());
+            }
+        }
+        return Gem::Result::InvalidArg;
+    }
+
+    m_ActiveCanvasElements.emplace(pElement);
+    
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+Gem::Result CCanvas::UnregisterElementInternal(XCanvasElement *pElement)
+{
+    if (!pElement)
+        return Gem::Result::BadPointer;
+
+    std::lock_guard<std::mutex> lock(m_Mutex);
+
+    auto it = m_ActiveCanvasElements.find(pElement);
+    if (it == m_ActiveCanvasElements.end())
+    {
+        auto pLogger = GetCanvasLogger();
+        if (pLogger)
+        {
+            if (pElement->GetName())
+            {
+                pLogger->Warn("Attempted to unregister element that was not registered: %s (Name: %s)", 
+                               pElement->GetTypeName(), pElement->GetName());
+            }
+            else
+            {
+                pLogger->Warn("Attempted to unregister element that was not registered: %s", 
+                               pElement->GetTypeName());
+            }
+        }
+        return Gem::Result::NotFound;
+    }
+
+    m_ActiveCanvasElements.erase(it);
+    
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -180,6 +252,13 @@ GEMMETHODIMP CCanvas::CreateGfxDevice(XGfxDevice **ppGfxDevice)
 
         Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
         Gem::ThrowGemError(m_pGfxDeviceFactory->CreateDevice(&pDevice));
+
+        // Try to register the graphics device for lifecycle tracking if it supports XCanvasElement
+        Gem::TGemPtr<Canvas::XCanvasElement> pElement;
+        if (SUCCEEDED(pDevice->QueryInterface(&pElement)))
+        {
+            Gem::ThrowGemError(pElement->Register(this));
+        }
 
         *ppGfxDevice = pDevice.Detach();
     }

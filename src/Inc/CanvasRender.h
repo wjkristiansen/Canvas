@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstring>
 #include <QLog.h>
-#include "CanvasGfx.h"
 #include "CanvasMath.hpp"
 
 #ifdef _MSC_VER
@@ -16,6 +15,11 @@
 
 namespace Canvas
 {
+    // Forward declarations to avoid circular includes
+    struct XGfxBuffer;
+    struct XGfxRenderQueue;
+    struct XGfxDevice;
+    struct XGfxSurface;
 
     //------------------------------------------------------------------------------------------------
     // Render chunk types - each chunk contains specific renderable data

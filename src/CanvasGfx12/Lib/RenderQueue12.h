@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "GfxElement.h"
+
 //------------------------------------------------------------------------------------------------
 class CCommandAllocatorPool
 {
@@ -25,7 +27,7 @@ public:
 
 //------------------------------------------------------------------------------------------------
 class CRenderQueue12 :
-    public Gem::TGeneric<Canvas::XGfxRenderQueue>
+    public Canvas::TGfxElement<Canvas::XGfxRenderQueue>
 {
     std::mutex m_mutex;
 
@@ -51,7 +53,9 @@ public:
     UINT m_NextRTVSlot = 0;
 
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XGfxRenderQueue)
+        GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
+        GEM_INTERFACE_ENTRY(Canvas::XCanvasElement)
+        GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
     CRenderQueue12(CDevice12 *pDevice);

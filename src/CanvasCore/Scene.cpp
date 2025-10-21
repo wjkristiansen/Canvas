@@ -11,8 +11,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 CScene::CScene(CCanvas *pCanvas) :
-    TCanvasElement(pCanvas),
-    m_pCanvas(pCanvas)
+    TCanvasElement(pCanvas)
 {
 }
 

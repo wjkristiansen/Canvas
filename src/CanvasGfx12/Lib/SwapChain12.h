@@ -5,10 +5,11 @@
 #pragma once
 
 #include "Surface12.h"
+#include "GfxElement.h"
 
 //------------------------------------------------------------------------------------------------
 class CSwapChain12 :
-    public Gem::TGeneric<Canvas::XGfxSwapChain>
+    public Canvas::TGfxElement<Canvas::XGfxSwapChain>
 {
     std::mutex m_mutex;
     CComPtr<IDXGIFactory7> m_pDXGIFactory;
@@ -23,6 +24,8 @@ public:
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxSwapChain)
+        GEM_INTERFACE_ENTRY(Canvas::XCanvasElement)
+        GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
     CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers);

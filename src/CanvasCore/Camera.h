@@ -40,7 +40,7 @@ public:
 
     // Ctor
     CCamera(CCanvas *pCanvas) :
-        TSceneGraphElement(pCanvas)
+        TSceneGraphElement<XCamera>(pCanvas)
     {
     }
 

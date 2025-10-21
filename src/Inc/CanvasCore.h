@@ -15,11 +15,13 @@
 
 #pragma once
 #include <QLog.h>
-#include "CanvasGfx.h"
 #include "CanvasRender.h"
 
 namespace Canvas
 {
+
+// Forward declarations
+struct XGfxDevice;
 
 #if defined(_WIN32)
   #if defined(CANVASCORE_EXPORTS)
@@ -70,6 +72,11 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight) = 0;
+    
+    // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
+    // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
+    GEMMETHOD(RegisterElement)(struct XCanvasElement *) = 0;
+    GEMMETHOD(UnregisterElement)(struct XCanvasElement *) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -90,6 +97,10 @@ XCanvasElement : public XNamedElement
 
     GEMMETHOD_(XCanvas *, GetCanvas)() = 0;
     GEMMETHOD_(PCSTR, GetTypeName)() = 0;
+
+    // Public API for element registration - external code should call these methods
+    GEMMETHOD(Register)(XCanvas *pCanvas) = 0;
+    GEMMETHOD(Unregister)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -167,7 +178,7 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD(Update)(float dtime) = 0;
 };
 
-//-----------------------0-------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------
 struct
 XRenderQueue : public XCanvasElement
 {
@@ -176,7 +187,7 @@ XRenderQueue : public XCanvasElement
     // BUGBUG: TODO...
 };
 
-//-----------------------0-------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------
 struct
 XSceneGraphElement : public XCanvasElement
 {
