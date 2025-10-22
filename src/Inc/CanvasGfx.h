@@ -267,16 +267,7 @@ namespace Canvas
         GEMMETHOD(CreateSurface)(const SurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
         GEMMETHOD(CreateBuffer)(UINT sizeInBytes, XGfxBuffer **ppBuffer) = 0;
     };
-
-    //------------------------------------------------------------------------------------------------
-    struct XGfxDeviceFactory : public Gem::XGeneric
-    {
-        GEM_INTERFACE_DECLARE(XGfxDeviceFactory, 0x3EE387780593F266);
-        GEMMETHOD(CreateDevice)(Canvas::XGfxDevice **ppDevice) = 0;
-    };
 }
-
-using FnCreateGfxDeviceFactory = Gem::Result (*)(Canvas::XGfxDeviceFactory**);
 
 #ifdef _MSC_VER
 #pragma warning(pop)

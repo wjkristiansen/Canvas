@@ -11,10 +11,10 @@
 #pragma once
 
 #include "D3D12ResourceUtils.h"
-#include "GfxElement.h"
+#include "CanvasGfx12.h"
 
 //------------------------------------------------------------------------------------------------
-class CDevice12 : public Canvas::TGfxElement<Canvas::XGfxDevice>
+class CDevice12 : public TGfxElement<Canvas::XGfxDevice>
 {
     CComPtr<ID3D12Resource> m_pVertices;
     CComPtr<ID3D12Resource> m_pNormals;
@@ -31,7 +31,7 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CDevice12();
+    CDevice12(PCSTR name = nullptr);
     ~CDevice12() = default;  // TGfxElement destructor handles Unregister
 
     Gem::Result Initialize();

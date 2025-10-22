@@ -238,65 +238,23 @@ Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas)
     }
 }
 
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::InitGfx(PCSTR path)
+GEMMETHODIMP CCanvas::CreatePluginLoader(PCSTR path, XCanvasPluginLoader **ppPluginLoader)
 {
-    CFunctionSentinel Sentinel("XCanvas::InitGfx");
+    CFunctionSentinel Sentinel("XCanvas::LoadPlCreatePluginLoaderugin");
 
     try
     {
-        std::unique_ptr<CCanvasPlugin> pPlugin = std::make_unique<CCanvasPlugin>(path);
-
-        auto pfnCreateCanvasGfxDeviceFactory = pPlugin->GetProc<FnCreateGfxDeviceFactory>("CreateCanvasGfxDeviceFactory");
-        if(!pfnCreateCanvasGfxDeviceFactory)
-        {
-            Gem::ThrowGemError(Gem::Result::PluginProcNodFound);
-        }
-
-        Gem::TGemPtr<XGfxDeviceFactory> pGfxDeviceFactory;
-        pfnCreateCanvasGfxDeviceFactory(&pGfxDeviceFactory);
-
-        m_pGfxDeviceFactory.Attach(pGfxDeviceFactory.Detach());
-        m_pGfxPlugin.swap(pPlugin);
+        Gem::TGemPtr<CCanvasPluginLoader> pPluginLoader;
+       
+        Gem::ThrowGemError(Gem::TGenericImpl<CCanvasPluginLoader>::Create(&pPluginLoader, path));
+        *ppPluginLoader = pPluginLoader.Detach();
     }
     catch (const Gem::GemError &e)
     {
-        Sentinel.SetResultCode(e.Result());
         return e.Result();
     }
 
     return Gem::Result::Success;
 }
 
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGfxDevice(XGfxDevice **ppGfxDevice)
-{
-    CFunctionSentinel Sentinel("XCanvas::CreateGfxDevice");
-
-    try
-    {
-        if(!m_pGfxDeviceFactory)
-            Gem::ThrowGemError(Gem::Result::NotFound);
-
-        Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
-        Gem::ThrowGemError(m_pGfxDeviceFactory->CreateDevice(&pDevice));
-
-        // Try to register the graphics device for lifecycle tracking if it supports XCanvasElement
-        Gem::TGemPtr<Canvas::XCanvasElement> pElement;
-        if (SUCCEEDED(pDevice->QueryInterface(&pElement)))
-        {
-            Gem::ThrowGemError(pElement->Register(this));
-        }
-
-        *ppGfxDevice = pDevice.Detach();
-    }
-    catch (const Gem::GemError &e)
-    {
-        Sentinel.SetResultCode(e.Result());
-        return e.Result();
-    }
-
-    return Gem::Result::Success;
-}
-
-}
+} // namespace Canvas

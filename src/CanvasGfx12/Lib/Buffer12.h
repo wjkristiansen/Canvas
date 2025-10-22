@@ -5,11 +5,11 @@
 #pragma once
 
 #include "D3D12ResourceUtils.h"
-#include "GfxElement.h"
+#include "CanvasGfx12.h"
 
 //------------------------------------------------------------------------------------------------
 class CBuffer12 :
-    public Canvas::TGfxElement<Canvas::XGfxBuffer>,
+    public TGfxElement<Canvas::XGfxBuffer>,
     public CResource
 {
 public:
@@ -19,8 +19,12 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CBuffer12(ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState)
-        : CResource(pResource, InitState) {}
+    CBuffer12(ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState, PCSTR name = nullptr)
+        : CResource(pResource, InitState) 
+    {
+        if (name != nullptr)
+            SetName(name);
+    }
 
     Gem::Result Initialize() { return Gem::Result::Success; }    
     void Uninitialize() {}

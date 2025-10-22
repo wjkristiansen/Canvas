@@ -8,15 +8,15 @@
 #include "CanvasGfx12.h"
 
 #if defined(_WIN32)
-  #if defined(CANVASGFX12_EXPORTS)
-    #define CANVASGFX12_API __declspec(dllexport)
-  #else
-    #define CANVASGFX12_API __declspec(dllimport)
-  #endif
+    #if defined(CANVASGFX12_EXPORTS)
+        #define CANVASGFX12_API __declspec(dllexport)
+    #else
+        #define CANVASGFX12_API __declspec(dllimport)
+    #endif
 #elif defined(__GNUC__) || defined(__clang__)
-  #define CANVASGFX12_API __attribute__((visibility("default")))
+    #define CANVASGFX12_API __attribute__((visibility("default")))
 #else
-  #define CANVASGFX12_API
+    #define CANVASGFX12_API
 #endif
 
 //------------------------------------------------------------------------------------------------
@@ -81,56 +81,50 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
     }
 }
 
-CGfxDeviceFactory::CGfxDeviceFactory()
+CCanvasPlugin::CCanvasPlugin()
 {
 #if defined(_DEBUG)
     CComPtr<ID3D12Debug3> pDebug;
     ThrowFailedHResult(D3D12GetDebugInterface(IID_PPV_ARGS(&pDebug)));
     pDebug->EnableDebugLayer();
 #endif
-
 }
 
-GEMMETHODIMP CGfxDeviceFactory::CreateDevice(Canvas::XGfxDevice **ppDevice)
+GEMMETHODIMP CCanvasPlugin::CreateCanvasElement(Canvas::XCanvas *pCanvas, uint64_t typeId, const char *name, Gem::InterfaceId iid, void **ppElement)
 {
-    Canvas::CFunctionSentinel Sentinel("CGfxDeviceFactory::CreateDevice");
-
-    *ppDevice = nullptr;
+    *ppElement = nullptr;
 
     try
     {
-        Gem::TGemPtr<CDevice12> pGraphicsDevice;
-        Gem::ThrowGemError(Gem::TGenericImpl<CDevice12>::Create(&pGraphicsDevice)); // throw(Gem::GemError)
-        ThrowGemError(pGraphicsDevice->Initialize());
-        return pGraphicsDevice->QueryInterface(ppDevice);
+        switch(typeId)
+        {
+        case Canvas::TypeId_GfxDevice:
+            {
+                Gem::TGemPtr<CDevice12> pDevice;
+                Gem::ThrowGemError(TGfxElement<CDevice12>::CreateAndRegister(&pDevice, pCanvas, name)); // throw(Gem::GemError)
+                return pDevice->QueryInterface(iid, ppElement);
+            }
+        }
+    }
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
     }
     catch (const Gem::GemError &e)
     {
-        Sentinel.SetResultCode(e.Result());
         return e.Result();
     }
+
+    return Gem::Result::Success;
 }
 
-#if defined(_WIN32)
-  #if defined(CANVASGFX12_EXPORTS)
-    #define CANVASGFX12_API __declspec(dllexport)
-  #else
-    #define CANVASGFX12_API __declspec(dllimport)
-  #endif
-#elif defined(__GNUC__) || defined(__clang__)
-  #define CANVASGFX12_API __attribute__((visibility("default")))
-#else
-  #define CANVASGFX12_API
-#endif
-
-//------------------------------------------------------------------------------------------------
-extern "C" CANVASGFX12_API Gem::Result CreateCanvasGfxDeviceFactory(Canvas::XGfxDeviceFactory **ppFactory)
+extern "C" CANVASGFX12_API Gem::Result CreateCanvasPlugin(Canvas::XCanvasPlugin **ppPlugin)
 {
     try
     {
-        Gem::TGemPtr<CGfxDeviceFactory> pFactory;
-        Gem::ThrowGemError(Gem::TGenericImpl<CGfxDeviceFactory>::Create(&pFactory));
-        *ppFactory = pFactory.Detach();
+        Gem::TGemPtr<CCanvasPlugin> pPlugin = nullptr;
+        Gem::ThrowGemError(Gem::TGenericImpl<CCanvasPlugin>::Create(&pPlugin)); // throw(Gem::GemError)
+        *ppPlugin = pPlugin.Detach();
     }
     catch(const Gem::GemError &e)
     {

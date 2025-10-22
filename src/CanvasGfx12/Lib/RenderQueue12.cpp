@@ -46,9 +46,12 @@ ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CRenderQueue12 *
 }
 
 //------------------------------------------------------------------------------------------------
-CRenderQueue12::CRenderQueue12(CDevice12 *pDevice) :
+CRenderQueue12::CRenderQueue12(CDevice12 *pDevice, PCSTR name) :
     m_pDevice(pDevice)
 {
+    if (name != nullptr)
+        SetName(name);
+        
     CComPtr<ID3D12CommandQueue> pCQ;
     D3D12_COMMAND_QUEUE_DESC CQDesc;
     CQDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
@@ -141,7 +144,7 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
         // Create and register the swapchain
         DXGI_FORMAT dxgiFormat = CanvasFormatToDXGIFormat(Format);
         Gem::TGemPtr<CSwapChain12> pSwapChain;
-        Gem::ThrowGemError(Canvas::TGfxElement<CSwapChain12>::CreateAndRegister<CSwapChain12>(&pSwapChain, GetCanvas(), hWnd, Windowed, this, dxgiFormat, NumBuffers));
+        Gem::ThrowGemError(TGfxElement<CSwapChain12>::CreateAndRegister<CSwapChain12>(&pSwapChain, GetCanvas(), hWnd, Windowed, this, dxgiFormat, NumBuffers, nullptr));
         
         return pSwapChain->QueryInterface(ppSwapChain);
     }

@@ -15,10 +15,15 @@ namespace Canvas
 extern std::unique_ptr<QLog::Logger> g_pLogger; 
 
 //------------------------------------------------------------------------------------------------
-class CCanvasPlugin
+class CCanvasPluginLoader : public Gem::TGeneric<XCanvasPluginLoader>
 {
 public:
-    CCanvasPlugin(const char* path)
+    BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XCanvasPluginLoader)
+    END_GEM_INTERFACE_MAP()
+
+public:
+    CCanvasPluginLoader(const char* path)
         : m_path(path)
     {
 #if defined(_WIN32)
@@ -36,7 +41,7 @@ public:
 #endif
     }
 
-    ~CCanvasPlugin()
+    ~CCanvasPluginLoader()
     {
 #if defined(_WIN32)
         if (m_handle) FreeLibrary(m_handle);
@@ -54,6 +59,45 @@ public:
         auto* proc = dlsym(m_handle, name);
 #endif
         return reinterpret_cast<T>(proc);
+    }
+
+public:
+    GEMMETHOD(LoadPlugin)(XCanvasPlugin **ppPlugin) final
+    {
+        CFunctionSentinel Sentinel("XCanvasPluginLoader::LoadPlugin");
+
+        if (!ppPlugin)
+        {
+            return Gem::Result::BadPointer;
+        }
+
+        auto pfnCreatePlugin = GetProc<FnCreateCanvasPlugin>("CreateCanvasPlugin");
+        if (!pfnCreatePlugin)
+        {
+            return Gem::Result::PluginProcNotFound;
+        }
+
+        try
+        {
+            Gem::TGemPtr<XCanvasPlugin> pPlugin;
+            Gem::ThrowGemError(pfnCreatePlugin(&pPlugin));
+            *ppPlugin = pPlugin.Detach();
+        }
+        catch (const Gem::GemError& e)
+        {
+            return e.Result();
+        }
+
+        return Gem::Result::Success;
+    }
+
+    Gem::Result Initialize()
+    {
+        return Gem::Result::Success;
+    }
+
+    void Uninitialize()
+    {
     }
 
 protected:
@@ -89,12 +133,10 @@ public:
 
 public:
     // XCanvas methods
-    GEMMETHOD(InitGfx)(PCSTR path) final;
-    GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppGfxDevice) final;
-
     GEMMETHOD(RegisterElement)(XCanvasElement *) final;
     GEMMETHOD(UnregisterElement)(XCanvasElement *) final;
 
+    GEMMETHOD(CreatePluginLoader)(PCSTR path, XCanvasPluginLoader **ppPluginLoader) final;
     GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) final;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
@@ -135,13 +177,7 @@ public:
     static CCanvas *CastFrom(XCanvas *pXCanvas) { return static_cast<CCanvas *>(pXCanvas); }
 
     Gem::Result Initialize();
-    void Uninitialize();    
-
-public:
-    // IMPORTANT: m_pGfxPlugin must be declared FIRST so it destructs LAST
-    // This ensures the DLL stays loaded while the graphics objects are being destroyed
-    std::unique_ptr<CCanvasPlugin> m_pGfxPlugin;
-    Gem::TGemPtr<XGfxDeviceFactory> m_pGfxDeviceFactory;
+    void Uninitialize();
 };
 
 }

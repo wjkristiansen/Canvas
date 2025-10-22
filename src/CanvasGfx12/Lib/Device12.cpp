@@ -9,8 +9,10 @@
 #include "Buffer12.h"
 
 //------------------------------------------------------------------------------------------------
-CDevice12::CDevice12()
+CDevice12::CDevice12(PCSTR name)
 {
+    if (name != nullptr)
+        SetName(name);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -46,7 +48,7 @@ GEMMETHODIMP CDevice12::CreateRenderQueue(Canvas::XGfxRenderQueue **ppRenderQueu
     {
         // Create and register the CRenderQueue12
         Gem::TGemPtr<CRenderQueue12> pRenderQueue;
-        Gem::ThrowGemError(Canvas::TGfxElement<CRenderQueue12>::CreateAndRegister(&pRenderQueue, GetCanvas(), this));
+        Gem::ThrowGemError(TGfxElement<CRenderQueue12>::CreateAndRegister(&pRenderQueue, GetCanvas(), this, nullptr));
         
         return pRenderQueue->QueryInterface(ppRenderQueue);
     }
@@ -160,7 +162,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::X
         
         // Create and register the CSurface12 wrapper
         Gem::TGemPtr<CSurface12> pSurface;
-        Gem::ThrowGemError(Canvas::TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, initialState));
+        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, initialState, nullptr));
         
         return pSurface->QueryInterface(ppSurface);
     }
@@ -223,7 +225,7 @@ GEMMETHODIMP CDevice12::CreateBuffer(UINT sizeInBytes, Canvas::XGfxBuffer **ppBu
         
         // Create and register the CBuffer12 wrapper
         Gem::TGemPtr<CBuffer12> pBuffer;
-        Gem::ThrowGemError(Canvas::TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(&pBuffer, GetCanvas(), pResource, D3D12_RESOURCE_STATE_COMMON));
+        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(&pBuffer, GetCanvas(), pResource, D3D12_RESOURCE_STATE_COMMON, nullptr));
         
         return pBuffer->QueryInterface(ppBuffer);
     }

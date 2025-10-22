@@ -4,9 +4,12 @@
 
 #include "pch.h"
 
-CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers) :
+CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers, PCSTR name) :
     m_pRenderQueue(pRenderQueue)
 {
+    if (name != nullptr)
+        SetName(name);
+        
     // Create the DXGI factory
     CComPtr<IDXGIFactory7> pFactory;
     ThrowFailedHResult(CreateDXGIFactory2(0, IID_PPV_ARGS(&pFactory)));

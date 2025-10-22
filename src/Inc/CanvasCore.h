@@ -66,8 +66,8 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XCanvas, 0x0F215E5907B4651D);
 
-    GEMMETHOD(InitGfx)(PCSTR path) = 0;
-    GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppGfxDevice) = 0;
+    GEMMETHOD(CreatePluginLoader)(PCSTR path, struct XCanvasPluginLoader **ppPluginLoader) = 0;
+
     GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
@@ -281,6 +281,29 @@ XScene : public XCanvasElement
 };
 
 //------------------------------------------------------------------------------------------------
+enum TypeId : uint64_t
+{
+    TypeId_GfxDevice = 0xB3E4D6F1C4A7E5D2,
+    TypeId_GfxBuffer = 0xD4F1A2B3C4D5E6F7,
+    TypeId_GfxSurface = 0xE5F6A7B8C9D0E1F2,
+};
+
+//------------------------------------------------------------------------------------------------
+struct XCanvasPlugin : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(XCanvasPlugin, 0xB3E4D6F1C4A7E5D2);
+
+    GEMMETHOD(CreateCanvasElement)(XCanvas *pCanvas, uint64_t typeId, const char *name, Gem::InterfaceId iid, void **ppElement) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct XCanvasPluginLoader : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(XCanvasPluginLoader, 0xA1B2C3D4E5F60718);
+    GEMMETHOD(LoadPlugin)(XCanvasPlugin **ppPlugin) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
 // Helper classes
 class CFunctionSentinel
 {
@@ -309,4 +332,7 @@ public:
 };
 
 }
+
+using FnCreateCanvasPlugin = Gem::Result (*)(Canvas::XCanvasPlugin**);
+
 
