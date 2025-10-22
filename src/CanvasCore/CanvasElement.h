@@ -37,7 +37,7 @@ public:
 
     // Static helper for creating and auto-registering Canvas elements
     template<typename _Impl, typename... _Args>
-    static Gem::Result CreateAndRegister(_Impl **ppElement, Canvas::XCanvas* pCanvas, _Args&&... args)
+    static Gem::Result CreateAndRegister(_Impl **ppElement, Canvas::XCanvas* pCanvas, PCSTR name, _Args&&... args)
     {
         if (!ppElement || !pCanvas) 
             return Gem::Result::BadPointer;
@@ -51,6 +51,12 @@ public:
             
             // Create the object using TGenericImpl pattern
             Gem::TGemPtr<_Impl> pElement = new Gem::TGenericImpl<_Impl>(pCanvasImpl, std::forward<_Args>(args)...);
+            
+            // Set the name if provided
+            if (name != nullptr)
+            {
+                pElement->SetName(name);
+            }
             
             // Auto-register with Canvas
             Gem::ThrowGemError(pCanvas->RegisterElement(pElement.Get()));

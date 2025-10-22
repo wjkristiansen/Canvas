@@ -85,10 +85,11 @@ Gem::Result CCanvas::RegisterElementInternal(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
+    auto pLogger = GetCanvasLogger();
+
     // Check if element is already registered
     if (m_ActiveCanvasElements.find(pElement) != m_ActiveCanvasElements.end())
     {
-        auto pLogger = GetCanvasLogger();
         if (pLogger)
         {
             if (pElement->GetName())
@@ -105,6 +106,19 @@ Gem::Result CCanvas::RegisterElementInternal(XCanvasElement *pElement)
     }
 
     m_ActiveCanvasElements.emplace(pElement);
+
+    if(pLogger)
+    {
+        if (pElement->GetName())
+        {
+            pLogger->Info("Registered element: %s (Name: %s)", 
+                           pElement->GetTypeName(), pElement->GetName());
+        }
+        else
+        {
+            pLogger->Info("Registered element type: %s", pElement->GetTypeName());
+        }
+    }
     
     return Gem::Result::Success;
 }
@@ -117,10 +131,11 @@ Gem::Result CCanvas::UnregisterElementInternal(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
+    auto pLogger = GetCanvasLogger();
+
     auto it = m_ActiveCanvasElements.find(pElement);
     if (it == m_ActiveCanvasElements.end())
     {
-        auto pLogger = GetCanvasLogger();
         if (pLogger)
         {
             if (pElement->GetName())
@@ -137,44 +152,57 @@ Gem::Result CCanvas::UnregisterElementInternal(XCanvasElement *pElement)
         return Gem::Result::NotFound;
     }
 
+    if(pLogger)
+    {
+        if (pElement->GetName())
+        {
+            pLogger->Info("Unregistering element: %s (Name: %s)", 
+                           pElement->GetTypeName(), pElement->GetName());
+        }
+        else
+        {
+            pLogger->Info("Unregistering element type: %s", pElement->GetTypeName());
+        }
+    }
+
     m_ActiveCanvasElements.erase(it);
     
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
+GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene, PCSTR name)
 {
     CFunctionSentinel Sentinel("XCanvas::CreateScene");
 
-    return CreateElement<CScene>(ppScene);
+    return CreateElement<CScene>(ppScene, name);
 
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode)
+GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode, PCSTR name)
 {
     CFunctionSentinel Sentinel("XCanvas::CreateSceneGraphNode");
 
-    return CreateElement<CSceneGraphNode>(ppNode);
+    return CreateElement<CSceneGraphNode>(ppNode, name);
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera)
+GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera, PCSTR name)
 {
     CFunctionSentinel Sentinel("XCanvas::CreateCamera");
 
-    return CreateElement<CCamera>(ppCamera);
+    return CreateElement<CCamera>(ppCamera, name);
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight)
+GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight, PCSTR name)
 {
     CFunctionSentinel Sentinel("XCanvas::CreateLight");
 
     // Create using the standard CreateElement pattern to ensure proper registration
-    Gem::Result result = CreateElement<CLight>(ppLight, type);
+    Gem::Result result = CreateElement<CLight>(ppLight, name, type);
     
     return result;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Gem.hpp"
+#include <optional>
 
 namespace Canvas
 {
@@ -10,7 +11,7 @@ template<class _Base>
 class TNamedElement :
     public Gem::TGeneric<_Base>
 {
-    std::string m_Name;
+    std::optional<std::string> m_Name;
 
 public:
     using BaseType = _Base;
@@ -25,7 +26,7 @@ public:
     }
 
     // XCanvasElement methods
-    GEMMETHOD_(PCSTR, GetName)() { return m_Name.c_str(); }
+    GEMMETHOD_(PCSTR, GetName)() { return m_Name.has_value() ? m_Name->c_str() : nullptr; }
     GEMMETHOD_(void, SetName)(PCSTR szName) { m_Name = szName; }
 };
 

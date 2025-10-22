@@ -68,10 +68,10 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(InitGfx)(PCSTR path) = 0;
     GEMMETHOD(CreateGfxDevice)(XGfxDevice **ppGfxDevice) = 0;
-    GEMMETHOD(CreateScene)(XScene **ppScene) = 0;
-    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) = 0;
-    GEMMETHOD(CreateCamera)(XCamera **ppCamera) = 0;
-    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight) = 0;
+    GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)

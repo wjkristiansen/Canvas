@@ -95,10 +95,10 @@ public:
     GEMMETHOD(RegisterElement)(XCanvasElement *) final;
     GEMMETHOD(UnregisterElement)(XCanvasElement *) final;
 
-    GEMMETHOD(CreateScene)(XScene **ppScene) final;
-    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode) final;
-    GEMMETHOD(CreateCamera)(XCamera **ppCamera) final;
-    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight) final;
+    GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) final;
+    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) final;
+    GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
+    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;
 
 public:
     // CCanvas methods
@@ -108,7 +108,7 @@ public:
     Gem::Result UnregisterElementInternal(XCanvasElement *pElement);
     
     template<class _Type, typename... Args>
-    Gem::Result CreateElement(typename _Type::BaseType **ppElement, Args... args)
+    Gem::Result CreateElement(typename _Type::BaseType **ppElement, PCSTR name, Args... args)
     {
         CFunctionSentinel Sentinel("XCanvas::CreateElement");
 
@@ -120,7 +120,7 @@ public:
         try
         {
             Gem::TGemPtr<_Type> pObj;
-            Gem::ThrowGemError(TCanvasElement<_Type>::CreateAndRegister(&pObj, this, args...));
+            Gem::ThrowGemError(TCanvasElement<_Type>::CreateAndRegister(&pObj, this, name, args...));
             
             *ppElement = pObj.Detach();
         }
