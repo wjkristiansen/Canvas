@@ -15,16 +15,19 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-// Global logger instance
-std::unique_ptr<QLog::Logger> g_pLogger;
+// Global logger pointer (not owned - provided by application)
+QLog::Logger* g_pLogger = nullptr;
 
 //------------------------------------------------------------------------------------------------
-CANVAS_API Gem::Result InitCanvasLogger(QLog::Sink &sink, QLog::Level level)
+CANVAS_API Gem::Result RegisterCanvasLogger(QLog::Logger* pLogger)
 {
+    if (!pLogger)
+        return Gem::Result::BadPointer;
+    
     if (g_pLogger)
         return Gem::Result::Fail;
 
-    g_pLogger = std::make_unique<QLog::Logger>(sink, level);
+    g_pLogger = pLogger;
 
     return Gem::Result::Success;
 }
@@ -32,7 +35,7 @@ CANVAS_API Gem::Result InitCanvasLogger(QLog::Sink &sink, QLog::Level level)
 //------------------------------------------------------------------------------------------------
 CANVAS_API QLog::Logger *GetCanvasLogger()
 {
-    return g_pLogger.get();
+    return g_pLogger;
 }
 
 //------------------------------------------------------------------------------------------------

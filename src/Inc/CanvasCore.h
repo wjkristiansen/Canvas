@@ -214,7 +214,7 @@ XSceneGraphElement : public XCanvasElement
 //------------------------------------------------------------------------------------------------
 // Exports
 extern Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas);
-extern CANVAS_API Gem::Result InitCanvasLogger(QLog::Sink &, QLog::Level);
+extern CANVAS_API Gem::Result RegisterCanvasLogger(QLog::Logger* pLogger);
 extern CANVAS_API QLog::Logger *GetCanvasLogger();
 
 //------------------------------------------------------------------------------------------------

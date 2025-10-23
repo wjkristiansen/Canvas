@@ -12,7 +12,7 @@
 namespace Canvas
 {
 
-extern std::unique_ptr<QLog::Logger> g_pLogger; 
+extern QLog::Logger* g_pLogger; 
 
 //------------------------------------------------------------------------------------------------
 class CCanvasPluginModule
