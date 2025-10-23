@@ -16,7 +16,7 @@ class TCanvasElement :
     public TNamedElement<_Base>
 {
 protected:
-    CCanvas *m_pCanvas = nullptr;
+    XCanvas *m_pCanvas = nullptr;
 
 public:
     using BaseType = _Base;
@@ -24,7 +24,7 @@ public:
 public:
     TCanvasElement() = default;
 
-    TCanvasElement(CCanvas *pCanvas) :
+    TCanvasElement(XCanvas *pCanvas) :
         TNamedElement<_Base>(),
         m_pCanvas(pCanvas)
     {
@@ -87,14 +87,14 @@ public:
         
         // Set the canvas and register
         m_pCanvas = CCanvas::CastFrom(pCanvas);
-        return m_pCanvas->RegisterElementInternal(this);
+        return m_pCanvas->RegisterElement(this);
     }
 
     GEMMETHOD(Unregister)()
     {
         if(m_pCanvas)
         {
-            auto result = m_pCanvas->UnregisterElementInternal(this);
+            auto result = m_pCanvas->UnregisterElement(this);
             m_pCanvas = nullptr;
             return result;
         }

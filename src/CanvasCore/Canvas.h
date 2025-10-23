@@ -130,11 +130,6 @@ public:
 
 public:
     // CCanvas methods
-    
-    // Internal methods used by TCanvasElement - do not call directly from external code
-    Gem::Result RegisterElementInternal(XCanvasElement *pElement);
-    Gem::Result UnregisterElementInternal(XCanvasElement *pElement);
-    
     template<class _Type, typename... Args>
     Gem::Result CreateElement(typename _Type::BaseType **ppElement, PCSTR name, Args... args)
     {

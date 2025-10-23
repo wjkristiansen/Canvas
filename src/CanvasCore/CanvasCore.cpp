@@ -71,18 +71,6 @@ CCanvas::~CCanvas()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 {
-    return RegisterElementInternal(pElement);
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
-{
-    return UnregisterElementInternal(pElement);
-}
-
-//------------------------------------------------------------------------------------------------
-Gem::Result CCanvas::RegisterElementInternal(XCanvasElement *pElement)
-{
     if (!pElement)
         return Gem::Result::BadPointer;
 
@@ -127,7 +115,7 @@ Gem::Result CCanvas::RegisterElementInternal(XCanvasElement *pElement)
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CCanvas::UnregisterElementInternal(XCanvasElement *pElement)
+GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 {
     if (!pElement)
         return Gem::Result::BadPointer;

@@ -24,7 +24,7 @@ public:
         GEM_INTERFACE_ENTRY(XScene)
     END_GEM_INTERFACE_MAP()
 
-    CScene(CCanvas *pCanvas);
+    CScene(XCanvas *pCanvas);
 
     Gem::Result Initialize();
     void Uninitialize() {}

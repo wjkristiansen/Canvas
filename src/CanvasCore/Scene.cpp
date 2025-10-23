@@ -10,7 +10,7 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CScene::CScene(CCanvas *pCanvas) :
+CScene::CScene(XCanvas *pCanvas) :
     TCanvasElement(pCanvas)
 {
 }

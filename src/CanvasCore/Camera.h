@@ -39,7 +39,7 @@ public:
     END_GEM_INTERFACE_MAP()
 
     // Ctor
-    CCamera(CCanvas *pCanvas) :
+    CCamera(XCanvas *pCanvas) :
         TSceneGraphElement<XCamera>(pCanvas)
     {
     }

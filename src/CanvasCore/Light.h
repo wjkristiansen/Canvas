@@ -43,7 +43,7 @@ public:
         GEM_INTERFACE_ENTRY(XLight)
     END_GEM_INTERFACE_MAP()
 
-    CLight(CCanvas *pCanvas, LightType type = LightType::Point) :
+    CLight(XCanvas *pCanvas, LightType type = LightType::Point) :
         TSceneGraphElement(pCanvas),
         m_Type(type),
         m_Color(1.0f, 1.0f, 1.0f, 1.0f),

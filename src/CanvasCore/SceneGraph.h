@@ -23,7 +23,7 @@ class TSceneGraphElement :
     class CSceneGraphNode *m_pNode = nullptr;
 
 public:
-    TSceneGraphElement(CCanvas *pCanvas) :
+    TSceneGraphElement(XCanvas *pCanvas) :
         TCanvasElement<_Base>(pCanvas) {}
 
 public:
@@ -86,7 +86,7 @@ public:
         GEM_INTERFACE_ENTRY(XSceneGraphNode)
     END_GEM_INTERFACE_MAP()
 
-    CSceneGraphNode(CCanvas *pCanvas);
+    CSceneGraphNode(XCanvas *pCanvas);
     
     Gem::Result Initialize();
     void Uninitialize();    

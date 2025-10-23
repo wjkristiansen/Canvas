@@ -11,7 +11,7 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas) :
+CSceneGraphNode::CSceneGraphNode(XCanvas *pCanvas) :
     TCanvasElement(pCanvas)
 {
     // Initialize local transform to identity
