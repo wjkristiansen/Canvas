@@ -177,7 +177,7 @@ public:
     static CCanvas *CastFrom(XCanvas *pXCanvas) { return static_cast<CCanvas *>(pXCanvas); }
 
     Gem::Result Initialize();
-    void Uninitialize();
+    virtual void Uninitialize() override;
 };
 
 }
