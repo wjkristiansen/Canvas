@@ -15,15 +15,10 @@ namespace Canvas
 extern std::unique_ptr<QLog::Logger> g_pLogger; 
 
 //------------------------------------------------------------------------------------------------
-class CCanvasPluginLoader : public Gem::TGeneric<XCanvasPluginLoader>
+class CCanvasPluginModule
 {
 public:
-    BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XCanvasPluginLoader)
-    END_GEM_INTERFACE_MAP()
-
-public:
-    CCanvasPluginLoader(const char* path)
+    CCanvasPluginModule(const char* path)
         : m_path(path)
     {
 #if defined(_WIN32)
@@ -41,7 +36,7 @@ public:
 #endif
     }
 
-    ~CCanvasPluginLoader()
+    ~CCanvasPluginModule()
     {
 #if defined(_WIN32)
         if (m_handle) FreeLibrary(m_handle);
@@ -62,10 +57,8 @@ public:
     }
 
 public:
-    GEMMETHOD(LoadPlugin)(XCanvasPlugin **ppPlugin) final
+    Gem::Result LoadPlugin(XCanvasPlugin **ppPlugin)
     {
-        CFunctionSentinel Sentinel("XCanvasPluginLoader::LoadPlugin");
-
         if (!ppPlugin)
         {
             return Gem::Result::BadPointer;
@@ -91,15 +84,6 @@ public:
         return Gem::Result::Success;
     }
 
-    Gem::Result Initialize()
-    {
-        return Gem::Result::Success;
-    }
-
-    void Uninitialize()
-    {
-    }
-
 protected:
 #if defined(_WIN32)
     HMODULE m_handle = nullptr;
@@ -121,6 +105,8 @@ class CCanvas :
     // Database of active XCanvasElement objects
     std::unordered_set<XCanvasElement *> m_ActiveCanvasElements;
 
+    std::deque<CCanvasPluginModule> m_PluginModules;
+
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XCanvas)
@@ -136,7 +122,7 @@ public:
     GEMMETHOD(RegisterElement)(XCanvasElement *) final;
     GEMMETHOD(UnregisterElement)(XCanvasElement *) final;
 
-    GEMMETHOD(CreatePluginLoader)(PCSTR path, XCanvasPluginLoader **ppPluginLoader) final;
+    GEMMETHOD(LoadPlugin)(PCSTR path, XCanvasPlugin **ppPlugin) final;
     GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) final;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;

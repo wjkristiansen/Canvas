@@ -238,16 +238,18 @@ Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas)
     }
 }
 
-GEMMETHODIMP CCanvas::CreatePluginLoader(PCSTR path, XCanvasPluginLoader **ppPluginLoader)
+GEMMETHODIMP CCanvas::LoadPlugin(PCSTR path, XCanvasPlugin **ppPlugin)
 {
-    CFunctionSentinel Sentinel("XCanvas::LoadPlCreatePluginLoaderugin");
+    CFunctionSentinel Sentinel("XCanvas::LoadPlugin");
 
     try
     {
-        Gem::TGemPtr<CCanvasPluginLoader> pPluginLoader;
-       
-        Gem::ThrowGemError(Gem::TGenericImpl<CCanvasPluginLoader>::Create(&pPluginLoader, path));
-        *ppPluginLoader = pPluginLoader.Detach();
+        auto &module = m_PluginModules.emplace_back(path);
+        Gem::ThrowGemError(module.LoadPlugin(ppPlugin));
+    }
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
     }
     catch (const Gem::GemError &e)
     {

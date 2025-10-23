@@ -66,7 +66,7 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XCanvas, 0x0F215E5907B4651D);
 
-    GEMMETHOD(CreatePluginLoader)(PCSTR path, struct XCanvasPluginLoader **ppPluginLoader) = 0;
+    GEMMETHOD(LoadPlugin)(PCSTR path, struct XCanvasPlugin **ppPlugin) = 0;
 
     GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
@@ -294,13 +294,6 @@ struct XCanvasPlugin : public Gem::XGeneric
     GEM_INTERFACE_DECLARE(XCanvasPlugin, 0xB3E4D6F1C4A7E5D2);
 
     GEMMETHOD(CreateCanvasElement)(XCanvas *pCanvas, uint64_t typeId, const char *name, Gem::InterfaceId iid, void **ppElement) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct XCanvasPluginLoader : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(XCanvasPluginLoader, 0xA1B2C3D4E5F60718);
-    GEMMETHOD(LoadPlugin)(XCanvasPlugin **ppPlugin) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
