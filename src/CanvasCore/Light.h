@@ -63,6 +63,8 @@ public:
     // XSceneGraphElement methods
     GEMMETHOD(Update)(float) final { return Gem::Result::Success; }
 
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode */*pNode*/) final { return Gem::Result::Success; }
+
     // XLight methods - Immutable attributes
     GEMMETHOD_(LightType, GetType)() const final { return m_Type; }
 

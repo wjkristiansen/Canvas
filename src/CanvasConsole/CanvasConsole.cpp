@@ -22,7 +22,7 @@ void DumpNode(Canvas::XSceneGraphNode *pNode, const std::string &indent)
     }
 
     // Dump children
-    for (Canvas::XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pChild->GetSibling())
+    for (Canvas::XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
     {
         DumpNode(pChild, indent + "  ");
     }

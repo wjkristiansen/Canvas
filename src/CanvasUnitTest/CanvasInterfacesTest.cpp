@@ -292,7 +292,7 @@ namespace CanvasUnitTest
             // Create camera and attach to cameraNode
             Gem::TGemPtr<XCamera> pCamera;
             Assert::IsTrue(Succeeded(pCanvas->CreateCamera(&pCamera)));
-            Assert::IsTrue(Succeeded(pCamera->AttachTo(pCameraNode)));
+            Assert::IsTrue(Succeeded(pCameraNode->BindElement(pCamera)));
 
             // Set initial camera parameters
             const float fov = float(3.14159265358979323846 / 4.0); // 45 degrees
@@ -422,7 +422,7 @@ namespace CanvasUnitTest
             // Create camera and attach
             Gem::TGemPtr<XCamera> pCamera;
             Assert::IsTrue(Succeeded(pCanvas->CreateCamera(&pCamera)));
-            Assert::IsTrue(Succeeded(pCamera->AttachTo(pCameraNode)));
+            Assert::IsTrue(Succeeded(pCameraNode->BindElement(pCamera)));
 
             // Set different transforms for A and B
             const float ninety = float(3.14159265358979323846 / 2.0);
@@ -500,7 +500,7 @@ namespace CanvasUnitTest
             // Create and attach camera
             Gem::TGemPtr<XCamera> pCamera;
             Assert::IsTrue(Succeeded(pCanvas->CreateCamera(&pCamera)));
-            Assert::IsTrue(Succeeded(pCamera->AttachTo(pCameraNode)));
+            Assert::IsTrue(Succeeded(pCameraNode->BindElement(pCamera)));
 
             // Set camera parameters
             pCamera->SetFovAngle(float(3.14159265358979323846 / 4.0));
@@ -574,7 +574,7 @@ namespace CanvasUnitTest
             // Create light and attach to lightNode
             Gem::TGemPtr<XLight> pLight;
             Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Point, &pLight)));
-            Assert::IsTrue(Succeeded(pLight->AttachTo(pLightNode)));
+            Assert::IsTrue(Succeeded(pLightNode->BindElement(pLight)));
 
             // Verify light is attached to correct node
             Assert::IsTrue(pLight->GetAttachedNode() == pLightNode.Get());
@@ -641,7 +641,7 @@ namespace CanvasUnitTest
             // Create and attach light
             Gem::TGemPtr<XLight> pLight;
             Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Spot, &pLight)));
-            Assert::IsTrue(Succeeded(pLight->AttachTo(pLightNode)));
+            Assert::IsTrue(Succeeded(pLightNode->BindElement(pLight)));
 
             // Set different transforms for A and B
             const float ninety = float(3.14159265358979323846 / 2.0);
@@ -708,7 +708,7 @@ namespace CanvasUnitTest
             // Create and attach light
             Gem::TGemPtr<XLight> pLight;
             Assert::IsTrue(Succeeded(pCanvas->CreateLight(LightType::Directional, &pLight)));
-            Assert::IsTrue(Succeeded(pLight->AttachTo(pLightNode)));
+            Assert::IsTrue(Succeeded(pLightNode->BindElement(pLight)));
 
             // Set initial transforms
             const float ninety = float(3.14159265358979323846 / 2.0);

@@ -46,11 +46,8 @@ public:
         
         try
         {
-            // Cast XCanvas interface to CCanvas implementation
-            CCanvas* pCanvasImpl = CCanvas::CastFrom(pCanvas);
-            
             // Create the object using TGenericImpl pattern
-            Gem::TGemPtr<_Impl> pElement = new Gem::TGenericImpl<_Impl>(pCanvasImpl, std::forward<_Args>(args)...);
+            Gem::TGemPtr<_Impl> pElement = new Gem::TGenericImpl<_Impl>(pCanvas, std::forward<_Args>(args)...);
             
             // Set the name if provided
             if (name != nullptr)
@@ -86,7 +83,7 @@ public:
         Unregister();
         
         // Set the canvas and register
-        m_pCanvas = CCanvas::CastFrom(pCanvas);
+        m_pCanvas = pCanvas;
         return m_pCanvas->RegisterElement(this);
     }
 

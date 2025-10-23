@@ -37,8 +37,16 @@ Gem::Result CSceneGraphNode::Initialize()
 //------------------------------------------------------------------------------------------------
 void CSceneGraphNode::Uninitialize()
 {
+    // Clean up all child wrapper nodes
+    ChildNode* pChild = m_pFirstChild;
+    while (pChild)
+    {
+        ChildNode* pNext = pChild->m_pNext;
+        delete pChild;
+        pChild = pNext;
+    }
     m_pFirstChild = nullptr;
-    m_pSibling = nullptr;
+    m_ChildMap.clear();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -51,14 +59,9 @@ GEMMETHODIMP CSceneGraphNode::Update(float dtime)
             Gem::ThrowGemError(element->Update(dtime));
         }
 
-        if(m_pSibling)
+        for(ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->m_pNext)
         {
-            Gem::ThrowGemError(m_pSibling->Update(dtime));
-        }
-
-        if(m_pFirstChild)
-        {
-            Gem::ThrowGemError(m_pFirstChild->Update(dtime));
+            Gem::ThrowGemError(pChild->m_pNode->Update(dtime));
         }
     }
     catch(const Gem::GemError &e)
@@ -75,64 +78,197 @@ GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode* pChild)
     if (!pChild)
         return Gem::Result::InvalidArg;
 
-    CSceneGraphNode* pChildNode = CSceneGraphNode::CastFrom(pChild);
-    if (!pChildNode)
-        return Gem::Result::InvalidArg;
-
     // If child already has a parent, remove it from old parent's child list
-    if (pChildNode->m_pParent)
+    XSceneGraphNode* pCurrentParent = pChild->GetParent();
+    if (pCurrentParent)
     {
-        CSceneGraphNode* pOldParent = pChildNode->m_pParent;
-        
-        // Remove from old parent's child list
-        if (pOldParent->m_pFirstChild.Get() == pChildNode)
-        {
-            // Child is the first child, update parent's first child pointer
-            pOldParent->m_pFirstChild = pChildNode->m_pSibling;
-        }
-        else
-        {
-            // Search for the child in the sibling list
-            CSceneGraphNode* pPrev = pOldParent->m_pFirstChild.Get();
-            while (pPrev && pPrev->m_pSibling.Get() != pChildNode)
-            {
-                pPrev = pPrev->m_pSibling.Get();
-            }
-            
-            if (pPrev)
-            {
-                // Remove child from sibling list
-                pPrev->m_pSibling = pChildNode->m_pSibling;
-            }
-        }
-        
-        // Clear child's sibling pointer (will be reassigned below if needed)
-        pChildNode->m_pSibling = nullptr;
+        Gem::ThrowGemError(pCurrentParent->RemoveChild(pChild));
     }
 
-    // Link new parent
-    pChildNode->m_pParent = this;
-    
-    // Mark dirty global state on child (parent changed - but local matrix unaffected)
-    // This will also mark cameras and propagate to descendants
-    pChildNode->InvalidateTransforms(CSceneGraphNode::DirtyGlobalMatrix | 
-                                     CSceneGraphNode::DirtyGlobalRotation | 
-                                     CSceneGraphNode::DirtyGlobalTranslation);
+    // Create wrapper node for intrusive linking
+    ChildNode* pWrapper = new ChildNode();
+    pWrapper->m_pNode = pChild;
 
-    // Append to child list (singly-linked via m_pFirstChild/m_pSibling)
+    // For CSceneGraphNode children, update internal parent pointer
+    CSceneGraphNode* pChildNode = dynamic_cast<CSceneGraphNode*>(pChild);
+    if (pChildNode)
+    {
+        pChildNode->m_pParent = this;
+        
+        // Mark dirty global state on child (parent changed - but local matrix unaffected)
+        pChildNode->InvalidateTransforms(CSceneGraphNode::DirtyGlobalMatrix | 
+                                         CSceneGraphNode::DirtyGlobalRotation | 
+                                         CSceneGraphNode::DirtyGlobalTranslation);
+    }
+
+    // Append to child list
     if (!m_pFirstChild)
     {
-        m_pFirstChild = pChildNode;
+        m_pFirstChild = pWrapper;
     }
     else
     {
-        CSceneGraphNode* pLast = m_pFirstChild.Get();
-        while (pLast->m_pSibling)
+        ChildNode* pLast = m_pFirstChild;
+        while (pLast->m_pNext)
         {
-            pLast = pLast->m_pSibling.Get();
+            pLast = pLast->m_pNext;
         }
-        pLast->m_pSibling = pChildNode;
+        pLast->m_pNext = pWrapper;
+        pWrapper->m_pPrev = pLast;
     }
+
+    m_ChildMap[pChild] = pWrapper;
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CSceneGraphNode::RemoveChild(_In_ XSceneGraphNode* pChild)
+{
+    if (!pChild)
+        return Gem::Result::InvalidArg;
+
+    // Find wrapper in map
+    auto it = m_ChildMap.find(pChild);
+    if (it == m_ChildMap.end())
+    {
+        return Gem::Result::InvalidArg;  // Child not found
+    }
+
+    ChildNode* pWrapper = it->second;
+
+    // Unlink from doubly-linked list
+    if (pWrapper->m_pPrev)
+    {
+        pWrapper->m_pPrev->m_pNext = pWrapper->m_pNext;
+    }
+    else
+    {
+        m_pFirstChild = pWrapper->m_pNext;
+    }
+
+    if (pWrapper->m_pNext)
+    {
+        pWrapper->m_pNext->m_pPrev = pWrapper->m_pPrev;
+    }
+
+    // For CSceneGraphNode children, clear internal parent pointer
+    CSceneGraphNode* pChildNode = dynamic_cast<CSceneGraphNode*>(pChild);
+    if (pChildNode)
+    {
+        pChildNode->m_pParent = nullptr;
+    }
+
+    m_ChildMap.erase(it);
+    delete pWrapper;
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CSceneGraphNode::InsertChildBefore(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling)
+{
+    if (!pChild || !pSibling)
+        return Gem::Result::InvalidArg;
+
+    // If child already has a parent, remove it from old parent's child list
+    XSceneGraphNode* pCurrentParent = pChild->GetParent();
+    if (pCurrentParent)
+    {
+        Gem::ThrowGemError(pCurrentParent->RemoveChild(pChild));
+    }
+
+    // Find sibling wrapper
+    auto it = m_ChildMap.find(pSibling);
+    if (it == m_ChildMap.end())
+    {
+        return Gem::Result::InvalidArg;  // Sibling not found
+    }
+
+    ChildNode* pSiblingWrapper = it->second;
+
+    // Create wrapper node for the child
+    ChildNode* pWrapper = new ChildNode();
+    pWrapper->m_pNode = pChild;
+
+    // For CSceneGraphNode children, update internal parent pointer
+    CSceneGraphNode* pChildNode = dynamic_cast<CSceneGraphNode*>(pChild);
+    if (pChildNode)
+    {
+        pChildNode->m_pParent = this;
+        pChildNode->InvalidateTransforms(CSceneGraphNode::DirtyGlobalMatrix | 
+                                         CSceneGraphNode::DirtyGlobalRotation | 
+                                         CSceneGraphNode::DirtyGlobalTranslation);
+    }
+
+    // Insert before sibling in the doubly-linked list
+    pWrapper->m_pNext = pSiblingWrapper;
+    pWrapper->m_pPrev = pSiblingWrapper->m_pPrev;
+
+    if (pSiblingWrapper->m_pPrev)
+    {
+        pSiblingWrapper->m_pPrev->m_pNext = pWrapper;
+    }
+    else
+    {
+        m_pFirstChild = pWrapper;
+    }
+
+    pSiblingWrapper->m_pPrev = pWrapper;
+
+    m_ChildMap[pChild] = pWrapper;
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CSceneGraphNode::InsertChildAfter(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling)
+{
+    if (!pChild || !pSibling)
+        return Gem::Result::InvalidArg;
+
+    // If child already has a parent, remove it from old parent's child list
+    XSceneGraphNode* pCurrentParent = pChild->GetParent();
+    if (pCurrentParent)
+    {
+        Gem::ThrowGemError(pCurrentParent->RemoveChild(pChild));
+    }
+
+    // Find sibling wrapper
+    auto it = m_ChildMap.find(pSibling);
+    if (it == m_ChildMap.end())
+    {
+        return Gem::Result::InvalidArg;  // Sibling not found
+    }
+
+    ChildNode* pSiblingWrapper = it->second;
+
+    // Create wrapper node for the child
+    ChildNode* pWrapper = new ChildNode();
+    pWrapper->m_pNode = pChild;
+
+    // For CSceneGraphNode children, update internal parent pointer
+    CSceneGraphNode* pChildNode = dynamic_cast<CSceneGraphNode*>(pChild);
+    if (pChildNode)
+    {
+        pChildNode->m_pParent = this;
+        pChildNode->InvalidateTransforms(CSceneGraphNode::DirtyGlobalMatrix | 
+                                         CSceneGraphNode::DirtyGlobalRotation | 
+                                         CSceneGraphNode::DirtyGlobalTranslation);
+    }
+
+    // Insert after sibling in the doubly-linked list
+    pWrapper->m_pPrev = pSiblingWrapper;
+    pWrapper->m_pNext = pSiblingWrapper->m_pNext;
+
+    if (pSiblingWrapper->m_pNext)
+    {
+        pSiblingWrapper->m_pNext->m_pPrev = pWrapper;
+    }
+
+    pSiblingWrapper->m_pNext = pWrapper;
+
+    m_ChildMap[pChild] = pWrapper;
 
     return Gem::Result::Success;
 }
@@ -144,47 +280,94 @@ GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetParent()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetSibling()
+GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetNextChild(_In_ XSceneGraphNode* pCurrent)
 {
-    return this->m_pSibling.Get();
+    if (!pCurrent)
+        return nullptr;
+
+    // Find wrapper for current child
+    auto it = m_ChildMap.find(pCurrent);
+    if (it == m_ChildMap.end())
+        return nullptr;
+
+    ChildNode* pWrapper = it->second;
+    if (!pWrapper->m_pNext)
+        return nullptr;
+
+    return pWrapper->m_pNext->m_pNode.Get();
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetPrevChild(_In_ XSceneGraphNode* pCurrent)
+{
+    if (!pCurrent)
+        return nullptr;
+
+    // Find wrapper for current child
+    auto it = m_ChildMap.find(pCurrent);
+    if (it == m_ChildMap.end())
+        return nullptr;
+
+    ChildNode* pWrapper = it->second;
+    if (!pWrapper->m_pPrev)
+        return nullptr;
+
+    return pWrapper->m_pPrev->m_pNode.Get();
 }
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetFirstChild()
 {
-    return this->m_pFirstChild.Get();
+    if (!m_pFirstChild)
+        return nullptr;
+    return m_pFirstChild->m_pNode.Get();
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CSceneGraphNode::BindElement(XSceneGraphElement *pElement)
+{
+    if (pElement)
+    {
+        m_Elements.insert(pElement);
+        
+        // Notify element of attachment via the public interface
+        Gem::ThrowGemError(pElement->NotifyNodeContextChanged(this));
+    }
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
 void CSceneGraphNode::InvalidateTransforms(uint32_t flags)
 {
-    // Mark all cameras attached to this node as needing to recalculate
-    // their view matrices (since this node's world transform changed)
-    // Do this FIRST, even if this node's flags are already dirty
-    if (flags & (DirtyGlobalMatrix | DirtyGlobalRotation | DirtyGlobalTranslation))
-    {
-        for (auto& element : m_Elements)
-        {
-            // Check if this element is a camera and mark its view dirty
-            CCamera* pCamera = dynamic_cast<CCamera*>(element.Get());
-            if (pCamera)
-            {
-                pCamera->MarkViewDirty();
-            }
-        }
-    }
-
     // Check if this node's transforms need updating
     uint32_t requestedFlags = flags & (DirtyLocalMatrix | DirtyGlobalMatrix | 
                                        DirtyGlobalRotation | DirtyGlobalTranslation);
     uint32_t alreadyDirty = m_DirtyFlags & requestedFlags;
     
     // If all requested flags are already dirty, our subtree is already dirty too
+    // BUT we still need to notify attached elements that global transform is dirty
     if (alreadyDirty == requestedFlags)
     {
+        // Notify attached elements that the global transform is dirty
+        if (flags & (DirtyGlobalMatrix | DirtyGlobalRotation | DirtyGlobalTranslation))
+        {
+            for (auto& element : m_Elements)
+            {
+                element->NotifyNodeContextChanged(this);
+            }
+        }
         return;
     }
     
+    // Notify attached elements that the global transform is dirty
+    if (flags & (DirtyGlobalMatrix | DirtyGlobalRotation | DirtyGlobalTranslation))
+    {
+        for (auto& element : m_Elements)
+        {
+            element->NotifyNodeContextChanged(this);
+        }
+    }
+
     // Mark this node's transforms dirty
     m_DirtyFlags |= flags;
     
@@ -193,20 +376,15 @@ void CSceneGraphNode::InvalidateTransforms(uint32_t flags)
     // are independent of parent transforms
     uint32_t childFlags = flags & ~DirtyLocalMatrix;
     
-    CSceneGraphNode* pChild = m_pFirstChild.Get();
-    while (pChild)
+    for (ChildNode* pWrapper = m_pFirstChild; pWrapper; pWrapper = pWrapper->m_pNext)
     {
-        pChild->InvalidateTransforms(childFlags);
-        pChild = pChild->m_pSibling.Get();
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CSceneGraphNode::BindElement(XSceneGraphElement *pElement)
-{
-    if (pElement)
-    {
-        m_Elements.insert(pElement);
+        // Only invalidate our own implementation children
+        // External implementations manage their own transform invalidation
+        CSceneGraphNode* pChildImpl = dynamic_cast<CSceneGraphNode*>(pWrapper->m_pNode.Get());
+        if (pChildImpl)
+        {
+            pChildImpl->InvalidateTransforms(childFlags);
+        }
     }
 }
 

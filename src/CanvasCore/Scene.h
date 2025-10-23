@@ -15,7 +15,7 @@ class CScene :
     public TCanvasElement<XScene>
 {
 private:
-    Gem::TGemPtr<CSceneGraphNode> m_pRoot;
+    Gem::TGemPtr<XSceneGraphNode> m_pRoot;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -33,8 +33,6 @@ public: // XScene methods
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)();
 
     GEMMETHOD(Update)(float dtime) final { return m_pRoot->Update(dtime); }
-
-    static CScene *CastFrom(XScene *pXScene) { return static_cast<CScene *>(pXScene); }
 };
 
 }

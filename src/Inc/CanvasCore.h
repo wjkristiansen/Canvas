@@ -39,6 +39,7 @@ struct XScene;
 struct XCamera;
 struct XLight;
 struct XSceneGraphNode;
+struct XSceneGraphElement;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -158,10 +159,15 @@ XSceneGraphNode : public XCanvasElement
     GEM_INTERFACE_DECLARE(XSceneGraphNode, 0x86E8F764FE09E772);
 
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode *pChild) = 0;
+    GEMMETHOD(RemoveChild)(_In_ XSceneGraphNode *pChild) = 0;
+    GEMMETHOD(InsertChildBefore)(_In_ XSceneGraphNode *pChild, _In_ XSceneGraphNode *pSibling) = 0;
+    GEMMETHOD(InsertChildAfter)(_In_ XSceneGraphNode *pChild, _In_ XSceneGraphNode *pSibling) = 0;
+    GEMMETHOD(BindElement)(_In_ XSceneGraphElement *pElement) = 0;
 
     GEMMETHOD_(XSceneGraphNode *, GetParent)() = 0;
-    GEMMETHOD_(XSceneGraphNode *, GetSibling)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() = 0;
+    GEMMETHOD_(XSceneGraphNode *, GetNextChild)(_In_ XSceneGraphNode *pCurrent) = 0;
+    GEMMETHOD_(XSceneGraphNode *, GetPrevChild)(_In_ XSceneGraphNode *pCurrent) = 0;
 
     GEMMETHOD_(const Math::FloatQuaternion &, GetLocalRotation)() const = 0;
     GEMMETHOD_(const Math::FloatVector4 &, GetLocalTranslation)() const = 0;
@@ -193,17 +199,17 @@ XSceneGraphElement : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XSceneGraphElement, 0xD9F48C0E3F0775F0);
 
-    // Attach to the specified node.
-    // Automatically detaches if attached to a different node.
-    // The node holds a reference to this element
-    GEMMETHOD(AttachTo)(XSceneGraphNode *pNode) = 0;
-
     // Detaches the element from a scene graph node.
     // If attached, the reference is released by the node.
     GEMMETHOD(Detach)() = 0;
 
     // Returns a weak pointer to the scene graph node the element is attached to
     GEMMETHOD_(XSceneGraphNode *, GetAttachedNode)() = 0;
+
+    // Called by the node when the element is attached or node transforms become dirty
+    // This is called both when binding and when transforms invalidate
+    // Elements can query node transforms via GetAttachedNode() when needed
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode) = 0;
 
     // Dispatches the element for rendering
     GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) = 0;

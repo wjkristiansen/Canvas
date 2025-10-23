@@ -20,16 +20,20 @@ template<class _Base>
 class TSceneGraphElement :
     public TCanvasElement<_Base>
 {
-    class CSceneGraphNode *m_pNode = nullptr;
+    XSceneGraphNode *m_pNode = nullptr;
 
 public:
     TSceneGraphElement(XCanvas *pCanvas) :
         TCanvasElement<_Base>(pCanvas) {}
 
 public:
-    GEMMETHOD(AttachTo)(XSceneGraphNode *pNode) final;
     GEMMETHOD(Detach)() final;
     GEMMETHOD_(XSceneGraphNode *, GetAttachedNode)() final;
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode)
+    {
+        m_pNode = pNode;
+        return Gem::Result::Success;
+    }
     GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) final;
 };
 
@@ -38,10 +42,18 @@ class
 CSceneGraphNode :
     public TCanvasElement<XSceneGraphNode>
 {
+    // Internal wrapper node for intrusive doubly-linked list of children
+    struct ChildNode
+    {
+        Gem::TGemPtr<XSceneGraphNode> m_pNode;
+        ChildNode* m_pPrev = nullptr;
+        ChildNode* m_pNext = nullptr;
+    };
+
 protected:
     CSceneGraphNode *m_pParent = nullptr; // Weak pointer
-    Gem::TGemPtr<CSceneGraphNode> m_pSibling;
-    Gem::TGemPtr<CSceneGraphNode> m_pFirstChild;
+    ChildNode* m_pFirstChild = nullptr;   // Intrusive doubly-linked list for O(1) insertion anywhere
+    std::unordered_map<XSceneGraphNode*, ChildNode*> m_ChildMap;  // For O(1) lookup of wrapper given child pointer
     Math::FloatQuaternion m_LocalRotation;
     Math::FloatVector4 m_LocalScale; // W is ignored
     Math::FloatVector4 m_LocalTranslation;
@@ -93,9 +105,14 @@ public:
 
 public: // XSceneGraphNode methods
     GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;
+    GEMMETHOD(RemoveChild)(_In_ XSceneGraphNode* pChild) final;
+    GEMMETHOD(InsertChildBefore)(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling) final;
+    GEMMETHOD(InsertChildAfter)(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling) final;
+    GEMMETHOD(BindElement)(_In_ XSceneGraphElement *pElement) final;
     GEMMETHOD_(XSceneGraphNode *, GetParent)() final;
-    GEMMETHOD_(XSceneGraphNode *, GetSibling)() final;
     GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() final;
+    GEMMETHOD_(XSceneGraphNode *, GetNextChild)(_In_ XSceneGraphNode* pCurrent) final;
+    GEMMETHOD_(XSceneGraphNode *, GetPrevChild)(_In_ XSceneGraphNode* pCurrent) final;
 
     GEMMETHOD_(const Math::FloatQuaternion &, GetLocalRotation)() const final
     {
@@ -225,12 +242,6 @@ public: // XSceneGraphNode methods
 
     GEMMETHOD(Update)(float dtime) final;
 
-public:
-    // CSceneGraphNode methods
-    static CSceneGraphNode *CastFrom(XSceneGraphNode *pXface) { return static_cast<CSceneGraphNode *>(pXface); }
-
-    void BindElement(XSceneGraphElement *pElement);
-    
 private:
     // Helper to invalidate transforms on this node and propagate to children
     void InvalidateTransforms(uint32_t flags);
@@ -239,23 +250,6 @@ private:
 //------------------------------------------------------------------------------------------------
 // Template method implementations
 //------------------------------------------------------------------------------------------------
-template<class _Base>
-GEMMETHODIMP TSceneGraphElement<_Base>::AttachTo(XSceneGraphNode *pNode)
-{
-    if (!pNode)
-        return Gem::Result::InvalidArg;
-
-    CSceneGraphNode* pSceneNode = CSceneGraphNode::CastFrom(pNode);
-    if (!pSceneNode)
-        return Gem::Result::InvalidArg;
-
-    // Add this element to the node's elements set
-    pSceneNode->BindElement(this);
-    m_pNode = pSceneNode;
-
-    return Gem::Result::Success;
-}
-
 template<class _Base>
 GEMMETHODIMP TSceneGraphElement<_Base>::Detach()
 {

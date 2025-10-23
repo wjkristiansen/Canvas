@@ -155,8 +155,6 @@ public:
         return Gem::Result::Success;
     }
 
-    static CCanvas *CastFrom(XCanvas *pXCanvas) { return static_cast<CCanvas *>(pXCanvas); }
-
     Gem::Result Initialize();
     virtual void Uninitialize() override;
 };

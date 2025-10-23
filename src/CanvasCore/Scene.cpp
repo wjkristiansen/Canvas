@@ -23,7 +23,7 @@ GEMMETHODIMP CScene::Initialize()
         
         Gem::TGemPtr<XSceneGraphNode> pRoot;
         Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pRoot));
-        m_pRoot = CSceneGraphNode::CastFrom(pRoot.Get());
+        m_pRoot = pRoot;
     }
     catch(const Gem::GemError &e)
     {

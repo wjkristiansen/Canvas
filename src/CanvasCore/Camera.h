@@ -54,11 +54,11 @@ public:
         return Gem::Result::Success; 
     }
 
-    // Internal method called by scene graph when ancestor transforms change
-    void MarkViewDirty()
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode */*pNode*/) final
     {
         m_ViewMatrixDirty = true;
         m_ViewProjectionMatrixDirty = true;
+        return Gem::Result::Success;
     }
 
     // XCamera methods
