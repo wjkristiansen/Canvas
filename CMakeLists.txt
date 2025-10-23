@@ -78,13 +78,13 @@ option(LINKEDLIST_BUILD_TESTS "Build LinkedList unit tests" OFF)
 option(ALLOCATORS_BUILD_TESTS "Build Allocators unit tests" OFF)
 
 # If WIL has its own CMakeLists.txt, include it first
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/wil/CMakeLists.txt")
-    add_subdirectory(src/wil EXCLUDE_FROM_ALL)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/deps/wil/CMakeLists.txt")
+    add_subdirectory(deps/wil EXCLUDE_FROM_ALL)
 else()
     # Create our own interface library for WIL (header-only) if WIL doesn't have CMakeLists
     add_library(Canvas_WIL INTERFACE)
     target_include_directories(Canvas_WIL INTERFACE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/wil/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/wil/include>
         $<INSTALL_INTERFACE:include/wil>
     )
     # Create alias for compatibility
@@ -94,7 +94,7 @@ endif()
 # Create interface library for header-only LinkedList submodule
 add_library(LinkedList INTERFACE)
 target_include_directories(LinkedList INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/LinkedList/Inc>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/LinkedList/Inc>
     $<INSTALL_INTERFACE:include/LinkedList>
 )
 
@@ -107,7 +107,7 @@ target_include_directories(LinkedList INTERFACE
 # Create interface library for header-only GEM submodule
 add_library(GEM INTERFACE)
 target_include_directories(GEM INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/GEM/Inc>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/GEM/Inc>
     $<INSTALL_INTERFACE:include/GEM>
 )
 
@@ -116,13 +116,13 @@ target_include_directories(GEM INTERFACE
 
 
 # Add subdirectories for submodules first (they may be dependencies)
-add_subdirectory(src/QLog)
-add_subdirectory(src/ThinWin)
+add_subdirectory(deps/QLog)
+add_subdirectory(deps/ThinWin)
 # Allocators is header-only, no CMakeLists.txt needed
 # Create interface library for header-only Allocators submodule
 add_library(Allocators INTERFACE)
 target_include_directories(Allocators INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/Allocators/Inc>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/Allocators/Inc>
     $<INSTALL_INTERFACE:include/Allocators>
 )
 
@@ -134,11 +134,11 @@ add_subdirectory(src/CanvasModelViewer)
 add_subdirectory(src/CanvasUnitTest)
 # LinkedList tests - conditionally include based on option
 if(LINKEDLIST_BUILD_TESTS)
-    add_subdirectory(src/LinkedList/LinkedListTest)
+    add_subdirectory(deps/LinkedList/LinkedListTest)
 endif()
 # Allocators tests - conditionally include based on option
 if(ALLOCATORS_BUILD_TESTS)
-    add_subdirectory(src/Allocators/AllocatorsTest)
+    add_subdirectory(deps/Allocators/AllocatorsTest)
 endif()
 add_subdirectory(src/HLSL)
 
