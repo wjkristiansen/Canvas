@@ -28,11 +28,9 @@ Gem::Result CDevice12::Initialize()
     }
     catch (_com_error &e)
     {
-        auto pLogger = Canvas::GetCanvasLogger();
-
-        if (pLogger)
+        if (GetLogger())
         {
-            pLogger->Error("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
+            GetLogger()->Error("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
         }
         return Gem::GemResult(e.Error());
     }
@@ -43,7 +41,7 @@ Gem::Result CDevice12::Initialize()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateRenderQueue(Canvas::XGfxRenderQueue **ppRenderQueue)
 {
-    Canvas::CFunctionSentinel Sentinel("XGfxDevice::CreateRenderQueue");
+    Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateRenderQueue", GetLogger());
     try
     {
         // Create and register the CRenderQueue12
@@ -54,7 +52,7 @@ GEMMETHODIMP CDevice12::CreateRenderQueue(Canvas::XGfxRenderQueue **ppRenderQueu
     }
     catch (const Gem::GemError &e)
     {
-        Sentinel.SetResultCode(e.Result());
+        sentinel.SetResultCode(e.Result());
         return e.Result();
     }
 }
@@ -62,7 +60,7 @@ GEMMETHODIMP CDevice12::CreateRenderQueue(Canvas::XGfxRenderQueue **ppRenderQueu
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateMaterial()
 {
-    Canvas::CFunctionSentinel Sentinel("XGfxDevice::CreateMaterial");
+    Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateMaterial", GetLogger());
     
    return Gem::Result::NotImplemented;
 }
@@ -70,7 +68,7 @@ GEMMETHODIMP CDevice12::CreateMaterial()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::XGfxSurface **ppSurface)
 {
-    Canvas::CFunctionSentinel Sentinel("XGfxDevice::CreateSurface");
+    Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateSurface", GetLogger());
     
     if (!ppSurface)
         return Gem::Result::BadPointer;
@@ -168,13 +166,14 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::X
     }
     catch (const _com_error &e)
     {
-        auto pLogger = Canvas::GetCanvasLogger();
-        if (pLogger)
-            pLogger->Error("CDevice12::CreateSurface: HRESULT 0x%08x", e.Error());
+        if (GetLogger())
+            GetLogger()->Error("CDevice12::CreateSurface: HRESULT 0x%08x", e.Error());
+        sentinel.SetResultCode(Gem::GemResult(e.Error()));
         return Gem::GemResult(e.Error());
     }
     catch (const Gem::GemError &e)
     {
+        sentinel.SetResultCode(e.Result());
         return e.Result();
     }
 }
@@ -182,7 +181,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::X
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateBuffer(UINT sizeInBytes, Canvas::XGfxBuffer **ppBuffer)
 {
-    Canvas::CFunctionSentinel Sentinel("XGfxDevice::CreateBuffer");
+    Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateBuffer", GetLogger());
     
     if (!ppBuffer)
         return Gem::Result::BadPointer;
@@ -231,13 +230,14 @@ GEMMETHODIMP CDevice12::CreateBuffer(UINT sizeInBytes, Canvas::XGfxBuffer **ppBu
     }
     catch (const _com_error &e)
     {
-        auto pLogger = Canvas::GetCanvasLogger();
-        if (pLogger)
-            pLogger->Error("CDevice12::CreateBuffer: HRESULT 0x%08x", e.Error());
+        if (GetLogger())
+            GetLogger()->Error("CDevice12::CreateBuffer: HRESULT 0x%08x", e.Error());
+        sentinel.SetResultCode(Gem::GemResult(e.Error()));
         return Gem::GemResult(e.Error());
     }
     catch (const Gem::GemError &e)
     {
+        sentinel.SetResultCode(e.Result());
         return e.Result();
     }
 }

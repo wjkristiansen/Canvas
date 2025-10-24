@@ -18,7 +18,7 @@ namespace CanvasUnitTest
         {
             // Create XCanvas object
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
 
             // Create XScene object
             Gem::TGemPtr<Canvas::XScene> pScene;
@@ -42,7 +42,7 @@ namespace CanvasUnitTest
         {
             // Create XCanvas object
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
 
             // Create XScene object
             Gem::TGemPtr<XScene> pScene;
@@ -116,7 +116,7 @@ namespace CanvasUnitTest
 
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
             Gem::TGemPtr<XScene> pScene;
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
 
@@ -273,7 +273,7 @@ namespace CanvasUnitTest
 
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
             Gem::TGemPtr<XScene> pScene;
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
 
@@ -401,7 +401,7 @@ namespace CanvasUnitTest
 
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
             Gem::TGemPtr<XScene> pScene;
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
 
@@ -486,7 +486,7 @@ namespace CanvasUnitTest
 
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
             Gem::TGemPtr<XScene> pScene;
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
 
@@ -555,7 +555,7 @@ namespace CanvasUnitTest
 
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
             Gem::TGemPtr<XScene> pScene;
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
 
@@ -621,7 +621,7 @@ namespace CanvasUnitTest
 
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
             Gem::TGemPtr<XScene> pScene;
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
 
@@ -692,7 +692,7 @@ namespace CanvasUnitTest
 
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
             Gem::TGemPtr<XScene> pScene;
             Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
 
@@ -756,7 +756,7 @@ namespace CanvasUnitTest
 
             // Create Canvas
             Gem::TGemPtr<XCanvas> pCanvas;
-            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(&pCanvas)));
+            Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
 
             // Test Point Light
             Gem::TGemPtr<XLight> pPointLight;

@@ -31,7 +31,7 @@ void DumpNode(Canvas::XSceneGraphNode *pNode, const std::string &indent)
 int main()
 {
     Gem::TGemPtr<Canvas::XCanvas> pCanvas;
-    Gem::Result result = Canvas::CreateCanvas(&pCanvas);
+    Gem::Result result = Canvas::CreateCanvas(nullptr, &pCanvas);
 
     Gem::TGemPtr<Canvas::XScene> pScene;
     result = pCanvas->CreateScene(&pScene);

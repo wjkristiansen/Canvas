@@ -78,6 +78,8 @@ XCanvas : public Gem::XGeneric
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
     GEMMETHOD(RegisterElement)(struct XCanvasElement *) = 0;
     GEMMETHOD(UnregisterElement)(struct XCanvasElement *) = 0;
+
+    GEMMETHOD_(QLog::Logger *, GetLogger)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -219,9 +221,7 @@ XSceneGraphElement : public XCanvasElement
 
 //------------------------------------------------------------------------------------------------
 // Exports
-extern Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas);
-extern CANVAS_API Gem::Result RegisterCanvasLogger(QLog::Logger* pLogger);
-extern CANVAS_API QLog::Logger *GetCanvasLogger();
+extern Gem::Result CANVAS_API CreateCanvas(QLog::Logger* pLogger, XCanvas **ppCanvas);
 
 //------------------------------------------------------------------------------------------------
 struct
@@ -307,23 +307,38 @@ struct XCanvasPlugin : public Gem::XGeneric
 class CFunctionSentinel
 {
     QLog::Level m_DefaultLogLevel;
+    QLog::Logger *m_pLogger = nullptr;
     const char *m_FunctionName;
     Gem::Result m_Result = Gem::Result::Success;
 
 public:
-    CFunctionSentinel(const char *FunctionName, QLog::Level DefaultLogLevel = QLog::Level::Info) :
+    CFunctionSentinel(const char *FunctionName, QLog::Logger *pLogger, QLog::Level DefaultLogLevel = QLog::Level::Info) :
+        m_pLogger(pLogger),
         m_FunctionName(FunctionName),
         m_DefaultLogLevel(DefaultLogLevel)
     {
-        if (GetCanvasLogger()) {
-            GetCanvasLogger()->Log(m_DefaultLogLevel, "Begin: %s", m_FunctionName);
+        if (pLogger)
+        {
+            pLogger->Log(m_DefaultLogLevel, "Begin: %s", m_FunctionName);
         }
     }
+
+    void ReportMessage(QLog::Level logLevel, const char *Format, ...) const
+    {
+        if (m_pLogger)
+        {
+            va_list args;
+            va_start(args, Format);
+            m_pLogger->Log(logLevel, Format, args);
+            va_end(args);
+        }
+    }
+
     ~CFunctionSentinel()
     {
-        if (GetCanvasLogger()) {
-        QLog::Level level = Gem::Failed(m_Result) ? QLog::Level::Error : m_DefaultLogLevel;
-            GetCanvasLogger()->Log(level, "%s: %s", GemResultString(m_Result), m_FunctionName);
+        if (m_pLogger) {
+            QLog::Level level = Gem::Failed(m_Result) ? QLog::Level::Error : m_DefaultLogLevel;
+            m_pLogger->Log(level, "%s: %s", GemResultString(m_Result), m_FunctionName);
         }
     }
 

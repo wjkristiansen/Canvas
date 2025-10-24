@@ -99,6 +99,7 @@ class CCanvas :
 {
     std::mutex m_Mutex;
 
+    QLog::Logger* m_pLogger = nullptr;
     CTimer m_FrameTimer;
     UINT64 m_FrameEndTimeLast = 0;
 
@@ -112,7 +113,8 @@ public:
         GEM_INTERFACE_ENTRY(XCanvas)
     END_GEM_INTERFACE_MAP()
 
-    CCanvas()
+    CCanvas(QLog::Logger* pLogger)
+        : m_pLogger(pLogger)
     {}
 
     ~CCanvas();
@@ -128,13 +130,16 @@ public:
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;
 
+    GEMMETHOD_(QLog::Logger *, GetLogger)() final
+    {
+        return m_pLogger;
+    }   
+
 public:
     // CCanvas methods
     template<class _Type, typename... Args>
     Gem::Result CreateElement(typename _Type::BaseType **ppElement, PCSTR name, Args... args)
     {
-        CFunctionSentinel Sentinel("XCanvas::CreateElement");
-
         if (!ppElement)
         {
             return Gem::Result::BadPointer;

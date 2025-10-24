@@ -58,7 +58,7 @@ CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRend
 
 Gem::Result CSwapChain12::Present()
 {
-    Canvas::CFunctionSentinel Sentinel("XGfxSwapChain::Present", QLog::Level::Debug);
+    Canvas::CFunctionSentinel sentinel("XGfxSwapChain::Present", m_pRenderQueue->GetDevice()->GetLogger(), QLog::Level::Debug);
     try
     {
         std::unique_lock<std::mutex> Lock(m_mutex);
@@ -79,7 +79,7 @@ Gem::Result CSwapChain12::Present()
     }
     catch (_com_error &e)
     {
-        Sentinel.SetResultCode(Gem::GemResult(e.Error()));
+        sentinel.SetResultCode(Gem::GemResult(e.Error()));
         return Gem::GemResult(e.Error());
     }
 

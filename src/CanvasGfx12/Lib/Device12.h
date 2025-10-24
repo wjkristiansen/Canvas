@@ -44,4 +44,9 @@ public:
     GEMMETHOD(CreateBuffer)(UINT sizeInBytes, Canvas::XGfxBuffer **ppBuffer) final;
 
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
+
+    QLog::Logger *GetLogger()
+    {
+        return GetCanvas()->GetLogger();
+    }
 };

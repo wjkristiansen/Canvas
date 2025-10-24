@@ -33,12 +33,6 @@ CANVAS_API Gem::Result RegisterCanvasLogger(QLog::Logger* pLogger)
 }
 
 //------------------------------------------------------------------------------------------------
-CANVAS_API QLog::Logger *GetCanvasLogger()
-{
-    return g_pLogger;
-}
-
-//------------------------------------------------------------------------------------------------
 Gem::Result CCanvas::Initialize()
 {
     return Gem::Result::Success;
@@ -50,15 +44,13 @@ void CCanvas::Uninitialize()
     // Iterate still active XCanvasElement objects and report them as leaks
     for(XCanvasElement *pElement : m_ActiveCanvasElements)
     {
-        auto pLogger = GetCanvasLogger();
-
         if(pElement->GetName())
         {
-            pLogger->Error("%s leaked, Name: %s", pElement->GetTypeName(), pElement->GetName());
+            GetLogger()->Error("%s leaked, Name: %s", pElement->GetTypeName(), pElement->GetName());
         }
         else
         {
-            pLogger->Error("%s leaked", pElement->GetTypeName());
+            GetLogger()->Error("%s leaked", pElement->GetTypeName());
         }
     }
 }
@@ -76,21 +68,19 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
-    auto pLogger = GetCanvasLogger();
-
     // Check if element is already registered
     if (m_ActiveCanvasElements.find(pElement) != m_ActiveCanvasElements.end())
     {
-        if (pLogger)
+        if (GetLogger())
         {
             if (pElement->GetName())
             {
-                pLogger->Warn("Element already registered: %s (Name: %s)", 
+                GetLogger()->Warn("Element already registered: %s (Name: %s)", 
                                pElement->GetTypeName(), pElement->GetName());
             }
             else
             {
-                pLogger->Warn("Element already registered: %s", pElement->GetTypeName());
+                GetLogger()->Warn("Element already registered: %s", pElement->GetTypeName());
             }
         }
         return Gem::Result::InvalidArg;
@@ -98,16 +88,16 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 
     m_ActiveCanvasElements.emplace(pElement);
 
-    if(pLogger)
+    if(GetLogger())
     {
         if (pElement->GetName())
         {
-            pLogger->Info("Registered element: %s (Name: %s)", 
+            GetLogger()->Info("Registered element: %s (Name: %s)", 
                            pElement->GetTypeName(), pElement->GetName());
         }
         else
         {
-            pLogger->Info("Registered element type: %s", pElement->GetTypeName());
+            GetLogger()->Info("Registered element type: %s", pElement->GetTypeName());
         }
     }
     
@@ -122,37 +112,35 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
-    auto pLogger = GetCanvasLogger();
-
     auto it = m_ActiveCanvasElements.find(pElement);
     if (it == m_ActiveCanvasElements.end())
     {
-        if (pLogger)
+        if (GetLogger())
         {
             if (pElement->GetName())
             {
-                pLogger->Warn("Attempted to unregister element that was not registered: %s (Name: %s)", 
+                GetLogger()->Warn("Attempted to unregister element that was not registered: %s (Name: %s)", 
                                pElement->GetTypeName(), pElement->GetName());
             }
             else
             {
-                pLogger->Warn("Attempted to unregister element that was not registered: %s", 
+                GetLogger()->Warn("Attempted to unregister element that was not registered: %s", 
                                pElement->GetTypeName());
             }
         }
         return Gem::Result::NotFound;
     }
 
-    if(pLogger)
+    if(GetLogger())
     {
         if (pElement->GetName())
         {
-            pLogger->Info("Unregistering element: %s (Name: %s)", 
+            GetLogger()->Info("Unregistering element: %s (Name: %s)", 
                            pElement->GetTypeName(), pElement->GetName());
         }
         else
         {
-            pLogger->Info("Unregistering element type: %s", pElement->GetTypeName());
+            GetLogger()->Info("Unregistering element type: %s", pElement->GetTypeName());
         }
     }
 
@@ -164,7 +152,7 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene, PCSTR name)
 {
-    CFunctionSentinel Sentinel("XCanvas::CreateScene");
+    CFunctionSentinel sentinel("XCanvas::CreateScene", m_pLogger);
 
     return CreateElement<CScene>(ppScene, name);
 
@@ -174,7 +162,7 @@ GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene, PCSTR name)
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode, PCSTR name)
 {
-    CFunctionSentinel Sentinel("XCanvas::CreateSceneGraphNode");
+    CFunctionSentinel sentinel("XCanvas::CreateSceneGraphNode", m_pLogger);
 
     return CreateElement<CSceneGraphNode>(ppNode, name);
 }
@@ -182,7 +170,7 @@ GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode, PCSTR name)
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera, PCSTR name)
 {
-    CFunctionSentinel Sentinel("XCanvas::CreateCamera");
+    CFunctionSentinel sentinel("XCanvas::CreateCamera", m_pLogger);
 
     return CreateElement<CCamera>(ppCamera, name);
 }
@@ -190,7 +178,7 @@ GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera, PCSTR name)
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight, PCSTR name)
 {
-    CFunctionSentinel Sentinel("XCanvas::CreateLight");
+    CFunctionSentinel sentinel("XCanvas::CreateLight", m_pLogger);
 
     // Create using the standard CreateElement pattern to ensure proper registration
     Gem::Result result = CreateElement<CLight>(ppLight, name, type);
@@ -199,13 +187,11 @@ GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight, PCSTR name)
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas)
+Gem::Result CANVAS_API CreateCanvas(QLog::Logger *pLogger, XCanvas **ppCanvas)
 {
-    CFunctionSentinel Sentinel("CreateCanvas");
+    CFunctionSentinel sentinel("CreateCanvas", pLogger);
     
     *ppCanvas = nullptr;
-
-    auto pLogger = GetCanvasLogger();
 
     try
     {
@@ -214,7 +200,7 @@ Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas)
             pLogger->Info("CANVAS: CreateCanvas: Creating canvas object...");
         }
         Gem::TGemPtr<CCanvas> pCanvas;
-        Gem::ThrowGemError(Gem::TGenericImpl<CCanvas>::Create(&pCanvas)); // throw(Gem::GemError)
+        Gem::ThrowGemError(Gem::TGenericImpl<CCanvas>::Create(&pCanvas, pLogger)); // throw(Gem::GemError)
         *ppCanvas = pCanvas.Detach();
 
         return Gem::Result::Success;
@@ -231,7 +217,7 @@ Gem::Result CANVAS_API CreateCanvas(XCanvas **ppCanvas)
 
 GEMMETHODIMP CCanvas::LoadPlugin(PCSTR path, XCanvasPlugin **ppPlugin)
 {
-    CFunctionSentinel Sentinel("XCanvas::LoadPlugin");
+    CFunctionSentinel sentinel("XCanvas::LoadPlugin", m_pLogger);
 
     try
     {

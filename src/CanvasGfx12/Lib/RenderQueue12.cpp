@@ -14,7 +14,7 @@ CCommandAllocatorPool::CCommandAllocatorPool()
 //------------------------------------------------------------------------------------------------
 ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators)
 {
-    Canvas::CFunctionSentinel Sentinel("CCommandAllocatorPool::Init");
+    Canvas::CFunctionSentinel sentinel("CCommandAllocatorPool::Init", pDevice->GetLogger());
     
     for (UINT i = 0; i < NumAllocators; ++i)
     {
@@ -138,7 +138,7 @@ CRenderQueue12::CRenderQueue12(CDevice12 *pDevice, PCSTR name) :
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers)
 {
-    Canvas::CFunctionSentinel Sentinel("XGfxRenderQueue::CreateSwapChain");
+    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::CreateSwapChain", this->GetDevice()->GetLogger());
     try
     {
         // Create and register the swapchain
@@ -150,7 +150,7 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
     }
     catch (Gem::GemError &e)
     {
-        Sentinel.SetResultCode(e.Result());
+        sentinel.SetResultCode(e.Result());
         return e.Result();
     }
 }
@@ -219,7 +219,7 @@ Gem::Result CRenderQueue12::FlushImpl()
 Gem::Result CRenderQueue12::Flush()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    Canvas::CFunctionSentinel Sentinel("XGfxRenderQueue::Flush", QLog::Level::Debug);
+    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Flush", m_pDevice->GetLogger(), QLog::Level::Debug);
     try
     {
         Gem::ThrowGemError(FlushImpl());
@@ -228,6 +228,7 @@ Gem::Result CRenderQueue12::Flush()
     }
     catch (_com_error &e)
     {
+        sentinel.SetResultCode(Gem::GemResult(e.Error()));
         return Gem::GemResult(e.Error());
     }
 
@@ -238,7 +239,7 @@ Gem::Result CRenderQueue12::Flush()
 GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    Canvas::CFunctionSentinel Sentinel("XGfxRenderQueue::FlushAndPresent", QLog::Level::Debug);
+    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::FlushAndPresent", m_pDevice->GetLogger(), QLog::Level::Debug);
 
     try
     {
@@ -260,7 +261,8 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
     }
     catch (Gem::GemError &e)
     {
-        Sentinel.SetResultCode(e.Result());
+        sentinel.SetResultCode(e.Result());
+        return e.Result();
     }
 
     return Gem::Result::Success;
@@ -280,7 +282,7 @@ GEMMETHODIMP CRenderQueue12::Wait()
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::Uninitialize()
 {
-    Canvas::CFunctionSentinel Sentinel("XGfxRenderQueue::Uninitialize", QLog::Level::Info);
+    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Uninitialize", m_pDevice->GetLogger(), QLog::Level::Info);
 
     m_pCommandList->Close();
 
