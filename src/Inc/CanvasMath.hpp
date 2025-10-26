@@ -1148,6 +1148,57 @@ namespace Canvas
             basisUpVector = CrossProduct(basisForwardVector, basisSideVector);
         }
 
+        //------------------------------------------------------------------------------------------------
+        // Simplified version of ComposePointToBasisVectors that automatically chooses an appropriate
+        // up vector. This version is ideal for directional or spot lights that don't require geometric
+        // constraints (i.e., no shared lightbulb mesh). Uses an optimized approach that finds the
+        // component with the smallest absolute value, zeros it out, swaps the other two, and negates
+        // one to produce a guaranteed orthogonal vector. This avoids expensive abs() comparisons and
+        // vector constructions.
+        template<class _VectorType>
+        void ComposeArbitraryPointToBasisVectors(_In_ const _VectorType &basisForwardVector, _Out_ _VectorType &basisSideVector, _Out_ _VectorType &basisUpVector)
+        {
+            using Type = typename _VectorType::Type;
+            
+            // Find the component with the smallest absolute value
+            // Use squared comparisons to avoid abs() calls
+            Type x2 = basisForwardVector.X * basisForwardVector.X;
+            Type y2 = basisForwardVector.Y * basisForwardVector.Y;
+            Type z2 = basisForwardVector.Z * basisForwardVector.Z;
+            
+            // Create a perpendicular vector by zeroing the smallest component,
+            // swapping the other two, and negating one
+            if (x2 < y2 && x2 < z2)
+            {
+                // X is smallest: perpendicular = (0, -Z, Y)
+                basisSideVector.X = Type(0);
+                basisSideVector.Y = -basisForwardVector.Z;
+                basisSideVector.Z = basisForwardVector.Y;
+            }
+            else if (y2 < z2)
+            {
+                // Y is smallest: perpendicular = (-Z, 0, X)
+                basisSideVector.X = -basisForwardVector.Z;
+                basisSideVector.Y = Type(0);
+                basisSideVector.Z = basisForwardVector.X;
+            }
+            else
+            {
+                // Z is smallest: perpendicular = (-Y, X, 0)
+                basisSideVector.X = -basisForwardVector.Y;
+                basisSideVector.Y = basisForwardVector.X;
+                basisSideVector.Z = Type(0);
+            }
+            
+            // Normalize the side vector
+            Type lenSq = DotProduct(basisSideVector, basisSideVector);
+            basisSideVector = basisSideVector * Type(1. / std::sqrt(lenSq));
+            
+            // Compute the up vector as the cross product of the forward with the side vector
+            // No need to normalize since both inputs are unit vectors and orthogonal
+            basisUpVector = CrossProduct(basisForwardVector, basisSideVector);
+        }
+
         using FloatQuaternion = TQuaternion<float>;
         using DoubleQuaternion = TQuaternion<double>;
 

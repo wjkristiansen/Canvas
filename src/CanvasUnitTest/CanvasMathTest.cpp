@@ -277,6 +277,117 @@ namespace CanvasUnitTest
             )));
         }
 
+        TEST_METHOD(LookAtArbitraryBasis)
+        {
+            // Test ComposeArbitraryPointToBasisVectors which automatically selects
+            // a reference up vector based on the forward vector
+            FloatVector3 side, up;
+            
+            // Test case 1: Forward pointing in +X direction
+            // Should choose Y or Z as reference (whichever is less aligned)
+            auto forward1 = FloatVector3(1, 0, 0);
+            ComposeArbitraryPointToBasisVectors(forward1, side, up);
+            
+            // Verify orthonormality
+            Assert::IsTrue(AlmostZero(DotProduct(forward1, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward1, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float len1 = DotProduct(forward1, forward1);
+            Assert::IsTrue(AlmostZero(len1 - 1.0f));
+            float lenSide1 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide1 - 1.0f));
+            float lenUp1 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp1 - 1.0f));
+            
+            // Verify right-handedness: forward × side = up
+            auto computedUp = CrossProduct(forward1, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 2: Forward pointing in +Y direction
+            auto forward2 = FloatVector3(0, 1, 0);
+            ComposeArbitraryPointToBasisVectors(forward2, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward2, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward2, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide2 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide2 - 1.0f));
+            float lenUp2 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp2 - 1.0f));
+            computedUp = CrossProduct(forward2, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 3: Forward pointing in +Z direction
+            auto forward3 = FloatVector3(0, 0, 1);
+            ComposeArbitraryPointToBasisVectors(forward3, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward3, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward3, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide3 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide3 - 1.0f));
+            float lenUp3 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp3 - 1.0f));
+            computedUp = CrossProduct(forward3, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 4: Forward pointing in -X direction
+            auto forward4 = FloatVector3(-1, 0, 0);
+            ComposeArbitraryPointToBasisVectors(forward4, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward4, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward4, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide4 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide4 - 1.0f));
+            float lenUp4 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp4 - 1.0f));
+            computedUp = CrossProduct(forward4, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 5: Arbitrary diagonal direction
+            auto forward5 = FloatVector3(1, 1, 1).Normalize();
+            ComposeArbitraryPointToBasisVectors(forward5, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward5, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward5, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide5 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide5 - 1.0f));
+            float lenUp5 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp5 - 1.0f));
+            computedUp = CrossProduct(forward5, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 6: Another arbitrary direction
+            auto forward6 = FloatVector3(0.6f, -0.8f, 0).Normalize();
+            ComposeArbitraryPointToBasisVectors(forward6, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward6, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward6, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide6 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide6 - 1.0f));
+            float lenUp6 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp6 - 1.0f));
+            computedUp = CrossProduct(forward6, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 7: Near-axis aligned (stress test)
+            auto forward7 = FloatVector3(0.0001f, 0.9999f, 0).Normalize();
+            ComposeArbitraryPointToBasisVectors(forward7, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward7, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward7, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide7 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide7 - 1.0f));
+            float lenUp7 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp7 - 1.0f));
+            computedUp = CrossProduct(forward7, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+        }
+
         TEST_METHOD(BasicQuaternion)
         {
             auto Q = IdentityQuaternion<double>();
