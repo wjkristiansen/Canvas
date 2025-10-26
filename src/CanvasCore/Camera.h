@@ -54,8 +54,14 @@ public:
         return Gem::Result::Success; 
     }
 
-    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode */*pNode*/) final
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode) final
     {
+        // Call base class to actually set m_pNode
+        auto hr = TSceneGraphElement<XCamera>::NotifyNodeContextChanged(pNode);
+        if (Gem::Failed(hr))
+            return hr;
+        
+        // Mark matrices dirty since the camera's world transform context changed
         m_ViewMatrixDirty = true;
         m_ViewProjectionMatrixDirty = true;
         return Gem::Result::Success;
