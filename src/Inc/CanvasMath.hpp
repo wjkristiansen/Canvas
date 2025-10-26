@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <math.h>
+#include <cmath>
 #include <float.h>
 #include <algorithm>
 
@@ -36,6 +36,12 @@ namespace Canvas
             Type &operator[](int index) { return V[index]; }
         };
 
+        // Forward declaration of DotProduct for template vector types.
+        // Placed here so member functions (e.g. Normalize) can call it before
+        // the definition appears later in this header.
+        template<class _Type, int _Dim>
+        _Type DotProduct(const TVector<_Type, _Dim> &a, const TVector<_Type, _Dim> &b);
+
         //------------------------------------------------------------------------------------------------
         template<class _Type>
         struct TVector<_Type, 2>
@@ -59,6 +65,17 @@ namespace Canvas
                 V{ x, y } {}
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
+
+            TVector Normalize() const
+            {
+                Type lenSq = DotProduct(*this, *this);
+                if (lenSq > Type(0))
+                {
+                    Type invLen = Type(1) / std::sqrt(lenSq);
+                    return TVector<_Type, 2>(X * invLen, Y * invLen);
+                }
+                return TVector<_Type, 2>(Type(1), Type(0));
+            }
 
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -87,6 +104,17 @@ namespace Canvas
                 V{ x, y, z } {}
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
+
+            TVector Normalize() const
+            {
+                Type lenSq = DotProduct(*this, *this);
+                if (lenSq > Type(0))
+                {
+                    Type invLen = Type(1) / std::sqrt(lenSq);
+                    return TVector<Type, 3>(X * invLen, Y * invLen, Z * invLen);
+                }
+                return TVector<Type, 3>(Type(1), Type(0), Type(0));
+            }
 
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -117,6 +145,17 @@ namespace Canvas
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
 
+            TVector Normalize() const
+            {
+                Type lenSq = DotProduct(*this, *this);
+                if (lenSq > Type(0))
+                {
+                    Type invLen = Type(1) / std::sqrt(lenSq);
+                    return TVector<Type, 4>(X * invLen, Y * invLen, Z * invLen, W * invLen);
+                }
+                return TVector<Type, 4>(Type(1), Type(0), Type(0), Type(0));
+            }
+
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
         };
@@ -146,6 +185,17 @@ namespace Canvas
                 V{ x, y, z, w } {}
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
+
+            TVector Normalize() const
+            {
+                float lenSq = DotProduct(*this, *this);
+                if (lenSq > 0.0f)
+                {
+                    float invLen = 1.0f / std::sqrt(lenSq);
+                    return TVector<float, 4>(X * invLen, Y * invLen, Z * invLen, W * invLen);
+                }
+                return TVector<float, 4>(1.0f, 0.0f, 0.0f, 0.0f);
+            }
 
             const Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -333,23 +383,6 @@ namespace Canvas
         TVector<_Type, _Dim> operator*(_Type mul, const TVector<_Type, _Dim> &v)
         {
             return operator*(v, mul);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        // Caller is responsible for ensuring the input vector does not have a
-        // zero magnitude
-        template<class _Type, int _Dim>
-        TVector<_Type, _Dim> NormalizeVector(const TVector<_Type, _Dim> &v)
-        {
-            const _Type magsq = DotProduct(v, v);
-            const _Type recipmag = 1 / std::sqrt(magsq);
-            TVector<_Type, _Dim> n;
-            for (int i = 0; i < _Dim; ++i)
-            {
-                n[i] = v[i] * recipmag;
-            }
-
-            return n;
         }
 
         //------------------------------------------------------------------------------------------------
@@ -1011,7 +1044,7 @@ namespace Canvas
             {
                 const Type s = 2 * std::sqrt(t + 1);
                 const Type srsq = 1 / s;
-                q.W = .25 * s;
+                q.W = Type(0.25) * s;
                 q.X = (m[2][1] - m[1][2]) * srsq;
                 q.Y = (m[0][2] - m[2][0]) * srsq;
                 q.Z = (m[1][0] - m[0][1]) * srsq;
@@ -1022,7 +1055,7 @@ namespace Canvas
                 const Type s = 2 * std::sqrt(t + 1);
                 const Type srsq = 1 / s;
                 q.W = (m[2][1] - m[1][2]) * srsq;
-                q.X = .25 * s;
+                q.X = Type(0.25) * s;
                 q.Y = (m[0][1] + m[1][0]) * srsq;
                 q.Z = (m[0][2] + m[2][0]) * srsq;
             }
@@ -1033,7 +1066,7 @@ namespace Canvas
                 const Type srsq = 1 / s;
                 q.W = (m[0][2] - m[2][0]) * srsq;
                 q.X = (m[0][1] + m[1][0]) * srsq;
-                q.Y = .25 * s;
+                q.Y = Type(0.25) * s;
                 q.Z = (m[1][2] + m[2][1]) * srsq;
             }
             else
@@ -1044,7 +1077,7 @@ namespace Canvas
                 q.W = (m[1][0] - m[0][1]) * srsq;
                 q.X = (m[0][2] + m[2][0]) * srsq;
                 q.Y = (m[1][2] + m[2][1]) * srsq;
-                q.Z = .25 * s;
+                q.Z = Type(0.25) * s;
             }
 
             return q.Normalize();
@@ -1068,12 +1101,12 @@ namespace Canvas
         };
 
         //------------------------------------------------------------------------------------------------
-        // Calculates an OutVector and an UpVector given a unit UpAxisVector and a unit LookVector.
-        // Can be used to initialize the orthonormal basis of a "look at" rotation matrix.
-        // Note, the LookVector may be a Forward vector or a Backward vector, depending
-        // on the desired direction of the OutVector.
+        // Calculates a basisSideVector and a basisUpVector given a unit localUpVector and a unit basisForwardVector.
+        // Can be used to initialize the orthonormal basis of a "point to" rotation matrix.
+        // Note the input localUpVector and basisForwardVector can be any arbitrary unit vectors, but
+        // they should not be colinear.
         template<class _VectorType>
-        void ComposeLookAtBasisVectors(_In_ const _VectorType &localUpVector, _In_ const _VectorType &basisForwardVector, _Out_ _VectorType &basisSideVector, _Out_ _VectorType &basisUpVector)
+        void ComposePointToBasisVectors(_In_ const _VectorType &localUpVector, _In_ const _VectorType &basisForwardVector, _Out_ _VectorType &basisSideVector, _Out_ _VectorType &basisUpVector)
         {
             using Type = typename _VectorType::Type;
 
@@ -1117,6 +1150,140 @@ namespace Canvas
 
         using FloatQuaternion = TQuaternion<float>;
         using DoubleQuaternion = TQuaternion<double>;
+
+        //------------------------------------------------------------------------------------------------
+        // PerspectiveReverseZ: Generates a reverse-Z perspective projection matrix.
+        //
+        // Conventions:
+        //   Input coordinate system:  X = camera's local forward, Y = camera's local left, Z = camera's local up (RHS)
+        //   Clip space:               X = right, Y = up, Z = depth (1.0 at near, 0.0 at far)
+        //
+        // This transformation maps:
+        //   - Camera's forward (X_cam) → Z_clip (depth into screen, reverse-Z: 1 at near, 0 at far)
+        //   - Camera's left (Y_cam) → -X_clip (negated to become right in clip space)
+        //   - Camera's up (Z_cam) → Y_clip (up in clip space)
+        //
+        // Parameters:
+        //   fovY        - Vertical field of view angle in radians
+        //   aspect      - Aspect ratio (width / height)
+        //   nearPlane   - Distance to near clip plane (positive value)
+        //   farPlane    - Distance to far clip plane (positive value, farPlane > nearPlane)
+        //
+        // Returns: A 4x4 projection matrix for use with row vectors (v' = v * M)
+        //
+        // Matrix layout for row vectors (v' = v * M):
+        // Row-vector multiplication: [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
+        // 
+        // RHS: +X=forward, +Y=left, +Z=up
+        // Mapping: x_cam(forward) → z_clip(depth), y_cam(left) → -x_clip(right in clip), z_cam(up) → y_clip(up)
+        // 
+        // [   0     -f/aspect    0        0    ]  row 0
+        // [   0        0         f        0    ]  row 1
+        // [   A        0         0        1    ]  row 2
+        // [   B        0         0        0    ]  row 3  ← NOTE: Positive B for reverse-Z
+        //
+        // Where: A = farPlane/(near-far), B = (near*far)/(near-far) for reverse-Z
+        template<class _Type>
+        TMatrix<_Type, 4, 4> PerspectiveReverseZ(_Type fovY, _Type aspect, _Type nearPlane, _Type farPlane)
+        {
+            auto m = IdentityMatrix<_Type, 4, 4>();
+
+            _Type f = _Type(1.0) / std::tan(fovY * _Type(0.5));  // cotangent of half FOV
+            _Type rangeInv = _Type(1.0) / (nearPlane - farPlane);  // reversed for reverse-Z
+
+            // Row 0: y_cam(left) → x_clip (negated because clip space is +X=right)
+            m[0][0] = _Type(0.0);
+            m[0][1] = -f / aspect;
+            m[0][2] = _Type(0.0);
+            m[0][3] = _Type(0.0);
+            
+            // Row 1: z_cam(up) → y_clip
+            m[1][0] = _Type(0.0);
+            m[1][1] = _Type(0.0);
+            m[1][2] = f;
+            m[1][3] = _Type(0.0);
+            
+            // Row 2: x_cam(forward) → z_clip and w_clip
+            m[2][0] = farPlane * rangeInv;        // A: x_cam → z_clip
+            m[2][1] = _Type(0.0);
+            m[2][2] = _Type(0.0);
+            m[2][3] = _Type(1.0);                 // x_cam → w_clip (for perspective divide)
+            
+            // Row 3: constant → z_clip
+            m[3][0] = nearPlane * farPlane * rangeInv;  // B: constant → z_clip
+            m[3][1] = _Type(0.0);
+            m[3][2] = _Type(0.0);
+            m[3][3] = _Type(0.0);
+            
+            return m;
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // PerspectiveForwardZ: Generates a forward-Z perspective projection matrix.
+        //
+        // Conventions:
+        //   Input coordinate system:  X = camera's local forward, Y = camera's local left, Z = camera's local up (RHS)
+        //   Clip space:               X = right, Y = up, Z = depth (0.0 at near, 1.0 at far)
+        //
+        // This transformation maps:
+        //   - Camera's forward (X_cam) → Z_clip (depth into screen, forward-Z: 0 at near, 1 at far)
+        //   - Camera's left (Y_cam) → -X_clip (negated to become right in clip space)
+        //   - Camera's up (Z_cam) → Y_clip (up in clip space)
+        //
+        // Parameters:
+        //   fovY        - Vertical field of view angle in radians
+        //   aspect      - Aspect ratio (width / height)
+        //   nearPlane   - Distance to near clip plane (positive value)
+        //   farPlane    - Distance to far clip plane (positive value, farPlane > nearPlane)
+        //
+        // Returns: A 4x4 projection matrix for use with row vectors (v' = v * M)
+        //
+        // Matrix layout for row vectors (v' = v * M):
+        // Row-vector multiplication: [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
+        // 
+        // RHS: +X=forward, +Y=left, +Z=up
+        // Mapping: x_cam(forward) → z_clip(depth), y_cam(left) → -x_clip(right in clip), z_cam(up) → y_clip(up)
+        // 
+        // [   0     -f/aspect    0        0    ]  row 0
+        // [   0        0         f        0    ]  row 1
+        // [   A        0         0        1    ]  row 2
+        // [  -B        0         0        0    ]  row 3  ← NOTE: Negative B for forward-Z
+        //
+        // Where: A = farPlane/(far-near), B = (near*far)/(far-near) for forward-Z
+        template<class _Type>
+        TMatrix<_Type, 4, 4> PerspectiveForwardZ(_Type fovY, _Type aspect, _Type nearPlane, _Type farPlane)
+        {
+            auto m = IdentityMatrix<_Type, 4, 4>();
+
+            _Type f = _Type(1.0) / std::tan(fovY * _Type(0.5));  // cotangent of half FOV
+            _Type rangeInv = _Type(1.0) / (farPlane - nearPlane);  // standard forward-Z
+
+            // Row 0: y_cam(left) → x_clip (negated because clip space is +X=right)
+            m[0][0] = _Type(0.0);
+            m[0][1] = -f / aspect;
+            m[0][2] = _Type(0.0);
+            m[0][3] = _Type(0.0);
+            
+            // Row 1: z_cam(up) → y_clip
+            m[1][0] = _Type(0.0);
+            m[1][1] = _Type(0.0);
+            m[1][2] = f;
+            m[1][3] = _Type(0.0);
+            
+            // Row 2: x_cam(forward) → z_clip and w_clip
+            m[2][0] = farPlane * rangeInv;        // A: x_cam → z_clip
+            m[2][1] = _Type(0.0);
+            m[2][2] = _Type(0.0);
+            m[2][3] = _Type(1.0);                 // x_cam → w_clip (for perspective divide)
+            
+            // Row 3: constant → z_clip
+            m[3][0] = -nearPlane * farPlane * rangeInv;  // B: constant → z_clip
+            m[3][1] = _Type(0.0);
+            m[3][2] = _Type(0.0);
+            m[3][3] = _Type(0.0);
+            
+            return m;
+        }
 
         //------------------------------------------------------------------------------------------------
         // Axis-Aligned Bounding Box

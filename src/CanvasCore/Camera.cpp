@@ -75,39 +75,14 @@ GEMMETHODIMP_(Math::FloatMatrix4x4) CCamera::GetProjectionMatrix()
 {
     if (m_ProjectionMatrixDirty)
     {
-        // Perspective projection matrix for row vectors
-        // Row-vector form: v' = v * P where P is the projection matrix
-        //
-        // For row vectors, we use the transpose:
-        // [ f/aspect   0        0             0    ]
-        // [   0        f        0             0    ]
-        // [   0        0    (f+n)/(n-f)      -1    ]
-        // [   0        0    2fn/(n-f)         0    ]
-        
-        float f = 1.0f / std::tan(m_FovAngle * 0.5f); // cotangent of half fov angle
-        float n = m_NearClip;
-        float farClip = m_FarClip;
-        float rangeInv = 1.0f / (n - farClip);
-        
-        m_ProjectionMatrix[0][0] = f / m_AspectRatio;
-        m_ProjectionMatrix[0][1] = 0.0f;
-        m_ProjectionMatrix[0][2] = 0.0f;
-        m_ProjectionMatrix[0][3] = 0.0f;
-        
-        m_ProjectionMatrix[1][0] = 0.0f;
-        m_ProjectionMatrix[1][1] = f;
-        m_ProjectionMatrix[1][2] = 0.0f;
-        m_ProjectionMatrix[1][3] = 0.0f;
-        
-        m_ProjectionMatrix[2][0] = 0.0f;
-        m_ProjectionMatrix[2][1] = 0.0f;
-        m_ProjectionMatrix[2][2] = (farClip + n) * rangeInv;
-        m_ProjectionMatrix[2][3] = -1.0f;
-        
-        m_ProjectionMatrix[3][0] = 0.0f;
-        m_ProjectionMatrix[3][1] = 0.0f;
-        m_ProjectionMatrix[3][2] = 2.0f * farClip * n * rangeInv;
-        m_ProjectionMatrix[3][3] = 0.0f;
+        // Use the new PerspectiveReverseZ function which handles the
+        // RHS coordinate system (X=forward, Y=left, Z=up) correctly
+        m_ProjectionMatrix = Math::PerspectiveReverseZ(
+            m_FovAngle,
+            m_AspectRatio,
+            m_NearClip,
+            m_FarClip
+        );
         
         m_ProjectionMatrixDirty = false;
         m_ViewProjectionMatrixDirty = true; // View-projection needs recalculation

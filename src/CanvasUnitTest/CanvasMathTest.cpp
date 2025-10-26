@@ -151,7 +151,7 @@ namespace CanvasUnitTest
 
             for (unsigned int i = 0; i < _countof(fv); ++i)
             {
-                auto nv = NormalizeVector(fv[i]);
+                auto nv = fv[i].Normalize();
             
                 // Verify the magnitude is nearly 1.0f
                 float magsq = DotProduct(nv, nv);
@@ -168,7 +168,7 @@ namespace CanvasUnitTest
 
             for (unsigned int i = 0; i < _countof(dv); ++i)
             {
-                auto nv = NormalizeVector(dv[i]);
+                auto nv = dv[i].Normalize();
             
                 // Verify the magnitude is nearly 1.0f
                 double magsq = DotProduct(nv, nv);
@@ -222,49 +222,57 @@ namespace CanvasUnitTest
 
         TEST_METHOD(LookAt)
         {
-            // Simulate a "LookAt" transform with world-up as the world Z-axis and
-            // Camera-up as the camera-local Y-axis and camera-forward as the
-            // negative camera-local Z-axis
+            // ComposePointToBasisVectors is a general utility that works with any coordinate system.
+            // It computes: basisSideVector = WorldUp × ForwardVector, basisUpVector = ForwardVector × basisSideVector
+            // This test verifies the math works correctly regardless of camera conventions.
+            
             auto WorldUp = FloatVector3(0, 0, 1); // World-up is the world Z-axis
             FloatMatrix3x3 M;
-            M[2] = FloatVector3(0, 1, 0); // Camera looks in the -Y direction (this is a backward vector)
-            ComposeLookAtBasisVectors(WorldUp, M[2], M[0], M[1]);
+            
+            // Test case 1: Forward vector pointing in -Y direction
+            auto forward1 = FloatVector3(0, -1, 0);
+            ComposePointToBasisVectors(WorldUp, forward1, M[0], M[1]);
+            M[2] = forward1;
 
+            // Expected:
+            // side = WorldUp × forward = (0,0,1) × (0,-1,0) = (1,0,0)
+            // up = forward × side = (0,-1,0) × (1,0,0) = (0,0,1)
             Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
                 {
-                    {-1, 0, 0},
-                    {0, 0, 1},
-                    {0, 1, 0},
+                    {1, 0, 0},     // side
+                    {0, 0, 1},     // up  
+                    {0, -1, 0},    // forward
                 }
             )));
 
             
-            // Degenerate cases:
+            // Degenerate case 1: Forward vector aligned with world-up
+            auto forward2 = FloatVector3(0, 0, 1);
+            ComposePointToBasisVectors(WorldUp, forward2, M[0], M[1]);
+            M[2] = forward2;
 
-            // Should use default out-vector
-            M[2] = FloatVector3(0, 0, 1); // Camera looks in the -Z direction
-            ComposeLookAtBasisVectors(WorldUp, M[2], M[0], M[1]);
-
-            // Assume camera-up aligns with the Y-axis
+            // When forward is parallel to WorldUp, function picks an arbitrary perpendicular side vector
             Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
                 {
-                    {1, 0, 0},
-                    {0, 1, 0},
-                    {0, 0, 1},
+                    {1, 0, 0},     // side (arbitrary perpendicular)
+                    {0, 1, 0},     // up (perpendicular to forward and side)
+                    {0, 0, 1},     // forward
                 }
             )));
 
-            // Look straight up (gimbal lock).
-            // Should use default out-vector
-            M[2] = FloatVector3(0, 0, -1); // Camera looks in the +Z direction
-            ComposeLookAtBasisVectors(WorldUp, M[2], M[0], M[1]);
+            // Degenerate case 2: Forward vector anti-parallel to world-up
+            auto forward3 = FloatVector3(0, 0, -1);
+            ComposePointToBasisVectors(WorldUp, forward3, M[0], M[1]);
+            M[2] = forward3;
 
-            // Assume camera-up aligns with the Y-axis
+            // When forward is anti-parallel to WorldUp, function picks an arbitrary perpendicular side vector (flipped)
+            // side = (-1, 0, 0) from function's formula: (-localUp[2], localUp[0], -localUp[1])
+            // up = forward × side = (0,0,-1) × (-1,0,0) = (0, 1, 0)
             Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
                 {
-                    {-1, 0, 0},
-                    {0, 1, 0},
-                    {0, 0, -1},
+                    {-1, 0, 0},    // side (arbitrary perpendicular, negative)
+                    {0, 1, 0},     // up (perpendicular to forward and side)
+                    {0, 0, -1},    // forward
                 }
             )));
         }
@@ -683,6 +691,169 @@ namespace CanvasUnitTest
 
             auto m4 = FloatMatrix4x4::Identity();
             Assert::IsTrue(AlmostEqual(m4, IdentityMatrix<float, 4, 4>()));
+        }
+
+        TEST_METHOD(PerspectiveReverseZBasic)
+        {
+            // Test basic reverse-Z perspective matrix properties
+            // RHS: +X=forward, +Y=left, +Z=up
+            float fovY = static_cast<float>(g_PI / 4.0);  // 45 degrees
+            float aspect = 16.0f / 9.0f;
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+
+            auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
+
+            // Check matrix elements for row-vector multiplication
+            // [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
+            Assert::IsTrue(proj[0][1] != 0.0f);  // Y(left) → X_clip scaling (-f/aspect)
+            Assert::IsTrue(proj[1][2] != 0.0f);  // Z(up) → Y_clip scaling (f)
+            Assert::IsTrue(proj[2][0] != 0.0f);  // X(forward) → Z_clip scaling
+            Assert::IsTrue(proj[2][3] == 1.0f);  // W projection coefficient (perspective divide by x_cam)
+
+            // Verify f = cot(fovY/2)
+            float f = 1.0f / std::tan(fovY * 0.5f);
+            Assert::IsTrue(std::abs(proj[0][1] - (-f / aspect)) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[1][2] - f) < FLT_EPSILON);
+        }
+
+        TEST_METHOD(PerspectiveReverseZDepthMapping)
+        {
+            // Test reverse-Z perspective matrix generates correct depth coefficients
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 16.0f / 9.0f;
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+
+            auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
+
+            // Verify the matrix has the correct structure for reverse-Z
+            // M[2][0] should be non-zero (depth scaling from x_cam)
+            // M[3][0] should be non-zero (depth translation constant)
+            Assert::IsTrue(proj[2][0] != 0.0f);
+            Assert::IsTrue(proj[3][0] != 0.0f);
+            
+            // M[2][0] should equal farPlane / (nearPlane - farPlane)
+            // M[3][0] should equal (nearPlane * farPlane) / (nearPlane - farPlane)
+            float rangeInv = 1.0f / (nearPlane - farPlane);
+            Assert::IsTrue(std::abs(proj[2][0] - farPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[3][0] - nearPlane * farPlane * rangeInv) < FLT_EPSILON);
+        }
+
+        TEST_METHOD(PerspectiveReverseZCoordinateTransform)
+        {
+            // Test coordinate system transformation: X_in(forward)→Z_clip, Y_in(left)→-X_clip, Z_in(up)→Y_clip
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 1.0f;
+            float nearPlane = 1.0f;
+            float farPlane = 10.0f;
+
+            auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
+
+            float f = 1.0f / std::tan(fovY * 0.5f);
+
+            // Verify FOV scaling (use relaxed tolerance for negative values)
+            Assert::IsTrue(std::abs(proj[0][1] - (-f)) < 1e-5f);  // Y(left) → X_clip (negated)
+            Assert::IsTrue(std::abs(proj[1][2] - f) < 1e-5f);     // Z(up) → Y_clip
+
+            // Verify perspective divide is set up
+            Assert::IsTrue(std::abs(proj[2][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            Assert::IsTrue(std::abs(proj[3][3] - 0.0f) < 1e-5f);  // no constant contribution to w_clip
+        }
+
+        TEST_METHOD(PerspectiveForwardZBasic)
+        {
+            // Test basic forward-Z perspective matrix properties
+            // RHS: +X=forward, +Y=left, +Z=up
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 16.0f / 9.0f;
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+
+            auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
+
+            // Check matrix elements for row-vector multiplication
+            Assert::IsTrue(proj[0][1] != 0.0f);  // Y(left) → X_clip
+            Assert::IsTrue(proj[1][2] != 0.0f);  // Z(up) → Y_clip
+            Assert::IsTrue(proj[2][0] != 0.0f);  // X(forward) → Z_clip
+            Assert::IsTrue(proj[2][3] == 1.0f);  // W projection coefficient
+
+            // Verify f = cot(fovY/2)
+            float f = 1.0f / std::tan(fovY * 0.5f);
+            Assert::IsTrue(std::abs(proj[0][1] - (-f / aspect)) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[1][2] - f) < FLT_EPSILON);
+        }
+
+        TEST_METHOD(PerspectiveForwardZDepthMapping)
+        {
+            // Test forward-Z perspective matrix generates correct depth coefficients
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 16.0f / 9.0f;
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+
+            auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
+
+            // Verify the matrix has the correct structure for forward-Z
+            // M[2][0] should be non-zero (depth scaling from x_cam)
+            // M[3][0] should be non-zero (depth translation, negative of reverse-Z)
+            Assert::IsTrue(proj[2][0] != 0.0f);
+            Assert::IsTrue(proj[3][0] != 0.0f);
+            
+            // M[2][0] should equal farPlane / (farPlane - nearPlane)
+            // M[3][0] should equal -(nearPlane * farPlane) / (farPlane - nearPlane)
+            float rangeInv = 1.0f / (farPlane - nearPlane);
+            Assert::IsTrue(std::abs(proj[2][0] - farPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[3][0] + nearPlane * farPlane * rangeInv) < FLT_EPSILON);
+        }
+
+        TEST_METHOD(PerspectiveForwardZCoordinateTransform)
+        {
+            // Test coordinate system transformation for forward-Z
+            // X_in(forward)→Z_clip, Y_in(left)→-X_clip, Z_in(up)→Y_clip
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 1.0f;
+            float nearPlane = 1.0f;
+            float farPlane = 10.0f;
+
+            auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
+
+            float f = 1.0f / std::tan(fovY * 0.5f);
+
+            // Verify FOV scaling (use relaxed tolerance for negative values)
+            Assert::IsTrue(std::abs(proj[0][1] - (-f)) < 1e-5f);  // Y(left) → X_clip (negated)
+            Assert::IsTrue(std::abs(proj[1][2] - f) < 1e-5f);     // Z(up) → Y_clip
+
+            // Verify perspective divide is set up correctly
+            Assert::IsTrue(std::abs(proj[2][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            Assert::IsTrue(std::abs(proj[3][3] - 0.0f) < 1e-5f);  // no constant contribution to w_clip
+        }
+
+        TEST_METHOD(PerspectiveReverseZVsForwardZDifference)
+        {
+            // Verify both reverse-Z and forward-Z functions create valid projection matrices
+            // RHS: +X=forward, +Y=left, +Z=up
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 1.0f;
+            float nearPlane = 1.0f;
+            float farPlane = 10.0f;
+
+            auto projRZ = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
+            auto projFZ = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
+
+            float f = 1.0f / std::tan(fovY * 0.5f);
+
+            // Both should have identical FOV and perspective setup
+            Assert::IsTrue(std::abs(projRZ[0][1] - (-f)) < 1e-5f);  // Y(left) → X_clip
+            Assert::IsTrue(std::abs(projRZ[1][2] - f) < 1e-5f);     // Z(up) → Y_clip
+            Assert::IsTrue(std::abs(projFZ[0][1] - (-f)) < 1e-5f);
+            Assert::IsTrue(std::abs(projFZ[1][2] - f) < 1e-5f);
+
+            // Verify perspective divide is correctly set for both
+            Assert::IsTrue(std::abs(projRZ[2][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            Assert::IsTrue(std::abs(projFZ[2][3] - 1.0f) < 1e-5f);
+            Assert::IsTrue(std::abs(projRZ[3][3] - 0.0f) < 1e-5f);
+            Assert::IsTrue(projFZ[3][3] == 0.0f);
         }
 	};
 }
