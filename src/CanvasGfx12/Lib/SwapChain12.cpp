@@ -79,8 +79,8 @@ Gem::Result CSwapChain12::Present()
     }
     catch (_com_error &e)
     {
-        sentinel.SetResultCode(Gem::GemResult(e.Error()));
-        return Gem::GemResult(e.Error());
+        sentinel.SetResultCode(ResultFromHRESULT(e.Error()));
+        return ResultFromHRESULT(e.Error());
     }
 
     return Gem::Result::Success;

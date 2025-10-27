@@ -9,7 +9,8 @@
 #include "Buffer12.h"
 
 //------------------------------------------------------------------------------------------------
-CDevice12::CDevice12(PCSTR name)
+CDevice12::CDevice12(PCSTR name) :
+    m_HostWriteSuballocator(m_HostWriteSize)
 {
     if (name != nullptr)
         SetName(name);
@@ -24,6 +25,11 @@ Gem::Result CDevice12::Initialize()
         CComPtr<ID3D12Device5> pDevice;
         ThrowFailedHResult(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice)));
 
+        // Create an upload heap scratch buffer for CPU write operations
+        Gem::TGemPtr<Canvas::XGfxBuffer> pScratchBuffer;
+        Gem::ThrowGemError(CreateBuffer(m_HostWriteSize, Canvas::GfxMemoryUsage::HostWrite, &pScratchBuffer));
+        m_pHostWriteBuffer = pScratchBuffer;
+
         m_pD3DDevice.Attach(pDevice.Detach());
     }
     catch (_com_error &e)
@@ -32,7 +38,7 @@ Gem::Result CDevice12::Initialize()
         {
             GetLogger()->Error("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
         }
-        return Gem::GemResult(e.Error());
+        return ResultFromHRESULT(e.Error());
     }
 
     return Gem::Result::Success;
@@ -66,7 +72,7 @@ GEMMETHODIMP CDevice12::CreateMaterial()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::XGfxSurface **ppSurface)
+GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas::XGfxSurface **ppSurface)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateSurface", GetLogger());
     
@@ -77,30 +83,30 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::X
     
     try
     {
-        // Convert SurfaceDesc to D3D12_RESOURCE_DESC
+        // Convert GfxSurfaceDesc to D3D12_RESOURCE_DESC
         D3D12_RESOURCE_DESC resourceDesc = {};
         
         switch (desc.Dimension)
         {
-        case Canvas::SurfaceDimension::Dimension1D:
+        case Canvas::GfxSurfaceDimension::Dimension1D:
             resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
             resourceDesc.Width = desc.Width;
             resourceDesc.Height = 1;
             resourceDesc.DepthOrArraySize = static_cast<UINT16>(desc.ArraySize);
             break;
-        case Canvas::SurfaceDimension::Dimension2D:
+        case Canvas::GfxSurfaceDimension::Dimension2D:
             resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
             resourceDesc.Width = desc.Width;
             resourceDesc.Height = desc.Height;
             resourceDesc.DepthOrArraySize = static_cast<UINT16>(desc.ArraySize);
             break;
-        case Canvas::SurfaceDimension::Dimension3D:
+        case Canvas::GfxSurfaceDimension::Dimension3D:
             resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
             resourceDesc.Width = desc.Width;
             resourceDesc.Height = desc.Height;
             resourceDesc.DepthOrArraySize = static_cast<UINT16>(desc.Depth);
             break;
-        case Canvas::SurfaceDimension::DimensionCube:
+        case Canvas::GfxSurfaceDimension::DimensionCube:
             resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
             resourceDesc.Width = desc.Width;
             resourceDesc.Height = desc.Height;
@@ -115,7 +121,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::X
         resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
         
-        // Set resource flags based on SurfaceFlags
+        // Set resource flags based on GfxSurfaceFlags
         if (desc.Flags & Canvas::SurfaceFlag_RenderTarget)
             resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
         if (desc.Flags & Canvas::SurfaceFlag_DepthStencil)
@@ -168,8 +174,8 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::X
     {
         if (GetLogger())
             GetLogger()->Error("CDevice12::CreateSurface: HRESULT 0x%08x", e.Error());
-        sentinel.SetResultCode(Gem::GemResult(e.Error()));
-        return Gem::GemResult(e.Error());
+        sentinel.SetResultCode(ResultFromHRESULT(e.Error()));
+        return ResultFromHRESULT(e.Error());
     }
     catch (const Gem::GemError &e)
     {
@@ -179,7 +185,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::SurfaceDesc &desc, Canvas::X
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateBuffer(UINT sizeInBytes, Canvas::XGfxBuffer **ppBuffer)
+GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsage memoryUsage, Canvas::XGfxBuffer **ppBuffer)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateBuffer", GetLogger());
     
@@ -206,7 +212,7 @@ GEMMETHODIMP CDevice12::CreateBuffer(UINT sizeInBytes, Canvas::XGfxBuffer **ppBu
         
         // Create as default heap (GPU-only memory)
         D3D12_HEAP_PROPERTIES heapProps = {};
-        heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+        heapProps.Type = GfxMemoryUsageToD3D12HeapType(memoryUsage);
         heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
         heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
         heapProps.CreationNodeMask = 1;
@@ -232,12 +238,70 @@ GEMMETHODIMP CDevice12::CreateBuffer(UINT sizeInBytes, Canvas::XGfxBuffer **ppBu
     {
         if (GetLogger())
             GetLogger()->Error("CDevice12::CreateBuffer: HRESULT 0x%08x", e.Error());
-        sentinel.SetResultCode(Gem::GemResult(e.Error()));
-        return Gem::GemResult(e.Error());
+        sentinel.SetResultCode(ResultFromHRESULT(e.Error()));
+        return ResultFromHRESULT(e.Error());
     }
     catch (const Gem::GemError &e)
     {
         sentinel.SetResultCode(e.Result());
         return e.Result();
     }
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::GfxSuballocation &suballocation)
+{
+    Canvas::CFunctionSentinel sentinel("XGfxDevice::AllocateHostWriteRegion", GetLogger(), QLog::Level::Debug);
+    
+    try
+    {
+        // Allocate a region from the scratch suballocator
+        auto block = m_HostWriteSuballocator.Allocate(sizeInBytes);
+        suballocation.Offset = block.Start();
+        suballocation.Size = sizeInBytes;
+        suballocation.pBuffer = m_pHostWriteBuffer;
+
+        return Gem::Result::Success;
+    }
+    catch (const BuddySuballocatorException &)
+    {
+        if (GetLogger())
+            GetLogger()->Error("CDevice12::AllocateHostWriteRegion: BuddySuballocatorException");
+        sentinel.SetResultCode(Gem::Result::OutOfMemory);
+        return Gem::Result::OutOfMemory;
+    }
+    catch (const Gem::GemError &e)
+    {
+        sentinel.SetResultCode(e.Result());
+        return e.Result();
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxSuballocation &suballocation)
+{
+    Canvas::CFunctionSentinel sentinel("XGfxDevice::FreeHostWriteRegion", GetLogger(), QLog::Level::Debug);
+    
+    // Free the region back to the scratch suballocator
+    auto block = TBuddySuballocator<uint64_t>::ReconstructBlock(suballocation.Offset, suballocation.Size);
+    m_HostWriteSuballocator.Free(block);
+    suballocation.pBuffer = nullptr;
+    suballocation.Offset = 0;
+    suballocation.Size = 0;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::CreateDebugMesh(
+    [[maybe_unused]] uint32_t vertexCount,
+    [[maybe_unused]] const Canvas::Math::FloatVector4 *positions,
+    [[maybe_unused]] const Canvas::Math::FloatVector4 *normals,
+    [[maybe_unused]] Canvas::XGfxMesh **ppMesh)
+{
+    uint64_t allocationSize = vertexCount * 4 * sizeof(float) * 2;
+
+    // Allocate space in the host write memory
+    Canvas::GfxSuballocation suballocation;
+    Gem::ThrowGemError(AllocateHostWriteRegion(allocationSize, suballocation));
+
+    return Gem::Result::NotImplemented;
 }

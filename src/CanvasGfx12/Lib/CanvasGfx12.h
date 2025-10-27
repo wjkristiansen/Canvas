@@ -6,6 +6,36 @@
 
 extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt);
 
+//------------------------------------------------------------------------------------------------
+inline Gem::Result ResultFromHRESULT(HRESULT hr)
+{
+    switch (hr)
+    {
+    case S_OK:
+        return Gem::Result::Success;
+
+    case E_FAIL:
+        return Gem::Result::Fail;
+
+    case E_OUTOFMEMORY:
+        return Gem::Result::OutOfMemory;
+
+    case E_INVALIDARG:
+    case DXGI_ERROR_INVALID_CALL:
+        return Gem::Result::InvalidArg;
+
+    case DXGI_ERROR_DEVICE_REMOVED:
+        // BUGBUG: TODO...
+        return Gem::Result::Fail;
+
+    case E_NOINTERFACE:
+        return Gem::Result::NoInterface;
+
+    default:
+        return Gem::Result::Fail;
+    }
+}
+
 //================================================================================================
 // GfxElement - Template helper for graphics Canvas elements
 //================================================================================================

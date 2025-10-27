@@ -12,18 +12,32 @@
 
 #include "D3D12ResourceUtils.h"
 #include "CanvasGfx12.h"
+#include "BuddySuballocator.h"
+
+inline constexpr D3D12_HEAP_TYPE GfxMemoryUsageToD3D12HeapType(Canvas::GfxMemoryUsage usage)
+{
+    switch (usage)
+    {
+    case Canvas::GfxMemoryUsage::DeviceLocal:
+        return D3D12_HEAP_TYPE_DEFAULT;
+    case Canvas::GfxMemoryUsage::HostWrite:
+        return D3D12_HEAP_TYPE_UPLOAD;
+    case Canvas::GfxMemoryUsage::HostRead:
+        return D3D12_HEAP_TYPE_READBACK;
+    default:
+        return D3D12_HEAP_TYPE_DEFAULT;
+    }
+}
 
 //------------------------------------------------------------------------------------------------
 class CDevice12 : public TGfxElement<Canvas::XGfxDevice>
 {
-    CComPtr<ID3D12Resource> m_pVertices;
-    CComPtr<ID3D12Resource> m_pNormals;
-    CComPtr<ID3D12Resource> m_pTextureUVs[4];
-    CComPtr<ID3D12Resource> m_pBoneWeights;
-
 public:
     CComPtr<ID3D12Device5> m_pD3DDevice;
     CResourceStateManager m_ResourceStateManager;
+    uint64_t m_HostWriteSize = 4 * 1024 * 1024; // 4 MB default
+    TBuddySuballocator<uint64_t> m_HostWriteSuballocator;
+    Gem::TGemPtr<Canvas::XGfxBuffer> m_pHostWriteBuffer;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxDevice)
@@ -40,8 +54,15 @@ public:
     // XGfxDevice methods
     GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) final;
     GEMMETHOD(CreateMaterial)() final;
-    GEMMETHOD(CreateSurface)(const Canvas::SurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
-    GEMMETHOD(CreateBuffer)(UINT sizeInBytes, Canvas::XGfxBuffer **ppBuffer) final;
+    GEMMETHOD(CreateSurface)(const Canvas::GfxSurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
+    GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, Canvas::GfxMemoryUsage memoryUsage, Canvas::XGfxBuffer **ppBuffer) final;
+    GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, Canvas::GfxSuballocation &suballocationInfo) final;
+    GEMMETHOD_(void, FreeHostWriteRegion)(Canvas::GfxSuballocation &suballocationInfo) final;
+    GEMMETHOD(CreateDebugMesh)(
+        uint32_t vertexCount,
+        const Canvas::Math::FloatVector4 *positions,
+        const Canvas::Math::FloatVector4 *normals,
+        Canvas::XGfxMesh **ppMesh) final;
 
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
 

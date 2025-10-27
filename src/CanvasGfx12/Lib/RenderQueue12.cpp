@@ -60,40 +60,40 @@ CRenderQueue12::CRenderQueue12(CDevice12 *pDevice, PCSTR name) :
     CQDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     auto *pD3DDevice = pDevice->GetD3DDevice();
 
-    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
 
     CComPtr<ID3D12CommandAllocator> pCA = m_CommandAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
 
     CComPtr<ID3D12GraphicsCommandList> pCL;
-    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
 
     CComPtr<ID3D12DescriptorHeap> pResDH;
     D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     DHDesc.NumDescriptors = NumShaderResourceDescriptors; // BUGBUG: This needs to be a well-known constant
-    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pResDH))));
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pResDH))));
 
     CComPtr<ID3D12DescriptorHeap> pSamplerDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
     DHDesc.NumDescriptors = NumSamplerDescriptors; // BUGBUG: This needs to be a well-known constant
-    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pSamplerDH))));
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pSamplerDH))));
 
     CComPtr<ID3D12DescriptorHeap> pRTVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     DHDesc.NumDescriptors = NumRTVDescriptors; // BUGBUG: This needs to be a well-known constant
-    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pRTVDH))));
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pRTVDH))));
 
     CComPtr<ID3D12DescriptorHeap> pDSVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     DHDesc.NumDescriptors = NumDSVDescriptors; // BUGBUG: This needs to be a well-known constant
-    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pDSVDH))));
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pDSVDH))));
 
     CComPtr<ID3D12Fence> pFence;
-    Gem::ThrowGemError(Gem::GemResult(pD3DDevice->CreateFence(m_FenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence))));
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateFence(m_FenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence))));
 
     // The default root signature uses the following parameters
     //  Root CBV (descriptor static)
@@ -211,7 +211,7 @@ Gem::Result CRenderQueue12::FlushImpl()
     }
     catch (_com_error &e)
     {
-        return Gem::GemResult(e.Error());
+        return ResultFromHRESULT(e.Error());
     }
 }
 
@@ -228,8 +228,8 @@ Gem::Result CRenderQueue12::Flush()
     }
     catch (_com_error &e)
     {
-        sentinel.SetResultCode(Gem::GemResult(e.Error()));
-        return Gem::GemResult(e.Error());
+        sentinel.SetResultCode(ResultFromHRESULT(e.Error()));
+        return ResultFromHRESULT(e.Error());
     }
 
     return Gem::Result::Success;

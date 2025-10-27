@@ -73,6 +73,14 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    enum GfxMemoryUsage
+    {
+        HostRead,               // CPU-writeable, GPU-readable (e.g. vertex uploads)
+        HostWrite,              // GPU-writeable, CPU-readable (e.g. query results)
+        DeviceLocal,            // GPU-only access (e.g. textures, render targets)
+    };
+
+    //------------------------------------------------------------------------------------------------
     // Buffer resource
     struct XGfxSurface : public XCanvasElement
     {
@@ -128,10 +136,42 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    enum class GfxVertexBufferType
+    {
+        Position,           // FloatVector3 array
+        Normal,             // FloatVector3 array
+        Tangent,            // FloatVector3 array
+        Bitangent,          // FloatVector3 array
+        SpecularColor,      // FloatVector3 array
+        AlbedoColor,        // FloatVector4 array
+        AmbientColor,       // FloatVector4 array
+        EmissiveColor,      // FloatVector4 array
+        U0,                 // Float array
+        UV0,                // FloatVector2 array
+        UV1,                // FloatVector2 array
+        UV2,                // FloatVector2 array
+        UV3,                // FloatVector2 array
+        UVW0,               // FloatVector3 array
+        UVW1,               // FloatVector3 array
+        BoneWeights,        // Structured array
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct GfxVertexBuffer
+    {
+        Gem::TGemPtr<XGfxBuffer> pBuffer;
+        uint64_t Offset;
+    };
+
+    //------------------------------------------------------------------------------------------------
     struct
     XGfxMesh : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxMesh, 0x7EBC2A5A40CC96D3);
+
+        GEMMETHOD_(uint32_t, GetNumMaterialGroups)() = 0;
+        GEMMETHOD_(GfxVertexBuffer *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
+        GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t materialIndex) = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -164,7 +204,7 @@ namespace Canvas
         GEMMETHOD(Wait)() = 0;
     };
 
-    enum SurfaceFlags : uint32_t
+    enum GfxSurfaceFlags : uint32_t
     {
         SurfaceFlag_None = 0,
         SurfaceFlag_RenderTarget = 1 << 0,
@@ -175,7 +215,7 @@ namespace Canvas
         SurfaceFlag_CpuUpload = 1 << 5,
     };
 
-    enum class SurfaceDimension : uint32_t
+    enum class GfxSurfaceDimension : uint32_t
     {
         Dimension1D = 0,
         Dimension2D = 1,
@@ -183,20 +223,20 @@ namespace Canvas
         DimensionCube = 3,
     };
 
-    struct SurfaceDesc
+    struct GfxSurfaceDesc
     {
         GfxFormat Format;
-        SurfaceDimension Dimension;
-        SurfaceFlags Flags;
+        GfxSurfaceDimension Dimension;
+        GfxSurfaceFlags Flags;
         UINT Width;
         UINT Height;
         UINT Depth;
         UINT ArraySize;
         UINT MipLevels;
 
-        SurfaceDesc()
+        GfxSurfaceDesc()
             : Format(GfxFormat::Unknown)
-            , Dimension(SurfaceDimension::Dimension2D)
+            , Dimension(GfxSurfaceDimension::Dimension2D)
             , Flags(SurfaceFlag_None)
             , Width(0)
             , Height(0)
@@ -206,22 +246,22 @@ namespace Canvas
         {
         }
 
-        static SurfaceDesc SurfaceDesc1D(GfxFormat format, UINT width, SurfaceFlags flags, UINT mipLevels = 1)
+        static GfxSurfaceDesc SurfaceDesc1D(GfxFormat format, UINT width, GfxSurfaceFlags flags, UINT mipLevels = 1)
         {
-            SurfaceDesc desc;
+            GfxSurfaceDesc desc;
             desc.Format = format;
-            desc.Dimension = SurfaceDimension::Dimension1D;
+            desc.Dimension = GfxSurfaceDimension::Dimension1D;
             desc.Flags = flags;
             desc.Width = width;
             desc.MipLevels = mipLevels;
             return desc;
         }   
 
-        static SurfaceDesc SurfaceDesc2D(GfxFormat format, UINT width, UINT height, SurfaceFlags flags, UINT mipLevels = 1)
+        static GfxSurfaceDesc SurfaceDesc2D(GfxFormat format, UINT width, UINT height, GfxSurfaceFlags flags, UINT mipLevels = 1)
         {
-            SurfaceDesc desc;
+            GfxSurfaceDesc desc;
             desc.Format = format;
-            desc.Dimension = SurfaceDimension::Dimension2D;
+            desc.Dimension = GfxSurfaceDimension::Dimension2D;
             desc.Flags = flags;
             desc.Width = width;
             desc.Height = height;
@@ -229,11 +269,11 @@ namespace Canvas
             return desc;
         }
 
-        static SurfaceDesc SurfaceDesc3D(GfxFormat format, UINT width, UINT height, UINT depth, SurfaceFlags flags, UINT mipLevels = 1)
+        static GfxSurfaceDesc SurfaceDesc3D(GfxFormat format, UINT width, UINT height, UINT depth, GfxSurfaceFlags flags, UINT mipLevels = 1)
         {
-            SurfaceDesc desc;
+            GfxSurfaceDesc desc;
             desc.Format = format;
-            desc.Dimension = SurfaceDimension::Dimension3D;
+            desc.Dimension = GfxSurfaceDimension::Dimension3D;
             desc.Flags = flags;
             desc.Width = width;
             desc.Height = height;
@@ -242,11 +282,11 @@ namespace Canvas
             return desc;
         }
 
-        static SurfaceDesc SurfaceDescCube(GfxFormat format, UINT size, UINT arraySize, SurfaceFlags flags, UINT mipLevels = 1)
+        static GfxSurfaceDesc SurfaceDescCube(GfxFormat format, UINT size, UINT arraySize, GfxSurfaceFlags flags, UINT mipLevels = 1)
         {
-            SurfaceDesc desc;
+            GfxSurfaceDesc desc;
             desc.Format = format;
-            desc.Dimension = SurfaceDimension::DimensionCube;
+            desc.Dimension = GfxSurfaceDimension::DimensionCube;
             desc.Flags = flags;
             desc.Width = size;
             desc.Height = size;
@@ -257,6 +297,14 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    struct GfxSuballocation
+    {
+        uint64_t Offset;
+        uint64_t Size;
+        Gem::TGemPtr<XGfxBuffer> pBuffer;
+    };
+
+    //------------------------------------------------------------------------------------------------
     // Interface to a graphics device
     struct XGfxDevice : public XCanvasElement
     {
@@ -264,8 +312,15 @@ namespace Canvas
 
         GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) = 0;
         GEMMETHOD(CreateMaterial)() = 0;
-        GEMMETHOD(CreateSurface)(const SurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
-        GEMMETHOD(CreateBuffer)(UINT sizeInBytes, XGfxBuffer **ppBuffer) = 0;
+        GEMMETHOD(CreateSurface)(const GfxSurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
+        GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, GfxMemoryUsage memoryUsage, XGfxBuffer **ppBuffer) = 0;
+        GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxSuballocation &suballocationInfo) = 0;
+        GEMMETHOD_(void, FreeHostWriteRegion)(GfxSuballocation &suballocationInfo) = 0;
+        GEMMETHOD(CreateDebugMesh)(
+            uint32_t vertexCount,
+            const Canvas::Math::FloatVector4 *positions,
+            const Canvas::Math::FloatVector4 *normals,
+            XGfxMesh **ppMesh) = 0;
     };
 }
 

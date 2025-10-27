@@ -20,9 +20,6 @@
 namespace Canvas
 {
 
-// Forward declarations
-struct XGfxDevice;
-
 #if defined(_WIN32)
   #if defined(CANVASCORE_EXPORTS)
     #define CANVAS_API __declspec(dllexport)
@@ -35,9 +32,13 @@ struct XGfxDevice;
   #define CANVAS_API
 #endif
 
+// Forward declarations
 struct XScene;
 struct XCamera;
 struct XLight;
+struct XGfxBuffer;
+struct XGfxMesh;
+struct XMeshElement;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
 
@@ -284,6 +285,16 @@ XScene : public XCanvasElement
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XMeshElement : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XMeshElement, 0x4F4481985210AE1E);
+    
+    GEMMETHOD_(XGfxMesh *, GetMesh)() = 0;
+    GEMMETHOD_(uint32_t, GetMaterialGroupIndex)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

@@ -98,22 +98,12 @@ target_include_directories(LinkedList INTERFACE
     $<INSTALL_INTERFACE:include/LinkedList>
 )
 
-
-
-
-
-
-
 # Create interface library for header-only GEM submodule
 add_library(GEM INTERFACE)
 target_include_directories(GEM INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/GEM/Inc>
     $<INSTALL_INTERFACE:include/GEM>
 )
-
-
-
-
 
 # Add subdirectories for submodules first (they may be dependencies)
 add_subdirectory(deps/QLog)
