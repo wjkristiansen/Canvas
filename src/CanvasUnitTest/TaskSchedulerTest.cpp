@@ -1,0 +1,716 @@
+#include "pch.h"
+#include "CppUnitTest.h"
+#include "TaskScheduler.h"
+#include <atomic>
+#include <vector>
+
+// Disable warnings for unused lambda parameters in tests
+#pragma warning(push)
+#pragma warning(disable: 4100) // unreferenced formal parameter
+#pragma warning(disable: 4189) // local variable is initialized but not referenced
+
+using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+using namespace Canvas;
+
+namespace CanvasUnitTest
+{
+    TEST_CLASS(TaskSchedulerTest)
+    {
+    public:
+        // Helper: No-op callback that immediately completes the task
+        static TaskFunc NoOp()
+        {
+            return [](TaskID taskId, void* payload, size_t size, TaskScheduler& scheduler)
+            {
+                scheduler.CompleteTask(taskId);
+            };
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Basic Allocation and Scheduling Tests
+        //------------------------------------------------------------------------------------------------
+
+        TEST_METHOD(Constructor_CreatesSchedulerWithInitialRing)
+        {
+            // Arrange & Act
+            TaskScheduler scheduler(1024);
+            auto stats = scheduler.GetStatistics();
+
+            // Assert
+            Assert::AreEqual(size_t(1), stats.RingCount);
+            Assert::AreEqual(TaskID(1), stats.NextTaskId);
+            Assert::AreEqual(size_t(0), stats.ActiveTaskCount);
+        }
+
+        TEST_METHOD(AllocateTask_NoPayloadNoDependencies_Succeeds)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+
+            // Act
+            TaskID taskId = scheduler.AllocateTask(0, 0, NoOp());
+
+            // Assert
+            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreEqual(TaskID(1), taskId);
+        }
+
+        TEST_METHOD(AllocateTask_WithPayload_Succeeds)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+
+            // Act
+            TaskID taskId = scheduler.AllocateTask(256, 0, NoOp());
+
+            // Assert
+            Assert::AreNotEqual(InvalidTaskID, taskId);
+            void* payload = scheduler.GetPayload(taskId);
+            Assert::IsNotNull(payload);
+        }
+
+        TEST_METHOD(AllocateTask_WithPayload_IsAligned)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+
+            // Act
+            TaskID taskId = scheduler.AllocateTask(37, 0, NoOp()); // Unaligned size
+
+            // Assert
+            void* payload = scheduler.GetPayload(taskId);
+            uintptr_t payloadAddr = reinterpret_cast<uintptr_t>(payload);
+            Assert::AreEqual(size_t(0), payloadAddr % 16); // Should be 16-byte aligned
+        }
+
+        TEST_METHOD(AllocateTask_MultipleTasks_GetUniqueIDs)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+
+            // Act
+            TaskID id1 = scheduler.AllocateTask(64, 0, NoOp());
+            TaskID id2 = scheduler.AllocateTask(64, 0, NoOp());
+            TaskID id3 = scheduler.AllocateTask(64, 0, NoOp());
+
+            // Assert
+            Assert::AreEqual(TaskID(1), id1);
+            Assert::AreEqual(TaskID(2), id2);
+            Assert::AreEqual(TaskID(3), id3);
+        }
+
+        TEST_METHOD(ScheduleTask_WithoutDependencies_MovesToReady)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID taskId = scheduler.AllocateTask(0, 0, NoOp());
+
+            // Act
+            Gem::Result result = scheduler.ScheduleTask(taskId);
+
+            // Assert
+            Assert::IsTrue(result == Gem::Result::Success);
+            // Note: Task completes synchronously via NoOp callback
+            Assert::IsTrue(scheduler.IsTaskInState(taskId, TaskState::Completed));
+        }
+
+        TEST_METHOD(ScheduleTask_InvalidTaskID_ReturnsInvalidArg)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+
+            // Act
+            Gem::Result result = scheduler.ScheduleTask(InvalidTaskID);
+
+            // Assert
+            Assert::IsTrue(result == Gem::Result::InvalidArg);
+        }
+
+        TEST_METHOD(ScheduleTask_NonExistentTask_ReturnsNotFound)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+
+            // Act
+            Gem::Result result = scheduler.ScheduleTask(TaskID(999));
+
+            // Assert
+            Assert::IsTrue(result == Gem::Result::NotFound);
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Dependency Tests
+        //------------------------------------------------------------------------------------------------
+
+        TEST_METHOD(AddDependency_ToUnscheduledTask_Succeeds)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
+            TaskID task2 = scheduler.AllocateTask(0, 1, NoOp()); // Max 1 dependency
+            scheduler.ScheduleTask(task1);
+
+            // Act
+            Gem::Result result = scheduler.AddDependency(task2, task1);
+
+            // Assert
+            Assert::IsTrue(result == Gem::Result::Success);
+        }
+
+        TEST_METHOD(AddDependency_ToScheduledTask_Fails)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
+            TaskID task2 = scheduler.AllocateTask(0, 1, NoOp());
+            scheduler.ScheduleTask(task1);
+            scheduler.ScheduleTask(task2);
+
+            // Act
+            Gem::Result result = scheduler.AddDependency(task2, task1);
+
+            // Assert
+            Assert::IsTrue(result == Gem::Result::InvalidArg);
+        }
+
+        TEST_METHOD(AddDependency_UnscheduledDependency_FailsAtScheduleTime)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
+            TaskID task2 = scheduler.AllocateTask(0, 1, NoOp());
+            scheduler.AddDependency(task2, task1);
+
+            // Act - Try to schedule task2 when task1 is unscheduled
+            Gem::Result result = scheduler.ScheduleTask(task2);
+
+            // Assert
+            Assert::IsTrue(result == Gem::Result::InvalidArg);
+        }
+
+        TEST_METHOD(AddDependency_ExceedsMaxCount_Fails)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
+            TaskID task2 = scheduler.AllocateTask(0, 0, NoOp());
+            TaskID task3 = scheduler.AllocateTask(0, 1, NoOp()); // Max 1 dependency
+            scheduler.ScheduleTask(task1);
+            scheduler.ScheduleTask(task2);
+            scheduler.AddDependency(task3, task1);
+
+            // Act - Try to add second dependency
+            Gem::Result result = scheduler.AddDependency(task3, task2);
+
+            // Assert
+            Assert::IsTrue(result == Gem::Result::InvalidArg);
+        }
+
+        TEST_METHOD(ScheduleTask_WithDependencies_Succeeds)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
+            TaskID task2 = scheduler.AllocateTask(0, 1, NoOp());
+            scheduler.ScheduleTask(task1); // task1 completes immediately (NoOp callback)
+            scheduler.AddDependency(task2, task1);
+
+            // Act
+            Gem::Result result = scheduler.ScheduleTask(task2);
+
+            // Assert
+            Assert::IsTrue(result == Gem::Result::Success);
+            // task2 also completes immediately since task1 is already completed
+            Assert::IsTrue(scheduler.IsTaskInState(task2, TaskState::Completed));
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Memory Management Tests
+        //------------------------------------------------------------------------------------------------
+
+        TEST_METHOD(ProcessRetirements_RetiredTask_ReclaimsMemory)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID taskId = scheduler.AllocateTask(100, 0, NoOp());
+            scheduler.ScheduleTask(taskId);
+            
+            // Mark as completed manually (no callback)
+            auto result = scheduler.CompleteTask(taskId);
+            Assert::IsTrue(result == Gem::Result::InvalidArg); // Can't complete non-executing task
+        }
+
+        TEST_METHOD(ProcessRetirements_MultipleRetiredTasks_ReclaimsAll)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            scheduler.AllocateTask(100, 0, NoOp());
+            scheduler.AllocateTask(100, 0, NoOp());
+            scheduler.AllocateTask(100, 0, NoOp());
+
+            auto stats = scheduler.GetStatistics();
+            Assert::AreEqual(size_t(3), stats.ActiveTaskCount);
+        }
+
+
+
+        TEST_METHOD(Reset_ClearsAllTasksAndRings)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            scheduler.AllocateTask(100, 0, NoOp());
+            scheduler.AllocateTask(100, 0, NoOp());
+            auto stats1 = scheduler.GetStatistics();
+            Assert::AreEqual(size_t(2), stats1.ActiveTaskCount);
+
+            // Act
+            scheduler.Reset();
+
+            // Assert
+            auto stats2 = scheduler.GetStatistics();
+            Assert::AreEqual(size_t(0), stats2.ActiveTaskCount);
+            Assert::AreEqual(TaskID(1), stats2.NextTaskId);
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Task State Tests
+        //------------------------------------------------------------------------------------------------
+
+        TEST_METHOD(GetTaskState_ReturnsCorrectState)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID taskId = scheduler.AllocateTask(100, 0, NoOp());
+
+            // Assert - Initial state
+            TaskState state;
+            Assert::IsTrue(scheduler.GetTaskState(taskId, state) == Gem::Result::Success);
+            Assert::IsTrue(state == TaskState::Unscheduled);
+
+            // Act & Assert - After scheduling (NoOp callback completes synchronously)
+            scheduler.ScheduleTask(taskId);
+            Assert::IsTrue(scheduler.GetTaskState(taskId, state) == Gem::Result::Success);
+            Assert::IsTrue(state == TaskState::Completed);
+        }
+
+        TEST_METHOD(TaskPayload_CanReadWrite)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID taskId = scheduler.AllocateTask(sizeof(int) * 4, 0, NoOp());
+
+            // Act
+            int* payload = scheduler.GetPayloadAs<int>(taskId);
+            payload[0] = 42;
+            payload[1] = 100;
+            payload[2] = 200;
+            payload[3] = 300;
+
+            // Assert
+            int* readPayload = scheduler.GetPayloadAs<int>(taskId);
+            Assert::AreEqual(42, readPayload[0]);
+            Assert::AreEqual(100, readPayload[1]);
+            Assert::AreEqual(200, readPayload[2]);
+            Assert::AreEqual(300, readPayload[3]);
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Synchronous Callback Execution Tests
+        //------------------------------------------------------------------------------------------------
+
+        TEST_METHOD(Callback_SynchronousCompletion_ExecutesImmediately)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> executionCount{ 0 };
+
+            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                executionCount++;
+                sched.CompleteTask(taskId);
+            };
+
+            // Act
+            TaskID taskId = scheduler.AllocateTask(0, 0, callback);
+            scheduler.ScheduleTask(taskId); // Should execute callback immediately
+
+            // Assert
+            Assert::AreEqual(1, executionCount.load());
+            Assert::IsTrue(scheduler.IsTaskInState(taskId, TaskState::Completed));
+        }
+
+        TEST_METHOD(Callback_SynchronousFork_ExecutesAllDependents)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> executionCount{ 0 };
+
+            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                executionCount++;
+                sched.CompleteTask(taskId);
+            };
+
+            // Create fork: task1 -> task2, task3, task4
+            TaskID task1 = scheduler.AllocateTask(0, 0, callback);
+            TaskID task2 = scheduler.AllocateTask(0, 1, callback);
+            TaskID task3 = scheduler.AllocateTask(0, 1, callback);
+            TaskID task4 = scheduler.AllocateTask(0, 1, callback);
+
+            scheduler.ScheduleTask(task1);
+            scheduler.AddDependency(task2, task1);
+            scheduler.AddDependency(task3, task1);
+            scheduler.AddDependency(task4, task1);
+
+            // Act - Schedule dependents, then complete task1
+            scheduler.ScheduleTask(task2);
+            scheduler.ScheduleTask(task3);
+            scheduler.ScheduleTask(task4);
+
+            // Assert - All 4 tasks should have executed
+            Assert::AreEqual(4, executionCount.load());
+            Assert::IsTrue(scheduler.IsTaskInState(task1, TaskState::Completed));
+            Assert::IsTrue(scheduler.IsTaskInState(task2, TaskState::Completed));
+            Assert::IsTrue(scheduler.IsTaskInState(task3, TaskState::Completed));
+            Assert::IsTrue(scheduler.IsTaskInState(task4, TaskState::Completed));
+        }
+
+        TEST_METHOD(Callback_SynchronousJoin_WaitsForAllDependencies)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> executionCount{ 0 };
+
+            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                executionCount++;
+                sched.CompleteTask(taskId);
+            };
+
+            // Create join: task1, task2, task3 -> task4
+            TaskID task1 = scheduler.AllocateTask(0, 0, callback);
+            TaskID task2 = scheduler.AllocateTask(0, 0, callback);
+            TaskID task3 = scheduler.AllocateTask(0, 0, callback);
+            TaskID task4 = scheduler.AllocateTask(0, 3, callback);
+
+            scheduler.ScheduleTask(task1);
+            scheduler.ScheduleTask(task2);
+            scheduler.ScheduleTask(task3);
+
+            // Act - Set up dependencies and schedule
+            scheduler.AddDependency(task4, task1);
+            scheduler.AddDependency(task4, task2);
+            scheduler.AddDependency(task4, task3);
+            scheduler.ScheduleTask(task4);
+
+            // Assert - All 4 tasks executed (task4 only after all deps complete)
+            Assert::AreEqual(4, executionCount.load());
+            Assert::IsTrue(scheduler.IsTaskInState(task4, TaskState::Completed));
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Deferred Callback Completion Tests
+        //------------------------------------------------------------------------------------------------
+
+        TEST_METHOD(Callback_DeferredCompletion_AppCompletesLater)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> executionCount{ 0 };
+
+            // Callback that does NOT call CompleteTask
+            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                executionCount++;
+                // Deliberately not completing - app will do it later
+            };
+
+            // Act
+            TaskID taskId = scheduler.AllocateTask(0, 0, callback);
+            scheduler.ScheduleTask(taskId); // Executes callback
+
+            // Assert - Callback executed but task still executing
+            Assert::AreEqual(1, executionCount.load());
+            Assert::IsTrue(scheduler.IsTaskInState(taskId, TaskState::Executing));
+
+            // App completes it later
+            Gem::Result result = scheduler.CompleteTask(taskId);
+            Assert::IsTrue(result == Gem::Result::Success);
+            Assert::IsTrue(scheduler.IsTaskInState(taskId, TaskState::Completed));
+        }
+
+        TEST_METHOD(Callback_DeferredFork_DependentsWaitForCompletion)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> task1Executions{ 0 };
+            std::atomic<int> task2Executions{ 0 };
+
+            auto deferredCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                task1Executions++;
+                // Don't complete yet
+            };
+
+            auto dependentCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                task2Executions++;
+                sched.CompleteTask(taskId);
+            };
+
+            // Create: task1 (deferred) -> task2 (synchronous)
+            TaskID task1 = scheduler.AllocateTask(0, 0, deferredCallback);
+            TaskID task2 = scheduler.AllocateTask(0, 1, dependentCallback);
+
+            scheduler.ScheduleTask(task1);
+            scheduler.AddDependency(task2, task1);
+            scheduler.ScheduleTask(task2);
+
+            // Assert - task1 executed but task2 hasn't yet
+            Assert::AreEqual(1, task1Executions.load());
+            Assert::AreEqual(0, task2Executions.load());
+            Assert::IsTrue(scheduler.IsTaskInState(task1, TaskState::Executing));
+            Assert::IsTrue(scheduler.IsTaskInState(task2, TaskState::Scheduled));
+
+            // Act - Complete task1
+            scheduler.CompleteTask(task1);
+
+            // Assert - Now task2 has executed
+            Assert::AreEqual(1, task2Executions.load());
+            Assert::IsTrue(scheduler.IsTaskInState(task2, TaskState::Completed));
+        }
+
+        TEST_METHOD(Callback_DeferredJoin_WaitsForAllToComplete)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> joinExecution{ 0 };
+
+            // Deferred callbacks for dependencies
+            auto deferredCallback = [](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                // Don't complete
+            };
+
+            auto joinCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                joinExecution++;
+                sched.CompleteTask(taskId);
+            };
+
+            // Create join: task1, task2, task3 (all deferred) -> task4
+            TaskID task1 = scheduler.AllocateTask(0, 0, deferredCallback);
+            TaskID task2 = scheduler.AllocateTask(0, 0, deferredCallback);
+            TaskID task3 = scheduler.AllocateTask(0, 0, deferredCallback);
+            TaskID task4 = scheduler.AllocateTask(0, 3, joinCallback);
+
+            scheduler.ScheduleTask(task1);
+            scheduler.ScheduleTask(task2);
+            scheduler.ScheduleTask(task3);
+            scheduler.AddDependency(task4, task1);
+            scheduler.AddDependency(task4, task2);
+            scheduler.AddDependency(task4, task3);
+            scheduler.ScheduleTask(task4);
+
+            // Assert - task4 hasn't executed yet
+            Assert::AreEqual(0, joinExecution.load());
+            Assert::IsTrue(scheduler.IsTaskInState(task4, TaskState::Scheduled));
+
+            // Act - Complete dependencies one by one
+            scheduler.CompleteTask(task1);
+            Assert::AreEqual(0, joinExecution.load()); // Still waiting
+            
+            scheduler.CompleteTask(task2);
+            Assert::AreEqual(0, joinExecution.load()); // Still waiting
+            
+            scheduler.CompleteTask(task3);
+
+            // Assert - Now task4 executed
+            Assert::AreEqual(1, joinExecution.load());
+            Assert::IsTrue(scheduler.IsTaskInState(task4, TaskState::Completed));
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Mixed Execution Mode Tests
+        //------------------------------------------------------------------------------------------------
+
+        TEST_METHOD(Mixed_CallbackAndNoCallback_BothWork)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> executionCount{ 0 };
+
+            auto noOpCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                // No-op - just complete immediately
+                sched.CompleteTask(taskId);
+            };
+
+            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                executionCount++;
+                sched.CompleteTask(taskId);
+            };
+
+            // Act
+            TaskID taskNoOp = scheduler.AllocateTask(0, 0, noOpCallback); // No-op callback
+            TaskID taskWithWork = scheduler.AllocateTask(0, 0, callback); // Callback with work
+
+            scheduler.ScheduleTask(taskNoOp);
+            scheduler.ScheduleTask(taskWithWork);
+
+            // Assert
+            Assert::IsTrue(scheduler.IsTaskInState(taskNoOp, TaskState::Completed)); // No-op completed
+            Assert::AreEqual(1, executionCount.load());
+            Assert::IsTrue(scheduler.IsTaskInState(taskWithWork, TaskState::Completed)); // Callback completed it
+        }
+
+        TEST_METHOD(Mixed_SynchronousAndDeferred_BothWork)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> syncCount{ 0 };
+            std::atomic<int> deferredCount{ 0 };
+
+            auto syncCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                syncCount++;
+                sched.CompleteTask(taskId);
+            };
+
+            auto deferredCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                deferredCount++;
+                // Don't complete
+            };
+
+            // Create: task1 (sync) and task2 (deferred) -> task3 (sync)
+            TaskID task1 = scheduler.AllocateTask(0, 0, syncCallback);
+            TaskID task2 = scheduler.AllocateTask(0, 0, deferredCallback);
+            TaskID task3 = scheduler.AllocateTask(0, 2, syncCallback);
+
+            scheduler.ScheduleTask(task1);
+            scheduler.ScheduleTask(task2);
+            scheduler.AddDependency(task3, task1);
+            scheduler.AddDependency(task3, task2);
+            scheduler.ScheduleTask(task3);
+
+            // Assert - task1 completed, task2 executing, task3 waiting
+            Assert::AreEqual(1, syncCount.load());
+            Assert::AreEqual(1, deferredCount.load());
+            Assert::IsTrue(scheduler.IsTaskInState(task1, TaskState::Completed));
+            Assert::IsTrue(scheduler.IsTaskInState(task2, TaskState::Executing));
+            Assert::IsTrue(scheduler.IsTaskInState(task3, TaskState::Scheduled));
+
+            // Act - Complete task2
+            scheduler.CompleteTask(task2);
+
+            // Assert - task3 now executed
+            Assert::AreEqual(2, syncCount.load());
+            Assert::IsTrue(scheduler.IsTaskInState(task3, TaskState::Completed));
+        }
+
+        TEST_METHOD(ComplexDependencyGraph_AllModesWork)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> totalExecutions{ 0 };
+
+            auto syncCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                totalExecutions++;
+                sched.CompleteTask(taskId);
+            };
+
+            auto deferredCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                totalExecutions++;
+            };
+
+            // Create complex graph:
+            //     task1 (sync NoOp)
+            //       |
+            //     task2 (sync)
+            //      / \
+            // task3  task4 (both deferred)
+            //      \ /
+            //     task5 (sync)
+
+            TaskID task1 = scheduler.AllocateTask(0, 0, syncCallback); // Changed to use syncCallback
+            TaskID task2 = scheduler.AllocateTask(0, 1, syncCallback);
+            TaskID task3 = scheduler.AllocateTask(0, 1, deferredCallback);
+            TaskID task4 = scheduler.AllocateTask(0, 1, deferredCallback);
+            TaskID task5 = scheduler.AllocateTask(0, 2, syncCallback);
+
+            scheduler.ScheduleTask(task1);
+            scheduler.AddDependency(task2, task1);
+            scheduler.AddDependency(task3, task2);
+            scheduler.AddDependency(task4, task2);
+            scheduler.AddDependency(task5, task3);
+            scheduler.AddDependency(task5, task4);
+
+            scheduler.ScheduleTask(task2);
+            scheduler.ScheduleTask(task3);
+            scheduler.ScheduleTask(task4);
+            scheduler.ScheduleTask(task5);
+
+            // Assert - task1, task2, task3/4 executed, task5 waiting
+            Assert::AreEqual(4, totalExecutions.load()); // task1, task2, task3, task4
+            Assert::IsTrue(scheduler.IsTaskInState(task2, TaskState::Completed));
+            Assert::IsTrue(scheduler.IsTaskInState(task3, TaskState::Executing));
+            Assert::IsTrue(scheduler.IsTaskInState(task4, TaskState::Executing));
+            Assert::IsTrue(scheduler.IsTaskInState(task5, TaskState::Scheduled));
+
+            // Act - Complete deferred tasks
+            scheduler.CompleteTask(task3);
+            Assert::AreEqual(4, totalExecutions.load()); // task5 still waiting for task4
+            
+            scheduler.CompleteTask(task4);
+
+            // Assert - task5 now executed
+            Assert::AreEqual(5, totalExecutions.load()); // All 5 tasks executed
+            Assert::IsTrue(scheduler.IsTaskInState(task5, TaskState::Completed));
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Statistics Tests
+        //------------------------------------------------------------------------------------------------
+
+        TEST_METHOD(Statistics_ReflectCurrentState)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            TaskID task1 = scheduler.AllocateTask(100, 0, NoOp());
+            TaskID task2 = scheduler.AllocateTask(200, 0, NoOp());
+
+            // Act & Assert
+            auto stats = scheduler.GetStatistics();
+            Assert::AreEqual(size_t(2), stats.ActiveTaskCount);
+            Assert::AreEqual(TaskID(3), stats.NextTaskId);
+        }
+
+        TEST_METHOD(Statistics_TracksExecutingCount)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> execCount{ 0 };
+
+            auto deferredCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
+            {
+                execCount++;
+                // Don't complete
+            };
+
+            TaskID task1 = scheduler.AllocateTask(0, 0, deferredCallback);
+            TaskID task2 = scheduler.AllocateTask(0, 0, deferredCallback);
+
+            // Act
+            scheduler.ScheduleTask(task1);
+            scheduler.ScheduleTask(task2);
+
+            // Assert
+            auto stats = scheduler.GetStatistics();
+            Assert::AreEqual(size_t(2), stats.ExecutingTaskCount);
+        }
+    };
+}

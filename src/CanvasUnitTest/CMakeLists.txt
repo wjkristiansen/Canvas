@@ -8,6 +8,10 @@ add_library(CanvasUnitTest SHARED
     CanvasInterfacesTest.cpp
     CanvasMathTest.cpp
     D3D12ResourceUtilsTest.cpp
+    RingBufferTest.cpp
+    TaskSchedulerTest.cpp
+    ../CanvasCore/RingBuffer.cpp     # Include RingBuffer implementation for testing
+    ../CanvasCore/TaskScheduler.cpp  # Include internal implementation for testing
     pch.h
     targetver.h
 )

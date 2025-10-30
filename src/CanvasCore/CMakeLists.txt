@@ -7,9 +7,11 @@ add_library(CanvasCore SHARED
     Camera.cpp
     CanvasCore.cpp
     dllmain.cpp
+    RingBuffer.cpp
     Scene.cpp
     Timer.cpp
     SceneGraph.cpp
+    TaskScheduler.cpp
     
     # Header files (for IDE organization)
     ../Inc/CanvasCore.h
@@ -24,6 +26,7 @@ add_library(CanvasCore SHARED
     Scene.h
     SceneGraph.h
     ScopedUtils.h
+    TaskScheduler.h
     Timeline.h
     Timer.h
     pch.h
