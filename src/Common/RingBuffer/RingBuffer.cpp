@@ -1,5 +1,6 @@
 // RingBuffer.cpp
 
+#include "pch.h"
 #include "RingBuffer.h"
 #include "Gem.hpp"
 #include <algorithm>

@@ -10,8 +10,7 @@ add_library(CanvasUnitTest SHARED
     D3D12ResourceUtilsTest.cpp
     RingBufferTest.cpp
     TaskSchedulerTest.cpp
-    ../CanvasCore/RingBuffer.cpp     # Include RingBuffer implementation for testing
-    ../CanvasCore/TaskScheduler.cpp  # Include internal implementation for testing
+    TaskSchedulerTypedTest.cpp
     pch.h
     targetver.h
 )
@@ -65,6 +64,8 @@ endif()
 target_link_libraries(CanvasUnitTest PRIVATE
     CanvasCore
     D3D12ResourceUtils
+    RingBuffer
+    TaskScheduler
 )
 
 # Use Microsoft CppUnitTestFramework

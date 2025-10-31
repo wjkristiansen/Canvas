@@ -1,5 +1,6 @@
 // TaskScheduler.cpp
 
+#include "pch.h"
 #include "TaskScheduler.h"
 #include <algorithm>
 #include <cassert>
@@ -228,7 +229,7 @@ Gem::Result TaskScheduler::ScheduleTask(TaskID taskId)
         
         // Track this task as dependent on the dependency
         // Only count as outstanding if dependency hasn't completed yet
-        if (depHeader->State != TaskState::Completed && depHeader->State != TaskState::Retired)
+        if (depHeader->State != TaskState::Completed)
         {
             m_Dependents[depId].push_back(taskId);
             outstandingCount++;
@@ -292,7 +293,7 @@ Gem::Result TaskScheduler::GetTaskState(TaskID taskId, TaskState& outState) cons
     return Gem::Result::Success;
 }
 
-void TaskScheduler::ProcessRetirements()
+void TaskScheduler::RetireCompletedTasks()
 {
     std::lock_guard<std::mutex> lock(m_Mutex);
     
@@ -323,12 +324,12 @@ void TaskScheduler::ProcessRetirements()
             return a.second->Header < b.second->Header;
         });
         
-        // Retire consecutive head tasks that are in Retired state
+        // Retire consecutive head tasks that are in Completed state
         for (const auto& [taskId, allocPtr] : tasks)
         {
-            if (allocPtr->Header->State != TaskState::Retired)
+            if (allocPtr->Header->State != TaskState::Completed)
             {
-                break; // Head task not retired yet, can't retire further
+                break; // Head task not completed yet, can't retire further
             }
             
             // Retire this task from the ring

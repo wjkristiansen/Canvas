@@ -30,7 +30,7 @@
 //   - Uses Canvas::RingBuffer (see RingBuffer.h) for circular memory allocation
 //   - Multiple ring buffers may be active simultaneously
 //   - If a ring buffer cannot fit a new task, a new ring is allocated
-//   - Tasks retire in submission order; memory is reclaimed via ProcessRetirements()
+//   - Tasks retire in submission order; memory is reclaimed via RetireCompletedTasks()
 //   - Empty rings are automatically removed (at least one ring is always retained)
 //
 // Thread Safety:
@@ -39,6 +39,97 @@
 //
 // This class forms the foundation for Canvas's task graph execution system.
 // It is designed for extensibility, performance, and clarity.
+//
+//------------------------------------------------------------------------------------------------
+// USAGE EXAMPLES
+//------------------------------------------------------------------------------------------------
+//
+// Example 1: Simple task with synchronous completion (recommended API)
+//   TaskScheduler scheduler(64 * 1024);
+//   TaskID task = scheduler.AllocateTypedTask(0,
+//       [](TaskID id, TaskScheduler& sched, int value) {
+//           printf("Processing value: %d\n", value);
+//           sched.CompleteTask(id);
+//       }, 42);
+//   scheduler.ScheduleTask(task);
+//
+// Example 2: Plain function (most efficient)
+//   void ProcessData(TaskID id, TaskScheduler& sched, std::string data) {
+//       printf("Data: %s\n", data.c_str());
+//       sched.CompleteTask(id);
+//   }
+//   TaskID task = scheduler.AllocateTypedTask(0, ProcessData, std::string("Hello"));
+//   scheduler.ScheduleTask(task);
+//
+// Example 3: Task with deferred completion
+//   TaskID task = scheduler.AllocateTypedTask(0,
+//       [](TaskID id, TaskScheduler& sched, AsyncOperation* op) {
+//           op->Start([id, &sched]() {
+//               // Called later when async work completes
+//               sched.CompleteTask(id);
+//           });
+//       }, &myAsyncOp);
+//   scheduler.ScheduleTask(task);
+//
+// Example 4: Fork pattern - one task, multiple dependents
+//   TaskID root = scheduler.AllocateTypedTask(0, LoadData);
+//   TaskID child1 = scheduler.AllocateTypedTask(1, ProcessDataA);
+//   TaskID child2 = scheduler.AllocateTypedTask(1, ProcessDataB);
+//   scheduler.AddDependency(child1, root);
+//   scheduler.AddDependency(child2, root);
+//   scheduler.ScheduleTask(root);
+//   scheduler.ScheduleTask(child1);
+//   scheduler.ScheduleTask(child2);
+//
+// Example 5: Join pattern - multiple tasks, one dependent
+//   TaskID task1 = scheduler.AllocateTypedTask(0, LoadTextureA);
+//   TaskID task2 = scheduler.AllocateTypedTask(0, LoadTextureB);
+//   TaskID join = scheduler.AllocateTypedTask(2, CombineTextures);
+//   scheduler.AddDependency(join, task1);
+//   scheduler.AddDependency(join, task2);
+//   scheduler.ScheduleTask(task1);
+//   scheduler.ScheduleTask(task2);
+//   scheduler.ScheduleTask(join);
+//
+// Example 6: Diamond dependency graph
+//   //       T1
+//   //      /  \
+//   //    T2    T3
+//   //      \  /
+//   //       T4
+//   TaskID t1 = scheduler.AllocateTypedTask(0, TaskFunc1);
+//   TaskID t2 = scheduler.AllocateTypedTask(1, TaskFunc2);
+//   TaskID t3 = scheduler.AllocateTypedTask(1, TaskFunc3);
+//   TaskID t4 = scheduler.AllocateTypedTask(2, TaskFunc4);
+//   scheduler.AddDependency(t2, t1);
+//   scheduler.AddDependency(t3, t1);
+//   scheduler.AddDependency(t4, t2);
+//   scheduler.AddDependency(t4, t3);
+//   scheduler.ScheduleTask(t1);
+//   scheduler.ScheduleTask(t2);
+//   scheduler.ScheduleTask(t3);
+//   scheduler.ScheduleTask(t4);
+//
+// Example 7: Low-level API with manual payload management
+//   struct MyPayload { int x; float y; std::string s; };
+//   TaskID task = scheduler.AllocateTask(sizeof(MyPayload), 0,
+//       [](TaskID id, void* payload, size_t size, TaskScheduler& sched) {
+//           MyPayload* data = static_cast<MyPayload*>(payload);
+//           printf("%d, %f, %s\n", data->x, data->y, data->s.c_str());
+//           data->~MyPayload();  // Manual cleanup required for non-trivial types
+//           sched.CompleteTask(id);
+//       });
+//   MyPayload* payload = scheduler.GetPayloadAs<MyPayload>(task);
+//   new (payload) MyPayload{42, 3.14f, "test"};  // Placement new required
+//   scheduler.ScheduleTask(task);
+//
+// Example 8: Memory management
+//   scheduler.RetireCompletedTasks();  // Reclaim memory from completed tasks
+//   auto stats = scheduler.GetStatistics();
+//   printf("Active tasks: %zu, Memory used: %zu bytes\n", 
+//          stats.ActiveTaskCount, stats.TotalUsed);
+//
+//------------------------------------------------------------------------------------------------
 
 #pragma once
 
@@ -47,7 +138,8 @@
 #include <mutex>
 #include <unordered_map>
 #include <vector>
-#include <functional>
+#include <tuple>
+#include <utility>
 #include "Gem.hpp"
 #include "RingBuffer.h"
 
@@ -62,8 +154,7 @@ enum class TaskState : uint32_t
     Scheduled = 1,    // Task scheduled, waiting for dependencies
     Ready = 2,        // All dependencies satisfied, ready to execute
     Executing = 3,    // Task is currently being executed
-    Completed = 4,    // Task execution finished, ready to retire
-    Retired = 5       // Task retired and memory can be reclaimed
+    Completed = 4     // Task execution finished, ready to retire (memory reclaimed by RingBuffer)
 };
 
 //------------------------------------------------------------------------------------------------
@@ -79,7 +170,10 @@ class TaskScheduler;
 // Task execution callback signature
 // Parameters: taskId, payload pointer, payload size, scheduler reference
 // The callback can call scheduler.CompleteTask(taskId) when done
-using TaskFunc = std::function<void(TaskID taskId, void* payload, size_t payloadSize, TaskScheduler& scheduler)>;
+//
+// NOTE: Use stateless lambdas or regular functions. For passing data to tasks,
+// use the typed API (AllocateTypedTask) which safely stores arguments in the task payload.
+using TaskFunc = void(*)(TaskID taskId, void* payload, size_t payloadSize, TaskScheduler& scheduler);
 
 //------------------------------------------------------------------------------------------------
 // TaskScheduler: Main class for managing task allocation and scheduling
@@ -144,16 +238,55 @@ public:
     TaskScheduler(TaskScheduler&&) = delete;
     TaskScheduler& operator=(TaskScheduler&&) = delete;
     
-    // Allocate a new task with specified payload size and maximum dependency count
-    // maxDependencyCount reserves space for dependencies, but they don't need to be set immediately
-    // Use AddDependency() to add dependencies before scheduling
-    // taskFunc: callback to execute when task becomes ready (can be nullptr for manual execution)
-    // Returns TaskID directly (no handles needed)
-    // All tasks must have a callback function
+    // Low-level task allocation with manual payload management
+    // Use this when you need direct control over payload memory
     TaskID AllocateTask(
         size_t payloadSize,
         uint32_t maxDependencyCount,
         TaskFunc taskFunc);
+    
+    // Type-safe task allocation - recommended API for typed callbacks
+    // Automatically stores func and args in payload and passes them to callback
+    // Example: AllocateTypedTask(2, [](TaskID id, TaskScheduler& s, int x, float y) { ... }, 42, 3.14f);
+    // The callback signature must be: (TaskID, TaskScheduler&, Args...)
+    template<typename Func, typename... Args>
+    TaskID AllocateTypedTask(
+        uint32_t maxDependencyCount,
+        Func&& func,
+        Args&&... args)
+    {
+        // Store both function and args in the payload
+        using PayloadData = std::tuple<std::decay_t<Func>, std::decay_t<Args>...>;
+        constexpr size_t payloadSize = sizeof(PayloadData);
+        
+        // Create stateless wrapper that extracts func+args from payload
+        // This lambda is stateless (no captures) so it converts to function pointer
+        auto wrapper = [](TaskID taskId, void* payload, size_t size, TaskScheduler& scheduler)
+        {
+            (void)size; // Size is known at compile-time
+            auto* data = static_cast<PayloadData*>(payload);
+            
+            // Extract function and args
+            auto& funcRef = std::get<0>(*data);
+            
+            // Call user function with unpacked args (skipping first element which is func)
+            std::apply([&](auto& /* funcInTuple */, auto&... unpackedArgs) {
+                funcRef(taskId, scheduler, unpackedArgs...);
+            }, *data);
+            
+            // Destroy the payload when task completes
+            data->~PayloadData();
+        };
+        
+        // Allocate task with wrapper
+        TaskID taskId = AllocateTask(payloadSize, maxDependencyCount, wrapper);
+        
+        // Construct func+args tuple in payload
+        void* payloadPtr = GetPayload(taskId);
+        new (payloadPtr) PayloadData(std::forward<Func>(func), std::forward<Args>(args)...);
+        
+        return taskId;
+    }
     
     // Add a dependency to an unscheduled task
     // The dependency must be a TaskID of an already-scheduled task
@@ -184,9 +317,10 @@ public:
     // Get the current state of a task
     Gem::Result GetTaskState(TaskID taskId, TaskState& outState) const;
     
-    // Process all retired tasks at the head of each ring buffer
-    // This reclaims memory by advancing head pointers
-    void ProcessRetirements();
+    // Retire completed tasks at the head of each ring buffer and reclaim their memory
+    // Only tasks in Completed state at the head of a ring can be retired
+    // This advances ring buffer head pointers to free memory
+    void RetireCompletedTasks();
     
     // Get statistics for monitoring and debugging
     struct Statistics

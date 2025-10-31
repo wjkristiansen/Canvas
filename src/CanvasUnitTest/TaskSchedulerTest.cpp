@@ -228,7 +228,7 @@ namespace CanvasUnitTest
         // Memory Management Tests
         //------------------------------------------------------------------------------------------------
 
-        TEST_METHOD(ProcessRetirements_RetiredTask_ReclaimsMemory)
+        TEST_METHOD(RetireCompletedTasks_RetiredTask_ReclaimsMemory)
         {
             // Arrange
             TaskScheduler scheduler(1024);
@@ -240,7 +240,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(result == Gem::Result::InvalidArg); // Can't complete non-executing task
         }
 
-        TEST_METHOD(ProcessRetirements_MultipleRetiredTasks_ReclaimsAll)
+        TEST_METHOD(RetireCompletedTasks_MultipleRetiredTasks_ReclaimsAll)
         {
             // Arrange
             TaskScheduler scheduler(1024);
@@ -297,7 +297,7 @@ namespace CanvasUnitTest
         {
             // Arrange
             TaskScheduler scheduler(1024);
-            TaskID taskId = scheduler.AllocateTask(sizeof(int) * 4, 0, NoOp());
+            TaskID taskId = scheduler.AllocateTask(sizeof(int) * 4, uint32_t(0), NoOp());
 
             // Act
             int* payload = scheduler.GetPayloadAs<int>(taskId);
@@ -324,14 +324,12 @@ namespace CanvasUnitTest
             TaskScheduler scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
-            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                executionCount++;
-                sched.CompleteTask(taskId);
-            };
-
             // Act
-            TaskID taskId = scheduler.AllocateTask(0, 0, callback);
+            TaskID taskId = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
             scheduler.ScheduleTask(taskId); // Should execute callback immediately
 
             // Assert
@@ -345,17 +343,27 @@ namespace CanvasUnitTest
             TaskScheduler scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
-            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                executionCount++;
-                sched.CompleteTask(taskId);
-            };
-
             // Create fork: task1 -> task2, task3, task4
-            TaskID task1 = scheduler.AllocateTask(0, 0, callback);
-            TaskID task2 = scheduler.AllocateTask(0, 1, callback);
-            TaskID task3 = scheduler.AllocateTask(0, 1, callback);
-            TaskID task4 = scheduler.AllocateTask(0, 1, callback);
+            TaskID task1 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
+            TaskID task2 = scheduler.AllocateTypedTask(1,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
+            TaskID task3 = scheduler.AllocateTypedTask(1,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
+            TaskID task4 = scheduler.AllocateTypedTask(1,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
 
             scheduler.ScheduleTask(task1);
             scheduler.AddDependency(task2, task1);
@@ -381,17 +389,27 @@ namespace CanvasUnitTest
             TaskScheduler scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
-            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                executionCount++;
-                sched.CompleteTask(taskId);
-            };
-
             // Create join: task1, task2, task3 -> task4
-            TaskID task1 = scheduler.AllocateTask(0, 0, callback);
-            TaskID task2 = scheduler.AllocateTask(0, 0, callback);
-            TaskID task3 = scheduler.AllocateTask(0, 0, callback);
-            TaskID task4 = scheduler.AllocateTask(0, 3, callback);
+            TaskID task1 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
+            TaskID task2 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
+            TaskID task3 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
+            TaskID task4 = scheduler.AllocateTypedTask(3,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
 
             scheduler.ScheduleTask(task1);
             scheduler.ScheduleTask(task2);
@@ -418,15 +436,13 @@ namespace CanvasUnitTest
             TaskScheduler scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
-            // Callback that does NOT call CompleteTask
-            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                executionCount++;
-                // Deliberately not completing - app will do it later
-            };
-
             // Act
-            TaskID taskId = scheduler.AllocateTask(0, 0, callback);
+            TaskID taskId = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    (void)sched; // Not completing - app will do it later
+                    executionCount++;
+                    // Deliberately not completing - app will do it later
+                });
             scheduler.ScheduleTask(taskId); // Executes callback
 
             // Assert - Callback executed but task still executing
@@ -446,21 +462,17 @@ namespace CanvasUnitTest
             std::atomic<int> task1Executions{ 0 };
             std::atomic<int> task2Executions{ 0 };
 
-            auto deferredCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                task1Executions++;
-                // Don't complete yet
-            };
-
-            auto dependentCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                task2Executions++;
-                sched.CompleteTask(taskId);
-            };
-
             // Create: task1 (deferred) -> task2 (synchronous)
-            TaskID task1 = scheduler.AllocateTask(0, 0, deferredCallback);
-            TaskID task2 = scheduler.AllocateTask(0, 1, dependentCallback);
+            TaskID task1 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    (void)id; (void)sched; // Don't complete yet
+                    task1Executions++;
+                });
+            TaskID task2 = scheduler.AllocateTypedTask(1,
+                [&](TaskID id, TaskScheduler& sched) {
+                    task2Executions++;
+                    sched.CompleteTask(id);
+                });
 
             scheduler.ScheduleTask(task1);
             scheduler.AddDependency(task2, task1);
@@ -486,23 +498,24 @@ namespace CanvasUnitTest
             TaskScheduler scheduler(1024);
             std::atomic<int> joinExecution{ 0 };
 
-            // Deferred callbacks for dependencies
-            auto deferredCallback = [](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                // Don't complete
-            };
-
-            auto joinCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                joinExecution++;
-                sched.CompleteTask(taskId);
-            };
-
             // Create join: task1, task2, task3 (all deferred) -> task4
-            TaskID task1 = scheduler.AllocateTask(0, 0, deferredCallback);
-            TaskID task2 = scheduler.AllocateTask(0, 0, deferredCallback);
-            TaskID task3 = scheduler.AllocateTask(0, 0, deferredCallback);
-            TaskID task4 = scheduler.AllocateTask(0, 3, joinCallback);
+            TaskID task1 = scheduler.AllocateTypedTask(0,
+                [](TaskID id, TaskScheduler& sched) {
+                    (void)id; (void)sched; // Don't complete
+                });
+            TaskID task2 = scheduler.AllocateTypedTask(0,
+                [](TaskID id, TaskScheduler& sched) {
+                    (void)id; (void)sched; // Don't complete
+                });
+            TaskID task3 = scheduler.AllocateTypedTask(0,
+                [](TaskID id, TaskScheduler& sched) {
+                    (void)id; (void)sched; // Don't complete
+                });
+            TaskID task4 = scheduler.AllocateTypedTask(3,
+                [&](TaskID id, TaskScheduler& sched) {
+                    joinExecution++;
+                    sched.CompleteTask(id);
+                });
 
             scheduler.ScheduleTask(task1);
             scheduler.ScheduleTask(task2);
@@ -540,21 +553,16 @@ namespace CanvasUnitTest
             TaskScheduler scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
-            auto noOpCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                // No-op - just complete immediately
-                sched.CompleteTask(taskId);
-            };
-
-            auto callback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                executionCount++;
-                sched.CompleteTask(taskId);
-            };
-
             // Act
-            TaskID taskNoOp = scheduler.AllocateTask(0, 0, noOpCallback); // No-op callback
-            TaskID taskWithWork = scheduler.AllocateTask(0, 0, callback); // Callback with work
+            TaskID taskNoOp = scheduler.AllocateTypedTask(0,
+                [](TaskID id, TaskScheduler& sched) {
+                    sched.CompleteTask(id);
+                });
+            TaskID taskWithWork = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    executionCount++;
+                    sched.CompleteTask(id);
+                });
 
             scheduler.ScheduleTask(taskNoOp);
             scheduler.ScheduleTask(taskWithWork);
@@ -572,22 +580,22 @@ namespace CanvasUnitTest
             std::atomic<int> syncCount{ 0 };
             std::atomic<int> deferredCount{ 0 };
 
-            auto syncCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                syncCount++;
-                sched.CompleteTask(taskId);
-            };
-
-            auto deferredCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                deferredCount++;
-                // Don't complete
-            };
-
             // Create: task1 (sync) and task2 (deferred) -> task3 (sync)
-            TaskID task1 = scheduler.AllocateTask(0, 0, syncCallback);
-            TaskID task2 = scheduler.AllocateTask(0, 0, deferredCallback);
-            TaskID task3 = scheduler.AllocateTask(0, 2, syncCallback);
+            TaskID task1 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    syncCount++;
+                    sched.CompleteTask(id);
+                });
+            TaskID task2 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    (void)id; (void)sched; // Don't complete
+                    deferredCount++;
+                });
+            TaskID task3 = scheduler.AllocateTypedTask(2,
+                [&](TaskID id, TaskScheduler& sched) {
+                    syncCount++;
+                    sched.CompleteTask(id);
+                });
 
             scheduler.ScheduleTask(task1);
             scheduler.ScheduleTask(task2);
@@ -616,17 +624,6 @@ namespace CanvasUnitTest
             TaskScheduler scheduler(1024);
             std::atomic<int> totalExecutions{ 0 };
 
-            auto syncCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                totalExecutions++;
-                sched.CompleteTask(taskId);
-            };
-
-            auto deferredCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                totalExecutions++;
-            };
-
             // Create complex graph:
             //     task1 (sync NoOp)
             //       |
@@ -636,11 +633,31 @@ namespace CanvasUnitTest
             //      \ /
             //     task5 (sync)
 
-            TaskID task1 = scheduler.AllocateTask(0, 0, syncCallback); // Changed to use syncCallback
-            TaskID task2 = scheduler.AllocateTask(0, 1, syncCallback);
-            TaskID task3 = scheduler.AllocateTask(0, 1, deferredCallback);
-            TaskID task4 = scheduler.AllocateTask(0, 1, deferredCallback);
-            TaskID task5 = scheduler.AllocateTask(0, 2, syncCallback);
+            TaskID task1 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    totalExecutions++;
+                    sched.CompleteTask(id);
+                });
+            TaskID task2 = scheduler.AllocateTypedTask(1,
+                [&](TaskID id, TaskScheduler& sched) {
+                    totalExecutions++;
+                    sched.CompleteTask(id);
+                });
+            TaskID task3 = scheduler.AllocateTypedTask(1,
+                [&](TaskID id, TaskScheduler& sched) {
+                    (void)id; (void)sched; // Deferred
+                    totalExecutions++;
+                });
+            TaskID task4 = scheduler.AllocateTypedTask(1,
+                [&](TaskID id, TaskScheduler& sched) {
+                    (void)id; (void)sched; // Deferred
+                    totalExecutions++;
+                });
+            TaskID task5 = scheduler.AllocateTypedTask(2,
+                [&](TaskID id, TaskScheduler& sched) {
+                    totalExecutions++;
+                    sched.CompleteTask(id);
+                });
 
             scheduler.ScheduleTask(task1);
             scheduler.AddDependency(task2, task1);
@@ -695,14 +712,16 @@ namespace CanvasUnitTest
             TaskScheduler scheduler(1024);
             std::atomic<int> execCount{ 0 };
 
-            auto deferredCallback = [&](TaskID taskId, void* payload, size_t size, TaskScheduler& sched)
-            {
-                execCount++;
-                // Don't complete
-            };
-
-            TaskID task1 = scheduler.AllocateTask(0, 0, deferredCallback);
-            TaskID task2 = scheduler.AllocateTask(0, 0, deferredCallback);
+            TaskID task1 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    (void)id; (void)sched; // Don't complete
+                    execCount++;
+                });
+            TaskID task2 = scheduler.AllocateTypedTask(0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    (void)id; (void)sched; // Don't complete
+                    execCount++;
+                });
 
             // Act
             scheduler.ScheduleTask(task1);
