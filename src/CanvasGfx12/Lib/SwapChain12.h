@@ -17,6 +17,9 @@ class CSwapChain12 :
     CComPtr<ID3D12Fence> m_pFence;
     UINT64 m_FenceValue = 0;
     class CRenderQueue12 *m_pRenderQueue = nullptr; // weak pointer
+    // DXGI frame pacing
+    HANDLE m_hFrameLatencyWaitableObject = nullptr;
+    bool m_TearingSupported = false;
 
 public:
 
@@ -38,4 +41,11 @@ public:
 
     // Internal functions
     Gem::Result Present();
+    void WaitForFrameLatency()
+    {
+        if (m_hFrameLatencyWaitableObject)
+        {
+            WaitForSingleObject(m_hFrameLatencyWaitableObject, INFINITE);
+        }
+    }
 };

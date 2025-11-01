@@ -356,6 +356,8 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
     try
     {
         CSwapChain12 *pIntSwapChain = reinterpret_cast<CSwapChain12 *>(pSwapChain);
+        // Pace the CPU using DXGI frame latency waitable object if available
+        pIntSwapChain->WaitForFrameLatency();
         
         // FAST PATH: Bypass TaskScheduler to eliminate heap allocations
         {
