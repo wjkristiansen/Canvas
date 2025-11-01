@@ -46,7 +46,8 @@ ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CRenderQueue12 *
 }
 
 //------------------------------------------------------------------------------------------------
-CRenderQueue12::CRenderQueue12(CDevice12 *pDevice, PCSTR name) :
+CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCSTR name) :
+    TGfxElement(pCanvas),
     m_pDevice(pDevice)
 {
     if (name != nullptr)
@@ -219,7 +220,7 @@ Gem::Result CRenderQueue12::FlushImpl()
 Gem::Result CRenderQueue12::Flush()
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Flush", m_pDevice->GetLogger(), QLog::Level::Debug);
+    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Flush", m_pDevice->GetLogger(), Canvas::LogLevel::Debug);
     try
     {
         Gem::ThrowGemError(FlushImpl());
@@ -239,7 +240,7 @@ Gem::Result CRenderQueue12::Flush()
 GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 {
     std::unique_lock<std::mutex> Lock(m_mutex);
-    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::FlushAndPresent", m_pDevice->GetLogger(), QLog::Level::Debug);
+    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::FlushAndPresent", m_pDevice->GetLogger(), Canvas::LogLevel::Debug);
 
     try
     {
@@ -282,7 +283,7 @@ GEMMETHODIMP CRenderQueue12::Wait()
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::Uninitialize()
 {
-    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Uninitialize", m_pDevice->GetLogger(), QLog::Level::Info);
+    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Uninitialize", m_pDevice->GetLogger(), Canvas::LogLevel::Info);
 
     m_pCommandList->Close();
 

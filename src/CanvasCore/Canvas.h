@@ -12,8 +12,6 @@
 namespace Canvas
 {
 
-extern QLog::Logger* g_pLogger; 
-
 //------------------------------------------------------------------------------------------------
 class CCanvasPluginModule
 {
@@ -99,7 +97,7 @@ class CCanvas :
 {
     std::mutex m_Mutex;
 
-    QLog::Logger* m_pLogger = nullptr;
+    Gem::TGemPtr<XLogger> m_pLogger;
     CTimer m_FrameTimer;
     UINT64 m_FrameEndTimeLast = 0;
 
@@ -113,7 +111,7 @@ public:
         GEM_INTERFACE_ENTRY(XCanvas)
     END_GEM_INTERFACE_MAP()
 
-    CCanvas(QLog::Logger* pLogger)
+    CCanvas(XLogger* pLogger)
         : m_pLogger(pLogger)
     {}
 
@@ -130,7 +128,7 @@ public:
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;
 
-    GEMMETHOD_(QLog::Logger *, GetLogger)() final
+    GEMMETHOD_(XLogger *, GetLogger)() final
     {
         return m_pLogger;
     }   

@@ -19,7 +19,8 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CSurface12(ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState, PCSTR name = nullptr) :
+    CSurface12(Canvas::XCanvas* pCanvas, ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState, PCSTR name = nullptr) :
+        TGfxElement(pCanvas),
         CResource(pResource, InitState) 
     {
         if (name != nullptr)

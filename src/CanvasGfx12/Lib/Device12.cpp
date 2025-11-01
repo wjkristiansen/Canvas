@@ -9,7 +9,8 @@
 #include "Buffer12.h"
 
 //------------------------------------------------------------------------------------------------
-CDevice12::CDevice12(PCSTR name) :
+CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
+    TGfxElement(pCanvas),
     m_HostWriteSuballocator(m_HostWriteSize)
 {
     if (name != nullptr)
@@ -24,20 +25,16 @@ Gem::Result CDevice12::Initialize()
         // Create the device
         CComPtr<ID3D12Device5> pDevice;
         ThrowFailedHResult(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice)));
+        m_pD3DDevice.Attach(pDevice.Detach());
 
         // Create an upload heap scratch buffer for CPU write operations
         Gem::TGemPtr<Canvas::XGfxBuffer> pScratchBuffer;
         Gem::ThrowGemError(CreateBuffer(m_HostWriteSize, Canvas::GfxMemoryUsage::HostWrite, &pScratchBuffer));
         m_pHostWriteBuffer = pScratchBuffer;
-
-        m_pD3DDevice.Attach(pDevice.Detach());
     }
     catch (_com_error &e)
     {
-        if (GetLogger())
-        {
-            GetLogger()->Error("CDevice12::Initialize: HRESULT 0x%08x", e.Error());
-        }
+        Canvas::LogError(GetLogger(), "CDevice12::Initialize: HRESULT 0x%08x", e.Error());
         return ResultFromHRESULT(e.Error());
     }
 
@@ -172,8 +169,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
     }
     catch (const _com_error &e)
     {
-        if (GetLogger())
-            GetLogger()->Error("CDevice12::CreateSurface: HRESULT 0x%08x", e.Error());
+        Canvas::LogError(GetLogger(), "CDevice12::CreateSurface: HRESULT 0x%08x", e.Error());
         sentinel.SetResultCode(ResultFromHRESULT(e.Error()));
         return ResultFromHRESULT(e.Error());
     }
@@ -236,8 +232,7 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
     }
     catch (const _com_error &e)
     {
-        if (GetLogger())
-            GetLogger()->Error("CDevice12::CreateBuffer: HRESULT 0x%08x", e.Error());
+        Canvas::LogError(GetLogger(), "CDevice12::CreateBuffer: HRESULT 0x%08x", e.Error());
         sentinel.SetResultCode(ResultFromHRESULT(e.Error()));
         return ResultFromHRESULT(e.Error());
     }
@@ -251,7 +246,7 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::GfxSuballocation &suballocation)
 {
-    Canvas::CFunctionSentinel sentinel("XGfxDevice::AllocateHostWriteRegion", GetLogger(), QLog::Level::Debug);
+    Canvas::CFunctionSentinel sentinel("XGfxDevice::AllocateHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
     
     try
     {
@@ -265,8 +260,7 @@ GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::Gf
     }
     catch (const BuddySuballocatorException &)
     {
-        if (GetLogger())
-            GetLogger()->Error("CDevice12::AllocateHostWriteRegion: BuddySuballocatorException");
+        Canvas::LogError(GetLogger(), "CDevice12::AllocateHostWriteRegion: BuddySuballocatorException");
         sentinel.SetResultCode(Gem::Result::OutOfMemory);
         return Gem::Result::OutOfMemory;
     }
@@ -280,7 +274,7 @@ GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::Gf
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxSuballocation &suballocation)
 {
-    Canvas::CFunctionSentinel sentinel("XGfxDevice::FreeHostWriteRegion", GetLogger(), QLog::Level::Debug);
+    Canvas::CFunctionSentinel sentinel("XGfxDevice::FreeHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
     
     // Free the region back to the scratch suballocator
     auto block = TBuddySuballocator<uint64_t>::ReconstructBlock(suballocation.Offset, suballocation.Size);

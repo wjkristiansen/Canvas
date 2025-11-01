@@ -54,6 +54,7 @@ template<class _Base>
 class TGfxElement :
     public Gem::TGeneric<_Base>
 {
+protected:
     // Canvas element tracking for external plugins
     Canvas::XCanvas* m_pCanvas = nullptr;
     std::string m_Name;
@@ -63,6 +64,7 @@ public:
 
 public:
     TGfxElement() = default;
+    TGfxElement(Canvas::XCanvas* pCanvas) : m_pCanvas(pCanvas) {}
     ~TGfxElement() { Unregister(); }
 
     // XCanvasElement interface implementation for external plugins
@@ -104,8 +106,8 @@ public:
         
         try
         {
-            // Create the object using TGenericImpl pattern
-            Gem::TGemPtr<_Impl> pElement = new Gem::TGenericImpl<_Impl>(std::forward<_Args>(args)...);
+            // Create the object using TGenericImpl pattern, passing pCanvas as first argument
+            Gem::TGemPtr<_Impl> pElement = new Gem::TGenericImpl<_Impl>(pCanvas, std::forward<_Args>(args)...);
             
             // Auto-register with Canvas
             Gem::ThrowGemError(pElement->Register(pCanvas));

@@ -14,7 +14,6 @@
 //================================================================================================
 
 #pragma once
-#include <QLog.h>
 #include "CanvasRender.h"
 
 namespace Canvas
@@ -63,6 +62,100 @@ enum LightFlags : UINT
 };
 
 //------------------------------------------------------------------------------------------------
+// Log severity levels (ABI-safe, matches QLog::Level)
+enum class LogLevel : UINT8
+{
+    Trace = 0,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Critical,
+    Off
+};
+
+//------------------------------------------------------------------------------------------------
+// XLogger - ABI-safe logging interface
+struct XLogger : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(XLogger, 0x7A3B8C4D9E2F1A5B);
+
+    GEMMETHOD_(void, Log)(LogLevel level, PCSTR format, va_list args) = 0;
+    GEMMETHOD_(void, SetLevel)(LogLevel level) = 0;
+    GEMMETHOD_(LogLevel, GetLevel)() = 0;
+    GEMMETHOD_(void, Flush)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+// XLogger helper functions
+
+inline void LogTrace(XLogger* logger, PCSTR format, ...)
+{
+    if (logger)
+    {
+        va_list args;
+        va_start(args, format);
+        logger->Log(LogLevel::Trace, format, args);
+        va_end(args);
+    }
+}
+
+inline void LogDebug(XLogger* logger, PCSTR format, ...)
+{
+    if (logger)
+    {
+        va_list args;
+        va_start(args, format);
+        logger->Log(LogLevel::Debug, format, args);
+        va_end(args);
+    }
+}
+
+inline void LogInfo(XLogger* logger, PCSTR format, ...)
+{
+    if (logger)
+    {
+        va_list args;
+        va_start(args, format);
+        logger->Log(LogLevel::Info, format, args);
+        va_end(args);
+    }
+}
+
+inline void LogWarn(XLogger* logger, PCSTR format, ...)
+{
+    if (logger)
+    {
+        va_list args;
+        va_start(args, format);
+        logger->Log(LogLevel::Warn, format, args);
+        va_end(args);
+    }
+}
+
+inline void LogError(XLogger* logger, PCSTR format, ...)
+{
+    if (logger)
+    {
+        va_list args;
+        va_start(args, format);
+        logger->Log(LogLevel::Error, format, args);
+        va_end(args);
+    }
+}
+
+inline void LogCritical(XLogger* logger, PCSTR format, ...)
+{
+    if (logger)
+    {
+        va_list args;
+        va_start(args, format);
+        logger->Log(LogLevel::Critical, format, args);
+        va_end(args);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 struct
 XCanvas : public Gem::XGeneric
 {
@@ -80,7 +173,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(RegisterElement)(struct XCanvasElement *) = 0;
     GEMMETHOD(UnregisterElement)(struct XCanvasElement *) = 0;
 
-    GEMMETHOD_(QLog::Logger *, GetLogger)() = 0;
+    GEMMETHOD_(XLogger *, GetLogger)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -222,7 +315,7 @@ XSceneGraphElement : public XCanvasElement
 
 //------------------------------------------------------------------------------------------------
 // Exports
-extern Gem::Result CANVAS_API CreateCanvas(QLog::Logger* pLogger, XCanvas **ppCanvas);
+extern Gem::Result CANVAS_API CreateCanvas(XLogger* pLogger, XCanvas **ppCanvas);
 
 //------------------------------------------------------------------------------------------------
 struct
@@ -317,24 +410,35 @@ struct XCanvasPlugin : public Gem::XGeneric
 // Helper classes
 class CFunctionSentinel
 {
-    QLog::Level m_DefaultLogLevel;
-    QLog::Logger *m_pLogger = nullptr;
+    LogLevel m_DefaultLogLevel;
+    XLogger *m_pLogger = nullptr;
     const char *m_FunctionName;
     Gem::Result m_Result = Gem::Result::Success;
 
+    void LogWithLevel(LogLevel level, PCSTR format, ...) const
+    {
+        if (m_pLogger)
+        {
+            va_list args;
+            va_start(args, format);
+            m_pLogger->Log(level, format, args);
+            va_end(args);
+        }
+    }
+
 public:
-    CFunctionSentinel(const char *FunctionName, QLog::Logger *pLogger, QLog::Level DefaultLogLevel = QLog::Level::Info) :
+    CFunctionSentinel(const char *FunctionName, XLogger *pLogger, LogLevel DefaultLogLevel = LogLevel::Info) :
         m_pLogger(pLogger),
         m_FunctionName(FunctionName),
         m_DefaultLogLevel(DefaultLogLevel)
     {
         if (pLogger)
         {
-            pLogger->Log(m_DefaultLogLevel, "Begin: %s", m_FunctionName);
+            LogWithLevel(m_DefaultLogLevel, "Begin: %s", m_FunctionName);
         }
     }
 
-    void ReportMessage(QLog::Level logLevel, const char *Format, ...) const
+    void ReportMessage(LogLevel logLevel, const char *Format, ...) const
     {
         if (m_pLogger)
         {
@@ -348,8 +452,8 @@ public:
     ~CFunctionSentinel()
     {
         if (m_pLogger) {
-            QLog::Level level = Gem::Failed(m_Result) ? QLog::Level::Error : m_DefaultLogLevel;
-            m_pLogger->Log(level, "%s: %s", GemResultString(m_Result), m_FunctionName);
+            LogLevel level = Gem::Failed(m_Result) ? LogLevel::Error : m_DefaultLogLevel;
+            LogWithLevel(level, "%s: %s", GemResultString(m_Result), m_FunctionName);
         }
     }
 

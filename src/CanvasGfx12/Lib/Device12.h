@@ -45,7 +45,7 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CDevice12(PCSTR name = nullptr);
+    CDevice12(Canvas::XCanvas* pCanvas, PCSTR name = nullptr);
     ~CDevice12() = default;  // TGfxElement destructor handles Unregister
 
     Gem::Result Initialize();
@@ -66,8 +66,9 @@ public:
 
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
 
-    QLog::Logger *GetLogger()
+    Canvas::XLogger *GetLogger()
     {
-        return GetCanvas()->GetLogger();
+        auto pCanvas = GetCanvas();
+        return pCanvas ? pCanvas->GetLogger() : nullptr;
     }
 };

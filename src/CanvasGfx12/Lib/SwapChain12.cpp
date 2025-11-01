@@ -4,7 +4,8 @@
 
 #include "pch.h"
 
-CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers, PCSTR name) :
+CSwapChain12::CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers, PCSTR name) :
+    TGfxElement(pCanvas),
     m_pRenderQueue(pRenderQueue)
 {
     if (name != nullptr)
@@ -45,7 +46,7 @@ CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRend
 
     // Craft a D3D12_RESOURCE_DESC to match the swap chain
     Gem::TGemPtr<CSurface12> pSurface;
-    Gem::ThrowGemError(Gem::TGenericImpl<CSurface12>::Create(&pSurface, pBackBuffer, D3D12_RESOURCE_STATE_COMMON));
+    Gem::ThrowGemError(Gem::TGenericImpl<CSurface12>::Create(&pSurface, m_pCanvas, pBackBuffer, D3D12_RESOURCE_STATE_COMMON));
 
     CComPtr<ID3D12Fence> pFence;
     ThrowFailedHResult(pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence)));
@@ -58,7 +59,7 @@ CSwapChain12::CSwapChain12(HWND hWnd, bool Windowed, class CRenderQueue12 *pRend
 
 Gem::Result CSwapChain12::Present()
 {
-    Canvas::CFunctionSentinel sentinel("XGfxSwapChain::Present", m_pRenderQueue->GetDevice()->GetLogger(), QLog::Level::Debug);
+    Canvas::CFunctionSentinel sentinel("XGfxSwapChain::Present", m_pRenderQueue->GetDevice()->GetLogger(), Canvas::LogLevel::Debug);
     try
     {
         std::unique_lock<std::mutex> Lock(m_mutex);

@@ -32,5 +32,3 @@
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
 
-#include "QLog.h"
-

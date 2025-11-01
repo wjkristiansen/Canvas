@@ -5,7 +5,6 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
-#include <QLog.h>
 #include "CanvasMath.hpp"
 
 #ifdef _MSC_VER
