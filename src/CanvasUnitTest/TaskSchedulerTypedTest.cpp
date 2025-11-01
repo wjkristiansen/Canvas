@@ -567,5 +567,231 @@ namespace CanvasUnitTest
             Assert::AreEqual(20, s_plainFuncResult); // 10 * 2
             Assert::AreEqual(21, lambdaResult.load()); // 7 * 3
         }
+
+        //------------------------------------------------------------------------------------------------
+        // AllocateAndScheduleTypedTask Tests - Immediate and Deferred Execution Paths
+        //------------------------------------------------------------------------------------------------
+
+        TEST_METHOD(AllocateAndSchedule_NoDeps_ExecutesImmediately)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> count{ 0 };
+            std::atomic<bool> executedSync{ false };
+
+            // Act - No dependencies should execute immediately (fast path)
+            TaskID taskId = scheduler.AllocateAndScheduleTypedTask(
+                nullptr, 0,
+                [&](TaskID id, TaskScheduler& sched, int value) {
+                    count += value;
+                    executedSync = true;
+                    sched.CompleteTask(id);
+                }, 42);
+
+            // Assert - Should have executed synchronously
+            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreEqual(42, count.load());
+            Assert::IsTrue(executedSync.load());
+        }
+
+        TEST_METHOD(AllocateAndSchedule_WithCompletedDep_ExecutesImmediately)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> execCount{ 0 };
+
+            // Create and complete a dependency first
+            TaskID dep = scheduler.AllocateAndScheduleTypedTask(
+                nullptr, 0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    execCount++;
+                    sched.CompleteTask(id);
+                });
+
+            Assert::AreEqual(1, execCount.load()); // Dep should execute immediately
+
+            // Act - Depend on already-completed task, should still execute immediately
+            TaskID taskId = scheduler.AllocateAndScheduleTypedTask(
+                &dep, 1,
+                [&](TaskID id, TaskScheduler& sched, std::string /*msg*/) {
+                    execCount++;
+                    sched.CompleteTask(id);
+                }, std::string("immediate"));
+
+            // Assert
+            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreEqual(2, execCount.load()); // Both executed immediately
+        }
+
+        TEST_METHOD(AllocateAndSchedule_WithPendingDep_UsesDeferred)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> execOrder{ 0 };
+            int dep1Order = 0, dep2Order = 0;
+
+            // Create dependency that requires manual completion (deferred)
+            TaskID dep = scheduler.AllocateTypedTask(0,
+                [&](TaskID /*id*/, TaskScheduler& /*sched*/) {
+                    dep1Order = ++execOrder;
+                    // Don't complete yet - we'll complete it manually
+                });
+            scheduler.ScheduleTask(dep);
+
+            // Act - This should use deferred path (ring-backed) because dep is not completed
+            TaskID taskId = scheduler.AllocateAndScheduleTypedTask(
+                &dep, 1,
+                [&](TaskID id, TaskScheduler& sched, int value) {
+                    dep2Order = ++execOrder;
+                    Assert::AreEqual(42, value);
+                    sched.CompleteTask(id);
+                }, 42);
+
+            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreEqual(1, dep1Order); // Dep executed
+            Assert::AreEqual(0, dep2Order); // Dependent not yet executed
+
+            // Now complete the dependency
+            scheduler.CompleteTask(dep);
+
+            // Assert
+            Assert::AreEqual(1, dep1Order);
+            Assert::AreEqual(2, dep2Order); // Now dependent has executed
+        }
+
+        TEST_METHOD(AllocateAndSchedule_MultipleDeps_AllCompleted_Immediate)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            int sum = 0;
+
+            // Create multiple completed dependencies
+            TaskID dep1 = scheduler.AllocateAndScheduleTypedTask(
+                nullptr, 0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    sum += 10;
+                    sched.CompleteTask(id);
+                });
+
+            TaskID dep2 = scheduler.AllocateAndScheduleTypedTask(
+                nullptr, 0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    sum += 20;
+                    sched.CompleteTask(id);
+                });
+
+            Assert::AreEqual(30, sum); // Both deps executed
+
+            // Act - All deps completed, should execute immediately
+            TaskID deps[] = { dep1, dep2 };
+            TaskID taskId = scheduler.AllocateAndScheduleTypedTask(
+                deps, 2,
+                [&](TaskID id, TaskScheduler& sched, int multiplier) {
+                    sum = sum * multiplier;
+                    sched.CompleteTask(id);
+                }, 2);
+
+            // Assert
+            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreEqual(60, sum); // 30 * 2, executed immediately
+        }
+
+        TEST_METHOD(AllocateAndSchedule_MultipleDeps_OnePending_Deferred)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            std::atomic<int> execCount{ 0 };
+
+            // One completed dependency
+            TaskID dep1 = scheduler.AllocateAndScheduleTypedTask(
+                nullptr, 0,
+                [&](TaskID id, TaskScheduler& sched) {
+                    execCount++;
+                    sched.CompleteTask(id);
+                });
+
+            // One pending dependency
+            TaskID dep2 = scheduler.AllocateTypedTask(0,
+                [&](TaskID /*id*/, TaskScheduler& /*sched*/) {
+                    execCount++;
+                    // Deferred completion
+                });
+            scheduler.ScheduleTask(dep2);
+
+            Assert::AreEqual(2, execCount.load()); // Both deps executed, one not completed
+
+            // Act - One dep pending, should use deferred path
+            TaskID deps[] = { dep1, dep2 };
+            TaskID taskId = scheduler.AllocateAndScheduleTypedTask(
+                deps, 2,
+                [&](TaskID id, TaskScheduler& sched, float value) {
+                    execCount++;
+                    Assert::AreEqual(3.14f, value, 0.001f);
+                    sched.CompleteTask(id);
+                }, 3.14f);
+
+            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreEqual(2, execCount.load()); // Dependent hasn't executed yet
+
+            // Complete the pending dependency
+            scheduler.CompleteTask(dep2);
+
+            // Assert
+            Assert::AreEqual(3, execCount.load()); // Now all executed
+        }
+
+        TEST_METHOD(AllocateAndSchedule_ImmediatePath_NoTupleAllocation)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            auto stats1 = scheduler.GetStatistics();
+
+            // Act - Immediate execution should not allocate in ring buffer
+            TaskID taskId = scheduler.AllocateAndScheduleTypedTask(
+                nullptr, 0,
+                [](TaskID id, TaskScheduler& sched, int a, int b, int c) {
+                    Assert::AreEqual(1, a);
+                    Assert::AreEqual(2, b);
+                    Assert::AreEqual(3, c);
+                    sched.CompleteTask(id);
+                }, 1, 2, 3);
+
+            auto stats2 = scheduler.GetStatistics();
+
+            // Assert - No ring buffer allocation should have occurred (immediate path)
+            Assert::AreEqual(stats1.TotalUsed, stats2.TotalUsed);
+            Assert::AreNotEqual(InvalidTaskID, taskId);
+        }
+
+        TEST_METHOD(AllocateAndSchedule_DeferredPath_AllocatesInRing)
+        {
+            // Arrange
+            TaskScheduler scheduler(1024);
+            
+            // Create pending dependency
+            TaskID dep = scheduler.AllocateTypedTask(0,
+                [](TaskID /*id*/, TaskScheduler& /*sched*/) {
+                    // Deferred
+                });
+            scheduler.ScheduleTask(dep);
+
+            auto stats1 = scheduler.GetStatistics();
+
+            // Act - Deferred execution should allocate in ring buffer
+            TaskID taskId = scheduler.AllocateAndScheduleTypedTask(
+                &dep, 1,
+                [](TaskID id, TaskScheduler& sched, int /*a*/, int /*b*/, int /*c*/) {
+                    sched.CompleteTask(id);
+                }, 1, 2, 3);
+
+            auto stats2 = scheduler.GetStatistics();
+
+            // Assert - Ring buffer allocation should have occurred (deferred path)
+            Assert::IsTrue(stats2.TotalUsed > stats1.TotalUsed);
+            Assert::AreNotEqual(InvalidTaskID, taskId);
+
+            // Cleanup
+            scheduler.CompleteTask(dep);
+        }
     };
 }

@@ -246,51 +246,57 @@ public:
         uint32_t maxDependencyCount,
         TaskFunc taskFunc);
     
-    // Type-safe task allocation - recommended API for typed callbacks
-    // Automatically stores func and args in payload and passes them to callback
-    // Example: AllocateTypedTask(2, [](TaskID id, TaskScheduler& s, int x, float y) { ... }, 42, 3.14f);
-    // The callback signature must be: (TaskID, TaskScheduler&, Args...)
+    // Low-level convenience: allocate and schedule in one call (untyped)
+    // Adds the provided dependencies (if any) and schedules the task.
+    // Returns InvalidTaskID on failure.
+    TaskID AllocateAndScheduleTask(
+        const TaskID* pDependencies,
+        uint32_t dependencyCount,
+        size_t payloadSize,
+        TaskFunc taskFunc)
+    {
+        TaskID id = AllocateTask(payloadSize, dependencyCount, taskFunc);
+        if (id == InvalidTaskID) return InvalidTaskID;
+        for (uint32_t i = 0; i < dependencyCount; ++i)
+        {
+            TaskID dep = pDependencies ? pDependencies[i] : InvalidTaskID;
+            if (dep == InvalidTaskID) continue;
+            if (AddDependency(id, dep) != Gem::Result::Success)
+                return InvalidTaskID;
+        }
+        return (ScheduleTask(id) == Gem::Result::Success) ? id : InvalidTaskID;
+    }
+    
+    //============================================================================
+    // Typed task API
+    //============================================================================
+    
+    // Allocate a typed task with space for up to maxDependencyCount dependencies.
+    // The task is NOT scheduled; caller must add dependencies (optional) and then call ScheduleTask.
     template<typename Func, typename... Args>
     TaskID AllocateTypedTask(
         uint32_t maxDependencyCount,
         Func&& func,
         Args&&... args)
     {
-        // Store both function and args in the payload
         using PayloadData = std::tuple<std::decay_t<Func>, std::decay_t<Args>...>;
-        constexpr size_t payloadSize = sizeof(PayloadData);
-        
-        // Create stateless wrapper that extracts func+args from payload
-        // This lambda is stateless (no captures) so it converts to function pointer
-        auto wrapper = [](TaskID taskId, void* payload, size_t size, TaskScheduler& scheduler)
+        auto wrapper = [](TaskID taskId, void* payload, size_t /*size*/, TaskScheduler& scheduler)
         {
-            (void)size; // Size is known at compile-time
             auto* data = static_cast<PayloadData*>(payload);
-            
-            // Extract function and args
             auto& funcRef = std::get<0>(*data);
-            
-            // Call user function with unpacked args (skipping first element which is func)
-            std::apply([&](auto& /* funcInTuple */, auto&... unpackedArgs) {
+            std::apply([&](auto& /*func*/, auto&... unpackedArgs) {
                 funcRef(taskId, scheduler, unpackedArgs...);
             }, *data);
-            
-            // Destroy the payload when task completes
             data->~PayloadData();
         };
-        
-        // Allocate task with wrapper
-        TaskID taskId = AllocateTask(payloadSize, maxDependencyCount, wrapper);
-        
-        // Construct func+args tuple in payload
-        void* payloadPtr = GetPayload(taskId);
-        new (payloadPtr) PayloadData(std::forward<Func>(func), std::forward<Args>(args)...);
-        
-        return taskId;
+        TaskID id = AllocateTask(sizeof(PayloadData), maxDependencyCount, wrapper);
+        if (id == InvalidTaskID) return InvalidTaskID;
+        new (GetPayload(id)) PayloadData(std::forward<Func>(func), std::forward<Args>(args)...);
+        return id;
     }
 
-    // Atomic allocate + schedule with explicit dependencies. If all dependencies are
-    // already satisfied, executes immediately without ring allocation.
+    // Allocate and schedule a typed task with N dependencies (atomically allocate + schedule)
+    // Executes immediately when all dependencies are already satisfied.
     template<typename Func, typename... Args>
     TaskID AllocateAndScheduleTypedTask(
         const TaskID* dependencies,
@@ -298,7 +304,7 @@ public:
         Func&& func,
         Args&&... args)
     {
-        // Determine if any dependency is still outstanding
+        // Immediate path: no ring allocation, no tuple construction
         uint32_t outstanding = 0;
         {
             std::lock_guard<std::mutex> lock(m_Mutex);
@@ -316,19 +322,15 @@ public:
                     return InvalidTaskID;
                 }
                 if (depHeader->State != TaskState::Completed)
-                {
                     ++outstanding;
-                }
             }
             if (outstanding == 0)
             {
-                // Execute immediately, no ring allocation. Track as executing to preserve ordering.
                 TaskID id = GenerateTaskID();
                 m_ExecutingImmediate.insert(id);
                 m_Mutex.unlock();
                 std::forward<Func>(func)(id, *this, std::forward<Args>(args)...);
                 m_Mutex.lock();
-                // If user callback didn't call CompleteTask(id), auto-complete now.
                 if (m_ExecutingImmediate.erase(id) > 0)
                 {
                     m_CompletedImmediate.insert(id);
@@ -337,48 +339,36 @@ public:
                 return id;
             }
         }
-
-        // Fallback: allocate ring-backed task, attach deps, and schedule
+        
+        // Fallback: ring-backed storage (tuple for function + args)
         using PayloadData = std::tuple<std::decay_t<Func>, std::decay_t<Args>...>;
-        constexpr size_t payloadSize = sizeof(PayloadData);
         auto wrapper = [](TaskID taskId, void* payload, size_t /*size*/, TaskScheduler& scheduler)
         {
             auto* data = static_cast<PayloadData*>(payload);
             auto& funcRef = std::get<0>(*data);
-            std::apply([&](auto& /* funcInTuple */, auto&... unpackedArgs) {
+            std::apply([&](auto& /*func*/, auto&... unpackedArgs) {
                 funcRef(taskId, scheduler, unpackedArgs...);
             }, *data);
             data->~PayloadData();
         };
-
-        TaskID taskId = AllocateTask(payloadSize, dependencyCount, wrapper);
+        TaskID taskId = AllocateTask(sizeof(PayloadData), dependencyCount, wrapper);
         if (taskId == InvalidTaskID) return InvalidTaskID;
-        void* payloadPtr = GetPayload(taskId);
-        new (payloadPtr) PayloadData(std::forward<Func>(func), std::forward<Args>(args)...);
-
+        new (GetPayload(taskId)) PayloadData(std::forward<Func>(func), std::forward<Args>(args)...);
+        
         for (uint32_t i = 0; i < dependencyCount; ++i)
         {
             TaskID dep = dependencies ? dependencies[i] : InvalidTaskID;
             if (dep == InvalidTaskID) continue;
-            // Skip deps that are already completed immediate
             bool skip = false;
             {
                 std::lock_guard<std::mutex> lock(m_Mutex);
                 skip = (m_CompletedImmediate.find(dep) != m_CompletedImmediate.end());
             }
-            if (!skip)
-            {
-                if (AddDependency(taskId, dep) != Gem::Result::Success)
-                {
-                    return InvalidTaskID;
-                }
-            }
+            if (!skip && AddDependency(taskId, dep) != Gem::Result::Success)
+                return InvalidTaskID;
         }
-        if (ScheduleTask(taskId) != Gem::Result::Success)
-        {
-            return InvalidTaskID;
-        }
-        return taskId;
+        
+        return (ScheduleTask(taskId) == Gem::Result::Success) ? taskId : InvalidTaskID;
     }
     
     // Add a dependency to an unscheduled task
