@@ -164,9 +164,11 @@ Gem::Result TaskScheduler::AddDependency(TaskID taskId, TaskID dependencyId)
         return Gem::Result::InvalidArg;
     }
     
-    // Verify the dependency exists
+    // Verify the dependency exists (either ring-backed or an immediate task)
     TaskHeader* depHeader = FindTaskHeader(dependencyId);
-    if (depHeader == nullptr)
+    const bool isImmediateCompleted = (m_CompletedImmediate.find(dependencyId) != m_CompletedImmediate.end());
+    const bool isImmediateExecuting = (m_ExecutingImmediate.find(dependencyId) != m_ExecutingImmediate.end());
+    if (depHeader == nullptr && !isImmediateCompleted && !isImmediateExecuting)
     {
         return Gem::Result::NotFound;
     }
@@ -196,6 +198,12 @@ Gem::Result TaskScheduler::ScheduleTask(TaskID taskId)
     
     std::lock_guard<std::mutex> lock(m_Mutex);
     
+    // Completed-immediate tasks: scheduling is a no-op
+    if (m_CompletedImmediate.find(taskId) != m_CompletedImmediate.end())
+    {
+        return Gem::Result::Success;
+    }
+    
     TaskHeader* header = FindTaskHeader(taskId);
     if (header == nullptr)
     {
@@ -221,7 +229,9 @@ Gem::Result TaskScheduler::ScheduleTask(TaskID taskId)
         }
         
         TaskHeader* depHeader = FindTaskHeader(depId);
-        if (depHeader == nullptr || depHeader->State == TaskState::Unscheduled)
+        const bool depImmediateCompleted = (m_CompletedImmediate.find(depId) != m_CompletedImmediate.end());
+        const bool depImmediateExecuting = (m_ExecutingImmediate.find(depId) != m_ExecutingImmediate.end());
+        if ((depHeader == nullptr && !depImmediateCompleted && !depImmediateExecuting) || (depHeader != nullptr && depHeader->State == TaskState::Unscheduled))
         {
             // Dependency not found or not yet at least scheduled
             return Gem::Result::InvalidArg;
@@ -229,7 +239,7 @@ Gem::Result TaskScheduler::ScheduleTask(TaskID taskId)
         
         // Track this task as dependent on the dependency
         // Only count as outstanding if dependency hasn't completed yet
-        if (depHeader->State != TaskState::Completed)
+        if ((depHeader != nullptr && depHeader->State != TaskState::Completed) || depImmediateExecuting)
         {
             m_Dependents[depId].push_back(taskId);
             outstandingCount++;
@@ -265,6 +275,12 @@ bool TaskScheduler::IsTaskInState(TaskID taskId, TaskState state) const
 {
     std::lock_guard<std::mutex> lock(m_Mutex);
     
+    // Immediate-completed tasks report Completed state
+    if (state == TaskState::Completed && m_CompletedImmediate.find(taskId) != m_CompletedImmediate.end())
+    {
+        return true;
+    }
+    
     TaskHeader* header = FindTaskHeader(taskId);
     if (header == nullptr)
     {
@@ -282,6 +298,12 @@ Gem::Result TaskScheduler::GetTaskState(TaskID taskId, TaskState& outState) cons
     }
     
     std::lock_guard<std::mutex> lock(m_Mutex);
+    
+    if (m_CompletedImmediate.find(taskId) != m_CompletedImmediate.end())
+    {
+        outState = TaskState::Completed;
+        return Gem::Result::Success;
+    }
     
     TaskHeader* header = FindTaskHeader(taskId);
     if (header == nullptr)
@@ -401,6 +423,8 @@ void TaskScheduler::Reset()
     m_TaskMap.clear();
     m_Rings.clear();
     m_Dependents.clear();
+    m_CompletedImmediate.clear();
+    m_ExecutingImmediate.clear();
     
     // Reset task ID counter
     m_NextTaskId = 1;
@@ -441,6 +465,21 @@ Gem::Result TaskScheduler::CompleteTask(TaskID taskId)
     }
     
     std::lock_guard<std::mutex> lock(m_Mutex);
+    
+    // Immediate-completed tasks: CompleteTask is a no-op
+    if (m_CompletedImmediate.find(taskId) != m_CompletedImmediate.end())
+    {
+        return Gem::Result::Success;
+    }
+    // Immediate-executing tasks: transition to completed and notify dependents
+    auto execIt = m_ExecutingImmediate.find(taskId);
+    if (execIt != m_ExecutingImmediate.end())
+    {
+        m_ExecutingImmediate.erase(execIt);
+        m_CompletedImmediate.insert(taskId);
+        NotifyDependents(taskId);
+        return Gem::Result::Success;
+    }
     
     TaskHeader* header = FindTaskHeader(taskId);
     if (header == nullptr)

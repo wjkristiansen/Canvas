@@ -137,6 +137,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <tuple>
 #include <utility>
@@ -287,6 +288,98 @@ public:
         
         return taskId;
     }
+
+    // Atomic allocate + schedule with explicit dependencies. If all dependencies are
+    // already satisfied, executes immediately without ring allocation.
+    template<typename Func, typename... Args>
+    TaskID AllocateAndScheduleTypedTask(
+        const TaskID* dependencies,
+        uint32_t dependencyCount,
+        Func&& func,
+        Args&&... args)
+    {
+        // Determine if any dependency is still outstanding
+        uint32_t outstanding = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_Mutex);
+            for (uint32_t i = 0; i < dependencyCount; ++i)
+            {
+                TaskID dep = dependencies ? dependencies[i] : InvalidTaskID;
+                if (dep == InvalidTaskID) continue;
+                TaskHeader* depHeader = FindTaskHeader(dep);
+                if (depHeader == nullptr)
+                {
+                    // Consider completed-immediate deps satisfied
+                    if (m_CompletedImmediate.find(dep) != m_CompletedImmediate.end())
+                        continue;
+                    // Unknown dependency
+                    return InvalidTaskID;
+                }
+                if (depHeader->State != TaskState::Completed)
+                {
+                    ++outstanding;
+                }
+            }
+            if (outstanding == 0)
+            {
+                // Execute immediately, no ring allocation. Track as executing to preserve ordering.
+                TaskID id = GenerateTaskID();
+                m_ExecutingImmediate.insert(id);
+                m_Mutex.unlock();
+                std::forward<Func>(func)(id, *this, std::forward<Args>(args)...);
+                m_Mutex.lock();
+                // If user callback didn't call CompleteTask(id), auto-complete now.
+                if (m_ExecutingImmediate.erase(id) > 0)
+                {
+                    m_CompletedImmediate.insert(id);
+                    NotifyDependents(id);
+                }
+                return id;
+            }
+        }
+
+        // Fallback: allocate ring-backed task, attach deps, and schedule
+        using PayloadData = std::tuple<std::decay_t<Func>, std::decay_t<Args>...>;
+        constexpr size_t payloadSize = sizeof(PayloadData);
+        auto wrapper = [](TaskID taskId, void* payload, size_t /*size*/, TaskScheduler& scheduler)
+        {
+            auto* data = static_cast<PayloadData*>(payload);
+            auto& funcRef = std::get<0>(*data);
+            std::apply([&](auto& /* funcInTuple */, auto&... unpackedArgs) {
+                funcRef(taskId, scheduler, unpackedArgs...);
+            }, *data);
+            data->~PayloadData();
+        };
+
+        TaskID taskId = AllocateTask(payloadSize, dependencyCount, wrapper);
+        if (taskId == InvalidTaskID) return InvalidTaskID;
+        void* payloadPtr = GetPayload(taskId);
+        new (payloadPtr) PayloadData(std::forward<Func>(func), std::forward<Args>(args)...);
+
+        for (uint32_t i = 0; i < dependencyCount; ++i)
+        {
+            TaskID dep = dependencies ? dependencies[i] : InvalidTaskID;
+            if (dep == InvalidTaskID) continue;
+            // Skip deps that are already completed immediate
+            bool skip = false;
+            {
+                std::lock_guard<std::mutex> lock(m_Mutex);
+                skip = (m_CompletedImmediate.find(dep) != m_CompletedImmediate.end());
+            }
+            if (!skip)
+            {
+                if (AddDependency(taskId, dep) != Gem::Result::Success)
+                {
+                    return InvalidTaskID;
+                }
+            }
+        }
+        if (ScheduleTask(taskId) != Gem::Result::Success)
+        {
+            return InvalidTaskID;
+        }
+        return taskId;
+    }
     
     // Add a dependency to an unscheduled task
     // The dependency must be a TaskID of an already-scheduled task
@@ -351,6 +444,8 @@ private:
     std::vector<std::unique_ptr<RingBuffer>> m_Rings;   // Active ring buffers
     std::unordered_map<TaskID, TaskAllocation> m_TaskMap; // Fast lookup from ID to allocation info
     std::unordered_map<TaskID, std::vector<TaskID>> m_Dependents; // Tasks waiting on each task
+    std::unordered_set<TaskID> m_ExecutingImmediate;               // Immediate tasks currently executing
+    std::unordered_set<TaskID> m_CompletedImmediate;               // IDs of completed immediate tasks
     TaskID m_NextTaskId;                                // Next task ID to assign
     size_t m_InitialRingSize;                           // Size of first ring
     size_t m_NextRingSize;                              // Size of next ring to allocate

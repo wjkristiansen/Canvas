@@ -5,6 +5,50 @@
 #pragma once
 
 #include "CanvasGfx12.h"
+#include "TaskScheduler.h"
+
+//------------------------------------------------------------------------------------------------
+// Enhanced barrier types for D3D12
+struct TextureBarrier
+{
+    ID3D12Resource* pResource;
+    D3D12_BARRIER_SYNC SyncBefore;
+    D3D12_BARRIER_SYNC SyncAfter;
+    D3D12_BARRIER_ACCESS AccessBefore;
+    D3D12_BARRIER_ACCESS AccessAfter;
+    D3D12_BARRIER_LAYOUT LayoutBefore;
+    D3D12_BARRIER_LAYOUT LayoutAfter;
+    UINT Subresources = 0xFFFFFFFF;  // All subresources by default
+    D3D12_TEXTURE_BARRIER_FLAGS Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+};
+
+struct BufferBarrier
+{
+    ID3D12Resource* pResource;
+    D3D12_BARRIER_SYNC SyncBefore;
+    D3D12_BARRIER_SYNC SyncAfter;
+    D3D12_BARRIER_ACCESS AccessBefore;
+    D3D12_BARRIER_ACCESS AccessAfter;
+    UINT64 Offset = 0;
+    UINT64 Size = UINT64_MAX;  // Whole resource by default
+};
+
+struct GlobalBarrier
+{
+    D3D12_BARRIER_SYNC SyncBefore;
+    D3D12_BARRIER_SYNC SyncAfter;
+    D3D12_BARRIER_ACCESS AccessBefore;
+    D3D12_BARRIER_ACCESS AccessAfter;
+};
+
+//------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------
+// GPU synchronization point
+struct GpuSyncPoint
+{
+    UINT64 FenceValue;
+    ID3D12Fence* pFence;
+};
 
 //------------------------------------------------------------------------------------------------
 class CCommandAllocatorPool
@@ -34,6 +78,7 @@ class CRenderQueue12 :
 public:
     CComPtr<ID3D12CommandQueue> m_pCommandQueue;
     CComPtr<ID3D12GraphicsCommandList> m_pCommandList;
+    CComPtr<ID3D12GraphicsCommandList7> m_pCommandList7;  // Cached CL7 for Barrier() to avoid QueryInterface per call
     CComPtr<ID3D12CommandAllocator> m_pCommandAllocator;
     CCommandAllocatorPool m_CommandAllocatorPool;
     CComPtr<ID3D12DescriptorHeap> m_pShaderResourceDescriptorHeap;
@@ -51,6 +96,35 @@ public:
     static const UINT NumDSVDescriptors = 64;
 
     UINT m_NextRTVSlot = 0;
+
+    // Task scheduling for GPU workloads
+    Canvas::TaskScheduler m_TaskScheduler;
+    std::unordered_map<Canvas::TaskID, GpuSyncPoint> m_GpuSyncPoints;
+    
+    // Resource state tracking
+    struct ResourceState {
+        // Persistent state (survives across command list executions)
+        D3D12_BARRIER_LAYOUT CurrentLayout;
+        
+        // Current command list tracking (reset when command list submits)
+        D3D12_BARRIER_SYNC LastSyncInCommandList;
+        D3D12_BARRIER_ACCESS LastAccessInCommandList;
+        Canvas::TaskID LastUsageTask;
+        bool UsedInCurrentCommandList;
+    };
+    std::unordered_map<ID3D12Resource*, ResourceState> m_ResourceStates;
+    std::vector<ID3D12Resource*> m_UsedResourcesDuringCL; // Track only resources touched this command list for fast reset
+    
+    // Frame counter for throttling expensive operations
+    uint32_t m_FramesSinceLastRetire = 0;
+    
+    // Barrier accumulation (batched for efficient recording)
+    std::vector<TextureBarrier> m_PendingTextureBarriers;
+    std::vector<BufferBarrier> m_PendingBufferBarriers;
+    std::vector<GlobalBarrier> m_PendingGlobalBarriers;
+    
+    // Flush pending barriers into command list
+    void FlushPendingBarriers();
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
@@ -78,6 +152,78 @@ public:
     Gem::Result FlushImpl();
 
     D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
-
-    void ApplyResourceBarriers();
+    
+    // Task-based GPU workload management with enhanced barriers
+    
+    // Schedule a command list recording task
+    Canvas::TaskID ScheduleCommandListRecording(
+        std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Ensure texture is in the required layout, automatically inserting barrier if needed
+    // Tracks both persistent layout AND current command list access to detect hazards
+    // syncBefore/After and accessBefore/After describe the barrier boundaries for this operation
+    // Returns the task that ensures the layout (may be InvalidTaskID if no barrier needed)
+    Canvas::TaskID EnsureTextureLayout(
+        ID3D12Resource* pResource,
+        D3D12_BARRIER_SYNC syncAfter,
+        D3D12_BARRIER_ACCESS accessAfter,
+        D3D12_BARRIER_LAYOUT requiredLayout,
+        UINT subresources = 0xFFFFFFFF,
+        D3D12_TEXTURE_BARRIER_FLAGS flags = D3D12_TEXTURE_BARRIER_FLAG_NONE,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // For buffers, track access within command list to detect hazards
+    // Returns barrier task if needed, or last usage task
+    Canvas::TaskID EnsureBufferAccess(
+        ID3D12Resource* pResource,
+        D3D12_BARRIER_SYNC syncAfter,
+        D3D12_BARRIER_ACCESS accessAfter,
+        UINT64 offset = 0,
+        UINT64 size = UINT64_MAX,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Schedule explicit buffer barrier
+    Canvas::TaskID ScheduleBufferBarrier(
+        ID3D12Resource* pResource,
+        D3D12_BARRIER_SYNC syncBefore,
+        D3D12_BARRIER_SYNC syncAfter,
+        D3D12_BARRIER_ACCESS accessBefore,
+        D3D12_BARRIER_ACCESS accessAfter,
+        UINT64 offset = 0,
+        UINT64 size = UINT64_MAX,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Schedule explicit texture barrier (for advanced scenarios)
+    Canvas::TaskID ScheduleTextureBarrier(
+        const TextureBarrier& barrier,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    Canvas::TaskID ScheduleGlobalBarrier(
+        const GlobalBarrier& barrier,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Schedule multiple barriers at once (most efficient for explicit barriers)
+    Canvas::TaskID ScheduleBarrierGroup(
+        const std::vector<TextureBarrier>& textureBarriers,
+        const std::vector<BufferBarrier>& bufferBarriers,
+        const std::vector<GlobalBarrier>& globalBarriers,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Create a GPU fence synchronization point
+    Canvas::TaskID CreateGpuSyncPoint(
+        UINT64 fenceValue,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Wait for GPU fence on CPU (creates task that blocks on GPU completion)
+    Canvas::TaskID WaitForGpuFence(
+        UINT64 fenceValue,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Submit command list to GPU (depends on all recording tasks)
+    Canvas::TaskID SubmitCommandList(
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Process completed GPU work and retire tasks
+    void ProcessCompletedWork();
 };

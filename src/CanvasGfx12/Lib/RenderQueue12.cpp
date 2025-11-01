@@ -5,6 +5,8 @@
 #include "pch.h"
 
 #include "RenderQueue12.h"
+#include "Buffer12.h"
+#include "Surface12.h"
 
 //------------------------------------------------------------------------------------------------
 CCommandAllocatorPool::CCommandAllocatorPool()
@@ -48,7 +50,8 @@ ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CRenderQueue12 *
 //------------------------------------------------------------------------------------------------
 CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCSTR name) :
     TGfxElement(pCanvas),
-    m_pDevice(pDevice)
+    m_pDevice(pDevice),
+    m_TaskScheduler(1024 * 1024)  // 1MB initial ring buffer for task allocation
 {
     if (name != nullptr)
         SetName(name);
@@ -67,6 +70,13 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
 
     CComPtr<ID3D12GraphicsCommandList> pCL;
     Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
+    
+    // Cache the ID3D12GraphicsCommandList7 interface once to avoid QueryInterface per barrier flush
+    CComPtr<ID3D12GraphicsCommandList7> pCL7;
+    if (SUCCEEDED(pCL->QueryInterface(IID_PPV_ARGS(&pCL7))))
+    {
+        m_pCommandList7 = pCL7;
+    }
 
     CComPtr<ID3D12DescriptorHeap> pResDH;
     D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
@@ -157,19 +167,99 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer * /*pDest*/, Canvas::XGfxBuffer * /*pSource*/)
+GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer *pDest, Canvas::XGfxBuffer *pSource)
 {
-    std::unique_lock<std::mutex> Lock(m_mutex);
+    CBuffer12 *pDestBuffer = reinterpret_cast<CBuffer12 *>(pDest);
+    CBuffer12 *pSourceBuffer = reinterpret_cast<CBuffer12 *>(pSource);
+    
+    // Ensure buffers have proper access, automatically detecting hazards
+    auto srcAccessTask = EnsureBufferAccess(
+        pSourceBuffer->GetD3DResource(),
+        D3D12_BARRIER_SYNC_COPY,  // This copy will sync at COPY scope
+        D3D12_BARRIER_ACCESS_COPY_SOURCE  // This copy will read as COPY_SOURCE
+    );
+    
+    auto dstAccessTask = EnsureBufferAccess(
+        pDestBuffer->GetD3DResource(),
+        D3D12_BARRIER_SYNC_COPY,
+        D3D12_BARRIER_ACCESS_COPY_DEST  // This copy will write as COPY_DEST
+    );
+    
+    // Schedule copy command - depends on both access tasks
+    Canvas::TaskID copyDep = (srcAccessTask != Canvas::InvalidTaskID) ? srcAccessTask : Canvas::InvalidTaskID;
+    auto copyTask = ScheduleCommandListRecording(
+        [pDestBuffer, pSourceBuffer](ID3D12GraphicsCommandList* cmdList) {
+            cmdList->CopyResource(pDestBuffer->GetD3DResource(), pSourceBuffer->GetD3DResource());
+        },
+        copyDep
+    );
+    
+    // Add dependency on dest access too
+    if (dstAccessTask != Canvas::InvalidTaskID && dstAccessTask != copyDep)
+    {
+        m_TaskScheduler.AddDependency(copyTask, dstAccessTask);
+    }
 }
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(Canvas::XGfxSurface *pGfxSurface, const float Color[4])
 {
-    std::unique_lock<std::mutex> Lock(m_mutex);
     CSurface12 *pSurface = reinterpret_cast<CSurface12 *>(pGfxSurface);
-    pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    ApplyResourceBarriers();
-    m_pCommandList->ClearRenderTargetView(CreateRenderTargetView(pSurface, 0, 0, 0), Color, 0, nullptr);
+    
+    // FAST PATH: For simple synchronous rendering, bypass TaskScheduler entirely
+    // This eliminates all heap allocations (std::function, tuples, unordered_set)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        
+        ID3D12Resource* pResource = pSurface->GetD3DResource();
+        auto it = m_ResourceStates.find(pResource);
+        
+        // Check if layout transition needed
+        D3D12_BARRIER_LAYOUT currentLayout = (it != m_ResourceStates.end()) 
+            ? it->second.CurrentLayout 
+            : D3D12_BARRIER_LAYOUT_COMMON;
+        
+        if (currentLayout != D3D12_BARRIER_LAYOUT_RENDER_TARGET)
+        {
+            // Need layout transition
+            D3D12_TEXTURE_BARRIER barrier = {};
+            barrier.SyncBefore = (it != m_ResourceStates.end()) ? it->second.LastSyncInCommandList : D3D12_BARRIER_SYNC_NONE;
+            barrier.SyncAfter = D3D12_BARRIER_SYNC_RENDER_TARGET;
+            barrier.AccessBefore = (it != m_ResourceStates.end()) ? it->second.LastAccessInCommandList : D3D12_BARRIER_ACCESS_NO_ACCESS;
+            barrier.AccessAfter = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+            barrier.LayoutBefore = currentLayout;
+            barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+            barrier.pResource = pResource;
+            barrier.Subresources.IndexOrFirstMipLevel = 0xffffffff;
+            barrier.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+            
+            D3D12_BARRIER_GROUP barrierGroup = {};
+            barrierGroup.Type = D3D12_BARRIER_TYPE_TEXTURE;
+            barrierGroup.NumBarriers = 1;
+            barrierGroup.pTextureBarriers = &barrier;
+            
+            if (m_pCommandList7)
+            {
+                m_pCommandList7->Barrier(1, &barrierGroup);
+            }
+        }
+        
+        // Execute clear
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv = CreateRenderTargetView(pSurface, 0, 0, 0);
+        m_pCommandList->ClearRenderTargetView(rtv, Color, 0, nullptr);
+        
+        // Update resource state
+        ResourceState& state = m_ResourceStates[pResource];
+        state.CurrentLayout = D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+        state.LastSyncInCommandList = D3D12_BARRIER_SYNC_RENDER_TARGET;
+        state.LastAccessInCommandList = D3D12_BARRIER_ACCESS_RENDER_TARGET;
+        state.LastUsageTask = Canvas::InvalidTaskID;
+        if (!state.UsedInCurrentCommandList)
+        {
+            state.UsedInCurrentCommandList = true;
+            m_UsedResourcesDuringCL.push_back(pResource);
+        }
+    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -178,7 +268,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurfac
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
     UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     UINT slot = m_NextRTVSlot;
-    m_NextRTVSlot = (m_NextRTVSlot) % NumRTVDescriptors;
+    m_NextRTVSlot = (m_NextRTVSlot + 1) % NumRTVDescriptors;
     D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
     cpuHandle.ptr= m_pRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
@@ -197,17 +287,12 @@ Gem::Result CRenderQueue12::FlushImpl()
 {
     try
     {
-        ThrowFailedHResult(m_pCommandList->Close());
-
-        ID3D12CommandList *exlist[] =
-        {
-            m_pCommandList
-        };
-
-        m_pCommandQueue->ExecuteCommandLists(1, exlist);
-
-        m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
-
+        // Schedule command list submission
+        auto submitTask = SubmitCommandList();
+        
+        // Wait for submission to complete (synchronous flush)
+        WaitForGpuFence(m_FenceValue, submitTask);
+        
         return Gem::Result::Success;
     }
     catch (_com_error &e)
@@ -219,17 +304,45 @@ Gem::Result CRenderQueue12::FlushImpl()
 //------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::Flush()
 {
-    std::unique_lock<std::mutex> Lock(m_mutex);
-    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Flush", m_pDevice->GetLogger(), Canvas::LogLevel::Debug);
+    // NOTE: Removed CFunctionSentinel to eliminate per-frame logging overhead in hot path
     try
     {
         Gem::ThrowGemError(FlushImpl());
 
-        ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
+        // Reset command list and per-command-list tracking for next frame
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
+            
+            // Clear pending barriers on command list reset
+            m_PendingTextureBarriers.clear();
+            m_PendingBufferBarriers.clear();
+            m_PendingGlobalBarriers.clear();
+            
+            // Reset per-command-list tracking only for resources actually used
+            for (ID3D12Resource* resource : m_UsedResourcesDuringCL)
+            {
+                auto it = m_ResourceStates.find(resource);
+                if (it != m_ResourceStates.end())
+                {
+                    it->second.UsedInCurrentCommandList = false;
+                    it->second.LastSyncInCommandList = D3D12_BARRIER_SYNC_NONE;
+                    it->second.LastAccessInCommandList = D3D12_BARRIER_ACCESS_NO_ACCESS;
+                }
+            }
+            m_UsedResourcesDuringCL.clear();
+        }
+        
+        // Process completed tasks to reclaim memory (throttled - only every N frames)
+        // NOTE: RetireCompletedTasks is expensive (sorts task map), don't call every frame
+        if (++m_FramesSinceLastRetire >= 60)
+        {
+            ProcessCompletedWork();
+            m_FramesSinceLastRetire = 0;
+        }
     }
     catch (_com_error &e)
     {
-        sentinel.SetResultCode(ResultFromHRESULT(e.Error()));
         return ResultFromHRESULT(e.Error());
     }
 
@@ -239,30 +352,105 @@ Gem::Result CRenderQueue12::Flush()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 {
-    std::unique_lock<std::mutex> Lock(m_mutex);
-    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::FlushAndPresent", m_pDevice->GetLogger(), Canvas::LogLevel::Debug);
-
+    // NOTE: Removed CFunctionSentinel to eliminate per-frame logging overhead in hot path
     try
     {
         CSwapChain12 *pIntSwapChain = reinterpret_cast<CSwapChain12 *>(pSwapChain);
-        pIntSwapChain->m_pSurface->SetDesiredResourceState(m_pDevice->m_ResourceStateManager, D3D12_RESOURCE_STATE_COMMON);
-        ApplyResourceBarriers();
-
-        Gem::ThrowGemError(FlushImpl());
-
+        
+        // FAST PATH: Bypass TaskScheduler to eliminate heap allocations
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            
+            ID3D12Resource* pResource = pIntSwapChain->m_pSurface->GetD3DResource();
+            auto it = m_ResourceStates.find(pResource);
+            
+            // Check if layout transition needed to PRESENT
+            D3D12_BARRIER_LAYOUT currentLayout = (it != m_ResourceStates.end()) 
+                ? it->second.CurrentLayout 
+                : D3D12_BARRIER_LAYOUT_COMMON;
+            
+            if (currentLayout != D3D12_BARRIER_LAYOUT_PRESENT)
+            {
+                // Need layout transition
+                D3D12_TEXTURE_BARRIER barrier = {};
+                barrier.SyncBefore = (it != m_ResourceStates.end()) ? it->second.LastSyncInCommandList : D3D12_BARRIER_SYNC_NONE;
+                barrier.SyncAfter = D3D12_BARRIER_SYNC_NONE;
+                barrier.AccessBefore = (it != m_ResourceStates.end()) ? it->second.LastAccessInCommandList : D3D12_BARRIER_ACCESS_NO_ACCESS;
+                barrier.AccessAfter = D3D12_BARRIER_ACCESS_NO_ACCESS;
+                barrier.LayoutBefore = currentLayout;
+                barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_PRESENT;
+                barrier.pResource = pResource;
+                barrier.Subresources.IndexOrFirstMipLevel = 0xffffffff;
+                barrier.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+                
+                D3D12_BARRIER_GROUP barrierGroup = {};
+                barrierGroup.Type = D3D12_BARRIER_TYPE_TEXTURE;
+                barrierGroup.NumBarriers = 1;
+                barrierGroup.pTextureBarriers = &barrier;
+                
+                if (m_pCommandList7)
+                {
+                    m_pCommandList7->Barrier(1, &barrierGroup);
+                }
+                
+                // Update resource state
+                ResourceState& state = m_ResourceStates[pResource];
+                state.CurrentLayout = D3D12_BARRIER_LAYOUT_PRESENT;
+                state.LastSyncInCommandList = D3D12_BARRIER_SYNC_NONE;
+                state.LastAccessInCommandList = D3D12_BARRIER_ACCESS_NO_ACCESS;
+                if (!state.UsedInCurrentCommandList)
+                {
+                    state.UsedInCurrentCommandList = true;
+                    m_UsedResourcesDuringCL.push_back(pResource);
+                }
+            }
+            
+            // Submit command list
+            m_pCommandList->Close();
+            ID3D12CommandList* cmdLists[] = { m_pCommandList };
+            m_pCommandQueue->ExecuteCommandLists(1, cmdLists);
+            m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
+        }
+        
+        // Present the swapchain (internally waits for GPU via swap chain sync)
         Gem::ThrowGemError(pIntSwapChain->Present());
 
-        m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
-
-        // Rotate command allocators
-        m_pCommandAllocator = m_CommandAllocatorPool.RotateAllocators(this);
-        m_pCommandAllocator->Reset();
-
-        ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
+        // Rotate command allocators and reset command list
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_pCommandAllocator = m_CommandAllocatorPool.RotateAllocators(this);
+            m_pCommandAllocator->Reset();
+            ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
+            
+            // Clear pending barriers on command list reset
+            m_PendingTextureBarriers.clear();
+            m_PendingBufferBarriers.clear();
+            m_PendingGlobalBarriers.clear();
+            
+            // Reset per-command-list tracking only for resources actually used
+            for (ID3D12Resource* resource : m_UsedResourcesDuringCL)
+            {
+                auto it = m_ResourceStates.find(resource);
+                if (it != m_ResourceStates.end())
+                {
+                    it->second.UsedInCurrentCommandList = false;
+                    it->second.LastSyncInCommandList = D3D12_BARRIER_SYNC_NONE;
+                    it->second.LastAccessInCommandList = D3D12_BARRIER_ACCESS_NO_ACCESS;
+                }
+            }
+            m_UsedResourcesDuringCL.clear();
+        }
+        
+        // Process completed tasks to reclaim memory (throttled - only every N frames)
+        // NOTE: RetireCompletedTasks is expensive (sorts task map), don't call every frame
+        if (++m_FramesSinceLastRetire >= 60)
+        {
+            ProcessCompletedWork();
+            m_FramesSinceLastRetire = 0;
+        }
     }
     catch (Gem::GemError &e)
     {
-        sentinel.SetResultCode(e.Result());
         return e.Result();
     }
 
@@ -272,11 +460,19 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::Wait()
 {
-    std::unique_lock<std::mutex> Lock(m_mutex);
-    HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
-    m_pFence->SetEventOnCompletion(m_FenceValue, hEvent);
-    WaitForSingleObject(hEvent, INFINITE);
-    CloseHandle(hEvent);
+    // Wait for GPU to reach current fence value
+    UINT64 completedValue = m_pFence->GetCompletedValue();
+    if (completedValue < m_FenceValue)
+    {
+        HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (hEvent)
+        {
+            ThrowFailedHResult(m_pFence->SetEventOnCompletion(m_FenceValue, hEvent));
+            WaitForSingleObject(hEvent, INFINITE);
+            CloseHandle(hEvent);
+        }
+    }
+    
     return Gem::Result::Success;
 }
 
@@ -291,9 +487,688 @@ void CRenderQueue12::Uninitialize()
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::ApplyResourceBarriers()
+// Task-based GPU workload management implementation
+//------------------------------------------------------------------------------------------------
+
+Canvas::TaskID CRenderQueue12::ScheduleCommandListRecording(
+    std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
+    Canvas::TaskID dependsOn)
 {
-    std::vector<D3D12_RESOURCE_BARRIER> resourceBarriers;
-    m_pDevice->m_ResourceStateManager.ResolveResourceBarriers(resourceBarriers);
-    m_pCommandList->ResourceBarrier((UINT)resourceBarriers.size(), resourceBarriers.data());
+    // Allocate and schedule task with optional single dependency
+    Canvas::TaskID deps[1] = { dependsOn };
+    auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
+        (dependsOn != Canvas::InvalidTaskID) ? deps : nullptr,
+        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        [](Canvas::TaskID id, Canvas::TaskScheduler& sched, 
+           CRenderQueue12* pQueue, std::function<void(ID3D12GraphicsCommandList*)> func)
+        {
+            std::lock_guard<std::mutex> lock(pQueue->m_mutex);
+            
+            // Flush any pending barriers before recording the command
+            pQueue->FlushPendingBarriers();
+            
+            // Execute recording function
+            func(pQueue->m_pCommandList);
+            
+            // Complete task synchronously
+            sched.CompleteTask(id);
+        },
+        this,
+        std::move(recordFunc)
+    );
+    
+    return taskId;
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::EnsureTextureLayout(
+    ID3D12Resource* pResource,
+    D3D12_BARRIER_SYNC syncAfter,
+    D3D12_BARRIER_ACCESS accessAfter,
+    D3D12_BARRIER_LAYOUT requiredLayout,
+    UINT subresources,
+    D3D12_TEXTURE_BARRIER_FLAGS flags,
+    Canvas::TaskID dependsOn)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    
+    // Look up resource state
+    auto it = m_ResourceStates.find(pResource);
+    
+    bool needsLayoutTransition = false;
+    bool needsHazardBarrier = false;
+    D3D12_BARRIER_LAYOUT layoutBefore = D3D12_BARRIER_LAYOUT_COMMON;
+    D3D12_BARRIER_SYNC syncBefore = D3D12_BARRIER_SYNC_NONE;
+    D3D12_BARRIER_ACCESS accessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+    Canvas::TaskID lastUsageTask = Canvas::InvalidTaskID;
+    
+    if (it != m_ResourceStates.end())
+    {
+        const auto& state = it->second;
+        layoutBefore = state.CurrentLayout;
+        lastUsageTask = state.LastUsageTask;
+        
+        // Check if layout transition is needed (persistent state)
+        needsLayoutTransition = (layoutBefore != requiredLayout);
+        
+        // Check for hazards within current command list
+        if (state.UsedInCurrentCommandList)
+        {
+            syncBefore = state.LastSyncInCommandList;
+            accessBefore = state.LastAccessInCommandList;
+            
+            // Detect GPU hazards:
+            // - Write-after-read (WAR): Previous read, current write
+            // - Read-after-write (RAW): Previous write, current read
+            // - Write-after-write (WAW): Previous write, current write
+            
+            bool previousWasWrite = (accessBefore & D3D12_BARRIER_ACCESS_RENDER_TARGET) ||
+                                   (accessBefore & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) ||
+                                   (accessBefore & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE) ||
+                                   (accessBefore & D3D12_BARRIER_ACCESS_COPY_DEST);
+            
+            bool currentIsWrite = (accessAfter & D3D12_BARRIER_ACCESS_RENDER_TARGET) ||
+                                 (accessAfter & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) ||
+                                 (accessAfter & D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE) ||
+                                 (accessAfter & D3D12_BARRIER_ACCESS_COPY_DEST);
+            
+            // Need barrier if there's any write involved (WAR, RAW, or WAW)
+            needsHazardBarrier = previousWasWrite || currentIsWrite;
+        }
+    }
+    else
+    {
+        // First use - assume resource starts in COMMON layout with no previous access
+        needsLayoutTransition = (requiredLayout != D3D12_BARRIER_LAYOUT_COMMON);
+        layoutBefore = D3D12_BARRIER_LAYOUT_COMMON;
+        syncBefore = D3D12_BARRIER_SYNC_NONE;
+        accessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+    }
+    
+    Canvas::TaskID barrierTaskId = Canvas::InvalidTaskID;
+    
+    // Insert barrier if layout transition or hazard detection requires it
+    if (needsLayoutTransition || needsHazardBarrier)
+    {
+        TextureBarrier barrier;
+        barrier.pResource = pResource;
+        barrier.SyncBefore = syncBefore;
+        barrier.SyncAfter = syncAfter;
+        barrier.AccessBefore = accessBefore;
+        barrier.AccessAfter = accessAfter;
+        barrier.LayoutBefore = layoutBefore;
+        barrier.LayoutAfter = requiredLayout;
+        barrier.Subresources = subresources;
+        barrier.Flags = flags;
+        
+        // Barrier depends on both the last usage and any explicit dependency
+        Canvas::TaskID barrierDependency = dependsOn;
+        if (lastUsageTask != Canvas::InvalidTaskID)
+        {
+            barrierDependency = lastUsageTask;
+        }
+        
+        barrierTaskId = ScheduleTextureBarrier(barrier, barrierDependency);
+        
+        // If there was an explicit dependency different from last usage, add it
+        if (dependsOn != Canvas::InvalidTaskID && dependsOn != lastUsageTask)
+        {
+            m_TaskScheduler.AddDependency(barrierTaskId, dependsOn);
+        }
+        
+        // Update tracked state
+        ResourceState& state = m_ResourceStates[pResource];
+        state.CurrentLayout = requiredLayout;
+        state.LastSyncInCommandList = syncAfter;
+        state.LastAccessInCommandList = accessAfter;
+        state.LastUsageTask = barrierTaskId;
+        if (!state.UsedInCurrentCommandList)
+        {
+            state.UsedInCurrentCommandList = true;
+            m_UsedResourcesDuringCL.push_back(pResource);
+        }
+    }
+    else
+    {
+        // No barrier needed, but update command-list-local tracking
+        Canvas::TaskID usageTask = (dependsOn != Canvas::InvalidTaskID) ? dependsOn : lastUsageTask;
+        
+        if (it != m_ResourceStates.end())
+        {
+            it->second.LastSyncInCommandList = syncAfter;
+            it->second.LastAccessInCommandList = accessAfter;
+            if (!it->second.UsedInCurrentCommandList)
+            {
+                it->second.UsedInCurrentCommandList = true;
+                m_UsedResourcesDuringCL.push_back(pResource);
+            }
+            if (usageTask != Canvas::InvalidTaskID)
+            {
+                it->second.LastUsageTask = usageTask;
+            }
+        }
+        else
+        {
+            ResourceState& state = m_ResourceStates[pResource];
+            state.CurrentLayout = layoutBefore;
+            state.LastSyncInCommandList = syncAfter;
+            state.LastAccessInCommandList = accessAfter;
+            state.LastUsageTask = usageTask;
+            state.UsedInCurrentCommandList = true;
+            m_UsedResourcesDuringCL.push_back(pResource);
+        }
+        
+        barrierTaskId = lastUsageTask != Canvas::InvalidTaskID ? lastUsageTask : dependsOn;
+    }
+    
+    return barrierTaskId;
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::EnsureBufferAccess(
+    ID3D12Resource* pResource,
+    D3D12_BARRIER_SYNC syncAfter,
+    D3D12_BARRIER_ACCESS accessAfter,
+    UINT64 offset,
+    UINT64 size,
+    Canvas::TaskID dependsOn)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    
+    // Look up resource state (buffers don't have layout, only track access/sync)
+    auto it = m_ResourceStates.find(pResource);
+    
+    bool needsHazardBarrier = false;
+    D3D12_BARRIER_SYNC syncBefore = D3D12_BARRIER_SYNC_NONE;
+    D3D12_BARRIER_ACCESS accessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+    Canvas::TaskID lastUsageTask = Canvas::InvalidTaskID;
+    
+    if (it != m_ResourceStates.end())
+    {
+        const auto& state = it->second;
+        lastUsageTask = state.LastUsageTask;
+        
+        // Check for hazards within current command list
+        if (state.UsedInCurrentCommandList)
+        {
+            syncBefore = state.LastSyncInCommandList;
+            accessBefore = state.LastAccessInCommandList;
+            
+            // Detect GPU hazards for buffers
+            bool previousWasWrite = (accessBefore & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) ||
+                                   (accessBefore & D3D12_BARRIER_ACCESS_COPY_DEST);
+            
+            bool currentIsWrite = (accessAfter & D3D12_BARRIER_ACCESS_UNORDERED_ACCESS) ||
+                                 (accessAfter & D3D12_BARRIER_ACCESS_COPY_DEST);
+            
+            // Need barrier if there's any write involved (WAR, RAW, or WAW)
+            needsHazardBarrier = previousWasWrite || currentIsWrite;
+        }
+    }
+    else
+    {
+        // First use - no previous access
+        syncBefore = D3D12_BARRIER_SYNC_NONE;
+        accessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+    }
+    
+    Canvas::TaskID barrierTaskId = Canvas::InvalidTaskID;
+    
+    if (needsHazardBarrier)
+    {
+        // Insert barrier to prevent GPU hazard
+        barrierTaskId = ScheduleBufferBarrier(
+            pResource,
+            syncBefore,
+            syncAfter,
+            accessBefore,
+            accessAfter,
+            offset,
+            size,
+            lastUsageTask
+        );
+        
+        // If there was an explicit dependency different from last usage, add it
+        if (dependsOn != Canvas::InvalidTaskID && dependsOn != lastUsageTask)
+        {
+            m_TaskScheduler.AddDependency(barrierTaskId, dependsOn);
+        }
+        
+        // Update tracked state (buffers use UNDEFINED for layout field)
+        ResourceState& state = m_ResourceStates[pResource];
+        state.CurrentLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
+        state.LastSyncInCommandList = syncAfter;
+        state.LastAccessInCommandList = accessAfter;
+        state.LastUsageTask = barrierTaskId;
+        if (!state.UsedInCurrentCommandList)
+        {
+            state.UsedInCurrentCommandList = true;
+            m_UsedResourcesDuringCL.push_back(pResource);
+        }
+    }
+    else
+    {
+        // No barrier needed, but update command-list-local tracking
+        Canvas::TaskID usageTask = (dependsOn != Canvas::InvalidTaskID) ? dependsOn : lastUsageTask;
+        
+        if (it != m_ResourceStates.end())
+        {
+            it->second.LastSyncInCommandList = syncAfter;
+            it->second.LastAccessInCommandList = accessAfter;
+            if (!it->second.UsedInCurrentCommandList)
+            {
+                it->second.UsedInCurrentCommandList = true;
+                m_UsedResourcesDuringCL.push_back(pResource);
+            }
+            if (usageTask != Canvas::InvalidTaskID)
+            {
+                it->second.LastUsageTask = usageTask;
+            }
+        }
+        else
+        {
+            ResourceState& state = m_ResourceStates[pResource];
+            state.CurrentLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
+            state.LastSyncInCommandList = syncAfter;
+            state.LastAccessInCommandList = accessAfter;
+            state.LastUsageTask = usageTask;
+            state.UsedInCurrentCommandList = true;
+            m_UsedResourcesDuringCL.push_back(pResource);
+        }
+        
+        barrierTaskId = lastUsageTask != Canvas::InvalidTaskID ? lastUsageTask : dependsOn;
+    }
+    
+    return barrierTaskId;
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::ScheduleBufferBarrier(
+    ID3D12Resource* pResource,
+    D3D12_BARRIER_SYNC syncBefore,
+    D3D12_BARRIER_SYNC syncAfter,
+    D3D12_BARRIER_ACCESS accessBefore,
+    D3D12_BARRIER_ACCESS accessAfter,
+    UINT64 offset,
+    UINT64 size,
+    Canvas::TaskID dependsOn)
+{
+    // Accumulate barrier for batched recording
+    // NOTE: Caller must hold m_mutex
+    BufferBarrier barrier;
+    barrier.pResource = pResource;
+    barrier.SyncBefore = syncBefore;
+    barrier.SyncAfter = syncAfter;
+    barrier.AccessBefore = accessBefore;
+    barrier.AccessAfter = accessAfter;
+    barrier.Offset = offset;
+    barrier.Size = size;
+    
+    m_PendingBufferBarriers.push_back(barrier);
+    
+    // Update resource state tracking
+    ResourceState& state = m_ResourceStates[pResource];
+    state.CurrentLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;  // Buffers don't have layout
+    state.LastSyncInCommandList = syncAfter;
+    state.LastAccessInCommandList = accessAfter;
+    state.LastUsageTask = dependsOn;
+    state.UsedInCurrentCommandList = true;
+    
+    return dependsOn;
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::ScheduleTextureBarrier(
+    const TextureBarrier& barrier,
+    Canvas::TaskID dependsOn)
+{
+    // Accumulate barrier for batched recording
+    // NOTE: Caller must hold m_mutex
+    m_PendingTextureBarriers.push_back(barrier);
+    
+    // Return dependency - the barrier will be flushed before next actual command
+    return dependsOn;
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::ScheduleGlobalBarrier(
+    const GlobalBarrier& barrier,
+    Canvas::TaskID dependsOn)
+{
+    // Accumulate barrier for batched recording
+    // NOTE: Caller must hold m_mutex
+    m_PendingGlobalBarriers.push_back(barrier);
+    
+    // Return dependency - the barrier will be flushed before next actual command
+    return dependsOn;
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::ScheduleBarrierGroup(
+    const std::vector<TextureBarrier>& textureBarriers,
+    const std::vector<BufferBarrier>& bufferBarriers,
+    const std::vector<GlobalBarrier>& globalBarriers,
+    Canvas::TaskID dependsOn)
+{
+    // Allocate and schedule task with barrier group payload
+    Canvas::TaskID deps[1] = { dependsOn };
+    auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
+        (dependsOn != Canvas::InvalidTaskID) ? deps : nullptr,
+        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        [](Canvas::TaskID id, Canvas::TaskScheduler& sched, 
+           CRenderQueue12* pQueue,
+           std::vector<TextureBarrier> texBarriers,
+           std::vector<BufferBarrier> bufBarriers,
+           std::vector<GlobalBarrier> globBarriers)
+        {
+            std::lock_guard<std::mutex> lock(pQueue->m_mutex);
+            
+            std::vector<D3D12_TEXTURE_BARRIER> d3dTexBarriers;
+            std::vector<D3D12_BUFFER_BARRIER> d3dBufBarriers;
+            std::vector<D3D12_GLOBAL_BARRIER> d3dGlobBarriers;
+            
+            // Convert texture barriers
+            for (const auto& barrier : texBarriers)
+            {
+                D3D12_TEXTURE_BARRIER d3dBarrier = {};
+                d3dBarrier.SyncBefore = barrier.SyncBefore;
+                d3dBarrier.SyncAfter = barrier.SyncAfter;
+                d3dBarrier.AccessBefore = barrier.AccessBefore;
+                d3dBarrier.AccessAfter = barrier.AccessAfter;
+                d3dBarrier.LayoutBefore = barrier.LayoutBefore;
+                d3dBarrier.LayoutAfter = barrier.LayoutAfter;
+                d3dBarrier.pResource = barrier.pResource;
+                d3dBarrier.Subresources.IndexOrFirstMipLevel = barrier.Subresources;
+                d3dBarrier.Flags = barrier.Flags;
+                d3dTexBarriers.push_back(d3dBarrier);
+            }
+            
+            // Convert buffer barriers
+            for (const auto& barrier : bufBarriers)
+            {
+                D3D12_BUFFER_BARRIER d3dBarrier = {};
+                d3dBarrier.SyncBefore = barrier.SyncBefore;
+                d3dBarrier.SyncAfter = barrier.SyncAfter;
+                d3dBarrier.AccessBefore = barrier.AccessBefore;
+                d3dBarrier.AccessAfter = barrier.AccessAfter;
+                d3dBarrier.pResource = barrier.pResource;
+                d3dBarrier.Offset = barrier.Offset;
+                d3dBarrier.Size = barrier.Size;
+                d3dBufBarriers.push_back(d3dBarrier);
+            }
+            
+            // Convert global barriers
+            for (const auto& barrier : globBarriers)
+            {
+                D3D12_GLOBAL_BARRIER d3dBarrier = {};
+                d3dBarrier.SyncBefore = barrier.SyncBefore;
+                d3dBarrier.SyncAfter = barrier.SyncAfter;
+                d3dBarrier.AccessBefore = barrier.AccessBefore;
+                d3dBarrier.AccessAfter = barrier.AccessAfter;
+                d3dGlobBarriers.push_back(d3dBarrier);
+            }
+            
+            // Build barrier groups
+            std::vector<D3D12_BARRIER_GROUP> barrierGroups;
+            
+            if (!d3dTexBarriers.empty())
+            {
+                D3D12_BARRIER_GROUP group = {};
+                group.Type = D3D12_BARRIER_TYPE_TEXTURE;
+                group.NumBarriers = static_cast<UINT>(d3dTexBarriers.size());
+                group.pTextureBarriers = d3dTexBarriers.data();
+                barrierGroups.push_back(group);
+            }
+            
+            if (!d3dBufBarriers.empty())
+            {
+                D3D12_BARRIER_GROUP group = {};
+                group.Type = D3D12_BARRIER_TYPE_BUFFER;
+                group.NumBarriers = static_cast<UINT>(d3dBufBarriers.size());
+                group.pBufferBarriers = d3dBufBarriers.data();
+                barrierGroups.push_back(group);
+            }
+            
+            if (!d3dGlobBarriers.empty())
+            {
+                D3D12_BARRIER_GROUP group = {};
+                group.Type = D3D12_BARRIER_TYPE_GLOBAL;
+                group.NumBarriers = static_cast<UINT>(d3dGlobBarriers.size());
+                group.pGlobalBarriers = d3dGlobBarriers.data();
+                barrierGroups.push_back(group);
+            }
+            
+            // Execute barriers if any
+            if (!barrierGroups.empty() && pQueue->m_pCommandList7)
+            {
+                pQueue->m_pCommandList7->Barrier(static_cast<UINT>(barrierGroups.size()), barrierGroups.data());
+            }
+            
+            sched.CompleteTask(id);
+        },
+        this,
+        textureBarriers,
+        bufferBarriers,
+        globalBarriers
+    );
+    
+    // no explicit dependency add/schedule needed (atomic API)
+    
+    return taskId;
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::CreateGpuSyncPoint(
+    UINT64 fenceValue,
+    Canvas::TaskID dependsOn)
+{
+    Canvas::TaskID deps1[1] = { dependsOn };
+    auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
+        (dependsOn != Canvas::InvalidTaskID) ? deps1 : nullptr,
+        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        [](Canvas::TaskID id, Canvas::TaskScheduler& sched, 
+           CRenderQueue12* pQueue, UINT64 value)
+        {
+            std::lock_guard<std::mutex> lock(pQueue->m_mutex);
+            
+            // Signal the fence
+            pQueue->m_pCommandQueue->Signal(pQueue->m_pFence, value);
+            
+            // Store sync point for later wait
+            pQueue->m_GpuSyncPoints[id] = GpuSyncPoint{ value, pQueue->m_pFence };
+            
+            sched.CompleteTask(id);
+        },
+        this,
+        fenceValue
+    );
+    // atomic API handles dependencies and scheduling
+    
+    return taskId;
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::WaitForGpuFence(
+    UINT64 fenceValue,
+    Canvas::TaskID dependsOn)
+{
+    Canvas::TaskID deps2[1] = { dependsOn };
+    auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
+        (dependsOn != Canvas::InvalidTaskID) ? deps2 : nullptr,
+        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        [](Canvas::TaskID id, Canvas::TaskScheduler& sched, 
+           CRenderQueue12* pQueue, UINT64 value)
+        {
+            // Wait for GPU fence completion
+            if (pQueue->m_pFence->GetCompletedValue() < value)
+            {
+                HANDLE hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+                pQueue->m_pFence->SetEventOnCompletion(value, hEvent);
+                WaitForSingleObject(hEvent, INFINITE);
+                CloseHandle(hEvent);
+            }
+            
+            sched.CompleteTask(id);
+        },
+        this,
+        fenceValue
+    );
+    // atomic API handles dependencies and scheduling
+    
+    return taskId;
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::SubmitCommandList(Canvas::TaskID dependsOn)
+{
+    Canvas::TaskID deps3[1] = { dependsOn };
+    auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
+        (dependsOn != Canvas::InvalidTaskID) ? deps3 : nullptr,
+        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        [](Canvas::TaskID id, Canvas::TaskScheduler& sched, CRenderQueue12* pQueue)
+        {
+            std::lock_guard<std::mutex> lock(pQueue->m_mutex);
+            
+            // Close and submit command list
+            pQueue->m_pCommandList->Close();
+            
+            ID3D12CommandList* cmdLists[] = { pQueue->m_pCommandList };
+            pQueue->m_pCommandQueue->ExecuteCommandLists(1, cmdLists);
+            
+            // Signal fence
+            pQueue->m_pCommandQueue->Signal(pQueue->m_pFence, ++pQueue->m_FenceValue);
+            
+            sched.CompleteTask(id);
+        },
+        this
+    );
+    // atomic API handles dependencies and scheduling
+    
+    return taskId;
+}
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::ProcessCompletedWork()
+{
+    // Retire completed tasks to reclaim memory
+    m_TaskScheduler.RetireCompletedTasks();
+    
+    // Clean up old sync points
+    UINT64 completedValue = m_pFence->GetCompletedValue();
+    for (auto it = m_GpuSyncPoints.begin(); it != m_GpuSyncPoints.end();)
+    {
+        if (it->second.FenceValue <= completedValue)
+        {
+            it = m_GpuSyncPoints.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::FlushPendingBarriers()
+{
+    // This function must be called with m_mutex locked
+    
+    if (m_PendingTextureBarriers.empty() && 
+        m_PendingBufferBarriers.empty() && 
+        m_PendingGlobalBarriers.empty())
+    {
+        return;  // Nothing to flush
+    }
+    
+    // Convert to D3D12 barrier structures
+    std::vector<D3D12_TEXTURE_BARRIER> d3dTexBarriers;
+    std::vector<D3D12_BUFFER_BARRIER> d3dBufBarriers;
+    std::vector<D3D12_GLOBAL_BARRIER> d3dGlobBarriers;
+    
+    d3dTexBarriers.reserve(m_PendingTextureBarriers.size());
+    d3dBufBarriers.reserve(m_PendingBufferBarriers.size());
+    d3dGlobBarriers.reserve(m_PendingGlobalBarriers.size());
+    
+    // Convert texture barriers
+    for (const auto& barrier : m_PendingTextureBarriers)
+    {
+        D3D12_TEXTURE_BARRIER d3dBarrier = {};
+        d3dBarrier.SyncBefore = barrier.SyncBefore;
+        d3dBarrier.SyncAfter = barrier.SyncAfter;
+        d3dBarrier.AccessBefore = barrier.AccessBefore;
+        d3dBarrier.AccessAfter = barrier.AccessAfter;
+        d3dBarrier.LayoutBefore = barrier.LayoutBefore;
+        d3dBarrier.LayoutAfter = barrier.LayoutAfter;
+        d3dBarrier.pResource = barrier.pResource;
+        d3dBarrier.Subresources.IndexOrFirstMipLevel = barrier.Subresources;
+        d3dBarrier.Flags = barrier.Flags;
+        d3dTexBarriers.push_back(d3dBarrier);
+    }
+    
+    // Convert buffer barriers
+    for (const auto& barrier : m_PendingBufferBarriers)
+    {
+        D3D12_BUFFER_BARRIER d3dBarrier = {};
+        d3dBarrier.SyncBefore = barrier.SyncBefore;
+        d3dBarrier.SyncAfter = barrier.SyncAfter;
+        d3dBarrier.AccessBefore = barrier.AccessBefore;
+        d3dBarrier.AccessAfter = barrier.AccessAfter;
+        d3dBarrier.pResource = barrier.pResource;
+        d3dBarrier.Offset = barrier.Offset;
+        d3dBarrier.Size = barrier.Size;
+        d3dBufBarriers.push_back(d3dBarrier);
+    }
+    
+    // Convert global barriers
+    for (const auto& barrier : m_PendingGlobalBarriers)
+    {
+        D3D12_GLOBAL_BARRIER d3dBarrier = {};
+        d3dBarrier.SyncBefore = barrier.SyncBefore;
+        d3dBarrier.SyncAfter = barrier.SyncAfter;
+        d3dBarrier.AccessBefore = barrier.AccessBefore;
+        d3dBarrier.AccessAfter = barrier.AccessAfter;
+        d3dGlobBarriers.push_back(d3dBarrier);
+    }
+    
+    // Build barrier groups
+    std::vector<D3D12_BARRIER_GROUP> barrierGroups;
+    barrierGroups.reserve(3);
+    
+    if (!d3dTexBarriers.empty())
+    {
+        D3D12_BARRIER_GROUP group = {};
+        group.Type = D3D12_BARRIER_TYPE_TEXTURE;
+        group.NumBarriers = static_cast<UINT>(d3dTexBarriers.size());
+        group.pTextureBarriers = d3dTexBarriers.data();
+        barrierGroups.push_back(group);
+    }
+    
+    if (!d3dBufBarriers.empty())
+    {
+        D3D12_BARRIER_GROUP group = {};
+        group.Type = D3D12_BARRIER_TYPE_BUFFER;
+        group.NumBarriers = static_cast<UINT>(d3dBufBarriers.size());
+        group.pBufferBarriers = d3dBufBarriers.data();
+        barrierGroups.push_back(group);
+    }
+    
+    if (!d3dGlobBarriers.empty())
+    {
+        D3D12_BARRIER_GROUP group = {};
+        group.Type = D3D12_BARRIER_TYPE_GLOBAL;
+        group.NumBarriers = static_cast<UINT>(d3dGlobBarriers.size());
+        group.pGlobalBarriers = d3dGlobBarriers.data();
+        barrierGroups.push_back(group);
+    }
+    
+    // Execute barriers
+    if (!barrierGroups.empty() && m_pCommandList7)
+    {
+        m_pCommandList7->Barrier(static_cast<UINT>(barrierGroups.size()), barrierGroups.data());
+    }
+    
+    // Clear pending barriers
+    m_PendingTextureBarriers.clear();
+    m_PendingBufferBarriers.clear();
+    m_PendingGlobalBarriers.clear();
 }
