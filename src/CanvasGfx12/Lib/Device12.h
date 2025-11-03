@@ -62,6 +62,7 @@ public:
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,
         const Canvas::Math::FloatVector4 *normals,
+        Canvas::XGfxRenderQueue *pRenderQueue,
         Canvas::XGfxMesh **ppMesh) final;
 
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }

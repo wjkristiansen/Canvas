@@ -1044,9 +1044,89 @@ Canvas::TaskID CRenderQueue12::SubmitCommandList(Canvas::TaskID dependsOn)
         },
         this
     );
+    // After creating the submit task, schedule any pending host-write release tasks so they
+    // run after this submit completes. We allocated those release tasks earlier via
+    // AllocateTypedTask in ScheduleHostWriteRelease but deferred scheduling until now.
+    if (taskId != Canvas::InvalidTaskID)
+    {
+        std::vector<std::pair<Canvas::TaskID, Canvas::TaskID>> pending;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            pending.swap(m_PendingHostWriteReleaseTasks);
+        }
+
+        for (auto &entry : pending)
+        {
+            Canvas::TaskID releaseTaskId = entry.first;
+            Canvas::TaskID preDep = entry.second;
+
+            // If there's a pre-dependency (e.g., the recording/copy task), ensure the submit
+            // depends on that task so the submit runs after recording finishes.
+            if (preDep != Canvas::InvalidTaskID && preDep != taskId)
+            {
+                m_TaskScheduler.AddDependency(taskId, preDep);
+            }
+
+            // Make release depend on the submit task, then schedule it
+            m_TaskScheduler.AddDependency(releaseTaskId, taskId);
+            m_TaskScheduler.ScheduleTask(releaseTaskId);
+        }
+    }
     // atomic API handles dependencies and scheduling
     
     return taskId;
+}
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::ScheduleHostWriteRelease(const Canvas::GfxSuballocation& suballocation, Canvas::TaskID dependsOn)
+{
+    // Allocate a release task but do NOT schedule it yet. We'll defer scheduling until
+    // a SubmitCommandList task is created so the release can depend on that submit.
+    Canvas::TaskID releaseTask = m_TaskScheduler.AllocateTypedTask(
+        1,
+        [](Canvas::TaskID id, Canvas::TaskScheduler& sched, CRenderQueue12* pQueue, Canvas::GfxSuballocation sub)
+        {
+            // Free the host-write region via the device
+            if (pQueue && pQueue->m_pDevice)
+            {
+                pQueue->m_pDevice->FreeHostWriteRegion(const_cast<Canvas::GfxSuballocation&>(sub));
+            }
+            sched.CompleteTask(id);
+        },
+        this,
+        suballocation
+    );
+
+    if (releaseTask == Canvas::InvalidTaskID)
+    {
+        // Allocation failed; as a fallback, create a fence-waited task immediately
+        UINT64 fenceValueToWait;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            fenceValueToWait = m_FenceValue + 1;
+        }
+        Canvas::TaskID waitTask = WaitForGpuFence(fenceValueToWait, dependsOn);
+        Canvas::TaskID deps[1] = { waitTask };
+        auto immediateRelease = m_TaskScheduler.AllocateAndScheduleTypedTask(
+            deps,
+            1,
+            [](Canvas::TaskID id, Canvas::TaskScheduler& sched, CRenderQueue12* pQueue, Canvas::GfxSuballocation sub)
+            {
+                if (pQueue && pQueue->m_pDevice)
+                    pQueue->m_pDevice->FreeHostWriteRegion(const_cast<Canvas::GfxSuballocation&>(sub));
+                sched.CompleteTask(id);
+            },
+            this,
+            suballocation
+        );
+        (void)immediateRelease;
+        return;
+    }
+
+    // Store release task and the original pre-dependency (copy/recording task) so SubmitCommandList
+    // can make the submit depend on the recording before scheduling the release.
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_PendingHostWriteReleaseTasks.emplace_back(releaseTask, dependsOn);
 }
 
 //------------------------------------------------------------------------------------------------

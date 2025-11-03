@@ -319,6 +319,7 @@ namespace Canvas
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
             const Canvas::Math::FloatVector4 *normals,
+            XGfxRenderQueue *pRenderQueue,
             XGfxMesh **ppMesh) = 0;
     };
 }

@@ -289,13 +289,145 @@ GEMMETHODIMP CDevice12::CreateDebugMesh(
     [[maybe_unused]] uint32_t vertexCount,
     [[maybe_unused]] const Canvas::Math::FloatVector4 *positions,
     [[maybe_unused]] const Canvas::Math::FloatVector4 *normals,
+    [[maybe_unused]] Canvas::XGfxRenderQueue *pRenderQueue,
     [[maybe_unused]] Canvas::XGfxMesh **ppMesh)
 {
-    uint64_t allocationSize = vertexCount * 4 * sizeof(float) * 2;
+    // Two FloatVector4 arrays: positions and normals
+    uint64_t posSize = static_cast<uint64_t>(vertexCount) * sizeof(Canvas::Math::FloatVector4);
+    uint64_t normSize = posSize;
+    uint64_t allocationSize = posSize + normSize;
 
-    // Allocate space in the host write memory
-    Canvas::GfxSuballocation suballocation;
-    Gem::ThrowGemError(AllocateHostWriteRegion(allocationSize, suballocation));
+    if (!ppMesh)
+        return Gem::Result::BadPointer;
 
-    return Gem::Result::NotImplemented;
+    *ppMesh = nullptr;
+
+    try
+    {
+        // Create device-local (default heap) buffers for positions and normals
+        Gem::TGemPtr<Canvas::XGfxBuffer> pPosBuffer;
+        Gem::TGemPtr<Canvas::XGfxBuffer> pNormBuffer;
+
+        Gem::ThrowGemError(CreateBuffer(posSize, Canvas::GfxMemoryUsage::DeviceLocal, &pPosBuffer));
+        Gem::ThrowGemError(CreateBuffer(normSize, Canvas::GfxMemoryUsage::DeviceLocal, &pNormBuffer));
+
+        // Allocate space in the host-write (upload) scratch buffer
+        Canvas::GfxSuballocation suballocation;
+        Gem::ThrowGemError(AllocateHostWriteRegion(allocationSize, suballocation));
+
+        // Schedule the CPU-side copy into the upload buffer using a TaskScheduler
+        // The task will map the host-write resource and memcpy the positions and normals
+        Canvas::TaskScheduler scheduler(4096);
+
+        (void)scheduler.AllocateAndScheduleTypedTask(
+            nullptr,
+            0,
+            [](Canvas::TaskID id, Canvas::TaskScheduler& sched,
+               Canvas::XGfxBuffer* pHostBuffer, uint64_t offset,
+               const Canvas::Math::FloatVector4* srcPos, const Canvas::Math::FloatVector4* srcNorm, uint32_t count)
+            {
+                // Map the upload (host-write) resource and copy
+                auto pHostBufImpl = reinterpret_cast<CBuffer12*>(pHostBuffer);
+                ID3D12Resource* pResource = pHostBufImpl ? pHostBufImpl->GetD3DResource() : nullptr;
+                if (!pResource)
+                {
+                    sched.CompleteTask(id);
+                    return;
+                }
+
+                void* pMapped = nullptr;
+                // For upload heaps, it's fine to use nullptr for the read range
+                HRESULT hr = pResource->Map(0, nullptr, &pMapped);
+                if (FAILED(hr) || pMapped == nullptr)
+                {
+                    sched.CompleteTask(id);
+                    return;
+                }
+
+                uint64_t posBytes = static_cast<uint64_t>(count) * sizeof(Canvas::Math::FloatVector4);
+                uint64_t normBytes = posBytes;
+
+                uint8_t* dst = reinterpret_cast<uint8_t*>(pMapped) + offset;
+                if (srcPos && posBytes > 0)
+                    memcpy(dst, srcPos, static_cast<size_t>(posBytes));
+                if (srcNorm && normBytes > 0)
+                    memcpy(dst + posBytes, srcNorm, static_cast<size_t>(normBytes));
+
+                // Unmap with null range (full write)
+                pResource->Unmap(0, nullptr);
+
+                // Mark the task complete
+                sched.CompleteTask(id);
+            },
+            suballocation.pBuffer,
+            suballocation.Offset,
+            positions,
+            normals,
+            vertexCount
+        );
+
+        // Retire completed tasks to reclaim scheduler memory
+        scheduler.RetireCompletedTasks();
+
+        // If a render queue was provided, schedule GPU-side copy operations which
+        // copy the suballocated region into the device-local buffers, and schedule
+        // release of the host-write suballocation once the GPU completes execution.
+        if (pRenderQueue)
+        {
+            CRenderQueue12* pRQ = reinterpret_cast<CRenderQueue12*>(pRenderQueue);
+
+            // Ensure buffer access for source (upload region) and destinations
+            auto srcAccess = pRQ->EnsureBufferAccess(
+                reinterpret_cast<CBuffer12*>(suballocation.pBuffer.Get())->GetD3DResource(),
+                D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_SOURCE,
+                suballocation.Offset,
+                suballocation.Size);
+
+            auto dstPosAccess = pRQ->EnsureBufferAccess(
+                reinterpret_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource(),
+                D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_DEST);
+
+            auto dstNormAccess = pRQ->EnsureBufferAccess(
+                reinterpret_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource(),
+                D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_DEST);
+
+            // Schedule a command list recording that issues two CopyBufferRegion calls
+            Canvas::TaskID deps[1] = { (srcAccess != Canvas::InvalidTaskID) ? srcAccess : Canvas::InvalidTaskID };
+            auto copyTask = pRQ->ScheduleCommandListRecording(
+                [pPosBuffer, pNormBuffer, suballocation, posSize, normSize, this](ID3D12GraphicsCommandList* cmdList)
+                {
+                    ID3D12Resource* pSrc = reinterpret_cast<CBuffer12*>(suballocation.pBuffer.Get())->GetD3DResource();
+                    ID3D12Resource* pDstPos = reinterpret_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource();
+                    ID3D12Resource* pDstNorm = reinterpret_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource();
+
+                    if (pSrc && pDstPos)
+                    {
+                        cmdList->CopyBufferRegion(pDstPos, 0, pSrc, suballocation.Offset, posSize);
+                    }
+                    if (pSrc && pDstNorm)
+                    {
+                        cmdList->CopyBufferRegion(pDstNorm, 0, pSrc, suballocation.Offset + posSize, normSize);
+                    }
+                },
+                (deps[0] != Canvas::InvalidTaskID) ? deps[0] : Canvas::InvalidTaskID);
+
+            // Add dependency on dst access tasks if present
+            if (dstPosAccess != Canvas::InvalidTaskID && dstPosAccess != copyTask)
+                pRQ->m_TaskScheduler.AddDependency(copyTask, dstPosAccess);
+            if (dstNormAccess != Canvas::InvalidTaskID && dstNormAccess != copyTask)
+                pRQ->m_TaskScheduler.AddDependency(copyTask, dstNormAccess);
+
+            // Schedule release of the host-write region after GPU executes the command list
+            pRQ->ScheduleHostWriteRelease(suballocation, copyTask);
+        }
+
+        return Gem::Result::Success;
+    }
+    catch (const Gem::GemError &e)
+    {
+        return e.Result();
+    }
 }

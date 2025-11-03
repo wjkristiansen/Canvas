@@ -122,6 +122,9 @@ public:
     std::vector<TextureBarrier> m_PendingTextureBarriers;
     std::vector<BufferBarrier> m_PendingBufferBarriers;
     std::vector<GlobalBarrier> m_PendingGlobalBarriers;
+    // Pending host-write release tasks that should be scheduled after the next SubmitCommandList
+    // Each entry is a pair: (releaseTask, preDependencyTask). preDependencyTask may be InvalidTaskID.
+    std::vector<std::pair<Canvas::TaskID, Canvas::TaskID>> m_PendingHostWriteReleaseTasks;
     
     // Flush pending barriers into command list
     void FlushPendingBarriers();
@@ -223,6 +226,10 @@ public:
     // Submit command list to GPU (depends on all recording tasks)
     Canvas::TaskID SubmitCommandList(
         Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+
+    // Schedule release of a host-write suballocation after the next command list submission completes
+    // The release will wait for the GPU fence that corresponds to the next ExecuteCommandLists signal
+    void ScheduleHostWriteRelease(const Canvas::GfxSuballocation& suballocation, Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
     
     // Process completed GPU work and retire tasks
     void ProcessCompletedWork();
