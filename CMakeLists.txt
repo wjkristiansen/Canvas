@@ -108,6 +108,7 @@ target_include_directories(GEM INTERFACE
 # Add subdirectories for submodules first (they may be dependencies)
 add_subdirectory(deps/QLog)
 add_subdirectory(deps/ThinWin)
+add_subdirectory(deps/InCommand)
 # Allocators is header-only, no CMakeLists.txt needed
 # Create interface library for header-only Allocators submodule
 add_library(Allocators INTERFACE)
