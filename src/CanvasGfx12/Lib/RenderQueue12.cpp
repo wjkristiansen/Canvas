@@ -7,6 +7,7 @@
 #include "RenderQueue12.h"
 #include "Buffer12.h"
 #include "Surface12.h"
+#include "SwapChain12.h"
 
 //------------------------------------------------------------------------------------------------
 CCommandAllocatorPool::CCommandAllocatorPool()
@@ -356,92 +357,62 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
     try
     {
         CSwapChain12 *pIntSwapChain = reinterpret_cast<CSwapChain12 *>(pSwapChain);
+        
         // Pace the CPU using DXGI frame latency waitable object if available
+        // This prevents CPU from getting too far ahead of GPU
         pIntSwapChain->WaitForFrameLatency();
         
-        // FAST PATH: Bypass TaskScheduler to eliminate heap allocations
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            
-            ID3D12Resource* pResource = pIntSwapChain->m_pSurface->GetD3DResource();
-            auto it = m_ResourceStates.find(pResource);
-            
-            // Check if layout transition needed to PRESENT
-            D3D12_BARRIER_LAYOUT currentLayout = (it != m_ResourceStates.end()) 
-                ? it->second.CurrentLayout 
-                : D3D12_BARRIER_LAYOUT_COMMON;
-            
-            if (currentLayout != D3D12_BARRIER_LAYOUT_PRESENT)
-            {
-                // Need layout transition
-                D3D12_TEXTURE_BARRIER barrier = {};
-                barrier.SyncBefore = (it != m_ResourceStates.end()) ? it->second.LastSyncInCommandList : D3D12_BARRIER_SYNC_NONE;
-                barrier.SyncAfter = D3D12_BARRIER_SYNC_NONE;
-                barrier.AccessBefore = (it != m_ResourceStates.end()) ? it->second.LastAccessInCommandList : D3D12_BARRIER_ACCESS_NO_ACCESS;
-                barrier.AccessAfter = D3D12_BARRIER_ACCESS_NO_ACCESS;
-                barrier.LayoutBefore = currentLayout;
-                barrier.LayoutAfter = D3D12_BARRIER_LAYOUT_PRESENT;
-                barrier.pResource = pResource;
-                barrier.Subresources.IndexOrFirstMipLevel = 0xffffffff;
-                barrier.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
-                
-                D3D12_BARRIER_GROUP barrierGroup = {};
-                barrierGroup.Type = D3D12_BARRIER_TYPE_TEXTURE;
-                barrierGroup.NumBarriers = 1;
-                barrierGroup.pTextureBarriers = &barrier;
-                
-                if (m_pCommandList7)
-                {
-                    m_pCommandList7->Barrier(1, &barrierGroup);
-                }
-                
-                // Update resource state
-                ResourceState& state = m_ResourceStates[pResource];
-                state.CurrentLayout = D3D12_BARRIER_LAYOUT_PRESENT;
-                state.LastSyncInCommandList = D3D12_BARRIER_SYNC_NONE;
-                state.LastAccessInCommandList = D3D12_BARRIER_ACCESS_NO_ACCESS;
-                if (!state.UsedInCurrentCommandList)
-                {
-                    state.UsedInCurrentCommandList = true;
-                    m_UsedResourcesDuringCL.push_back(pResource);
-                }
-            }
-            
-            // Submit command list
-            m_pCommandList->Close();
-            ID3D12CommandList* cmdLists[] = { m_pCommandList };
-            m_pCommandQueue->ExecuteCommandLists(1, cmdLists);
-            m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
-        }
+        // Build task graph for present operation:
+        // 1. Prepare back buffer for present (transition to PRESENT layout)
+        // 2. Submit command list to GPU
+        // 3. Execute present operation
+        // 4. Reset command list for next frame
         
-        // Present the swapchain (internally waits for GPU via swap chain sync)
-        Gem::ThrowGemError(pIntSwapChain->Present());
-
-        // Rotate command allocators and reset command list
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            m_pCommandAllocator = m_CommandAllocatorPool.RotateAllocators(this);
-            m_pCommandAllocator->Reset();
-            ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
-            
-            // Clear pending barriers on command list reset
-            m_PendingTextureBarriers.clear();
-            m_PendingBufferBarriers.clear();
-            m_PendingGlobalBarriers.clear();
-            
-            // Reset per-command-list tracking only for resources actually used
-            for (ID3D12Resource* resource : m_UsedResourcesDuringCL)
+        Canvas::TaskID prepareTask = PrepareForPresent(pSwapChain, Canvas::InvalidTaskID);
+        Canvas::TaskID submitTask = SubmitCommandList(prepareTask);
+        Canvas::TaskID presentTask = SchedulePresent(pSwapChain, submitTask);
+        
+        // Store present task so next frame can depend on it
+        pIntSwapChain->m_LastFramePresentTask = presentTask;
+        
+        // Schedule command list reset task (depends on submit completing)
+        Canvas::TaskID deps[1] = { submitTask };
+        m_TaskScheduler.AllocateAndScheduleTypedTask(
+            deps,
+            1u,
+            [](Canvas::TaskID id, Canvas::TaskScheduler& sched, CRenderQueue12* pQueue)
             {
-                auto it = m_ResourceStates.find(resource);
-                if (it != m_ResourceStates.end())
+                std::lock_guard<std::mutex> lock(pQueue->m_mutex);
+                
+                // Rotate command allocators (waits for GPU if needed)
+                pQueue->m_pCommandAllocator = pQueue->m_CommandAllocatorPool.RotateAllocators(pQueue);
+                pQueue->m_pCommandAllocator->Reset();
+                
+                // Reset command list
+                ThrowFailedHResult(pQueue->m_pCommandList->Reset(pQueue->m_pCommandAllocator, nullptr));
+                
+                // Clear pending barriers on command list reset
+                pQueue->m_PendingTextureBarriers.clear();
+                pQueue->m_PendingBufferBarriers.clear();
+                pQueue->m_PendingGlobalBarriers.clear();
+                
+                // Reset per-command-list tracking only for resources actually used
+                for (ID3D12Resource* resource : pQueue->m_UsedResourcesDuringCL)
                 {
-                    it->second.UsedInCurrentCommandList = false;
-                    it->second.LastSyncInCommandList = D3D12_BARRIER_SYNC_NONE;
-                    it->second.LastAccessInCommandList = D3D12_BARRIER_ACCESS_NO_ACCESS;
+                    auto it = pQueue->m_ResourceStates.find(resource);
+                    if (it != pQueue->m_ResourceStates.end())
+                    {
+                        it->second.UsedInCurrentCommandList = false;
+                        it->second.LastSyncInCommandList = D3D12_BARRIER_SYNC_NONE;
+                        it->second.LastAccessInCommandList = D3D12_BARRIER_ACCESS_NO_ACCESS;
+                    }
                 }
-            }
-            m_UsedResourcesDuringCL.clear();
-        }
+                pQueue->m_UsedResourcesDuringCL.clear();
+                
+                sched.CompleteTask(id);
+            },
+            this
+        );
         
         // Process completed tasks to reclaim memory (throttled - only every N frames)
         // NOTE: RetireCompletedTasks is expensive (sorts task map), don't call every frame
@@ -1127,6 +1098,50 @@ void CRenderQueue12::ScheduleHostWriteRelease(const Canvas::GfxSuballocation& su
     // can make the submit depend on the recording before scheduling the release.
     std::lock_guard<std::mutex> lock(m_mutex);
     m_PendingHostWriteReleaseTasks.emplace_back(releaseTask, dependsOn);
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::PrepareForPresent(
+    Canvas::XGfxSwapChain* pSwapChain,
+    Canvas::TaskID dependsOn)
+{
+    CSwapChain12* pIntSwapChain = reinterpret_cast<CSwapChain12*>(pSwapChain);
+    
+    // Ensure swap chain back buffer is transitioned to PRESENT layout
+    return EnsureTextureLayout(
+        pIntSwapChain->m_pSurface->GetD3DResource(),
+        D3D12_BARRIER_SYNC_NONE,
+        D3D12_BARRIER_ACCESS_NO_ACCESS,
+        D3D12_BARRIER_LAYOUT_PRESENT,
+        0xFFFFFFFF,
+        D3D12_TEXTURE_BARRIER_FLAG_NONE,
+        dependsOn
+    );
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::SchedulePresent(
+    Canvas::XGfxSwapChain* pSwapChain,
+    Canvas::TaskID dependsOn)
+{
+    CSwapChain12* pIntSwapChain = reinterpret_cast<CSwapChain12*>(pSwapChain);
+    
+    Canvas::TaskID deps[1] = { dependsOn };
+    auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
+        (dependsOn != Canvas::InvalidTaskID) ? deps : nullptr,
+        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        [](Canvas::TaskID id, Canvas::TaskScheduler& sched, CSwapChain12* pSwapChain)
+        {
+            // Execute present operation
+            Gem::ThrowGemError(pSwapChain->Present());
+            
+            // Complete task
+            sched.CompleteTask(id);
+        },
+        pIntSwapChain
+    );
+    
+    return taskId;
 }
 
 //------------------------------------------------------------------------------------------------

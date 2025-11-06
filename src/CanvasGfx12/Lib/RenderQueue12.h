@@ -226,6 +226,17 @@ public:
     // Submit command list to GPU (depends on all recording tasks)
     Canvas::TaskID SubmitCommandList(
         Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Schedule swap chain present operation as a task
+    Canvas::TaskID SchedulePresent(
+        Canvas::XGfxSwapChain* pSwapChain,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    
+    // Prepare swap chain back buffer for present (transition to PRESENT layout)
+    // Returns task ID that ensures the transition completes
+    Canvas::TaskID PrepareForPresent(
+        Canvas::XGfxSwapChain* pSwapChain,
+        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
 
     // Schedule release of a host-write suballocation after the next command list submission completes
     // The release will wait for the GPU fence that corresponds to the next ExecuteCommandLists signal

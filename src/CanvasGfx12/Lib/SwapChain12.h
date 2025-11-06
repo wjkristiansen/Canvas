@@ -7,10 +7,15 @@
 #include "Surface12.h"
 #include "CanvasGfx12.h"
 
+// Forward declarations for task graph support
+namespace Canvas { using TaskID = uint64_t; }
+
 //------------------------------------------------------------------------------------------------
 class CSwapChain12 :
     public TGfxElement<Canvas::XGfxSwapChain>
 {
+    friend class CRenderQueue12;  // Allow render queue to access task tracking
+    
     std::mutex m_mutex;
     CComPtr<IDXGIFactory7> m_pDXGIFactory;
     CComPtr<IDXGISwapChain4> m_pSwapChain;
@@ -20,6 +25,9 @@ class CSwapChain12 :
     // DXGI frame pacing
     HANDLE m_hFrameLatencyWaitableObject = nullptr;
     bool m_TearingSupported = false;
+    
+    // Frame dependency tracking for task-based rendering
+    Canvas::TaskID m_LastFramePresentTask = 0;  // 0 == InvalidTaskID
 
 public:
 
