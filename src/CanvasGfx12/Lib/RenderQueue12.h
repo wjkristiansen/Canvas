@@ -70,10 +70,18 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
+// CRenderQueue12 - D3D12 Command Queue Wrapper
+//
+// THREADING MODEL: NOT THREAD-SAFE
+// - All methods must be called from a single thread
+// - Concurrent access from multiple threads will cause undefined behavior
+// - For multi-threaded rendering, create multiple RenderQueue instances (one per thread)
+// - The mutex member is reserved for potential future use but is currently unused
+//------------------------------------------------------------------------------------------------
 class CRenderQueue12 :
     public TGfxElement<Canvas::XGfxRenderQueue>
 {
-    std::mutex m_mutex;
+    std::mutex m_mutex;  // Reserved for future use; currently unused (single-threaded model)
 
 public:
     CComPtr<ID3D12CommandQueue> m_pCommandQueue;
@@ -236,7 +244,8 @@ public:
     // Returns task ID that ensures the transition completes
     Canvas::TaskID PrepareForPresent(
         Canvas::XGfxSwapChain* pSwapChain,
-        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+        const Canvas::TaskID* pDependencies = nullptr,
+        size_t numDependencies = 0);
 
     // Schedule release of a host-write suballocation after the next command list submission completes
     // The release will wait for the GPU fence that corresponds to the next ExecuteCommandLists signal
