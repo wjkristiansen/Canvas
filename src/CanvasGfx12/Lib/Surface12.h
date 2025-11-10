@@ -21,7 +21,8 @@ public:
 
     CSurface12(Canvas::XCanvas* pCanvas, ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState, PCSTR name = nullptr) :
         TGfxElement(pCanvas),
-        CResource(pResource, InitState) 
+        CResource(pResource, InitState),
+        m_pOwnerSwapChain(nullptr)
     {
         if (name != nullptr)
             SetName(name);
@@ -31,4 +32,7 @@ public:
     void Uninitialize() {}
 
     void Rename(ID3D12Resource *pResource) { m_pD3DResource = pResource; }
+    
+    // Weak pointer to owner swap chain (if this surface is a swap chain back buffer)
+    class CSwapChain12* m_pOwnerSwapChain;
 };

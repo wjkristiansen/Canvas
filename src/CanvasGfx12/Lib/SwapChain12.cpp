@@ -56,6 +56,9 @@ CSwapChain12::CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, c
     // Craft a D3D12_RESOURCE_DESC to match the swap chain
     Gem::TGemPtr<CSurface12> pSurface;
     Gem::ThrowGemError(Gem::TGenericImpl<CSurface12>::Create(&pSurface, m_pCanvas, pBackBuffer, D3D12_RESOURCE_STATE_COMMON));
+    
+    // Set the back pointer so the surface knows it belongs to this swap chain
+    pSurface->m_pOwnerSwapChain = this;
 
     CComPtr<ID3D12Fence> pFence;
     ThrowFailedHResult(pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence)));
