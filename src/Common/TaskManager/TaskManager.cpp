@@ -41,6 +41,10 @@ TaskManager::TaskManager(size_t initialRingSize)
         throw Gem::GemError(Gem::Result::InvalidArg);
     }
     
+    // Initialize high-water marks to 0 (no tasks completed/retired yet)
+    m_CompletedHighWater.store(0, std::memory_order_release);
+    m_RetiredHighWater.store(0, std::memory_order_release);
+    
     try
     {
         // Allocate the initial ring buffer
@@ -297,8 +301,15 @@ TaskState TaskManager::GetTaskState(TaskID taskId) const
         return TaskState::Invalid;
     }
     
+    // Fast path: Check completed high-water mark (lock-free)
+    if (taskId <= m_CompletedHighWater.load(std::memory_order_acquire))
+    {
+        return TaskState::Completed;
+    }
+    
     std::lock_guard<std::mutex> lock(m_Mutex);
     
+    // Check completed-immediate hash map (for tasks above high-water mark)
     if (m_CompletedImmediate.find(taskId) != m_CompletedImmediate.end())
     {
         return TaskState::Completed;
@@ -370,6 +381,39 @@ void TaskManager::RetireCompletedTasks()
         m_TaskMap.erase(taskId);
     }
     
+    // Update retired high-water mark
+    // Find the highest contiguous retired TaskID
+    if (!retiredTaskIds.empty())
+    {
+        std::sort(retiredTaskIds.begin(), retiredTaskIds.end());
+        
+        TaskID currentHighWater = m_RetiredHighWater.load(std::memory_order_acquire);
+        TaskID newHighWater = currentHighWater;
+        
+        for (TaskID id : retiredTaskIds)
+        {
+            if (id == newHighWater + 1)
+            {
+                newHighWater = id;
+            }
+            else if (id > newHighWater + 1)
+            {
+                break; // Gap found, can't advance further
+            }
+        }
+        
+        if (newHighWater > currentHighWater)
+        {
+            m_RetiredHighWater.store(newHighWater, std::memory_order_release);
+        }
+    }
+    
+    // Clean up completed-immediate hash map
+    // All tasks in m_CompletedImmediate are completed and can be safely removed.
+    // They were added via the ultra-fast path and don't need ring buffer retirement.
+    // Just clear the entire set since completed tasks don't need to be tracked anymore.
+    m_CompletedImmediate.clear();
+    
     // Remove empty rings (keep at least one)
     auto ringIt = m_Rings.begin();
     while (ringIt != m_Rings.end())
@@ -426,6 +470,10 @@ void TaskManager::Reset()
     
     // Reset task ID counter
     m_NextTaskId = 1;
+    
+    // Reset high-water marks
+    m_CompletedHighWater.store(0, std::memory_order_release);
+    m_RetiredHighWater.store(0, std::memory_order_release);
     
     // Reset ring size
     m_NextRingSize = m_InitialRingSize;

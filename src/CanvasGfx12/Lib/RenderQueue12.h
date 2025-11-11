@@ -520,9 +520,6 @@ public:
     Canvas::TaskManager m_TaskManager;
     std::unordered_map<Canvas::TaskID, GpuSyncPoint> m_GpuSyncPoints;
     
-    // Frame counter for throttling expensive operations
-    uint32_t m_FramesSinceLastRetire = 0;
-    
     // Barrier accumulation (batched for efficient recording)
     std::vector<TextureBarrier> m_PendingTextureBarriers;
     std::vector<BufferBarrier> m_PendingBufferBarriers;

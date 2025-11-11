@@ -276,13 +276,8 @@ Gem::Result CRenderQueue12::Flush()
         // Clear recording state (command buffer recording completed)
         m_RecordingResourceState.clear();
         
-        // Process completed tasks to reclaim memory (throttled - only every N frames)
-        // NOTE: RetireCompletedTasks is expensive (sorts task map), don't call every frame
-        if (++m_FramesSinceLastRetire >= 60)
-        {
-            ProcessCompletedWork();
-            m_FramesSinceLastRetire = 0;
-        }
+        // Clean up completed work every frame (removes completed tasks and resources)
+        ProcessCompletedWork();
     }
     catch (_com_error &e)
     {
@@ -344,13 +339,8 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
             this
         );
         
-        // Process completed tasks to reclaim memory (throttled - only every N frames)
-        // NOTE: RetireCompletedTasks is expensive (sorts task map), don't call every frame
-        if (++m_FramesSinceLastRetire >= 60)
-        {
-            ProcessCompletedWork();
-            m_FramesSinceLastRetire = 0;
-        }
+        // Clean up completed work every frame (removes completed tasks and resources)
+        ProcessCompletedWork();
     }
     catch (Gem::GemError &e)
     {
@@ -746,8 +736,9 @@ void CRenderQueue12::ProcessCompletedWork()
     // Retire completed tasks to reclaim memory
     m_TaskManager.RetireCompletedTasks();
     
-    // Clean up old sync points
+    // Clean up old sync points - check all entries for GPU completion
     UINT64 completedValue = m_pFence->GetCompletedValue();
+    
     for (auto it = m_GpuSyncPoints.begin(); it != m_GpuSyncPoints.end();)
     {
         if (it->second.FenceValue <= completedValue)
@@ -760,16 +751,19 @@ void CRenderQueue12::ProcessCompletedWork()
         }
     }
     
-    // Clean up submission output layouts for retired tasks
-    // After RetireCompletedTasks(), tasks that have been retired are no longer in the scheduler.
-    // We can safely remove their output layout tracking to prevent unbounded memory growth.
-    // This prevents m_SubmissionOutputLayouts from growing indefinitely with frame count.
+    // Clean up submission output layouts - check all task states
+    // Remove tasks that are Completed or Invalid (not Active/Enqueued)
+    auto stats = m_TaskManager.GetStatistics();
+    
     for (auto it = m_SubmissionOutputLayouts.begin(); it != m_SubmissionOutputLayouts.end();)
     {
         Canvas::TaskState state = m_TaskManager.GetTaskState(it->first);
         
-        // If task doesn't exist in scheduler (retired) or lookup failed, remove the entry
-        if (state == Canvas::TaskState::Invalid)
+        // Remove if task is Completed/Invalid, or if TaskID is ancient
+        // Keep only Active/Enqueued tasks (waiting for execution or dependencies)
+        if (state == Canvas::TaskState::Completed || 
+            state == Canvas::TaskState::Invalid ||
+            (stats.NextTaskId - it->first) > 10000)
         {
             it = m_SubmissionOutputLayouts.erase(it);
         }

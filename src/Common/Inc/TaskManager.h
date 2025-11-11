@@ -305,7 +305,50 @@ public:
         Func&& func,
         Args&&... args)
     {
-        // Immediate path: no ring allocation, no tuple construction
+        // Fast path: Check if all dependencies are satisfied using high-water mark first
+        TaskID completedHighWater = m_CompletedHighWater.load(std::memory_order_acquire);
+        bool allDependenciesSatisfied = true;
+        
+        for (uint32_t i = 0; i < dependencyCount; ++i)
+        {
+            TaskID dep = dependencies ? dependencies[i] : NullTaskID;
+            if (dep == NullTaskID) continue;
+            
+            // Fast check: if dependency is below high-water mark, it's completed
+            if (dep <= completedHighWater)
+                continue;
+            
+            // Need to check hash maps or task map
+            allDependenciesSatisfied = false;
+            break;
+        }
+        
+        // Ultra-fast path: Zero dependencies or all below high-water mark
+        if (allDependenciesSatisfied)
+        {
+            TaskID id = GenerateTaskID();
+            
+            // Execute immediately (no bookkeeping needed!)
+            std::forward<Func>(func)(id, *this, std::forward<Args>(args)...);
+            
+            // Update high-water mark (lock-free completion tracking)
+            // This works because tasks complete in-order for zero-dependency immediate execution
+            TaskID expected = id - 1;
+            if (m_CompletedHighWater.compare_exchange_strong(expected, id, std::memory_order_release))
+            {
+                // Successfully advanced high-water mark, no hash insert needed
+            }
+            else
+            {
+                // Out-of-order completion or concurrent tasks, use hash map
+                std::lock_guard<std::mutex> lock(m_Mutex);
+                m_CompletedImmediate.insert(id);
+            }
+            
+            return id;
+        }
+        
+        // Slower path: Need to check dependencies more carefully
         uint32_t outstanding = 0;
         {
             std::lock_guard<std::mutex> lock(m_Mutex);
@@ -313,10 +356,15 @@ public:
             {
                 TaskID dep = dependencies ? dependencies[i] : NullTaskID;
                 if (dep == NullTaskID) continue;
+                
+                // Check high-water mark again (might have advanced)
+                if (dep <= m_CompletedHighWater.load(std::memory_order_acquire))
+                    continue;
+                
                 TaskHeader* depHeader = FindTaskHeader(dep);
                 if (depHeader == nullptr)
                 {
-                    // Consider completed-immediate deps satisfied
+                    // Check completed-immediate hash map
                     if (m_CompletedImmediate.find(dep) != m_CompletedImmediate.end())
                         continue;
                     // Unknown dependency
@@ -325,6 +373,7 @@ public:
                 if (depHeader->State != TaskState::Completed)
                     ++outstanding;
             }
+
             if (outstanding == 0)
             {
                 TaskID id = GenerateTaskID();
@@ -402,6 +451,18 @@ public:
     // Returns TaskState::Invalid if the task ID is invalid or not found
     TaskState GetTaskState(TaskID taskId) const;
     
+    // Get high-water marks for lock-free fast-path checks
+    // All tasks with TaskID <= returned value are guaranteed to be in that state
+    TaskID GetCompletedHighWater() const 
+    { 
+        return m_CompletedHighWater.load(std::memory_order_acquire); 
+    }
+    
+    TaskID GetRetiredHighWater() const 
+    { 
+        return m_RetiredHighWater.load(std::memory_order_acquire); 
+    }
+    
     // Retire completed tasks at the head of each ring buffer and reclaim their memory
     // Only tasks in Completed state at the head of a ring can be retired
     // This advances ring buffer head pointers to free memory
@@ -437,7 +498,13 @@ private:
     std::unordered_map<TaskID, TaskAllocation> m_TaskMap; // Fast lookup from ID to allocation info
     std::unordered_map<TaskID, std::vector<TaskID>> m_Dependents; // Tasks waiting on each task
     std::unordered_set<TaskID> m_ExecutingImmediate;               // Immediate tasks currently executing
-    std::unordered_set<TaskID> m_CompletedImmediate;               // IDs of completed immediate tasks
+    std::unordered_set<TaskID> m_CompletedImmediate;               // IDs of completed immediate tasks (above high-water)
+    
+    // High-water marks for lock-free fast-path queries
+    // All tasks with TaskID <= the high-water mark are guaranteed to be in that state
+    std::atomic<TaskID> m_CompletedHighWater;           // Highest contiguous completed TaskID
+    std::atomic<TaskID> m_RetiredHighWater;             // Highest contiguous retired TaskID
+    
     TaskID m_NextTaskId;                                // Next task ID to assign
     size_t m_InitialRingSize;                           // Size of first ring
     size_t m_NextRingSize;                              // Size of next ring to allocate
