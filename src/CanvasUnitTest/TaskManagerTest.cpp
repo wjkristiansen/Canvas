@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "CppUnitTest.h"
-#include "TaskScheduler.h"
+#include "TaskManager.h"
 #include <atomic>
 #include <vector>
 
@@ -14,13 +14,13 @@ using namespace Canvas;
 
 namespace CanvasUnitTest
 {
-    TEST_CLASS(TaskSchedulerTest)
+    TEST_CLASS(TaskManagerTest)
     {
     public:
         // Helper: No-op callback that immediately completes the task
         static TaskFunc NoOp()
         {
-            return [](TaskID taskId, void* payload, size_t size, TaskScheduler& scheduler)
+            return [](TaskID taskId, void* payload, size_t size, TaskManager& scheduler)
             {
                 scheduler.CompleteTask(taskId);
             };
@@ -33,7 +33,7 @@ namespace CanvasUnitTest
         TEST_METHOD(Constructor_CreatesSchedulerWithInitialRing)
         {
             // Arrange & Act
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             auto stats = scheduler.GetStatistics();
 
             // Assert
@@ -45,7 +45,7 @@ namespace CanvasUnitTest
         TEST_METHOD(AllocateTask_NoPayloadNoDependencies_Succeeds)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
 
             // Act
             TaskID taskId = scheduler.AllocateTask(0, 0, NoOp());
@@ -58,7 +58,7 @@ namespace CanvasUnitTest
         TEST_METHOD(AllocateTask_WithPayload_Succeeds)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
 
             // Act
             TaskID taskId = scheduler.AllocateTask(256, 0, NoOp());
@@ -72,7 +72,7 @@ namespace CanvasUnitTest
         TEST_METHOD(AllocateTask_WithPayload_IsAligned)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
 
             // Act
             TaskID taskId = scheduler.AllocateTask(37, 0, NoOp()); // Unaligned size
@@ -86,7 +86,7 @@ namespace CanvasUnitTest
         TEST_METHOD(AllocateTask_MultipleTasks_GetUniqueIDs)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
 
             // Act
             TaskID id1 = scheduler.AllocateTask(64, 0, NoOp());
@@ -99,14 +99,14 @@ namespace CanvasUnitTest
             Assert::AreEqual(TaskID(3), id3);
         }
 
-        TEST_METHOD(ScheduleTask_WithoutDependencies_MovesToReady)
+        TEST_METHOD(EnqueueTask_WithoutDependencies_MovesToReady)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID taskId = scheduler.AllocateTask(0, 0, NoOp());
 
             // Act
-            Gem::Result result = scheduler.ScheduleTask(taskId);
+            Gem::Result result = scheduler.EnqueueTask(taskId);
 
             // Assert
             Assert::IsTrue(result == Gem::Result::Success);
@@ -114,25 +114,25 @@ namespace CanvasUnitTest
             Assert::IsTrue(scheduler.IsTaskInState(taskId, TaskState::Completed));
         }
 
-        TEST_METHOD(ScheduleTask_InvalidTaskID_ReturnsInvalidArg)
+        TEST_METHOD(EnqueueTask_InvalidTaskID_ReturnsInvalidArg)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
 
             // Act
-            Gem::Result result = scheduler.ScheduleTask(NullTaskID);
+            Gem::Result result = scheduler.EnqueueTask(NullTaskID);
 
             // Assert
             Assert::IsTrue(result == Gem::Result::InvalidArg);
         }
 
-        TEST_METHOD(ScheduleTask_NonExistentTask_ReturnsNotFound)
+        TEST_METHOD(EnqueueTask_NonExistentTask_ReturnsNotFound)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
 
             // Act
-            Gem::Result result = scheduler.ScheduleTask(TaskID(999));
+            Gem::Result result = scheduler.EnqueueTask(TaskID(999));
 
             // Assert
             Assert::IsTrue(result == Gem::Result::NotFound);
@@ -145,10 +145,10 @@ namespace CanvasUnitTest
         TEST_METHOD(AddDependency_ToUnscheduledTask_Succeeds)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
             TaskID task2 = scheduler.AllocateTask(0, 1, NoOp()); // Max 1 dependency
-            scheduler.ScheduleTask(task1);
+            scheduler.EnqueueTask(task1);
 
             // Act
             Gem::Result result = scheduler.AddDependency(task2, task1);
@@ -160,11 +160,11 @@ namespace CanvasUnitTest
         TEST_METHOD(AddDependency_ToScheduledTask_Fails)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
             TaskID task2 = scheduler.AllocateTask(0, 1, NoOp());
-            scheduler.ScheduleTask(task1);
-            scheduler.ScheduleTask(task2);
+            scheduler.EnqueueTask(task1);
+            scheduler.EnqueueTask(task2);
 
             // Act
             Gem::Result result = scheduler.AddDependency(task2, task1);
@@ -176,13 +176,13 @@ namespace CanvasUnitTest
         TEST_METHOD(AddDependency_UnscheduledDependency_FailsAtScheduleTime)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
             TaskID task2 = scheduler.AllocateTask(0, 1, NoOp());
             scheduler.AddDependency(task2, task1);
 
             // Act - Try to schedule task2 when task1 is unscheduled
-            Gem::Result result = scheduler.ScheduleTask(task2);
+            Gem::Result result = scheduler.EnqueueTask(task2);
 
             // Assert
             Assert::IsTrue(result == Gem::Result::InvalidArg);
@@ -191,12 +191,12 @@ namespace CanvasUnitTest
         TEST_METHOD(AddDependency_ExceedsMaxCount_Fails)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
             TaskID task2 = scheduler.AllocateTask(0, 0, NoOp());
             TaskID task3 = scheduler.AllocateTask(0, 1, NoOp()); // Max 1 dependency
-            scheduler.ScheduleTask(task1);
-            scheduler.ScheduleTask(task2);
+            scheduler.EnqueueTask(task1);
+            scheduler.EnqueueTask(task2);
             scheduler.AddDependency(task3, task1);
 
             // Act - Try to add second dependency
@@ -206,17 +206,17 @@ namespace CanvasUnitTest
             Assert::IsTrue(result == Gem::Result::InvalidArg);
         }
 
-        TEST_METHOD(ScheduleTask_WithDependencies_Succeeds)
+        TEST_METHOD(EnqueueTask_WithDependencies_Succeeds)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID task1 = scheduler.AllocateTask(0, 0, NoOp());
             TaskID task2 = scheduler.AllocateTask(0, 1, NoOp());
-            scheduler.ScheduleTask(task1); // task1 completes immediately (NoOp callback)
+            scheduler.EnqueueTask(task1); // task1 completes immediately (NoOp callback)
             scheduler.AddDependency(task2, task1);
 
             // Act
-            Gem::Result result = scheduler.ScheduleTask(task2);
+            Gem::Result result = scheduler.EnqueueTask(task2);
 
             // Assert
             Assert::IsTrue(result == Gem::Result::Success);
@@ -231,9 +231,9 @@ namespace CanvasUnitTest
         TEST_METHOD(RetireCompletedTasks_RetiredTask_ReclaimsMemory)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID taskId = scheduler.AllocateTask(100, 0, NoOp());
-            scheduler.ScheduleTask(taskId);
+            scheduler.EnqueueTask(taskId);
             
             // Mark as completed manually (no callback)
             auto result = scheduler.CompleteTask(taskId);
@@ -243,7 +243,7 @@ namespace CanvasUnitTest
         TEST_METHOD(RetireCompletedTasks_MultipleRetiredTasks_ReclaimsAll)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             scheduler.AllocateTask(100, 0, NoOp());
             scheduler.AllocateTask(100, 0, NoOp());
             scheduler.AllocateTask(100, 0, NoOp());
@@ -257,7 +257,7 @@ namespace CanvasUnitTest
         TEST_METHOD(Reset_ClearsAllTasksAndRings)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             scheduler.AllocateTask(100, 0, NoOp());
             scheduler.AllocateTask(100, 0, NoOp());
             auto stats1 = scheduler.GetStatistics();
@@ -279,7 +279,7 @@ namespace CanvasUnitTest
         TEST_METHOD(GetTaskState_ReturnsCorrectState)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID taskId = scheduler.AllocateTask(100, 0, NoOp());
 
             // Assert - Initial state
@@ -287,7 +287,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(state == TaskState::Unscheduled);
 
             // Act & Assert - After scheduling (NoOp callback completes synchronously)
-            scheduler.ScheduleTask(taskId);
+            scheduler.EnqueueTask(taskId);
             state = scheduler.GetTaskState(taskId);
             Assert::IsTrue(state == TaskState::Completed);
         }
@@ -295,7 +295,7 @@ namespace CanvasUnitTest
         TEST_METHOD(TaskPayload_CanReadWrite)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID taskId = scheduler.AllocateTask(sizeof(int) * 4, uint32_t(0), NoOp());
 
             // Act
@@ -320,16 +320,16 @@ namespace CanvasUnitTest
         TEST_METHOD(Callback_SynchronousCompletion_ExecutesImmediately)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
             // Act
             TaskID taskId = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
-            scheduler.ScheduleTask(taskId); // Should execute callback immediately
+            scheduler.EnqueueTask(taskId); // Should execute callback immediately
 
             // Assert
             Assert::AreEqual(1, executionCount.load());
@@ -339,40 +339,40 @@ namespace CanvasUnitTest
         TEST_METHOD(Callback_SynchronousFork_ExecutesAllDependents)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
             // Create fork: task1 -> task2, task3, task4
             TaskID task1 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
             TaskID task2 = scheduler.AllocateTypedTask(1,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
             TaskID task3 = scheduler.AllocateTypedTask(1,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
             TaskID task4 = scheduler.AllocateTypedTask(1,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
 
-            scheduler.ScheduleTask(task1);
+            scheduler.EnqueueTask(task1);
             scheduler.AddDependency(task2, task1);
             scheduler.AddDependency(task3, task1);
             scheduler.AddDependency(task4, task1);
 
             // Act - Schedule dependents, then complete task1
-            scheduler.ScheduleTask(task2);
-            scheduler.ScheduleTask(task3);
-            scheduler.ScheduleTask(task4);
+            scheduler.EnqueueTask(task2);
+            scheduler.EnqueueTask(task3);
+            scheduler.EnqueueTask(task4);
 
             // Assert - All 4 tasks should have executed
             Assert::AreEqual(4, executionCount.load());
@@ -385,40 +385,40 @@ namespace CanvasUnitTest
         TEST_METHOD(Callback_SynchronousJoin_WaitsForAllDependencies)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
             // Create join: task1, task2, task3 -> task4
             TaskID task1 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
             TaskID task2 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
             TaskID task3 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
             TaskID task4 = scheduler.AllocateTypedTask(3,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
 
-            scheduler.ScheduleTask(task1);
-            scheduler.ScheduleTask(task2);
-            scheduler.ScheduleTask(task3);
+            scheduler.EnqueueTask(task1);
+            scheduler.EnqueueTask(task2);
+            scheduler.EnqueueTask(task3);
 
             // Act - Set up dependencies and schedule
             scheduler.AddDependency(task4, task1);
             scheduler.AddDependency(task4, task2);
             scheduler.AddDependency(task4, task3);
-            scheduler.ScheduleTask(task4);
+            scheduler.EnqueueTask(task4);
 
             // Assert - All 4 tasks executed (task4 only after all deps complete)
             Assert::AreEqual(4, executionCount.load());
@@ -432,17 +432,17 @@ namespace CanvasUnitTest
         TEST_METHOD(Callback_DeferredCompletion_AppCompletesLater)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
             // Act
             TaskID taskId = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     (void)sched; // Not completing - app will do it later
                     executionCount++;
                     // Deliberately not completing - app will do it later
                 });
-            scheduler.ScheduleTask(taskId); // Executes callback
+            scheduler.EnqueueTask(taskId); // Executes callback
 
             // Assert - Callback executed but task still executing
             Assert::AreEqual(1, executionCount.load());
@@ -457,25 +457,25 @@ namespace CanvasUnitTest
         TEST_METHOD(Callback_DeferredFork_DependentsWaitForCompletion)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> task1Executions{ 0 };
             std::atomic<int> task2Executions{ 0 };
 
             // Create: task1 (deferred) -> task2 (synchronous)
             TaskID task1 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     (void)id; (void)sched; // Don't complete yet
                     task1Executions++;
                 });
             TaskID task2 = scheduler.AllocateTypedTask(1,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     task2Executions++;
                     sched.CompleteTask(id);
                 });
 
-            scheduler.ScheduleTask(task1);
+            scheduler.EnqueueTask(task1);
             scheduler.AddDependency(task2, task1);
-            scheduler.ScheduleTask(task2);
+            scheduler.EnqueueTask(task2);
 
             // Assert - task1 executed but task2 hasn't yet
             Assert::AreEqual(1, task1Executions.load());
@@ -494,35 +494,35 @@ namespace CanvasUnitTest
         TEST_METHOD(Callback_DeferredJoin_WaitsForAllToComplete)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> joinExecution{ 0 };
 
             // Create join: task1, task2, task3 (all deferred) -> task4
             TaskID task1 = scheduler.AllocateTypedTask(0,
-                [](TaskID id, TaskScheduler& sched) {
+                [](TaskID id, TaskManager& sched) {
                     (void)id; (void)sched; // Don't complete
                 });
             TaskID task2 = scheduler.AllocateTypedTask(0,
-                [](TaskID id, TaskScheduler& sched) {
+                [](TaskID id, TaskManager& sched) {
                     (void)id; (void)sched; // Don't complete
                 });
             TaskID task3 = scheduler.AllocateTypedTask(0,
-                [](TaskID id, TaskScheduler& sched) {
+                [](TaskID id, TaskManager& sched) {
                     (void)id; (void)sched; // Don't complete
                 });
             TaskID task4 = scheduler.AllocateTypedTask(3,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     joinExecution++;
                     sched.CompleteTask(id);
                 });
 
-            scheduler.ScheduleTask(task1);
-            scheduler.ScheduleTask(task2);
-            scheduler.ScheduleTask(task3);
+            scheduler.EnqueueTask(task1);
+            scheduler.EnqueueTask(task2);
+            scheduler.EnqueueTask(task3);
             scheduler.AddDependency(task4, task1);
             scheduler.AddDependency(task4, task2);
             scheduler.AddDependency(task4, task3);
-            scheduler.ScheduleTask(task4);
+            scheduler.EnqueueTask(task4);
 
             // Assert - task4 hasn't executed yet
             Assert::AreEqual(0, joinExecution.load());
@@ -549,22 +549,22 @@ namespace CanvasUnitTest
         TEST_METHOD(Mixed_CallbackAndNoCallback_BothWork)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> executionCount{ 0 };
 
             // Act
             TaskID taskNoOp = scheduler.AllocateTypedTask(0,
-                [](TaskID id, TaskScheduler& sched) {
+                [](TaskID id, TaskManager& sched) {
                     sched.CompleteTask(id);
                 });
             TaskID taskWithWork = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     executionCount++;
                     sched.CompleteTask(id);
                 });
 
-            scheduler.ScheduleTask(taskNoOp);
-            scheduler.ScheduleTask(taskWithWork);
+            scheduler.EnqueueTask(taskNoOp);
+            scheduler.EnqueueTask(taskWithWork);
 
             // Assert
             Assert::IsTrue(scheduler.IsTaskInState(taskNoOp, TaskState::Completed)); // No-op completed
@@ -575,32 +575,32 @@ namespace CanvasUnitTest
         TEST_METHOD(Mixed_SynchronousAndDeferred_BothWork)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> syncCount{ 0 };
             std::atomic<int> deferredCount{ 0 };
 
             // Create: task1 (sync) and task2 (deferred) -> task3 (sync)
             TaskID task1 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     syncCount++;
                     sched.CompleteTask(id);
                 });
             TaskID task2 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     (void)id; (void)sched; // Don't complete
                     deferredCount++;
                 });
             TaskID task3 = scheduler.AllocateTypedTask(2,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     syncCount++;
                     sched.CompleteTask(id);
                 });
 
-            scheduler.ScheduleTask(task1);
-            scheduler.ScheduleTask(task2);
+            scheduler.EnqueueTask(task1);
+            scheduler.EnqueueTask(task2);
             scheduler.AddDependency(task3, task1);
             scheduler.AddDependency(task3, task2);
-            scheduler.ScheduleTask(task3);
+            scheduler.EnqueueTask(task3);
 
             // Assert - task1 completed, task2 executing, task3 waiting
             Assert::AreEqual(1, syncCount.load());
@@ -620,7 +620,7 @@ namespace CanvasUnitTest
         TEST_METHOD(ComplexDependencyGraph_AllModesWork)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> totalExecutions{ 0 };
 
             // Create complex graph:
@@ -633,42 +633,42 @@ namespace CanvasUnitTest
             //     task5 (sync)
 
             TaskID task1 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     totalExecutions++;
                     sched.CompleteTask(id);
                 });
             TaskID task2 = scheduler.AllocateTypedTask(1,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     totalExecutions++;
                     sched.CompleteTask(id);
                 });
             TaskID task3 = scheduler.AllocateTypedTask(1,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     (void)id; (void)sched; // Deferred
                     totalExecutions++;
                 });
             TaskID task4 = scheduler.AllocateTypedTask(1,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     (void)id; (void)sched; // Deferred
                     totalExecutions++;
                 });
             TaskID task5 = scheduler.AllocateTypedTask(2,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     totalExecutions++;
                     sched.CompleteTask(id);
                 });
 
-            scheduler.ScheduleTask(task1);
+            scheduler.EnqueueTask(task1);
             scheduler.AddDependency(task2, task1);
             scheduler.AddDependency(task3, task2);
             scheduler.AddDependency(task4, task2);
             scheduler.AddDependency(task5, task3);
             scheduler.AddDependency(task5, task4);
 
-            scheduler.ScheduleTask(task2);
-            scheduler.ScheduleTask(task3);
-            scheduler.ScheduleTask(task4);
-            scheduler.ScheduleTask(task5);
+            scheduler.EnqueueTask(task2);
+            scheduler.EnqueueTask(task3);
+            scheduler.EnqueueTask(task4);
+            scheduler.EnqueueTask(task5);
 
             // Assert - task1, task2, task3/4 executed, task5 waiting
             Assert::AreEqual(4, totalExecutions.load()); // task1, task2, task3, task4
@@ -695,7 +695,7 @@ namespace CanvasUnitTest
         TEST_METHOD(Statistics_ReflectCurrentState)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             TaskID task1 = scheduler.AllocateTask(100, 0, NoOp());
             TaskID task2 = scheduler.AllocateTask(200, 0, NoOp());
 
@@ -708,23 +708,23 @@ namespace CanvasUnitTest
         TEST_METHOD(Statistics_TracksExecutingCount)
         {
             // Arrange
-            TaskScheduler scheduler(1024);
+            TaskManager scheduler(1024);
             std::atomic<int> execCount{ 0 };
 
             TaskID task1 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     (void)id; (void)sched; // Don't complete
                     execCount++;
                 });
             TaskID task2 = scheduler.AllocateTypedTask(0,
-                [&](TaskID id, TaskScheduler& sched) {
+                [&](TaskID id, TaskManager& sched) {
                     (void)id; (void)sched; // Don't complete
                     execCount++;
                 });
 
             // Act
-            scheduler.ScheduleTask(task1);
-            scheduler.ScheduleTask(task2);
+            scheduler.EnqueueTask(task1);
+            scheduler.EnqueueTask(task2);
 
             // Assert
             auto stats = scheduler.GetStatistics();

@@ -5,7 +5,7 @@
 #pragma once
 
 #include "CanvasGfx12.h"
-#include "TaskScheduler.h"
+#include "TaskManager.h"
 
 // Enable resource usage validation diagnostics (conflict detection, write exclusivity checking)
 // Set to 0 to disable for production builds with minimal overhead
@@ -517,7 +517,7 @@ public:
     UINT m_NextRTVSlot = 0;
 
     // Task scheduling for GPU workloads
-    Canvas::TaskScheduler m_TaskScheduler;
+    Canvas::TaskManager m_TaskManager;
     std::unordered_map<Canvas::TaskID, GpuSyncPoint> m_GpuSyncPoints;
     
     // Frame counter for throttling expensive operations

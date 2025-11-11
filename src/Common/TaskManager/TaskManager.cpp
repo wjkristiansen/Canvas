@@ -1,7 +1,7 @@
-// TaskScheduler.cpp
+// TaskManager.cpp
 
 #include "pch.h"
-#include "TaskScheduler.h"
+#include "TaskManager.h"
 #include <algorithm>
 #include <cassert>
 
@@ -9,10 +9,10 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-// TaskScheduler - Task Size Calculation
+// TaskManager - Task Size Calculation
 //------------------------------------------------------------------------------------------------
 
-size_t TaskScheduler::CalculateTaskSize(size_t payloadSize, uint32_t dependencyCount)
+size_t TaskManager::CalculateTaskSize(size_t payloadSize, uint32_t dependencyCount)
 {
     size_t totalSize = sizeof(TaskHeader);
     totalSize += dependencyCount * sizeof(TaskID);
@@ -28,10 +28,10 @@ size_t TaskScheduler::CalculateTaskSize(size_t payloadSize, uint32_t dependencyC
 }
 
 //------------------------------------------------------------------------------------------------
-// TaskScheduler Implementation
+// TaskManager Implementation
 //------------------------------------------------------------------------------------------------
 
-TaskScheduler::TaskScheduler(size_t initialRingSize)
+TaskManager::TaskManager(size_t initialRingSize)
     : m_NextTaskId(1) // Start at 1, reserve 0 for NullTaskID
     , m_InitialRingSize(initialRingSize)
     , m_NextRingSize(initialRingSize)
@@ -56,12 +56,12 @@ TaskScheduler::TaskScheduler(size_t initialRingSize)
     }
 }
 
-TaskScheduler::~TaskScheduler()
+TaskManager::~TaskManager()
 {
     // RAII: all resources cleaned up automatically
 }
 
-TaskID TaskScheduler::AllocateTask(
+TaskID TaskManager::AllocateTask(
     size_t payloadSize,
     uint32_t maxDependencyCount,
     TaskFunc taskFunc)
@@ -143,7 +143,7 @@ TaskID TaskScheduler::AllocateTask(
     }
 }
 
-Gem::Result TaskScheduler::AddDependency(TaskID taskId, TaskID dependencyId)
+Gem::Result TaskManager::AddDependency(TaskID taskId, TaskID dependencyId)
 {
     if (taskId == NullTaskID || dependencyId == NullTaskID)
     {
@@ -189,7 +189,7 @@ Gem::Result TaskScheduler::AddDependency(TaskID taskId, TaskID dependencyId)
     return Gem::Result::Success;
 }
 
-Gem::Result TaskScheduler::ScheduleTask(TaskID taskId)
+Gem::Result TaskManager::EnqueueTask(TaskID taskId)
 {
     if (taskId == NullTaskID)
     {
@@ -271,7 +271,7 @@ Gem::Result TaskScheduler::ScheduleTask(TaskID taskId)
     return Gem::Result::Success;
 }
 
-bool TaskScheduler::IsTaskInState(TaskID taskId, TaskState state) const
+bool TaskManager::IsTaskInState(TaskID taskId, TaskState state) const
 {
     std::lock_guard<std::mutex> lock(m_Mutex);
     
@@ -290,7 +290,7 @@ bool TaskScheduler::IsTaskInState(TaskID taskId, TaskState state) const
     return header->State == state;
 }
 
-TaskState TaskScheduler::GetTaskState(TaskID taskId) const
+TaskState TaskManager::GetTaskState(TaskID taskId) const
 {
     if (taskId == NullTaskID)
     {
@@ -313,7 +313,7 @@ TaskState TaskScheduler::GetTaskState(TaskID taskId) const
     return header->State;
 }
 
-void TaskScheduler::RetireCompletedTasks()
+void TaskManager::RetireCompletedTasks()
 {
     std::lock_guard<std::mutex> lock(m_Mutex);
     
@@ -385,7 +385,7 @@ void TaskScheduler::RetireCompletedTasks()
     }
 }
 
-TaskScheduler::Statistics TaskScheduler::GetStatistics() const
+TaskManager::Statistics TaskManager::GetStatistics() const
 {
     std::lock_guard<std::mutex> lock(m_Mutex);
     
@@ -413,7 +413,7 @@ TaskScheduler::Statistics TaskScheduler::GetStatistics() const
     return stats;
 }
 
-void TaskScheduler::Reset()
+void TaskManager::Reset()
 {
     std::lock_guard<std::mutex> lock(m_Mutex);
     
@@ -442,7 +442,7 @@ void TaskScheduler::Reset()
     }
 }
 
-void* TaskScheduler::GetPayload(TaskID taskId)
+void* TaskManager::GetPayload(TaskID taskId)
 {
     std::lock_guard<std::mutex> lock(m_Mutex);
     
@@ -455,7 +455,7 @@ void* TaskScheduler::GetPayload(TaskID taskId)
     return header->GetPayload();
 }
 
-Gem::Result TaskScheduler::CompleteTask(TaskID taskId)
+Gem::Result TaskManager::CompleteTask(TaskID taskId)
 {
     if (taskId == NullTaskID)
     {
@@ -500,7 +500,7 @@ Gem::Result TaskScheduler::CompleteTask(TaskID taskId)
     return Gem::Result::Success;
 }
 
-void TaskScheduler::CheckAndExecuteTask(TaskID taskId)
+void TaskManager::CheckAndExecuteTask(TaskID taskId)
 {
     // Assumes mutex is held
     
@@ -527,7 +527,7 @@ void TaskScheduler::CheckAndExecuteTask(TaskID taskId)
     }
 }
 
-void TaskScheduler::NotifyDependents(TaskID taskId)
+void TaskManager::NotifyDependents(TaskID taskId)
 {
     // Assumes mutex is held
     
@@ -549,7 +549,7 @@ void TaskScheduler::NotifyDependents(TaskID taskId)
     }
 }
 
-RingBuffer* TaskScheduler::AllocateNewRing()
+RingBuffer* TaskManager::AllocateNewRing()
 {
     try
     {
@@ -568,7 +568,7 @@ RingBuffer* TaskScheduler::AllocateNewRing()
     }
 }
 
-TaskScheduler::TaskHeader* TaskScheduler::FindTaskHeader(TaskID taskId) const
+TaskManager::TaskHeader* TaskManager::FindTaskHeader(TaskID taskId) const
 {
     auto it = m_TaskMap.find(taskId);
     if (it == m_TaskMap.end())
@@ -578,7 +578,7 @@ TaskScheduler::TaskHeader* TaskScheduler::FindTaskHeader(TaskID taskId) const
     return it->second.Header;
 }
 
-TaskID TaskScheduler::GenerateTaskID()
+TaskID TaskManager::GenerateTaskID()
 {
     return m_NextTaskId++;
 }

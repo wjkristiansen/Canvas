@@ -1,6 +1,6 @@
-// TaskScheduler.h
+// TaskManager.h
 //
-// TaskScheduler is a system for managing task allocation, dependency tracking, scheduling,
+// TaskManager is a system for managing task allocation, dependency tracking, scheduling,
 // and retirement using RingBuffer for memory management.
 //
 // Task Structure:
@@ -45,31 +45,31 @@
 //------------------------------------------------------------------------------------------------
 //
 // Example 1: Simple task with synchronous completion (recommended API)
-//   TaskScheduler scheduler(64 * 1024);
+//   TaskManager scheduler(64 * 1024);
 //   TaskID task = scheduler.AllocateTypedTask(0,
-//       [](TaskID id, TaskScheduler& sched, int value) {
+//       [](TaskID id, TaskManager& sched, int value) {
 //           printf("Processing value: %d\n", value);
 //           sched.CompleteTask(id);
 //       }, 42);
-//   scheduler.ScheduleTask(task);
+//   scheduler.EnqueueTask(task);
 //
 // Example 2: Plain function (most efficient)
-//   void ProcessData(TaskID id, TaskScheduler& sched, std::string data) {
+//   void ProcessData(TaskID id, TaskManager& sched, std::string data) {
 //       printf("Data: %s\n", data.c_str());
 //       sched.CompleteTask(id);
 //   }
 //   TaskID task = scheduler.AllocateTypedTask(0, ProcessData, std::string("Hello"));
-//   scheduler.ScheduleTask(task);
+//   scheduler.EnqueueTask(task);
 //
 // Example 3: Task with deferred completion
 //   TaskID task = scheduler.AllocateTypedTask(0,
-//       [](TaskID id, TaskScheduler& sched, AsyncOperation* op) {
+//       [](TaskID id, TaskManager& sched, AsyncOperation* op) {
 //           op->Start([id, &sched]() {
 //               // Called later when async work completes
 //               sched.CompleteTask(id);
 //           });
 //       }, &myAsyncOp);
-//   scheduler.ScheduleTask(task);
+//   scheduler.EnqueueTask(task);
 //
 // Example 4: Fork pattern - one task, multiple dependents
 //   TaskID root = scheduler.AllocateTypedTask(0, LoadData);
@@ -77,9 +77,9 @@
 //   TaskID child2 = scheduler.AllocateTypedTask(1, ProcessDataB);
 //   scheduler.AddDependency(child1, root);
 //   scheduler.AddDependency(child2, root);
-//   scheduler.ScheduleTask(root);
-//   scheduler.ScheduleTask(child1);
-//   scheduler.ScheduleTask(child2);
+//   scheduler.EnqueueTask(root);
+//   scheduler.EnqueueTask(child1);
+//   scheduler.EnqueueTask(child2);
 //
 // Example 5: Join pattern - multiple tasks, one dependent
 //   TaskID task1 = scheduler.AllocateTypedTask(0, LoadTextureA);
@@ -87,9 +87,9 @@
 //   TaskID join = scheduler.AllocateTypedTask(2, CombineTextures);
 //   scheduler.AddDependency(join, task1);
 //   scheduler.AddDependency(join, task2);
-//   scheduler.ScheduleTask(task1);
-//   scheduler.ScheduleTask(task2);
-//   scheduler.ScheduleTask(join);
+//   scheduler.EnqueueTask(task1);
+//   scheduler.EnqueueTask(task2);
+//   scheduler.EnqueueTask(join);
 //
 // Example 6: Diamond dependency graph
 //   //       T1
@@ -105,15 +105,15 @@
 //   scheduler.AddDependency(t3, t1);
 //   scheduler.AddDependency(t4, t2);
 //   scheduler.AddDependency(t4, t3);
-//   scheduler.ScheduleTask(t1);
-//   scheduler.ScheduleTask(t2);
-//   scheduler.ScheduleTask(t3);
-//   scheduler.ScheduleTask(t4);
+//   scheduler.EnqueueTask(t1);
+//   scheduler.EnqueueTask(t2);
+//   scheduler.EnqueueTask(t3);
+//   scheduler.EnqueueTask(t4);
 //
 // Example 7: Low-level API with manual payload management
 //   struct MyPayload { int x; float y; std::string s; };
 //   TaskID task = scheduler.AllocateTask(sizeof(MyPayload), 0,
-//       [](TaskID id, void* payload, size_t size, TaskScheduler& sched) {
+//       [](TaskID id, void* payload, size_t size, TaskManager& sched) {
 //           MyPayload* data = static_cast<MyPayload*>(payload);
 //           printf("%d, %f, %s\n", data->x, data->y, data->s.c_str());
 //           data->~MyPayload();  // Manual cleanup required for non-trivial types
@@ -121,7 +121,7 @@
 //       });
 //   MyPayload* payload = scheduler.GetPayloadAs<MyPayload>(task);
 //   new (payload) MyPayload{42, 3.14f, "test"};  // Placement new required
-//   scheduler.ScheduleTask(task);
+//   scheduler.EnqueueTask(task);
 //
 // Example 8: Memory management
 //   scheduler.RetireCompletedTasks();  // Reclaim memory from completed tasks
@@ -166,7 +166,7 @@ constexpr TaskID NullTaskID = 0;
 
 //------------------------------------------------------------------------------------------------
 // Forward declaration
-class TaskScheduler;
+class TaskManager;
 
 //------------------------------------------------------------------------------------------------
 // Task execution callback signature
@@ -175,11 +175,11 @@ class TaskScheduler;
 //
 // NOTE: Use stateless lambdas or regular functions. For passing data to tasks,
 // use the typed API (AllocateTypedTask) which safely stores arguments in the task payload.
-using TaskFunc = void(*)(TaskID taskId, void* payload, size_t payloadSize, TaskScheduler& scheduler);
+using TaskFunc = void(*)(TaskID taskId, void* payload, size_t payloadSize, TaskManager& scheduler);
 
 //------------------------------------------------------------------------------------------------
 // TaskScheduler: Main class for managing task allocation and scheduling
-class TaskScheduler
+class TaskManager
 {
 private:
     //------------------------------------------------------------------------------------------------
@@ -231,14 +231,14 @@ private:
 
 public:
     // Constructor: initialSize is the size of the first ring buffer
-    explicit TaskScheduler(size_t initialRingSize = 64 * 1024);
-    ~TaskScheduler();
+    explicit TaskManager(size_t initialRingSize = 64 * 1024);
+    ~TaskManager();
     
     // Non-copyable, non-movable (contains mutex)
-    TaskScheduler(const TaskScheduler&) = delete;
-    TaskScheduler& operator=(const TaskScheduler&) = delete;
-    TaskScheduler(TaskScheduler&&) = delete;
-    TaskScheduler& operator=(TaskScheduler&&) = delete;
+    TaskManager(const TaskManager&) = delete;
+    TaskManager& operator=(const TaskManager&) = delete;
+    TaskManager(TaskManager&&) = delete;
+    TaskManager& operator=(TaskManager&&) = delete;
     
     // Low-level task allocation with manual payload management
     // Use this when you need direct control over payload memory
@@ -250,7 +250,7 @@ public:
     // Low-level convenience: allocate and schedule in one call (untyped)
     // Adds the provided dependencies (if any) and schedules the task.
     // Returns NullTaskID on failure.
-    TaskID AllocateAndScheduleTask(
+    TaskID AllocateAndEnqueueTask(
         const TaskID* pDependencies,
         uint32_t dependencyCount,
         size_t payloadSize,
@@ -265,7 +265,7 @@ public:
             if (AddDependency(id, dep) != Gem::Result::Success)
                 return NullTaskID;
         }
-        return (ScheduleTask(id) == Gem::Result::Success) ? id : NullTaskID;
+        return (EnqueueTask(id) == Gem::Result::Success) ? id : NullTaskID;
     }
     
     //============================================================================
@@ -273,7 +273,7 @@ public:
     //============================================================================
     
     // Allocate a typed task with space for up to maxDependencyCount dependencies.
-    // The task is NOT scheduled; caller must add dependencies (optional) and then call ScheduleTask.
+    // The task is NOT scheduled; caller must add dependencies (optional) and then call EnqueueTask.
     template<typename Func, typename... Args>
     TaskID AllocateTypedTask(
         uint32_t maxDependencyCount,
@@ -281,7 +281,7 @@ public:
         Args&&... args)
     {
         using PayloadData = std::tuple<std::decay_t<Func>, std::decay_t<Args>...>;
-        auto wrapper = [](TaskID taskId, void* payload, size_t /*size*/, TaskScheduler& scheduler)
+        auto wrapper = [](TaskID taskId, void* payload, size_t /*size*/, TaskManager& scheduler)
         {
             auto* data = static_cast<PayloadData*>(payload);
             auto& funcRef = std::get<0>(*data);
@@ -299,7 +299,7 @@ public:
     // Allocate and schedule a typed task with N dependencies (atomically allocate + schedule)
     // Executes immediately when all dependencies are already satisfied.
     template<typename Func, typename... Args>
-    TaskID AllocateAndScheduleTypedTask(
+    TaskID AllocateAndEnqueueTypedTask(
         const TaskID* dependencies,
         uint32_t dependencyCount,
         Func&& func,
@@ -343,7 +343,7 @@ public:
         
         // Fallback: ring-backed storage (tuple for function + args)
         using PayloadData = std::tuple<std::decay_t<Func>, std::decay_t<Args>...>;
-        auto wrapper = [](TaskID taskId, void* payload, size_t /*size*/, TaskScheduler& scheduler)
+        auto wrapper = [](TaskID taskId, void* payload, size_t /*size*/, TaskManager& scheduler)
         {
             auto* data = static_cast<PayloadData*>(payload);
             auto& funcRef = std::get<0>(*data);
@@ -369,7 +369,7 @@ public:
                 return NullTaskID;
         }
         
-        return (ScheduleTask(taskId) == Gem::Result::Success) ? taskId : NullTaskID;
+        return (EnqueueTask(taskId) == Gem::Result::Success) ? taskId : NullTaskID;
     }
     
     // Add a dependency to an unscheduled task
@@ -381,7 +381,7 @@ public:
     // All dependencies added so far must already be scheduled
     // Once scheduled, no new dependencies can be added
     // If task has a callback and all dependencies are satisfied, it will be dispatched immediately
-    Gem::Result ScheduleTask(TaskID taskId);
+    Gem::Result EnqueueTask(TaskID taskId);
     
     // Mark a task as completed (call this from task callback when execution finishes)
     // Task moves to Completed state and checks if any dependents become ready
