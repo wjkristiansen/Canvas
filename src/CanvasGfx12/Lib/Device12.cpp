@@ -27,6 +27,41 @@ Gem::Result CDevice12::Initialize()
         ThrowFailedHResult(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice)));
         m_pD3DDevice.Attach(pDevice.Detach());
 
+        // Log the GPU device name and adapter information
+        LUID adapterLuid = m_pD3DDevice->GetAdapterLuid();
+        CComPtr<IDXGIFactory4> pFactory;
+        CComPtr<IDXGIAdapter1> pAdapter;
+        ThrowFailedHResult(CreateDXGIFactory2(0, IID_PPV_ARGS(&pFactory)));
+        ThrowFailedHResult(pFactory->EnumAdapterByLuid(adapterLuid, IID_PPV_ARGS(&pAdapter)));
+        
+        DXGI_ADAPTER_DESC1 adapterDesc;
+        ThrowFailedHResult(pAdapter->GetDesc1(&adapterDesc));
+        
+        // Get driver version using CheckInterfaceSupport
+        LARGE_INTEGER driverVersion = {};
+        HRESULT hr = pAdapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driverVersion);
+        
+        char deviceName[256];
+        WideCharToMultiByte(CP_UTF8, 0, adapterDesc.Description, -1, deviceName, sizeof(deviceName), nullptr, nullptr);
+        
+        if (SUCCEEDED(hr))
+        {
+            // Extract driver version components from the LARGE_INTEGER (Product.Version.SubVersion.Build)
+            UINT driverProduct = HIWORD(driverVersion.HighPart);
+            UINT driverVersionNum = LOWORD(driverVersion.HighPart);
+            UINT driverSubVersion = HIWORD(driverVersion.LowPart);
+            UINT driverBuild = LOWORD(driverVersion.LowPart);
+            
+            Canvas::LogInfo(GetLogger(), "D3D12 Device created: %s (VendorId: 0x%04X, DeviceId: 0x%04X, Driver: %u.%u.%u.%u)", 
+                            deviceName, adapterDesc.VendorId, adapterDesc.DeviceId,
+                            driverProduct, driverVersionNum, driverSubVersion, driverBuild);
+        }
+        else
+        {
+            Canvas::LogInfo(GetLogger(), "D3D12 Device created: %s (VendorId: 0x%04X, DeviceId: 0x%04X)", 
+                            deviceName, adapterDesc.VendorId, adapterDesc.DeviceId);
+        }
+
         // Create an upload heap scratch buffer for CPU write operations
         Gem::TGemPtr<Canvas::XGfxBuffer> pScratchBuffer;
         Gem::ThrowGemError(CreateBuffer(m_HostWriteSize, Canvas::GfxMemoryUsage::HostWrite, &pScratchBuffer));
