@@ -408,8 +408,8 @@ Canvas::TaskID CRenderQueue12::ScheduleCommandListRecording(
     // Otherwise, allocate and schedule task immediately with optional single dependency
     Canvas::TaskID deps[1] = { dependsOn };
     auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
-        (dependsOn != Canvas::InvalidTaskID) ? deps : nullptr,
-        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        (dependsOn != Canvas::NullTaskID) ? deps : nullptr,
+        (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
         [](Canvas::TaskID id, Canvas::TaskScheduler& sched, 
            CRenderQueue12* pQueue, std::function<void(ID3D12GraphicsCommandList*)> func)
         {
@@ -437,8 +437,8 @@ Canvas::TaskID CRenderQueue12::CreateGpuSyncPoint(
 {
     Canvas::TaskID deps1[1] = { dependsOn };
     auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
-        (dependsOn != Canvas::InvalidTaskID) ? deps1 : nullptr,
-        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        (dependsOn != Canvas::NullTaskID) ? deps1 : nullptr,
+        (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
         [](Canvas::TaskID id, Canvas::TaskScheduler& sched, 
            CRenderQueue12* pQueue, UINT64 value)
         {
@@ -465,8 +465,8 @@ Canvas::TaskID CRenderQueue12::WaitForGpuFence(
 {
     Canvas::TaskID deps2[1] = { dependsOn };
     auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
-        (dependsOn != Canvas::InvalidTaskID) ? deps2 : nullptr,
-        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        (dependsOn != Canvas::NullTaskID) ? deps2 : nullptr,
+        (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
         [](Canvas::TaskID id, Canvas::TaskScheduler& sched, 
            CRenderQueue12* pQueue, UINT64 value)
         {
@@ -494,8 +494,8 @@ Canvas::TaskID CRenderQueue12::SubmitCommandList(Canvas::TaskID dependsOn)
 {
     Canvas::TaskID deps3[1] = { dependsOn };
     auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
-        (dependsOn != Canvas::InvalidTaskID) ? deps3 : nullptr,
-        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        (dependsOn != Canvas::NullTaskID) ? deps3 : nullptr,
+        (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
         [](Canvas::TaskID id, Canvas::TaskScheduler& sched, CRenderQueue12* pQueue)
         {
             // Close and submit command list
@@ -514,7 +514,7 @@ Canvas::TaskID CRenderQueue12::SubmitCommandList(Canvas::TaskID dependsOn)
     // After creating the submit task, schedule any pending host-write release tasks so they
     // run after this submit completes. We allocated those release tasks earlier via
     // AllocateTypedTask in ScheduleHostWriteRelease but deferred scheduling until now.
-    if (taskId != Canvas::InvalidTaskID)
+    if (taskId != Canvas::NullTaskID)
     {
         std::vector<std::pair<Canvas::TaskID, Canvas::TaskID>> pending;
         pending.swap(m_PendingHostWriteReleaseTasks);
@@ -526,7 +526,7 @@ Canvas::TaskID CRenderQueue12::SubmitCommandList(Canvas::TaskID dependsOn)
 
             // If there's a pre-dependency (e.g., the recording/copy task), ensure the submit
             // depends on that task so the submit runs after recording finishes.
-            if (preDep != Canvas::InvalidTaskID && preDep != taskId)
+            if (preDep != Canvas::NullTaskID && preDep != taskId)
             {
                 m_TaskScheduler.AddDependency(taskId, preDep);
             }
@@ -561,7 +561,7 @@ void CRenderQueue12::ScheduleHostWriteRelease(const Canvas::GfxSuballocation& su
         suballocation
     );
 
-    if (releaseTask == Canvas::InvalidTaskID)
+    if (releaseTask == Canvas::NullTaskID)
     {
         // Allocation failed; as a fallback, create a fence-waited task immediately
         UINT64 fenceValueToWait = m_FenceValue + 1;
@@ -623,7 +623,7 @@ Canvas::TaskID CRenderQueue12::BeginResourceUsage(
     // Add all dependencies
     for (size_t i = 0; i < numDependencies; ++i)
     {
-        if (pDependencies[i] != Canvas::InvalidTaskID)
+        if (pDependencies[i] != Canvas::NullTaskID)
         {
             m_TaskScheduler.AddDependency(m_CurrentScope.ScopeTaskId, pDependencies[i]);
         }
@@ -666,7 +666,7 @@ Canvas::TaskID CRenderQueue12::PrepareForPresent(
     // Merge input layouts from dependencies (cached for efficiency)
     SubmissionOutputState inputState = MergeSubmissionInputLayouts(
         deps,
-        (dependency != Canvas::InvalidTaskID) ? 1 : 0);
+        (dependency != Canvas::NullTaskID) ? 1 : 0);
     
     // Get current layout from merged input state (defaults to COMMON)
     D3D12_BARRIER_LAYOUT currentLayout = D3D12_BARRIER_LAYOUT_COMMON;
@@ -678,8 +678,8 @@ Canvas::TaskID CRenderQueue12::PrepareForPresent(
     
     // Create submission task with cached input state for barrier generation
     Canvas::TaskID prepareTask = m_TaskScheduler.AllocateAndScheduleTypedTask(
-        (dependency != Canvas::InvalidTaskID) ? deps : nullptr,
-        (dependency != Canvas::InvalidTaskID) ? 1u : 0u,
+        (dependency != Canvas::NullTaskID) ? deps : nullptr,
+        (dependency != Canvas::NullTaskID) ? 1u : 0u,
         [](Canvas::TaskID id, Canvas::TaskScheduler& sched,
            CRenderQueue12* pQueue, ID3D12Resource* pResource,
            D3D12_BARRIER_LAYOUT layoutBefore)
@@ -724,8 +724,8 @@ Canvas::TaskID CRenderQueue12::SchedulePresent(
     
     Canvas::TaskID deps[1] = { dependsOn };
     auto taskId = m_TaskScheduler.AllocateAndScheduleTypedTask(
-        (dependsOn != Canvas::InvalidTaskID) ? deps : nullptr,
-        (dependsOn != Canvas::InvalidTaskID) ? 1u : 0u,
+        (dependsOn != Canvas::NullTaskID) ? deps : nullptr,
+        (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
         [](Canvas::TaskID id, Canvas::TaskScheduler& sched, CSwapChain12* pSwapChain)
         {
             // Execute present operation
@@ -753,6 +753,25 @@ void CRenderQueue12::ProcessCompletedWork()
         if (it->second.FenceValue <= completedValue)
         {
             it = m_GpuSyncPoints.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    
+    // Clean up submission output layouts for retired tasks
+    // After RetireCompletedTasks(), tasks that have been retired are no longer in the scheduler.
+    // We can safely remove their output layout tracking to prevent unbounded memory growth.
+    // This prevents m_SubmissionOutputLayouts from growing indefinitely with frame count.
+    for (auto it = m_SubmissionOutputLayouts.begin(); it != m_SubmissionOutputLayouts.end();)
+    {
+        Canvas::TaskState state = m_TaskScheduler.GetTaskState(it->first);
+        
+        // If task doesn't exist in scheduler (retired) or lookup failed, remove the entry
+        if (state == Canvas::TaskState::Invalid)
+        {
+            it = m_SubmissionOutputLayouts.erase(it);
         }
         else
         {
@@ -1010,7 +1029,7 @@ CRenderQueue12::SubmissionOutputState CRenderQueue12::MergeSubmissionInputLayout
     // Later dependencies override earlier ones (last writer wins)
     for (size_t i = 0; i < numDependencies; ++i)
     {
-        if (pDependencies[i] == Canvas::InvalidTaskID)
+        if (pDependencies[i] == Canvas::NullTaskID)
             continue;
         
         auto it = m_SubmissionOutputLayouts.find(pDependencies[i]);

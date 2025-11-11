@@ -528,7 +528,7 @@ public:
     std::vector<BufferBarrier> m_PendingBufferBarriers;
     std::vector<GlobalBarrier> m_PendingGlobalBarriers;
     // Pending host-write release tasks that should be scheduled after the next SubmitCommandList
-    // Each entry is a pair: (releaseTask, preDependencyTask). preDependencyTask may be InvalidTaskID.
+    // Each entry is a pair: (releaseTask, preDependencyTask). preDependencyTask may be NullTaskID.
     std::vector<std::pair<Canvas::TaskID, Canvas::TaskID>> m_PendingHostWriteReleaseTasks;
     
     // Flush pending barriers into command list
@@ -566,26 +566,26 @@ public:
     // Schedule a command list recording task
     Canvas::TaskID ScheduleCommandListRecording(
         std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
-        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+        Canvas::TaskID dependsOn = Canvas::NullTaskID);
     
     // Create a GPU fence synchronization point
     Canvas::TaskID CreateGpuSyncPoint(
         UINT64 fenceValue,
-        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+        Canvas::TaskID dependsOn = Canvas::NullTaskID);
     
     // Wait for GPU fence on CPU (creates task that blocks on GPU completion)
     Canvas::TaskID WaitForGpuFence(
         UINT64 fenceValue,
-        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+        Canvas::TaskID dependsOn = Canvas::NullTaskID);
     
     // Submit command list to GPU (depends on all recording tasks)
     Canvas::TaskID SubmitCommandList(
-        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+        Canvas::TaskID dependsOn = Canvas::NullTaskID);
     
     // Schedule swap chain present operation as a task
     Canvas::TaskID SchedulePresent(
         Canvas::XGfxSwapChain* pSwapChain,
-        Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+        Canvas::TaskID dependsOn = Canvas::NullTaskID);
     
     // Prepare swap chain back buffer for present (transition to PRESENT layout)
     // Automatically depends on the last write to the swap chain back buffer
@@ -595,7 +595,7 @@ public:
 
     // Schedule release of a host-write suballocation after the next command list submission completes
     // The release will wait for the GPU fence that corresponds to the next ExecuteCommandLists signal
-    void ScheduleHostWriteRelease(const Canvas::GfxSuballocation& suballocation, Canvas::TaskID dependsOn = Canvas::InvalidTaskID);
+    void ScheduleHostWriteRelease(const Canvas::GfxSuballocation& suballocation, Canvas::TaskID dependsOn = Canvas::NullTaskID);
     
     //---------------------------------------------------------------------------------------------
     // Resource-Aware Task Scheduling (with automatic barrier insertion)
@@ -648,7 +648,7 @@ public:
     struct ResourceStateSnapshot
     {
         D3D12_BARRIER_LAYOUT CurrentLayout = D3D12_BARRIER_LAYOUT_COMMON;
-        Canvas::TaskID LastWriterTask = Canvas::InvalidTaskID;
+        Canvas::TaskID LastWriterTask = Canvas::NullTaskID;
         std::vector<Canvas::TaskID> RecentReaders;  // Last N readers for conflict analysis
         bool IsCurrentlyLocked = false;  // Locked for exclusive write access
     };
@@ -666,7 +666,7 @@ private:
     // Scoped resource usage state tracking for BeginResourceUsage/RecordCommand/EndResourceUsage API
     struct ResourceUsageScope
     {
-        Canvas::TaskID ScopeTaskId = Canvas::InvalidTaskID;
+        Canvas::TaskID ScopeTaskId = Canvas::NullTaskID;
         TaskResourceUsages ResourceUsages;
         std::vector<std::function<void(ID3D12GraphicsCommandList*)>> AccumulatedCommands;
         bool IsActive = false;
@@ -676,7 +676,7 @@ private:
     // Enhanced resource state tracking for resource-aware tasks
     struct ResourceUsageRecord
     {
-        Canvas::TaskID TaskId = Canvas::InvalidTaskID;
+        Canvas::TaskID TaskId = Canvas::NullTaskID;
         D3D12_BARRIER_LAYOUT RequiredLayout = D3D12_BARRIER_LAYOUT_COMMON;
         D3D12_BARRIER_SYNC SyncForUsage = D3D12_BARRIER_SYNC_NONE;
         D3D12_BARRIER_ACCESS AccessForUsage = D3D12_BARRIER_ACCESS_NO_ACCESS;

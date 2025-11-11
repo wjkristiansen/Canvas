@@ -27,7 +27,7 @@ class CSwapChain12 :
     bool m_TearingSupported = false;
     
     // Frame dependency tracking for task-based rendering
-    Canvas::TaskID m_LastFramePresentTask = 0;  // 0 == InvalidTaskID
+    Canvas::TaskID m_LastFramePresentTask = 0;  // 0 == NullTaskID
     Canvas::TaskID m_LastWriteTask = 0;         // Last task that wrote to back buffer
 
 public:

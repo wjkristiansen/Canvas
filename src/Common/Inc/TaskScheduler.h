@@ -151,6 +151,7 @@ namespace Canvas
 // Task state enumeration
 enum class TaskState : uint32_t
 {
+    Invalid = 0xffffffff, // Not a valid task id
     Unscheduled = 0,  // Task allocated but not yet scheduled
     Scheduled = 1,    // Task scheduled, waiting for dependencies
     Ready = 2,        // All dependencies satisfied, ready to execute
@@ -161,7 +162,7 @@ enum class TaskState : uint32_t
 //------------------------------------------------------------------------------------------------
 // Unique identifier for tasks (monotonically increasing)
 using TaskID = uint64_t;
-constexpr TaskID InvalidTaskID = 0;
+constexpr TaskID NullTaskID = 0;
 
 //------------------------------------------------------------------------------------------------
 // Forward declaration
@@ -248,7 +249,7 @@ public:
     
     // Low-level convenience: allocate and schedule in one call (untyped)
     // Adds the provided dependencies (if any) and schedules the task.
-    // Returns InvalidTaskID on failure.
+    // Returns NullTaskID on failure.
     TaskID AllocateAndScheduleTask(
         const TaskID* pDependencies,
         uint32_t dependencyCount,
@@ -256,15 +257,15 @@ public:
         TaskFunc taskFunc)
     {
         TaskID id = AllocateTask(payloadSize, dependencyCount, taskFunc);
-        if (id == InvalidTaskID) return InvalidTaskID;
+        if (id == NullTaskID) return NullTaskID;
         for (uint32_t i = 0; i < dependencyCount; ++i)
         {
-            TaskID dep = pDependencies ? pDependencies[i] : InvalidTaskID;
-            if (dep == InvalidTaskID) continue;
+            TaskID dep = pDependencies ? pDependencies[i] : NullTaskID;
+            if (dep == NullTaskID) continue;
             if (AddDependency(id, dep) != Gem::Result::Success)
-                return InvalidTaskID;
+                return NullTaskID;
         }
-        return (ScheduleTask(id) == Gem::Result::Success) ? id : InvalidTaskID;
+        return (ScheduleTask(id) == Gem::Result::Success) ? id : NullTaskID;
     }
     
     //============================================================================
@@ -290,7 +291,7 @@ public:
             data->~PayloadData();
         };
         TaskID id = AllocateTask(sizeof(PayloadData), maxDependencyCount, wrapper);
-        if (id == InvalidTaskID) return InvalidTaskID;
+        if (id == NullTaskID) return NullTaskID;
         new (GetPayload(id)) PayloadData(std::forward<Func>(func), std::forward<Args>(args)...);
         return id;
     }
@@ -310,8 +311,8 @@ public:
             std::lock_guard<std::mutex> lock(m_Mutex);
             for (uint32_t i = 0; i < dependencyCount; ++i)
             {
-                TaskID dep = dependencies ? dependencies[i] : InvalidTaskID;
-                if (dep == InvalidTaskID) continue;
+                TaskID dep = dependencies ? dependencies[i] : NullTaskID;
+                if (dep == NullTaskID) continue;
                 TaskHeader* depHeader = FindTaskHeader(dep);
                 if (depHeader == nullptr)
                 {
@@ -319,7 +320,7 @@ public:
                     if (m_CompletedImmediate.find(dep) != m_CompletedImmediate.end())
                         continue;
                     // Unknown dependency
-                    return InvalidTaskID;
+                    return NullTaskID;
                 }
                 if (depHeader->State != TaskState::Completed)
                     ++outstanding;
@@ -352,23 +353,23 @@ public:
             data->~PayloadData();
         };
         TaskID taskId = AllocateTask(sizeof(PayloadData), dependencyCount, wrapper);
-        if (taskId == InvalidTaskID) return InvalidTaskID;
+        if (taskId == NullTaskID) return NullTaskID;
         new (GetPayload(taskId)) PayloadData(std::forward<Func>(func), std::forward<Args>(args)...);
         
         for (uint32_t i = 0; i < dependencyCount; ++i)
         {
-            TaskID dep = dependencies ? dependencies[i] : InvalidTaskID;
-            if (dep == InvalidTaskID) continue;
+            TaskID dep = dependencies ? dependencies[i] : NullTaskID;
+            if (dep == NullTaskID) continue;
             bool skip = false;
             {
                 std::lock_guard<std::mutex> lock(m_Mutex);
                 skip = (m_CompletedImmediate.find(dep) != m_CompletedImmediate.end());
             }
             if (!skip && AddDependency(taskId, dep) != Gem::Result::Success)
-                return InvalidTaskID;
+                return NullTaskID;
         }
         
-        return (ScheduleTask(taskId) == Gem::Result::Success) ? taskId : InvalidTaskID;
+        return (ScheduleTask(taskId) == Gem::Result::Success) ? taskId : NullTaskID;
     }
     
     // Add a dependency to an unscheduled task
@@ -398,7 +399,8 @@ public:
     bool IsTaskInState(TaskID taskId, TaskState state) const;
     
     // Get the current state of a task
-    Gem::Result GetTaskState(TaskID taskId, TaskState& outState) const;
+    // Returns TaskState::Invalid if the task ID is invalid or not found
+    TaskState GetTaskState(TaskID taskId) const;
     
     // Retire completed tasks at the head of each ring buffer and reclaim their memory
     // Only tasks in Completed state at the head of a ring can be retired

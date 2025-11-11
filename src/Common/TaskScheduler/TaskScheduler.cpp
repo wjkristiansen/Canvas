@@ -32,7 +32,7 @@ size_t TaskScheduler::CalculateTaskSize(size_t payloadSize, uint32_t dependencyC
 //------------------------------------------------------------------------------------------------
 
 TaskScheduler::TaskScheduler(size_t initialRingSize)
-    : m_NextTaskId(1) // Start at 1, reserve 0 for InvalidTaskID
+    : m_NextTaskId(1) // Start at 1, reserve 0 for NullTaskID
     , m_InitialRingSize(initialRingSize)
     , m_NextRingSize(initialRingSize)
 {
@@ -93,7 +93,7 @@ TaskID TaskScheduler::AllocateTask(
             RingBuffer* newRing = AllocateNewRing();
             if (newRing == nullptr)
             {
-                return InvalidTaskID;
+                return NullTaskID;
             }
             
             ptr = newRing->TryAllocate(taskSize);
@@ -101,7 +101,7 @@ TaskID TaskScheduler::AllocateTask(
             if (ptr == nullptr)
             {
                 // Task is too large even for a new ring
-                return InvalidTaskID;
+                return NullTaskID;
             }
             
             allocatedRing = newRing;
@@ -121,11 +121,11 @@ TaskID TaskScheduler::AllocateTask(
         header->TaskId = taskId;
         header->Function = taskFunc;
         
-        // Initialize dependency array to InvalidTaskID
+        // Initialize dependency array to NullTaskID
         if (maxDependencyCount > 0)
         {
             TaskID* deps = header->GetDependencies();
-            std::fill(deps, deps + maxDependencyCount, InvalidTaskID);
+            std::fill(deps, deps + maxDependencyCount, NullTaskID);
         }
         
         // Register in task map with allocation info
@@ -135,17 +135,17 @@ TaskID TaskScheduler::AllocateTask(
     }
     catch (const std::bad_alloc&)
     {
-        return InvalidTaskID;
+        return NullTaskID;
     }
     catch (...)
     {
-        return InvalidTaskID;
+        return NullTaskID;
     }
 }
 
 Gem::Result TaskScheduler::AddDependency(TaskID taskId, TaskID dependencyId)
 {
-    if (taskId == InvalidTaskID || dependencyId == InvalidTaskID)
+    if (taskId == NullTaskID || dependencyId == NullTaskID)
     {
         return Gem::Result::InvalidArg;
     }
@@ -191,7 +191,7 @@ Gem::Result TaskScheduler::AddDependency(TaskID taskId, TaskID dependencyId)
 
 Gem::Result TaskScheduler::ScheduleTask(TaskID taskId)
 {
-    if (taskId == InvalidTaskID)
+    if (taskId == NullTaskID)
     {
         return Gem::Result::InvalidArg;
     }
@@ -223,7 +223,7 @@ Gem::Result TaskScheduler::ScheduleTask(TaskID taskId)
     for (uint32_t i = 0; i < header->ActualDependencyCount; ++i)
     {
         TaskID depId = deps[i];
-        if (depId == InvalidTaskID)
+        if (depId == NullTaskID)
         {
             continue; // Skip unset dependencies
         }
@@ -290,29 +290,27 @@ bool TaskScheduler::IsTaskInState(TaskID taskId, TaskState state) const
     return header->State == state;
 }
 
-Gem::Result TaskScheduler::GetTaskState(TaskID taskId, TaskState& outState) const
+TaskState TaskScheduler::GetTaskState(TaskID taskId) const
 {
-    if (taskId == InvalidTaskID)
+    if (taskId == NullTaskID)
     {
-        return Gem::Result::InvalidArg;
+        return TaskState::Invalid;
     }
     
     std::lock_guard<std::mutex> lock(m_Mutex);
     
     if (m_CompletedImmediate.find(taskId) != m_CompletedImmediate.end())
     {
-        outState = TaskState::Completed;
-        return Gem::Result::Success;
+        return TaskState::Completed;
     }
     
     TaskHeader* header = FindTaskHeader(taskId);
     if (header == nullptr)
     {
-        return Gem::Result::NotFound;
+        return TaskState::Invalid;
     }
     
-    outState = header->State;
-    return Gem::Result::Success;
+    return header->State;
 }
 
 void TaskScheduler::RetireCompletedTasks()
@@ -459,7 +457,7 @@ void* TaskScheduler::GetPayload(TaskID taskId)
 
 Gem::Result TaskScheduler::CompleteTask(TaskID taskId)
 {
-    if (taskId == InvalidTaskID)
+    if (taskId == NullTaskID)
     {
         return Gem::Result::InvalidArg;
     }

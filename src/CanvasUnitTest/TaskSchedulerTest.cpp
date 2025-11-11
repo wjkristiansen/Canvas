@@ -51,7 +51,7 @@ namespace CanvasUnitTest
             TaskID taskId = scheduler.AllocateTask(0, 0, NoOp());
 
             // Assert
-            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreNotEqual(NullTaskID, taskId);
             Assert::AreEqual(TaskID(1), taskId);
         }
 
@@ -64,7 +64,7 @@ namespace CanvasUnitTest
             TaskID taskId = scheduler.AllocateTask(256, 0, NoOp());
 
             // Assert
-            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreNotEqual(NullTaskID, taskId);
             void* payload = scheduler.GetPayload(taskId);
             Assert::IsNotNull(payload);
         }
@@ -120,7 +120,7 @@ namespace CanvasUnitTest
             TaskScheduler scheduler(1024);
 
             // Act
-            Gem::Result result = scheduler.ScheduleTask(InvalidTaskID);
+            Gem::Result result = scheduler.ScheduleTask(NullTaskID);
 
             // Assert
             Assert::IsTrue(result == Gem::Result::InvalidArg);
@@ -283,13 +283,12 @@ namespace CanvasUnitTest
             TaskID taskId = scheduler.AllocateTask(100, 0, NoOp());
 
             // Assert - Initial state
-            TaskState state;
-            Assert::IsTrue(scheduler.GetTaskState(taskId, state) == Gem::Result::Success);
+            TaskState state = scheduler.GetTaskState(taskId);
             Assert::IsTrue(state == TaskState::Unscheduled);
 
             // Act & Assert - After scheduling (NoOp callback completes synchronously)
             scheduler.ScheduleTask(taskId);
-            Assert::IsTrue(scheduler.GetTaskState(taskId, state) == Gem::Result::Success);
+            state = scheduler.GetTaskState(taskId);
             Assert::IsTrue(state == TaskState::Completed);
         }
 

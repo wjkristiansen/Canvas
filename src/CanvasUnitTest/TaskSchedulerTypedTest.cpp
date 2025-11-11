@@ -215,7 +215,7 @@ namespace CanvasUnitTest
             // Arrange
             TaskScheduler scheduler(1024);
             std::atomic<bool> executed{ false };
-            TaskID deferredTaskId = InvalidTaskID;
+            TaskID deferredTaskId = NullTaskID;
 
             // Act - Task that doesn't complete immediately
             deferredTaskId = scheduler.AllocateTypedTask(0,
@@ -230,13 +230,12 @@ namespace CanvasUnitTest
 
             // Assert - Task executed but not completed
             Assert::IsTrue(executed.load());
-            TaskState state;
-            scheduler.GetTaskState(deferredTaskId, state);
+            TaskState state = scheduler.GetTaskState(deferredTaskId);
             Assert::IsTrue(state == TaskState::Executing);
 
             // Complete manually
             scheduler.CompleteTask(deferredTaskId);
-            scheduler.GetTaskState(deferredTaskId, state);
+            state = scheduler.GetTaskState(deferredTaskId);
             Assert::IsTrue(state == TaskState::Completed);
         }
 
@@ -589,7 +588,7 @@ namespace CanvasUnitTest
                 }, 42);
 
             // Assert - Should have executed synchronously
-            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreNotEqual(NullTaskID, taskId);
             Assert::AreEqual(42, count.load());
             Assert::IsTrue(executedSync.load());
         }
@@ -619,7 +618,7 @@ namespace CanvasUnitTest
                 }, std::string("immediate"));
 
             // Assert
-            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreNotEqual(NullTaskID, taskId);
             Assert::AreEqual(2, execCount.load()); // Both executed immediately
         }
 
@@ -647,7 +646,7 @@ namespace CanvasUnitTest
                     sched.CompleteTask(id);
                 }, 42);
 
-            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreNotEqual(NullTaskID, taskId);
             Assert::AreEqual(1, dep1Order); // Dep executed
             Assert::AreEqual(0, dep2Order); // Dependent not yet executed
 
@@ -692,7 +691,7 @@ namespace CanvasUnitTest
                 }, 2);
 
             // Assert
-            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreNotEqual(NullTaskID, taskId);
             Assert::AreEqual(60, sum); // 30 * 2, executed immediately
         }
 
@@ -730,7 +729,7 @@ namespace CanvasUnitTest
                     sched.CompleteTask(id);
                 }, 3.14f);
 
-            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreNotEqual(NullTaskID, taskId);
             Assert::AreEqual(2, execCount.load()); // Dependent hasn't executed yet
 
             // Complete the pending dependency
@@ -760,7 +759,7 @@ namespace CanvasUnitTest
 
             // Assert - No ring buffer allocation should have occurred (immediate path)
             Assert::AreEqual(stats1.TotalUsed, stats2.TotalUsed);
-            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreNotEqual(NullTaskID, taskId);
         }
 
         TEST_METHOD(AllocateAndSchedule_DeferredPath_AllocatesInRing)
@@ -788,7 +787,7 @@ namespace CanvasUnitTest
 
             // Assert - Ring buffer allocation should have occurred (deferred path)
             Assert::IsTrue(stats2.TotalUsed > stats1.TotalUsed);
-            Assert::AreNotEqual(InvalidTaskID, taskId);
+            Assert::AreNotEqual(NullTaskID, taskId);
 
             // Cleanup
             scheduler.CompleteTask(dep);
