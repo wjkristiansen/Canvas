@@ -53,9 +53,9 @@ CSwapChain12::CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, c
     UINT bbindex = pSwapChain4->GetCurrentBackBufferIndex();
     ThrowFailedHResult(pSwapChain4->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
 
-    // Craft a D3D12_RESOURCE_DESC to match the swap chain
+    // Create and register the surface with the canvas
     Gem::TGemPtr<CSurface12> pSurface;
-    Gem::ThrowGemError(Gem::TGenericImpl<CSurface12>::Create(&pSurface, m_pCanvas, pBackBuffer, D3D12_RESOURCE_STATE_COMMON));
+    Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister(&pSurface, m_pCanvas, pBackBuffer, D3D12_RESOURCE_STATE_COMMON));
     
     // Set the back pointer so the surface knows it belongs to this swap chain
     pSurface->m_pOwnerSwapChain = this;

@@ -77,11 +77,21 @@ public:
     {
         if (!pCanvas) return Gem::Result::BadPointer;
         
-        Unregister();
+        // Only unregister if switching to a different canvas
+        if (m_pCanvas && m_pCanvas != pCanvas)
+        {
+            Unregister();
+        }
+        
         m_pCanvas = pCanvas;
         
         // External plugin: call canvas->RegisterElement
-        return m_pCanvas->RegisterElement(this);
+        auto result = m_pCanvas->RegisterElement(this);
+        if (result != Gem::Result::Success)
+        {
+            m_pCanvas = nullptr;  // Clear m_pCanvas if registration failed
+        }
+        return result;
     }
 
     GEMMETHOD(Unregister)()
