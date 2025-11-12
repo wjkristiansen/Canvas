@@ -399,21 +399,19 @@ GEMMETHODIMP CDevice12::CreateDebugMesh(
                 D3D12_BARRIER_ACCESS_COPY_DEST);
 
             // Schedule GPU copy operations from upload buffer to device-local buffers
-            Canvas::TaskID copyTask = pRQ->BeginResourceUsage(usages.Build());
-            
-            pRQ->ScheduleCommandListRecording([pPosBuffer, pNormBuffer, suballocation, posSize, normSize](ID3D12GraphicsCommandList* cmdList)
-            {
-                ID3D12Resource* pSrc = reinterpret_cast<CBuffer12*>(suballocation.pBuffer.Get())->GetD3DResource();
-                ID3D12Resource* pDstPos = reinterpret_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource();
-                ID3D12Resource* pDstNorm = reinterpret_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource();
+            Canvas::TaskID copyTask = pRQ->RecordCommands(
+                usages.Build(),
+                [pPosBuffer, pNormBuffer, suballocation, posSize, normSize](ID3D12GraphicsCommandList* cmdList)
+                {
+                    ID3D12Resource* pSrc = reinterpret_cast<CBuffer12*>(suballocation.pBuffer.Get())->GetD3DResource();
+                    ID3D12Resource* pDstPos = reinterpret_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource();
+                    ID3D12Resource* pDstNorm = reinterpret_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource();
 
-                if (pSrc && pDstPos)
-                    cmdList->CopyBufferRegion(pDstPos, 0, pSrc, suballocation.Offset, posSize);
-                if (pSrc && pDstNorm)
-                    cmdList->CopyBufferRegion(pDstNorm, 0, pSrc, suballocation.Offset + posSize, normSize);
-            });
-            
-            copyTask = pRQ->EndResourceUsage();
+                    if (pSrc && pDstPos)
+                        cmdList->CopyBufferRegion(pDstPos, 0, pSrc, suballocation.Offset, posSize);
+                    if (pSrc && pDstNorm)
+                        cmdList->CopyBufferRegion(pDstNorm, 0, pSrc, suballocation.Offset + posSize, normSize);
+                });
 
             // Schedule release of the host-write region after the copy task completes
             pRQ->ScheduleHostWriteRelease(suballocation, copyTask);

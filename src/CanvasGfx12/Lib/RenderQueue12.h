@@ -560,11 +560,6 @@ public:
     
     // Task-based GPU workload management with automatic barrier insertion
     
-    // Schedule a command list recording task
-    Canvas::TaskID ScheduleCommandListRecording(
-        std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
-        Canvas::TaskID dependsOn = Canvas::NullTaskID);
-    
     // Create a GPU fence synchronization point
     Canvas::TaskID CreateGpuSyncPoint(
         UINT64 fenceValue,
@@ -604,37 +599,36 @@ public:
     // 3. Chains task dependencies based on resource usage conflicts
     //---------------------------------------------------------------------------------------------
     
-    // Begin a resource usage scope for batching multiple commands with shared resource declarations
-    // All commands recorded between BeginResourceUsage and EndResourceUsage share the same
-    // resource state declarations, avoiding redundant declarations for related operations.
-    // Automatically inserts barriers once, validates resource conflicts, and chains dependencies.
+    // Record commands with declared resource usage
+    // Automatically generates barriers based on current recording state, executes the command
+    // recording lambda, updates state, and returns the task ID.
     //
     // Example:
     //   TaskResourceUsageBuilder usages;
     //   usages.BufferRead(srcBuffer).BufferWrite(dest1).BufferWrite(dest2);
     //   
-    //   Canvas::TaskID task = pQueue->BeginResourceUsage(usages.Build(), pDeps, numDeps);
-    //   pQueue->ScheduleCommandListRecording([](ID3D12GraphicsCommandList* pCL) { pCL->CopyResource(dest1, src); });
-    //   pQueue->ScheduleCommandListRecording([](ID3D12GraphicsCommandList* pCL) { pCL->CopyResource(dest2, src); });
-    //   pQueue->EndResourceUsage();  // Returns the same task ID from BeginResourceUsage
+    //   Canvas::TaskID task = pQueue->RecordCommands(
+    //       usages.Build(),
+    //       [](ID3D12GraphicsCommandList* pCL) {
+    //           pCL->CopyResource(dest1, src);
+    //           pCL->CopyResource(dest2, src);
+    //       },
+    //       pDeps,
+    //       numDeps);
     //
     // Parameters:
     //   resourceUsages: Declared resource access patterns (reads, writes, layouts)
-    //   pDependencies: Array of task IDs this scope depends on (can be nullptr)
+    //   recordFunc: Lambda to record commands into the command list
+    //   pDependencies: Array of task IDs this operation depends on (can be nullptr)
     //   numDependencies: Number of dependencies in pDependencies array
     //
-    // Returns: Task ID for the scoped resource usage (same ID returned by EndResourceUsage)
+    // Returns: Task ID for the recorded operation
     // Throws: Gem::GemError if resource diagnostics detect write conflicts (when CANVAS_RESOURCE_USAGE_DIAGNOSTICS=1)
-    Canvas::TaskID BeginResourceUsage(
+    Canvas::TaskID RecordCommands(
         const TaskResourceUsages& resourceUsages,
+        std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
         const Canvas::TaskID* pDependencies = nullptr,
         size_t numDependencies = 0);
-    
-    // End a resource usage scope and submit all accumulated commands as a single task
-    // Must be called after BeginResourceUsage
-    //
-    // Returns: Task ID for the recorded scope (same as returned by BeginResourceUsage)
-    Canvas::TaskID EndResourceUsage();
     
     // Validate resource usage declarations for write conflicts
     // Returns true if valid (no concurrent writes), false if write conflicts detected
@@ -659,16 +653,6 @@ private:
     //---------------------------------------------------------------------------------------------
     // Resource usage tracking and barrier generation internals
     //---------------------------------------------------------------------------------------------
-    
-    // Scoped resource usage state tracking for BeginResourceUsage/RecordCommand/EndResourceUsage API
-    struct ResourceUsageScope
-    {
-        Canvas::TaskID ScopeTaskId = Canvas::NullTaskID;
-        TaskResourceUsages ResourceUsages;
-        std::vector<std::function<void(ID3D12GraphicsCommandList*)>> AccumulatedCommands;
-        bool IsActive = false;
-    };
-    ResourceUsageScope m_CurrentScope;
     
     // Enhanced resource state tracking for resource-aware tasks
     struct ResourceUsageRecord

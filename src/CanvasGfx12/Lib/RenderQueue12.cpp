@@ -185,11 +185,11 @@ GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer *pDest, Canvas
     usages.BufferAsCopyDest(pDestBuffer->GetD3DResource());
     
     // Schedule copy operation with automatic barrier insertion
-    BeginResourceUsage(usages.Build());
-    ScheduleCommandListRecording([pDestBuffer, pSourceBuffer](ID3D12GraphicsCommandList* cmdList) {
-        cmdList->CopyResource(pDestBuffer->GetD3DResource(), pSourceBuffer->GetD3DResource());
-    });
-    EndResourceUsage();
+    RecordCommands(
+        usages.Build(),
+        [pDestBuffer, pSourceBuffer](ID3D12GraphicsCommandList* cmdList) {
+            cmdList->CopyResource(pDestBuffer->GetD3DResource(), pSourceBuffer->GetD3DResource());
+        });
 }
 
 //------------------------------------------------------------------------------------------------
@@ -204,12 +204,12 @@ GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(Canvas::XGfxSurface *pGfxSurfac
     // Capture surface and color for the lambda
     float colorCopy[4] = { Color[0], Color[1], Color[2], Color[3] };
     
-    Canvas::TaskID clearTask = BeginResourceUsage(usages.Build());
-    ScheduleCommandListRecording([this, pSurface, colorCopy](ID3D12GraphicsCommandList* cmdList) {
-        D3D12_CPU_DESCRIPTOR_HANDLE rtv = CreateRenderTargetView(pSurface, 0, 0, 0);
-        cmdList->ClearRenderTargetView(rtv, colorCopy, 0, nullptr);
-    });
-    clearTask = EndResourceUsage();
+    Canvas::TaskID clearTask = RecordCommands(
+        usages.Build(),
+        [this, pSurface, colorCopy](ID3D12GraphicsCommandList* cmdList) {
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv = CreateRenderTargetView(pSurface, 0, 0, 0);
+            cmdList->ClearRenderTargetView(rtv, colorCopy, 0, nullptr);
+        });
     
     // If this surface belongs to a swap chain, track this as the last write task
     if (pSurface->m_pOwnerSwapChain != nullptr)
@@ -383,41 +383,6 @@ void CRenderQueue12::Uninitialize()
 // Task-based GPU workload management implementation
 //------------------------------------------------------------------------------------------------
 
-Canvas::TaskID CRenderQueue12::ScheduleCommandListRecording(
-    std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
-    Canvas::TaskID dependsOn)
-{
-    // If we're in a BeginResourceUsage scope, accumulate the command for later
-    if (m_CurrentScope.IsActive)
-    {
-        m_CurrentScope.AccumulatedCommands.push_back(std::move(recordFunc));
-        // Return the scope task ID (actual scheduling happens in EndResourceUsage)
-        return m_CurrentScope.ScopeTaskId;
-    }
-    
-    // Otherwise, allocate and schedule task immediately with optional single dependency
-    Canvas::TaskID deps[1] = { dependsOn };
-    auto taskId = m_TaskManager.AllocateAndEnqueueTypedTask(
-        (dependsOn != Canvas::NullTaskID) ? deps : nullptr,
-        (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
-        [](Canvas::TaskID id, Canvas::TaskManager& sched, 
-           CRenderQueue12* pQueue, std::function<void(ID3D12GraphicsCommandList*)> func)
-        {
-            // Flush any pending barriers before recording the command
-            pQueue->FlushPendingBarriers();
-            
-            // Execute recording function
-            func(pQueue->m_pCommandList);
-            
-            // Complete task synchronously
-            sched.CompleteTask(id);
-        },
-        this,
-        std::move(recordFunc)
-    );
-    
-    return taskId;
-}
 
 //------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------
@@ -579,33 +544,31 @@ void CRenderQueue12::ScheduleHostWriteRelease(const Canvas::GfxSuballocation& su
 }
 
 //------------------------------------------------------------------------------------------------
-Canvas::TaskID CRenderQueue12::BeginResourceUsage(
+Canvas::TaskID CRenderQueue12::RecordCommands(
     const TaskResourceUsages& resourceUsages,
+    std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
     const Canvas::TaskID* pDependencies,
     size_t numDependencies)
 {
-    // Initialize scope state
-    m_CurrentScope.ResourceUsages = resourceUsages;
-    m_CurrentScope.AccumulatedCommands.clear();
-    m_CurrentScope.IsActive = true;
+    // Validate resource usage patterns (when diagnostics enabled)
+    if (!ValidateResourceUsageNoWriteConflicts(resourceUsages))
+    {
+        throw Gem::GemError(Gem::Result::InvalidArg);
+    }
     
     // Generate barriers based on current recording state (linear, CPU timeline)
     GenerateBarriersForRecording(resourceUsages);
     
-    // Allocate the scope task (it will be scheduled when EndResourceUsage is called)
-    // All dependencies passed in will be added below
-    m_CurrentScope.ScopeTaskId = m_TaskManager.AllocateTypedTask(
+    // Create and schedule task that will flush barriers and execute commands
+    Canvas::TaskID taskId = m_TaskManager.AllocateTypedTask(
         static_cast<uint32_t>(numDependencies),
-        [this](Canvas::TaskID taskId, Canvas::TaskManager& sched)
+        [this, recordFunc](Canvas::TaskID taskId, Canvas::TaskManager& sched)
         {
             // Flush pending barriers into command list
             FlushPendingBarriers();
             
-            // Execute all accumulated commands
-            for (const auto& recordFunc : m_CurrentScope.AccumulatedCommands)
-            {
-                recordFunc(m_pCommandList);
-            }
+            // Execute the command recording function
+            recordFunc(m_pCommandList);
             
             sched.CompleteTask(taskId);
         });
@@ -615,28 +578,25 @@ Canvas::TaskID CRenderQueue12::BeginResourceUsage(
     {
         if (pDependencies[i] != Canvas::NullTaskID)
         {
-            m_TaskManager.AddDependency(m_CurrentScope.ScopeTaskId, pDependencies[i]);
+            m_TaskManager.AddDependency(taskId, pDependencies[i]);
         }
     }
     
-    return m_CurrentScope.ScopeTaskId;
-}
-
-//------------------------------------------------------------------------------------------------
-Canvas::TaskID CRenderQueue12::EndResourceUsage()
-{
-    Canvas::TaskID taskId = m_CurrentScope.ScopeTaskId;
-    
     // Update recording state (linear forward propagation)
-    UpdateRecordingState(m_CurrentScope.ResourceUsages);
+    UpdateRecordingState(resourceUsages);
     
-    // Schedule the scope task (executes immediately since TaskManager is inline)
+    // Schedule the task (executes immediately since TaskManager is inline)
     m_TaskManager.EnqueueTask(taskId);
     
-    // Clean up scope state
-    m_CurrentScope.IsActive = false;
-    m_CurrentScope.ResourceUsages = TaskResourceUsages();
-    m_CurrentScope.AccumulatedCommands.clear();
+    // Save output layouts to submission state so future command executions know the layout
+    // This bridges recording state (Tier 1) to submission state (Tier 2)
+    for (const auto& texUsage : resourceUsages.TextureUsages)
+    {
+        if (texUsage.IsValid())
+        {
+            m_SubmissionOutputLayouts[taskId].TextureLayouts[texUsage.pResource] = texUsage.RequiredLayout;
+        }
+    }
     
     return taskId;
 }
