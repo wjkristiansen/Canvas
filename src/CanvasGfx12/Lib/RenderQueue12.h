@@ -520,6 +520,10 @@ public:
     Canvas::TaskManager m_TaskManager;
     std::unordered_map<Canvas::TaskID, GpuSyncPoint> m_GpuSyncPoints;
     
+    // Track the last command list task (any task that records to the command list)
+    // New recording tasks must depend on this to maintain linear command order
+    Canvas::TaskID m_LastCommandListTask = Canvas::NullTaskID;
+    
     // Barrier accumulation (batched for efficient recording)
     std::vector<TextureBarrier> m_PendingTextureBarriers;
     std::vector<BufferBarrier> m_PendingBufferBarriers;

@@ -345,7 +345,9 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
             },
             this
         );
-        (void)resetTask;
+        
+        // Update last command list task - subsequent recording tasks will depend on this
+        m_LastCommandListTask = resetTask;
         
         // Clean up completed work every frame (removes completed tasks and resources)
         ProcessCompletedWork();
@@ -570,9 +572,32 @@ Canvas::TaskID CRenderQueue12::RecordCommands(
     // Use provided task name or default if not specified
     const char* effectiveTaskName = taskName ? taskName : "RecordCommands";
     
+    // Build combined dependency list: implicit last command list task + user dependencies
+    std::vector<Canvas::TaskID> allDeps;
+    
+    // Add implicit dependency on last command list task (maintains linear command order)
+    if (m_LastCommandListTask != Canvas::NullTaskID)
+    {
+        allDeps.push_back(m_LastCommandListTask);
+    }
+    
+    // Add all user-provided dependencies (avoid duplicates)
+    for (size_t i = 0; i < numDependencies; ++i)
+    {
+        if (pDependencies[i] != Canvas::NullTaskID)
+        {
+            // Skip if it's the same as the implicit dependency
+            if (pDependencies[i] != m_LastCommandListTask)
+            {
+                allDeps.push_back(pDependencies[i]);
+            }
+        }
+    }
+    
     // Create and schedule task that will flush barriers and execute commands
-    Canvas::TaskID taskId = AllocateTypedTask(
-        static_cast<uint32_t>(numDependencies),
+    Canvas::TaskID taskId = EnqueueTask(
+        allDeps.empty() ? nullptr : allDeps.data(),
+        static_cast<uint32_t>(allDeps.size()),
         effectiveTaskName,
         [this, recordFunc](Canvas::TaskID taskId, Canvas::TaskManager& sched)
         {
@@ -585,20 +610,8 @@ Canvas::TaskID CRenderQueue12::RecordCommands(
             sched.CompleteTask(taskId);
         });
     
-    // Add all dependencies
-    for (size_t i = 0; i < numDependencies; ++i)
-    {
-        if (pDependencies[i] != Canvas::NullTaskID)
-        {
-            AddDependency(taskId, pDependencies[i]);
-        }
-    }
-    
     // Update recording state (linear forward propagation)
     UpdateRecordingState(resourceUsages);
-    
-    // Schedule the task (executes immediately since TaskManager is inline)
-    EnqueueTask(taskId, effectiveTaskName);
     
     // Save output layouts to submission state so future command executions know the layout
     // This bridges recording state (Tier 1) to submission state (Tier 2)
@@ -609,6 +622,9 @@ Canvas::TaskID CRenderQueue12::RecordCommands(
             m_SubmissionOutputLayouts[taskId].TextureLayouts[texUsage.pResource] = texUsage.RequiredLayout;
         }
     }
+    
+    // Update last command list task to this task
+    m_LastCommandListTask = taskId;
     
     return taskId;
 }
@@ -621,14 +637,30 @@ Canvas::TaskID CRenderQueue12::PrepareForPresent(
     ID3D12Resource* pBackBuffer = pIntSwapChain->m_pSurface->GetD3DResource();
     
     // TIER 2: Submission-level barrier (only layout transition, no sync/access)
-    // Depends on last write to swap chain back buffer
-    Canvas::TaskID dependency = pIntSwapChain->m_LastWriteTask;
-    Canvas::TaskID deps[1] = { dependency };
+    // Depends on:
+    // 1. Last write to swap chain back buffer
+    // 2. Last command list task (for command list ordering)
+    Canvas::TaskID lastWrite = pIntSwapChain->m_LastWriteTask;
+    Canvas::TaskID lastCLTask = m_LastCommandListTask;
+    
+    // Build dependency list (remove duplicates)
+    Canvas::TaskID deps[2];
+    size_t depCount = 0;
+    
+    if (lastWrite != Canvas::NullTaskID)
+    {
+        deps[depCount++] = lastWrite;
+    }
+    
+    if (lastCLTask != Canvas::NullTaskID && lastCLTask != lastWrite)
+    {
+        deps[depCount++] = lastCLTask;
+    }
     
     // Merge input layouts from dependencies (cached for efficiency)
     SubmissionOutputState inputState = MergeSubmissionInputLayouts(
         deps,
-        (dependency != Canvas::NullTaskID) ? 1 : 0);
+        depCount);
     
     // Get current layout from merged input state (defaults to COMMON)
     D3D12_BARRIER_LAYOUT currentLayout = D3D12_BARRIER_LAYOUT_COMMON;
@@ -640,8 +672,8 @@ Canvas::TaskID CRenderQueue12::PrepareForPresent(
     
     // Create submission task with cached input state for barrier generation
     Canvas::TaskID prepareTask = EnqueueTask(
-        (dependency != Canvas::NullTaskID) ? deps : nullptr,
-        (dependency != Canvas::NullTaskID) ? 1u : 0u,
+        (depCount > 0) ? deps : nullptr,
+        static_cast<uint32_t>(depCount),
         "PrepareForPresent",
         [](Canvas::TaskID id, Canvas::TaskManager& sched,
            CRenderQueue12* pQueue, ID3D12Resource* pResource,
@@ -674,6 +706,9 @@ Canvas::TaskID CRenderQueue12::PrepareForPresent(
     
     // Record output layout for this submission task
     m_SubmissionOutputLayouts[prepareTask].TextureLayouts[pBackBuffer] = D3D12_BARRIER_LAYOUT_PRESENT;
+    
+    // Update last command list task - this task also records to the command list
+    m_LastCommandListTask = prepareTask;
     
     return prepareTask;
 }
