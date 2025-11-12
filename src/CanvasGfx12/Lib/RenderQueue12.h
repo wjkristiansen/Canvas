@@ -621,7 +621,6 @@ public:
     //   recordFunc: Lambda to record commands into the command list
     //   pDependencies: Array of task IDs this operation depends on (can be nullptr)
     //   numDependencies: Number of dependencies in pDependencies array
-    //   taskName: Optional descriptive name for this task (for logging)
     //
     // Returns: Task ID for the recorded operation
     // Throws: Gem::GemError if resource diagnostics detect write conflicts (when CANVAS_RESOURCE_USAGE_DIAGNOSTICS=1)
@@ -629,8 +628,7 @@ public:
         const TaskResourceUsages& resourceUsages,
         std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
         const Canvas::TaskID* pDependencies = nullptr,
-        size_t numDependencies = 0,
-        PCSTR taskName = nullptr);
+        size_t numDependencies = 0);
     
     // Validate resource usage declarations for write conflicts
     // Returns true if valid (no concurrent writes), false if write conflicts detected
@@ -695,9 +693,6 @@ private:
     
     std::unordered_map<Canvas::TaskID, SubmissionOutputState> m_SubmissionOutputLayouts;
     
-    // Task name mapping for verbose logging (maps TaskID to descriptive name)
-    std::unordered_map<Canvas::TaskID, std::string> m_TaskNames;
-    
     // Internal helpers for two-tier system
     
     // Generate barriers for command buffer recording (uses linear recording state)
@@ -719,26 +714,24 @@ private:
     // are supported:
     //
     // Pattern 1: Immediate dependencies (allocate + enqueue in one call)
-    //   Canvas::TaskID task = EnqueueTask(deps, depCount, taskName, taskFunc, args...);
+    //   Canvas::TaskID task = EnqueueTask(deps, depCount, taskFunc, args...);
     //
     // Pattern 2: Deferred dependencies (allocate, add dependencies later, then enqueue)
-    //   Canvas::TaskID task = AllocateTypedTask(maxDeps, taskName, taskFunc, args...);
+    //   Canvas::TaskID task = AllocateTypedTask(maxDeps, taskFunc, args...);
     //   AddDependency(task, dep1);
     //   AddDependency(task, dep2);
-    //   EnqueueTask(task, taskName);
+    //   EnqueueTask(task);
     //
-    // Task name is optional (can be nullptr) and is included in verbose logging output.
     // Both patterns result in identical logging output.
     //---------------------------------------------------------------------------------------------
     
     // Wrapper for AllocateAndEnqueueTypedTask with automatic logging of task enqueuing
-    // Logs TaskID, task name, dependency list, and execution status (immediate vs deferred)
+    // Logs TaskID, dependency list, and execution status (immediate vs deferred)
     // This must be very fast - inline for zero-cost logging when enabled
     template<typename Func, typename... Args>
     Canvas::TaskID EnqueueTask(
         const Canvas::TaskID* pDependencies,
         uint32_t dependencyCount,
-        PCSTR taskName,
         Func&& func,
         Args&&... args)
     {
@@ -755,7 +748,7 @@ private:
         bool isImmediate = (state == Canvas::TaskState::Completed);
         
         // Log with verbose debug info (uses device logger, debug level only)
-        LogTaskEnqueued(taskId, taskName, pDependencies, dependencyCount, isImmediate);
+        LogTaskEnqueued(taskId, pDependencies, dependencyCount, isImmediate);
         
         return taskId;
     }
@@ -765,22 +758,13 @@ private:
     template<typename Func, typename... Args>
     Canvas::TaskID AllocateTypedTask(
         uint32_t maxDependencyCount,
-        PCSTR taskName,
         Func&& func,
         Args&&... args)
     {
-        auto taskId = m_TaskManager.AllocateTypedTask(
+        return m_TaskManager.AllocateTypedTask(
             maxDependencyCount,
             std::forward<Func>(func),
             std::forward<Args>(args)...);
-        
-        // Store task name for later logging when EnqueueTask is called
-        if (taskId != Canvas::NullTaskID && taskName)
-        {
-            m_TaskNames[taskId] = taskName;
-        }
-        
-        return taskId;
     }
     
     // Wrapper for AddDependency (add a dependency to an unscheduled task)
@@ -793,7 +777,7 @@ private:
     // Wrapper for EnqueueTask (schedule a previously allocated task)
     // Call this after AllocateTypedTask and all desired AddDependency calls
     // This overload also provides logging of the final enqueuing with resolved dependency info
-    Gem::Result EnqueueTask(Canvas::TaskID taskId, PCSTR taskName = nullptr)
+    Gem::Result EnqueueTask(Canvas::TaskID taskId)
     {
         auto result = m_TaskManager.EnqueueTask(taskId);
         
@@ -807,18 +791,7 @@ private:
             // Task executed immediately if it's already in Completed state
             // (In single-threaded execution, task callbacks run synchronously before EnqueueTask returns)
             bool isImmediate = (state == Canvas::TaskState::Completed);
-            
-            // Use stored task name if no name provided to this call
-            if (!taskName)
-            {
-                auto it = m_TaskNames.find(taskId);
-                if (it != m_TaskNames.end())
-                {
-                    taskName = it->second.c_str();
-                }
-            }
-            
-            LogTaskEnqueued(taskId, taskName, nullptr, 0, isImmediate);
+            LogTaskEnqueued(taskId, nullptr, 0, isImmediate);
         }
         
         return result;
@@ -826,5 +799,5 @@ private:
     
     // Helper method to format and log task enqueuing with dependencies
     // Called from EnqueueTask wrapper above
-    void LogTaskEnqueued(Canvas::TaskID taskId, PCSTR taskName, const Canvas::TaskID* pDependencies, uint32_t dependencyCount, bool isImmediate);
+    void LogTaskEnqueued(Canvas::TaskID taskId, const Canvas::TaskID* pDependencies, uint32_t dependencyCount, bool isImmediate);
 };
