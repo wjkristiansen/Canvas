@@ -189,7 +189,10 @@ GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer *pDest, Canvas
         usages.Build(),
         [pDestBuffer, pSourceBuffer](ID3D12GraphicsCommandList* cmdList) {
             cmdList->CopyResource(pDestBuffer->GetD3DResource(), pSourceBuffer->GetD3DResource());
-        });
+        },
+        nullptr,
+        0,
+        "CopyBuffer");
 }
 
 //------------------------------------------------------------------------------------------------
@@ -209,7 +212,10 @@ GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(Canvas::XGfxSurface *pGfxSurfac
         [this, pSurface, colorCopy](ID3D12GraphicsCommandList* cmdList) {
             D3D12_CPU_DESCRIPTOR_HANDLE rtv = CreateRenderTargetView(pSurface, 0, 0, 0);
             cmdList->ClearRenderTargetView(rtv, colorCopy, 0, nullptr);
-        });
+        },
+        nullptr,
+        0,
+        "ClearSurface");
     
     // If this surface belongs to a swap chain, track this as the last write task
     if (pSurface->m_pOwnerSwapChain != nullptr)
@@ -317,6 +323,7 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
         Canvas::TaskID resetTask = EnqueueTask(
             deps,
             1u,
+            "CommandListReset",
             [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue)
             {
                 // Rotate command allocators (waits for GPU if needed)
@@ -395,6 +402,7 @@ Canvas::TaskID CRenderQueue12::CreateGpuSyncPoint(
     return EnqueueTask(
         (dependsOn != Canvas::NullTaskID) ? deps1 : nullptr,
         (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
+        "GpuSyncPoint",
         [](Canvas::TaskID id, Canvas::TaskManager& sched, 
            CRenderQueue12* pQueue, UINT64 value)
         {
@@ -420,6 +428,7 @@ Canvas::TaskID CRenderQueue12::WaitForGpuFence(
     return EnqueueTask(
         (dependsOn != Canvas::NullTaskID) ? deps2 : nullptr,
         (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
+        "WaitForGpuFence",
         [](Canvas::TaskID id, Canvas::TaskManager& sched, 
            CRenderQueue12* pQueue, UINT64 value)
         {
@@ -446,6 +455,7 @@ Canvas::TaskID CRenderQueue12::SubmitCommandList(Canvas::TaskID dependsOn)
     auto taskId = EnqueueTask(
         (dependsOn != Canvas::NullTaskID) ? deps3 : nullptr,
         (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
+        "SubmitCommandList",
         [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue)
         {
             // Close and submit command list
@@ -484,7 +494,7 @@ Canvas::TaskID CRenderQueue12::SubmitCommandList(Canvas::TaskID dependsOn)
 
             // Make release depend on the submit task, then schedule it
             AddDependency(releaseTaskId, taskId);
-            EnqueueTask(releaseTaskId);
+            EnqueueTask(releaseTaskId, "HostWriteRelease");
         }
     }
     
@@ -498,6 +508,7 @@ void CRenderQueue12::ScheduleHostWriteRelease(const Canvas::GfxSuballocation& su
     // a SubmitCommandList task is created so the release can depend on that submit.
     Canvas::TaskID releaseTask = AllocateTypedTask(
         1,
+        "HostWriteRelease",
         [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue, Canvas::GfxSuballocation sub)
         {
             // Free the host-write region via the device
@@ -520,6 +531,7 @@ void CRenderQueue12::ScheduleHostWriteRelease(const Canvas::GfxSuballocation& su
         auto immediateRelease = EnqueueTask(
             deps,
             1,
+            "HostWriteReleaseFallback",
             [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue, Canvas::GfxSuballocation sub)
             {
                 if (pQueue && pQueue->m_pDevice)
@@ -543,7 +555,8 @@ Canvas::TaskID CRenderQueue12::RecordCommands(
     const TaskResourceUsages& resourceUsages,
     std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
     const Canvas::TaskID* pDependencies,
-    size_t numDependencies)
+    size_t numDependencies,
+    PCSTR taskName)
 {
     // Validate resource usage patterns (when diagnostics enabled)
     if (!ValidateResourceUsageNoWriteConflicts(resourceUsages))
@@ -554,9 +567,13 @@ Canvas::TaskID CRenderQueue12::RecordCommands(
     // Generate barriers based on current recording state (linear, CPU timeline)
     GenerateBarriersForRecording(resourceUsages);
     
+    // Use provided task name or default if not specified
+    const char* effectiveTaskName = taskName ? taskName : "RecordCommands";
+    
     // Create and schedule task that will flush barriers and execute commands
     Canvas::TaskID taskId = AllocateTypedTask(
         static_cast<uint32_t>(numDependencies),
+        effectiveTaskName,
         [this, recordFunc](Canvas::TaskID taskId, Canvas::TaskManager& sched)
         {
             // Flush pending barriers into command list
@@ -581,7 +598,7 @@ Canvas::TaskID CRenderQueue12::RecordCommands(
     UpdateRecordingState(resourceUsages);
     
     // Schedule the task (executes immediately since TaskManager is inline)
-    EnqueueTask(taskId);
+    EnqueueTask(taskId, effectiveTaskName);
     
     // Save output layouts to submission state so future command executions know the layout
     // This bridges recording state (Tier 1) to submission state (Tier 2)
@@ -625,6 +642,7 @@ Canvas::TaskID CRenderQueue12::PrepareForPresent(
     Canvas::TaskID prepareTask = EnqueueTask(
         (dependency != Canvas::NullTaskID) ? deps : nullptr,
         (dependency != Canvas::NullTaskID) ? 1u : 0u,
+        "PrepareForPresent",
         [](Canvas::TaskID id, Canvas::TaskManager& sched,
            CRenderQueue12* pQueue, ID3D12Resource* pResource,
            D3D12_BARRIER_LAYOUT layoutBefore)
@@ -671,6 +689,7 @@ Canvas::TaskID CRenderQueue12::SchedulePresent(
     return EnqueueTask(
         (dependsOn != Canvas::NullTaskID) ? deps : nullptr,
         (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
+        "SwapChainPresent",
         [](Canvas::TaskID id, Canvas::TaskManager& sched, CSwapChain12* pSwapChain)
         {
             // Execute present operation
@@ -994,7 +1013,7 @@ CRenderQueue12::SubmissionOutputState CRenderQueue12::MergeSubmissionInputLayout
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::LogTaskEnqueued(Canvas::TaskID taskId, const Canvas::TaskID* pDependencies, uint32_t dependencyCount, bool isImmediate)
+void CRenderQueue12::LogTaskEnqueued(Canvas::TaskID taskId, PCSTR taskName, const Canvas::TaskID* pDependencies, uint32_t dependencyCount, bool isImmediate)
 {
     Canvas::XLogger* pLogger = m_pDevice->GetLogger();
     if (!pLogger)
@@ -1025,7 +1044,15 @@ void CRenderQueue12::LogTaskEnqueued(Canvas::TaskID taskId, const Canvas::TaskID
         depList += "]";
     }
     
-    // Log the task enqueuing
-    Canvas::LogDebug(pLogger, "TaskManager: Enqueued TaskID=%llu, Dependencies=%s, Execution=%s", 
-                     taskId, depList.c_str(), isImmediate ? "immediate" : "deferred");
+    // Log the task enqueuing with optional task name
+    if (taskName)
+    {
+        Canvas::LogDebug(pLogger, "TaskManager: Enqueued TaskID=%llu, Name=%s, Dependencies=%s, Execution=%s", 
+                         taskId, taskName, depList.c_str(), isImmediate ? "immediate" : "deferred");
+    }
+    else
+    {
+        Canvas::LogDebug(pLogger, "TaskManager: Enqueued TaskID=%llu, Dependencies=%s, Execution=%s", 
+                         taskId, depList.c_str(), isImmediate ? "immediate" : "deferred");
+    }
 }
