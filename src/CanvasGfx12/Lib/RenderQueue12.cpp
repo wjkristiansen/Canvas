@@ -199,28 +199,21 @@ GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer *pDest, Canvas
 GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(Canvas::XGfxSurface *pGfxSurface, const float Color[4])
 {
     CSurface12 *pSurface = reinterpret_cast<CSurface12 *>(pGfxSurface);
-    
     // Declare render target usage - automatically handles layout transition and barrier insertion
     TaskResourceUsageBuilder usages;
     usages.TextureAsRenderTarget(pSurface->GetD3DResource());
-    
-    // Capture surface and color for the lambda
-    float colorCopy[4] = { Color[0], Color[1], Color[2], Color[3] };
-    
-    Canvas::TaskID clearTask = RecordCommands(
-        usages.Build(),
-        [this, pSurface, colorCopy](ID3D12GraphicsCommandList* cmdList) {
-            D3D12_CPU_DESCRIPTOR_HANDLE rtv = CreateRenderTargetView(pSurface, 0, 0, 0);
-            cmdList->ClearRenderTargetView(rtv, colorCopy, 0, nullptr);
-        },
-        nullptr,
-        0,
-        "ClearSurface");
-    
-    // If this surface belongs to a swap chain, track this as the last write task
+    // Generate barriers immediately
+    GenerateBarriersForRecording(usages.Build());
+    FlushPendingBarriers();
+    // Record directly to command list
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = CreateRenderTargetView(pSurface, 0, 0, 0);
+    m_pCommandList->ClearRenderTargetView(rtv, Color, 0, nullptr);
+    // Update recording state for next operation
+    UpdateRecordingState(usages.Build());
+    // If this surface belongs to a swap chain, mark that it was written this frame
     if (pSurface->m_pOwnerSwapChain != nullptr)
     {
-        pSurface->m_pOwnerSwapChain->m_LastWriteTask = clearTask;
+        pSurface->m_pOwnerSwapChain->m_BackBufferModified = true;
     }
 }
 
@@ -296,60 +289,62 @@ Gem::Result CRenderQueue12::Flush()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 {
-    // NOTE: Removed CFunctionSentinel to eliminate per-frame logging overhead in hot path
     try
     {
         CSwapChain12 *pIntSwapChain = reinterpret_cast<CSwapChain12 *>(pSwapChain);
-        
-        // Pace the CPU using DXGI frame latency waitable object if available
-        // This prevents CPU from getting too far ahead of GPU
         pIntSwapChain->WaitForFrameLatency();
-        
-        // Build task graph for present operation:
-        // 1. Prepare back buffer for present (transition to PRESENT layout)
-        // 2. Submit command list to GPU
-        // 3. Execute present operation
-        // 4. Reset command list for next frame
-        
-        Canvas::TaskID prepareTask = PrepareForPresent(pSwapChain);
-        Canvas::TaskID submitTask = SubmitCommandList(prepareTask);
-        Canvas::TaskID presentTask = SchedulePresent(pSwapChain, submitTask);
-        
-        // Store present task so next frame can depend on it
-        pIntSwapChain->m_LastFramePresentTask = presentTask;
-        
-        // Schedule command list reset task (depends on submit completing)
-        Canvas::TaskID deps[1] = { submitTask };
-        Canvas::TaskID resetTask = EnqueueTask(
-            deps,
-            1u,
-            "CommandListReset",
-            [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue)
-            {
-                // Rotate command allocators (waits for GPU if needed)
+
+        // Inline present transition if needed
+        if (pIntSwapChain->m_BackBufferModified)
+        {
+            // Insert transition barrier to PRESENT
+            TaskResourceUsageBuilder usages;
+            usages.TextureAsRenderTarget(pIntSwapChain->m_pSurface->GetD3DResource());
+            GenerateBarriersForRecording(usages.Build());
+            FlushPendingBarriers();
+            pIntSwapChain->m_BackBufferModified = false;
+        }
+
+        // Submit command list to GPU (submission-level task)
+        Canvas::TaskID submitTask = EnqueueTask(
+            nullptr, 0, "SubmitCommandList",
+            [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue) {
+                pQueue->m_pCommandList->Close();
+                ID3D12CommandList* lists[] = { pQueue->m_pCommandList };
+                pQueue->m_pCommandQueue->ExecuteCommandLists(1, lists);
+                pQueue->m_pCommandQueue->Signal(pQueue->m_pFence, ++pQueue->m_FenceValue);
+                sched.CompleteTask(id);
+            },
+            this);
+
+        // Present (depends on submit)
+        Canvas::TaskID presentTask = EnqueueTask(
+            &submitTask, 1, "Present",
+            [](Canvas::TaskID id, Canvas::TaskManager& sched, CSwapChain12* pSwap) {
+                pSwap->Present();
+                sched.CompleteTask(id);
+            },
+            pIntSwapChain);
+
+        // Reset command list (must wait for submit to complete)
+        EnqueueTask(
+            &submitTask, 1, "CommandListReset",
+            [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue) {
                 pQueue->m_pCommandAllocator = pQueue->m_CommandAllocatorPool.RotateAllocators(pQueue);
                 pQueue->m_pCommandAllocator->Reset();
-                
-                // Reset command list
                 ThrowFailedHResult(pQueue->m_pCommandList->Reset(pQueue->m_pCommandAllocator, nullptr));
-                
-                // Clear pending barriers on command list reset
                 pQueue->m_PendingTextureBarriers.clear();
                 pQueue->m_PendingBufferBarriers.clear();
                 pQueue->m_PendingGlobalBarriers.clear();
-                
-                // Clear recording state (command buffer recording completed)
                 pQueue->m_RecordingResourceState.clear();
-                
                 sched.CompleteTask(id);
             },
-            this
-        );
-        
-        // Update last command list task - subsequent recording tasks will depend on this
-        m_LastCommandListTask = resetTask;
-        
-        // Clean up completed work every frame (removes completed tasks and resources)
+            this);
+
+        // Store present task so next frame can depend on it
+        pIntSwapChain->m_LastFramePresentTask = presentTask;
+
+        // Clean up completed work every frame
         ProcessCompletedWork();
     }
     catch (Gem::GemError &e)

@@ -29,6 +29,7 @@ class CSwapChain12 :
     // Frame dependency tracking for task-based rendering
     Canvas::TaskID m_LastFramePresentTask = 0;  // 0 == NullTaskID
     Canvas::TaskID m_LastWriteTask = 0;         // Last task that wrote to back buffer
+    bool m_BackBufferModified = false;          // True if back buffer received any GPU writes this recording phase
 
 public:
 
