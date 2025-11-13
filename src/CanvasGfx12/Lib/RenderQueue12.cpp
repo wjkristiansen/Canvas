@@ -143,6 +143,22 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     CComPtr<ID3D12RootSignature> pDefaultRootSig;
     pD3DDevice->CreateRootSignature(1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pDefaultRootSig));
 
+    // Create dedicated fixup command list with its own allocator (reused across submissions)
+    // NOTE: Cannot share allocator with main command list - D3D12 requires separate allocators
+    // when multiple command lists may be recording simultaneously
+    CComPtr<ID3D12CommandAllocator> pFixupCA;
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pFixupCA))));
+    
+    CComPtr<ID3D12GraphicsCommandList> pFixupCL;
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pFixupCA, nullptr, IID_PPV_ARGS(&pFixupCL))));
+    
+    // QueryInterface to ID3D12GraphicsCommandList7 (required for Barrier() API)
+    CComPtr<ID3D12GraphicsCommandList7> pFixupCL7;
+    Gem::ThrowGemError(ResultFromHRESULT(pFixupCL->QueryInterface(IID_PPV_ARGS(&pFixupCL7))));
+    
+    // Close the fixup command list immediately (will be reset when needed)
+    pFixupCL7->Close();
+
     m_pShaderResourceDescriptorHeap.Attach(pResDH.Detach());
     m_pSamplerDescriptorHeap.Attach(pSamplerDH.Detach());
     m_pRTVDescriptorHeap.Attach(pRTVDH.Detach());
@@ -151,6 +167,10 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pCommandList.Attach(pCL.Detach());
     m_pCommandQueue.Attach(pCQ.Detach());
     m_pFence.Attach(pFence.Detach());
+    m_pFixupCommandAllocator.Attach(pFixupCA.Detach());
+    m_pFixupCommandList.Attach(pFixupCL7.Detach());
+
+    // NOTE: Texture layout tracking is initialized after resource creation elsewhere
 }
 
 //------------------------------------------------------------------------------------------------
@@ -238,55 +258,6 @@ D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurfac
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CRenderQueue12::FlushImpl()
-{
-    try
-    {
-        // Schedule command list submission
-        auto submitTask = SubmitCommandList();
-        
-        // Wait for submission to complete (synchronous flush)
-        WaitForGpuFence(m_FenceValue, submitTask);
-        
-        return Gem::Result::Success;
-    }
-    catch (_com_error &e)
-    {
-        return ResultFromHRESULT(e.Error());
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-Gem::Result CRenderQueue12::Flush()
-{
-    // NOTE: Removed CFunctionSentinel to eliminate per-frame logging overhead in hot path
-    try
-    {
-        Gem::ThrowGemError(FlushImpl());
-
-        // Reset command list and per-command-list tracking for next frame
-        ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
-        
-        // Clear pending barriers on command list reset
-        m_PendingTextureBarriers.clear();
-        m_PendingBufferBarriers.clear();
-        m_PendingGlobalBarriers.clear();
-        
-        // Clear recording state (command buffer recording completed)
-        m_RecordingResourceState.clear();
-        
-        // Clean up completed work every frame (removes completed tasks and resources)
-        ProcessCompletedWork();
-    }
-    catch (_com_error &e)
-    {
-        return ResultFromHRESULT(e.Error());
-    }
-
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 {
     try
@@ -305,17 +276,8 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
             pIntSwapChain->m_BackBufferModified = false;
         }
 
-        // Submit command list to GPU (submission-level task)
-        Canvas::TaskID submitTask = EnqueueTask(
-            nullptr, 0, "SubmitCommandList",
-            [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue) {
-                pQueue->m_pCommandList->Close();
-                ID3D12CommandList* lists[] = { pQueue->m_pCommandList };
-                pQueue->m_pCommandQueue->ExecuteCommandLists(1, lists);
-                pQueue->m_pCommandQueue->Signal(pQueue->m_pFence, ++pQueue->m_FenceValue);
-                sched.CompleteTask(id);
-            },
-            this);
+        // Submit command list to GPU using proper SubmitCommandList method
+        Canvas::TaskID submitTask = SubmitCommandList(Canvas::NullTaskID, TextureLayoutBuilder());
 
         // Present (depends on submit)
         Canvas::TaskID presentTask = EnqueueTask(
@@ -333,6 +295,7 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
                 pQueue->m_pCommandAllocator = pQueue->m_CommandAllocatorPool.RotateAllocators(pQueue);
                 pQueue->m_pCommandAllocator->Reset();
                 ThrowFailedHResult(pQueue->m_pCommandList->Reset(pQueue->m_pCommandAllocator, nullptr));
+                pQueue->m_pFixupCommandAllocator->Reset();  // Reset fixup allocator after GPU completes
                 pQueue->m_PendingTextureBarriers.clear();
                 pQueue->m_PendingBufferBarriers.clear();
                 pQueue->m_PendingGlobalBarriers.clear();
@@ -356,8 +319,12 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::Wait()
+void CRenderQueue12::Uninitialize()
 {
+    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Uninitialize", m_pDevice->GetLogger(), Canvas::LogLevel::Info);
+
+    m_pCommandList->Close();
+
     // Wait for GPU to reach current fence value
     UINT64 completedValue = m_pFence->GetCompletedValue();
     if (completedValue < m_FenceValue)
@@ -370,18 +337,6 @@ GEMMETHODIMP CRenderQueue12::Wait()
             CloseHandle(hEvent);
         }
     }
-    
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::Uninitialize()
-{
-    Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Uninitialize", m_pDevice->GetLogger(), Canvas::LogLevel::Info);
-
-    m_pCommandList->Close();
-
-    Wait();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -395,9 +350,9 @@ Canvas::TaskID CRenderQueue12::CreateGpuSyncPoint(
     UINT64 fenceValue,
     Canvas::TaskID dependsOn)
 {
-    Canvas::TaskID deps1[1] = { dependsOn };
+    Canvas::TaskID deps[1] = { dependsOn };
     return EnqueueTask(
-        (dependsOn != Canvas::NullTaskID) ? deps1 : nullptr,
+        (dependsOn != Canvas::NullTaskID) ? deps : nullptr,
         (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
         "GpuSyncPoint",
         [](Canvas::TaskID id, Canvas::TaskManager& sched, 
@@ -421,9 +376,9 @@ Canvas::TaskID CRenderQueue12::WaitForGpuFence(
     UINT64 fenceValue,
     Canvas::TaskID dependsOn)
 {
-    Canvas::TaskID deps2[1] = { dependsOn };
+    Canvas::TaskID deps[1] = { dependsOn };
     return EnqueueTask(
-        (dependsOn != Canvas::NullTaskID) ? deps2 : nullptr,
+        (dependsOn != Canvas::NullTaskID) ? deps : nullptr,
         (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
         "WaitForGpuFence",
         [](Canvas::TaskID id, Canvas::TaskManager& sched, 
@@ -446,24 +401,197 @@ Canvas::TaskID CRenderQueue12::WaitForGpuFence(
 }
 
 //------------------------------------------------------------------------------------------------
-Canvas::TaskID CRenderQueue12::SubmitCommandList(Canvas::TaskID dependsOn)
+// Call this after creating a texture resource to set its initial layout
+void CRenderQueue12::UpdateTextureLayouts(const TextureLayoutBuilder& builder)
 {
-    Canvas::TaskID deps3[1] = { dependsOn };
+    auto inits = builder.Build();
+    for (const auto& init : inits)
+    {
+        m_TextureCurrentLayouts[init.pResource].SetLayout(init.subresource, init.layout);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+// Per-subresource layout fixup generation
+//
+// KEY BEHAVIORS:
+// 1. Single subresource transition (exp.subresource != 0xFFFFFFFF):
+//    - Looks up current layout for that specific subresource
+//    - Generates one barrier for that subresource
+//    - Splits from uniform to per-subresource tracking if needed
+//
+// 2. All subresources transition (exp.subresource == 0xFFFFFFFF):
+//    - If currently uniform: generates single barrier for all subresources
+//    - If mixed layouts: generates individual barriers for each tracked subresource
+//    - Collapses back to uniform layout after transition
+//
+// 3. Invalid transition prevention:
+//    - If requesting "all subresources" transition but they have different layouts,
+//      we generate barriers from each subresource's ACTUAL current layout, not assumed
+//    - This prevents D3D12 validation errors from incorrect barrier states
+//
+void CRenderQueue12::AddLayoutFixups(const std::vector<TextureLayout>& expectedLayouts)
+{
+    // Build complete D3D12 barriers and accumulate them - actual command list created at submission
+    for (const auto& exp : expectedLayouts)
+    {
+        if (!exp.pResource) continue;
+        
+        auto& state = m_TextureCurrentLayouts[exp.pResource];
+        
+        if (exp.subresource == 0xFFFFFFFF)
+        {
+            // Transitioning ALL subresources
+            
+            // Check if we can do this as a single barrier (all subresources currently have same layout)
+            D3D12_BARRIER_LAYOUT uniformCurrent;
+            if (state.CanCollapseToUniform(uniformCurrent))
+            {
+                // All subresources have the same layout - single barrier
+                if (uniformCurrent == exp.layout)
+                {
+                    // Already in desired layout; skip
+                    continue;
+                }
+                
+                D3D12_TEXTURE_BARRIER b = {};
+                b.pResource = exp.pResource;
+                b.LayoutBefore = uniformCurrent;
+                b.LayoutAfter = exp.layout;
+                b.SyncBefore = D3D12_BARRIER_SYNC_NONE;
+                b.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+                b.AccessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+                b.AccessAfter = D3D12_BARRIER_ACCESS_COMMON;
+                b.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFF;  // All subresources
+                b.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+                
+                m_PendingLayoutFixupBarriers.push_back(b);
+            }
+            else
+            {
+                // Subresources have different layouts - need individual barriers for each
+                // This is the tricky case: we need to know total subresource count
+                // For now, transition only the ones we're tracking (on-demand approach)
+                if (!state.perSubresourceLayouts.empty())
+                {
+                    for (const auto& [subresource, currentLayout] : state.perSubresourceLayouts)
+                    {
+                        if (currentLayout == exp.layout) continue;  // Skip if already in target layout
+                        
+                        D3D12_TEXTURE_BARRIER b = {};
+                        b.pResource = exp.pResource;
+                        b.LayoutBefore = currentLayout;
+                        b.LayoutAfter = exp.layout;
+                        b.SyncBefore = D3D12_BARRIER_SYNC_NONE;
+                        b.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+                        b.AccessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+                        b.AccessAfter = D3D12_BARRIER_ACCESS_COMMON;
+                        b.Subresources.IndexOrFirstMipLevel = subresource;
+                        b.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+                        
+                        m_PendingLayoutFixupBarriers.push_back(b);
+                    }
+                }
+            }
+            
+            // Update: all subresources now uniform
+            state.SetLayout(0xFFFFFFFF, exp.layout);
+        }
+        else
+        {
+            // Transitioning a SINGLE subresource
+            D3D12_BARRIER_LAYOUT currentLayout = state.GetLayout(exp.subresource);
+            
+            if (currentLayout == exp.layout)
+            {
+                // Already in desired layout; skip
+                continue;
+            }
+            
+            // Build single-subresource barrier
+            D3D12_TEXTURE_BARRIER b = {};
+            b.pResource = exp.pResource;
+            b.LayoutBefore = currentLayout;
+            b.LayoutAfter = exp.layout;
+            b.SyncBefore = D3D12_BARRIER_SYNC_NONE;
+            b.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+            b.AccessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+            b.AccessAfter = D3D12_BARRIER_ACCESS_COMMON;
+            b.Subresources.IndexOrFirstMipLevel = exp.subresource;
+            b.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+            
+            m_PendingLayoutFixupBarriers.push_back(b);
+            
+            // Update: this specific subresource changed
+            state.SetLayout(exp.subresource, exp.layout);
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+// Builder-style overloads for convenience
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::AddLayoutFixups(const TextureLayoutBuilder& builder)
+{
+    AddLayoutFixups(builder.Build());
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::TaskID CRenderQueue12::SubmitCommandList(
+    Canvas::TaskID dependsOn,
+    const TextureLayoutBuilder& expectedLayouts)
+{
+    Canvas::TaskID deps[1] = { dependsOn };
     auto taskId = EnqueueTask(
-        (dependsOn != Canvas::NullTaskID) ? deps3 : nullptr,
+        (dependsOn != Canvas::NullTaskID) ? deps : nullptr,
         (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
         "SubmitCommandList",
-        [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue)
+        [expectedLayouts](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue)
         {
-            // Close and submit command list
+            // If expectedLayouts provided, queue fixups (batch style)
+            auto layouts = expectedLayouts.Build();
+            if (!layouts.empty())
+            {
+                pQueue->AddLayoutFixups(layouts);
+            }
+
+            // Close main command list
             pQueue->m_pCommandList->Close();
+
+            // Record fixup barriers if needed
+            bool hasFixups = !pQueue->m_PendingLayoutFixupBarriers.empty();
             
-            ID3D12CommandList* cmdLists[] = { pQueue->m_pCommandList };
-            pQueue->m_pCommandQueue->ExecuteCommandLists(1, cmdLists);
-            
+            if (hasFixups)
+            {
+                // Reset and reuse the dedicated fixup command list with its own allocator
+                ThrowFailedHResult(pQueue->m_pFixupCommandList->Reset(pQueue->m_pFixupCommandAllocator, nullptr));
+                
+                // Issue all barriers as a single group
+                D3D12_BARRIER_GROUP group = {};
+                group.Type = D3D12_BARRIER_TYPE_TEXTURE;
+                group.NumBarriers = static_cast<UINT>(pQueue->m_PendingLayoutFixupBarriers.size());
+                group.pTextureBarriers = pQueue->m_PendingLayoutFixupBarriers.data();
+                
+                pQueue->m_pFixupCommandList->Barrier(1, &group);
+                
+                ThrowFailedHResult(pQueue->m_pFixupCommandList->Close());
+                
+                // Clear pending barriers
+                pQueue->m_PendingLayoutFixupBarriers.clear();
+            }
+
+            // Build submission array: fixup list (if exists) then main list
+            std::vector<ID3D12CommandList*> submitLists;
+            if (hasFixups)
+            {
+                submitLists.push_back(pQueue->m_pFixupCommandList);
+            }
+            submitLists.push_back(pQueue->m_pCommandList);
+
+            pQueue->m_pCommandQueue->ExecuteCommandLists(static_cast<UINT>(submitLists.size()), submitLists.data());
+
             // Signal fence
             pQueue->m_pCommandQueue->Signal(pQueue->m_pFence, ++pQueue->m_FenceValue);
-            
             sched.CompleteTask(id);
         },
         this
@@ -497,8 +625,6 @@ Canvas::TaskID CRenderQueue12::SubmitCommandList(Canvas::TaskID dependsOn)
     
     return taskId;
 }
-
-//------------------------------------------------------------------------------------------------
 void CRenderQueue12::ScheduleHostWriteRelease(const Canvas::GfxSuballocation& suballocation, Canvas::TaskID dependsOn)
 {
     // Allocate a release task but do NOT schedule it yet. We'll defer scheduling until
@@ -817,7 +943,17 @@ CRenderQueue12::ResourceStateSnapshot CRenderQueue12::GetResourceState(ID3D12Res
     auto it = m_RecordingResourceState.find(pResource);
     if (it != m_RecordingResourceState.end())
     {
-        snapshot.CurrentLayout = it->second.Layout;
+        const auto& layoutState = it->second.TextureLayouts;
+        
+        // Copy layout information to snapshot
+        if (layoutState.uniformLayout.has_value())
+        {
+            snapshot.UniformLayout = layoutState.uniformLayout.value();
+        }
+        else
+        {
+            snapshot.PerSubresourceLayouts = layoutState.perSubresourceLayouts;
+        }
     }
     
     return snapshot;
@@ -825,6 +961,7 @@ CRenderQueue12::ResourceStateSnapshot CRenderQueue12::GetResourceState(ID3D12Res
 
 //------------------------------------------------------------------------------------------------
 // TIER 1: Command Buffer Recording - Generate barriers based on linear recording state
+// Now with per-subresource layout tracking (same logic as AddLayoutFixups)
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::GenerateBarriersForRecording(const TaskResourceUsages& resourceUsages)
 {
@@ -837,33 +974,147 @@ void CRenderQueue12::GenerateBarriersForRecording(const TaskResourceUsages& reso
         if (!texUsage.IsValid() || barriersGenerated >= MaxBarriersToGenerate)
             continue;
         
-        // Look up current recording state (defaults to COMMON if not found)
-        D3D12_BARRIER_LAYOUT currentLayout = D3D12_BARRIER_LAYOUT_COMMON;
+        // Get current recording state for this resource
         D3D12_BARRIER_SYNC currentSync = D3D12_BARRIER_SYNC_NONE;
         D3D12_BARRIER_ACCESS currentAccess = D3D12_BARRIER_ACCESS_NO_ACCESS;
         
         auto it = m_RecordingResourceState.find(texUsage.pResource);
         if (it != m_RecordingResourceState.end())
         {
-            currentLayout = it->second.Layout;
             currentSync = it->second.Sync;
             currentAccess = it->second.Access;
         }
         
-        // Generate barrier from current state to required state
-        TextureBarrier barrier;
-        barrier.pResource = texUsage.pResource;
-        barrier.LayoutBefore = currentLayout;
-        barrier.LayoutAfter = texUsage.RequiredLayout;
-        barrier.SyncBefore = currentSync;
-        barrier.SyncAfter = texUsage.SyncForUsage;
-        barrier.AccessBefore = currentAccess;
-        barrier.AccessAfter = texUsage.AccessForUsage;
-        barrier.Subresources = texUsage.Subresources;
-        barrier.Flags = texUsage.Flags;
-        
-        m_PendingTextureBarriers.push_back(barrier);
-        barriersGenerated++;
+        // Handle per-subresource layout transitions
+        if (texUsage.Subresources == 0xFFFFFFFF)
+        {
+            // Transitioning ALL subresources
+            D3D12_BARRIER_LAYOUT currentLayout = D3D12_BARRIER_LAYOUT_COMMON;
+            
+            if (it != m_RecordingResourceState.end())
+            {
+                auto& layoutState = it->second.TextureLayouts;
+                
+                // Check if we can do single barrier (all subresources have same layout)
+                D3D12_BARRIER_LAYOUT uniformCurrent;
+                if (layoutState.CanCollapseToUniform(uniformCurrent))
+                {
+                    currentLayout = uniformCurrent;
+                    
+                    // Generate single barrier if layout change needed
+                    if (currentLayout != texUsage.RequiredLayout)
+                    {
+                        TextureBarrier barrier;
+                        barrier.pResource = texUsage.pResource;
+                        barrier.LayoutBefore = currentLayout;
+                        barrier.LayoutAfter = texUsage.RequiredLayout;
+                        barrier.SyncBefore = currentSync;
+                        barrier.SyncAfter = texUsage.SyncForUsage;
+                        barrier.AccessBefore = currentAccess;
+                        barrier.AccessAfter = texUsage.AccessForUsage;
+                        barrier.Subresources = 0xFFFFFFFF;
+                        barrier.Flags = texUsage.Flags;
+                        
+                        m_PendingTextureBarriers.push_back(barrier);
+                        barriersGenerated++;
+                    }
+                }
+                else
+                {
+                    // Mixed layouts - need individual barriers per tracked subresource
+                    if (!layoutState.perSubresourceLayouts.empty())
+                    {
+                        for (const auto& [subresource, subLayout] : layoutState.perSubresourceLayouts)
+                        {
+                            if (subLayout == texUsage.RequiredLayout)
+                                continue; // Skip if already in target layout
+                            
+                            if (barriersGenerated >= MaxBarriersToGenerate)
+                                break;
+                            
+                            TextureBarrier barrier;
+                            barrier.pResource = texUsage.pResource;
+                            barrier.LayoutBefore = subLayout;
+                            barrier.LayoutAfter = texUsage.RequiredLayout;
+                            barrier.SyncBefore = currentSync;
+                            barrier.SyncAfter = texUsage.SyncForUsage;
+                            barrier.AccessBefore = currentAccess;
+                            barrier.AccessAfter = texUsage.AccessForUsage;
+                            barrier.Subresources = subresource;
+                            barrier.Flags = texUsage.Flags;
+                            
+                            m_PendingTextureBarriers.push_back(barrier);
+                            barriersGenerated++;
+                        }
+                    }
+                    else
+                    {
+                        // No tracked subresources but state says mixed - assume COMMON and do all
+                        TextureBarrier barrier;
+                        barrier.pResource = texUsage.pResource;
+                        barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_COMMON;
+                        barrier.LayoutAfter = texUsage.RequiredLayout;
+                        barrier.SyncBefore = currentSync;
+                        barrier.SyncAfter = texUsage.SyncForUsage;
+                        barrier.AccessBefore = currentAccess;
+                        barrier.AccessAfter = texUsage.AccessForUsage;
+                        barrier.Subresources = 0xFFFFFFFF;
+                        barrier.Flags = texUsage.Flags;
+                        
+                        m_PendingTextureBarriers.push_back(barrier);
+                        barriersGenerated++;
+                    }
+                }
+            }
+            else
+            {
+                // No tracking yet - assume COMMON for all subresources
+                if (D3D12_BARRIER_LAYOUT_COMMON != texUsage.RequiredLayout)
+                {
+                    TextureBarrier barrier;
+                    barrier.pResource = texUsage.pResource;
+                    barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_COMMON;
+                    barrier.LayoutAfter = texUsage.RequiredLayout;
+                    barrier.SyncBefore = currentSync;
+                    barrier.SyncAfter = texUsage.SyncForUsage;
+                    barrier.AccessBefore = currentAccess;
+                    barrier.AccessAfter = texUsage.AccessForUsage;
+                    barrier.Subresources = 0xFFFFFFFF;
+                    barrier.Flags = texUsage.Flags;
+                    
+                    m_PendingTextureBarriers.push_back(barrier);
+                    barriersGenerated++;
+                }
+            }
+        }
+        else
+        {
+            // Transitioning SINGLE subresource
+            D3D12_BARRIER_LAYOUT currentLayout = D3D12_BARRIER_LAYOUT_COMMON;
+            
+            if (it != m_RecordingResourceState.end())
+            {
+                currentLayout = it->second.TextureLayouts.GetLayout(texUsage.Subresources);
+            }
+            
+            // Generate barrier if layout change needed
+            if (currentLayout != texUsage.RequiredLayout)
+            {
+                TextureBarrier barrier;
+                barrier.pResource = texUsage.pResource;
+                barrier.LayoutBefore = currentLayout;
+                barrier.LayoutAfter = texUsage.RequiredLayout;
+                barrier.SyncBefore = currentSync;
+                barrier.SyncAfter = texUsage.SyncForUsage;
+                barrier.AccessBefore = currentAccess;
+                barrier.AccessAfter = texUsage.AccessForUsage;
+                barrier.Subresources = texUsage.Subresources;
+                barrier.Flags = texUsage.Flags;
+                
+                m_PendingTextureBarriers.push_back(barrier);
+                barriersGenerated++;
+            }
+        }
     }
     
     // For buffers, generate access transitions based on current recording state
@@ -900,17 +1151,22 @@ void CRenderQueue12::GenerateBarriersForRecording(const TaskResourceUsages& reso
 
 //------------------------------------------------------------------------------------------------
 // TIER 1: Update recording state after declaring resource usage
+// Now with per-subresource layout tracking
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::UpdateRecordingState(const TaskResourceUsages& resourceUsages)
 {
-    // Update texture states - linear forward propagation
+    // Update texture states - linear forward propagation with per-subresource layouts
     for (const auto& texUsage : resourceUsages.TextureUsages)
     {
         if (!texUsage.IsValid())
             continue;
         
         auto& state = m_RecordingResourceState[texUsage.pResource];
-        state.Layout = texUsage.RequiredLayout;
+        
+        // Update per-subresource layout tracking
+        state.TextureLayouts.SetLayout(texUsage.Subresources, texUsage.RequiredLayout);
+        
+        // Sync and Access are typically uniform across subresources
         state.Sync = texUsage.SyncForUsage;
         state.Access = texUsage.AccessForUsage;
     }

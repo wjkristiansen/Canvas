@@ -453,6 +453,112 @@ private:
 };
 
 //------------------------------------------------------------------------------------------------
+// Texture layout initialization descriptor
+// Used for batch setting initial texture layouts or queueing layout fixups
+//------------------------------------------------------------------------------------------------
+struct TextureLayout {
+    ID3D12Resource* pResource;
+    D3D12_BARRIER_LAYOUT layout;
+    UINT subresource; // 0xFFFFFFFF for all subresources, or a single subresource index
+};
+
+//------------------------------------------------------------------------------------------------
+// Builder pattern for texture layout initialization and fixups
+// Similar to TaskResourceUsageBuilder but for layout-only operations
+//------------------------------------------------------------------------------------------------
+class TextureLayoutBuilder
+{
+public:
+    // Primary method - explicitly specify resource, layout, and subresource
+    TextureLayoutBuilder& SetLayout(
+        ID3D12Resource* pResource,
+        D3D12_BARRIER_LAYOUT layout,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        m_layouts.push_back({ pResource, layout, subresource });
+        return *this;
+    }
+    
+    // Convenience: Set as shader resource layout
+    TextureLayoutBuilder& AsShaderResource(
+        ID3D12Resource* pResource,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, subresource);
+    }
+    
+    // Convenience: Set as unordered access layout
+    TextureLayoutBuilder& AsUnorderedAccess(
+        ID3D12Resource* pResource,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS, subresource);
+    }
+    
+    // Convenience: Set as render target layout
+    TextureLayoutBuilder& AsRenderTarget(
+        ID3D12Resource* pResource,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_RENDER_TARGET, subresource);
+    }
+    
+    // Convenience: Set as depth-stencil write layout
+    TextureLayoutBuilder& AsDepthStencilWrite(
+        ID3D12Resource* pResource,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, subresource);
+    }
+    
+    // Convenience: Set as depth-stencil read layout
+    TextureLayoutBuilder& AsDepthStencilRead(
+        ID3D12Resource* pResource,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ, subresource);
+    }
+    
+    // Convenience: Set as copy destination layout
+    TextureLayoutBuilder& AsCopyDest(
+        ID3D12Resource* pResource,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_COPY_DEST, subresource);
+    }
+    
+    // Convenience: Set as copy source layout
+    TextureLayoutBuilder& AsCopySource(
+        ID3D12Resource* pResource,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_COPY_SOURCE, subresource);
+    }
+    
+    // Convenience: Set as common layout
+    TextureLayoutBuilder& AsCommon(
+        ID3D12Resource* pResource,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_COMMON, subresource);
+    }
+    
+    // Convenience: Set as present layout
+    TextureLayoutBuilder& AsPresent(
+        ID3D12Resource* pResource,
+        UINT subresource = 0xFFFFFFFF)
+    {
+        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_PRESENT, subresource);
+    }
+    
+    const std::vector<TextureLayout>& Build() const { return m_layouts; }
+    std::vector<TextureLayout> Build() { return m_layouts; }
+
+private:
+    std::vector<TextureLayout> m_layouts;
+};
+
+//------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------
 // GPU synchronization point
 struct GpuSyncPoint
@@ -524,6 +630,11 @@ public:
     // New recording tasks must depend on this to maintain linear command order
     Canvas::TaskID m_LastCommandListTask = Canvas::NullTaskID;
     
+    // Dedicated command list for layout fixup barriers
+    // Reused across submissions to avoid allocating new command lists each frame
+    CComPtr<ID3D12CommandAllocator> m_pFixupCommandAllocator;  // Separate allocator required by D3D12
+    CComPtr<ID3D12GraphicsCommandList7> m_pFixupCommandList;   // CL7 required for Barrier() API
+    
     // Barrier accumulation (batched for efficient recording)
     std::vector<TextureBarrier> m_PendingTextureBarriers;
     std::vector<BufferBarrier> m_PendingBufferBarriers;
@@ -551,14 +662,11 @@ public:
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers) final;
     GEMMETHOD_(void, CopyBuffer)(Canvas::XGfxBuffer *pDest, Canvas::XGfxBuffer *pSource) final;
     GEMMETHOD_(void, ClearSurface)(Canvas::XGfxSurface *pSurface, const float Color[4]) final;
-    GEMMETHOD(Flush)() final;
     GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
-    GEMMETHOD(Wait)() final;
 
     // Internal functions
     CDevice12 *GetDevice() const { return m_pDevice; }
     ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
-    Gem::Result FlushImpl();
 
     D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
     
@@ -574,9 +682,20 @@ public:
         UINT64 fenceValue,
         Canvas::TaskID dependsOn = Canvas::NullTaskID);
     
-    // Submit command list to GPU (depends on all recording tasks)
+    // Submit command list with builder-style layout expectations
     Canvas::TaskID SubmitCommandList(
-        Canvas::TaskID dependsOn = Canvas::NullTaskID);
+        Canvas::TaskID dependsOn,
+        const TextureLayoutBuilder& expectedLayouts);
+
+    // Batch set initial layouts using builder
+    void UpdateTextureLayouts(const TextureLayoutBuilder& builder);
+    
+    // Record layout fixups using builder (preferred API)
+    void AddLayoutFixups(const TextureLayoutBuilder& builder);
+    
+    // DEPRECATED: Use TextureLayoutBuilder overload instead
+    [[deprecated("Use AddLayoutFixups(const TextureLayoutBuilder&) instead")]]
+    void AddLayoutFixups(const std::vector<TextureLayout>& expectedLayouts);
     
     // Schedule swap chain present operation as a task
     Canvas::TaskID SchedulePresent(
@@ -638,10 +757,26 @@ public:
     /// Get resource state snapshot for a specific resource (for debugging/analysis)
     struct ResourceStateSnapshot
     {
-        D3D12_BARRIER_LAYOUT CurrentLayout = D3D12_BARRIER_LAYOUT_COMMON;
+        // Layout information (may be uniform or per-subresource)
+        std::optional<D3D12_BARRIER_LAYOUT> UniformLayout;  // If all subresources have same layout
+        std::unordered_map<UINT, D3D12_BARRIER_LAYOUT> PerSubresourceLayouts;  // If mixed
+        
         Canvas::TaskID LastWriterTask = Canvas::NullTaskID;
         std::vector<Canvas::TaskID> RecentReaders;  // Last N readers for conflict analysis
         bool IsCurrentlyLocked = false;  // Locked for exclusive write access
+        
+        // Helper to get layout for a specific subresource (or 0xFFFFFFFF for uniform check)
+        D3D12_BARRIER_LAYOUT GetLayout(UINT subresource = 0xFFFFFFFF) const {
+            if (UniformLayout.has_value()) {
+                return UniformLayout.value();
+            }
+            if (subresource == 0xFFFFFFFF) {
+                // Requesting uniform but state is mixed - return COMMON as fallback
+                return D3D12_BARRIER_LAYOUT_COMMON;
+            }
+            auto it = PerSubresourceLayouts.find(subresource);
+            return (it != PerSubresourceLayouts.end()) ? it->second : D3D12_BARRIER_LAYOUT_COMMON;
+        }
     };
     
     ResourceStateSnapshot GetResourceState(ID3D12Resource* pResource) const;
@@ -650,6 +785,98 @@ public:
     void ProcessCompletedWork();
 
 private:
+    // Per-subresource layout tracking for textures
+    // Stores individual subresource layouts OR a single "all subresources" layout
+    //
+    // DESIGN RATIONALE:
+    // - Textures can have multiple subresources (mip levels, array slices, planes)
+    // - Each subresource can be in a different layout independently
+    // - Common case: all subresources share the same layout (memory efficient)
+    // - Complex case: subresources have different layouts (requires per-subresource tracking)
+    //
+    // EXAMPLE SCENARIOS:
+    // 1. Uniform layout (optimal):
+    //    - Texture created with all subresources in COMMON
+    //    - Transition all to SHADER_RESOURCE → single barrier, stays uniform
+    //
+    // 2. Mixed layouts (requires careful handling):
+    //    - Start: All 4 mips in COMMON (uniform)
+    //    - Transition mip 0 to RENDER_TARGET → splits to per-subresource (mip0=RT, mip1-3=COMMON)
+    //    - Later transition mip 0 to SHADER_RESOURCE → still per-subresource (mip0=SR, mip1-3=COMMON)
+    //    - Finally transition ALL to COMMON → collapses back to uniform (all=COMMON)
+    //
+    // 3. Invalid transition detection:
+    //    - If mip 0 is RENDER_TARGET but mips 1-3 are COMMON
+    //    - Attempt to transition ALL from SHADER_RESOURCE fails (not all in SHADER_RESOURCE)
+    //    - AddLayoutFixups will generate individual barriers for each subresource's actual state
+    //
+    struct SubresourceLayoutState {
+        // If uniformLayout is set, all subresources share this layout (common case, memory efficient)
+        // If not set, perSubresourceLayouts contains individual subresource states
+        std::optional<D3D12_BARRIER_LAYOUT> uniformLayout;
+        std::unordered_map<UINT, D3D12_BARRIER_LAYOUT> perSubresourceLayouts;
+        
+        // Get layout for a specific subresource (or 0xFFFFFFFF for all)
+        D3D12_BARRIER_LAYOUT GetLayout(UINT subresource) const
+        {
+            if (uniformLayout.has_value())
+            {
+                return uniformLayout.value();
+            }
+            auto it = perSubresourceLayouts.find(subresource);
+            return (it != perSubresourceLayouts.end()) ? it->second : D3D12_BARRIER_LAYOUT_COMMON;
+        }
+        
+        // Set layout for specific subresource(s)
+        void SetLayout(UINT subresource, D3D12_BARRIER_LAYOUT layout)
+        {
+            if (subresource == 0xFFFFFFFF)
+            {
+                // Setting all subresources - collapse to uniform layout
+                uniformLayout = layout;
+                perSubresourceLayouts.clear();
+            }
+            else
+            {
+                // Setting individual subresource
+                if (uniformLayout.has_value())
+                {
+                    // Split uniform layout into per-subresource tracking
+                    // Note: We don't know total subresource count here, so we'll track on-demand
+                    uniformLayout.reset();
+                }
+                perSubresourceLayouts[subresource] = layout;
+            }
+        }
+        
+        // Check if all tracked subresources have the same layout (can collapse to uniform)
+        bool CanCollapseToUniform(D3D12_BARRIER_LAYOUT& outLayout) const
+        {
+            if (uniformLayout.has_value())
+            {
+                outLayout = uniformLayout.value();
+                return true;
+            }
+            if (perSubresourceLayouts.empty())
+            {
+                outLayout = D3D12_BARRIER_LAYOUT_COMMON;
+                return true;
+            }
+            // Check if all per-subresource layouts match
+            D3D12_BARRIER_LAYOUT firstLayout = perSubresourceLayouts.begin()->second;
+            for (const auto& [sub, layout] : perSubresourceLayouts)
+            {
+                if (layout != firstLayout) return false;
+            }
+            outLayout = firstLayout;
+            return true;
+        }
+    };
+    
+    // Tracks the current layout of each texture's subresources after resource creation and command list execution
+    std::unordered_map<ID3D12Resource*, SubresourceLayoutState> m_TextureCurrentLayouts;
+    // Pending texture barriers to be batched into a single fixup command list at submission
+    std::vector<D3D12_TEXTURE_BARRIER> m_PendingLayoutFixupBarriers;
     //---------------------------------------------------------------------------------------------
     // Resource usage tracking and barrier generation internals
     //---------------------------------------------------------------------------------------------
@@ -673,9 +900,32 @@ private:
     // TIER 1: Command Buffer Recording State (Linear, CPU timeline)
     // Tracks layout/sync/access during command buffer recording.
     // State flows forward linearly as commands are recorded.
+    // For textures, uses per-subresource tracking (same as submission-time tracking)
+    //
+    // CRITICAL: Per-subresource tracking applies at BOTH recording and submission time!
+    //
+    // WHY PER-SUBRESOURCE TRACKING MATTERS:
+    // - Textures can have independent subresource layout transitions
+    // - Recording: Commands can render to mip 0 while keeping mips 1-3 in different layouts
+    // - Submission: Fixups must respect actual per-subresource states when queuing barriers
+    // - Invalid to assume all subresources share the same layout
+    //
+    // EXAMPLE (recording time):
+    //   RecordCommands(usages.TextureAsRenderTarget(tex, mip=0))      // mip 0: COMMON → RT
+    //   RecordCommands(usages.TextureAsShaderResource(tex, mip=1))    // mip 1: COMMON → SR
+    //   RecordCommands(usages.TextureAsRenderTarget(tex, mip=0))      // mip 0: RT → RT (no barrier)
+    //   RecordCommands(usages.TextureAsShaderResource(tex, all))      // Per-subresource barriers:
+    //                                                                  //   mip 0: RT → SR
+    //                                                                  //   mip 1: SR → SR (skip)
+    //                                                                  //   mip 2,3: COMMON → SR
+    //
     struct RecordingResourceState
     {
-        D3D12_BARRIER_LAYOUT Layout = D3D12_BARRIER_LAYOUT_COMMON;
+        // For textures: per-subresource layout tracking
+        SubresourceLayoutState TextureLayouts;
+        
+        // For all resources: sync and access tracking
+        // Note: Sync/Access are typically uniform across subresources during recording
         D3D12_BARRIER_SYNC Sync = D3D12_BARRIER_SYNC_NONE;
         D3D12_BARRIER_ACCESS Access = D3D12_BARRIER_ACCESS_NO_ACCESS;
     };
