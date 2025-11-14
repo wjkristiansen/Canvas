@@ -9,6 +9,7 @@
 
 #include <windows.h>
 #include <d3d12.h>
+#include <d3dx12/d3dx12.h>
 #include <atlbase.h>
 #include <comdef.h>
 
@@ -17,7 +18,6 @@
 #include "CppUnitTest.h"
 #include "CanvasMath.hpp"
 #include "CanvasCore.h"
-#include "d3dx12.h"
 
 using namespace Canvas;
 using namespace Gem;

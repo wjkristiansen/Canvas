@@ -94,7 +94,7 @@ namespace CanvasUnitTest
             FloatVector4 a(1 * g_mul, 2 * g_mul, 3 * g_mul, 4 * g_mul);
             FloatVector4 b(.1f * g_mul, .2f * g_mul, .3f * g_mul, .4f * g_mul);
             FloatVector4 c = Mul(a, b);
-            Assert::IsTrue(AlmostEqual(c, FloatVector4(.1, .4, .9, 1.6)));
+            Assert::IsTrue(AlmostEqual(c, FloatVector4(.1f, .4f, .9f, 1.6f)));
         }
 
         TEST_METHOD(SimpleMatrices)
@@ -151,7 +151,7 @@ namespace CanvasUnitTest
 
             for (unsigned int i = 0; i < _countof(fv); ++i)
             {
-                auto nv = NormalizeVector(fv[i]);
+                auto nv = fv[i].Normalize();
             
                 // Verify the magnitude is nearly 1.0f
                 float magsq = DotProduct(nv, nv);
@@ -168,7 +168,7 @@ namespace CanvasUnitTest
 
             for (unsigned int i = 0; i < _countof(dv); ++i)
             {
-                auto nv = NormalizeVector(dv[i]);
+                auto nv = dv[i].Normalize();
             
                 // Verify the magnitude is nearly 1.0f
                 double magsq = DotProduct(nv, nv);
@@ -185,35 +185,35 @@ namespace CanvasUnitTest
             static const auto Rows = MatrixType::Rows;
             static const auto Columns = MatrixType::Columns;
 
-            MatrixType rx = XRotationMatrix<ElementType>(g_PI / 2);
+            MatrixType rx = XRotationMatrix<ElementType>(float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, -1, 0)));
             Assert::IsTrue(AlmostEqual(rx[2], VecType(0, 1, 0, 0)));
 
-            rx = XRotationMatrix<ElementType>(-g_PI / 2);
+            rx = XRotationMatrix<ElementType>(-float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(rx[1], VecType(0, 0, 1, 0)));
             Assert::IsTrue(AlmostEqual(rx[2], VecType(0, -1, 0, 0)));
 
-            MatrixType ry = YRotationMatrix<ElementType>(g_PI / 2);
+            MatrixType ry = YRotationMatrix<ElementType>(float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, 1, 0)));
             Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0, 0)));
             Assert::IsTrue(AlmostEqual(ry[2], VecType(-1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
-            ry = YRotationMatrix<ElementType>(-g_PI / 2);
+            ry = YRotationMatrix<ElementType>(-float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(ry[0], VecType(0, 0, -1, 0)));
             Assert::IsTrue(AlmostEqual(ry[1], VecType(0, 1, 0, 0)));
             Assert::IsTrue(AlmostEqual(ry[2], VecType(1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
-            MatrixType rz = ZRotationMatrix<ElementType>(g_PI / 2);
+            MatrixType rz = ZRotationMatrix<ElementType>(float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(rz[0], VecType(0, -1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[1], VecType(1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1, 0)));
             Assert::IsTrue(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
-            rz = ZRotationMatrix<ElementType>(-g_PI / 2);
+            rz = ZRotationMatrix<ElementType>(-float(g_PI) / 2);
             Assert::IsTrue(AlmostEqual(rz[0], VecType(0, 1, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[1], VecType(-1, 0, 0, 0)));
             Assert::IsTrue(AlmostEqual(rz[2], VecType(0, 0, 1, 0)));
@@ -222,51 +222,170 @@ namespace CanvasUnitTest
 
         TEST_METHOD(LookAt)
         {
-            // Simulate a "LookAt" transform with world-up as the world Z-axis and
-            // Camera-up as the camera-local Y-axis and camera-forward as the
-            // negative camera-local Z-axis
+            // ComposePointToBasisVectors is a general utility that works with any coordinate system.
+            // It computes: basisSideVector = WorldUp × ForwardVector, basisUpVector = ForwardVector × basisSideVector
+            // This test verifies the math works correctly regardless of camera conventions.
+            
             auto WorldUp = FloatVector3(0, 0, 1); // World-up is the world Z-axis
             FloatMatrix3x3 M;
-            M[2] = FloatVector3(0, 1, 0); // Camera looks in the -Y direction (this is a backward vector)
-            ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
+            
+            // Test case 1: Forward vector pointing in -Y direction
+            auto forward1 = FloatVector3(0, -1, 0);
+            ComposePointToBasisVectors(WorldUp, forward1, M[0], M[1]);
+            M[2] = forward1;
 
+            // Expected:
+            // side = WorldUp × forward = (0,0,1) × (0,-1,0) = (1,0,0)
+            // up = forward × side = (0,-1,0) × (1,0,0) = (0,0,1)
             Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
                 {
-                    {-1, 0, 0},
-                    {0, 0, 1},
-                    {0, 1, 0},
+                    {1, 0, 0},     // side
+                    {0, 0, 1},     // up  
+                    {0, -1, 0},    // forward
                 }
             )));
 
             
-            // Degenerate cases:
+            // Degenerate case 1: Forward vector aligned with world-up
+            auto forward2 = FloatVector3(0, 0, 1);
+            ComposePointToBasisVectors(WorldUp, forward2, M[0], M[1]);
+            M[2] = forward2;
 
-            // Should use default out-vector
-            M[2] = FloatVector3(0, 0, 1); // Camera looks in the -Z direction
-            ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
-
-            // Assume camera-up aligns with the Y-axis
+            // When forward is parallel to WorldUp, function picks an arbitrary perpendicular side vector
             Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
                 {
-                    {1, 0, 0},
-                    {0, 1, 0},
-                    {0, 0, 1},
+                    {1, 0, 0},     // side (arbitrary perpendicular)
+                    {0, 1, 0},     // up (perpendicular to forward and side)
+                    {0, 0, 1},     // forward
                 }
             )));
 
-            // Look straight up (gimbal lock).
-            // Should use default out-vector
-            M[2] = FloatVector3(0, 0, -1); // Camera looks in the +Z direction
-            ComposeLookBasisVectors(WorldUp, M[2], M[0], M[1]);
+            // Degenerate case 2: Forward vector anti-parallel to world-up
+            auto forward3 = FloatVector3(0, 0, -1);
+            ComposePointToBasisVectors(WorldUp, forward3, M[0], M[1]);
+            M[2] = forward3;
 
-            // Assume camera-up aligns with the Y-axis
+            // When forward is anti-parallel to WorldUp, function picks an arbitrary perpendicular side vector (flipped)
+            // side = (-1, 0, 0) from function's formula: (-localUp[2], localUp[0], -localUp[1])
+            // up = forward × side = (0,0,-1) × (-1,0,0) = (0, 1, 0)
             Assert::IsTrue(AlmostEqual(M, FloatMatrix3x3(
                 {
-                    {-1, 0, 0},
-                    {0, 1, 0},
-                    {0, 0, -1},
+                    {-1, 0, 0},    // side (arbitrary perpendicular, negative)
+                    {0, 1, 0},     // up (perpendicular to forward and side)
+                    {0, 0, -1},    // forward
                 }
             )));
+        }
+
+        TEST_METHOD(LookAtArbitraryBasis)
+        {
+            // Test ComposeArbitraryPointToBasisVectors which automatically selects
+            // a reference up vector based on the forward vector
+            FloatVector3 side, up;
+            
+            // Test case 1: Forward pointing in +X direction
+            // Should choose Y or Z as reference (whichever is less aligned)
+            auto forward1 = FloatVector3(1, 0, 0);
+            ComposeArbitraryPointToBasisVectors(forward1, side, up);
+            
+            // Verify orthonormality
+            Assert::IsTrue(AlmostZero(DotProduct(forward1, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward1, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float len1 = DotProduct(forward1, forward1);
+            Assert::IsTrue(AlmostZero(len1 - 1.0f));
+            float lenSide1 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide1 - 1.0f));
+            float lenUp1 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp1 - 1.0f));
+            
+            // Verify right-handedness: forward × side = up
+            auto computedUp = CrossProduct(forward1, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 2: Forward pointing in +Y direction
+            auto forward2 = FloatVector3(0, 1, 0);
+            ComposeArbitraryPointToBasisVectors(forward2, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward2, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward2, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide2 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide2 - 1.0f));
+            float lenUp2 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp2 - 1.0f));
+            computedUp = CrossProduct(forward2, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 3: Forward pointing in +Z direction
+            auto forward3 = FloatVector3(0, 0, 1);
+            ComposeArbitraryPointToBasisVectors(forward3, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward3, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward3, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide3 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide3 - 1.0f));
+            float lenUp3 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp3 - 1.0f));
+            computedUp = CrossProduct(forward3, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 4: Forward pointing in -X direction
+            auto forward4 = FloatVector3(-1, 0, 0);
+            ComposeArbitraryPointToBasisVectors(forward4, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward4, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward4, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide4 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide4 - 1.0f));
+            float lenUp4 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp4 - 1.0f));
+            computedUp = CrossProduct(forward4, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 5: Arbitrary diagonal direction
+            auto forward5 = FloatVector3(1, 1, 1).Normalize();
+            ComposeArbitraryPointToBasisVectors(forward5, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward5, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward5, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide5 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide5 - 1.0f));
+            float lenUp5 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp5 - 1.0f));
+            computedUp = CrossProduct(forward5, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 6: Another arbitrary direction
+            auto forward6 = FloatVector3(0.6f, -0.8f, 0).Normalize();
+            ComposeArbitraryPointToBasisVectors(forward6, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward6, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward6, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide6 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide6 - 1.0f));
+            float lenUp6 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp6 - 1.0f));
+            computedUp = CrossProduct(forward6, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
+            
+            // Test case 7: Near-axis aligned (stress test)
+            auto forward7 = FloatVector3(0.0001f, 0.9999f, 0).Normalize();
+            ComposeArbitraryPointToBasisVectors(forward7, side, up);
+            
+            Assert::IsTrue(AlmostZero(DotProduct(forward7, side)));
+            Assert::IsTrue(AlmostZero(DotProduct(forward7, up)));
+            Assert::IsTrue(AlmostZero(DotProduct(side, up)));
+            float lenSide7 = DotProduct(side, side);
+            Assert::IsTrue(AlmostZero(lenSide7 - 1.0f));
+            float lenUp7 = DotProduct(up, up);
+            Assert::IsTrue(AlmostZero(lenUp7 - 1.0f));
+            computedUp = CrossProduct(forward7, side);
+            Assert::IsTrue(AlmostEqual(computedUp, up));
         }
 
         TEST_METHOD(BasicQuaternion)
@@ -332,14 +451,520 @@ namespace CanvasUnitTest
                             auto Ident = R * InvR;
                             Assert::IsTrue(AlmostEqual(Ident, DoubleQuaternion(0, 0, 0, 1)));
 
-                            // Quaternion transform
-                            auto VByQ = R * V * InvR;
+                            // Quaternion transform - convert vector to quaternion with w=0
+                            DoubleQuaternion VQuat(V.X, V.Y, V.Z, 0);
+                            auto VByQ = R * VQuat * InvR;
 
-                            Assert::IsTrue(AlmostEqual(VByM, VByQ.Q));
+                            Assert::IsTrue(AlmostEqual(VByM, VByQ));
                         }
                     }
                 }
             }
+        }
+
+        TEST_METHOD(VectorUnaryMinus)
+        {
+            IntVector3 v1(1, -2, 3);
+            IntVector3 v2 = -v1;
+            Assert::IsTrue(v2 == IntVector3(-1, 2, -3));
+
+            FloatVector4 v3(1.5f, -2.5f, 3.5f, -4.5f);
+            FloatVector4 v4 = -v3;
+            Assert::IsTrue(AlmostEqual(v4, FloatVector4(-1.5f, 2.5f, -3.5f, 4.5f)));
+        }
+
+        TEST_METHOD(VectorInequalityAndDivision)
+        {
+            IntVector3 v1(1, 2, 3);
+            IntVector3 v2(1, 2, 3);
+            IntVector3 v3(1, 2, 4);
+            
+            Assert::IsFalse(v1 != v2);
+            Assert::IsTrue(v1 != v3);
+
+            FloatVector4 v4(10.0f, 20.0f, 30.0f, 40.0f);
+            FloatVector4 v5(2.0f, 4.0f, 5.0f, 8.0f);
+            auto v6 = v4 / v5;
+            Assert::IsTrue(AlmostEqual(v6, FloatVector4(5.0f, 5.0f, 6.0f, 5.0f)));
+        }
+
+        TEST_METHOD(VectorSumTest)
+        {
+            IntVector4 v1(1, 2, 3, 4);
+            int sum = VectorSum(v1);
+            Assert::AreEqual(10, sum);
+
+            FloatVector3 v2(1.5f, 2.5f, 3.0f);
+            float fsum = VectorSum(v2);
+            Assert::IsTrue(AlmostZero(fsum - 7.0f));
+        }
+
+        TEST_METHOD(MatrixScalarMultiplication)
+        {
+            FloatMatrix3x3 m1({
+                {1.0f, 2.0f, 3.0f},
+                {4.0f, 5.0f, 6.0f},
+                {7.0f, 8.0f, 9.0f}
+            });
+
+            auto m2 = m1 * 2.0f;
+            auto m3 = 2.0f * m1;
+            
+            FloatMatrix3x3 expected({
+                {2.0f, 4.0f, 6.0f},
+                {8.0f, 10.0f, 12.0f},
+                {14.0f, 16.0f, 18.0f}
+            });
+
+            Assert::IsTrue(AlmostEqual(m2, expected));
+            Assert::IsTrue(AlmostEqual(m3, expected));
+        }
+
+        TEST_METHOD(AllRotationMatrixOrders)
+        {
+            float angleX = float(g_PI) / 6.0f;  // 30 degrees
+            float angleY = float(g_PI) / 4.0f;  // 45 degrees
+            float angleZ = float(g_PI) / 3.0f;  // 60 degrees
+
+            // Test XYZRotationMatrix
+            auto mXYZ = XYZRotationMatrix(angleX, angleY, angleZ);
+            auto mXYZ_manual = ZRotationMatrix(angleZ) * YRotationMatrix(angleY) * XRotationMatrix(angleX);
+            Assert::IsTrue(AlmostEqual(mXYZ, mXYZ_manual));
+
+            // Test XZYRotationMatrix
+            auto mXZY = XZYRotationMatrix(angleX, angleZ, angleY);
+            auto mXZY_manual = YRotationMatrix(angleY) * ZRotationMatrix(angleZ) * XRotationMatrix(angleX);
+            Assert::IsTrue(AlmostEqual(mXZY, mXZY_manual));
+
+            // Test YXZRotationMatrix
+            auto mYXZ = YXZRotationMatrix(angleY, angleX, angleZ);
+            auto mYXZ_manual = ZRotationMatrix(angleZ) * XRotationMatrix(angleX) * YRotationMatrix(angleY);
+            Assert::IsTrue(AlmostEqual(mYXZ, mYXZ_manual));
+
+            // Test YZXRotationMatrix
+            auto mYZX = YZXRotationMatrix(angleY, angleZ, angleX);
+            auto mYZX_manual = XRotationMatrix(angleX) * ZRotationMatrix(angleZ) * YRotationMatrix(angleY);
+            Assert::IsTrue(AlmostEqual(mYZX, mYZX_manual));
+
+            // Test ZXYRotationMatrix
+            auto mZXY = ZXYRotationMatrix(angleZ, angleX, angleY);
+            auto mZXY_manual = YRotationMatrix(angleY) * XRotationMatrix(angleX) * ZRotationMatrix(angleZ);
+            Assert::IsTrue(AlmostEqual(mZXY, mZXY_manual));
+
+            // Test ZYXRotationMatrix
+            auto mZYX = ZYXRotationMatrix(angleZ, angleY, angleX);
+            auto mZYX_manual = XRotationMatrix(angleX) * YRotationMatrix(angleY) * ZRotationMatrix(angleZ);
+            Assert::IsTrue(AlmostEqual(mZYX, mZYX_manual));
+        }
+
+        TEST_METHOD(QuaternionFromEulerAngles)
+        {
+            float angleX = float(g_PI) / 6.0f;
+            float angleY = float(g_PI) / 4.0f;
+            float angleZ = float(g_PI) / 3.0f;
+
+            // Test FromEulerXYZ
+            auto qXYZ = FloatQuaternion::FromEulerXYZ(angleX, angleY, angleZ);
+            auto mXYZ = XYZRotationMatrix(angleX, angleY, angleZ);
+            auto mFromQuat = QuaternionToRotationMatrix(qXYZ);
+            Assert::IsTrue(AlmostEqual(mXYZ, mFromQuat));
+
+            // Test FromEulerXZY
+            auto qXZY = FloatQuaternion::FromEulerXZY(angleX, angleZ, angleY);
+            auto mXZY = XZYRotationMatrix(angleX, angleZ, angleY);
+            mFromQuat = QuaternionToRotationMatrix(qXZY);
+            Assert::IsTrue(AlmostEqual(mXZY, mFromQuat));
+
+            // Test FromEulerYXZ
+            auto qYXZ = FloatQuaternion::FromEulerYXZ(angleY, angleX, angleZ);
+            auto mYXZ = YXZRotationMatrix(angleY, angleX, angleZ);
+            mFromQuat = QuaternionToRotationMatrix(qYXZ);
+            Assert::IsTrue(AlmostEqual(mYXZ, mFromQuat));
+
+            // Test FromEulerYZX
+            auto qYZX = FloatQuaternion::FromEulerYZX(angleY, angleZ, angleX);
+            auto mYZX = YZXRotationMatrix(angleY, angleZ, angleX);
+            mFromQuat = QuaternionToRotationMatrix(qYZX);
+            Assert::IsTrue(AlmostEqual(mYZX, mFromQuat));
+
+            // Test FromEulerZXY
+            auto qZXY = FloatQuaternion::FromEulerZXY(angleZ, angleX, angleY);
+            auto mZXY = ZXYRotationMatrix(angleZ, angleX, angleY);
+            mFromQuat = QuaternionToRotationMatrix(qZXY);
+            Assert::IsTrue(AlmostEqual(mZXY, mFromQuat));
+
+            // Test FromEulerZYX
+            auto qZYX = FloatQuaternion::FromEulerZYX(angleZ, angleY, angleX);
+            auto mZYX = ZYXRotationMatrix(angleZ, angleY, angleX);
+            mFromQuat = QuaternionToRotationMatrix(qZYX);
+            Assert::IsTrue(AlmostEqual(mZYX, mFromQuat));
+        }
+
+        TEST_METHOD(QuaternionScaledAxisAngle)
+        {
+            // Test round-trip conversion
+            FloatVector3 axis1(1.0f, 0.0f, 0.0f);
+            float angle1 = float(g_PI) / 4.0f;
+            FloatVector3 scaledAxis1(axis1.X * angle1, axis1.Y * angle1, axis1.Z * angle1);
+            
+            auto q1 = FloatQuaternion::FromScaledAxisAngle(scaledAxis1);
+            auto result1 = q1.ToScaledAxisAngle();
+            Assert::IsTrue(AlmostEqual(scaledAxis1, result1));
+
+            // Test with arbitrary axis
+            FloatVector3 axis2(1.0f, 2.0f, 3.0f);
+            float angle2 = float(g_PI) / 3.0f;
+            float len = std::sqrt(axis2.X * axis2.X + axis2.Y * axis2.Y + axis2.Z * axis2.Z);
+            axis2 = axis2 * (1.0f / len); // normalize
+            FloatVector3 scaledAxis2(axis2.X * angle2, axis2.Y * angle2, axis2.Z * angle2);
+            
+            auto q2 = FloatQuaternion::FromScaledAxisAngle(scaledAxis2);
+            auto result2 = q2.ToScaledAxisAngle();
+            Assert::IsTrue(AlmostEqual(scaledAxis2, result2));
+
+            // Test zero rotation
+            FloatVector3 scaledAxis3(0.0f, 0.0f, 0.0f);
+            auto q3 = FloatQuaternion::FromScaledAxisAngle(scaledAxis3);
+            Assert::IsTrue(AlmostEqual(q3, IdentityQuaternion<float>()));
+        }
+
+        TEST_METHOD(QuaternionMultiplication)
+        {
+            // Test that quaternion multiplication follows the expected composition
+            float angle1 = float(g_PI) / 4.0f;
+            float angle2 = float(g_PI) / 3.0f;
+            
+            auto qX = FloatQuaternion::FromEulerXYZ(angle1, 0.0f, 0.0f);
+            auto qY = FloatQuaternion::FromEulerXYZ(0.0f, angle2, 0.0f);
+            
+            // Quaternion multiplication
+            auto qResult = qY * qX;
+            
+            // Equivalent matrix multiplication
+            auto mX = XRotationMatrix(angle1);
+            auto mY = YRotationMatrix(angle2);
+            auto mResult = mY * mX;
+            
+            // Convert quaternion result to matrix
+            auto mFromQuat = QuaternionToRotationMatrix(qResult);
+            
+            Assert::IsTrue(AlmostEqual(mResult, mFromQuat));
+
+            // Test identity property
+            auto qIdentity = IdentityQuaternion<float>();
+            auto qTest = FloatQuaternion::FromEulerXYZ(0.1f, 0.2f, 0.3f);
+            auto qResult1 = qIdentity * qTest;
+            auto qResult2 = qTest * qIdentity;
+            Assert::IsTrue(AlmostEqual(qTest, qResult1));
+            Assert::IsTrue(AlmostEqual(qTest, qResult2));
+        }
+
+        TEST_METHOD(QuaternionRotateVector)
+        {
+            // Create a 90-degree rotation about the Z-axis
+            float angle = float(g_PI) / 2.0f;
+            auto qZ = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, angle);
+            
+            // Rotate a vector using quaternion multiplication: q * v * q*
+            FloatVector4 v1(1.0f, 0.0f, 0.0f, 0.0f);
+            FloatQuaternion vQuat1(v1.X, v1.Y, v1.Z, 0.0f);
+            auto qConj = Conjugate(qZ);
+            auto rotated = qZ * vQuat1 * qConj;
+            
+            // Should point along Y-axis
+            Assert::IsTrue(AlmostEqual(rotated, FloatVector4(0.0f, 1.0f, 0.0f, 0.0f)));
+
+            // Test 90-degree rotation about X-axis
+            auto qX = FloatQuaternion::FromEulerXYZ(angle, 0.0f, 0.0f);
+            FloatVector4 v2(0.0f, 1.0f, 0.0f, 0.0f);
+            FloatQuaternion vQuat2(v2.X, v2.Y, v2.Z, 0.0f);
+            auto qConjX = Conjugate(qX);
+            auto rotated2 = qX * vQuat2 * qConjX;
+            
+            // Should point along Z-axis
+            Assert::IsTrue(AlmostEqual(rotated2, FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
+        }
+
+        TEST_METHOD(CrossProductFloatVector4)
+        {
+            // Test the specialized FloatVector4 cross product
+            FloatVector4 a(1.0f, 0.0f, 0.0f, 0.0f);
+            FloatVector4 b(0.0f, 1.0f, 0.0f, 0.0f);
+            
+            auto c = CrossProduct(a, b);
+            Assert::IsTrue(AlmostEqual(c, FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
+
+            // Test arbitrary vectors
+            FloatVector4 v1(2.0f, 3.0f, 4.0f, 0.0f);
+            FloatVector4 v2(5.0f, 6.0f, 7.0f, 0.0f);
+            auto v3 = CrossProduct(v1, v2);
+            
+            // Cross product formula: (a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x)
+            FloatVector4 expected(3.0f*7.0f - 4.0f*6.0f, 4.0f*5.0f - 2.0f*7.0f, 2.0f*6.0f - 3.0f*5.0f, 0.0f);
+            Assert::IsTrue(AlmostEqual(v3, expected));
+        }
+
+        TEST_METHOD(AABBTests)
+        {
+            // Test default constructor creates invalid box
+            AABB box1;
+            Assert::IsFalse(box1.IsValid());
+
+            // Test valid constructor
+            AABB box2(FloatVector4(0.0f, 0.0f, 0.0f, 0.0f), FloatVector4(1.0f, 1.0f, 1.0f, 0.0f));
+            Assert::IsTrue(box2.IsValid());
+
+            // Test center and extents
+            auto center = box2.GetCenter();
+            auto extents = box2.GetExtents();
+            Assert::IsTrue(AlmostEqual(center, FloatVector4(0.5f, 0.5f, 0.5f, 0.0f)));
+            Assert::IsTrue(AlmostEqual(extents, FloatVector4(0.5f, 0.5f, 0.5f, 0.0f)));
+
+            // Test ExpandToInclude with point
+            AABB box3;
+            box3.ExpandToInclude(FloatVector4(1.0f, 2.0f, 3.0f, 0.0f));
+            Assert::IsTrue(box3.IsValid());
+            box3.ExpandToInclude(FloatVector4(4.0f, 5.0f, 6.0f, 0.0f));
+            Assert::IsTrue(AlmostEqual(box3.Min, FloatVector4(1.0f, 2.0f, 3.0f, 0.0f)));
+            Assert::IsTrue(AlmostEqual(box3.Max, FloatVector4(4.0f, 5.0f, 6.0f, 0.0f)));
+
+            // Test ExpandToInclude with another AABB
+            AABB box4(FloatVector4(0.0f, 0.0f, 0.0f, 0.0f), FloatVector4(2.0f, 2.0f, 2.0f, 0.0f));
+            AABB box5(FloatVector4(1.0f, 1.0f, 1.0f, 0.0f), FloatVector4(3.0f, 3.0f, 3.0f, 0.0f));
+            box4.ExpandToInclude(box5);
+            Assert::IsTrue(AlmostEqual(box4.Min, FloatVector4(0.0f, 0.0f, 0.0f, 0.0f)));
+            Assert::IsTrue(AlmostEqual(box4.Max, FloatVector4(3.0f, 3.0f, 3.0f, 0.0f)));
+
+            // Test Reset
+            box4.Reset();
+            Assert::IsFalse(box4.IsValid());
+        }
+
+        TEST_METHOD(QuaternionNormalize)
+        {
+            // Test that normalize works correctly
+            FloatQuaternion q1(0.5f, 0.5f, 0.5f, 0.5f);
+            auto qn = q1.Normalize();
+            
+            // Should be unit length
+            float len = DotProduct(qn, qn);
+            Assert::IsTrue(AlmostZero(len - 1.0f));
+
+            // Test already normalized quaternion
+            auto qIdentity = IdentityQuaternion<float>();
+            auto qIdentityNorm = qIdentity.Normalize();
+            Assert::IsTrue(AlmostEqual(qIdentity, qIdentityNorm));
+        }
+
+        TEST_METHOD(QuaternionConjugate)
+        {
+            FloatQuaternion q(0.1f, 0.2f, 0.3f, 0.9f);
+            auto qConj = Conjugate(q);
+            
+            Assert::IsTrue(AlmostEqual(qConj, FloatQuaternion(-0.1f, -0.2f, -0.3f, 0.9f)));
+
+            // Test that q * conjugate(q) = identity for unit quaternions
+            auto qNorm = q.Normalize();
+            auto qConjNorm = Conjugate(qNorm);
+            auto result = qNorm * qConjNorm;
+            Assert::IsTrue(AlmostEqual(result, IdentityQuaternion<float>()));
+        }
+
+        TEST_METHOD(VectorMatrixMultiplication)
+        {
+            // Test vector * matrix (row vector)
+            FloatVector3 v(1.0f, 2.0f, 3.0f);
+            FloatMatrix3x3 m({
+                {1.0f, 0.0f, 0.0f},
+                {0.0f, 2.0f, 0.0f},
+                {0.0f, 0.0f, 3.0f}
+            });
+            
+            auto result = v * m;
+            Assert::IsTrue(AlmostEqual(result, FloatVector3(1.0f, 4.0f, 9.0f)));
+
+            // Test matrix * vector (column vector)
+            auto result2 = m * v;
+            Assert::IsTrue(AlmostEqual(result2, FloatVector3(1.0f, 4.0f, 9.0f)));
+        }
+
+        TEST_METHOD(MatrixIdentity)
+        {
+            // Test static Identity() method
+            auto m2 = FloatMatrix2x2::Identity();
+            Assert::AreEqual(1.0f, m2[0][0]);
+            Assert::AreEqual(0.0f, m2[0][1]);
+            Assert::AreEqual(0.0f, m2[1][0]);
+            Assert::AreEqual(1.0f, m2[1][1]);
+
+            auto m3 = FloatMatrix3x3::Identity();
+            Assert::IsTrue(AlmostEqual(m3, IdentityMatrix<float, 3, 3>()));
+
+            auto m4 = FloatMatrix4x4::Identity();
+            Assert::IsTrue(AlmostEqual(m4, IdentityMatrix<float, 4, 4>()));
+        }
+
+        TEST_METHOD(PerspectiveReverseZBasic)
+        {
+            // Test basic reverse-Z perspective matrix properties
+            // RHS: +X=forward, +Y=left, +Z=up
+            float fovY = static_cast<float>(g_PI / 4.0);  // 45 degrees
+            float aspect = 16.0f / 9.0f;
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+
+            auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
+
+            // Check matrix elements for row-vector multiplication
+            // [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
+            Assert::IsTrue(proj[0][1] != 0.0f);  // Y(left) → X_clip scaling (-f/aspect)
+            Assert::IsTrue(proj[1][2] != 0.0f);  // Z(up) → Y_clip scaling (f)
+            Assert::IsTrue(proj[2][0] != 0.0f);  // X(forward) → Z_clip scaling
+            Assert::IsTrue(proj[2][3] == 1.0f);  // W projection coefficient (perspective divide by x_cam)
+
+            // Verify f = cot(fovY/2)
+            float f = 1.0f / std::tan(fovY * 0.5f);
+            Assert::IsTrue(std::abs(proj[0][1] - (-f / aspect)) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[1][2] - f) < FLT_EPSILON);
+        }
+
+        TEST_METHOD(PerspectiveReverseZDepthMapping)
+        {
+            // Test reverse-Z perspective matrix generates correct depth coefficients
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 16.0f / 9.0f;
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+
+            auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
+
+            // Verify the matrix has the correct structure for reverse-Z
+            // M[2][0] should be non-zero (depth scaling from x_cam)
+            // M[3][0] should be non-zero (depth translation constant)
+            Assert::IsTrue(proj[2][0] != 0.0f);
+            Assert::IsTrue(proj[3][0] != 0.0f);
+            
+            // M[2][0] should equal farPlane / (nearPlane - farPlane)
+            // M[3][0] should equal (nearPlane * farPlane) / (nearPlane - farPlane)
+            float rangeInv = 1.0f / (nearPlane - farPlane);
+            Assert::IsTrue(std::abs(proj[2][0] - farPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[3][0] - nearPlane * farPlane * rangeInv) < FLT_EPSILON);
+        }
+
+        TEST_METHOD(PerspectiveReverseZCoordinateTransform)
+        {
+            // Test coordinate system transformation: X_in(forward)→Z_clip, Y_in(left)→-X_clip, Z_in(up)→Y_clip
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 1.0f;
+            float nearPlane = 1.0f;
+            float farPlane = 10.0f;
+
+            auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
+
+            float f = 1.0f / std::tan(fovY * 0.5f);
+
+            // Verify FOV scaling (use relaxed tolerance for negative values)
+            Assert::IsTrue(std::abs(proj[0][1] - (-f)) < 1e-5f);  // Y(left) → X_clip (negated)
+            Assert::IsTrue(std::abs(proj[1][2] - f) < 1e-5f);     // Z(up) → Y_clip
+
+            // Verify perspective divide is set up
+            Assert::IsTrue(std::abs(proj[2][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            Assert::IsTrue(std::abs(proj[3][3] - 0.0f) < 1e-5f);  // no constant contribution to w_clip
+        }
+
+        TEST_METHOD(PerspectiveForwardZBasic)
+        {
+            // Test basic forward-Z perspective matrix properties
+            // RHS: +X=forward, +Y=left, +Z=up
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 16.0f / 9.0f;
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+
+            auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
+
+            // Check matrix elements for row-vector multiplication
+            Assert::IsTrue(proj[0][1] != 0.0f);  // Y(left) → X_clip
+            Assert::IsTrue(proj[1][2] != 0.0f);  // Z(up) → Y_clip
+            Assert::IsTrue(proj[2][0] != 0.0f);  // X(forward) → Z_clip
+            Assert::IsTrue(proj[2][3] == 1.0f);  // W projection coefficient
+
+            // Verify f = cot(fovY/2)
+            float f = 1.0f / std::tan(fovY * 0.5f);
+            Assert::IsTrue(std::abs(proj[0][1] - (-f / aspect)) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[1][2] - f) < FLT_EPSILON);
+        }
+
+        TEST_METHOD(PerspectiveForwardZDepthMapping)
+        {
+            // Test forward-Z perspective matrix generates correct depth coefficients
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 16.0f / 9.0f;
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+
+            auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
+
+            // Verify the matrix has the correct structure for forward-Z
+            // M[2][0] should be non-zero (depth scaling from x_cam)
+            // M[3][0] should be non-zero (depth translation, negative of reverse-Z)
+            Assert::IsTrue(proj[2][0] != 0.0f);
+            Assert::IsTrue(proj[3][0] != 0.0f);
+            
+            // M[2][0] should equal farPlane / (farPlane - nearPlane)
+            // M[3][0] should equal -(nearPlane * farPlane) / (farPlane - nearPlane)
+            float rangeInv = 1.0f / (farPlane - nearPlane);
+            Assert::IsTrue(std::abs(proj[2][0] - farPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[3][0] + nearPlane * farPlane * rangeInv) < FLT_EPSILON);
+        }
+
+        TEST_METHOD(PerspectiveForwardZCoordinateTransform)
+        {
+            // Test coordinate system transformation for forward-Z
+            // X_in(forward)→Z_clip, Y_in(left)→-X_clip, Z_in(up)→Y_clip
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 1.0f;
+            float nearPlane = 1.0f;
+            float farPlane = 10.0f;
+
+            auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
+
+            float f = 1.0f / std::tan(fovY * 0.5f);
+
+            // Verify FOV scaling (use relaxed tolerance for negative values)
+            Assert::IsTrue(std::abs(proj[0][1] - (-f)) < 1e-5f);  // Y(left) → X_clip (negated)
+            Assert::IsTrue(std::abs(proj[1][2] - f) < 1e-5f);     // Z(up) → Y_clip
+
+            // Verify perspective divide is set up correctly
+            Assert::IsTrue(std::abs(proj[2][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            Assert::IsTrue(std::abs(proj[3][3] - 0.0f) < 1e-5f);  // no constant contribution to w_clip
+        }
+
+        TEST_METHOD(PerspectiveReverseZVsForwardZDifference)
+        {
+            // Verify both reverse-Z and forward-Z functions create valid projection matrices
+            // RHS: +X=forward, +Y=left, +Z=up
+            float fovY = static_cast<float>(g_PI / 4.0);
+            float aspect = 1.0f;
+            float nearPlane = 1.0f;
+            float farPlane = 10.0f;
+
+            auto projRZ = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
+            auto projFZ = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
+
+            float f = 1.0f / std::tan(fovY * 0.5f);
+
+            // Both should have identical FOV and perspective setup
+            Assert::IsTrue(std::abs(projRZ[0][1] - (-f)) < 1e-5f);  // Y(left) → X_clip
+            Assert::IsTrue(std::abs(projRZ[1][2] - f) < 1e-5f);     // Z(up) → Y_clip
+            Assert::IsTrue(std::abs(projFZ[0][1] - (-f)) < 1e-5f);
+            Assert::IsTrue(std::abs(projFZ[1][2] - f) < 1e-5f);
+
+            // Verify perspective divide is correctly set for both
+            Assert::IsTrue(std::abs(projRZ[2][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            Assert::IsTrue(std::abs(projFZ[2][3] - 1.0f) < 1e-5f);
+            Assert::IsTrue(std::abs(projRZ[3][3] - 0.0f) < 1e-5f);
+            Assert::IsTrue(projFZ[3][3] == 0.0f);
         }
 	};
 }

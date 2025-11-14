@@ -1,19 +1,22 @@
-[submodule "src/GEM"]
-	path = src/GEM
+[submodule "deps/GEM"]
+	path = deps/GEM
 	url = https://github.com/wjkristiansen/GEM
 	branch = v0-0-1
-[submodule "src/ThinWin"]
-	path = src/ThinWin
+[submodule "deps/ThinWin"]
+	path = deps/ThinWin
 	url = https://github.com/wjkristiansen/ThinWin
-[submodule "src/QLog"]
-	path = src/QLog
+[submodule "deps/QLog"]
+	path = deps/QLog
 	url = https://github.com/wjkristiansen/QLog.git
-[submodule "src/wil"]
-	path = src/wil
+[submodule "deps/wil"]
+	path = deps/wil
 	url = https://github.com/microsoft/wil.git
-[submodule "src/LinkedList"]
-	path = src/LinkedList
+[submodule "deps/LinkedList"]
+	path = deps/LinkedList
 	url = https://github.com/wjkristiansen/LinkedList
-[submodule "src/Allocators"]
-	path = src/Allocators
+[submodule "deps/Allocators"]
+	path = deps/Allocators
 	url = https://github.com/wjkristiansen/Allocators
+[submodule "deps/InCommand"]
+	path = deps/InCommand
+	url = https://github.com/wjkristiansen/InCommand.git

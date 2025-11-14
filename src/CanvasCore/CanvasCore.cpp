@@ -5,116 +5,180 @@
 #include "pch.h"
 
 #include "Canvas.h"
+#include "CanvasElement.h"
 #include "Camera.h"
 #include "Light.h"
 #include "Scene.h"
-#include "Transform.h"
+#include "CanvasGfx.h"
 
 namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-#define INTERFACE_ID_STRING_CASE(iface, id) if (iface##::IId == id) return #iface;
-#define GS_INTERFACE_ID_STRING_CASE(iface, unused) if (iface##::IId == id) return #iface;
-inline const char *IIdToString(const Gem::InterfaceId &id)
+Gem::Result CCanvas::Initialize()
 {
-    FOR_EACH_CANVAS_INTERFACE(INTERFACE_ID_STRING_CASE, id)
-    FOR_EACH_CANVASGFX_INTERFACE(GS_INTERFACE_ID_STRING_CASE, id)
+    return Gem::Result::Success;
+}
 
-    return nullptr;
+//------------------------------------------------------------------------------------------------
+void CCanvas::Uninitialize()
+{
+    // Iterate still active XCanvasElement objects and report them as leaks
+    for(XCanvasElement *pElement : m_ActiveCanvasElements)
+    {
+        if(pElement->GetName())
+        {
+            Canvas::LogError(GetLogger(), "%s leaked, Name: %s", pElement->GetTypeName(), pElement->GetName());
+        }
+        else
+        {
+            Canvas::LogError(GetLogger(), "%s leaked", pElement->GetTypeName());
+        }
+    }
 }
 
 //------------------------------------------------------------------------------------------------
 CCanvas::~CCanvas()
 {
-    m_pCanvasGfx = nullptr;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene)
+GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateScene");
+    if (!pElement)
+        return Gem::Result::BadPointer;
 
-    try
+    std::lock_guard<std::mutex> lock(m_Mutex);
+
+    // Check if element is already registered
+    if (m_ActiveCanvasElements.find(pElement) != m_ActiveCanvasElements.end())
     {
-        Gem::TGemPtr<CScene> pObj;
-        Gem::ThrowGemError(Gem::TGenericImpl<CScene>::Create(&pObj, this));
-        *ppScene = pObj.Detach();
+        if (GetLogger())
+        {
+            if (pElement->GetName())
+            {
+                Canvas::LogWarn(GetLogger(), "Element already registered: %s (Name: %s)", 
+                               pElement->GetTypeName(), pElement->GetName());
+            }
+            else
+            {
+                Canvas::LogWarn(GetLogger(), "Element already registered: %s", pElement->GetTypeName());
+            }
+        }
+        return Gem::Result::InvalidArg;
     }
-    catch(std::bad_alloc &)
+
+    m_ActiveCanvasElements.emplace(pElement);
+
+    if(GetLogger())
     {
-        Sentinel.SetResultCode(Gem::Result::OutOfMemory);
-        *ppScene = nullptr;
-        return Gem::Result::OutOfMemory;
+        if (pElement->GetName())
+        {
+            Canvas::LogInfo(GetLogger(), "Registered element: %s (Name: %s)", 
+                           pElement->GetTypeName(), pElement->GetName());
+        }
+        else
+        {
+            Canvas::LogInfo(GetLogger(), "Registered element type: %s", pElement->GetTypeName());
+        }
     }
-    catch(const Gem::GemError &e)
+    
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
+{
+    if (!pElement)
+        return Gem::Result::BadPointer;
+
+    std::lock_guard<std::mutex> lock(m_Mutex);
+
+    auto it = m_ActiveCanvasElements.find(pElement);
+    if (it == m_ActiveCanvasElements.end())
     {
-        return e.Result();
+        if (GetLogger())
+        {
+            if (pElement->GetName())
+            {
+                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s (Name: %s)", 
+                               pElement->GetTypeName(), pElement->GetName());
+            }
+            else
+            {
+                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s", 
+                               pElement->GetTypeName());
+            }
+        }
+        return Gem::Result::NotFound;
     }
+
+    if(GetLogger())
+    {
+        if (pElement->GetName())
+        {
+            Canvas::LogInfo(GetLogger(), "Unregistering element: %s (Name: %s)", 
+                           pElement->GetTypeName(), pElement->GetName());
+        }
+        else
+        {
+            Canvas::LogInfo(GetLogger(), "Unregistering element type: %s", pElement->GetTypeName());
+        }
+    }
+
+    m_ActiveCanvasElements.erase(it);
+    
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene, PCSTR name)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateScene", m_pLogger);
+
+    return CreateElement<CScene>(ppScene, name);
 
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode)
+GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode, PCSTR name)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateSceneGraphNode");
+    CFunctionSentinel sentinel("XCanvas::CreateSceneGraphNode", m_pLogger);
 
-    if (!ppNode)
-    {
-        return Gem::Result::BadPointer;
-    }
+    return CreateElement<CSceneGraphNode>(ppNode, name);
+}
 
-    CSceneGraphNode *pNode = nullptr;
-    auto result = Gem::TGenericImpl<CSceneGraphNode>::Create(&pNode, this);
-    
-    if (Gem::Succeeded(result))
-    {
-        *ppNode = pNode;
-    }
-    else
-    {
-        *ppNode = nullptr;
-    }
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera, PCSTR name)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateCamera", m_pLogger);
+
+    return CreateElement<CCamera>(ppCamera, name);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight, PCSTR name)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateLight", m_pLogger);
+
+    // Create using the standard CreateElement pattern to ensure proper registration
+    Gem::Result result = CreateElement<CLight>(ppLight, name, type);
     
     return result;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera)
+Gem::Result CANVAS_API CreateCanvas(XLogger *pLogger, XCanvas **ppCanvas)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::CreateCamera");
-
-    try
-    {
-        Gem::TGemPtr<CCamera> pCamera;
-        Gem::ThrowGemError(Gem::TGenericImpl<CCamera>::Create(&pCamera, this));
-        *ppCamera = pCamera.Detach();
-    }
-    catch (const Gem::GemError &e)
-    {
-
-    }
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateLight(XLight **ppLight)
-{
-    return Gem::Result::NotImplemented;
-}
-
-//------------------------------------------------------------------------------------------------
-Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger> pLogger)
-{
+    CFunctionSentinel sentinel("CreateCanvas", pLogger);
+    
     *ppCanvas = nullptr;
 
     try
     {
-        if (pLogger)
-        {
-            pLogger->Info("CANVAS: CreateCanvas: Creating canvas object...");
-        }
+        Canvas::LogInfo(pLogger, "CANVAS: CreateCanvas: Creating canvas object...");
+        
         Gem::TGemPtr<CCanvas> pCanvas;
         Gem::ThrowGemError(Gem::TGenericImpl<CCanvas>::Create(&pCanvas, pLogger)); // throw(Gem::GemError)
         *ppCanvas = pCanvas.Detach();
@@ -123,90 +187,30 @@ Gem::Result GEMAPI CreateCanvas(XCanvas **ppCanvas, std::shared_ptr<QLog::Logger
     }
     catch (const Gem::GemError &e)
     {
-        if (pLogger)
-        {
-            pLogger->Error("CANVAS: FAILURE in CreateCanvas");
-        }
+        Canvas::LogError(pLogger, "CANVAS: FAILURE in CreateCanvas");
         return e.Result();
     }
 }
 
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::InitCanvasGfx(PCSTR szDLLPath, _Outptr_result_nullonfailure_ XGfxInstance **ppCanvasGfx)
+GEMMETHODIMP CCanvas::LoadPlugin(PCSTR path, XCanvasPlugin **ppPlugin)
 {
-    CFunctionSentinel Sentinel(Logger(), "XCanvas::InitCanvasGfx");
+    CFunctionSentinel sentinel("XCanvas::LoadPlugin", m_pLogger);
 
     try
     {
-        *ppCanvasGfx = nullptr;
-
-        wil::unique_hmodule graphicsModule(LoadLibraryExA(szDLLPath, NULL, 0));
-
-        if (graphicsModule.get() == NULL)
-        {
-            ThrowGemError(Gem::Result::NotFound);
-        }
-
-        // Create XGfxInstance interface
-        CreateCanvasGfxProc pCreate = reinterpret_cast<CreateCanvasGfxProc>(
-            GetProcAddress(graphicsModule.get(), "CreateGfxInstance"));
-        if (pCreate == nullptr)
-        {
-            throw(Gem::GemError(Gem::Result::NotFound));
-        }
-
-        Gem::TGemPtr<XGfxInstance> pCanvasGfx;
-        ThrowGemError(pCreate(&pCanvasGfx, m_Logger));
-
-        pCanvasGfx->AddRef();
-        *ppCanvasGfx = pCanvasGfx.Get();
-
-        m_pCanvasGfx.Attach(pCanvasGfx.Detach());
-
-        graphicsModule.swap(m_GraphicsModule);
+        auto &module = m_PluginModules.emplace_back(path);
+        Gem::ThrowGemError(module.LoadPlugin(ppPlugin));
+    }
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
     }
     catch (const Gem::GemError &e)
     {
-        Sentinel.SetResultCode(e.Result());
-        return Gem::Result::Fail;
+        return e.Result();
     }
 
     return Gem::Result::Success;
 }
 
-//------------------------------------------------------------------------------------------------
-// Updates application logic and submits work to the graphics engine
-GEMMETHODIMP CCanvas::FrameTick()
-{
-    Gem::Result result = Gem::Result::Success;
-//    Logger().LogInfo("Begin CCanvas::FrameTick");
-
-    // Elapse time
-
-    // Update scene graph
-
-    // Build the display list
-
-    // Render the display list
-
-    ++m_FrameCounter;
-    if (m_FrameCounter == 1200)
-    {
-        UINT64 FrameEndTime = m_FrameTimer.Now();
-
-        if (m_FrameEndTimeLast > 0)
-        {
-            UINT64 DTime = CTimer::Microseconds(FrameEndTime - m_FrameEndTimeLast);
-            UINT64 FramesPerSecond = DTime > 0 ? (m_FrameCounter * 1000000ULL) / DTime : UINT64_MAX;
-            std::cout << "FPS: " << FramesPerSecond << std::endl;
-        }
-        m_FrameEndTimeLast = FrameEndTime;
-        m_FrameCounter = 0;
-    }
-
-//    Logger().LogInfo("End CCanvas::FrameTick");
-
-    return result;
-}
-
-}
+} // namespace Canvas

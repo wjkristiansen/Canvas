@@ -3,10 +3,17 @@
 //================================================================================================
 
 #pragma once
-#include <QLog.h>
+#include "Gem.hpp"
+#include "CanvasCore.h"
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)
+#endif
 
 namespace Canvas
 {
+
     enum class GfxFormat : int
     {
         Unknown,
@@ -64,67 +71,257 @@ namespace Canvas
         BC7_UNorm,
     };
 
-#define FOR_EACH_CANVASGFX_INTERFACE(macro, ...) \
-    macro(XGfxSurface, __VA_ARGS__) \
-    macro(XGfxBuffer, __VA_ARGS__) \
-    macro(XGfxSwapChain, __VA_ARGS__) \
-    macro(XGfxDevice, __VA_ARGS__) \
-    macro(XGfxInstance, __VA_ARGS__) \
-
     //------------------------------------------------------------------------------------------------
-    // Buffer resource
-    struct XGfxSurface : public Gem::XGeneric
+    enum GfxMemoryUsage
     {
-        GEM_INTERFACE_DECLARE(0x2F05FEAC7133843B);
+        HostRead,               // CPU-writeable, GPU-readable (e.g. vertex uploads)
+        HostWrite,              // GPU-writeable, CPU-readable (e.g. query results)
+        DeviceLocal,            // GPU-only access (e.g. textures, render targets)
     };
 
     //------------------------------------------------------------------------------------------------
     // Buffer resource
-    struct XGfxBuffer : public Gem::XGeneric
+    struct XGfxSurface : public XCanvasElement
     {
-        GEM_INTERFACE_DECLARE(0xA1DF297C8FA4CF13);
+        GEM_INTERFACE_DECLARE(XGfxSurface, 0x2F05FEAC7133843B);
     };
 
     //------------------------------------------------------------------------------------------------
-    struct XGfxSwapChain : public Gem::XGeneric
+    enum class MaterialLayerRole
     {
-        GEM_INTERFACE_DECLARE(0x1DEDFC0646129850);
+        Albedo,
+        Normal,
+        Roughness,
+        Metallic,
+        Emissive,
+    };
+
+    //------------------------------------------------------------------------------------------------
+    enum MaterialLayerFlags : uint32_t
+    {
+        None            = 0,
+        Decal           = 1 << 0,  // Projected onto surface
+        Tiled           = 1 << 1,  // Repeats across UV space
+        LODBias         = 1 << 2,  // Applies mip bias
+        UVTransform     = 1 << 3,  // Uses custom UV matrix
+        Masked          = 1 << 4,  // Uses alpha mask
+    };
+
+    //------------------------------------------------------------------------------------------------
+    enum class MaterialBlendMode
+    {
+        Default,
+        Additive,
+        Multiply,
+        AlphaMasked,
+        Overlay,
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct MaterialLayer
+    {
+        MaterialLayerRole Role;
+        MaterialLayerFlags Flags;
+        Math::FloatVector4 BlendFactor;
+        Math::FloatVector4 Color;
+        XGfxSurface *pSurface;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct
+    XGfxMaterial : public XCanvasElement
+    {
+        GEM_INTERFACE_DECLARE(XGfxMaterial, 0xD6E17B2CB8454154);
+    };
+
+    //------------------------------------------------------------------------------------------------
+    enum class GfxVertexBufferType
+    {
+        Position,           // FloatVector3 array
+        Normal,             // FloatVector3 array
+        Tangent,            // FloatVector3 array
+        Bitangent,          // FloatVector3 array
+        SpecularColor,      // FloatVector3 array
+        AlbedoColor,        // FloatVector4 array
+        AmbientColor,       // FloatVector4 array
+        EmissiveColor,      // FloatVector4 array
+        U0,                 // Float array
+        UV0,                // FloatVector2 array
+        UV1,                // FloatVector2 array
+        UV2,                // FloatVector2 array
+        UV3,                // FloatVector2 array
+        UVW0,               // FloatVector3 array
+        UVW1,               // FloatVector3 array
+        BoneWeights,        // Structured array
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct GfxVertexBuffer
+    {
+        Gem::TGemPtr<XGfxBuffer> pBuffer;
+        uint64_t Offset;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct
+    XGfxMesh : public XCanvasElement
+    {
+        GEM_INTERFACE_DECLARE(XGfxMesh, 0x7EBC2A5A40CC96D3);
+
+        GEMMETHOD_(uint32_t, GetNumMaterialGroups)() = 0;
+        GEMMETHOD_(GfxVertexBuffer *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
+        GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t materialIndex) = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    // Buffer resource
+    struct XGfxBuffer : public XCanvasElement
+    {
+        GEM_INTERFACE_DECLARE(XGfxBuffer, 0xA1DF297C8FA4CF13);
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct XGfxSwapChain : public XCanvasElement
+    {
+        GEM_INTERFACE_DECLARE(XGfxSwapChain, 0x1DEDFC0646129850);
 
         GEMMETHOD(GetSurface)(XGfxSurface **ppSurface) = 0;
         GEMMETHOD(WaitForLastPresent)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
-    // Submits command streams to the GPU.
-    // Manages synchronization with other command contexts and
-    // the CPU.
-    // In D3D12, this wraps a command queue and command lists and command allocators.
-    // In D3D11, this is wraps an ID3D11DeviceContext
-    struct XGfxGraphicsContext : public Gem::XGeneric
+    // Submits tasks to the graphics subsystem.
+    struct XGfxRenderQueue : public XCanvasElement
     {
-        GEM_INTERFACE_DECLARE(0x728AF985153F712D);
+        GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
 
         GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) = 0;
         GEMMETHOD_(void, CopyBuffer(XGfxBuffer *pDest, XGfxBuffer *pSource)) = 0;
         GEMMETHOD_(void, ClearSurface)(XGfxSurface *pSurface, const float Color[4]) = 0;
-        GEMMETHOD(Flush)() = 0;
         GEMMETHOD(FlushAndPresent)(XGfxSwapChain *pSwapChain) = 0;
-        GEMMETHOD(Wait)() = 0;
+    };
+
+    enum GfxSurfaceFlags : uint32_t
+    {
+        SurfaceFlag_None = 0,
+        SurfaceFlag_RenderTarget = 1 << 0,
+        SurfaceFlag_DepthStencil = 1 << 1,
+        SurfaceFlag_ShaderResource = 1 << 2,
+        SurfaceFlag_UnorderedAccess = 1 << 3,
+        SurfaceFlag_CpuReadback = 1 << 4,
+        SurfaceFlag_CpuUpload = 1 << 5,
+    };
+
+    enum class GfxSurfaceDimension : uint32_t
+    {
+        Dimension1D = 0,
+        Dimension2D = 1,
+        Dimension3D = 2,
+        DimensionCube = 3,
+    };
+
+    struct GfxSurfaceDesc
+    {
+        GfxFormat Format;
+        GfxSurfaceDimension Dimension;
+        GfxSurfaceFlags Flags;
+        UINT Width;
+        UINT Height;
+        UINT Depth;
+        UINT ArraySize;
+        UINT MipLevels;
+
+        GfxSurfaceDesc()
+            : Format(GfxFormat::Unknown)
+            , Dimension(GfxSurfaceDimension::Dimension2D)
+            , Flags(SurfaceFlag_None)
+            , Width(0)
+            , Height(0)
+            , Depth(1)
+            , ArraySize(1)
+            , MipLevels(1)
+        {
+        }
+
+        static GfxSurfaceDesc SurfaceDesc1D(GfxFormat format, UINT width, GfxSurfaceFlags flags, UINT mipLevels = 1)
+        {
+            GfxSurfaceDesc desc;
+            desc.Format = format;
+            desc.Dimension = GfxSurfaceDimension::Dimension1D;
+            desc.Flags = flags;
+            desc.Width = width;
+            desc.MipLevels = mipLevels;
+            return desc;
+        }   
+
+        static GfxSurfaceDesc SurfaceDesc2D(GfxFormat format, UINT width, UINT height, GfxSurfaceFlags flags, UINT mipLevels = 1)
+        {
+            GfxSurfaceDesc desc;
+            desc.Format = format;
+            desc.Dimension = GfxSurfaceDimension::Dimension2D;
+            desc.Flags = flags;
+            desc.Width = width;
+            desc.Height = height;
+            desc.MipLevels = mipLevels;
+            return desc;
+        }
+
+        static GfxSurfaceDesc SurfaceDesc3D(GfxFormat format, UINT width, UINT height, UINT depth, GfxSurfaceFlags flags, UINT mipLevels = 1)
+        {
+            GfxSurfaceDesc desc;
+            desc.Format = format;
+            desc.Dimension = GfxSurfaceDimension::Dimension3D;
+            desc.Flags = flags;
+            desc.Width = width;
+            desc.Height = height;
+            desc.Depth = depth;
+            desc.MipLevels = mipLevels;
+            return desc;
+        }
+
+        static GfxSurfaceDesc SurfaceDescCube(GfxFormat format, UINT size, UINT arraySize, GfxSurfaceFlags flags, UINT mipLevels = 1)
+        {
+            GfxSurfaceDesc desc;
+            desc.Format = format;
+            desc.Dimension = GfxSurfaceDimension::DimensionCube;
+            desc.Flags = flags;
+            desc.Width = size;
+            desc.Height = size;
+            desc.ArraySize = arraySize;
+            desc.MipLevels = mipLevels;
+            return desc;
+        }   
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct GfxSuballocation
+    {
+        uint64_t Offset;
+        uint64_t Size;
+        Gem::TGemPtr<XGfxBuffer> pBuffer;
     };
 
     //------------------------------------------------------------------------------------------------
     // Interface to a graphics device
-    struct XGfxDevice : public Gem::XGeneric
+    struct XGfxDevice : public XCanvasElement
     {
-        GEM_INTERFACE_DECLARE(0x86D4ABCCCD5FB6EE);
+        GEM_INTERFACE_DECLARE(XGfxDevice, 0x86D4ABCCCD5FB6EE);
 
-        GEMMETHOD(CreateGraphicsContext)(Canvas::XGfxGraphicsContext **ppGraphicsContext) = 0;
-    };
-
-    //------------------------------------------------------------------------------------------------
-    struct XGfxInstance : public Gem::XGeneric
-    {
-        GEM_INTERFACE_DECLARE(0x35CFDC3E089A6F52);
-        GEMMETHOD(CreateGfxDevice)(Canvas::XGfxDevice **ppDevice) = 0;
+        GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) = 0;
+        GEMMETHOD(CreateMaterial)() = 0;
+        GEMMETHOD(CreateSurface)(const GfxSurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
+        GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, GfxMemoryUsage memoryUsage, XGfxBuffer **ppBuffer) = 0;
+        GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxSuballocation &suballocationInfo) = 0;
+        GEMMETHOD_(void, FreeHostWriteRegion)(GfxSuballocation &suballocationInfo) = 0;
+        GEMMETHOD(CreateDebugMesh)(
+            uint32_t vertexCount,
+            const Canvas::Math::FloatVector4 *positions,
+            const Canvas::Math::FloatVector4 *normals,
+            XGfxRenderQueue *pRenderQueue,
+            XGfxMesh **ppMesh) = 0;
     };
 }
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

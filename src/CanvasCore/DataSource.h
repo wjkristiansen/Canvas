@@ -4,6 +4,11 @@
 
 #pragma once
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)
+#endif
+
 namespace Canvas
 {
 
@@ -68,8 +73,8 @@ class CRotationDataSource : public TDataSource<Math::FloatVector4>
 //------------------------------------------------------------------------------------------------
 class CEulerRotationDataSource : public CRotationDataSource
 {
-    TDataSource<float> *m_pEulerAngles[4] = {};
     Math::FloatVector4 m_DefaultAngles;
+    TDataSource<float> *m_pEulerAngles[4] = {};
 
 public:
     CEulerRotationDataSource(float DefaultRotX, float DefaultRotY, float DefaultRotZ)
@@ -107,3 +112,7 @@ class CTranslationDataSource : public TDataSource<Math::FloatVector4>
 };
 
 }
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

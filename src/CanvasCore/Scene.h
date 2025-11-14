@@ -15,24 +15,24 @@ class CScene :
     public TCanvasElement<XScene>
 {
 private:
-    Gem::TGemPtr<CSceneGraphNode> m_pRoot;
-    CCanvas *m_pCanvas;
+    Gem::TGemPtr<XSceneGraphNode> m_pRoot;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XNamedElement)
         GEM_INTERFACE_ENTRY(XCanvasElement)
         GEM_INTERFACE_ENTRY(XScene)
     END_GEM_INTERFACE_MAP()
 
-    CScene(CCanvas *pCanvas);
+    CScene(XCanvas *pCanvas);
 
+    Gem::Result Initialize();
+    void Uninitialize() {}
+    
 public: // XScene methods
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)();
-    GEMMETHOD(Initialize)();
 
-public: // CScene methods
-    CScene *CastFrom(XScene *pXScene) { return static_cast<CScene *>(pXScene); }
-    CCanvas *GetCanvasImpl() const { return m_pCanvas; }
+    GEMMETHOD(Update)(float dtime) final { return m_pRoot->Update(dtime); }
 };
 
 }

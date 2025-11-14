@@ -5,10 +5,12 @@ cmake_minimum_required(VERSION 3.24)
 
 # Define the test library (Microsoft Test Framework requires DLL)
 add_library(CanvasUnitTest SHARED
-    CanvasCollectionsTest.cpp
     CanvasInterfacesTest.cpp
     CanvasMathTest.cpp
     D3D12ResourceUtilsTest.cpp
+    RingBufferTest.cpp
+    TaskManagerTest.cpp
+    TaskManagerTypedTest.cpp
     pch.h
     targetver.h
 )
@@ -24,7 +26,6 @@ set_target_properties(CanvasUnitTest PROPERTIES
 target_include_directories(CanvasUnitTest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasGfx12/d3dx12
 )
 
 # Preprocessor definitions
@@ -41,7 +42,7 @@ if(WIN32)
         _CONSOLE
     )
     
-    # Link with Windows libraries
+    # Link with Windows libraries (excluding d3d12/dxgi/d3dcompiler - inherited from D3D12ResourceUtils)
     target_link_libraries(CanvasUnitTest PRIVATE
         kernel32
         user32
@@ -55,17 +56,16 @@ if(WIN32)
         uuid
         odbc32
         odbccp32
-        d3d12
-        dxgi
-        d3dcompiler
     )
+
 endif()
 
 # Link with Canvas libraries
 target_link_libraries(CanvasUnitTest PRIVATE
     CanvasCore
-    CanvasModel
     D3D12ResourceUtils
+    RingBuffer
+    TaskManager
 )
 
 # Use Microsoft CppUnitTestFramework

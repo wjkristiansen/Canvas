@@ -23,6 +23,8 @@ target_include_directories(CanvasModelViewer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/../ThinWin/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Common
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../deps/InCommand/inc
 )
 
 # Preprocessor definitions
@@ -65,8 +67,9 @@ endif()
 # Link with Canvas libraries
 target_link_libraries(CanvasModelViewer PRIVATE
     CanvasCore
-    CanvasModel
     ThinWin
+    InCommandLib
+    InCommandHeaders
 )
 
 # Use precompiled headers

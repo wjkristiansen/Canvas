@@ -4,14 +4,21 @@
 
 #pragma once
 
-#include <math.h>
+#include <cmath>
 #include <float.h>
 #include <algorithm>
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4201) // nameless struct/union
+#endif
 
 namespace Canvas
 {
     namespace Math
     {
+        inline constexpr double Pi = 3.14159265358979323846;
+
         //------------------------------------------------------------------------------------------------
         template<class _Type, int _Dim>
         struct TVector
@@ -29,6 +36,12 @@ namespace Canvas
             Type &operator[](int index) { return V[index]; }
         };
 
+        // Forward declaration of DotProduct for template vector types.
+        // Placed here so member functions (e.g. Normalize) can call it before
+        // the definition appears later in this header.
+        template<class _Type, int _Dim>
+        _Type DotProduct(const TVector<_Type, _Dim> &a, const TVector<_Type, _Dim> &b);
+
         //------------------------------------------------------------------------------------------------
         template<class _Type>
         struct TVector<_Type, 2>
@@ -36,13 +49,33 @@ namespace Canvas
             static auto constexpr Dim = 2;
             using Type = _Type;
 
-            Type V[Dim] = {};
+            union
+            {
+                Type V[Dim];
+                struct
+                {
+                    Type X;
+                    Type Y;
+                };
+            };
+            
 
-            TVector() = default;
+            TVector() : V{} {};
             TVector(_Type x, _Type y) :
                 V{ x, y } {}
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
+
+            TVector Normalize() const
+            {
+                Type lenSq = DotProduct(*this, *this);
+                if (lenSq > Type(0))
+                {
+                    Type invLen = Type(1) / std::sqrt(lenSq);
+                    return TVector<_Type, 2>(X * invLen, Y * invLen);
+                }
+                return TVector<_Type, 2>(Type(1), Type(0));
+            }
 
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -55,13 +88,33 @@ namespace Canvas
             static auto constexpr Dim = 3;
             using Type = _Type;
 
-            Type V[Dim] = {};
+            union
+            {
+                Type V[Dim];
+                struct
+                {
+                    Type X;
+                    Type Y;
+                    Type Z;
+                };
+            };
 
-            TVector() = default;
+            TVector() : V{} {};
             TVector(_Type x, _Type y, _Type z) :
                 V{ x, y, z } {}
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
+
+            TVector Normalize() const
+            {
+                Type lenSq = DotProduct(*this, *this);
+                if (lenSq > Type(0))
+                {
+                    Type invLen = Type(1) / std::sqrt(lenSq);
+                    return TVector<Type, 3>(X * invLen, Y * invLen, Z * invLen);
+                }
+                return TVector<Type, 3>(Type(1), Type(0), Type(0));
+            }
 
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -74,13 +127,34 @@ namespace Canvas
             static auto constexpr Dim = 4;
             using Type = _Type;
 
-            Type V[Dim] = {};
+            union
+            {
+                Type V[Dim];
+                struct
+                {
+                    Type X;
+                    Type Y;
+                    Type Z;
+                    Type W;
+                };
+            };
 
-            TVector() = default;
+            TVector() : V{} {};
             TVector(_Type x, _Type y, _Type z, _Type w) :
                 V{ x, y, z, w } {}
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
+
+            TVector Normalize() const
+            {
+                Type lenSq = DotProduct(*this, *this);
+                if (lenSq > Type(0))
+                {
+                    Type invLen = Type(1) / std::sqrt(lenSq);
+                    return TVector<Type, 4>(X * invLen, Y * invLen, Z * invLen, W * invLen);
+                }
+                return TVector<Type, 4>(Type(1), Type(0), Type(0), Type(0));
+            }
 
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -94,13 +168,34 @@ namespace Canvas
             static auto constexpr Dim = 4;
             using Type = float;
 
-            Type V[Dim] = {};
+            union
+            {
+                Type V[Dim];
+                struct
+                {
+                    Type X;
+                    Type Y;
+                    Type Z;
+                    Type W;
+                };
+            };
 
             TVector() = default;
             TVector(Type x, Type y, Type z, Type w) :
                 V{ x, y, z, w } {}
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
+
+            TVector Normalize() const
+            {
+                float lenSq = DotProduct(*this, *this);
+                if (lenSq > 0.0f)
+                {
+                    float invLen = 1.0f / std::sqrt(lenSq);
+                    return TVector<float, 4>(X * invLen, Y * invLen, Z * invLen, W * invLen);
+                }
+                return TVector<float, 4>(1.0f, 0.0f, 0.0f, 0.0f);
+            }
 
             const Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -127,7 +222,7 @@ namespace Canvas
         template<class _Type, int _Dim>
         TVector<_Type, _Dim> operator-(const TVector<_Type, _Dim> &v)
         {
-            TVector u;
+            TVector<_Type, _Dim> u;
             for (int i = 0; i < _Dim; ++i)
             {
                 u[i] = -v[i];
@@ -288,23 +383,6 @@ namespace Canvas
         TVector<_Type, _Dim> operator*(_Type mul, const TVector<_Type, _Dim> &v)
         {
             return operator*(v, mul);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        // Caller is responsible for ensuring the input vector does not have a
-        // zero magnitude
-        template<class _Type, int _Dim>
-        TVector<_Type, _Dim> NormalizeVector(const TVector<_Type, _Dim> &v)
-        {
-            _Type magsq = DotProduct(v, v);
-            _Type recipmag = 1 / sqrt(magsq);
-            TVector<_Type, _Dim> n;
-            for (int i = 0; i < _Dim; ++i)
-            {
-                n[i] = v[i] * recipmag;
-            }
-
-            return n;
         }
 
         //------------------------------------------------------------------------------------------------
@@ -666,20 +744,12 @@ namespace Canvas
         // Mathematically treats the inputs as float3 vectors
         inline FloatVector4 CrossProduct(const FloatVector4 &a, const FloatVector4 &b)
         {
-            FloatMatrix4x4 m;
-            m[0][1] = -a[2];
-            m[0][2] = a[1];
-            m[1][0] = a[2];
-            m[1][2] = -a[0];
-            m[2][0] = -a[3];
-            m[2][1] = a[0];
-
-            FloatVector4 c;
-            c[0] = DotProduct(m[0], b);
-            c[1] = DotProduct(m[1], b);
-            c[2] = DotProduct(m[2], b);
-
-            return c;
+            return FloatVector4(
+                a.Y * b.Z - a.Z * b.Y,
+                a.Z * b.X - a.X * b.Z,
+                a.X * b.Y - a.Y * b.X,
+                0.0f
+            );
         }
 
 
@@ -698,28 +768,139 @@ namespace Canvas
         //
         // Identity: [1, (0, 0, 0)] (when involving multiplication) and [0, (0, 0, 0)] (when involving addition) 
         template<class _Type>
-        struct TQuaternion
+        struct TQuaternion : public TVector<_Type, 4>
         {
             using Type = _Type;
 
-            TVector<Type, 4> Q; // [a, b, c, w]
-
             TQuaternion() = default;
             TQuaternion(_Type scalar) :
-                Q{ 0, 0, 0, scalar } {}
+                TVector{ 0, 0, 0, scalar } {}
             TQuaternion(const TVector<Type, 4> & v) :
-                Q(v) {}
-            TQuaternion(Type a, Type b, Type c, Type w) :
-                Q{ a, b, c, w } {}
+                TVector(v) {}
+            TQuaternion(Type x, Type y, Type z, Type w) :
+                TVector{ x, y, z, w } {}
 
             TQuaternion(const TQuaternion &o) = default;
 
             TQuaternion &operator=(const TQuaternion &o) = default;
 
-            const _Type &operator[](int index) const { return Q[index]; }
-            Type &operator[](int index) { return Q[index]; }
+            TQuaternion<Type> Normalize() const;
 
-            void ReNormalize();
+
+            // Returns a vector whose direction is the axis and whose magnitude is the angle
+            // AKA the quaternion Log
+            TVector<Type, 3> ToScaledAxisAngle() const
+            {
+                auto qn = Normalize();
+                const Type vLen = std::sqrt(qn.X * qn.X + qn.Y * qn.Y + qn.Z * qn.Z);
+                const Type angle = std::atan2(vLen, qn.W); // angle in radians
+
+                if (vLen < 1e-6f)
+                    return TVector<Type, 3>(0, 0, 0); // zero rotation
+
+                const Type scale = angle / vLen;
+                return TVector<Type, 3>(qn.X * scale, qn.Y * scale, qn.Z * scale);
+            }
+
+            // Constructs a quaternion from scaled axis-angle representation
+            // The length of `v` represents the rotation angle
+            static TQuaternion<Type> FromScaledAxisAngle(const TVector<_Type, 3>& v)
+            {
+                const Type angle = std::sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z);
+
+                if (angle < 1e-6f)
+                    return TQuaternion<Type>(0, 0, 0, 1); // identity rotation
+
+                const Type sinAngle = std::sin(angle);
+                const Type cosAngle = std::cos(angle);
+                const Type scale = sinAngle / angle;
+
+                return TQuaternion<Type>(v.X * scale, v.Y * scale, v.Z * scale, cosAngle);
+            }
+
+            static TQuaternion<Type> FromEulerXYZ(Type x, Type y, Type z)
+            {
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
+
+                // Intrinsic XYZ => q = qz * qy * qx
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qz * qy * qx).Normalize();
+            }
+
+            static TQuaternion<Type> FromEulerXZY(Type x, Type z, Type y)
+            {
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
+
+                // Intrinsic XZY => q = qy * qz * qx
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qy * qz * qx).Normalize();
+            }
+
+            static TQuaternion<Type> FromEulerYXZ(Type y, Type x, Type z)
+            {
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
+
+                // Intrinsic YXZ => q = qz * qx * qy
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qz * qx * qy).Normalize();
+            }
+
+            static TQuaternion<Type> FromEulerYZX(Type y, Type z, Type x)
+            {
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
+
+                // Intrinsic YZX => q = qx * qz * qy
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qx * qz * qy).Normalize();
+            }
+
+            static TQuaternion<Type> FromEulerZXY(Type z, Type x, Type y)
+            {
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
+
+                // Intrinsic ZXY => q = qy * qx * qz
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qy * qx * qz).Normalize();
+            }
+
+            static TQuaternion<Type> FromEulerZYX(Type z, Type y, Type x)
+            {
+                const Type hx = x * Type(0.5), hy = y * Type(0.5), hz = z * Type(0.5);
+                const Type cx = std::cos(hx), sx = std::sin(hx);
+                const Type cy = std::cos(hy), sy = std::sin(hy);
+                const Type cz = std::cos(hz), sz = std::sin(hz);
+
+                // Intrinsic ZYX => q = qx * qy * qz
+                const TQuaternion<Type> qx(sx, 0, 0, cx);
+                const TQuaternion<Type> qy(0, sy, 0, cy);
+                const TQuaternion<Type> qz(0, 0, sz, cz);
+                return (qx * qy * qz).Normalize();
+            }
         };
 
         //------------------------------------------------------------------------------------------------
@@ -730,42 +911,20 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        template<class _Type>
-        bool operator==(const TQuaternion<_Type> &a, const TQuaternion<_Type> &b)
-        {
-            return a.Q == b.Q;
-        }
-
-        //------------------------------------------------------------------------------------------------
-        template<class _Type>
-        TQuaternion<_Type> operator*(_Type scale, const TQuaternion<_Type> &q)
-        {
-            return TQuaternion(scale * q.Q);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        template<class _Type>
-        TQuaternion<_Type> operator*(const TQuaternion<_Type> &q, _Type scale)
-        {
-            return TQuaternion(scale * q.Q);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        template<class _Type>
-        _Type DotProduct(const TQuaternion<_Type> &q, const TQuaternion<_Type> &r)
-        {
-            return DotProduct(q.Q, r.Q);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        // Should be a unit quaternion but may need to be renormalized to correct
+        // Should be a unit quaternion but may need to be Normalized to correct
         // for accumulated floating point errors
         template<class _Type>
-        void TQuaternion<_Type>::ReNormalize()
+        TQuaternion<_Type> TQuaternion<_Type>::Normalize() const
         {
-            _Type  dot = DotProduct(Q, Q);
-            _Type  rsq = 1 / sqrt(dot);
-            Q = Q * rsq;
+            TQuaternion<_Type> qn = *this;
+            const _Type  dot = DotProduct(qn, qn);
+            constexpr _Type epsilon = _Type(1e-6);
+            if(std::abs(dot - static_cast<_Type>(1)) > epsilon)
+            {
+                const _Type  rsq = 1 / std::sqrt(dot);
+                qn = qn * rsq;
+            }
+            return qn;
         }
 
         //------------------------------------------------------------------------------------------------
@@ -776,10 +935,10 @@ namespace Canvas
         TQuaternion<_Type> Conjugate(const TQuaternion<_Type> &q)
         {
             TQuaternion<_Type> c;
-            c[0] = -q[0];
-            c[1] = -q[1];
-            c[2] = -q[2];
-            c[3] = q[3];
+            c[0] = -q.X;
+            c[1] = -q.Y;
+            c[2] = -q.Z;
+            c[3] = q.W;
             return c;
         }
 
@@ -789,38 +948,20 @@ namespace Canvas
         template<class _Type>
         TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TQuaternion<_Type> &r)
         {
-            //_Type w = q.W * r.W - DotProduct(q.V, r.V);
-            //TVector<_Type, 3> v = CrossProduct(q.V, r.V) + q.W *r.V + r.W * q.V;
-            //return TQuaternion<_Type>(w, v);
-            TQuaternion<_Type> v = CrossProduct(q.Q, r.Q) + q[3] * r.Q + r[3] * q.Q; // Leaves garbage in v[3] but that gets fixed below
-            v[3] = q[3] * r[3] - (q[0] * r[0] + q[1] * r[1] + q[2] * r[2]);
+            TQuaternion<_Type> v = CrossProduct(q, r) + q.W * r + r.W * q; // Leaves garbage in v.W but that gets fixed below
+            v.W = q.W * r.W - (q.X * r.X + q.Y * r.Y + q.Z * r.Z);
             return v;
         }
 
         //------------------------------------------------------------------------------------------------
         // Returns the product of a quaternion with a vector (treated as a quaternion with a 0 real coordinate)
         template<class _Type>
-        TQuaternion<_Type> operator*(const TQuaternion<_Type> q, const TVector<_Type, 4> & v)
+        TVector<_Type, 3> RotateVectorByQuaternion(const TQuaternion<_Type> &q, const TVector<_Type, 3> &v)
         {
-            return q * TQuaternion<_Type>(v);
-
-        }
-
-        //------------------------------------------------------------------------------------------------
-        // Returns the sum of two quaternions
-        template<class _Type>
-        TQuaternion<_Type> operator+(const TQuaternion<_Type> q, const TQuaternion<_Type> &r)
-        {
-            return TQuaternion<_Type>(q.Q + r.Q);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        // Returns the sum of two quaternions
-        template<class _Type>
-        TQuaternion<_Type> operator-(const TQuaternion<_Type> q, const TQuaternion<_Type> &r)
-        {
-            return TQuaternion<_Type>(q.Q - r.Q);
-
+            TQuaternion<_Type> p(v.X, v.Y, v.Z, 0); // pure quaternion
+            TQuaternion<_Type> qInv = q.Conjugate();  // must be unit-length
+            TQuaternion<_Type> rotated = q * p * qInv;
+            return TVector<_Type, 3>(rotated.X, rotated.Y, rotated.Z);
         }
 
         //------------------------------------------------------------------------------------------------
@@ -847,21 +988,21 @@ namespace Canvas
             return TMatrix<_Type, 4, 4>(
                 {
                     {
-                        1 - 2 * (q.Q[1] * q.Q[1] + q.Q[2] * q.Q[2]),
-                        2 * (q.Q[0] * q.Q[1] - q.Q[2] * q.Q[3]),
-                        2 * (q.Q[0] * q.Q[2] + q.Q[1] * q.Q[3]),
+                        1 - 2 * (q.Y * q.Y + q.Z * q.Z),
+                        2 * (q.X * q.Y - q.Z * q.W),
+                        2 * (q.X * q.Z + q.Y * q.W),
                         0
                     },
                     {
-                        2 * (q.Q[0] * q.Q[1] + q.Q[2] * q.Q[3]),
-                        1 - 2 * (q.Q[0] * q.Q[0] + q.Q[2] * q.Q[2]),
-                        2 * (q.Q[1] * q.Q[2] - q.Q[0] * q.Q[3]),
+                        2 * (q.X * q.Y + q.Z * q.W),
+                        1 - 2 * (q.X * q.X + q.Z * q.Z),
+                        2 * (q.Y * q.Z - q.X * q.W),
                         0
                     },
                     {
-                        2 * (q.Q[0] * q.Q[2] - q.Q[1] * q.Q[3]),
-                        2 * (q.Q[1] * q.Q[2] + q.Q[0] * q.Q[3]),
-                        1 - 2 * (q.Q[0] * q.Q[0] + q.Q[1] * q.Q[1]),
+                        2 * (q.X * q.Z - q.Y * q.W),
+                        2 * (q.Y * q.Z + q.X * q.W),
+                        1 - 2 * (q.X * q.X + q.Y * q.Y),
                         0
                     },
                     {
@@ -876,66 +1017,70 @@ namespace Canvas
         template<class _Type>
         TQuaternion<_Type> QuaternionFromAngleAxis(const TVector<_Type, 4> & v)
         {
-            _Type HalfAngle = v[3] / 2;
-            _Type c = cos(HalfAngle);
-            _Type s = sin(HalfAngle);
+            const _Type HalfAngle = v[3] / 2;
+            const _Type c = cos(HalfAngle);
+            const _Type s = sin(HalfAngle);
             TQuaternion<_Type> q;
-            q.Q = s * v;
-            q.Q[3] = c;
-            return q;
+            q = s * v;
+            q.W = c;
+            return q.Normalize();
         }
 
         //------------------------------------------------------------------------------------------------
         // Creates a quaternion from a given matrix
-        // Assumes the matrix is rotation only affine (no scale or translation)
+        // Assumes the matrix is rotation only 3x3 or affine (no scale or translation)
         // See http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
-        template<class _Type>
-        TQuaternion<_Type> QuaternionFromRotationMatrix(const TMatrix<_Type, 4, 4> & m)
+        template<class _MatrixType>
+        TQuaternion<typename _MatrixType::ElementType> QuaternionFromRotationMatrix(const _MatrixType &m)
         {
-            TQuaternion<_Type> q;
-            _Type t = m[0][0] + m[1][1] + m[2][2];
+            static_assert(_MatrixType::Columns >= 3);
+            static_assert(_MatrixType::Rows >= 3);
+            static_assert(_MatrixType::Columns < 5);
+            using Type = _MatrixType::ElementType;
+            TQuaternion<Type> q;
+            Type t = m[0][0] + m[1][1] + m[2][2];
 
             if (t > 0)
             {
-                _Type s = 2 * sqrt(t + 1);
-                _Type srsq = 1 / s;
-                q.Q[3] = .25 * s;
-                q.Q[0] = (m[2][1] - m[1][2]) * srsq;
-                q.Q[1] = (m[0][2] - m[2][0]) * srsq;
-                q.Q[2] = (m[1][0] - m[0][1]) * srsq;
+                const Type s = 2 * std::sqrt(t + 1);
+                const Type srsq = 1 / s;
+                q.W = Type(0.25) * s;
+                q.X = (m[2][1] - m[1][2]) * srsq;
+                q.Y = (m[0][2] - m[2][0]) * srsq;
+                q.Z = (m[1][0] - m[0][1]) * srsq;
             }
             else if (m[0][0] > m[1][1] && (m[0][0] > m[2][2]))
             {
                 t = m[0][0] - m[1][1] - m[2][2];
-                _Type s = 2 * sqrt(t + 1);
-                _Type srsq = 1 / s;
-                q.Q[3] = (m[2][1] - m[1][2]) * srsq;
-                q.Q[0] = .25 * s;
-                q.Q[1] = (m[0][1] + m[1][0]) * srsq;
-                q.Q[2] = (m[0][2] + m[2][0]) * srsq;
+                const Type s = 2 * std::sqrt(t + 1);
+                const Type srsq = 1 / s;
+                q.W = (m[2][1] - m[1][2]) * srsq;
+                q.X = Type(0.25) * s;
+                q.Y = (m[0][1] + m[1][0]) * srsq;
+                q.Z = (m[0][2] + m[2][0]) * srsq;
             }
             else if (m[1][1] > m[2][2])
             {
                 t = m[1][1] - m[0][0] - m[2][2];
-                _Type s = 2 * sqrt(t + 1);
-                _Type srsq = 1 / s;
-                q.Q[3] = (m[0][2] - m[2][0]) * srsq;
-                q.Q[0] = (m[0][1] + m[1][0]) * srsq;
-                q.Q[1] = .25 * s;
-                q.Q[2] = (m[1][2] + m[2][1]) * srsq;
+                const Type s = 2 * std::sqrt(t + 1);
+                const Type srsq = 1 / s;
+                q.W = (m[0][2] - m[2][0]) * srsq;
+                q.X = (m[0][1] + m[1][0]) * srsq;
+                q.Y = Type(0.25) * s;
+                q.Z = (m[1][2] + m[2][1]) * srsq;
             }
             else
             {
                 t = m[2][2] - m[0][0] - m[1][1];
-                _Type s = 2 * sqrt(t + 1);
-                _Type srsq = 1 / s;
-                q.Q[3] = (m[1][0] - m[0][1]) * srsq;
-                q.Q[0] = (m[0][2] + m[2][0]) * srsq;
-                q.Q[1] = (m[1][2] + m[2][1]) * srsq;
-                q.Q[2] = .25 * s;
+                const Type s = 2 * std::sqrt(t + 1);
+                const Type srsq = 1 / s;
+                q.W = (m[1][0] - m[0][1]) * srsq;
+                q.X = (m[0][2] + m[2][0]) * srsq;
+                q.Y = (m[1][2] + m[2][1]) * srsq;
+                q.Z = Type(0.25) * s;
             }
 
-            return q;
+            return q.Normalize();
         }
 
         template<class _Type>
@@ -956,52 +1101,317 @@ namespace Canvas
         };
 
         //------------------------------------------------------------------------------------------------
-        // Calculates an OutVector and an UpVector given a unit UpAxisVector and a unit LookVector.
-        // Can be used to initialize the orthonormal basis of a "look at" rotation matrix.
-        // Note, the LookVector may be a Forward vector or a Backward vector, depending
-        // on the desired direction of the OutVector.
+        // Calculates a basisSideVector and a basisUpVector given a unit localUpVector and a unit basisForwardVector.
+        // Can be used to initialize the orthonormal basis of a "point to" rotation matrix.
+        // Note the input localUpVector and basisForwardVector can be any arbitrary unit vectors, but
+        // they should not be colinear.
         template<class _VectorType>
-        void ComposeLookBasisVectors(_In_ const _VectorType &UpAxisVector, _In_ const _VectorType &LookVector, _Out_ _VectorType &OutVector, _Out_ _VectorType &UpVector)
+        void ComposePointToBasisVectors(_In_ const _VectorType &localUpVector, _In_ const _VectorType &basisForwardVector, _Out_ _VectorType &basisSideVector, _Out_ _VectorType &basisUpVector)
         {
             using Type = typename _VectorType::Type;
 
             // OutVector is the cross product of UpAxisVector with LookVector
-            OutVector = CrossProduct(UpAxisVector, LookVector);
-            Type dot = DotProduct(OutVector, OutVector);
-            Type dotsq = dot * dot;
-            if (dotsq < MinNorm<Type>::Value)
+            basisSideVector = CrossProduct(localUpVector, basisForwardVector);
+            Type dot = DotProduct(basisSideVector, basisSideVector);
+            constexpr Type epsilon(Type(1e-6));
+            if (dot < epsilon)
             {
-                // LookVector and UpAxisVector appear to be colinear
-                // Choose an arbitrary OutVector preserving the sign
-                // of the camera up vector
-                Type d2 = DotProduct(LookVector, UpAxisVector);
-                if (d2 > 0)
+                // basisForwardVector and localUpVector are nearly colinear
+                // Choose an arbitrary basisSideVector preserving the sign
+                // of the localUpVector
+                Type dotForwardUp = DotProduct(basisForwardVector, localUpVector);
+                if (dotForwardUp > 0)
                 {
-                    OutVector[0] = UpAxisVector.V[2];
-                    OutVector[1] = UpAxisVector.V[0];
-                    OutVector[2] = UpAxisVector.V[1];
+                    // Parallel: use default side vector
+                    basisSideVector[0] = localUpVector[2];
+                    basisSideVector[1] = localUpVector[0];
+                    basisSideVector[2] = localUpVector[1];
                 }
                 else
                 {
-                    OutVector = _VectorType(-UpAxisVector.V[2], UpAxisVector.V[0], -UpAxisVector.V[1]);
+                    // Anti-parallel: flip the side vector
+                    basisSideVector[0] = -localUpVector[2];
+                    basisSideVector[1] = localUpVector[0];
+                    basisSideVector[2] = -localUpVector[1];
                 }
             }
             else
             {
                 // Normalize OutVector
-                OutVector = OutVector * Type(1. / sqrt(dotsq));
+                basisSideVector = basisSideVector * Type(1. / std::sqrt(dot));
             }
 
-            // The cross product of OutVector with LookVector is the UpVector.
+            // The cross product of basisSideVector with basisForwardVector is the basisUpVector.
             // There is no need to normalize the result since the
-            // LookVector and UpVector are unit vectors and are 
-            // orthogonal. The result must already be a unit vector.
-            UpVector = CrossProduct(LookVector, OutVector);
+            // basisForwardVector and basisSideVector are unit vectors and are 
+            // orthogonal. Thus, the cross product must also be a unit vector.
+            basisUpVector = CrossProduct(basisForwardVector, basisSideVector);
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Simplified version of ComposePointToBasisVectors that automatically chooses an appropriate
+        // up vector. This version is ideal for directional or spot lights that don't require geometric
+        // constraints (i.e., no shared lightbulb mesh). Uses an optimized approach that finds the
+        // component with the smallest absolute value, zeros it out, swaps the other two, and negates
+        // one to produce a guaranteed orthogonal vector. This avoids expensive abs() comparisons and
+        // vector constructions.
+        template<class _VectorType>
+        void ComposeArbitraryPointToBasisVectors(_In_ const _VectorType &basisForwardVector, _Out_ _VectorType &basisSideVector, _Out_ _VectorType &basisUpVector)
+        {
+            using Type = typename _VectorType::Type;
+            
+            // Find the component with the smallest absolute value
+            // Use squared comparisons to avoid abs() calls
+            Type x2 = basisForwardVector.X * basisForwardVector.X;
+            Type y2 = basisForwardVector.Y * basisForwardVector.Y;
+            Type z2 = basisForwardVector.Z * basisForwardVector.Z;
+            
+            // Create a perpendicular vector by zeroing the smallest component,
+            // swapping the other two, and negating one
+            if (x2 < y2 && x2 < z2)
+            {
+                // X is smallest: perpendicular = (0, -Z, Y)
+                basisSideVector.X = Type(0);
+                basisSideVector.Y = -basisForwardVector.Z;
+                basisSideVector.Z = basisForwardVector.Y;
+            }
+            else if (y2 < z2)
+            {
+                // Y is smallest: perpendicular = (-Z, 0, X)
+                basisSideVector.X = -basisForwardVector.Z;
+                basisSideVector.Y = Type(0);
+                basisSideVector.Z = basisForwardVector.X;
+            }
+            else
+            {
+                // Z is smallest: perpendicular = (-Y, X, 0)
+                basisSideVector.X = -basisForwardVector.Y;
+                basisSideVector.Y = basisForwardVector.X;
+                basisSideVector.Z = Type(0);
+            }
+            
+            // Normalize the side vector
+            Type lenSq = DotProduct(basisSideVector, basisSideVector);
+            basisSideVector = basisSideVector * Type(1. / std::sqrt(lenSq));
+            
+            // Compute the up vector as the cross product of the forward with the side vector
+            // No need to normalize since both inputs are unit vectors and orthogonal
+            basisUpVector = CrossProduct(basisForwardVector, basisSideVector);
         }
 
         using FloatQuaternion = TQuaternion<float>;
         using DoubleQuaternion = TQuaternion<double>;
 
+        //------------------------------------------------------------------------------------------------
+        // PerspectiveReverseZ: Generates a reverse-Z perspective projection matrix.
+        //
+        // Conventions:
+        //   Input coordinate system:  X = camera's local forward, Y = camera's local left, Z = camera's local up (RHS)
+        //   Clip space:               X = right, Y = up, Z = depth (1.0 at near, 0.0 at far)
+        //
+        // This transformation maps:
+        //   - Camera's forward (X_cam) → Z_clip (depth into screen, reverse-Z: 1 at near, 0 at far)
+        //   - Camera's left (Y_cam) → -X_clip (negated to become right in clip space)
+        //   - Camera's up (Z_cam) → Y_clip (up in clip space)
+        //
+        // Parameters:
+        //   fovY        - Vertical field of view angle in radians
+        //   aspect      - Aspect ratio (width / height)
+        //   nearPlane   - Distance to near clip plane (positive value)
+        //   farPlane    - Distance to far clip plane (positive value, farPlane > nearPlane)
+        //
+        // Returns: A 4x4 projection matrix for use with row vectors (v' = v * M)
+        //
+        // Matrix layout for row vectors (v' = v * M):
+        // Row-vector multiplication: [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
+        // 
+        // RHS: +X=forward, +Y=left, +Z=up
+        // Mapping: x_cam(forward) → z_clip(depth), y_cam(left) → -x_clip(right in clip), z_cam(up) → y_clip(up)
+        // 
+        // [   0     -f/aspect    0        0    ]  row 0
+        // [   0        0         f        0    ]  row 1
+        // [   A        0         0        1    ]  row 2
+        // [   B        0         0        0    ]  row 3  ← NOTE: Positive B for reverse-Z
+        //
+        // Where: A = farPlane/(near-far), B = (near*far)/(near-far) for reverse-Z
+        template<class _Type>
+        TMatrix<_Type, 4, 4> PerspectiveReverseZ(_Type fovY, _Type aspect, _Type nearPlane, _Type farPlane)
+        {
+            auto m = IdentityMatrix<_Type, 4, 4>();
+
+            _Type f = _Type(1.0) / std::tan(fovY * _Type(0.5));  // cotangent of half FOV
+            _Type rangeInv = _Type(1.0) / (nearPlane - farPlane);  // reversed for reverse-Z
+
+            // Row 0: y_cam(left) → x_clip (negated because clip space is +X=right)
+            m[0][0] = _Type(0.0);
+            m[0][1] = -f / aspect;
+            m[0][2] = _Type(0.0);
+            m[0][3] = _Type(0.0);
+            
+            // Row 1: z_cam(up) → y_clip
+            m[1][0] = _Type(0.0);
+            m[1][1] = _Type(0.0);
+            m[1][2] = f;
+            m[1][3] = _Type(0.0);
+            
+            // Row 2: x_cam(forward) → z_clip and w_clip
+            m[2][0] = farPlane * rangeInv;        // A: x_cam → z_clip
+            m[2][1] = _Type(0.0);
+            m[2][2] = _Type(0.0);
+            m[2][3] = _Type(1.0);                 // x_cam → w_clip (for perspective divide)
+            
+            // Row 3: constant → z_clip
+            m[3][0] = nearPlane * farPlane * rangeInv;  // B: constant → z_clip
+            m[3][1] = _Type(0.0);
+            m[3][2] = _Type(0.0);
+            m[3][3] = _Type(0.0);
+            
+            return m;
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // PerspectiveForwardZ: Generates a forward-Z perspective projection matrix.
+        //
+        // Conventions:
+        //   Input coordinate system:  X = camera's local forward, Y = camera's local left, Z = camera's local up (RHS)
+        //   Clip space:               X = right, Y = up, Z = depth (0.0 at near, 1.0 at far)
+        //
+        // This transformation maps:
+        //   - Camera's forward (X_cam) → Z_clip (depth into screen, forward-Z: 0 at near, 1 at far)
+        //   - Camera's left (Y_cam) → -X_clip (negated to become right in clip space)
+        //   - Camera's up (Z_cam) → Y_clip (up in clip space)
+        //
+        // Parameters:
+        //   fovY        - Vertical field of view angle in radians
+        //   aspect      - Aspect ratio (width / height)
+        //   nearPlane   - Distance to near clip plane (positive value)
+        //   farPlane    - Distance to far clip plane (positive value, farPlane > nearPlane)
+        //
+        // Returns: A 4x4 projection matrix for use with row vectors (v' = v * M)
+        //
+        // Matrix layout for row vectors (v' = v * M):
+        // Row-vector multiplication: [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
+        // 
+        // RHS: +X=forward, +Y=left, +Z=up
+        // Mapping: x_cam(forward) → z_clip(depth), y_cam(left) → -x_clip(right in clip), z_cam(up) → y_clip(up)
+        // 
+        // [   0     -f/aspect    0        0    ]  row 0
+        // [   0        0         f        0    ]  row 1
+        // [   A        0         0        1    ]  row 2
+        // [  -B        0         0        0    ]  row 3  ← NOTE: Negative B for forward-Z
+        //
+        // Where: A = farPlane/(far-near), B = (near*far)/(far-near) for forward-Z
+        template<class _Type>
+        TMatrix<_Type, 4, 4> PerspectiveForwardZ(_Type fovY, _Type aspect, _Type nearPlane, _Type farPlane)
+        {
+            auto m = IdentityMatrix<_Type, 4, 4>();
+
+            _Type f = _Type(1.0) / std::tan(fovY * _Type(0.5));  // cotangent of half FOV
+            _Type rangeInv = _Type(1.0) / (farPlane - nearPlane);  // standard forward-Z
+
+            // Row 0: y_cam(left) → x_clip (negated because clip space is +X=right)
+            m[0][0] = _Type(0.0);
+            m[0][1] = -f / aspect;
+            m[0][2] = _Type(0.0);
+            m[0][3] = _Type(0.0);
+            
+            // Row 1: z_cam(up) → y_clip
+            m[1][0] = _Type(0.0);
+            m[1][1] = _Type(0.0);
+            m[1][2] = f;
+            m[1][3] = _Type(0.0);
+            
+            // Row 2: x_cam(forward) → z_clip and w_clip
+            m[2][0] = farPlane * rangeInv;        // A: x_cam → z_clip
+            m[2][1] = _Type(0.0);
+            m[2][2] = _Type(0.0);
+            m[2][3] = _Type(1.0);                 // x_cam → w_clip (for perspective divide)
+            
+            // Row 3: constant → z_clip
+            m[3][0] = -nearPlane * farPlane * rangeInv;  // B: constant → z_clip
+            m[3][1] = _Type(0.0);
+            m[3][2] = _Type(0.0);
+            m[3][3] = _Type(0.0);
+            
+            return m;
+        }
+
+        //------------------------------------------------------------------------------------------------
+        // Axis-Aligned Bounding Box
+        struct AABB
+        {
+            FloatVector4 Min;
+            FloatVector4 Max;
+
+            AABB()
+                : Min(FLT_MAX, FLT_MAX, FLT_MAX, 0.0f)
+                , Max(-FLT_MAX, -FLT_MAX, -FLT_MAX, 0.0f)
+            {
+            }
+
+            AABB(const FloatVector4& min, const FloatVector4& max)
+                : Min(min), Max(max)
+            {
+            }
+
+            bool IsValid() const
+            {
+                return Min.V[0] <= Max.V[0] && Min.V[1] <= Max.V[1] && Min.V[2] <= Max.V[2];
+            }
+
+            void Reset()
+            {
+                Min = FloatVector4(FLT_MAX, FLT_MAX, FLT_MAX, 0.0f);
+                Max = FloatVector4(-FLT_MAX, -FLT_MAX, -FLT_MAX, 0.0f);
+            }
+
+            void ExpandToInclude(const FloatVector4& point)
+            {
+                if (point.V[0] < Min.V[0]) Min.V[0] = point.V[0];
+                if (point.V[1] < Min.V[1]) Min.V[1] = point.V[1];
+                if (point.V[2] < Min.V[2]) Min.V[2] = point.V[2];
+                if (point.V[0] > Max.V[0]) Max.V[0] = point.V[0];
+                if (point.V[1] > Max.V[1]) Max.V[1] = point.V[1];
+                if (point.V[2] > Max.V[2]) Max.V[2] = point.V[2];
+            }
+
+            void ExpandToInclude(const AABB& other)
+            {
+                if (!other.IsValid()) return;
+                if (!IsValid())
+                {
+                    *this = other;
+                    return;
+                }
+                ExpandToInclude(other.Min);
+                ExpandToInclude(other.Max);
+            }
+
+            FloatVector4 GetCenter() const
+            {
+                return FloatVector4(
+                    (Min.V[0] + Max.V[0]) * 0.5f,
+                    (Min.V[1] + Max.V[1]) * 0.5f,
+                    (Min.V[2] + Max.V[2]) * 0.5f,
+                    0.0f
+                );
+            }
+
+            FloatVector4 GetExtents() const
+            {
+                return FloatVector4(
+                    (Max.V[0] - Min.V[0]) * 0.5f,
+                    (Max.V[1] - Min.V[1]) * 0.5f,
+                    (Max.V[2] - Min.V[2]) * 0.5f,
+                    0.0f
+                );
+            }
+        };
+
 
     }
 }
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

@@ -6,9 +6,6 @@
 
 #include "LinkedList.h"
 
-namespace Canvas
-{
-
 static bool IsPlanarResourceFormat(DXGI_FORMAT Format)
 {
     bool Result = false;
@@ -162,5 +159,3 @@ public:
     {}
     void ResolveResourceBarriers(std::vector<D3D12_RESOURCE_BARRIER> &Barriers);
 };
-
-}

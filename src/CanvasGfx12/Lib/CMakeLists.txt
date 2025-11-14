@@ -4,9 +4,9 @@ cmake_minimum_required(VERSION 3.24)
 # Define the library
 add_library(CanvasGfx12 SHARED
     CanvasGfx12.cpp
-    Instance12.cpp
     Device12.cpp
-    GraphicsContext12.cpp
+    RenderQueue12.cpp
+    Buffer12.cpp
     Surface12.cpp
     SwapChain12.cpp
     dllmain.cpp
@@ -21,19 +21,12 @@ set_target_properties(CanvasGfx12 PROPERTIES
     OUTPUT_NAME "CanvasGfx12"
 )
 
-# Use explicit DEF file for exports instead of automatic generation
-set_target_properties(CanvasGfx12 PROPERTIES
-    LINK_FLAGS "/DEF:${CMAKE_CURRENT_SOURCE_DIR}/CanvasGfx12.def"
-)
-
 # Include directories
 target_include_directories(CanvasGfx12 
     PUBLIC 
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../Inc>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../d3dx12>
         $<INSTALL_INTERFACE:include>
-        $<INSTALL_INTERFACE:include/d3dx12>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
@@ -72,6 +65,7 @@ target_link_libraries(CanvasGfx12 PRIVATE
     CanvasCore
     D3D12ResourceUtils
     GEM
+    Allocators
 )
 
 # Use precompiled headers

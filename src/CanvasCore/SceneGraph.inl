@@ -10,7 +10,7 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-inline CSceneGraphNode::CSceneGraphNode(CCanvas *pCanvas) : TCanvasElement<XSceneGraphNode>(pCanvas)
+inline CSceneGraphNode::CSceneGraphNode(XCanvas *pCanvas) : TCanvasElement<XSceneGraphNode>(pCanvas)
 {
 }
 
@@ -41,19 +41,6 @@ inline GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetSibling()
 inline GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetFirstChild()
 {
     return this->m_pFirstChild.Get();
-}
-
-//------------------------------------------------------------------------------------------------
-inline GEMMETHODIMP_(void) CSceneGraphNode::SetTransform(XTransform *pTransform)
-{
-    // TODO: Implement transform functionality
-}
-
-//------------------------------------------------------------------------------------------------
-inline GEMMETHODIMP_(XTransform *) CSceneGraphNode::GetTransform() const
-{
-    // TODO: Implement transform functionality
-    return nullptr;
 }
 
 //------------------------------------------------------------------------------------------------

@@ -1,3 +1,0 @@
-LIBRARY CanvasGfx12
-EXPORTS
-	CreateGfxInstance

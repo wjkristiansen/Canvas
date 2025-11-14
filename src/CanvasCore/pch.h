@@ -24,7 +24,6 @@
 #include <iostream>
 #include <sstream>
 #include <mutex>
-#include <chrono>
 #include <algorithm>
 
 // reference additional headers your program requires here
@@ -32,6 +31,4 @@
 #include <Gem.hpp>
 #include <CanvasMath.hpp>
 #include <CanvasCore.h>
-
-#include "QLog.h"
 

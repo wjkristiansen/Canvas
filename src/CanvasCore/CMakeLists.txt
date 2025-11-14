@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.24)
 # Define the library
 add_library(CanvasCore SHARED
     # Source files
+    Camera.cpp
     CanvasCore.cpp
     dllmain.cpp
     Scene.cpp
@@ -14,7 +15,7 @@ add_library(CanvasCore SHARED
     ../Inc/CanvasCore.h
     ../Inc/CanvasGfx.h
     ../Inc/CanvasMath.hpp
-    ../Inc/CanvasModel.h
+    ../Inc/CanvasRender.h
     Camera.h
     Canvas.h
     DataSource.h
@@ -25,7 +26,6 @@ add_library(CanvasCore SHARED
     ScopedUtils.h
     Timeline.h
     Timer.h
-    Transform.h
     pch.h
     targetver.h
 )
@@ -61,6 +61,8 @@ target_link_libraries(CanvasCore PUBLIC
     WIL
     GEM
     QLog
+    RingBuffer
+    TaskManager
 )
 
 # Windows-specific settings
@@ -89,9 +91,6 @@ endif()
 
 # Use precompiled headers
 target_precompile_headers(CanvasCore PRIVATE pch.h)
-
-# Add the .def file as a source to use it for exports
-target_sources(CanvasCore PRIVATE CanvasCore.def)
 
 # Installation
 install(TARGETS CanvasCore

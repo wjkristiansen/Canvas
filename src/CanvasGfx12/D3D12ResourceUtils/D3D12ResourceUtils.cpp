@@ -6,9 +6,6 @@
 
 #include "D3D12ResourceUtils.h"
 
-namespace Canvas
-{
-
 //------------------------------------------------------------------------------------------------
 static void InitTransitionBarrier(D3D12_RESOURCE_BARRIER &Barrier, ID3D12Resource *pD3DResource, UINT Subresource, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter)
 {
@@ -186,6 +183,4 @@ void CResourceStateManager::ResolveResourceBarriers(std::vector<D3D12_RESOURCE_B
         }
         pResource->m_HasUnresolvedStateTransitions = false;
     }
-}
-
 }

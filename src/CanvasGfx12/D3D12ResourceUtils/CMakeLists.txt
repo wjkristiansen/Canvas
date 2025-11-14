@@ -21,9 +21,7 @@ target_include_directories(D3D12ResourceUtils
     PUBLIC 
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../Inc>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../d3dx12>
         $<INSTALL_INTERFACE:include>
-        $<INSTALL_INTERFACE:include/d3dx12>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
@@ -49,10 +47,8 @@ if(WIN32)
 
     if(TARGET D3D12Agility)
         message(STATUS "D3D12ResourceUtils: Using Agility SDK headers and Windows SDK libraries")
-        # Get the include directory from the parent scope
-        get_directory_property(AGILITY_INCLUDE_DIR DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/.. DEFINITION AGILITY_INCLUDE_DIR)
-        target_include_directories(D3D12ResourceUtils PRIVATE "${AGILITY_INCLUDE_DIR}")
-        target_link_libraries(D3D12ResourceUtils PUBLIC d3d12 dxgi d3dcompiler)
+        # Link with the D3D12Agility interface library publicly so consumers get access to headers
+        target_link_libraries(D3D12ResourceUtils PUBLIC D3D12Agility)
     else()
         target_link_libraries(D3D12ResourceUtils PUBLIC d3d12 dxgi d3dcompiler)
     endif()
