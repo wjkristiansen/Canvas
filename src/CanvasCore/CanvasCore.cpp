@@ -8,6 +8,7 @@
 #include "CanvasElement.h"
 #include "Camera.h"
 #include "Light.h"
+#include "Mesh.h"
 #include "Scene.h"
 #include "CanvasGfx.h"
 
@@ -166,6 +167,14 @@ GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight, PCSTR name)
     Gem::Result result = CreateElement<CLight>(ppLight, name, type);
     
     return result;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateMeshInstance(XMeshInstance **ppMeshInstance, PCSTR name)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateMeshInstance", m_pLogger);
+
+    return CreateElement<CMeshInstance>(ppMeshInstance, name);
 }
 
 //------------------------------------------------------------------------------------------------

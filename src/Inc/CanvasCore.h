@@ -36,8 +36,8 @@ struct XScene;
 struct XCamera;
 struct XLight;
 struct XGfxBuffer;
-struct XGfxMesh;
-struct XMeshElement;
+struct XGfxMeshData;
+struct XMeshInstance;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
 
@@ -167,6 +167,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, PCSTR name = nullptr) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
@@ -382,11 +383,12 @@ XScene : public XCanvasElement
 
 //------------------------------------------------------------------------------------------------
 struct
-XMeshElement : public XCanvasElement
+XMeshInstance : public XSceneGraphElement
 {
-    GEM_INTERFACE_DECLARE(XMeshElement, 0x4F4481985210AE1E);
+    GEM_INTERFACE_DECLARE(XMeshInstance, 0x4F4481985210AE1E);
     
-    GEMMETHOD_(XGfxMesh *, GetMesh)() = 0;
+    GEMMETHOD_(XGfxMeshData *, GetMeshData)() = 0;
+    GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;
     GEMMETHOD_(uint32_t, GetMaterialGroupIndex)() = 0;
 };
 

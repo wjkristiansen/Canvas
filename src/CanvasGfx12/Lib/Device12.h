@@ -58,12 +58,12 @@ public:
     GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, Canvas::GfxMemoryUsage memoryUsage, Canvas::XGfxBuffer **ppBuffer) final;
     GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, Canvas::GfxSuballocation &suballocationInfo) final;
     GEMMETHOD_(void, FreeHostWriteRegion)(Canvas::GfxSuballocation &suballocationInfo) final;
-    GEMMETHOD(CreateDebugMesh)(
+    GEMMETHOD(CreateDebugMeshData)(
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,
         const Canvas::Math::FloatVector4 *normals,
         Canvas::XGfxRenderQueue *pRenderQueue,
-        Canvas::XGfxMesh **ppMesh) final;
+        Canvas::XGfxMeshData **ppMesh) final;
 
     ID3D12Device5 *GetD3DDevice() const { return m_pD3DDevice; }
 

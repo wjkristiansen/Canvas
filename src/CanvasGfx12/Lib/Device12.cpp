@@ -320,12 +320,12 @@ GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxSuballocation &sub
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateDebugMesh(
+GEMMETHODIMP CDevice12::CreateDebugMeshData(
     [[maybe_unused]] uint32_t vertexCount,
     [[maybe_unused]] const Canvas::Math::FloatVector4 *positions,
     [[maybe_unused]] const Canvas::Math::FloatVector4 *normals,
     [[maybe_unused]] Canvas::XGfxRenderQueue *pRenderQueue,
-    [[maybe_unused]] Canvas::XGfxMesh **ppMesh)
+    [[maybe_unused]] Canvas::XGfxMeshData **ppMesh)
 {
     // Two FloatVector4 arrays: positions and normals
     uint64_t posSize = static_cast<uint64_t>(vertexCount) * sizeof(Canvas::Math::FloatVector4);

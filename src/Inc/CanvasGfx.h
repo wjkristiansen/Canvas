@@ -164,9 +164,9 @@ namespace Canvas
 
     //------------------------------------------------------------------------------------------------
     struct
-    XGfxMesh : public XCanvasElement
+    XGfxMeshData : public XCanvasElement
     {
-        GEM_INTERFACE_DECLARE(XGfxMesh, 0x7EBC2A5A40CC96D3);
+        GEM_INTERFACE_DECLARE(XGfxMeshData, 0x7EBC2A5A40CC96D3);
 
         GEMMETHOD_(uint32_t, GetNumMaterialGroups)() = 0;
         GEMMETHOD_(GfxVertexBuffer *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
@@ -313,12 +313,12 @@ namespace Canvas
         GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, GfxMemoryUsage memoryUsage, XGfxBuffer **ppBuffer) = 0;
         GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxSuballocation &suballocationInfo) = 0;
         GEMMETHOD_(void, FreeHostWriteRegion)(GfxSuballocation &suballocationInfo) = 0;
-        GEMMETHOD(CreateDebugMesh)(
+        GEMMETHOD(CreateDebugMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
             const Canvas::Math::FloatVector4 *normals,
             XGfxRenderQueue *pRenderQueue,
-            XGfxMesh **ppMesh) = 0;
+            XGfxMeshData **ppMesh) = 0;
     };
 }
 

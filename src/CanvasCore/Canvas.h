@@ -127,6 +127,7 @@ public:
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;
+    GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, PCSTR name = nullptr) final;
 
     GEMMETHOD_(XLogger *, GetLogger)() final
     {
