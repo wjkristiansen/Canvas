@@ -1,0 +1,36 @@
+//================================================================================================
+// MeshData12
+//================================================================================================
+
+#pragma once
+
+#include "CanvasGfx12.h"
+
+//------------------------------------------------------------------------------------------------
+class CMeshData12 : public TGfxElement<Canvas::XGfxMeshData>
+{
+public:
+    BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(Canvas::XGfxMeshData)
+        GEM_INTERFACE_ENTRY(Canvas::XCanvasElement)
+        GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
+    END_GEM_INTERFACE_MAP()
+
+    CMeshData12(Canvas::XCanvas* pCanvas, PCSTR name = nullptr);
+
+    Gem::Result Initialize() { return Gem::Result::Success; }
+    void Uninitialize() {}
+
+    // XGfxMeshData interface
+    GEMMETHOD_(uint32_t, GetNumMaterialGroups)() override;
+    GEMMETHOD_(Canvas::GfxVertexBuffer*, GetVertexBuffer)(uint32_t materialIndex, Canvas::GfxVertexBufferType type) override;
+    GEMMETHOD_(Canvas::XGfxMaterial*, GetMaterial)(uint32_t materialIndex) override;
+
+    // Internal methods for setting up buffers
+    void SetPositionBuffer(Canvas::XGfxBuffer* pBuffer);
+    void SetNormalBuffer(Canvas::XGfxBuffer* pBuffer);
+
+private:
+    Gem::TGemPtr<Canvas::XGfxBuffer> m_pPositionBuffer;
+    Gem::TGemPtr<Canvas::XGfxBuffer> m_pNormalBuffer;
+};

@@ -9,6 +9,7 @@ add_library(CanvasGfx12 SHARED
     Buffer12.cpp
     Surface12.cpp
     SwapChain12.cpp
+    MeshData12.cpp
     dllmain.cpp
     pch.h
     targetver.h

@@ -7,6 +7,7 @@
 #include "RenderQueue12.h"
 #include "Surface12.h"
 #include "Buffer12.h"
+#include "MeshData12.h"
 
 //------------------------------------------------------------------------------------------------
 CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
@@ -379,15 +380,8 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
         {
             CRenderQueue12* pRQ = reinterpret_cast<CRenderQueue12*>(pRenderQueue);
 
-            // Declare resource usage: source buffer as read, two destinations as write
+            // Declare resource usage: destination buffers need barriers for copy
             TaskResourceUsageBuilder usages;
-            usages.SetBufferUsage(
-                reinterpret_cast<CBuffer12*>(suballocation.pBuffer.Get())->GetD3DResource(),
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_SOURCE,
-                suballocation.Offset,
-                suballocation.Size);
-
             usages.SetBufferUsage(
                 reinterpret_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource(),
                 D3D12_BARRIER_SYNC_COPY,
@@ -417,6 +411,14 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
             pRQ->ScheduleHostWriteRelease(suballocation, copyTask);
         }
 
+// Create and register the CMeshData12 object that holds the buffers
+        Gem::TGemPtr<CMeshData12> pMeshData;
+        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas()));
+        
+        pMeshData->SetPositionBuffer(pPosBuffer);
+        pMeshData->SetNormalBuffer(pNormBuffer);
+        
+        *ppMesh = pMeshData.Detach();
         return Gem::Result::Success;
     }
     catch (const Gem::GemError &e)
