@@ -5,67 +5,25 @@
 #pragma once
 
 #include "CanvasGfx12.h"
-#include "TaskManager.h"
+#include "GpuTask.h"
 
 // Enable resource usage validation diagnostics (conflict detection, write exclusivity checking)
 // Set to 0 to disable for production builds with minimal overhead
 #define CANVAS_RESOURCE_USAGE_DIAGNOSTICS 0
 
 //------------------------------------------------------------------------------------------------
-// Enhanced barrier types for D3D12
-struct TextureBarrier
-{
-    ID3D12Resource* pResource;
-    D3D12_BARRIER_SYNC SyncBefore;
-    D3D12_BARRIER_SYNC SyncAfter;
-    D3D12_BARRIER_ACCESS AccessBefore;
-    D3D12_BARRIER_ACCESS AccessAfter;
-    D3D12_BARRIER_LAYOUT LayoutBefore;
-    D3D12_BARRIER_LAYOUT LayoutAfter;
-    UINT Subresources = 0xFFFFFFFF;  // All subresources by default
-    D3D12_TEXTURE_BARRIER_FLAGS Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
-};
-
-struct BufferBarrier
-{
-    ID3D12Resource* pResource;
-    D3D12_BARRIER_SYNC SyncBefore;
-    D3D12_BARRIER_SYNC SyncAfter;
-    D3D12_BARRIER_ACCESS AccessBefore;
-    D3D12_BARRIER_ACCESS AccessAfter;
-    UINT64 Offset = 0;
-    UINT64 Size = UINT64_MAX;  // Whole resource by default
-};
-
-struct GlobalBarrier
-{
-    D3D12_BARRIER_SYNC SyncBefore;
-    D3D12_BARRIER_SYNC SyncAfter;
-    D3D12_BARRIER_ACCESS AccessBefore;
-    D3D12_BARRIER_ACCESS AccessAfter;
-};
-
-//------------------------------------------------------------------------------------------------
 // Resource Usage Declaration System
 //
-// Tasks declare their input/output resource usage to enable:
+// GPU operations declare their resource usage to enable:
 // 1. Automatic barrier insertion based on resource transitions
 // 2. Hazard detection (e.g., concurrent writes to same resource)
 // 3. Proper synchronization point insertion
 // 4. Elimination of manual barrier management
 //
-// ResourceUsage types (mutually exclusive for each declared usage):
-//   - INPUT_READ: Read access (any sync/access that reads)
-//   - OUTPUT_WRITE: Write access (requires exclusive access)
-//   - RWM: Read-Write-Modify (atomic operations, etc.)
-//   - TRANSITION_ONLY: State transition without actual GPU work
-//
-// Usage pattern: Task author declares required state at START of GPU work
-// RenderQueue automatically generates barriers for state transitions,
-// and validates no concurrent writes to same resource from different tasks.
+// Usage pattern: Caller declares required state at START of GPU work.
+// RenderQueue automatically generates barriers for state transitions.
 //================================----------------------------------------------------------------
 
-// Usage type enumeration for resource declarations
 // Texture usage declaration with layout, access, and sync requirements
 // NOTE: Access type determines read/write semantics - no separate UsageType enum
 struct TextureUsage
@@ -142,7 +100,7 @@ struct BufferUsage
 
 // Container for all resource usages declared by a task
 // Enables validation and automatic barrier generation
-struct TaskResourceUsages
+struct ResourceUsages
 {
     std::vector<TextureUsage> TextureUsages;
     std::vector<BufferUsage> BufferUsages;
@@ -213,13 +171,13 @@ struct TaskResourceUsages
 // Builder pattern for convenient resource usage declaration
 // Use explicit methods that take all parameters - the parameters themselves
 // document what the resource is used for (layout, sync, access).
-class TaskResourceUsageBuilder
+class ResourceUsageBuilder
 {
 public:
     //---------------------------------------------------------------------------------------------
     // Primary texture usage method - explicitly specify all parameters
     //---------------------------------------------------------------------------------------------
-    TaskResourceUsageBuilder& SetTextureUsage(
+    ResourceUsageBuilder& SetTextureUsage(
         ID3D12Resource* pResource,
         D3D12_BARRIER_LAYOUT requiredLayout,
         D3D12_BARRIER_SYNC syncForUsage,
@@ -237,7 +195,7 @@ public:
     }
     
     // Convenience: Texture as shader resource (read-only)
-    TaskResourceUsageBuilder& TextureAsShaderResource(
+    ResourceUsageBuilder& TextureAsShaderResource(
         ID3D12Resource* pResource,
         UINT subresources = 0xFFFFFFFF)
     {
@@ -250,7 +208,7 @@ public:
     }
     
     // Convenience: Texture as unordered access view (read-write)
-    TaskResourceUsageBuilder& TextureAsUnorderedAccess(
+    ResourceUsageBuilder& TextureAsUnorderedAccess(
         ID3D12Resource* pResource,
         UINT subresources = 0xFFFFFFFF)
     {
@@ -263,7 +221,7 @@ public:
     }
     
     // Convenience: Texture as render target
-    TaskResourceUsageBuilder& TextureAsRenderTarget(
+    ResourceUsageBuilder& TextureAsRenderTarget(
         ID3D12Resource* pResource,
         UINT subresources = 0xFFFFFFFF)
     {
@@ -276,7 +234,7 @@ public:
     }
     
     // Convenience: Texture as depth-stencil target (write)
-    TaskResourceUsageBuilder& TextureAsDepthStencilWrite(
+    ResourceUsageBuilder& TextureAsDepthStencilWrite(
         ID3D12Resource* pResource,
         UINT subresources = 0xFFFFFFFF)
     {
@@ -289,7 +247,7 @@ public:
     }
     
     // Convenience: Texture as depth-stencil resource (read)
-    TaskResourceUsageBuilder& TextureAsDepthStencilRead(
+    ResourceUsageBuilder& TextureAsDepthStencilRead(
         ID3D12Resource* pResource,
         UINT subresources = 0xFFFFFFFF)
     {
@@ -302,7 +260,7 @@ public:
     }
     
     // Convenience: Texture as copy destination
-    TaskResourceUsageBuilder& TextureAsCopyDest(
+    ResourceUsageBuilder& TextureAsCopyDest(
         ID3D12Resource* pResource,
         UINT subresources = 0xFFFFFFFF)
     {
@@ -315,7 +273,7 @@ public:
     }
     
     // Convenience: Texture as copy source (read-only)
-    TaskResourceUsageBuilder& TextureAsCopySource(
+    ResourceUsageBuilder& TextureAsCopySource(
         ID3D12Resource* pResource,
         UINT subresources = 0xFFFFFFFF)
     {
@@ -330,7 +288,7 @@ public:
     //---------------------------------------------------------------------------------------------
     // Primary buffer usage method - explicitly specify all parameters
     //---------------------------------------------------------------------------------------------
-    TaskResourceUsageBuilder& SetBufferUsage(
+    ResourceUsageBuilder& SetBufferUsage(
         ID3D12Resource* pResource,
         D3D12_BARRIER_SYNC syncForUsage,
         D3D12_BARRIER_ACCESS accessForUsage,
@@ -348,7 +306,7 @@ public:
     }
     
     // Convenience: Buffer as shader resource (read-only)
-    TaskResourceUsageBuilder& BufferAsShaderResource(
+    ResourceUsageBuilder& BufferAsShaderResource(
         ID3D12Resource* pResource,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
@@ -362,7 +320,7 @@ public:
     }
     
     // Convenience: Buffer as unordered access (read-write)
-    TaskResourceUsageBuilder& BufferAsUnorderedAccess(
+    ResourceUsageBuilder& BufferAsUnorderedAccess(
         ID3D12Resource* pResource,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
@@ -376,7 +334,7 @@ public:
     }
     
     // Convenience: Buffer as constant buffer (read-only)
-    TaskResourceUsageBuilder& BufferAsConstantBuffer(
+    ResourceUsageBuilder& BufferAsConstantBuffer(
         ID3D12Resource* pResource,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
@@ -390,7 +348,7 @@ public:
     }
     
     // Convenience: Buffer as vertex buffer (read-only)
-    TaskResourceUsageBuilder& BufferAsVertexBuffer(
+    ResourceUsageBuilder& BufferAsVertexBuffer(
         ID3D12Resource* pResource,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
@@ -404,7 +362,7 @@ public:
     }
     
     // Convenience: Buffer as index buffer (read-only)
-    TaskResourceUsageBuilder& BufferAsIndexBuffer(
+    ResourceUsageBuilder& BufferAsIndexBuffer(
         ID3D12Resource* pResource,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
@@ -418,7 +376,7 @@ public:
     }
     
     // Convenience: Buffer as copy destination
-    TaskResourceUsageBuilder& BufferAsCopyDest(
+    ResourceUsageBuilder& BufferAsCopyDest(
         ID3D12Resource* pResource,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
@@ -432,7 +390,7 @@ public:
     }
     
     // Convenience: Buffer as copy source (read-only)
-    TaskResourceUsageBuilder& BufferAsCopySource(
+    ResourceUsageBuilder& BufferAsCopySource(
         ID3D12Resource* pResource,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
@@ -445,120 +403,13 @@ public:
             size);
     }
     
-    const TaskResourceUsages& Build() const { return m_usages; }
-    TaskResourceUsages Build() { return m_usages; }
+    const ResourceUsages& Build() const { return m_usages; }
+    ResourceUsages Build() { return m_usages; }
 
 private:
-    TaskResourceUsages m_usages;
+    ResourceUsages m_usages;
 };
 
-//------------------------------------------------------------------------------------------------
-// Texture layout initialization descriptor
-// Used for batch setting initial texture layouts or queueing layout fixups
-//------------------------------------------------------------------------------------------------
-struct TextureLayout {
-    ID3D12Resource* pResource;
-    D3D12_BARRIER_LAYOUT layout;
-    UINT subresource; // 0xFFFFFFFF for all subresources, or a single subresource index
-};
-
-//------------------------------------------------------------------------------------------------
-// Builder pattern for texture layout initialization and fixups
-// Similar to TaskResourceUsageBuilder but for layout-only operations
-//------------------------------------------------------------------------------------------------
-class TextureLayoutBuilder
-{
-public:
-    // Primary method - explicitly specify resource, layout, and subresource
-    TextureLayoutBuilder& SetLayout(
-        ID3D12Resource* pResource,
-        D3D12_BARRIER_LAYOUT layout,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        m_layouts.push_back({ pResource, layout, subresource });
-        return *this;
-    }
-    
-    // Convenience: Set as shader resource layout
-    TextureLayoutBuilder& AsShaderResource(
-        ID3D12Resource* pResource,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, subresource);
-    }
-    
-    // Convenience: Set as unordered access layout
-    TextureLayoutBuilder& AsUnorderedAccess(
-        ID3D12Resource* pResource,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS, subresource);
-    }
-    
-    // Convenience: Set as render target layout
-    TextureLayoutBuilder& AsRenderTarget(
-        ID3D12Resource* pResource,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_RENDER_TARGET, subresource);
-    }
-    
-    // Convenience: Set as depth-stencil write layout
-    TextureLayoutBuilder& AsDepthStencilWrite(
-        ID3D12Resource* pResource,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, subresource);
-    }
-    
-    // Convenience: Set as depth-stencil read layout
-    TextureLayoutBuilder& AsDepthStencilRead(
-        ID3D12Resource* pResource,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ, subresource);
-    }
-    
-    // Convenience: Set as copy destination layout
-    TextureLayoutBuilder& AsCopyDest(
-        ID3D12Resource* pResource,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_COPY_DEST, subresource);
-    }
-    
-    // Convenience: Set as copy source layout
-    TextureLayoutBuilder& AsCopySource(
-        ID3D12Resource* pResource,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_COPY_SOURCE, subresource);
-    }
-    
-    // Convenience: Set as common layout
-    TextureLayoutBuilder& AsCommon(
-        ID3D12Resource* pResource,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_COMMON, subresource);
-    }
-    
-    // Convenience: Set as present layout
-    TextureLayoutBuilder& AsPresent(
-        ID3D12Resource* pResource,
-        UINT subresource = 0xFFFFFFFF)
-    {
-        return SetLayout(pResource, D3D12_BARRIER_LAYOUT_PRESENT, subresource);
-    }
-    
-    const std::vector<TextureLayout>& Build() const { return m_layouts; }
-    std::vector<TextureLayout> Build() { return m_layouts; }
-
-private:
-    std::vector<TextureLayout> m_layouts;
-};
-
-//------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------
 // GPU synchronization point
 struct GpuSyncPoint
@@ -622,29 +473,16 @@ public:
 
     UINT m_NextRTVSlot = 0;
 
-    // Task scheduling for GPU workloads
-    Canvas::TaskManager m_TaskManager;
-    std::unordered_map<Canvas::TaskID, GpuSyncPoint> m_GpuSyncPoints;
+    // GPU sync point tracking (fence-value based)
+    std::unordered_map<UINT64, GpuSyncPoint> m_GpuSyncPoints;
     
-    // Track the last command list task (any task that records to the command list)
-    // New recording tasks must depend on this to maintain linear command order
-    Canvas::TaskID m_LastCommandListTask = Canvas::NullTaskID;
-    
-    // Dedicated command list for layout fixup barriers
-    // Reused across submissions to avoid allocating new command lists each frame
-    CComPtr<ID3D12CommandAllocator> m_pFixupCommandAllocator;  // Separate allocator required by D3D12
-    CComPtr<ID3D12GraphicsCommandList7> m_pFixupCommandList;   // CL7 required for Barrier() API
-    
-    // Barrier accumulation (batched for efficient recording)
-    std::vector<TextureBarrier> m_PendingTextureBarriers;
-    std::vector<BufferBarrier> m_PendingBufferBarriers;
-    std::vector<GlobalBarrier> m_PendingGlobalBarriers;
-    // Pending host-write release tasks that should be scheduled after the next SubmitCommandList
-    // Each entry is a pair: (releaseTask, preDependencyTask). preDependencyTask may be NullTaskID.
-    std::vector<std::pair<Canvas::TaskID, Canvas::TaskID>> m_PendingHostWriteReleaseTasks;
-    
-    // Flush pending barriers into command list
-    void FlushPendingBarriers();
+    // Deferred host-write releases: suballocations to free after GPU reaches associated fence value
+    struct DeferredHostWriteRelease
+    {
+        Canvas::GfxSuballocation Suballocation;
+        UINT64 FenceValue;  // Release once GPU completes past this fence value
+    };
+    std::vector<DeferredHostWriteRelease> m_DeferredHostWriteReleases;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
@@ -668,111 +506,113 @@ public:
     CDevice12 *GetDevice() const { return m_pDevice; }
     ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
 
-    // Flush command list - generates layout fixups for first usage
+    // Flush: compute final layouts, update committed state, close/submit CL
     void Flush();
 
     D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
     
-    // Task-based GPU workload management with automatic barrier insertion
+    // Signal the GPU fence and record a sync point
+    void CreateGpuSyncPoint(UINT64 fenceValue);
     
-    // Create a GPU fence synchronization point
-    Canvas::TaskID CreateGpuSyncPoint(
-        UINT64 fenceValue,
-        Canvas::TaskID dependsOn = Canvas::NullTaskID);
+    // Wait on CPU for a GPU fence value to complete
+    void WaitForGpuFence(UINT64 fenceValue);
     
-    // Wait for GPU fence on CPU (creates task that blocks on GPU completion)
-    Canvas::TaskID WaitForGpuFence(
-        UINT64 fenceValue,
-        Canvas::TaskID dependsOn = Canvas::NullTaskID);
-    
-    // Submit command list with builder-style layout expectations
-    Canvas::TaskID SubmitCommandList(
-        Canvas::TaskID dependsOn,
-        const TextureLayoutBuilder& expectedLayouts);
-    
+    // Present the swap chain
+    void PresentSwapChain(Canvas::XGfxSwapChain* pSwapChain);
 
-    // Record layout fixups using builder (preferred API)
-    void AddLayoutFixups(const TextureLayoutBuilder& builder);
-    
-    // DEPRECATED: Use TextureLayoutBuilder overload instead
-    [[deprecated("Use AddLayoutFixups(const TextureLayoutBuilder&) instead")]]
-    void AddLayoutFixups(const std::vector<TextureLayout>& expectedLayouts);
-    
-    // Schedule swap chain present operation as a task
-    Canvas::TaskID SchedulePresent(
-        Canvas::XGfxSwapChain* pSwapChain,
-        Canvas::TaskID dependsOn = Canvas::NullTaskID);
-
-    // Schedule release of a host-write suballocation after the next command list submission completes
-    // The release will wait for the GPU fence that corresponds to the next ExecuteCommandLists signal
-    void ScheduleHostWriteRelease(const Canvas::GfxSuballocation& suballocation, Canvas::TaskID dependsOn = Canvas::NullTaskID);
+    // Schedule release of a host-write suballocation after the current GPU work completes.
+    // The release is deferred until the GPU fence advances past the current value.
+    void ScheduleHostWriteRelease(const Canvas::GfxSuballocation& suballocation);
     
     //---------------------------------------------------------------------------------------------
-    // Resource-Aware Task Scheduling (with automatic barrier insertion)
+    // GPU Task Graph API
     //
-    // These methods enable tasks to declare their input/output resource usage, eliminating
-    // the need for manual barrier management. The RenderQueue automatically:
+    // Tasks are GPU operations (render passes). Each declares its resource usage.
+    // Barriers are resolved immediately when a task is prepared. Commands are recorded
+    // directly into the command list by the caller — no deferred callbacks.
+    //
+    // Usage:
+    //   auto task = CreateGpuTask("ShadowPass");
+    //   DeclareGpuTextureUsage(task, pShadowMap, DEPTH_STENCIL_WRITE, ...);
+    //   PrepareGpuTask(task);   // emits barriers into CL
+    //   // record commands directly into CL...
+    //---------------------------------------------------------------------------------------------
+    
+    // Begin a new GPU task graph for this frame. Populates initial layouts from device state.
+    void BeginTaskGraph();
+    
+    // Create a GPU task within the current task graph
+    Canvas::GpuTaskHandle CreateGpuTask(const char* name = nullptr);
+    
+    // Declare texture usage for a GPU task
+    void DeclareGpuTextureUsage(
+        Canvas::GpuTaskHandle task,
+        ID3D12Resource* pResource,
+        D3D12_BARRIER_LAYOUT requiredLayout,
+        D3D12_BARRIER_SYNC sync,
+        D3D12_BARRIER_ACCESS access,
+        UINT subresources = 0xFFFFFFFF);
+    
+    // Declare buffer usage for a GPU task
+    void DeclareGpuBufferUsage(
+        Canvas::GpuTaskHandle task,
+        ID3D12Resource* pResource,
+        D3D12_BARRIER_SYNC sync,
+        D3D12_BARRIER_ACCESS access,
+        UINT64 offset = 0,
+        UINT64 size = UINT64_MAX);
+    
+    // Prepare a GPU task: resolves barriers and emits them into the command list.
+    // Call after all DeclareGpuTextureUsage/DeclareGpuBufferUsage for this task.
+    // After this returns, the caller can record commands directly into the command list.
+    void PrepareGpuTask(Canvas::GpuTaskHandle task);
+    
+    // Add an explicit dependency between GPU tasks
+    void AddGpuTaskDependency(Canvas::GpuTaskHandle task, Canvas::GpuTaskHandle dependency);
+    
+    // Get the current task graph (for advanced usage)
+    Canvas::CGpuTaskGraph& GetTaskGraph() { return m_GpuTaskGraph; }
+
+    //---------------------------------------------------------------------------------------------
+    // Resource-Aware Command Recording (with automatic barrier insertion)
+    //
+    // These methods enable callers to declare resource usage, eliminating the need for manual
+    // barrier management. The RenderQueue automatically:
     // 1. Inserts barriers for layout/access/sync transitions
     // 2. Detects and prevents concurrent writes to the same resource
-    // 3. Chains task dependencies based on resource usage conflicts
     //---------------------------------------------------------------------------------------------
     
-    // Record commands with declared resource usage
-    // Automatically generates barriers based on current recording state, executes the command
-    // recording lambda, updates state, and returns the task ID.
+    // Record commands with declared resource usage.
+    // Automatically generates barriers based on current recording state, executes the
+    // recording lambda, and updates state.
     //
     // Example:
-    //   TaskResourceUsageBuilder usages;
-    //   usages.BufferRead(srcBuffer).BufferWrite(dest1).BufferWrite(dest2);
+    //   ResourceUsageBuilder usages;
+    //   usages.BufferAsCopySource(srcBuffer).BufferAsCopyDest(dest);
     //   
-    //   Canvas::TaskID task = pQueue->RecordCommands(
+    //   pQueue->RecordCommands(
     //       usages.Build(),
     //       [](ID3D12GraphicsCommandList* pCL) {
-    //           pCL->CopyResource(dest1, src);
-    //           pCL->CopyResource(dest2, src);
-    //       },
-    //       pDeps,
-    //       numDeps);
-    //
-    // Parameters:
-    //   resourceUsages: Declared resource access patterns (reads, writes, layouts)
-    //   recordFunc: Lambda to record commands into the command list
-    //   pDependencies: Array of task IDs this operation depends on (can be nullptr)
-    //   numDependencies: Number of dependencies in pDependencies array
-    //   taskName: Optional descriptive name for this task (for logging)
-    //
-    // Returns: Task ID for the recorded operation
-    // Throws: Gem::GemError if resource diagnostics detect write conflicts (when CANVAS_RESOURCE_USAGE_DIAGNOSTICS=1)
-    Canvas::TaskID RecordCommands(
-        const TaskResourceUsages& resourceUsages,
-        std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
-        const Canvas::TaskID* pDependencies = nullptr,
-        size_t numDependencies = 0,
-        PCSTR taskName = nullptr);
+    //           pCL->CopyResource(dest, src);
+    //       });
+    void RecordCommands(
+        const ResourceUsages& resourceUsages,
+        std::function<void(ID3D12GraphicsCommandList*)> recordFunc);
     
     // Validate resource usage declarations for write conflicts
-    // Returns true if valid (no concurrent writes), false if write conflicts detected
-    // Only available when CANVAS_RESOURCE_USAGE_DIAGNOSTICS=1; stub returning true otherwise
-    bool ValidateResourceUsageNoWriteConflicts(const TaskResourceUsages& resourceUsages) const;
+    bool ValidateResourceUsageNoWriteConflicts(const ResourceUsages& resourceUsages) const;
     
-    /// Get resource state snapshot for a specific resource (for debugging/analysis)
+    // Get resource state snapshot for a specific resource (for debugging/analysis)
     struct ResourceStateSnapshot
     {
-        // Layout information (may be uniform or per-subresource)
-        std::optional<D3D12_BARRIER_LAYOUT> UniformLayout;  // If all subresources have same layout
-        std::unordered_map<UINT, D3D12_BARRIER_LAYOUT> PerSubresourceLayouts;  // If mixed
+        std::optional<D3D12_BARRIER_LAYOUT> UniformLayout;
+        std::unordered_map<UINT, D3D12_BARRIER_LAYOUT> PerSubresourceLayouts;
         
-        Canvas::TaskID LastWriterTask = Canvas::NullTaskID;
-        std::vector<Canvas::TaskID> RecentReaders;  // Last N readers for conflict analysis
-        bool IsCurrentlyLocked = false;  // Locked for exclusive write access
-        
-        // Helper to get layout for a specific subresource (or 0xFFFFFFFF for uniform check)
         D3D12_BARRIER_LAYOUT GetLayout(UINT subresource = 0xFFFFFFFF) const {
             if (UniformLayout.has_value()) {
                 return UniformLayout.value();
             }
             if (subresource == 0xFFFFFFFF) {
-                // Requesting uniform but state is mixed - return COMMON as fallback
                 return D3D12_BARRIER_LAYOUT_COMMON;
             }
             auto it = PerSubresourceLayouts.find(subresource);
@@ -782,233 +622,17 @@ public:
     
     ResourceStateSnapshot GetResourceState(ID3D12Resource* pResource) const;
     
-    // Process completed GPU work and retire tasks
+    // Process completed GPU work (release deferred resources)
     void ProcessCompletedWork();
 
 private:
-    // Per-subresource layout tracking for textures
-    // Stores individual subresource layouts OR a single "all subresources" layout
-    //
-    // DESIGN RATIONALE:
-    // - Textures can have multiple subresources (mip levels, array slices, planes)
-    // - Each subresource can be in a different layout independently
-    // - Common case: all subresources share the same layout (memory efficient)
-    // - Complex case: subresources have different layouts (requires per-subresource tracking)
-    //
-    // EXAMPLE SCENARIOS:
-    // 1. Uniform layout (optimal):
-    //    - Texture created with all subresources in COMMON
-    //    - Transition all to SHADER_RESOURCE → single barrier, stays uniform
-    //
-    // 2. Mixed layouts (requires careful handling):
-    //    - Start: All 4 mips in COMMON (uniform)
-    //    - Transition mip 0 to RENDER_TARGET → splits to per-subresource (mip0=RT, mip1-3=COMMON)
-    //    - Later transition mip 0 to SHADER_RESOURCE → still per-subresource (mip0=SR, mip1-3=COMMON)
-    //    - Finally transition ALL to COMMON → collapses back to uniform (all=COMMON)
-    //
-    // 3. Invalid transition detection:
-    //    - If mip 0 is RENDER_TARGET but mips 1-3 are COMMON
-    //    - Attempt to transition ALL from SHADER_RESOURCE fails (not all in SHADER_RESOURCE)
-    //    - AddLayoutFixups will generate individual barriers for each subresource's actual state
-    //
-    // Pending texture barriers to be batched into a single fixup command list at submission
-    std::vector<D3D12_TEXTURE_BARRIER> m_PendingLayoutFixupBarriers;
-    //---------------------------------------------------------------------------------------------
-    // Resource usage tracking and barrier generation internals
-    //---------------------------------------------------------------------------------------------
+    // Ensure the task graph is active (lazy initialization)
+    void EnsureTaskGraphActive();
     
-    // Enhanced resource state tracking for resource-aware tasks
-    struct ResourceUsageRecord
-    {
-        Canvas::TaskID TaskId = Canvas::NullTaskID;
-        D3D12_BARRIER_LAYOUT RequiredLayout = D3D12_BARRIER_LAYOUT_COMMON;
-        D3D12_BARRIER_SYNC SyncForUsage = D3D12_BARRIER_SYNC_NONE;
-        D3D12_BARRIER_ACCESS AccessForUsage = D3D12_BARRIER_ACCESS_NO_ACCESS;
-        UINT Subresources = 0xFFFFFFFF;
-        UINT64 Offset = 0;
-        UINT64 Size = UINT64_MAX;
-    };
+    // Emit resolved barriers into the command list
+    void EmitBarriers(const Canvas::TaskBarriers& barriers);
     
-    //---------------------------------------------------------------------------------------------
-    // Two-Tier Resource State Tracking System
-    //---------------------------------------------------------------------------------------------
-    
-    // TIER 1: Command Buffer Recording State (Linear, CPU timeline)
-    // Tracks layout/sync/access during command buffer recording.
-    // State flows forward linearly as commands are recorded.
-    // For textures, uses per-subresource tracking (same as submission-time tracking)
-    //
-    // CRITICAL: Per-subresource tracking applies at BOTH recording and submission time!
-    //
-    // WHY PER-SUBRESOURCE TRACKING MATTERS:
-    // - Textures can have independent subresource layout transitions
-    // - Recording: Commands can render to mip 0 while keeping mips 1-3 in different layouts
-    // - Submission: Fixups must respect actual per-subresource states when queuing barriers
-    // - Invalid to assume all subresources share the same layout
-    //
-    // EXAMPLE (recording time):
-    //   RecordCommands(usages.TextureAsRenderTarget(tex, mip=0))      // mip 0: COMMON → RT
-    //   RecordCommands(usages.TextureAsShaderResource(tex, mip=1))    // mip 1: COMMON → SR
-    //   RecordCommands(usages.TextureAsRenderTarget(tex, mip=0))      // mip 0: RT → RT (no barrier)
-    //   RecordCommands(usages.TextureAsShaderResource(tex, all))      // Per-subresource barriers:
-    //                                                                  //   mip 0: RT → SR
-    //                                                                  //   mip 1: SR → SR (skip)
-    //                                                                  //   mip 2,3: COMMON → SR
-    //
-    struct RecordingResourceState
-    {
-        // For textures: per-subresource layout tracking
-        SubresourceLayoutState TextureLayouts;
-        
-        // For all resources: sync and access tracking
-        // Note: Sync/Access are typically uniform across subresources during recording
-        D3D12_BARRIER_SYNC Sync = D3D12_BARRIER_SYNC_NONE;
-        D3D12_BARRIER_ACCESS Access = D3D12_BARRIER_ACCESS_NO_ACCESS;
-    };
-    
-    // Current state during command buffer recording (reset when recording completes)
-    std::unordered_map<ID3D12Resource*, RecordingResourceState> m_RecordingResourceState;
-    
-    // TIER 2: Command Submission State (DAG, GPU timeline)
-    // Tracks texture layouts after command buffer submissions.
-    // Per-task output layouts for barrier generation between submissions.
-    struct SubmissionOutputState
-    {
-        std::unordered_map<ID3D12Resource*, D3D12_BARRIER_LAYOUT> TextureLayouts;
-    };
-    
-    std::unordered_map<Canvas::TaskID, SubmissionOutputState> m_SubmissionOutputLayouts;
-    
-    // Task name mapping for verbose logging (maps TaskID to descriptive name)
-    std::unordered_map<Canvas::TaskID, std::string> m_TaskNames;
-    
-    // Internal helpers for two-tier system
-    
-    // Generate barriers for command buffer recording (uses linear recording state)
-    void GenerateBarriersForRecording(const TaskResourceUsages& resourceUsages);
-    
-    // Update recording state after declaring resource usage
-    void UpdateRecordingState(const TaskResourceUsages& resourceUsages);
-    
-    // Merge submission output layouts from multiple dependency tasks
-    // Returns combined input state for a new submission task
-    SubmissionOutputState MergeSubmissionInputLayouts(
-        const Canvas::TaskID* pDependencies,
-        size_t numDependencies);
-    
-    //---------------------------------------------------------------------------------------------
-    // Task Enqueuing Wrapper Methods
-    //---------------------------------------------------------------------------------------------
-    // These wrappers provide logging of all task enqueuing operations. Two usage patterns
-    // are supported:
-    //
-    // Pattern 1: Immediate dependencies (allocate + enqueue in one call)
-    //   Canvas::TaskID task = EnqueueTask(deps, depCount, taskName, taskFunc, args...);
-    //
-    // Pattern 2: Deferred dependencies (allocate, add dependencies later, then enqueue)
-    //   Canvas::TaskID task = AllocateTypedTask(maxDeps, taskName, taskFunc, args...);
-    //   AddDependency(task, dep1);
-    //   AddDependency(task, dep2);
-    //   EnqueueTask(task, taskName);
-    //
-    // Task name is optional (can be nullptr) and is included in verbose logging output.
-    // Both patterns result in identical logging output.
-    //---------------------------------------------------------------------------------------------
-    
-    // Wrapper for AllocateAndEnqueueTypedTask with automatic logging of task enqueuing
-    // Logs TaskID, task name, dependency list, and execution status (immediate vs deferred)
-    // This must be very fast - inline for zero-cost logging when enabled
-    template<typename Func, typename... Args>
-    Canvas::TaskID EnqueueTask(
-        const Canvas::TaskID* pDependencies,
-        uint32_t dependencyCount,
-        PCSTR taskName,
-        Func&& func,
-        Args&&... args)
-    {
-        auto taskId = m_TaskManager.AllocateAndEnqueueTypedTask(
-            pDependencies,
-            dependencyCount,
-            std::forward<Func>(func),
-            std::forward<Args>(args)...);
-        
-        // Determine if task executed immediately by checking its state
-        // In single-threaded execution, immediate tasks execute synchronously and are Completed
-        // Deferred tasks will be in Scheduled/Ready state waiting for dependencies
-        Canvas::TaskState state = m_TaskManager.GetTaskState(taskId);
-        bool isImmediate = (state == Canvas::TaskState::Completed);
-        
-        // Log with verbose debug info (uses device logger, debug level only)
-        LogTaskEnqueued(taskId, taskName, pDependencies, dependencyCount, isImmediate);
-        
-        return taskId;
-    }
-    
-    // Wrapper for AllocateTypedTask (allocate without enqueuing)
-    // Use this when you need to add dependencies via AddDependency before enqueuing
-    template<typename Func, typename... Args>
-    Canvas::TaskID AllocateTypedTask(
-        uint32_t maxDependencyCount,
-        PCSTR taskName,
-        Func&& func,
-        Args&&... args)
-    {
-        auto taskId = m_TaskManager.AllocateTypedTask(
-            maxDependencyCount,
-            std::forward<Func>(func),
-            std::forward<Args>(args)...);
-        
-        // Store task name for later logging when EnqueueTask is called
-        if (taskId != Canvas::NullTaskID && taskName)
-        {
-            m_TaskNames[taskId] = taskName;
-        }
-        
-        return taskId;
-    }
-    
-    // Wrapper for AddDependency (add a dependency to an unscheduled task)
-    // Must be called before EnqueueTask on a task allocated with AllocateTypedTask
-    Gem::Result AddDependency(Canvas::TaskID taskId, Canvas::TaskID dependencyId)
-    {
-        return m_TaskManager.AddDependency(taskId, dependencyId);
-    }
-    
-    // Wrapper for EnqueueTask (schedule a previously allocated task)
-    // Call this after AllocateTypedTask and all desired AddDependency calls
-    // This overload also provides logging of the final enqueuing with resolved dependency info
-    Gem::Result EnqueueTask(Canvas::TaskID taskId, PCSTR taskName = nullptr)
-    {
-        auto result = m_TaskManager.EnqueueTask(taskId);
-        
-        // Log the enqueuing. For deferred-dependency pattern, we don't know the dependencies
-        // at log time, so we determine execution status by checking if task is already completed.
-        // In single-threaded execution (standard mode), immediate tasks complete synchronously
-        // during EnqueueTask(), so if the result succeeded, we can check the state.
-        if (result == Gem::Result::Success)
-        {
-            Canvas::TaskState state = m_TaskManager.GetTaskState(taskId);
-            // Task executed immediately if it's already in Completed state
-            // (In single-threaded execution, task callbacks run synchronously before EnqueueTask returns)
-            bool isImmediate = (state == Canvas::TaskState::Completed);
-            
-            // Use stored task name if no name provided to this call
-            if (!taskName)
-            {
-                auto it = m_TaskNames.find(taskId);
-                if (it != m_TaskNames.end())
-                {
-                    taskName = it->second.c_str();
-                }
-            }
-            
-            LogTaskEnqueued(taskId, taskName, nullptr, 0, isImmediate);
-        }
-        
-        return result;
-    }
-    
-    // Helper method to format and log task enqueuing with dependencies
-    // Called from EnqueueTask wrapper above
-    void LogTaskEnqueued(Canvas::TaskID taskId, PCSTR taskName, const Canvas::TaskID* pDependencies, uint32_t dependencyCount, bool isImmediate);
+    // GPU Task Graph instance — all barrier state is tracked here
+    Canvas::CGpuTaskGraph m_GpuTaskGraph;
+    bool m_TaskGraphActive = false;
 };

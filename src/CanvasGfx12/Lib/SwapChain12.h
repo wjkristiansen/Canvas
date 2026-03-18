@@ -7,9 +7,6 @@
 #include "Surface12.h"
 #include "CanvasGfx12.h"
 
-// Forward declarations for task graph support
-namespace Canvas { using TaskID = uint64_t; }
-
 //------------------------------------------------------------------------------------------------
 class CSwapChain12 :
     public TGfxElement<Canvas::XGfxSwapChain>
@@ -26,8 +23,7 @@ class CSwapChain12 :
     HANDLE m_hFrameLatencyWaitableObject = nullptr;
     bool m_TearingSupported = false;
     
-    // Frame dependency tracking for task-based rendering
-    Canvas::TaskID m_LastFramePresentTask = 0;  // 0 == NullTaskID
+    // Frame state tracking
     bool m_BackBufferModified = false;          // True if back buffer received any GPU writes this recording phase
 
 public:

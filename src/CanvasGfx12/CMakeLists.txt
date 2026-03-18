@@ -53,6 +53,7 @@ endif()
 
 # Add subdirectories (after defining interface library so it can be consumed)
 add_subdirectory(D3D12ResourceUtils)
+add_subdirectory(GpuTask)
 add_subdirectory(Lib)
 
 

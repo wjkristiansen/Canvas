@@ -410,7 +410,7 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
             CRenderQueue12* pRQ = reinterpret_cast<CRenderQueue12*>(pRenderQueue);
 
             // Declare resource usage: destination buffers need barriers for copy
-            TaskResourceUsageBuilder usages;
+            ResourceUsageBuilder usages;
             usages.SetBufferUsage(
                 reinterpret_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource(),
                 D3D12_BARRIER_SYNC_COPY,
@@ -422,7 +422,7 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
                 D3D12_BARRIER_ACCESS_COPY_DEST);
 
             // Schedule GPU copy operations from upload buffer to device-local buffers
-            Canvas::TaskID copyTask = pRQ->RecordCommands(
+            pRQ->RecordCommands(
                 usages.Build(),
                 [pPosBuffer, pNormBuffer, suballocation, posSize, normSize](ID3D12GraphicsCommandList* cmdList)
                 {
@@ -436,8 +436,8 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
                         cmdList->CopyBufferRegion(pDstNorm, 0, pSrc, suballocation.Offset + posSize, normSize);
                 });
 
-            // Schedule release of the host-write region after the copy task completes
-            pRQ->ScheduleHostWriteRelease(suballocation, copyTask);
+            // Schedule release of the host-write region after the next submit completes
+            pRQ->ScheduleHostWriteRelease(suballocation);
         }
 
         // Create and register the CMeshData12 object that holds the buffers

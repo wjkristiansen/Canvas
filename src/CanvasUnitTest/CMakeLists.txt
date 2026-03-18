@@ -8,6 +8,7 @@ add_library(CanvasUnitTest SHARED
     CanvasInterfacesTest.cpp
     CanvasMathTest.cpp
     D3D12ResourceUtilsTest.cpp
+    GpuTaskGraphTest.cpp
     RingBufferTest.cpp
     TaskManagerTest.cpp
     TaskManagerTypedTest.cpp
@@ -64,6 +65,7 @@ endif()
 target_link_libraries(CanvasUnitTest PRIVATE
     CanvasCore
     D3D12ResourceUtils
+    GpuTask
     RingBuffer
     TaskManager
 )

@@ -65,6 +65,7 @@ endif()
 target_link_libraries(CanvasGfx12 PRIVATE
     CanvasCore
     D3D12ResourceUtils
+    GpuTask
     GEM
     Allocators
 )
