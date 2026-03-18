@@ -24,7 +24,7 @@ Gem::Result CDevice12::Initialize()
     try
     {
         // Create the device
-        CComPtr<ID3D12Device5> pDevice;
+        CComPtr<ID3D12Device10> pDevice;
         ThrowFailedHResult(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice)));
         m_pD3DDevice.Attach(pDevice.Detach());
 
@@ -105,6 +105,20 @@ GEMMETHODIMP CDevice12::CreateMaterial()
 }
 
 //------------------------------------------------------------------------------------------------
+void CDevice12::InitializeTextureLayout(ID3D12Resource* pResource, D3D12_BARRIER_LAYOUT initialLayout)
+{
+    if (!pResource)
+    {
+        Canvas::LogError(GetLogger(), "InitializeTextureLayout: null resource");
+        return;
+    }
+    
+    // Set the committed layout state for a newly created or acquired resource
+    // This is called when textures are created or when swap chain buffers are rotated
+    m_TextureCurrentLayouts[pResource].SetLayout(0xFFFFFFFF, initialLayout);
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas::XGfxSurface **ppSurface)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateSurface", GetLogger());
@@ -116,8 +130,8 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
     
     try
     {
-        // Convert GfxSurfaceDesc to D3D12_RESOURCE_DESC
-        D3D12_RESOURCE_DESC resourceDesc = {};
+        // Convert GfxSurfaceDesc to D3D12_RESOURCE_DESC1
+        D3D12_RESOURCE_DESC1 resourceDesc = {};
         
         switch (desc.Dimension)
         {
@@ -164,22 +178,24 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
         
         // Determine heap properties and initial state
         D3D12_HEAP_PROPERTIES heapProps = {};
-        D3D12_RESOURCE_STATES initialState;
+        D3D12_BARRIER_LAYOUT initialLayout;
         
         if (desc.Flags & Canvas::SurfaceFlag_CpuUpload)
         {
             heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
-            initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
+            // Upload heaps don't have layout - they're always in a CPU-accessible state
+            initialLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
         }
         else if (desc.Flags & Canvas::SurfaceFlag_CpuReadback)
         {
             heapProps.Type = D3D12_HEAP_TYPE_READBACK;
-            initialState = D3D12_RESOURCE_STATE_COPY_DEST;
+            // Readback heaps don't have layout - they're always in a CPU-accessible state
+            initialLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
         }
         else
         {
             heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
-            initialState = D3D12_RESOURCE_STATE_COMMON;
+            initialLayout = D3D12_BARRIER_LAYOUT_COMMON;
         }
         
         heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
@@ -189,17 +205,26 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
         
         // Create the resource
         CComPtr<ID3D12Resource> pResource;
-        ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource(
+        ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource3(
             &heapProps,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
-            initialState,
+            initialLayout,
+            nullptr,
+            nullptr,
+            0,
             nullptr,
             IID_PPV_ARGS(&pResource)));
         
-        // Create and register the CSurface12 wrapper
+        // Create and register the CSurface12 wrapper (pass COMMON for legacy state tracking)
         Gem::TGemPtr<CSurface12> pSurface;
-        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, initialState, nullptr));
+        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, D3D12_RESOURCE_STATE_COMMON, nullptr));
+        
+        // Initialize committed layout tracking
+        if (initialLayout != D3D12_BARRIER_LAYOUT_UNDEFINED)
+        {
+            InitializeTextureLayout(pResource, initialLayout);
+        }
         
         return pSurface->QueryInterface(ppSurface);
     }
@@ -250,13 +275,19 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
         heapProps.CreationNodeMask = 1;
         heapProps.VisibleNodeMask = 1;
         
+        // Buffers don't have layouts in Enhanced Barriers - use UNDEFINED
+        D3D12_BARRIER_LAYOUT initialLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
+        
         // Create the resource
         CComPtr<ID3D12Resource> pResource;
-        ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource(
+        ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource3(
             &heapProps,
             D3D12_HEAP_FLAG_NONE,
             &bufferDesc,
-            D3D12_RESOURCE_STATE_COMMON,
+            initialLayout,
+            nullptr,
+            nullptr,
+            0,
             nullptr,
             IID_PPV_ARGS(&pResource)));
         
