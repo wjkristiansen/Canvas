@@ -30,146 +30,135 @@ namespace CanvasUnitTest
     {
     public:
 
-        TEST_METHOD(SimpleStateTransitions)
+        TEST_METHOD(SimpleLayoutTransitions)
         {
             CResourceStateManager StateManager;
-            std::vector<D3D12_RESOURCE_BARRIER> transitions;
+            std::vector<D3D12_TEXTURE_BARRIER> barriers;
 
-            std::unique_ptr<CResource> pResources[4];
-            CD3DX12_RESOURCE_DESC ResourceDescs[4] = {};
-            D3D12_RESOURCE_STATES InitStates[4] =
+            CD3DX12_RESOURCE_DESC1 ResourceDescs[3] = {};
+            D3D12_BARRIER_LAYOUT InitLayouts[3] =
             {
-                D3D12_RESOURCE_STATE_COMMON,
-                D3D12_RESOURCE_STATE_RENDER_TARGET,
-                D3D12_RESOURCE_STATE_COPY_DEST,
-                D3D12_RESOURCE_STATE_DEPTH_WRITE
+                D3D12_BARRIER_LAYOUT_COMMON,
+                D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+                D3D12_BARRIER_LAYOUT_COPY_DEST,
             };
 
-            // Buffer
-            ResourceDescs[0] = CD3DX12_RESOURCE_DESC::Buffer(4096);
-
-            // Render Target Texture
-            ResourceDescs[1] = CD3DX12_RESOURCE_DESC::Tex2D(
+            // Single-subresource Texture
+            ResourceDescs[0] = CD3DX12_RESOURCE_DESC1::Tex2D(
                 DXGI_FORMAT_R8G8B8A8_UNORM,
-                256,
-                256,
-                1, 0, 1, 0,
+                256, 256,
+                1, 1, 1, 0,
                 D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 
-            ResourceDescs[2] = CD3DX12_RESOURCE_DESC::Tex2D(
+            // Multi-subresource Texture (2 array slices * 2 mip levels = 4 subresources)
+            ResourceDescs[1] = CD3DX12_RESOURCE_DESC1::Tex2D(
                 DXGI_FORMAT_R8G8B8A8_UNORM,
-                256,
-                256,
-                2,
-                2,
-                1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+                256, 256,
+                2, 2,
+                1, 0,
+                D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+
+            // Another single Texture
+            ResourceDescs[2] = CD3DX12_RESOURCE_DESC1::Tex2D(
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                256, 256,
+                1, 1, 1, 0,
+                D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 
             CComPtr<ID3D12Device> pDevice;
             Assert::IsTrue(SUCCEEDED(CreateTestDevice(&pDevice)));
 
+            CComPtr<ID3D12Device10> pDevice10;
+            Assert::IsTrue(SUCCEEDED(pDevice->QueryInterface(IID_PPV_ARGS(&pDevice10))));
+
             CD3DX12_HEAP_PROPERTIES heapProp(D3D12_HEAP_TYPE_DEFAULT);
 
-            // Make some resources
+            // Create texture resources
+            std::unique_ptr<CTextureResource> pResources[3];
             for (size_t i = 0; i < 3; ++i)
             {
                 CComPtr<ID3D12Resource> pD3DResource;
-                HRESULT hr = pDevice->CreateCommittedResource(
+                HRESULT hr = pDevice10->CreateCommittedResource3(
                     &heapProp,
                     D3D12_HEAP_FLAG_ALLOW_ALL_BUFFERS_AND_TEXTURES,
                     &ResourceDescs[i],
-                    InitStates[i],
-                    nullptr, 
+                    InitLayouts[i],
+                    nullptr,
+                    nullptr, 0, nullptr,
                     IID_PPV_ARGS(&pD3DResource));
                 Assert::IsTrue(SUCCEEDED(hr));
-                pResources[i] = std::make_unique<CResource>(pD3DResource, InitStates[i]);
+                pResources[i] = std::make_unique<CTextureResource>(pD3DResource, InitLayouts[i]);
             }
 
-            // Basic single-buffer transition
-            pResources[0]->SetDesiredResourceState(StateManager, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            StateManager.ResolveResourceBarriers(transitions);
-            Assert::AreEqual(size_t(1), transitions.size());
-            Assert::IsTrue(transitions[0].Transition.pResource == pResources[0]->GetD3DResource());
-            Assert::IsTrue(transitions[0].Transition.StateBefore == InitStates[0]);
-            Assert::IsTrue(transitions[0].Transition.StateAfter == D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            Assert::IsTrue(transitions[0].Transition.Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+            // Basic single-texture uniform transition
+            pResources[0]->SetDesiredResourceLayout(StateManager, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE);
+            StateManager.ResolveResourceBarriers(barriers);
+            Assert::AreEqual(size_t(1), barriers.size());
+            Assert::IsTrue(barriers[0].pResource == pResources[0]->GetD3DResource());
+            Assert::IsTrue(barriers[0].LayoutBefore == InitLayouts[0]);
+            Assert::IsTrue(barriers[0].LayoutAfter == D3D12_BARRIER_LAYOUT_SHADER_RESOURCE);
+            Assert::IsTrue(barriers[0].Subresources.IndexOrFirstMipLevel == 0xFFFFFFFF); // ALL_SUBRESOURCES
             Assert::IsTrue(StateManager.m_TransitionList.IsEmpty());
-            transitions.clear();
+            barriers.clear();
 
-            // Two texture transition
-            pResources[1]->SetDesiredResourceState(StateManager, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            pResources[2]->SetDesiredResourceState(StateManager, D3D12_RESOURCE_STATE_COPY_SOURCE);
-            StateManager.ResolveResourceBarriers(transitions);
-            Assert::AreEqual(size_t(2), transitions.size());
-            Assert::IsTrue(transitions[0].Transition.pResource == pResources[1]->GetD3DResource());
-            Assert::IsTrue(transitions[0].Transition.StateBefore == InitStates[1]);
-            Assert::IsTrue(transitions[0].Transition.StateAfter == D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            Assert::IsTrue(transitions[0].Transition.Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
-            Assert::IsTrue(transitions[1].Transition.pResource == pResources[2]->GetD3DResource());
-            Assert::IsTrue(transitions[1].Transition.StateBefore == InitStates[2]);
-            Assert::IsTrue(transitions[1].Transition.StateAfter == D3D12_RESOURCE_STATE_COPY_SOURCE);
-            Assert::IsTrue(transitions[1].Transition.Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+            // Two texture transitions
+            pResources[0]->SetDesiredResourceLayout(StateManager, D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            pResources[1]->SetDesiredResourceLayout(StateManager, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE);
+            StateManager.ResolveResourceBarriers(barriers);
+            Assert::AreEqual(size_t(2), barriers.size());
+            Assert::IsTrue(barriers[0].pResource == pResources[0]->GetD3DResource());
+            Assert::IsTrue(barriers[0].LayoutBefore == D3D12_BARRIER_LAYOUT_SHADER_RESOURCE);
+            Assert::IsTrue(barriers[0].LayoutAfter == D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            Assert::IsTrue(barriers[1].pResource == pResources[1]->GetD3DResource());
+            Assert::IsTrue(barriers[1].LayoutBefore == InitLayouts[1]);
+            Assert::IsTrue(barriers[1].LayoutAfter == D3D12_BARRIER_LAYOUT_SHADER_RESOURCE);
             Assert::IsTrue(StateManager.m_TransitionList.IsEmpty());
-            transitions.clear();
+            barriers.clear();
 
-            // Individual subresource transitions
-            pResources[2]->SetDesiredSubresourceState(StateManager, 1, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            pResources[2]->SetDesiredSubresourceState(StateManager, 3, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            StateManager.ResolveResourceBarriers(transitions);
-            Assert::AreEqual(size_t(2), transitions.size());
-            Assert::IsTrue(transitions[0].Transition.pResource == pResources[2]->GetD3DResource());
-            Assert::IsTrue(transitions[0].Transition.StateBefore == D3D12_RESOURCE_STATE_COPY_SOURCE);
-            Assert::IsTrue(transitions[0].Transition.StateAfter == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            Assert::IsTrue(transitions[0].Transition.Subresource == 1);
-            Assert::IsTrue(transitions[1].Transition.pResource == pResources[2]->GetD3DResource());
-            Assert::IsTrue(transitions[1].Transition.StateBefore == D3D12_RESOURCE_STATE_COPY_SOURCE);
-            Assert::IsTrue(transitions[1].Transition.StateAfter == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            Assert::IsTrue(transitions[1].Transition.Subresource == 3);
+            // Individual subresource transitions on multi-subresource texture
+            pResources[1]->SetDesiredSubresourceLayout(StateManager, 1, D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            pResources[1]->SetDesiredSubresourceLayout(StateManager, 3, D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            StateManager.ResolveResourceBarriers(barriers);
+            Assert::AreEqual(size_t(2), barriers.size());
+            Assert::IsTrue(barriers[0].pResource == pResources[1]->GetD3DResource());
+            Assert::IsTrue(barriers[0].LayoutBefore == D3D12_BARRIER_LAYOUT_SHADER_RESOURCE);
+            Assert::IsTrue(barriers[0].LayoutAfter == D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            Assert::IsTrue(barriers[0].Subresources.IndexOrFirstMipLevel == 1);
+            Assert::IsTrue(barriers[1].pResource == pResources[1]->GetD3DResource());
+            Assert::IsTrue(barriers[1].LayoutBefore == D3D12_BARRIER_LAYOUT_SHADER_RESOURCE);
+            Assert::IsTrue(barriers[1].LayoutAfter == D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            Assert::IsTrue(barriers[1].Subresources.IndexOrFirstMipLevel == 3);
             Assert::IsTrue(StateManager.m_TransitionList.IsEmpty());
-            Assert::IsFalse(pResources[2]->m_ResourceState.AllSubresourcesSame);
-            Assert::IsTrue(pResources[2]->m_ResourceState.SubresourceStates[1] == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            Assert::IsTrue(pResources[2]->m_ResourceState.SubresourceStates[3] == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            transitions.clear();
+            Assert::IsFalse(pResources[1]->m_CurrentLayout.m_AllSame);
+            Assert::IsTrue(pResources[1]->m_CurrentLayout.m_PerSubresource[1] == D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            Assert::IsTrue(pResources[1]->m_CurrentLayout.m_PerSubresource[3] == D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            barriers.clear();
 
-            // Finish transitioning all of pResources[2] subresources to D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-            pResources[2]->SetDesiredSubresourceState(StateManager, 0, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            pResources[2]->SetDesiredSubresourceState(StateManager, 2, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            StateManager.ResolveResourceBarriers(transitions);
-            Assert::AreEqual(size_t(2), transitions.size());
-            transitions.clear();
-            Assert::IsTrue(pResources[2]->m_ResourceState.SubresourceStates[0] == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            Assert::IsTrue(pResources[2]->m_ResourceState.SubresourceStates[2] == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            // Verify the resulting state is uniform
-            Assert::IsTrue(pResources[2]->m_ResourceState.AllSubresourcesSame);
+            // Finish transitioning all subresources to COPY_SOURCE → should collapse back to uniform
+            pResources[1]->SetDesiredSubresourceLayout(StateManager, 0, D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            pResources[1]->SetDesiredSubresourceLayout(StateManager, 2, D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            StateManager.ResolveResourceBarriers(barriers);
+            Assert::AreEqual(size_t(2), barriers.size());
+            barriers.clear();
+            // All subresources now share the same layout → should be uniform again
+            Assert::IsTrue(pResources[1]->m_CurrentLayout.m_AllSame);
 
-            // Validate ALL_SUBRESOURCES transtion after last resolve
-            pResources[2]->SetDesiredResourceState(StateManager, D3D12_RESOURCE_STATE_RENDER_TARGET);
-            StateManager.ResolveResourceBarriers(transitions);
-            Assert::AreEqual(size_t(1), transitions.size());
-            Assert::IsTrue(transitions[0].Transition.pResource == pResources[2]->GetD3DResource());
-            Assert::IsTrue(transitions[0].Transition.StateBefore == D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            Assert::IsTrue(transitions[0].Transition.StateAfter == D3D12_RESOURCE_STATE_RENDER_TARGET);
-            Assert::IsTrue(transitions[0].Transition.Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
-            Assert::IsTrue(pResources[2]->m_ResourceState.SubresourceStates[0] == D3D12_RESOURCE_STATE_RENDER_TARGET);
-            Assert::IsTrue(pResources[2]->m_ResourceState.AllSubresourcesSame);
-            transitions.clear();
+            // Validate ALL_SUBRESOURCES transition after uniform collapse
+            pResources[1]->SetDesiredResourceLayout(StateManager, D3D12_BARRIER_LAYOUT_RENDER_TARGET);
+            StateManager.ResolveResourceBarriers(barriers);
+            Assert::AreEqual(size_t(1), barriers.size());
+            Assert::IsTrue(barriers[0].pResource == pResources[1]->GetD3DResource());
+            Assert::IsTrue(barriers[0].LayoutBefore == D3D12_BARRIER_LAYOUT_COPY_SOURCE);
+            Assert::IsTrue(barriers[0].LayoutAfter == D3D12_BARRIER_LAYOUT_RENDER_TARGET);
+            Assert::IsTrue(barriers[0].Subresources.IndexOrFirstMipLevel == 0xFFFFFFFF); // ALL_SUBRESOURCES
+            Assert::IsTrue(pResources[1]->m_CurrentLayout.m_AllSame);
+            barriers.clear();
 
-            // Validate that compatible state bits can be combined
-            pResources[2]->SetDesiredResourceState(StateManager, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            pResources[2]->SetDesiredResourceState(StateManager, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            pResources[2]->SetDesiredResourceState(StateManager, D3D12_RESOURCE_STATE_COPY_SOURCE);
-            StateManager.ResolveResourceBarriers(transitions);
-            Assert::AreEqual(size_t(1), transitions.size());
-            Assert::IsTrue(transitions[0].Transition.pResource == pResources[2]->GetD3DResource());
-            Assert::IsTrue(transitions[0].Transition.StateBefore == D3D12_RESOURCE_STATE_RENDER_TARGET);
-            Assert::IsTrue(transitions[0].Transition.StateAfter == 
-                (D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | 
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | 
-                D3D12_RESOURCE_STATE_COPY_SOURCE));
-            Assert::IsTrue(transitions[0].Transition.Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
-            Assert::IsTrue(pResources[2]->m_ResourceState.SubresourceStates[0] ==
-                (D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE |
-                D3D12_RESOURCE_STATE_COPY_SOURCE));
+            // Validate no barrier emitted when desired == current
+            pResources[2]->SetDesiredResourceLayout(StateManager, InitLayouts[2]);
+            StateManager.ResolveResourceBarriers(barriers);
+            Assert::AreEqual(size_t(0), barriers.size());
+            barriers.clear();
         }
     };
 }
