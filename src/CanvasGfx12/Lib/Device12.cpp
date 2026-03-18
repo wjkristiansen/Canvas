@@ -183,13 +183,11 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
         if (desc.Flags & Canvas::SurfaceFlag_CpuUpload)
         {
             heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
-            // Upload heaps don't have layout - they're always in a CPU-accessible state
             initialLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
         }
         else if (desc.Flags & Canvas::SurfaceFlag_CpuReadback)
         {
             heapProps.Type = D3D12_HEAP_TYPE_READBACK;
-            // Readback heaps don't have layout - they're always in a CPU-accessible state
             initialLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
         }
         else
@@ -218,7 +216,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
         
         // Create and register the CSurface12 wrapper (pass COMMON for legacy state tracking)
         Gem::TGemPtr<CSurface12> pSurface;
-        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, D3D12_RESOURCE_STATE_COMMON, nullptr));
+        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, D3D12_BARRIER_LAYOUT_COMMON, nullptr));
         
         // Initialize committed layout tracking
         if (initialLayout != D3D12_BARRIER_LAYOUT_UNDEFINED)
@@ -253,8 +251,8 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
     
     try
     {
-        // Create buffer resource descriptor
-        D3D12_RESOURCE_DESC bufferDesc = {};
+        // Create buffer resource descriptor (D3D12_RESOURCE_DESC1 for Enhanced Barriers)
+        D3D12_RESOURCE_DESC1 bufferDesc = {};
         bufferDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
         bufferDesc.Alignment = 0;
         bufferDesc.Width = sizeInBytes;
@@ -267,7 +265,7 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
         bufferDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
         bufferDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
         
-        // Create as default heap (GPU-only memory)
+        // Create buffer with Enhanced Barriers API
         D3D12_HEAP_PROPERTIES heapProps = {};
         heapProps.Type = GfxMemoryUsageToD3D12HeapType(memoryUsage);
         heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
@@ -291,9 +289,9 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
             nullptr,
             IID_PPV_ARGS(&pResource)));
         
-        // Create and register the CBuffer12 wrapper
+        // Create and register the CBuffer12 wrapper (pass COMMON for legacy state tracking)
         Gem::TGemPtr<CBuffer12> pBuffer;
-        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(&pBuffer, GetCanvas(), pResource, D3D12_RESOURCE_STATE_COMMON, nullptr));
+        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(&pBuffer, GetCanvas(), pResource, nullptr));
         
         return pBuffer->QueryInterface(ppBuffer);
     }
@@ -442,7 +440,7 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
             pRQ->ScheduleHostWriteRelease(suballocation, copyTask);
         }
 
-// Create and register the CMeshData12 object that holds the buffers
+        // Create and register the CMeshData12 object that holds the buffers
         Gem::TGemPtr<CMeshData12> pMeshData;
         Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas()));
         

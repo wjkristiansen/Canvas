@@ -47,42 +47,95 @@ static UINT16 NumSubresources(D3D12_RESOURCE_DESC *pDesc)
 }
 
 //------------------------------------------------------------------------------------------------
-struct ResourceState
+// Per-subresource layout tracking for Enhanced Barriers (textures only).
+// Optimized for the common case where all subresources share the same layout.
+struct SubresourceLayout
 {
-    bool AllSubresourcesSame = false;
-    std::vector<D3D12_RESOURCE_STATES> SubresourceStates;
+    // When true, all subresources share m_UniformLayout and m_PerSubresource is empty.
+    bool m_AllSame = true;
+    D3D12_BARRIER_LAYOUT m_UniformLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
+    std::vector<D3D12_BARRIER_LAYOUT> m_PerSubresource; // populated only when !m_AllSame
 
-    ResourceState() = default;
-    ResourceState(ResourceState &&o) = default;
-    ResourceState(const ResourceState &o) = default;
+    SubresourceLayout() = default;
+    SubresourceLayout(SubresourceLayout &&) = default;
+    SubresourceLayout(const SubresourceLayout &) = default;
+    SubresourceLayout &operator=(SubresourceLayout &&) = default;
+    SubresourceLayout &operator=(const SubresourceLayout &) = default;
 
-    ResourceState &operator=(ResourceState &&o) = default;
-    ResourceState &operator=(const ResourceState &o) = default;
+    // Initialize all subresources to the same layout.
+    // LAYOUT_UNDEFINED and any uniform layout incur no heap allocation.
+    SubresourceLayout(D3D12_BARRIER_LAYOUT layout, UINT /*numSubresources*/)
+        : m_AllSame(true), m_UniformLayout(layout)
+    {}
 
-    ResourceState(D3D12_RESOURCE_STATES InitState, UINT NumSubresources) :
-        AllSubresourcesSame(true),
-        SubresourceStates(NumSubresources)
+    D3D12_BARRIER_LAYOUT GetLayout(UINT Subresource) const
     {
-        std::fill(SubresourceStates.begin(), SubresourceStates.end(), InitState);
+        if (m_AllSame) return m_UniformLayout;
+        return (Subresource < (UINT)m_PerSubresource.size())
+            ? m_PerSubresource[Subresource]
+            : D3D12_BARRIER_LAYOUT_UNDEFINED;
+    }
+
+    // Expand from uniform to per-subresource tracking. No-op if already expanded.
+    void ExpandToPerSubresource(UINT numSubresources)
+    {
+        if (m_AllSame)
+        {
+            m_PerSubresource.assign(numSubresources, m_UniformLayout);
+            m_AllSame = false;
+        }
     }
 };
 
 //------------------------------------------------------------------------------------------------
-struct DesiredResourceState : public ResourceState
+struct DesiredSubresourceLayout : public SubresourceLayout
 {
-    std::vector<bool> SubresourceStateDirty;
+    bool m_UniformDirty = false;
+    std::vector<bool> m_PerSubresourceDirty; // populated only when !m_AllSame
 
-    DesiredResourceState(D3D12_RESOURCE_STATES InitState, UINT NumSubresources) :
-        ResourceState(InitState, NumSubresources),
-        SubresourceStateDirty(NumSubresources)
+    DesiredSubresourceLayout() = default;
+    DesiredSubresourceLayout(D3D12_BARRIER_LAYOUT layout, UINT numSubresources)
+        : SubresourceLayout(layout, numSubresources)
     {}
 
-    bool IsStateDirty(UINT Subresource)
+    bool IsDirty(UINT Subresource) const
     {
-        return AllSubresourcesSame ? SubresourceStateDirty[0] : SubresourceStateDirty[Subresource];
+        if (m_AllSame) return m_UniformDirty;
+        return (Subresource < (UINT)m_PerSubresourceDirty.size())
+            ? m_PerSubresourceDirty[Subresource] : false;
     }
 
-    bool SetState(D3D12_RESOURCE_STATES State, UINT Subresource);
+    // Set all subresources to the same layout. Returns true if anything changed.
+    bool SetUniformLayout(D3D12_BARRIER_LAYOUT Layout)
+    {
+        bool changed = !m_AllSame || m_UniformLayout != Layout;
+        m_AllSame = true;
+        m_UniformLayout = Layout;
+        m_PerSubresource.clear();
+        m_PerSubresourceDirty.clear();
+        m_UniformDirty = changed;
+        return m_UniformDirty;
+    }
+
+    // Set layout for a single subresource. Caller must call ExpandToPerSubresource first.
+    bool SetSubresourceLayout(UINT Subresource, D3D12_BARRIER_LAYOUT Layout)
+    {
+        assert(!m_AllSame && Subresource < (UINT)m_PerSubresource.size());
+        bool changed = m_PerSubresource[Subresource] != Layout;
+        m_PerSubresource[Subresource] = Layout;
+        m_PerSubresourceDirty[Subresource] = changed;
+        return changed;
+    }
+
+    // Override to also expand dirty tracking. No-op if already expanded.
+    void ExpandToPerSubresource(UINT numSubresources)
+    {
+        if (m_AllSame)
+        {
+            m_PerSubresourceDirty.assign(numSubresources, m_UniformDirty);
+            SubresourceLayout::ExpandToPerSubresource(numSubresources);
+        }
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -92,21 +145,21 @@ public:
     CComPtr<ID3D12Resource> m_pD3DResource = nullptr;
     D3D12_RESOURCE_DESC m_Desc;
     UINT m_NumSubresources = 0;
-    ResourceState m_ResourceState;
-    DesiredResourceState m_DesiredResourceState;
     bool m_IsSimultaneousAccess = false;
     bool m_HasUnresolvedStateTransitions = false;
 
     DECLARE_LIST_ELEMENT(CResource);
 
-    CResource(ID3D12Resource *pD3DResource, D3D12_RESOURCE_STATES InitState) :
+    CResource(ID3D12Resource *pD3DResource) :
         m_pD3DResource(pD3DResource),
         m_Desc(pD3DResource->GetDesc()),
-        m_NumSubresources(NumSubresources(&m_Desc)),
-        m_ResourceState(InitState, m_NumSubresources),
-        m_DesiredResourceState(InitState, m_NumSubresources)
+        m_NumSubresources(NumSubresources(&m_Desc))
     {
     }
+
+    virtual ~CResource() = default;
+
+    bool IsBuffer() const { return m_Desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER; }
 
     void Rename(ID3D12Resource *pD3DResource) { m_pD3DResource = pD3DResource; }
 
@@ -139,14 +192,32 @@ public:
 
         return UINT(-1); // ???
     }
+};
 
-    D3D12_RESOURCE_STATES GetCurSubresourceState(UINT Subresource) const
+//------------------------------------------------------------------------------------------------
+// Texture resources have per-subresource layout tracking for Enhanced Barriers.
+// Buffer resources should use CResource directly.
+class CTextureResource : public CResource
+{
+public:
+    SubresourceLayout m_CurrentLayout;
+    DesiredSubresourceLayout m_DesiredLayout;
+
+    CTextureResource(ID3D12Resource *pD3DResource, D3D12_BARRIER_LAYOUT InitLayout) :
+        CResource(pD3DResource),
+        m_CurrentLayout(InitLayout, m_NumSubresources),
+        m_DesiredLayout(InitLayout, m_NumSubresources)
     {
-        return m_ResourceState.AllSubresourcesSame ? m_ResourceState.SubresourceStates[0] : m_ResourceState.SubresourceStates[Subresource];
+        assert(!IsBuffer());
     }
 
-    void SetDesiredResourceState(class CResourceStateManager &ResourceStateManager, D3D12_RESOURCE_STATES State);
-    void SetDesiredSubresourceState(class CResourceStateManager &ResourceStateManager, UINT Subresource, D3D12_RESOURCE_STATES State);
+    D3D12_BARRIER_LAYOUT GetCurSubresourceLayout(UINT Subresource) const
+    {
+        return m_CurrentLayout.GetLayout(Subresource);
+    }
+
+    void SetDesiredResourceLayout(class CResourceStateManager &ResourceStateManager, D3D12_BARRIER_LAYOUT Layout);
+    void SetDesiredSubresourceLayout(class CResourceStateManager &ResourceStateManager, UINT Subresource, D3D12_BARRIER_LAYOUT Layout);
 };
 
 //------------------------------------------------------------------------------------------------
@@ -157,5 +228,5 @@ public:
 
     CResourceStateManager()
     {}
-    void ResolveResourceBarriers(std::vector<D3D12_RESOURCE_BARRIER> &Barriers);
+    void ResolveResourceBarriers(std::vector<D3D12_TEXTURE_BARRIER> &Barriers);
 };

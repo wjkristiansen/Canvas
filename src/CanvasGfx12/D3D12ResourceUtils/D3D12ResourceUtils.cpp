@@ -6,181 +6,124 @@
 
 #include "D3D12ResourceUtils.h"
 
+
 //------------------------------------------------------------------------------------------------
-static void InitTransitionBarrier(D3D12_RESOURCE_BARRIER &Barrier, ID3D12Resource *pD3DResource, UINT Subresource, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter)
+void CTextureResource::SetDesiredResourceLayout(CResourceStateManager &ResourceStateManager, D3D12_BARRIER_LAYOUT Layout)
 {
-    Barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    Barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    Barrier.Transition.pResource = pD3DResource;
-    Barrier.Transition.Subresource = Subresource;
-    Barrier.Transition.StateBefore = StateBefore;
-    Barrier.Transition.StateAfter = StateAfter;
+    SetDesiredSubresourceLayout(ResourceStateManager, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, Layout);
 }
 
 //------------------------------------------------------------------------------------------------
-static bool IsGenericReadState(D3D12_RESOURCE_STATES State)
+void CTextureResource::SetDesiredSubresourceLayout(CResourceStateManager &ResourceStateManager, UINT Subresource, D3D12_BARRIER_LAYOUT Layout)
 {
-    return State != D3D12_RESOURCE_STATE_COMMON && !!(State & D3D12_RESOURCE_STATE_GENERIC_READ);
-}
-
-//------------------------------------------------------------------------------------------------
-// If State and InitState can be combined into a single state then return
-// the bitwise combination of both states.
-// Otherwise return State
-bool DesiredResourceState::SetState(D3D12_RESOURCE_STATES State, UINT Subresource)
-{
+    bool dirty;
     if (Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES)
     {
-        Subresource = 0;
-        AllSubresourcesSame = true;
+        dirty = m_DesiredLayout.SetUniformLayout(Layout);
     }
     else
     {
-        if (AllSubresourcesSame)
-        {
-            // Copy the uniform desired state to all other desired states
-            std::fill(
-                SubresourceStates.begin() + 1,
-                SubresourceStates.end(),
-                SubresourceStates[0]);
-
-            std::fill(
-                SubresourceStateDirty.begin() + 1,
-                SubresourceStateDirty.end(),
-                SubresourceStateDirty[0]);
-        }
-
-        AllSubresourcesSame = false;
+        m_CurrentLayout.ExpandToPerSubresource(m_NumSubresources);
+        m_DesiredLayout.ExpandToPerSubresource(m_NumSubresources);
+        dirty = m_DesiredLayout.SetSubresourceLayout(Subresource, Layout);
     }
 
-    if (SubresourceStateDirty[Subresource])
+    if (dirty && !m_HasUnresolvedStateTransitions)
     {
-        // Treat only GENERIC_READ states as accumulatable
-        if (IsGenericReadState(State) && IsGenericReadState(SubresourceStates[Subresource]))
-        {
-            State = State | SubresourceStates[Subresource];
-        }
-    }
-
-    // Only set dirty flag if the desired state is changed
-    SubresourceStateDirty[Subresource] = SubresourceStates[Subresource] != State;
-    SubresourceStates[Subresource] = State;
-
-    return SubresourceStateDirty[Subresource];
-}
-
-//------------------------------------------------------------------------------------------------
-void CResource::SetDesiredResourceState(CResourceStateManager &ResourceStateManager, D3D12_RESOURCE_STATES State)
-{
-    SetDesiredSubresourceState(ResourceStateManager, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, State);
-}
-
-//------------------------------------------------------------------------------------------------
-void CResource::SetDesiredSubresourceState(CResourceStateManager &ResourceStateManager, UINT Subresource, D3D12_RESOURCE_STATES State)
-{
-    // Is this all-subresources?
-    bool dirty = m_DesiredResourceState.SetState(State, Subresource);
-
-    if (dirty)
-    {
-        if (Subresource != D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES && m_ResourceState.AllSubresourcesSame)
-        {
-            // Copy the uniform state to all other states
-            std::fill(
-                m_ResourceState.SubresourceStates.begin() + 1,
-                m_ResourceState.SubresourceStates.end(),
-                m_ResourceState.SubresourceStates[0]);
-        }
-
-        // Add the resource to the transition list
-        if (!m_HasUnresolvedStateTransitions)
-        {
-            ResourceStateManager.m_TransitionList.PushTail(this);
-            m_HasUnresolvedStateTransitions = true;
-        }
+        ResourceStateManager.m_TransitionList.PushTail(this);
+        m_HasUnresolvedStateTransitions = true;
     }
 }
 
 //------------------------------------------------------------------------------------------------
-static bool IsTransitionNeeded(D3D12_RESOURCE_STATES CurState, D3D12_RESOURCE_STATES DesiredState)
+static void AddTextureLayoutBarrier(std::vector<D3D12_TEXTURE_BARRIER> &Barriers, ID3D12Resource *pResource, UINT Subresource, D3D12_BARRIER_LAYOUT LayoutBefore, D3D12_BARRIER_LAYOUT LayoutAfter)
 {
-    if (CurState == DesiredState)
-    {
-        return false;
-    }
-
-    // Is the desired state already part of the current state
-    if (DesiredState != D3D12_RESOURCE_STATE_COMMON && (CurState & DesiredState) == DesiredState)
-    {
-        return false;
-    }
-
-    // BUGBUG: Some simultaneous-access stuff here...
-
-    return true;
+    D3D12_TEXTURE_BARRIER b = {};
+    b.pResource = pResource;
+    b.LayoutBefore = LayoutBefore;
+    b.LayoutAfter = LayoutAfter;
+    b.SyncBefore = D3D12_BARRIER_SYNC_ALL;
+    b.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+    b.AccessBefore = D3D12_BARRIER_ACCESS_COMMON;
+    b.AccessAfter = D3D12_BARRIER_ACCESS_COMMON;
+    b.Subresources.IndexOrFirstMipLevel = (Subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) ? 0xFFFFFFFF : Subresource;
+    b.Subresources.NumMipLevels = 0;
+    b.Subresources.FirstArraySlice = 0;
+    b.Subresources.NumArraySlices = 0;
+    b.Subresources.FirstPlane = 0;
+    b.Subresources.NumPlanes = 0;
+    b.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+    Barriers.push_back(b);
 }
 
 //------------------------------------------------------------------------------------------------
-static void AddResourceTransitionBarrier(std::vector<D3D12_RESOURCE_BARRIER> &Barriers, ID3D12Resource *pResource, UINT Subresource, D3D12_RESOURCE_STATES StateBefore, D3D12_RESOURCE_STATES StateAfter)
+void CResourceStateManager::ResolveResourceBarriers(std::vector<D3D12_TEXTURE_BARRIER> &Barriers)
 {
-    Barriers.emplace_back(D3D12_RESOURCE_BARRIER{});
-    Barriers.back().Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    Barriers.back().Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    Barriers.back().Transition.pResource = pResource;
-    Barriers.back().Transition.StateBefore = StateBefore;
-    Barriers.back().Transition.StateAfter = StateAfter;
-    Barriers.back().Transition.Subresource = Subresource;
-}
-
-//------------------------------------------------------------------------------------------------
-void CResourceStateManager::ResolveResourceBarriers(std::vector<D3D12_RESOURCE_BARRIER> &Barriers)
-{
-    // For each transitioning resource
-    for (CResource *pResource = m_TransitionList.PopHead(); pResource; pResource = m_TransitionList.PopHead())
+    for (CResource *pBase = m_TransitionList.PopHead(); pBase; pBase = m_TransitionList.PopHead())
     {
-        assert(pResource->m_HasUnresolvedStateTransitions);
+        assert(pBase->m_HasUnresolvedStateTransitions);
+        assert(!pBase->IsBuffer());
 
-        if (pResource->m_DesiredResourceState.AllSubresourcesSame && pResource->m_ResourceState.AllSubresourcesSame)
+        // Only texture resources should be in the transition list
+        auto *pResource = static_cast<CTextureResource*>(pBase);
+        auto &cur     = pResource->m_CurrentLayout;
+        auto &desired = pResource->m_DesiredLayout;
+
+        if (desired.m_AllSame && cur.m_AllSame)
         {
-            auto CurState = pResource->m_ResourceState.SubresourceStates[0];
-            auto DesiredState = pResource->m_DesiredResourceState.SubresourceStates[0];
-            if (IsTransitionNeeded(CurState, DesiredState))
+            // Both uniform: at most one barrier needed
+            if (cur.m_UniformLayout != desired.m_UniformLayout)
             {
-                AddResourceTransitionBarrier(Barriers, pResource->m_pD3DResource, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES, CurState, DesiredState);
+                AddTextureLayoutBarrier(Barriers, pResource->m_pD3DResource,
+                    D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                    cur.m_UniformLayout, desired.m_UniformLayout);
             }
-            pResource->m_ResourceState.AllSubresourcesSame = true;
-            pResource->m_ResourceState.SubresourceStates[0] = DesiredState;
-            pResource->m_DesiredResourceState.SubresourceStateDirty[0] = false;
+            cur.m_UniformLayout  = desired.m_UniformLayout;
+            desired.m_UniformDirty = false;
         }
         else
         {
-            bool Uniform = true;
-            D3D12_RESOURCE_STATES UniformSentinelState = D3D12_RESOURCE_STATE_COMMON;
+            // At least one side is per-subresource: iterate all subresources
+            UINT n = pResource->m_NumSubresources;
 
-            for (UINT i = 0; i < pResource->m_NumSubresources; ++i)
+            // Ensure current has per-subresource slots so we can update them
+            cur.ExpandToPerSubresource(n);
+
+            bool ResultUniform = true;
+            D3D12_BARRIER_LAYOUT ResultSentinel = D3D12_BARRIER_LAYOUT_UNDEFINED;
+
+            for (UINT i = 0; i < n; ++i)
             {
-                auto CurState = pResource->m_ResourceState.SubresourceStates[i];
-                if (pResource->m_DesiredResourceState.SubresourceStateDirty[i])
+                D3D12_BARRIER_LAYOUT CurLayout     = cur.m_PerSubresource[i];
+                D3D12_BARRIER_LAYOUT DesiredLayout = desired.GetLayout(i);
+
+                if (desired.IsDirty(i))
                 {
-                    auto DesiredState = pResource->m_DesiredResourceState.SubresourceStates[i];
-                    if (IsTransitionNeeded(CurState, DesiredState))
-                    {
-                        AddResourceTransitionBarrier(Barriers, pResource->m_pD3DResource, i, CurState, DesiredState);
-                    }
-                    pResource->m_ResourceState.SubresourceStates[i] = DesiredState;
-                    pResource->m_DesiredResourceState.SubresourceStateDirty[i] = false;
-                    CurState = DesiredState;
+                    if (CurLayout != DesiredLayout)
+                        AddTextureLayoutBarrier(Barriers, pResource->m_pD3DResource, i, CurLayout, DesiredLayout);
+                    cur.m_PerSubresource[i] = DesiredLayout;
+                    if (!desired.m_AllSame)
+                        desired.m_PerSubresourceDirty[i] = false;
+                    CurLayout = DesiredLayout;
                 }
 
-                // Keep track of 
-                if (Uniform && i > 0 && UniformSentinelState != CurState)
-                {
-                    Uniform = false;
-                }
-                UniformSentinelState = CurState;
+                if (ResultUniform && i > 0 && ResultSentinel != CurLayout)
+                    ResultUniform = false;
+                ResultSentinel = CurLayout;
             }
-            pResource->m_ResourceState.AllSubresourcesSame = Uniform;
+
+            if (desired.m_AllSame)
+                desired.m_UniformDirty = false;
+
+            // Collapse current back to uniform if all subresources now share the same layout
+            if (ResultUniform)
+            {
+                cur.m_AllSame = true;
+                cur.m_UniformLayout = ResultSentinel;
+                cur.m_PerSubresource.clear();
+            }
         }
-        pResource->m_HasUnresolvedStateTransitions = false;
+
+        pBase->m_HasUnresolvedStateTransitions = false;
     }
 }

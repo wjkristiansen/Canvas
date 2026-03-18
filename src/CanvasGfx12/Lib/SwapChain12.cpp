@@ -65,7 +65,7 @@ CSwapChain12::CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, c
 
     // Create and register the surface with the canvas
     Gem::TGemPtr<CSurface12> pSurface;
-    Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister(&pSurface, m_pCanvas, pBackBuffer, D3D12_RESOURCE_STATE_COMMON));
+    Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister(&pSurface, m_pCanvas, pBackBuffer, D3D12_BARRIER_LAYOUT_COMMON));
     
     // Set the back pointer so the surface knows it belongs to this swap chain
     pSurface->m_pOwnerSwapChain = this;

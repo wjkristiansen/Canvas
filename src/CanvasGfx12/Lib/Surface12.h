@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------------------------
 class CSurface12 :
     public TGfxElement<Canvas::XGfxSurface>,
-    public CResource
+    public CTextureResource
 {
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -19,9 +19,9 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CSurface12(Canvas::XCanvas* pCanvas, ID3D12Resource *pResource, D3D12_RESOURCE_STATES InitState, PCSTR name = nullptr) :
+    CSurface12(Canvas::XCanvas* pCanvas, ID3D12Resource *pResource, D3D12_BARRIER_LAYOUT InitLayout, PCSTR name = nullptr) :
         TGfxElement(pCanvas),
-        CResource(pResource, InitState),
+        CTextureResource(pResource, InitLayout),
         m_pOwnerSwapChain(nullptr)
     {
         if (name != nullptr)
