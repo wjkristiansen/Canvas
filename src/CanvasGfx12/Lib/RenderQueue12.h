@@ -668,6 +668,9 @@ public:
     CDevice12 *GetDevice() const { return m_pDevice; }
     ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
 
+    // Flush command list - generates layout fixups for first usage
+    void Flush();
+
     D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
     
     // Task-based GPU workload management with automatic barrier insertion
@@ -686,10 +689,8 @@ public:
     Canvas::TaskID SubmitCommandList(
         Canvas::TaskID dependsOn,
         const TextureLayoutBuilder& expectedLayouts);
-
-    // Batch set initial layouts using builder
-    void UpdateTextureLayouts(const TextureLayoutBuilder& builder);
     
+
     // Record layout fixups using builder (preferred API)
     void AddLayoutFixups(const TextureLayoutBuilder& builder);
     
@@ -810,71 +811,6 @@ private:
     //    - Attempt to transition ALL from SHADER_RESOURCE fails (not all in SHADER_RESOURCE)
     //    - AddLayoutFixups will generate individual barriers for each subresource's actual state
     //
-    struct SubresourceLayoutState {
-        // If uniformLayout is set, all subresources share this layout (common case, memory efficient)
-        // If not set, perSubresourceLayouts contains individual subresource states
-        std::optional<D3D12_BARRIER_LAYOUT> uniformLayout;
-        std::unordered_map<UINT, D3D12_BARRIER_LAYOUT> perSubresourceLayouts;
-        
-        // Get layout for a specific subresource (or 0xFFFFFFFF for all)
-        D3D12_BARRIER_LAYOUT GetLayout(UINT subresource) const
-        {
-            if (uniformLayout.has_value())
-            {
-                return uniformLayout.value();
-            }
-            auto it = perSubresourceLayouts.find(subresource);
-            return (it != perSubresourceLayouts.end()) ? it->second : D3D12_BARRIER_LAYOUT_COMMON;
-        }
-        
-        // Set layout for specific subresource(s)
-        void SetLayout(UINT subresource, D3D12_BARRIER_LAYOUT layout)
-        {
-            if (subresource == 0xFFFFFFFF)
-            {
-                // Setting all subresources - collapse to uniform layout
-                uniformLayout = layout;
-                perSubresourceLayouts.clear();
-            }
-            else
-            {
-                // Setting individual subresource
-                if (uniformLayout.has_value())
-                {
-                    // Split uniform layout into per-subresource tracking
-                    // Note: We don't know total subresource count here, so we'll track on-demand
-                    uniformLayout.reset();
-                }
-                perSubresourceLayouts[subresource] = layout;
-            }
-        }
-        
-        // Check if all tracked subresources have the same layout (can collapse to uniform)
-        bool CanCollapseToUniform(D3D12_BARRIER_LAYOUT& outLayout) const
-        {
-            if (uniformLayout.has_value())
-            {
-                outLayout = uniformLayout.value();
-                return true;
-            }
-            if (perSubresourceLayouts.empty())
-            {
-                outLayout = D3D12_BARRIER_LAYOUT_COMMON;
-                return true;
-            }
-            // Check if all per-subresource layouts match
-            D3D12_BARRIER_LAYOUT firstLayout = perSubresourceLayouts.begin()->second;
-            for (const auto& [sub, layout] : perSubresourceLayouts)
-            {
-                if (layout != firstLayout) return false;
-            }
-            outLayout = firstLayout;
-            return true;
-        }
-    };
-    
-    // Tracks the current layout of each texture's subresources after resource creation and command list execution
-    std::unordered_map<ID3D12Resource*, SubresourceLayoutState> m_TextureCurrentLayouts;
     // Pending texture barriers to be batched into a single fixup command list at submission
     std::vector<D3D12_TEXTURE_BARRIER> m_PendingLayoutFixupBarriers;
     //---------------------------------------------------------------------------------------------

@@ -219,9 +219,11 @@ GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer *pDest, Canvas
 GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(Canvas::XGfxSurface *pGfxSurface, const float Color[4])
 {
     CSurface12 *pSurface = reinterpret_cast<CSurface12 *>(pGfxSurface);
+    ID3D12Resource* pResource = pSurface->GetD3DResource();
+
     // Declare render target usage - automatically handles layout transition and barrier insertion
     TaskResourceUsageBuilder usages;
-    usages.TextureAsRenderTarget(pSurface->GetD3DResource());
+    usages.TextureAsRenderTarget(pResource);
     // Generate barriers immediately
     GenerateBarriersForRecording(usages.Build());
     FlushPendingBarriers();
@@ -258,54 +260,137 @@ D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurfac
 }
 
 //------------------------------------------------------------------------------------------------
+void CRenderQueue12::Flush()
+{
+    // Close main command list
+    ThrowFailedHResult(m_pCommandList->Close());
+
+    // Generate layout fixups based on first usage in the command list
+    // The recording state tracks what layouts resources need for their first usage
+    // Note: Skip buffers - they don't have layouts in Enhanced Barriers
+    TextureLayoutBuilder expectedLayouts;
+    for (const auto& [pResource, state] : m_RecordingResourceState)
+    {
+        // Check if this is a buffer (DIMENSION_BUFFER) - buffers don't have layouts
+        D3D12_RESOURCE_DESC desc = pResource->GetDesc();
+        if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+        {
+            // Skip buffers - they don't participate in layout tracking
+            continue;
+        }
+        
+        // For each texture in recording state, the layout represents the first expected usage
+        // We need fixups to transition from committed state to this first expected state
+        D3D12_BARRIER_LAYOUT layout = state.TextureLayouts.GetLayout(0xFFFFFFFF);
+        expectedLayouts.SetLayout(pResource, layout);
+    }
+    AddLayoutFixups(expectedLayouts.Build());
+    
+    // Record fixup command list if needed
+    bool hasFixups = !m_PendingLayoutFixupBarriers.empty();
+    
+    if (hasFixups)
+    {
+        // Reset and reuse the dedicated fixup command list with its own allocator
+        ThrowFailedHResult(m_pFixupCommandList->Reset(m_pFixupCommandAllocator, nullptr));
+        
+        // Issue all barriers as a single group
+        D3D12_BARRIER_GROUP group = {};
+        group.Type = D3D12_BARRIER_TYPE_TEXTURE;
+        group.NumBarriers = static_cast<UINT>(m_PendingLayoutFixupBarriers.size());
+        group.pTextureBarriers = m_PendingLayoutFixupBarriers.data();
+        
+        m_pFixupCommandList->Barrier(1, &group);
+        
+        ThrowFailedHResult(m_pFixupCommandList->Close());
+        
+        // Clear pending barriers
+        m_PendingLayoutFixupBarriers.clear();
+    }
+
+    // Build submission array: fixup list (if exists) then main list
+    std::vector<ID3D12CommandList*> submitLists;
+    if (hasFixups)
+    {
+        submitLists.push_back(m_pFixupCommandList);
+    }
+    submitLists.push_back(m_pCommandList);
+
+    // Execute command lists
+    m_pCommandQueue->ExecuteCommandLists(static_cast<UINT>(submitLists.size()), submitLists.data());
+
+    // Update committed state to reflect layouts after command list execution
+    // First, update from recording state (what the main CL transitions to)
+    for (const auto& [pResource, state] : m_RecordingResourceState)
+    {
+        SubresourceLayoutState& committed = m_pDevice->m_TextureCurrentLayouts[pResource];
+        committed.uniformLayout = state.TextureLayouts.uniformLayout;
+        committed.perSubresourceLayouts = state.TextureLayouts.perSubresourceLayouts;
+    }
+
+    // Signal fence
+    m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
+
+    // Drain any pending host-write release tasks. These were allocated (but not enqueued)
+    // by ScheduleHostWriteRelease, which expected SubmitCommandList to schedule them.
+    // Since Flush() is the synchronous submission path, we process them here directly
+    // after the GPU has been signaled. GPU work is complete by the time WaitForIdle runs,
+    // so it is safe to release the host-write regions now.
+    if (!m_PendingHostWriteReleaseTasks.empty())
+    {
+        std::vector<std::pair<Canvas::TaskID, Canvas::TaskID>> pending;
+        pending.swap(m_PendingHostWriteReleaseTasks);
+
+        for (auto& entry : pending)
+        {
+            Canvas::TaskID releaseTaskId = entry.first;
+            EnqueueTask(releaseTaskId, "HostWriteRelease");
+        }
+    }
+
+    // Reset command list for next frame
+    m_pCommandAllocator = m_CommandAllocatorPool.RotateAllocators(this);
+    m_pCommandAllocator->Reset();
+    ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
+    m_pFixupCommandAllocator->Reset();
+    
+    // Clear recording state for next frame
+    m_PendingTextureBarriers.clear();
+    m_PendingBufferBarriers.clear();
+    m_PendingGlobalBarriers.clear();
+    m_RecordingResourceState.clear();
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 {
     try
     {
         CSwapChain12 *pIntSwapChain = reinterpret_cast<CSwapChain12 *>(pSwapChain);
-        pIntSwapChain->WaitForFrameLatency();
 
-        // Inline present transition if needed
+        // Back buffer must be in COMMON for Present - add transition before flushing
         if (pIntSwapChain->m_BackBufferModified)
         {
-            // Insert transition barrier to PRESENT
+            ID3D12Resource* pBackBufferResource = pIntSwapChain->m_pSurface->GetD3DResource();
+
             TaskResourceUsageBuilder usages;
-            usages.TextureAsRenderTarget(pIntSwapChain->m_pSurface->GetD3DResource());
+            usages.SetTextureUsage(
+                pBackBufferResource,
+                D3D12_BARRIER_LAYOUT_COMMON,
+                D3D12_BARRIER_SYNC_ALL,
+                D3D12_BARRIER_ACCESS_COMMON);
             GenerateBarriersForRecording(usages.Build());
             FlushPendingBarriers();
+            UpdateRecordingState(usages.Build());
             pIntSwapChain->m_BackBufferModified = false;
         }
 
-        // Submit command list to GPU using proper SubmitCommandList method
-        Canvas::TaskID submitTask = SubmitCommandList(Canvas::NullTaskID, TextureLayoutBuilder());
+        // Flush command list
+        Flush();
 
-        // Present (depends on submit)
-        Canvas::TaskID presentTask = EnqueueTask(
-            &submitTask, 1, "Present",
-            [](Canvas::TaskID id, Canvas::TaskManager& sched, CSwapChain12* pSwap) {
-                pSwap->Present();
-                sched.CompleteTask(id);
-            },
-            pIntSwapChain);
-
-        // Reset command list (must wait for submit to complete)
-        EnqueueTask(
-            &submitTask, 1, "CommandListReset",
-            [](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue) {
-                pQueue->m_pCommandAllocator = pQueue->m_CommandAllocatorPool.RotateAllocators(pQueue);
-                pQueue->m_pCommandAllocator->Reset();
-                ThrowFailedHResult(pQueue->m_pCommandList->Reset(pQueue->m_pCommandAllocator, nullptr));
-                pQueue->m_pFixupCommandAllocator->Reset();  // Reset fixup allocator after GPU completes
-                pQueue->m_PendingTextureBarriers.clear();
-                pQueue->m_PendingBufferBarriers.clear();
-                pQueue->m_PendingGlobalBarriers.clear();
-                pQueue->m_RecordingResourceState.clear();
-                sched.CompleteTask(id);
-            },
-            this);
-
-        // Store present task so next frame can depend on it
-        pIntSwapChain->m_LastFramePresentTask = presentTask;
+        // Wait for frame latency and present
+        pIntSwapChain->WaitForFrameLatency();
+        pIntSwapChain->Present();
 
         // Clean up completed work every frame
         ProcessCompletedWork();
@@ -401,17 +486,6 @@ Canvas::TaskID CRenderQueue12::WaitForGpuFence(
 }
 
 //------------------------------------------------------------------------------------------------
-// Call this after creating a texture resource to set its initial layout
-void CRenderQueue12::UpdateTextureLayouts(const TextureLayoutBuilder& builder)
-{
-    auto inits = builder.Build();
-    for (const auto& init : inits)
-    {
-        m_TextureCurrentLayouts[init.pResource].SetLayout(init.subresource, init.layout);
-    }
-}
-
-//------------------------------------------------------------------------------------------------
 // Per-subresource layout fixup generation
 //
 // KEY BEHAVIORS:
@@ -437,7 +511,17 @@ void CRenderQueue12::AddLayoutFixups(const std::vector<TextureLayout>& expectedL
     {
         if (!exp.pResource) continue;
         
-        auto& state = m_TextureCurrentLayouts[exp.pResource];
+        // Find committed state - must exist for all textures by submission time
+        auto it = m_pDevice->m_TextureCurrentLayouts.find(exp.pResource);
+        if (it == m_pDevice->m_TextureCurrentLayouts.end())
+        {
+            Canvas::LogError(m_pDevice->GetLogger(), 
+                "AddLayoutFixups: Resource %p not in committed state tracking - texture must be initialized at creation", exp.pResource);
+            _ASSERT(false && "Texture not in committed state tracking during command list submission");
+            continue;
+        }
+        
+        auto& state = it->second;
         
         if (exp.subresource == 0xFFFFFFFF)
         {
@@ -541,13 +625,31 @@ Canvas::TaskID CRenderQueue12::SubmitCommandList(
     Canvas::TaskID dependsOn,
     const TextureLayoutBuilder& expectedLayouts)
 {
-    Canvas::TaskID deps[1] = { dependsOn };
+    // Build dependency list: user-provided dependency + last command list task
+    std::vector<Canvas::TaskID> deps;
+    if (dependsOn != Canvas::NullTaskID)
+        deps.push_back(dependsOn);
+    if (m_LastCommandListTask != Canvas::NullTaskID && m_LastCommandListTask != dependsOn)
+        deps.push_back(m_LastCommandListTask);
+    
     auto taskId = EnqueueTask(
-        (dependsOn != Canvas::NullTaskID) ? deps : nullptr,
-        (dependsOn != Canvas::NullTaskID) ? 1u : 0u,
+        deps.empty() ? nullptr : deps.data(),
+        static_cast<uint32_t>(deps.size()),
         "SubmitCommandList",
         [expectedLayouts](Canvas::TaskID id, Canvas::TaskManager& sched, CRenderQueue12* pQueue)
         {
+            // Capture output layouts from recording state BEFORE closing the command list
+            // This represents what layouts resources will be in after the command list executes
+            std::unordered_map<ID3D12Resource*, SubresourceLayoutState> outputLayouts;
+            for (const auto& [pResource, state] : pQueue->m_RecordingResourceState)
+            {
+                // Copy texture layout state
+                SubresourceLayoutState layoutState;
+                layoutState.uniformLayout = state.TextureLayouts.uniformLayout;
+                layoutState.perSubresourceLayouts = state.TextureLayouts.perSubresourceLayouts;
+                outputLayouts[pResource] = layoutState;
+            }
+            
             // If expectedLayouts provided, queue fixups (batch style)
             auto layouts = expectedLayouts.Build();
             if (!layouts.empty())
@@ -589,6 +691,13 @@ Canvas::TaskID CRenderQueue12::SubmitCommandList(
             submitLists.push_back(pQueue->m_pCommandList);
 
             pQueue->m_pCommandQueue->ExecuteCommandLists(static_cast<UINT>(submitLists.size()), submitLists.data());
+
+            // Update committed state to reflect output layouts after command list execution
+            // We captured these layouts before closing the command list
+            for (const auto& [pResource, layoutState] : outputLayouts)
+            {
+                pQueue->m_pDevice->m_TextureCurrentLayouts[pResource] = layoutState;
+            }
 
             // Signal fence
             pQueue->m_pCommandQueue->Signal(pQueue->m_pFence, ++pQueue->m_FenceValue);
@@ -1068,12 +1177,23 @@ void CRenderQueue12::GenerateBarriersForRecording(const TaskResourceUsages& reso
             }
             else
             {
-                // No tracking yet - assume COMMON for all subresources
-                if (D3D12_BARRIER_LAYOUT_COMMON != texUsage.RequiredLayout)
+                // No recording state - this is first usage of texture in this command list
+                // Check committed state (includes InitialLayout from resource creation)
+                auto committedIt = m_pDevice->m_TextureCurrentLayouts.find(texUsage.pResource);
+                if (committedIt == m_pDevice->m_TextureCurrentLayouts.end())
+                {
+                    Canvas::LogError(m_pDevice->GetLogger(), 
+                        "GenerateBarriersForRecording: Texture not in committed state tracking - should be initialized at creation");
+                    continue;
+                }
+                
+                D3D12_BARRIER_LAYOUT committedLayout = committedIt->second.GetLayout(0xFFFFFFFF);
+                
+                if (committedLayout != texUsage.RequiredLayout)
                 {
                     TextureBarrier barrier;
                     barrier.pResource = texUsage.pResource;
-                    barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_COMMON;
+                    barrier.LayoutBefore = committedLayout;
                     barrier.LayoutAfter = texUsage.RequiredLayout;
                     barrier.SyncBefore = currentSync;
                     barrier.SyncAfter = texUsage.SyncForUsage;
@@ -1090,11 +1210,24 @@ void CRenderQueue12::GenerateBarriersForRecording(const TaskResourceUsages& reso
         else
         {
             // Transitioning SINGLE subresource
-            D3D12_BARRIER_LAYOUT currentLayout = D3D12_BARRIER_LAYOUT_COMMON;
+            D3D12_BARRIER_LAYOUT currentLayout;
             
             if (it != m_RecordingResourceState.end())
             {
                 currentLayout = it->second.TextureLayouts.GetLayout(texUsage.Subresources);
+            }
+            else
+            {
+                // No recording state - first usage in this command list
+                // Check committed state (includes InitialLayout from resource creation)
+                auto committedIt = m_pDevice->m_TextureCurrentLayouts.find(texUsage.pResource);
+                if (committedIt == m_pDevice->m_TextureCurrentLayouts.end())
+                {
+                    Canvas::LogError(m_pDevice->GetLogger(), 
+                        "GenerateBarriersForRecording: Texture not in committed state tracking - should be initialized at creation");
+                    continue;
+                }
+                currentLayout = committedIt->second.GetLayout(texUsage.Subresources);
             }
             
             // Generate barrier if layout change needed
