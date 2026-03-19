@@ -382,7 +382,7 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
 
         // Copy data into the upload buffer immediately on CPU timeline
         {
-            auto pHostBufImpl = reinterpret_cast<CBuffer12*>(suballocation.pBuffer.Get());
+            auto pHostBufImpl = static_cast<CBuffer12*>(suballocation.pBuffer.Get());
             ID3D12Resource* pHostResource = pHostBufImpl ? pHostBufImpl->GetD3DResource() : nullptr;
             if (pHostResource)
             {
@@ -393,7 +393,7 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
                     uint64_t posBytes = posSize;
                     uint64_t normBytes = normSize;
 
-                    uint8_t* dst = reinterpret_cast<uint8_t*>(pMapped) + suballocation.Offset;
+                    uint8_t* dst = static_cast<uint8_t*>(pMapped) + suballocation.Offset;
                     if (positions && posBytes > 0)
                         memcpy(dst, positions, static_cast<size_t>(posBytes));
                     if (normals && normBytes > 0)
@@ -407,17 +407,17 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
         // Schedule copy operations from upload heap to device-local heap
         if (pRenderQueue)
         {
-            CRenderQueue12* pRQ = reinterpret_cast<CRenderQueue12*>(pRenderQueue);
+            CRenderQueue12* pRQ = static_cast<CRenderQueue12*>(pRenderQueue);
 
             // Declare resource usage: destination buffers need barriers for copy
             ResourceUsageBuilder usages;
             usages.SetBufferUsage(
-                reinterpret_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource(),
+                static_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource(),
                 D3D12_BARRIER_SYNC_COPY,
                 D3D12_BARRIER_ACCESS_COPY_DEST);
 
             usages.SetBufferUsage(
-                reinterpret_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource(),
+                static_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource(),
                 D3D12_BARRIER_SYNC_COPY,
                 D3D12_BARRIER_ACCESS_COPY_DEST);
 
@@ -426,9 +426,9 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
                 usages.Build(),
                 [pPosBuffer, pNormBuffer, suballocation, posSize, normSize](ID3D12GraphicsCommandList* cmdList)
                 {
-                    ID3D12Resource* pSrc = reinterpret_cast<CBuffer12*>(suballocation.pBuffer.Get())->GetD3DResource();
-                    ID3D12Resource* pDstPos = reinterpret_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource();
-                    ID3D12Resource* pDstNorm = reinterpret_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource();
+                    ID3D12Resource* pSrc = static_cast<CBuffer12*>(suballocation.pBuffer.Get())->GetD3DResource();
+                    ID3D12Resource* pDstPos = static_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource();
+                    ID3D12Resource* pDstNorm = static_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource();
 
                     if (pSrc && pDstPos)
                         cmdList->CopyBufferRegion(pDstPos, 0, pSrc, suballocation.Offset, posSize);

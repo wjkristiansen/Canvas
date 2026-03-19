@@ -31,6 +31,6 @@ public:
     void SetNormalBuffer(Canvas::XGfxBuffer* pBuffer);
 
 private:
-    Gem::TGemPtr<Canvas::XGfxBuffer> m_pPositionBuffer;
-    Gem::TGemPtr<Canvas::XGfxBuffer> m_pNormalBuffer;
+    Canvas::GfxVertexBuffer m_PositionVB;
+    Canvas::GfxVertexBuffer m_NormalVB;
 };

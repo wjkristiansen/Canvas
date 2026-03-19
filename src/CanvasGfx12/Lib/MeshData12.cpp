@@ -28,9 +28,9 @@ GEMMETHODIMP_(Canvas::GfxVertexBuffer*) CMeshData12::GetVertexBuffer(uint32_t ma
     switch (type)
     {
     case Canvas::GfxVertexBufferType::Position:
-        return reinterpret_cast<Canvas::GfxVertexBuffer*>(m_pPositionBuffer.Get());
+        return m_PositionVB.pBuffer ? &m_PositionVB : nullptr;
     case Canvas::GfxVertexBufferType::Normal:
-        return reinterpret_cast<Canvas::GfxVertexBuffer*>(m_pNormalBuffer.Get());
+        return m_NormalVB.pBuffer ? &m_NormalVB : nullptr;
     default:
         return nullptr;
     }
@@ -46,11 +46,13 @@ GEMMETHODIMP_(Canvas::XGfxMaterial*) CMeshData12::GetMaterial([[maybe_unused]] u
 //------------------------------------------------------------------------------------------------
 void CMeshData12::SetPositionBuffer(Canvas::XGfxBuffer* pBuffer)
 {
-    m_pPositionBuffer = pBuffer;
+    m_PositionVB.pBuffer = pBuffer;
+    m_PositionVB.Offset = 0;
 }
 
 //------------------------------------------------------------------------------------------------
 void CMeshData12::SetNormalBuffer(Canvas::XGfxBuffer* pBuffer)
 {
-    m_pNormalBuffer = pBuffer;
+    m_NormalVB.pBuffer = pBuffer;
+    m_NormalVB.Offset = 0;
 }
