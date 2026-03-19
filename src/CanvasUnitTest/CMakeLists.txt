@@ -9,9 +9,6 @@ add_library(CanvasUnitTest SHARED
     CanvasMathTest.cpp
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
-    RingBufferTest.cpp
-    TaskManagerTest.cpp
-    TaskManagerTypedTest.cpp
     pch.h
     targetver.h
 )
@@ -66,8 +63,6 @@ target_link_libraries(CanvasUnitTest PRIVATE
     CanvasCore
     D3D12ResourceUtils
     GpuTask
-    RingBuffer
-    TaskManager
 )
 
 # Use Microsoft CppUnitTestFramework
@@ -140,8 +135,8 @@ endif()
 
 if(VSTEST_CONSOLE)
     add_test(NAME CanvasUnitTests 
-        COMMAND ${VSTEST_CONSOLE} $<TARGET_FILE:CanvasUnitTest> "--logger:console;verbosity=normal"
-        WORKING_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+        COMMAND ${VSTEST_CONSOLE} "${CMAKE_INSTALL_PREFIX}/${CANVAS_INSTALL_DEST}/bin/CanvasUnitTest.dll" "--logger:console;verbosity=normal"
+        WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/${CANVAS_INSTALL_DEST}/bin
     )
     message(STATUS "Found VSTest Console: ${VSTEST_CONSOLE}")
     

@@ -61,8 +61,6 @@ target_link_libraries(CanvasCore PUBLIC
     WIL
     GEM
     QLog
-    RingBuffer
-    TaskManager
 )
 
 # Windows-specific settings
