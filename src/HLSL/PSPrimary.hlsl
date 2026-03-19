@@ -1,12 +1,20 @@
 #include "Common.hlsli"
 
-PS_OUTPUT PSPrimary(PS_INPUT Input)
+float4 PSPrimary(PS_INPUT Input) : SV_Target0
 {
-    PS_OUTPUT Output;
+    float3 N = normalize(Input.Normal);
 
-    Output.DiffuseColor = float3(1.0, 1.0, 1.0);
-    Output.Normal = Input.Normal;
-    Output.Position = Input.WorldPosition.xyz;
+    // Lambertian diffuse from directional (sun) light
+    float NdotL = saturate(dot(N, SunDirection));
+    float3 diffuse = SunColor * NdotL;
 
-	return Output;
+    // Simple ambient term
+    float3 ambient = AmbientLight;
+
+    // Base albedo (white for now)
+    float3 albedo = float3(0.8, 0.8, 0.8);
+
+    float3 color = albedo * (ambient + diffuse);
+
+    return float4(color, 1.0);
 }

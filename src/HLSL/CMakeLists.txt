@@ -104,3 +104,8 @@ configure_file(
     COPYONLY
 )
 
+# Install compiled shaders next to application binaries
+install(DIRECTORY ${SHADER_OUTPUT_DIR}/
+    DESTINATION ${CANVAS_INSTALL_DEST}/bin/shaders
+    FILES_MATCHING PATTERN "*.cso"
+)
