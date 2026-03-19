@@ -1224,48 +1224,38 @@ namespace Canvas
         //
         // Matrix layout for row vectors (v' = v * M):
         // Row-vector multiplication: [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
-        // 
-        // RHS: +X=forward, +Y=left, +Z=up
-        // Mapping: x_cam(forward) → z_clip(depth), y_cam(left) → -x_clip(right in clip), z_cam(up) → y_clip(up)
-        // 
-        // [   0     -f/aspect    0        0    ]  row 0
-        // [   0        0         f        0    ]  row 1
-        // [   A        0         0        1    ]  row 2
-        // [   B        0         0        0    ]  row 3  ← NOTE: Positive B for reverse-Z
         //
-        // Where: A = farPlane/(near-far), B = (near*far)/(near-far) for reverse-Z
+        // For v * M, element M[i][j] maps input component i to output component j.
+        // RHS camera: +X=forward, +Y=left, +Z=up
+        // Mapping: x_cam(fwd)→z_clip+w_clip, y_cam(left)→-x_clip, z_cam(up)→y_clip
+        //
+        // [   0      0         A        1    ]  row 0 (x_cam: forward → depth + w)
+        // [ -f/aspect 0        0        0    ]  row 1 (y_cam: left → -x_clip)
+        // [   0       f        0        0    ]  row 2 (z_cam: up → y_clip)
+        // [   0       0        B        0    ]  row 3 (const → depth bias)
+        //
+        // Where: A = nearPlane/(nearPlane-farPlane), B = -(nearPlane*farPlane)/(nearPlane-farPlane)
         template<class _Type>
         TMatrix<_Type, 4, 4> PerspectiveReverseZ(_Type fovY, _Type aspect, _Type nearPlane, _Type farPlane)
         {
-            auto m = IdentityMatrix<_Type, 4, 4>();
+            TMatrix<_Type, 4, 4> m = {};
 
             _Type f = _Type(1.0) / std::tan(fovY * _Type(0.5));  // cotangent of half FOV
-            _Type rangeInv = _Type(1.0) / (nearPlane - farPlane);  // reversed for reverse-Z
+            _Type rangeInv = _Type(1.0) / (nearPlane - farPlane);  // negative
 
-            // Row 0: y_cam(left) → x_clip (negated because clip space is +X=right)
-            m[0][0] = _Type(0.0);
-            m[0][1] = -f / aspect;
-            m[0][2] = _Type(0.0);
-            m[0][3] = _Type(0.0);
-            
-            // Row 1: z_cam(up) → y_clip
-            m[1][0] = _Type(0.0);
-            m[1][1] = _Type(0.0);
-            m[1][2] = f;
-            m[1][3] = _Type(0.0);
-            
-            // Row 2: x_cam(forward) → z_clip and w_clip
-            m[2][0] = farPlane * rangeInv;        // A: x_cam → z_clip
-            m[2][1] = _Type(0.0);
-            m[2][2] = _Type(0.0);
-            m[2][3] = _Type(1.0);                 // x_cam → w_clip (for perspective divide)
-            
-            // Row 3: constant → z_clip
-            m[3][0] = nearPlane * farPlane * rangeInv;  // B: constant → z_clip
-            m[3][1] = _Type(0.0);
-            m[3][2] = _Type(0.0);
-            m[3][3] = _Type(0.0);
-            
+            // Row 0: x_cam(forward) → z_clip (depth) and w_clip (perspective divide)
+            m[0][2] = nearPlane * rangeInv;       // A: forward → z_clip
+            m[0][3] = _Type(1.0);                 // forward → w_clip
+
+            // Row 1: y_cam(left) → -x_clip (negated because clip space is +X=right)
+            m[1][0] = -f / aspect;
+
+            // Row 2: z_cam(up) → y_clip
+            m[2][1] = f;
+
+            // Row 3: constant → z_clip (depth bias)
+            m[3][2] = -(nearPlane * farPlane * rangeInv);  // B: depth bias
+
             return m;
         }
 
@@ -1291,48 +1281,38 @@ namespace Canvas
         //
         // Matrix layout for row vectors (v' = v * M):
         // Row-vector multiplication: [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
-        // 
-        // RHS: +X=forward, +Y=left, +Z=up
-        // Mapping: x_cam(forward) → z_clip(depth), y_cam(left) → -x_clip(right in clip), z_cam(up) → y_clip(up)
-        // 
-        // [   0     -f/aspect    0        0    ]  row 0
-        // [   0        0         f        0    ]  row 1
-        // [   A        0         0        1    ]  row 2
-        // [  -B        0         0        0    ]  row 3  ← NOTE: Negative B for forward-Z
         //
-        // Where: A = farPlane/(far-near), B = (near*far)/(far-near) for forward-Z
+        // For v * M, element M[i][j] maps input component i to output component j.
+        // RHS camera: +X=forward, +Y=left, +Z=up
+        // Mapping: x_cam(fwd)→z_clip+w_clip, y_cam(left)→-x_clip, z_cam(up)→y_clip
+        //
+        // [   0      0         A        1    ]  row 0 (x_cam: forward → depth + w)
+        // [ -f/aspect 0        0        0    ]  row 1 (y_cam: left → -x_clip)
+        // [   0       f        0        0    ]  row 2 (z_cam: up → y_clip)
+        // [   0       0       -B        0    ]  row 3 (const → depth bias)
+        //
+        // Where: A = farPlane/(farPlane-nearPlane), B = (nearPlane*farPlane)/(farPlane-nearPlane)
         template<class _Type>
         TMatrix<_Type, 4, 4> PerspectiveForwardZ(_Type fovY, _Type aspect, _Type nearPlane, _Type farPlane)
         {
-            auto m = IdentityMatrix<_Type, 4, 4>();
+            TMatrix<_Type, 4, 4> m = {};
 
             _Type f = _Type(1.0) / std::tan(fovY * _Type(0.5));  // cotangent of half FOV
-            _Type rangeInv = _Type(1.0) / (farPlane - nearPlane);  // standard forward-Z
+            _Type rangeInv = _Type(1.0) / (farPlane - nearPlane);  // positive
 
-            // Row 0: y_cam(left) → x_clip (negated because clip space is +X=right)
-            m[0][0] = _Type(0.0);
-            m[0][1] = -f / aspect;
-            m[0][2] = _Type(0.0);
-            m[0][3] = _Type(0.0);
-            
-            // Row 1: z_cam(up) → y_clip
-            m[1][0] = _Type(0.0);
-            m[1][1] = _Type(0.0);
-            m[1][2] = f;
-            m[1][3] = _Type(0.0);
-            
-            // Row 2: x_cam(forward) → z_clip and w_clip
-            m[2][0] = farPlane * rangeInv;        // A: x_cam → z_clip
-            m[2][1] = _Type(0.0);
-            m[2][2] = _Type(0.0);
-            m[2][3] = _Type(1.0);                 // x_cam → w_clip (for perspective divide)
-            
-            // Row 3: constant → z_clip
-            m[3][0] = -nearPlane * farPlane * rangeInv;  // B: constant → z_clip
-            m[3][1] = _Type(0.0);
-            m[3][2] = _Type(0.0);
-            m[3][3] = _Type(0.0);
-            
+            // Row 0: x_cam(forward) → z_clip (depth) and w_clip (perspective divide)
+            m[0][2] = farPlane * rangeInv;        // A: forward → z_clip
+            m[0][3] = _Type(1.0);                 // forward → w_clip
+
+            // Row 1: y_cam(left) → -x_clip (negated because clip space is +X=right)
+            m[1][0] = -f / aspect;
+
+            // Row 2: z_cam(up) → y_clip
+            m[2][1] = f;
+
+            // Row 3: constant → z_clip (depth bias)
+            m[3][2] = -nearPlane * farPlane * rangeInv;  // -B: depth bias
+
             return m;
         }
 

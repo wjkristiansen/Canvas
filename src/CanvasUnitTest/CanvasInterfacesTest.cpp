@@ -330,23 +330,22 @@ namespace CanvasUnitTest
             Assert::IsFalse(AlmostEqual(projMatrix1, identity), L"Projection matrix should not be identity");
             
             // For the new coordinate system (X=forward, Y=left, Z=up), verify expected structure
-            // Row 0: [0, -f/aspect, 0, 0]
-            // Row 1: [0, 0, f, 0]
-            // Row 2: [A, 0, 0, 1]
-            // Row 3: [B, 0, 0, 0]
+            // Row 0: [   0,    0,   A,  1  ]  (x_cam: forward -> depth + w)
+            // Row 1: [-f/a,    0,   0,  0  ]  (y_cam: left -> -x_clip)
+            // Row 2: [   0,    f,   0,  0  ]  (z_cam: up -> y_clip)
+            // Row 3: [   0,    0,   B,  0  ]  (const -> depth bias)
             
-            // Check specific elements to validate the new projection matrix structure
+            // Check specific elements to validate the projection matrix structure
             const float tolerance = 1e-5f;
+            float f = 1.0f / std::tan(fov * 0.5f);  // approx 2.414
             
-            // Row 1: Should have f at [1][2]
-            float expected_1_2 = 1.0f / std::tan(fov * 0.5f);  // approx 2.414
-            float actual_1_2 = projMatrix1[1][2];
-            Assert::IsTrue(std::abs(actual_1_2 - expected_1_2) < 0.01f,
-                L"proj[1][2] should be approximately 2.414");
+            // Row 2, col 1: Should have f (z_cam -> y_clip)
+            Assert::IsTrue(std::abs(projMatrix1[2][1] - f) < 0.01f,
+                L"proj[2][1] should be approximately 2.414 (f)");
             
-            // Row 2: Should have 1.0 at [2][3] for perspective divide
-            Assert::IsTrue(std::abs(projMatrix1[2][3] - 1.0f) < tolerance,
-                L"proj[2][3] should be 1.0 for perspective divide");
+            // Row 0, col 3: Should have 1.0 for perspective divide (forward -> w_clip)
+            Assert::IsTrue(std::abs(projMatrix1[0][3] - 1.0f) < tolerance,
+                L"proj[0][3] should be 1.0 for perspective divide");
             
             // Diagonal should all be zero (NOT identity)
             Assert::IsTrue(std::abs(projMatrix1[0][0]) < tolerance, L"proj[0][0] should be 0");

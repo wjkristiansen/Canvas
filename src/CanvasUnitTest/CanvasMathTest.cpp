@@ -815,17 +815,18 @@ namespace CanvasUnitTest
 
             auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
 
-            // Check matrix elements for row-vector multiplication
+            // Check matrix elements for row-vector multiplication (v * M)
+            // M[i][j] maps input axis i to output axis j
             // [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
-            Assert::IsTrue(proj[0][1] != 0.0f);  // Y(left) → X_clip scaling (-f/aspect)
-            Assert::IsTrue(proj[1][2] != 0.0f);  // Z(up) → Y_clip scaling (f)
-            Assert::IsTrue(proj[2][0] != 0.0f);  // X(forward) → Z_clip scaling
-            Assert::IsTrue(proj[2][3] == 1.0f);  // W projection coefficient (perspective divide by x_cam)
+            Assert::IsTrue(proj[1][0] != 0.0f);  // Y(left) → -X_clip scaling (-f/aspect)
+            Assert::IsTrue(proj[2][1] != 0.0f);  // Z(up) → Y_clip scaling (f)
+            Assert::IsTrue(proj[0][2] != 0.0f);  // X(forward) → Z_clip depth
+            Assert::IsTrue(proj[0][3] == 1.0f);  // X(forward) → W_clip (perspective divide)
 
             // Verify f = cot(fovY/2)
             float f = 1.0f / std::tan(fovY * 0.5f);
-            Assert::IsTrue(std::abs(proj[0][1] - (-f / aspect)) < FLT_EPSILON);
-            Assert::IsTrue(std::abs(proj[1][2] - f) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[1][0] - (-f / aspect)) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[2][1] - f) < FLT_EPSILON);
         }
 
         TEST_METHOD(PerspectiveReverseZDepthMapping)
@@ -838,17 +839,25 @@ namespace CanvasUnitTest
 
             auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
 
-            // Verify the matrix has the correct structure for reverse-Z
-            // M[2][0] should be non-zero (depth scaling from x_cam)
-            // M[3][0] should be non-zero (depth translation constant)
-            Assert::IsTrue(proj[2][0] != 0.0f);
-            Assert::IsTrue(proj[3][0] != 0.0f);
-            
-            // M[2][0] should equal farPlane / (nearPlane - farPlane)
-            // M[3][0] should equal (nearPlane * farPlane) / (nearPlane - farPlane)
+            // Row-vector: M[0][2] = A (forward → z_clip), M[3][2] = B (depth bias)
+            Assert::IsTrue(proj[0][2] != 0.0f);
+            Assert::IsTrue(proj[3][2] != 0.0f);
+
+            // A = nearPlane / (nearPlane - farPlane)
+            // B = -(nearPlane * farPlane) / (nearPlane - farPlane)
             float rangeInv = 1.0f / (nearPlane - farPlane);
-            Assert::IsTrue(std::abs(proj[2][0] - farPlane * rangeInv) < FLT_EPSILON);
-            Assert::IsTrue(std::abs(proj[3][0] - nearPlane * farPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[0][2] - nearPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[3][2] - (-(nearPlane * farPlane * rangeInv))) < FLT_EPSILON);
+
+            // Verify depth mapping: ndc_z = (A*x + B) / x where x = forward distance
+            // At near plane (x=near): ndc_z should be 1.0
+            float A = proj[0][2];
+            float B = proj[3][2];
+            float ndc_near = (A * nearPlane + B) / nearPlane;
+            Assert::IsTrue(std::abs(ndc_near - 1.0f) < 1e-5f);
+            // At far plane (x=far): ndc_z should be 0.0
+            float ndc_far = (A * farPlane + B) / farPlane;
+            Assert::IsTrue(std::abs(ndc_far - 0.0f) < 1e-5f);
         }
 
         TEST_METHOD(PerspectiveReverseZCoordinateTransform)
@@ -863,12 +872,12 @@ namespace CanvasUnitTest
 
             float f = 1.0f / std::tan(fovY * 0.5f);
 
-            // Verify FOV scaling (use relaxed tolerance for negative values)
-            Assert::IsTrue(std::abs(proj[0][1] - (-f)) < 1e-5f);  // Y(left) → X_clip (negated)
-            Assert::IsTrue(std::abs(proj[1][2] - f) < 1e-5f);     // Z(up) → Y_clip
+            // Row-vector: M[1][0] = -f/a (left → -x_clip), M[2][1] = f (up → y_clip)
+            Assert::IsTrue(std::abs(proj[1][0] - (-f)) < 1e-5f);  // Y(left) → -X_clip
+            Assert::IsTrue(std::abs(proj[2][1] - f) < 1e-5f);     // Z(up) → Y_clip
 
-            // Verify perspective divide is set up
-            Assert::IsTrue(std::abs(proj[2][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            // Verify perspective divide: M[0][3] = 1 (forward → w_clip)
+            Assert::IsTrue(std::abs(proj[0][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
             Assert::IsTrue(std::abs(proj[3][3] - 0.0f) < 1e-5f);  // no constant contribution to w_clip
         }
 
@@ -883,16 +892,16 @@ namespace CanvasUnitTest
 
             auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
 
-            // Check matrix elements for row-vector multiplication
-            Assert::IsTrue(proj[0][1] != 0.0f);  // Y(left) → X_clip
-            Assert::IsTrue(proj[1][2] != 0.0f);  // Z(up) → Y_clip
-            Assert::IsTrue(proj[2][0] != 0.0f);  // X(forward) → Z_clip
-            Assert::IsTrue(proj[2][3] == 1.0f);  // W projection coefficient
+            // Row-vector: M[i][j] maps input axis i to output axis j
+            Assert::IsTrue(proj[1][0] != 0.0f);  // Y(left) → -X_clip
+            Assert::IsTrue(proj[2][1] != 0.0f);  // Z(up) → Y_clip
+            Assert::IsTrue(proj[0][2] != 0.0f);  // X(forward) → Z_clip
+            Assert::IsTrue(proj[0][3] == 1.0f);  // X(forward) → W_clip
 
             // Verify f = cot(fovY/2)
             float f = 1.0f / std::tan(fovY * 0.5f);
-            Assert::IsTrue(std::abs(proj[0][1] - (-f / aspect)) < FLT_EPSILON);
-            Assert::IsTrue(std::abs(proj[1][2] - f) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[1][0] - (-f / aspect)) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[2][1] - f) < FLT_EPSILON);
         }
 
         TEST_METHOD(PerspectiveForwardZDepthMapping)
@@ -905,17 +914,25 @@ namespace CanvasUnitTest
 
             auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
 
-            // Verify the matrix has the correct structure for forward-Z
-            // M[2][0] should be non-zero (depth scaling from x_cam)
-            // M[3][0] should be non-zero (depth translation, negative of reverse-Z)
-            Assert::IsTrue(proj[2][0] != 0.0f);
-            Assert::IsTrue(proj[3][0] != 0.0f);
-            
-            // M[2][0] should equal farPlane / (farPlane - nearPlane)
-            // M[3][0] should equal -(nearPlane * farPlane) / (farPlane - nearPlane)
+            // Row-vector: M[0][2] = A (forward → z_clip), M[3][2] = -B (depth bias)
+            Assert::IsTrue(proj[0][2] != 0.0f);
+            Assert::IsTrue(proj[3][2] != 0.0f);
+
+            // A = farPlane / (farPlane - nearPlane)
+            // -B = -(nearPlane * farPlane) / (farPlane - nearPlane)
             float rangeInv = 1.0f / (farPlane - nearPlane);
-            Assert::IsTrue(std::abs(proj[2][0] - farPlane * rangeInv) < FLT_EPSILON);
-            Assert::IsTrue(std::abs(proj[3][0] + nearPlane * farPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[0][2] - farPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[3][2] + nearPlane * farPlane * rangeInv) < FLT_EPSILON);
+
+            // Verify depth mapping: ndc_z = (A*x + bias) / x
+            // At near plane: ndc_z should be 0.0
+            float A = proj[0][2];
+            float B = proj[3][2];
+            float ndc_near = (A * nearPlane + B) / nearPlane;
+            Assert::IsTrue(std::abs(ndc_near - 0.0f) < 1e-5f);
+            // At far plane: ndc_z should be 1.0
+            float ndc_far = (A * farPlane + B) / farPlane;
+            Assert::IsTrue(std::abs(ndc_far - 1.0f) < 1e-5f);
         }
 
         TEST_METHOD(PerspectiveForwardZCoordinateTransform)
@@ -931,12 +948,12 @@ namespace CanvasUnitTest
 
             float f = 1.0f / std::tan(fovY * 0.5f);
 
-            // Verify FOV scaling (use relaxed tolerance for negative values)
-            Assert::IsTrue(std::abs(proj[0][1] - (-f)) < 1e-5f);  // Y(left) → X_clip (negated)
-            Assert::IsTrue(std::abs(proj[1][2] - f) < 1e-5f);     // Z(up) → Y_clip
+            // Row-vector: M[1][0] = -f/a (left → -x_clip), M[2][1] = f (up → y_clip)
+            Assert::IsTrue(std::abs(proj[1][0] - (-f)) < 1e-5f);  // Y(left) → -X_clip
+            Assert::IsTrue(std::abs(proj[2][1] - f) < 1e-5f);     // Z(up) → Y_clip
 
-            // Verify perspective divide is set up correctly
-            Assert::IsTrue(std::abs(proj[2][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            // Verify perspective divide: M[0][3] = 1 (forward → w_clip)
+            Assert::IsTrue(std::abs(proj[0][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
             Assert::IsTrue(std::abs(proj[3][3] - 0.0f) < 1e-5f);  // no constant contribution to w_clip
         }
 
@@ -954,15 +971,15 @@ namespace CanvasUnitTest
 
             float f = 1.0f / std::tan(fovY * 0.5f);
 
-            // Both should have identical FOV and perspective setup
-            Assert::IsTrue(std::abs(projRZ[0][1] - (-f)) < 1e-5f);  // Y(left) → X_clip
-            Assert::IsTrue(std::abs(projRZ[1][2] - f) < 1e-5f);     // Z(up) → Y_clip
-            Assert::IsTrue(std::abs(projFZ[0][1] - (-f)) < 1e-5f);
-            Assert::IsTrue(std::abs(projFZ[1][2] - f) < 1e-5f);
+            // Both should have identical FOV and perspective setup (row-vector layout)
+            Assert::IsTrue(std::abs(projRZ[1][0] - (-f)) < 1e-5f);  // Y(left) → -X_clip
+            Assert::IsTrue(std::abs(projRZ[2][1] - f) < 1e-5f);     // Z(up) → Y_clip
+            Assert::IsTrue(std::abs(projFZ[1][0] - (-f)) < 1e-5f);
+            Assert::IsTrue(std::abs(projFZ[2][1] - f) < 1e-5f);
 
             // Verify perspective divide is correctly set for both
-            Assert::IsTrue(std::abs(projRZ[2][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
-            Assert::IsTrue(std::abs(projFZ[2][3] - 1.0f) < 1e-5f);
+            Assert::IsTrue(std::abs(projRZ[0][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            Assert::IsTrue(std::abs(projFZ[0][3] - 1.0f) < 1e-5f);
             Assert::IsTrue(std::abs(projRZ[3][3] - 0.0f) < 1e-5f);
             Assert::IsTrue(projFZ[3][3] == 0.0f);
         }
