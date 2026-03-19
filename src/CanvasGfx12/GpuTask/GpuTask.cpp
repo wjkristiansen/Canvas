@@ -76,6 +76,8 @@ void CGpuTaskGraph::AddExplicitDependency(GpuTaskHandle task, GpuTaskHandle depe
     assert(task < m_Tasks.size());
     assert(dependency < m_Tasks.size());
     assert(task != dependency);
+    (void)task;
+    (void)dependency;
     // Reserved for future use (e.g., ordering constraints not captured by resource usage).
 }
 
