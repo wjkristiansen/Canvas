@@ -437,7 +437,7 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
                 });
 
             // Schedule release of the host-write region after the next submit completes
-            pRQ->ScheduleHostWriteRelease(suballocation);
+            pRQ->RetireUploadAllocation(suballocation);
         }
 
         // Create and register the CMeshData12 object that holds the buffers

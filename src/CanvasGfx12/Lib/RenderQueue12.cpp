@@ -368,11 +368,11 @@ void CRenderQueue12::WaitForGpuFence(UINT64 fenceValue)
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::ScheduleHostWriteRelease(const Canvas::GfxSuballocation& suballocation)
+void CRenderQueue12::RetireUploadAllocation(const Canvas::GfxSuballocation& suballocation)
 {
     // Defer release until the GPU completes the next submit (current fence value + 1).
     // ProcessCompletedWork will free the suballocation once the fence advances past this value.
-    m_DeferredHostWriteReleases.push_back({ suballocation, m_FenceValue + 1 });
+    m_PendingUploadRetirements.push_back({ suballocation, m_FenceValue + 1 });
 }
 
 //------------------------------------------------------------------------------------------------
@@ -457,7 +457,7 @@ void CRenderQueue12::ProcessCompletedWork()
     UINT64 completedValue = m_pFence->GetCompletedValue();
     
     // Release deferred host-write suballocations whose fence has completed
-    for (auto it = m_DeferredHostWriteReleases.begin(); it != m_DeferredHostWriteReleases.end();)
+    for (auto it = m_PendingUploadRetirements.begin(); it != m_PendingUploadRetirements.end();)
     {
         if (it->FenceValue <= completedValue)
         {
@@ -465,7 +465,7 @@ void CRenderQueue12::ProcessCompletedWork()
             {
                 m_pDevice->FreeHostWriteRegion(const_cast<Canvas::GfxSuballocation&>(it->Suballocation));
             }
-            it = m_DeferredHostWriteReleases.erase(it);
+            it = m_PendingUploadRetirements.erase(it);
         }
         else
         {

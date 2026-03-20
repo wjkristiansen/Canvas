@@ -476,13 +476,13 @@ public:
     // GPU sync point tracking (fence-value based)
     std::unordered_map<UINT64, GpuSyncPoint> m_GpuSyncPoints;
     
-    // Deferred host-write releases: suballocations to free after GPU reaches associated fence value
-    struct DeferredHostWriteRelease
+    // Pending upload allocation retirements: freed once GPU advances past the fence value
+    struct PendingUploadRetirement
     {
         Canvas::GfxSuballocation Suballocation;
         UINT64 FenceValue;  // Release once GPU completes past this fence value
     };
-    std::vector<DeferredHostWriteRelease> m_DeferredHostWriteReleases;
+    std::vector<PendingUploadRetirement> m_PendingUploadRetirements;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
@@ -522,14 +522,14 @@ public:
 
     // Schedule release of a host-write suballocation after the current GPU work completes.
     // The release is deferred until the GPU fence advances past the current value.
-    void ScheduleHostWriteRelease(const Canvas::GfxSuballocation& suballocation);
+    void RetireUploadAllocation(const Canvas::GfxSuballocation& suballocation);
     
     //---------------------------------------------------------------------------------------------
     // GPU Task Graph API
     //
     // Tasks are GPU operations (render passes). Each declares its resource usage.
     // Barriers are resolved immediately when a task is prepared. Commands are recorded
-    // directly into the command list by the caller — no deferred callbacks.
+    // directly into the command list by the caller ΓÇö no deferred callbacks.
     //
     // Usage:
     //   auto task = CreateGpuTask("ShadowPass");
@@ -632,7 +632,7 @@ private:
     // Emit resolved barriers into the command list
     void EmitBarriers(const Canvas::TaskBarriers& barriers);
     
-    // GPU Task Graph instance — all barrier state is tracked here
+    // GPU Task Graph instance ΓÇö all barrier state is tracked here
     Canvas::CGpuTaskGraph m_GpuTaskGraph;
     bool m_TaskGraphActive = false;
 };
