@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cassert>
 #include "LinkedList.h"
 
 static bool IsPlanarResourceFormat(DXGI_FORMAT Format)
