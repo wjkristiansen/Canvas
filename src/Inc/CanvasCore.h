@@ -40,6 +40,7 @@ struct XGfxMeshData;
 struct XMeshInstance;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
+struct XRenderQueue;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -278,16 +279,35 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(const Math::FloatMatrix4x4, GetGlobalMatrix)() = 0;
     GEMMETHOD_(const Math::FloatMatrix4x4, GetLocalMatrix)() = 0;
 
+    // Element iteration (bound elements on this node)
+    GEMMETHOD_(UINT, GetBoundElementCount)() = 0;
+    GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(UINT index) = 0;
+
     GEMMETHOD(Update)(float dtime) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------
+// Per-object constant buffer data (matches HLSL PerObjectConstants)
+struct alignas(16) GfxPerObjectConstants
+{
+    Math::FloatMatrix4x4 World;            // Object-to-world transform
+    Math::FloatMatrix4x4 WorldInvTranspose; // For transforming normals
+};
+
 struct
 XRenderQueue : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XRenderQueue, 0x3B35719161878DCC);
 
-    // BUGBUG: TODO...
+    GEMMETHOD(DrawMesh)(XGfxMeshData *pMeshData, const GfxPerObjectConstants &objectConstants) = 0;
+
+    // Private contract with the scene graph: enqueues an element for rendering.
+    // Elements are dispatched later when the queue is drained (EndFrame).
+    GEMMETHOD(SubmitForRender)(XSceneGraphElement *pElement) = 0;
+
+    // Private contract with the scene: sets the active camera for frame constant generation.
+    GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -378,14 +398,18 @@ XScene : public XCanvasElement
 
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
 
+    GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
+    GEMMETHOD_(XCamera *, GetActiveCamera)() = 0;
+
     GEMMETHOD(Update)(float dtime) = 0;
+    GEMMETHOD(SubmitRenderables)(XRenderQueue *pRenderQueue) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
 struct
 XMeshInstance : public XSceneGraphElement
 {
-    GEM_INTERFACE_DECLARE(XMeshInstance, 0x4F4481985210AE1E);
+    GEM_INTERFACE_DECLARE(XMeshInstance, 0x1C80317FA3B1799D);
     
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() = 0;
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;

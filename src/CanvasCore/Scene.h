@@ -16,6 +16,8 @@ class CScene :
 {
 private:
     Gem::TGemPtr<XSceneGraphNode> m_pRoot;
+    Gem::TGemPtr<XCamera> m_pActiveCamera;
+    std::vector<XSceneGraphNode*> m_TraversalStack;  // Reused across frames to avoid allocation
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -32,7 +34,22 @@ public:
 public: // XScene methods
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)();
 
-    GEMMETHOD(Update)(float dtime) final { return m_pRoot->Update(dtime); }
+    GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) final
+    {
+        m_pActiveCamera = pCamera;
+    }
+
+    GEMMETHOD_(XCamera *, GetActiveCamera)() final
+    {
+        return m_pActiveCamera.Get();
+    }
+
+    GEMMETHOD(Update)(float dtime) final
+    {
+        return m_pRoot->Update(dtime);
+    }
+
+    GEMMETHOD(SubmitRenderables)(XRenderQueue *pRenderQueue) final;
 };
 
 }

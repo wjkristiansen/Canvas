@@ -13,6 +13,9 @@
 #include "Buffer12.h"
 #include "Surface12.h"
 #include "SwapChain12.h"
+#include "MeshData12.h"
+
+#include <fstream>
 
 //------------------------------------------------------------------------------------------------
 CCommandAllocatorPool::CCommandAllocatorPool()
@@ -131,7 +134,7 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     DefaultRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
     DefaultRootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
     DefaultRootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
-    DefaultRootParams[3].InitAsDescriptorTable(1, DefaultDescriptorRanges.data(), D3D12_SHADER_VISIBILITY_ALL);
+    DefaultRootParams[3].InitAsDescriptorTable(static_cast<UINT>(DefaultDescriptorRanges.size()), DefaultDescriptorRanges.data(), D3D12_SHADER_VISIBILITY_ALL);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc(4U, DefaultRootParams.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -141,6 +144,7 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     CComPtr<ID3D12RootSignature> pDefaultRootSig;
     pD3DDevice->CreateRootSignature(1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pDefaultRootSig));
 
+    m_pDefaultRootSig.Attach(pDefaultRootSig.Detach());
     m_pShaderResourceDescriptorHeap.Attach(pResDH.Detach());
     m_pSamplerDescriptorHeap.Attach(pSamplerDH.Detach());
     m_pRTVDescriptorHeap.Attach(pRTVDH.Detach());
@@ -176,8 +180,8 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer *pDest, Canvas::XGfxBuffer *pSource)
 {
-    CBuffer12 *pDestBuffer = reinterpret_cast<CBuffer12 *>(pDest);
-    CBuffer12 *pSourceBuffer = reinterpret_cast<CBuffer12 *>(pSource);
+    CBuffer12 *pDestBuffer = static_cast<CBuffer12 *>(pDest);
+    CBuffer12 *pSourceBuffer = static_cast<CBuffer12 *>(pSource);
     
     EnsureTaskGraphActive();
     
@@ -194,7 +198,7 @@ GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer *pDest, Canvas
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(Canvas::XGfxSurface *pGfxSurface, const float Color[4])
 {
-    CSurface12 *pSurface = reinterpret_cast<CSurface12 *>(pGfxSurface);
+    CSurface12 *pSurface = static_cast<CSurface12 *>(pGfxSurface);
     ID3D12Resource* pResource = pSurface->GetD3DResource();
 
     EnsureTaskGraphActive();
@@ -281,7 +285,7 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 {
     try
     {
-        CSwapChain12 *pIntSwapChain = reinterpret_cast<CSwapChain12 *>(pSwapChain);
+        CSwapChain12 *pIntSwapChain = static_cast<CSwapChain12 *>(pSwapChain);
 
         // Back buffer must be in COMMON for Present — add a barrier-only task
         if (pIntSwapChain->m_BackBufferModified)
@@ -418,7 +422,7 @@ void CRenderQueue12::RecordCommands(
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::PresentSwapChain(Canvas::XGfxSwapChain* pSwapChain)
 {
-    CSwapChain12* pIntSwapChain = reinterpret_cast<CSwapChain12*>(pSwapChain);
+    CSwapChain12* pIntSwapChain = static_cast<CSwapChain12*>(pSwapChain);
     Gem::ThrowGemError(pIntSwapChain->Present());
 }
 
@@ -616,6 +620,470 @@ void CRenderQueue12::EmitBarriers(const Canvas::TaskBarriers& barriers)
     {
         m_pCommandList7->Barrier(static_cast<UINT>(groups.size()), groups.data());
     }
+}
+
+//================================================================================================
+// Shader loading helper
+//================================================================================================
+static std::vector<uint8_t> LoadShaderBytecode(const std::wstring& path)
+{
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
+        return {};
+    
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    std::vector<uint8_t> bytecode(static_cast<size_t>(size));
+    file.read(reinterpret_cast<char*>(bytecode.data()), size);
+    return bytecode;
+}
+
+//================================================================================================
+// Depth buffer management
+//================================================================================================
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::EnsureDepthBuffer(UINT width, UINT height)
+{
+    if (m_pDepthBuffer && m_DepthBufferWidth == width && m_DepthBufferHeight == height)
+        return;
+    
+    // Create depth buffer surface via the device
+    Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+        Canvas::GfxFormat::D32_Float, width, height,
+        static_cast<Canvas::GfxSurfaceFlags>(Canvas::SurfaceFlag_DepthStencil));
+    
+    Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+    Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
+    
+    Gem::TGemPtr<CSurface12> pDepthSurface;
+    pSurface->QueryInterface(&pDepthSurface);
+    
+    m_pDepthBuffer = pDepthSurface;
+    m_DepthBufferWidth = width;
+    m_DepthBufferHeight = height;
+}
+
+//------------------------------------------------------------------------------------------------
+D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateDepthStencilView(CSurface12 *pSurface)
+{
+    ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
+    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    UINT slot = m_NextDSVSlot;
+    m_NextDSVSlot = (m_NextDSVSlot + 1) % NumDSVDescriptors;
+    
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
+    cpuHandle.ptr = m_pDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    
+    D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+    dsvDesc.Texture2D.MipSlice = 0;
+    
+    pD3DDevice->CreateDepthStencilView(pSurface->GetD3DResource(), &dsvDesc, cpuHandle);
+    return cpuHandle;
+}
+
+//================================================================================================
+// SRV creation for shader-visible descriptors
+//================================================================================================
+
+//------------------------------------------------------------------------------------------------
+D3D12_GPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateShaderResourceView(
+    ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc)
+{
+    ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
+    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    UINT slot = m_NextSRVSlot;
+    m_NextSRVSlot = (m_NextSRVSlot + 1) % NumShaderResourceDescriptors;
+    
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
+    cpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    
+    pD3DDevice->CreateShaderResourceView(pResource, &srvDesc, cpuHandle);
+    
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle;
+    gpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    return gpuHandle;
+}
+
+//================================================================================================
+// PSO creation
+//================================================================================================
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::EnsureDefaultPSO(DXGI_FORMAT rtvFormat)
+{
+    if (m_pDefaultPSO)
+        return;
+    
+    // Find shader directory relative to the DLL
+    // Shaders are in a 'shaders' subfolder next to the binaries
+    wchar_t modulePath[MAX_PATH] = {};
+    HMODULE hModule = nullptr;
+    GetModuleHandleExW(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCWSTR>(&LoadShaderBytecode),
+        &hModule);
+    GetModuleFileNameW(hModule, modulePath, MAX_PATH);
+    
+    std::wstring moduleDir(modulePath);
+    size_t lastSlash = moduleDir.find_last_of(L"\\/");
+    if (lastSlash != std::wstring::npos)
+        moduleDir.resize(lastSlash + 1);
+    
+    std::wstring vsPath = moduleDir + L"shaders\\VSPrimary.cso";
+    std::wstring psPath = moduleDir + L"shaders\\PSPrimary.cso";
+    
+    auto vsBytecode = LoadShaderBytecode(vsPath);
+    auto psBytecode = LoadShaderBytecode(psPath);
+    
+    if (vsBytecode.empty() || psBytecode.empty())
+    {
+        Canvas::LogError(m_pDevice->GetLogger(), "Failed to load shader bytecode (VS: %s, PS: %s)",
+            vsBytecode.empty() ? "MISSING" : "OK",
+            psBytecode.empty() ? "MISSING" : "OK");
+        Gem::ThrowGemError(Gem::Result::Fail);
+    }
+    
+    // Create PSO
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = m_pDefaultRootSig;
+    psoDesc.VS = { vsBytecode.data(), vsBytecode.size() };
+    psoDesc.PS = { psBytecode.data(), psBytecode.size() };
+    
+    // No input layout needed - vertices come from structured buffers via SV_VertexID
+    psoDesc.InputLayout = { nullptr, 0 };
+    
+    // Rasterizer state
+    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
+    
+    // Blend state (opaque)
+    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    
+    // Depth-stencil state (reverse-Z: near=1.0, far=0.0 → GREATER_EQUAL)
+    psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+    psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    
+    psoDesc.SampleMask = UINT_MAX;
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.NumRenderTargets = 1;
+    psoDesc.RTVFormats[0] = rtvFormat;
+    psoDesc.SampleDesc.Count = 1;
+    psoDesc.SampleDesc.Quality = 0;
+    
+    ThrowFailedHResult(m_pDevice->GetD3DDevice()->CreateGraphicsPipelineState(
+        &psoDesc, IID_PPV_ARGS(&m_pDefaultPSO)));
+    
+    Canvas::LogInfo(m_pDevice->GetLogger(), "Uber PSO created successfully");
+}
+
+//================================================================================================
+// Frame rendering methods
+//================================================================================================
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::BeginFrame(
+    Canvas::XGfxSwapChain *pSwapChain)
+{
+    try
+    {
+        CSwapChain12 *pIntSwapChain = static_cast<CSwapChain12*>(pSwapChain);
+        CSurface12 *pBackBuffer = pIntSwapChain->m_pSurface;
+        ID3D12Resource *pBackBufferResource = pBackBuffer->GetD3DResource();
+        
+        // Get back buffer dimensions
+        D3D12_RESOURCE_DESC bbDesc = pBackBufferResource->GetDesc();
+        UINT width = static_cast<UINT>(bbDesc.Width);
+        UINT height = bbDesc.Height;
+        
+        // Ensure depth buffer matches back buffer size
+        EnsureDepthBuffer(width, height);
+        
+        // Ensure PSO is created
+        EnsureDefaultPSO(bbDesc.Format);
+        
+        EnsureTaskGraphActive();
+        
+        // Transition back buffer to render target and depth buffer to depth-stencil write
+        auto task = CreateGpuTask("BeginFrame");
+        DeclareGpuTextureUsage(task, pBackBufferResource,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        DeclareGpuTextureUsage(task, m_pDepthBuffer->GetD3DResource(),
+            D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
+            D3D12_BARRIER_SYNC_DEPTH_STENCIL,
+            D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
+        PrepareGpuTask(task);
+        
+        // Create RTV and DSV
+        m_CurrentRTV = CreateRenderTargetView(pBackBuffer, 0, 0, 0);
+        m_CurrentDSV = CreateDepthStencilView(m_pDepthBuffer);
+        
+        // Clear render target and depth buffer
+        const float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        m_pCommandList->ClearRenderTargetView(m_CurrentRTV, clearColor, 0, nullptr);
+        m_pCommandList->ClearDepthStencilView(m_CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr); // Reverse-Z: 0.0 = far plane
+        
+        // Set render targets
+        m_pCommandList->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, &m_CurrentDSV);
+        
+        // Set viewport and scissor
+        D3D12_VIEWPORT viewport = {};
+        viewport.TopLeftX = 0.0f;
+        viewport.TopLeftY = 0.0f;
+        viewport.Width = static_cast<float>(width);
+        viewport.Height = static_cast<float>(height);
+        viewport.MinDepth = 0.0f;
+        viewport.MaxDepth = 1.0f;
+        m_pCommandList->RSSetViewports(1, &viewport);
+        
+        D3D12_RECT scissor = {};
+        scissor.left = 0;
+        scissor.top = 0;
+        scissor.right = static_cast<LONG>(width);
+        scissor.bottom = static_cast<LONG>(height);
+        m_pCommandList->RSSetScissorRects(1, &scissor);
+        
+        // Set PSO and root signature
+        m_pCommandList->SetPipelineState(m_pDefaultPSO);
+        m_pCommandList->SetGraphicsRootSignature(m_pDefaultRootSig);
+        
+        // Set descriptor heaps
+        ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
+        m_pCommandList->SetDescriptorHeaps(2, heaps);
+        
+        // Set topology
+        m_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        
+        m_pCurrentSwapChain = pIntSwapChain;
+        pIntSwapChain->m_BackBufferModified = true;
+    }
+    catch (Gem::GemError &e)
+    {
+        return e.Result();
+    }
+    catch (_com_error &e)
+    {
+        return ResultFromHRESULT(e.Error());
+    }
+    
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::DrawMesh(
+    Canvas::XGfxMeshData *pMeshData,
+    const Canvas::GfxPerObjectConstants &objectConstants)
+{
+    try
+    {
+        if (!pMeshData || !m_pCurrentSwapChain)
+            return Gem::Result::InvalidArg;
+        
+        auto pMesh = static_cast<CMeshData12*>(pMeshData);
+        
+        // Get position and normal vertex buffer entries
+        auto pPosEntry = pMesh->GetVertexBuffer(0, Canvas::GfxVertexBufferType::Position);
+        auto pNormEntry = pMesh->GetVertexBuffer(0, Canvas::GfxVertexBufferType::Normal);
+        
+        if (!pPosEntry || !pPosEntry->pBuffer)
+            return Gem::Result::InvalidArg;
+        
+        auto pPosBuf = static_cast<CBuffer12*>(pPosEntry->pBuffer.Get());
+        CBuffer12* pNormBuf = (pNormEntry && pNormEntry->pBuffer)
+            ? static_cast<CBuffer12*>(pNormEntry->pBuffer.Get())
+            : nullptr;
+        
+        // Upload per-object constants to upload heap
+        // CBVs require 256-byte aligned BufferLocation (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)
+        constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        Canvas::GfxSuballocation cbAlloc;
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(
+            (sizeof(Canvas::GfxPerObjectConstants) + cbAlignment - 1) & ~(cbAlignment - 1), cbAlloc));
+        
+        auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
+        ID3D12Resource* pHostResource = pHostBuf->GetD3DResource();
+        
+        void* pMapped = nullptr;
+        ThrowFailedHResult(pHostResource->Map(0, nullptr, &pMapped));
+        memcpy(static_cast<uint8_t*>(pMapped) + cbAlloc.Offset,
+               &objectConstants, sizeof(Canvas::GfxPerObjectConstants));
+        pHostResource->Unmap(0, nullptr);
+        
+        // Create CBV for per-object constants in descriptor table
+        // Descriptor table (slot 3) layout: CBV[2] at b1, SRV[4] at t1, UAV[2] at u1
+        // We need to create a contiguous block of descriptors for the table
+        ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
+        UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        
+        // Allocate a contiguous block of 8 descriptors (2 CBV + 4 SRV + 2 UAV)
+        UINT baseSlot = m_NextSRVSlot;
+        m_NextSRVSlot = (m_NextSRVSlot + 8) % NumShaderResourceDescriptors;
+        
+        D3D12_CPU_DESCRIPTOR_HANDLE baseCpuHandle;
+        baseCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
+        
+        D3D12_GPU_DESCRIPTOR_HANDLE baseGpuHandle;
+        baseGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
+        
+        // Slot 0 of table: CBV for per-object constants (b1)
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+        cbvDesc.SizeInBytes = static_cast<UINT>((sizeof(Canvas::GfxPerObjectConstants) + 255) & ~255); // 256-byte aligned
+        pD3DDevice->CreateConstantBufferView(&cbvDesc, baseCpuHandle);
+        
+        // Slot 1 of table: CBV[1] placeholder (b2) - null
+        D3D12_CPU_DESCRIPTOR_HANDLE cbv1Handle = { baseCpuHandle.ptr + incSize };
+        D3D12_CONSTANT_BUFFER_VIEW_DESC nullCbvDesc = {};
+        pD3DDevice->CreateConstantBufferView(&nullCbvDesc, cbv1Handle);
+        
+        // Slots 2-5 of table: SRV[4] at t1-t4
+        // Slot 2: normals (t1), slots 3-5: null SRVs (t2-t4)
+        // All must be initialized since the descriptor range is STATIC
+        D3D12_SHADER_RESOURCE_VIEW_DESC nullSrvDesc = {};
+        nullSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+        nullSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        nullSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        
+        if (pNormBuf)
+        {
+            D3D12_CPU_DESCRIPTOR_HANDLE normSrvHandle = { baseCpuHandle.ptr + 2 * incSize };
+            D3D12_RESOURCE_DESC normDesc = pNormBuf->GetD3DResource()->GetDesc();
+            UINT numNormals = static_cast<UINT>(normDesc.Width / sizeof(Canvas::Math::FloatVector4));
+            
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+            srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srvDesc.Buffer.NumElements = numNormals;
+            srvDesc.Buffer.StructureByteStride = sizeof(Canvas::Math::FloatVector4);
+            
+            pD3DDevice->CreateShaderResourceView(pNormBuf->GetD3DResource(), &srvDesc, normSrvHandle);
+        }
+        else
+        {
+            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, { baseCpuHandle.ptr + 2 * incSize });
+        }
+        
+        // Null SRVs for t2-t4 (slots 3-5)
+        for (UINT i = 3; i <= 5; ++i)
+            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, { baseCpuHandle.ptr + i * incSize });
+        
+        // Null UAVs for u1-u2 (slots 6-7)
+        D3D12_UNORDERED_ACCESS_VIEW_DESC nullUavDesc = {};
+        nullUavDesc.Format = DXGI_FORMAT_R32_FLOAT;
+        nullUavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+        for (UINT i = 6; i <= 7; ++i)
+            pD3DDevice->CreateUnorderedAccessView(nullptr, nullptr, &nullUavDesc, { baseCpuHandle.ptr + i * incSize });
+        
+        // Set root SRV (slot 1) for positions (t0)
+        m_pCommandList->SetGraphicsRootShaderResourceView(1,
+            pPosBuf->GetD3DResource()->GetGPUVirtualAddress());
+        
+        // Set descriptor table (slot 3)
+        m_pCommandList->SetGraphicsRootDescriptorTable(3, baseGpuHandle);
+        
+        RetireUploadAllocation(cbAlloc);
+        
+        // Determine vertex count from position buffer size
+        D3D12_RESOURCE_DESC posDesc = pPosBuf->GetD3DResource()->GetDesc();
+        UINT vertexCount = static_cast<UINT>(posDesc.Width / sizeof(Canvas::Math::FloatVector4));
+        
+        m_pCommandList->DrawInstanced(vertexCount, 1, 0, 0);
+    }
+    catch (Gem::GemError &e)
+    {
+        return e.Result();
+    }
+    catch (_com_error &e)
+    {
+        return ResultFromHRESULT(e.Error());
+    }
+    
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphElement *pElement)
+{
+    if (!pElement)
+        return Gem::Result::InvalidArg;
+
+    m_RenderableQueue.push_back(pElement);
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CRenderQueue12::SetActiveCamera(Canvas::XCamera *pCamera)
+{
+    m_pActiveCamera = pCamera;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::EndFrame()
+{
+    try
+    {
+        // Build per-frame constants from the active camera
+        Canvas::GfxPerFrameConstants frameConstants = {};
+        
+        if (m_pActiveCamera)
+        {
+            frameConstants.ViewProj = m_pActiveCamera->GetViewProjectionMatrix();
+            auto *pCameraNode = m_pActiveCamera->GetAttachedNode();
+            if (pCameraNode)
+                frameConstants.CameraWorldPos = pCameraNode->GetGlobalTranslation();
+        }
+
+        // Default lighting — TODO: gather from scene lights
+        Canvas::Math::FloatVector4 sunDir(0.3f, 0.5f, 0.7f, 0.0f);
+        frameConstants.SunDirection = sunDir.Normalize();
+        frameConstants.SunColor = Canvas::Math::FloatVector4(1.0f, 0.95f, 0.85f, 0.0f);
+        frameConstants.AmbientLight = Canvas::Math::FloatVector4(0.15f, 0.15f, 0.2f, 0.0f);
+
+        // Upload per-frame constants and bind to root CBV (slot 0, register b0)
+        constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        Canvas::GfxSuballocation cbAlloc;
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(
+            (sizeof(Canvas::GfxPerFrameConstants) + cbAlignment - 1) & ~(cbAlignment - 1), cbAlloc));
+        
+        auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
+        ID3D12Resource* pHostResource = pHostBuf->GetD3DResource();
+        
+        void* pMapped = nullptr;
+        ThrowFailedHResult(pHostResource->Map(0, nullptr, &pMapped));
+        memcpy(static_cast<uint8_t*>(pMapped) + cbAlloc.Offset,
+               &frameConstants, sizeof(Canvas::GfxPerFrameConstants));
+        pHostResource->Unmap(0, nullptr);
+        
+        m_pCommandList->SetGraphicsRootConstantBufferView(0,
+            pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset);
+        
+        RetireUploadAllocation(cbAlloc);
+
+        // Drain the renderable queue — all transforms are final after scene Update
+        for (auto *pElement : m_RenderableQueue)
+        {
+            Gem::ThrowGemError(pElement->DispatchForRender(this));
+        }
+        m_RenderableQueue.clear();
+    }
+    catch (Gem::GemError &e)
+    {
+        m_RenderableQueue.clear();
+        m_pCurrentSwapChain = nullptr;
+        m_pActiveCamera = nullptr;
+        return e.Result();
+    }
+
+    m_pCurrentSwapChain = nullptr;
+    m_pActiveCamera = nullptr;
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------

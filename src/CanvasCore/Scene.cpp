@@ -39,4 +39,43 @@ GEMMETHODIMP_(XSceneGraphNode *) CScene::GetRootSceneGraphNode()
     return m_pRoot.Get();
 }
 
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CScene::SubmitRenderables(XRenderQueue *pRenderQueue)
+{
+    try
+    {
+        if (m_pActiveCamera)
+            pRenderQueue->SetActiveCamera(m_pActiveCamera);
+
+        // Iterative depth-first traversal using persistent stack (no per-frame allocation)
+        m_TraversalStack.clear();
+        m_TraversalStack.push_back(m_pRoot.Get());
+
+        while (!m_TraversalStack.empty())
+        {
+            XSceneGraphNode *pNode = m_TraversalStack.back();
+            m_TraversalStack.pop_back();
+
+            // Submit all bound elements on this node
+            UINT elementCount = pNode->GetBoundElementCount();
+            for (UINT i = 0; i < elementCount; ++i)
+            {
+                Gem::ThrowGemError(pRenderQueue->SubmitForRender(pNode->GetBoundElement(i)));
+            }
+
+            // Push children onto stack for traversal
+            for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+            {
+                m_TraversalStack.push_back(pChild);
+            }
+        }
+    }
+    catch (const Gem::GemError &e)
+    {
+        return e.Result();
+    }
+
+    return Gem::Result::Success;
+}
+
 }

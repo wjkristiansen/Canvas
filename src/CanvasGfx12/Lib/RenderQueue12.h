@@ -7,6 +7,10 @@
 #include "CanvasGfx12.h"
 #include "GpuTask.h"
 
+// Forward declarations
+class CSurface12;
+class CSwapChain12;
+
 // Enable resource usage validation diagnostics (conflict detection, write exclusivity checking)
 // Set to 0 to disable for production builds with minimal overhead
 #define CANVAS_RESOURCE_USAGE_DIAGNOSTICS 0
@@ -462,9 +466,28 @@ public:
     CComPtr<ID3D12DescriptorHeap> m_pRTVDescriptorHeap;
     CComPtr<ID3D12DescriptorHeap> m_pDSVDescriptorHeap;
     CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
+    CComPtr<ID3D12PipelineState> m_pDefaultPSO;
     UINT64 m_FenceValue = 0;
     CComPtr<ID3D12Fence> m_pFence;
     CDevice12 *m_pDevice = nullptr; // weak pointer
+
+    // Depth buffer for rendering
+    Gem::TGemPtr<CSurface12> m_pDepthBuffer;
+    UINT m_DepthBufferWidth = 0;
+    UINT m_DepthBufferHeight = 0;
+    UINT m_NextDSVSlot = 0;
+
+    // Frame rendering state
+    CSwapChain12 *m_pCurrentSwapChain = nullptr;   // Set during BeginFrame..EndFrame
+    Canvas::XCamera *m_pActiveCamera = nullptr;     // Set by scene via SetActiveCamera during Update
+    D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentDSV = {};
+
+    // Renderable elements enqueued during scene graph update, dispatched during EndFrame
+    std::vector<Canvas::XSceneGraphElement*> m_RenderableQueue;
+
+    // SRV descriptor allocation for per-draw structured buffers
+    UINT m_NextSRVSlot = 0;
 
     static const UINT NumShaderResourceDescriptors = 65536;
     static const UINT NumSamplerDescriptors = 1024;
@@ -486,6 +509,7 @@ public:
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
+        GEM_INTERFACE_ENTRY(Canvas::XRenderQueue)
         GEM_INTERFACE_ENTRY(Canvas::XCanvasElement)
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
@@ -501,6 +525,11 @@ public:
     GEMMETHOD_(void, CopyBuffer)(Canvas::XGfxBuffer *pDest, Canvas::XGfxBuffer *pSource) final;
     GEMMETHOD_(void, ClearSurface)(Canvas::XGfxSurface *pSurface, const float Color[4]) final;
     GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
+    GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
+    GEMMETHOD(DrawMesh)(Canvas::XGfxMeshData *pMeshData, const Canvas::GfxPerObjectConstants &objectConstants) final;
+    GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphElement *pElement) final;
+    GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
+    GEMMETHOD(EndFrame)() final;
 
     // Internal functions
     CDevice12 *GetDevice() const { return m_pDevice; }
@@ -510,6 +539,16 @@ public:
     void Flush();
 
     D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
+    D3D12_CPU_DESCRIPTOR_HANDLE CreateDepthStencilView(class CSurface12 *pSurface);
+    
+    // Create or resize the depth buffer to match the given dimensions
+    void EnsureDepthBuffer(UINT width, UINT height);
+    
+    // Create the default (uber) PSO (lazily, on first use)
+    void EnsureDefaultPSO(DXGI_FORMAT rtvFormat);
+    
+    // Allocate a shader-visible SRV descriptor slot and return GPU handle
+    D3D12_GPU_DESCRIPTOR_HANDLE CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc);
     
     // Signal the GPU fence and record a sync point
     void CreateGpuSyncPoint(UINT64 fenceValue);
@@ -529,7 +568,7 @@ public:
     //
     // Tasks are GPU operations (render passes). Each declares its resource usage.
     // Barriers are resolved immediately when a task is prepared. Commands are recorded
-    // directly into the command list by the caller ΓÇö no deferred callbacks.
+    // directly into the command list by the caller — no deferred callbacks.
     //
     // Usage:
     //   auto task = CreateGpuTask("ShadowPass");
@@ -632,7 +671,7 @@ private:
     // Emit resolved barriers into the command list
     void EmitBarriers(const Canvas::TaskBarriers& barriers);
     
-    // GPU Task Graph instance ΓÇö all barrier state is tracked here
+    // GPU Task Graph instance — all barrier state is tracked here
     Canvas::CGpuTaskGraph m_GpuTaskGraph;
     bool m_TaskGraphActive = false;
 };

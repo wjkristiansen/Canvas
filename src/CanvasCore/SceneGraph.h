@@ -34,7 +34,7 @@ public:
         m_pNode = pNode;
         return Gem::Result::Success;
     }
-    GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) final;
+    GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) override;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -73,23 +73,8 @@ protected:
     Math::FloatQuaternion m_GlobalRotation;
     Math::FloatVector4 m_GlobalTranslation;
     Math::FloatMatrix4x4 m_GlobalMatrix;
-    struct SceneGraphElementPtrHash
-    {
-        size_t operator()(const Gem::TGemPtr<XSceneGraphElement> &e) const noexcept
-        {
-            return std::hash<XSceneGraphElement*>{}(e.Get());
-        }
-    };
 
-    struct SceneGraphElementPtrEqual
-    {
-        bool operator()(const Gem::TGemPtr<XSceneGraphElement> &a, const Gem::TGemPtr<XSceneGraphElement> &b) const noexcept
-        {
-            return a.Get() == b.Get();
-        }
-    };
-
-    std::unordered_set<Gem::TGemPtr<XSceneGraphElement>, SceneGraphElementPtrHash, SceneGraphElementPtrEqual> m_Elements;
+    std::vector<Gem::TGemPtr<XSceneGraphElement>> m_Elements;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -113,6 +98,9 @@ public: // XSceneGraphNode methods
     GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() final;
     GEMMETHOD_(XSceneGraphNode *, GetNextChild)(_In_ XSceneGraphNode* pCurrent) final;
     GEMMETHOD_(XSceneGraphNode *, GetPrevChild)(_In_ XSceneGraphNode* pCurrent) final;
+
+    GEMMETHOD_(UINT, GetBoundElementCount)() final { return static_cast<UINT>(m_Elements.size()); }
+    GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(UINT index) final { return m_Elements[index].Get(); }
 
     GEMMETHOD_(const Math::FloatQuaternion &, GetLocalRotation)() const final
     {

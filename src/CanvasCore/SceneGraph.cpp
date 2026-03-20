@@ -54,12 +54,12 @@ GEMMETHODIMP CSceneGraphNode::Update(float dtime)
 {
     try
     {
-        for( auto element : m_Elements)
+        for (auto& element : m_Elements)
         {
             Gem::ThrowGemError(element->Update(dtime));
         }
 
-        for(ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->m_pNext)
+        for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->m_pNext)
         {
             Gem::ThrowGemError(pChild->m_pNode->Update(dtime));
         }
@@ -328,7 +328,13 @@ GEMMETHODIMP CSceneGraphNode::BindElement(XSceneGraphElement *pElement)
 {
     if (pElement)
     {
-        m_Elements.insert(pElement);
+        // Avoid duplicate bindings
+        for (auto& e : m_Elements)
+        {
+            if (e.Get() == pElement)
+                return Gem::Result::Success;
+        }
+        m_Elements.push_back(pElement);
         
         // Notify element of attachment via the public interface
         Gem::ThrowGemError(pElement->NotifyNodeContextChanged(this));
