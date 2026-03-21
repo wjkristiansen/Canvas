@@ -627,14 +627,15 @@ public:
     //   ResourceUsageBuilder usages;
     //   usages.BufferAsCopySource(srcBuffer).BufferAsCopyDest(dest);
     //   
-    //   pQueue->RecordCommands(
+    //   pQueue->RecordCommandBlock(
     //       usages.Build(),
     //       [](ID3D12GraphicsCommandList* pCL) {
     //           pCL->CopyResource(dest, src);
     //       });
-    void RecordCommands(
+    void RecordCommandBlock(
         const ResourceUsages& resourceUsages,
-        std::function<void(ID3D12GraphicsCommandList*)> recordFunc);
+        std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
+        const char* name = nullptr);
     
     // Validate resource usage declarations for write conflicts
     bool ValidateResourceUsageNoWriteConflicts(const ResourceUsages& resourceUsages) const;

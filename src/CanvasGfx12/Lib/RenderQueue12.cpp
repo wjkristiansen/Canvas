@@ -337,9 +337,10 @@ void CRenderQueue12::RetireUploadAllocation(const Canvas::GfxSuballocation& suba
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::RecordCommands(
+void CRenderQueue12::RecordCommandBlock(
     const ResourceUsages& resourceUsages,
-    std::function<void(ID3D12GraphicsCommandList*)> recordFunc)
+    std::function<void(ID3D12GraphicsCommandList*)> recordFunc,
+    const char* name)
 {
     // Validate resource usage patterns (when diagnostics enabled)
     if (!ValidateResourceUsageNoWriteConflicts(resourceUsages))
@@ -350,7 +351,7 @@ void CRenderQueue12::RecordCommands(
     EnsureTaskGraphActive();
     
     // Create a task and translate ResourceUsages to GpuTask declarations
-    auto task = CreateGpuTask("RecordCommands");
+    auto task = CreateGpuTask(name ? name : "UnnamedCommandTask");
     
     for (const auto& texUsage : resourceUsages.TextureUsages)
     {

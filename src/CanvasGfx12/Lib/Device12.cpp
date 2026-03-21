@@ -422,7 +422,7 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
                 D3D12_BARRIER_ACCESS_COPY_DEST);
 
             // Schedule GPU copy operations from upload buffer to device-local buffers
-            pRQ->RecordCommands(
+            pRQ->RecordCommandBlock(
                 usages.Build(),
                 [pPosBuffer, pNormBuffer, suballocation, posSize, normSize](ID3D12GraphicsCommandList* cmdList)
                 {
@@ -434,7 +434,8 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
                         cmdList->CopyBufferRegion(pDstPos, 0, pSrc, suballocation.Offset, posSize);
                     if (pSrc && pDstNorm)
                         cmdList->CopyBufferRegion(pDstNorm, 0, pSrc, suballocation.Offset + posSize, normSize);
-                });
+                },
+                "Upload Debug Mesh Data");
 
             // Schedule release of the host-write region after the next submit completes
             pRQ->RetireUploadAllocation(suballocation);
