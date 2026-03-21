@@ -207,8 +207,6 @@ namespace Canvas
         GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
 
         GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) = 0;
-        GEMMETHOD_(void, CopyBuffer(XGfxBuffer *pDest, XGfxBuffer *pSource)) = 0;
-        GEMMETHOD_(void, ClearSurface)(XGfxSurface *pSurface, const float Color[4]) = 0;
         GEMMETHOD(FlushAndPresent)(XGfxSwapChain *pSwapChain) = 0;
 
         // Frame rendering

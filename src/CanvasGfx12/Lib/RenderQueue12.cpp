@@ -178,49 +178,6 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CRenderQueue12::CopyBuffer(Canvas::XGfxBuffer *pDest, Canvas::XGfxBuffer *pSource)
-{
-    CBuffer12 *pDestBuffer = static_cast<CBuffer12 *>(pDest);
-    CBuffer12 *pSourceBuffer = static_cast<CBuffer12 *>(pSource);
-    
-    EnsureTaskGraphActive();
-    
-    auto task = CreateGpuTask("CopyBuffer");
-    DeclareGpuBufferUsage(task, pSourceBuffer->GetD3DResource(),
-        D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE);
-    DeclareGpuBufferUsage(task, pDestBuffer->GetD3DResource(),
-        D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_DEST);
-    
-    PrepareGpuTask(task);
-    m_pCommandList->CopyResource(pDestBuffer->GetD3DResource(), pSourceBuffer->GetD3DResource());
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CRenderQueue12::ClearSurface(Canvas::XGfxSurface *pGfxSurface, const float Color[4])
-{
-    CSurface12 *pSurface = static_cast<CSurface12 *>(pGfxSurface);
-    ID3D12Resource* pResource = pSurface->GetD3DResource();
-
-    EnsureTaskGraphActive();
-    
-    auto task = CreateGpuTask("ClearSurface");
-    DeclareGpuTextureUsage(task, pResource,
-        D3D12_BARRIER_LAYOUT_RENDER_TARGET,
-        D3D12_BARRIER_SYNC_RENDER_TARGET,
-        D3D12_BARRIER_ACCESS_RENDER_TARGET);
-    
-    PrepareGpuTask(task);
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = CreateRenderTargetView(pSurface, 0, 0, 0);
-    m_pCommandList->ClearRenderTargetView(rtv, Color, 0, nullptr);
-    
-    // If this surface belongs to a swap chain, mark that it was written this frame
-    if (pSurface->m_pOwnerSwapChain != nullptr)
-    {
-        pSurface->m_pOwnerSwapChain->m_BackBufferModified = true;
-    }
-}
-
-//------------------------------------------------------------------------------------------------
 D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
