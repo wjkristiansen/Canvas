@@ -1,6 +1,9 @@
 # CanvasModelViewer - Model viewing application for Canvas 3D Graphics Engine
 cmake_minimum_required(VERSION 3.24)
 
+# Fetch open-source fonts (Inter, JetBrains Mono) at configure time
+include(${CMAKE_SOURCE_DIR}/cmake/FetchFonts.cmake)
+
 # Define the executable
 add_executable(CanvasModelViewer WIN32
     CanvasModelViewer.cpp
@@ -83,3 +86,10 @@ install(TARGETS CanvasModelViewer
 
 # Install PDB files for debugging
 install(FILES $<TARGET_PDB_FILE:CanvasModelViewer> DESTINATION ${CANVAS_INSTALL_DEST}/bin OPTIONAL)
+
+# Install bundled fonts to bin/fonts/ alongside the executable
+install(FILES
+    "${CANVAS_FONT_INTER}"
+    "${CANVAS_FONT_JETBRAINSMONO}"
+    DESTINATION ${CANVAS_INSTALL_DEST}/bin/fonts
+)
