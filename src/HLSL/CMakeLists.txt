@@ -91,6 +91,10 @@ add_hlsl_shader("VSPrimary.hlsl" "vs_5_0" "VSPrimary")
 # Pixel Shader  
 add_hlsl_shader("PSPrimary.hlsl" "ps_5_0" "PSPrimary")
 
+# Text Vertex/Pixel Shaders
+add_hlsl_shader("VSText.hlsl" "vs_6_0" "main")
+add_hlsl_shader("PSText.hlsl" "ps_6_0" "main")
+
 # Create the HLSL target
 add_custom_target(HLSL ALL
     DEPENDS ${SHADER_OUTPUTS}

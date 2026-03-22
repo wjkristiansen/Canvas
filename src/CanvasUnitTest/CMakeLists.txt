@@ -7,6 +7,7 @@ cmake_minimum_required(VERSION 3.24)
 add_library(CanvasUnitTest SHARED
     CanvasInterfacesTest.cpp
     CanvasMathTest.cpp
+    CanvasTextTest.cpp
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
     pch.h
@@ -24,6 +25,7 @@ set_target_properties(CanvasUnitTest PROPERTIES
 target_include_directories(CanvasUnitTest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasText
 )
 
 # Preprocessor definitions
@@ -61,6 +63,7 @@ endif()
 # Link with Canvas libraries
 target_link_libraries(CanvasUnitTest PRIVATE
     CanvasCore
+    CanvasText
     D3D12ResourceUtils
     GpuTask
 )

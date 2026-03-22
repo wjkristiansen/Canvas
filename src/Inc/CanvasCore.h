@@ -15,6 +15,7 @@
 
 #pragma once
 #include "CanvasRender.h"
+#include <cstdarg>
 
 namespace Canvas
 {
@@ -301,6 +302,30 @@ XRenderQueue : public XCanvasElement
     GEM_INTERFACE_DECLARE(XRenderQueue, 0x3B35719161878DCC);
 
     GEMMETHOD(DrawMesh)(XGfxMeshData *pMeshData, const GfxPerObjectConstants &objectConstants) = 0;
+
+    // Draw text with SDF glyph atlas
+    // Renders text vertices with glyph atlas texture
+    // data points to an array of TextVertex structures
+    // vertexCount is the number of vertices (must be a multiple of 6 for glyph quads)
+    GEMMETHOD(DrawText)(
+        const void *pVertexData,        // Array of TextVertex structures
+        uint32_t vertexCount,            // Number of vertices
+        XGfxSurface *pGlyphAtlas,       // SDF glyph atlas texture
+        const Math::FloatVector4 &screenOffset) = 0;  // Screen-space position (x, y, z=depth, w=unused)
+
+    // Upload CPU data into a sub-region of a GPU surface via a staging copy.
+    // Intended for populating persistently-resident textures (e.g., glyph atlas).
+    // The copy is recorded into the current frame's command list.
+    // dstX/dstY: top-left destination texel in pixel coordinates
+    // width/height: extent of the copied region in texels
+    // pData: pointer to row-major source data
+    // srcRowPitch: byte stride between source rows (>= width * bytes-per-texel)
+    GEMMETHOD(UploadTextureRegion)(
+        XGfxSurface *pDstSurface,
+        uint32_t dstX, uint32_t dstY,
+        uint32_t width, uint32_t height,
+        const void *pData,
+        uint32_t srcRowPitch) = 0;
 
     // Private contract with the scene graph: enqueues an element for rendering.
     // Elements are dispatched later when the queue is drained (EndFrame).

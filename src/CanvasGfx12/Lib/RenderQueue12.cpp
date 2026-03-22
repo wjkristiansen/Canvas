@@ -15,6 +15,7 @@
 #include "SwapChain12.h"
 #include "MeshData12.h"
 
+#include <filesystem>
 #include <fstream>
 
 //------------------------------------------------------------------------------------------------
@@ -583,7 +584,7 @@ void CRenderQueue12::EmitBarriers(const Canvas::TaskBarriers& barriers)
 //================================================================================================
 // Shader loading helper
 //================================================================================================
-static std::vector<uint8_t> LoadShaderBytecode(const std::wstring& path)
+static std::vector<uint8_t> LoadShaderBytecode(const std::filesystem::path& path)
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open())
@@ -595,6 +596,19 @@ static std::vector<uint8_t> LoadShaderBytecode(const std::wstring& path)
     std::vector<uint8_t> bytecode(static_cast<size_t>(size));
     file.read(reinterpret_cast<char*>(bytecode.data()), size);
     return bytecode;
+}
+
+// Returns the path to the 'shaders/' directory co-located with this DLL.
+static std::filesystem::path GetShaderDirectory()
+{
+    wchar_t modulePath[MAX_PATH] = {};
+    HMODULE hModule = nullptr;
+    GetModuleHandleExW(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCWSTR>(&LoadShaderBytecode),
+        &hModule);
+    GetModuleFileNameW(hModule, modulePath, MAX_PATH);
+    return std::filesystem::path(modulePath).parent_path() / L"shaders";
 }
 
 //================================================================================================
@@ -676,26 +690,9 @@ void CRenderQueue12::EnsureDefaultPSO(DXGI_FORMAT rtvFormat)
     if (m_pDefaultPSO)
         return;
     
-    // Find shader directory relative to the DLL
-    // Shaders are in a 'shaders' subfolder next to the binaries
-    wchar_t modulePath[MAX_PATH] = {};
-    HMODULE hModule = nullptr;
-    GetModuleHandleExW(
-        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-        reinterpret_cast<LPCWSTR>(&LoadShaderBytecode),
-        &hModule);
-    GetModuleFileNameW(hModule, modulePath, MAX_PATH);
-    
-    std::wstring moduleDir(modulePath);
-    size_t lastSlash = moduleDir.find_last_of(L"\\/");
-    if (lastSlash != std::wstring::npos)
-        moduleDir.resize(lastSlash + 1);
-    
-    std::wstring vsPath = moduleDir + L"shaders\\VSPrimary.cso";
-    std::wstring psPath = moduleDir + L"shaders\\PSPrimary.cso";
-    
-    auto vsBytecode = LoadShaderBytecode(vsPath);
-    auto psBytecode = LoadShaderBytecode(psPath);
+    auto shaderDir = GetShaderDirectory();
+    auto vsBytecode = LoadShaderBytecode(shaderDir / "VSPrimary.cso");
+    auto psBytecode = LoadShaderBytecode(shaderDir / "PSPrimary.cso");
     
     if (vsBytecode.empty() || psBytecode.empty())
     {
@@ -737,6 +734,186 @@ void CRenderQueue12::EnsureDefaultPSO(DXGI_FORMAT rtvFormat)
         &psoDesc, IID_PPV_ARGS(&m_pDefaultPSO)));
     
     Canvas::LogInfo(m_pDevice->GetLogger(), "Uber PSO created successfully");
+}
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::EnsureTextPSO(DXGI_FORMAT rtvFormat)
+{
+    if (m_pTextPSO && m_TextPSOFormat == rtvFormat)
+        return;
+
+    auto shaderDir = GetShaderDirectory();
+    auto vsBytecode = LoadShaderBytecode(shaderDir / "VSText.cso");
+    auto psBytecode = LoadShaderBytecode(shaderDir / "PSText.cso");
+
+    if (vsBytecode.empty() || psBytecode.empty())
+    {
+        Canvas::LogError(m_pDevice->GetLogger(), "Failed to load text shader bytecode (VS: %s, PS: %s)",
+            vsBytecode.empty() ? "MISSING" : "OK",
+            psBytecode.empty() ? "MISSING" : "OK");
+        Gem::ThrowGemError(Gem::Result::Fail);
+    }
+
+    ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+
+    // Text root signature:
+    //   Slot 0: Root CBV(b0) – TextScreenConstants (screen width/height)
+    //   Slot 1: Root SRV(t0) – StructuredBuffer<TextVertex>
+    //   Slot 2: Descriptor table with SRV[1] at t1 – SDFAtlas texture
+    //   Static sampler at s0 – linear, clamp
+    CD3DX12_STATIC_SAMPLER_DESC linearSampler(
+        0,                               // shader register s0
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+
+    CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0,  // SRV[1] at t1, space0
+                  D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
+
+    std::vector<CD3DX12_ROOT_PARAMETER1> textRootParams(3);
+    textRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
+                                               D3D12_SHADER_VISIBILITY_VERTEX);
+    textRootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
+                                               D3D12_SHADER_VISIBILITY_VERTEX);
+    textRootParams[2].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC textRootSigDesc(
+        static_cast<UINT>(textRootParams.size()),
+        textRootParams.data(),
+        1, &linearSampler,
+        D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+    CComPtr<ID3DBlob> pRSBlob;
+    ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&textRootSigDesc, &pRSBlob, nullptr));
+    CComPtr<ID3D12RootSignature> pTextRootSig;
+    ThrowFailedHResult(pD3DDevice->CreateRootSignature(
+        1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pTextRootSig)));
+
+    // Alpha blending: src_alpha / inv_src_alpha
+    D3D12_RENDER_TARGET_BLEND_DESC rtBlend = {};
+    rtBlend.BlendEnable           = TRUE;
+    rtBlend.SrcBlend              = D3D12_BLEND_SRC_ALPHA;
+    rtBlend.DestBlend             = D3D12_BLEND_INV_SRC_ALPHA;
+    rtBlend.BlendOp               = D3D12_BLEND_OP_ADD;
+    rtBlend.SrcBlendAlpha         = D3D12_BLEND_ONE;
+    rtBlend.DestBlendAlpha        = D3D12_BLEND_INV_SRC_ALPHA;
+    rtBlend.BlendOpAlpha          = D3D12_BLEND_OP_ADD;
+    rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = pTextRootSig;
+    psoDesc.VS = { vsBytecode.data(), vsBytecode.size() };
+    psoDesc.PS = { psBytecode.data(), psBytecode.size() };
+    psoDesc.InputLayout              = { nullptr, 0 };       // vertices via SRV + SV_VertexID
+    psoDesc.RasterizerState          = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE; // quads may have either winding
+    psoDesc.BlendState               = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.BlendState.RenderTarget[0] = rtBlend;
+    psoDesc.DepthStencilState        = {};                   // depth test + write disabled
+    psoDesc.SampleMask               = UINT_MAX;
+    psoDesc.PrimitiveTopologyType    = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.NumRenderTargets         = 1;
+    psoDesc.RTVFormats[0]            = rtvFormat;
+    psoDesc.DSVFormat                = DXGI_FORMAT_UNKNOWN;  // no depth buffer needed for text
+    psoDesc.SampleDesc.Count         = 1;
+    psoDesc.SampleDesc.Quality       = 0;
+
+    CComPtr<ID3D12PipelineState> pTextPSO;
+    ThrowFailedHResult(pD3DDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pTextPSO)));
+
+    m_pTextRootSig.Attach(pTextRootSig.Detach());
+    m_pTextPSO.Attach(pTextPSO.Detach());
+    m_TextPSOFormat = rtvFormat;
+
+    Canvas::LogInfo(m_pDevice->GetLogger(), "Text PSO created successfully");
+}
+
+//================================================================================================
+// Texture upload
+//================================================================================================
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
+    Canvas::XGfxSurface *pDstSurface,
+    uint32_t dstX, uint32_t dstY,
+    uint32_t width, uint32_t height,
+    const void *pData,
+    uint32_t srcRowPitch)
+{
+    if (!pDstSurface || !pData || width == 0 || height == 0)
+        return Gem::Result::BadPointer;
+
+    try
+    {
+        auto pDst = static_cast<CSurface12*>(pDstSurface);
+        ID3D12Resource* pDstResource = pDst->GetD3DResource();
+
+        // Compute aligned row pitch for the staging buffer
+        // D3D12_TEXTURE_DATA_PITCH_ALIGNMENT = 256 bytes
+        constexpr uint32_t kPitchAlign = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT;
+        uint32_t alignedRowPitch = (srcRowPitch + kPitchAlign - 1) & ~(kPitchAlign - 1);
+        uint64_t stagingSize = static_cast<uint64_t>(alignedRowPitch) * height;
+
+        // Allocate staging buffer (power-of-2 size satisfies D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT=512)
+        Canvas::GfxSuballocation stagingAlloc;
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(stagingSize, stagingAlloc));
+
+        // Copy rows from source into staging buffer (may need re-striding)
+        auto pStagingBuf = static_cast<CBuffer12*>(stagingAlloc.pBuffer.Get());
+        ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
+
+        void* pMapped = nullptr;
+        ThrowFailedHResult(pStagingResource->Map(0, nullptr, &pMapped));
+        for (uint32_t row = 0; row < height; ++row)
+        {
+            const uint8_t* pSrcRow = static_cast<const uint8_t*>(pData) + row * srcRowPitch;
+            uint8_t* pDstRow = static_cast<uint8_t*>(pMapped) + stagingAlloc.Offset + row * alignedRowPitch;
+            memcpy(pDstRow, pSrcRow, srcRowPitch);
+        }
+        pStagingResource->Unmap(0, nullptr);
+
+        // Declare atlas as copy destination (barrier) and record the copy
+        ResourceUsageBuilder usages;
+        usages.TextureAsCopyDest(pDstResource);
+
+        RecordCommandBlock(
+            usages.Build(),
+            [pStagingResource, pDstResource, stagingAlloc, alignedRowPitch, dstX, dstY, width, height]
+            (ID3D12GraphicsCommandList* cmdList)
+            {
+                D3D12_TEXTURE_COPY_LOCATION src = {};
+                src.pResource                          = pStagingResource;
+                src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+                src.PlacedFootprint.Offset             = stagingAlloc.Offset;
+                src.PlacedFootprint.Footprint.Format   = DXGI_FORMAT_R8_UNORM;
+                src.PlacedFootprint.Footprint.Width    = width;
+                src.PlacedFootprint.Footprint.Height   = height;
+                src.PlacedFootprint.Footprint.Depth    = 1;
+                src.PlacedFootprint.Footprint.RowPitch = alignedRowPitch;
+
+                D3D12_TEXTURE_COPY_LOCATION dst = {};
+                dst.pResource        = pDstResource;
+                dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                dst.SubresourceIndex = 0;
+
+                D3D12_BOX srcBox = { 0, 0, 0, width, height, 1 };
+                cmdList->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
+            },
+            "UploadGlyphAtlasRegion");
+
+        RetireUploadAllocation(stagingAlloc);
+        return Gem::Result::Success;
+    }
+    catch (Gem::GemError& e)
+    {
+        return e.Result();
+    }
+    catch (_com_error& e)
+    {
+        return ResultFromHRESULT(e.Error());
+    }
 }
 
 //================================================================================================
@@ -879,9 +1056,13 @@ GEMMETHODIMP CRenderQueue12::DrawMesh(
         ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
         UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         
-        // Allocate a contiguous block of 8 descriptors (2 CBV + 4 SRV + 2 UAV)
+        // Allocate a contiguous block of 8 descriptors (2 CBV + 4 SRV + 2 UAV).
+        // Wrap to slot 0 if the block would straddle the ring boundary to avoid
+        // writing past the end of the heap.
+        if (m_NextSRVSlot + 8 > NumShaderResourceDescriptors)
+            m_NextSRVSlot = 0;
         UINT baseSlot = m_NextSRVSlot;
-        m_NextSRVSlot = (m_NextSRVSlot + 8) % NumShaderResourceDescriptors;
+        m_NextSRVSlot += 8;
         
         D3D12_CPU_DESCRIPTOR_HANDLE baseCpuHandle;
         baseCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
@@ -963,6 +1144,123 @@ GEMMETHODIMP CRenderQueue12::DrawMesh(
         return ResultFromHRESULT(e.Error());
     }
     
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::DrawText(
+    const void *pVertexData,
+    uint32_t vertexCount,
+    Canvas::XGfxSurface *pGlyphAtlas,
+    const Canvas::Math::FloatVector4 &screenOffset)
+{
+    (void)screenOffset;
+
+    Canvas::GfxSuballocation vertexAlloc{};
+    Canvas::GfxSuballocation cbAlloc{};
+
+    try
+    {
+        if (!pVertexData || vertexCount == 0 || !pGlyphAtlas || !m_pCurrentSwapChain)
+        {
+            Canvas::LogError(m_pDevice->GetLogger(), "DrawText: invalid arguments (pVertexData=%p, vertexCount=%u, pGlyphAtlas=%p, swapChain=%p)",
+                pVertexData, vertexCount, pGlyphAtlas, m_pCurrentSwapChain);
+            return Gem::Result::InvalidArg;
+        }
+
+        DXGI_FORMAT rtvFormat = m_pCurrentSwapChain->m_pSurface->GetD3DResource()->GetDesc().Format;
+        EnsureTextPSO(rtvFormat);
+
+        auto pAtlas = static_cast<CSurface12*>(pGlyphAtlas);
+
+        // Issue a barrier to transition the atlas into shader-readable state.
+        // TextureAsShaderResource uses SHADER_RESOURCE_VIEW layout, which properly
+        // synchronises after any preceding CopyTextureRegion (UploadTextureRegion).
+        EnsureTaskGraphActive();
+        auto task = CreateGpuTask("DrawText");
+        DeclareGpuTextureUsage(task, pAtlas->GetD3DResource(),
+            D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+            D3D12_BARRIER_SYNC_PIXEL_SHADING,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        PrepareGpuTask(task);
+
+        // Vertex buffer: TextVertex = float3 Position + float2 TexCoord + uint Color = 24 bytes
+        constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
+        uint64_t vertexBufferSize = vertexCount * kTextVertexSize;
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(vertexBufferSize, vertexAlloc));
+
+        auto pVertexBuf  = static_cast<CBuffer12*>(vertexAlloc.pBuffer.Get());
+        ID3D12Resource*  pVertexResource = pVertexBuf->GetD3DResource();
+        void* pMapped = nullptr;
+        ThrowFailedHResult(pVertexResource->Map(0, nullptr, &pMapped));
+        memcpy(static_cast<uint8_t*>(pMapped) + vertexAlloc.Offset, pVertexData, vertexBufferSize);
+        pVertexResource->Unmap(0, nullptr);
+
+        // Screen constants CBV: float2 ScreenSize + float2 padding = 16 bytes, padded to 256
+        constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
+
+        auto pCBBuf     = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
+        ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
+        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), 0.0f, 0.0f };
+        void* pCBMapped = nullptr;
+        ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
+        memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
+        pCBResource->Unmap(0, nullptr);
+
+        // One atlas SRV descriptor in the SRV heap
+        ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+        UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        UINT srvSlot = m_NextSRVSlot;
+        m_NextSRVSlot = (m_NextSRVSlot + 1) % NumShaderResourceDescriptors;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE srvCpuHandle;
+        srvCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
+        D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle;
+        srvGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
+
+        // Atlas SRV (maps to t1 in PSText.hlsl via the descriptor table)
+        pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
+
+        // Switch to text pipeline
+        m_pCommandList->SetGraphicsRootSignature(m_pTextRootSig);
+        m_pCommandList->SetPipelineState(m_pTextPSO);
+
+        // Slot 0: screen constants CBV (b0)
+        m_pCommandList->SetGraphicsRootConstantBufferView(0,
+            pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset);
+
+        // Slot 1: vertex StructuredBuffer SRV (t0)
+        m_pCommandList->SetGraphicsRootShaderResourceView(1,
+            pVertexResource->GetGPUVirtualAddress() + vertexAlloc.Offset);
+
+        // Slot 2: atlas texture descriptor table (t1)
+        m_pCommandList->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
+
+        m_pCommandList->DrawInstanced(vertexCount, 1, 0, 0);
+
+        // Restore default pipeline state for subsequent DrawMesh calls (EndFrame)
+        m_pCommandList->SetGraphicsRootSignature(m_pDefaultRootSig);
+        m_pCommandList->SetPipelineState(m_pDefaultPSO);
+
+        RetireUploadAllocation(vertexAlloc);
+        RetireUploadAllocation(cbAlloc);
+    }
+    catch (Gem::GemError& e)
+    {
+        if (vertexAlloc.pBuffer) RetireUploadAllocation(vertexAlloc);
+        if (cbAlloc.pBuffer)     RetireUploadAllocation(cbAlloc);
+        Canvas::LogError(m_pDevice->GetLogger(), "DrawText failed: result=0x%08X", (unsigned)e.Result());
+        return e.Result();
+    }
+    catch (_com_error& e)
+    {
+        if (vertexAlloc.pBuffer) RetireUploadAllocation(vertexAlloc);
+        if (cbAlloc.pBuffer)     RetireUploadAllocation(cbAlloc);
+        Canvas::LogError(m_pDevice->GetLogger(), "DrawText failed: HRESULT=0x%08X", (unsigned)e.Error());
+        return ResultFromHRESULT(e.Error());
+    }
+
     return Gem::Result::Success;
 }
 

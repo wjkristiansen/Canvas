@@ -467,6 +467,9 @@ public:
     CComPtr<ID3D12DescriptorHeap> m_pDSVDescriptorHeap;
     CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
     CComPtr<ID3D12PipelineState> m_pDefaultPSO;
+    CComPtr<ID3D12RootSignature> m_pTextRootSig;
+    CComPtr<ID3D12PipelineState> m_pTextPSO;
+    DXGI_FORMAT m_TextPSOFormat = DXGI_FORMAT_UNKNOWN;
     UINT64 m_FenceValue = 0;
     CComPtr<ID3D12Fence> m_pFence;
     CDevice12 *m_pDevice = nullptr; // weak pointer
@@ -525,6 +528,8 @@ public:
     GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(DrawMesh)(Canvas::XGfxMeshData *pMeshData, const Canvas::GfxPerObjectConstants &objectConstants) final;
+    GEMMETHOD(DrawText)(const void *pVertexData, uint32_t vertexCount, Canvas::XGfxSurface *pGlyphAtlas, const Canvas::Math::FloatVector4 &screenOffset) final;
+    GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch) final;
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphElement *pElement) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
     GEMMETHOD(EndFrame)() final;
@@ -544,6 +549,9 @@ public:
     
     // Create the default (uber) PSO (lazily, on first use)
     void EnsureDefaultPSO(DXGI_FORMAT rtvFormat);
+    
+    // Create the text PSO and root signature (lazily, on first use)
+    void EnsureTextPSO(DXGI_FORMAT rtvFormat);
     
     // Allocate a shader-visible SRV descriptor slot and return GPU handle
     D3D12_GPU_DESCRIPTOR_HANDLE CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc);

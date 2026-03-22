@@ -37,6 +37,7 @@ namespace Canvas
         Points = 10,        // Point cloud/sprites
         Light = 11,         // Light source data
         Camera = 12,        // Camera data
+        Text = 13,          // Text rendering (raw vertices only)
     };
 
     //------------------------------------------------------------------------------------------------
@@ -259,6 +260,27 @@ namespace Canvas
             , InstanceStride(0)
             , StartVertexLocation(0)
             , StartIndexLocation(0)
+        {
+        }
+    };
+
+    //------------------------------------------------------------------------------------------------
+    // Text chunk data - follows RenderChunkHeader with Type=Text
+    // Raw vertices only (no index buffer) - optimal for modern GPU drivers
+    struct alignas(16) TextChunkData
+    {
+        XGfxBuffer* pVertexBuffer;          // Text vertex data (6 vertices per glyph quad)
+        XGfxSurface* pGlyphAtlas;           // SDF glyph atlas texture
+        uint32_t VertexCount;               // Total vertices (multiple of 6 for glyphs)
+        uint32_t Flags;                     // Text-specific flags (reserved for future)
+        Math::FloatVector4 ScreenOffset;    // Screen-space position offset (x, y, z=depth, w=unused)
+
+        TextChunkData()
+            : pVertexBuffer(nullptr)
+            , pGlyphAtlas(nullptr)
+            , VertexCount(0)
+            , Flags(0)
+            , ScreenOffset(0.0f, 0.0f, 0.0f, 0.0f)
         {
         }
     };
