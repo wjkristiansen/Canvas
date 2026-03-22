@@ -105,6 +105,9 @@ void CGpuTaskGraph::SetInitialLayout(ID3D12Resource* pResource, D3D12_BARRIER_LA
 //
 // Initial state (start of ECL): PendingSync=NONE, PendingAccess=NO_ACCESS.
 // An ECL boundary guarantees all prior work is visible, so no sync is needed at the start.
+// NOTE: NO_ACCESS (0x80000000) is a sentinel that must not be OR'd with other bits.
+// The accumulation paths below handle this by assigning instead of OR'ing when
+// PendingAccess is still NO_ACCESS.
 //------------------------------------------------------------------------------------------------
 
 TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
@@ -197,8 +200,18 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
             }
             else
             {
-                state.PendingSync |= texUsage.Sync;
-                state.PendingAccess |= texUsage.Access;
+                // Accumulate read-read usage. NO_ACCESS is a sentinel (0x80000000)
+                // that must never be OR'd with other bits, so assign on first use.
+                if (state.PendingAccess == D3D12_BARRIER_ACCESS_NO_ACCESS)
+                {
+                    state.PendingSync = texUsage.Sync;
+                    state.PendingAccess = texUsage.Access;
+                }
+                else
+                {
+                    state.PendingSync |= texUsage.Sync;
+                    state.PendingAccess |= texUsage.Access;
+                }
             }
         }
         else
@@ -227,8 +240,16 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
             }
             else
             {
-                state.PendingSync |= texUsage.Sync;
-                state.PendingAccess |= texUsage.Access;
+                if (state.PendingAccess == D3D12_BARRIER_ACCESS_NO_ACCESS)
+                {
+                    state.PendingSync = texUsage.Sync;
+                    state.PendingAccess = texUsage.Access;
+                }
+                else
+                {
+                    state.PendingSync |= texUsage.Sync;
+                    state.PendingAccess |= texUsage.Access;
+                }
             }
         }
     }
@@ -259,8 +280,16 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
         }
         else
         {
-            state.PendingSync |= bufUsage.Sync;
-            state.PendingAccess |= bufUsage.Access;
+            if (state.PendingAccess == D3D12_BARRIER_ACCESS_NO_ACCESS)
+            {
+                state.PendingSync = bufUsage.Sync;
+                state.PendingAccess = bufUsage.Access;
+            }
+            else
+            {
+                state.PendingSync |= bufUsage.Sync;
+                state.PendingAccess |= bufUsage.Access;
+            }
         }
     }
 
