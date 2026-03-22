@@ -69,6 +69,7 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
     case Canvas::GfxFormat::R8G8B8_UInt: return DXGI_FORMAT_R8G8_UINT;
     case Canvas::GfxFormat::R8G8B8_Norm: return DXGI_FORMAT_R8G8_SNORM;
     case Canvas::GfxFormat::R8G8B8_Int: return DXGI_FORMAT_R8G8_SINT;
+    case Canvas::GfxFormat::R8_UNorm: return DXGI_FORMAT_R8_UNORM;
     case Canvas::GfxFormat::BC1_UNorm: return DXGI_FORMAT_BC1_UNORM;
     case Canvas::GfxFormat::BC2_UNorm: return DXGI_FORMAT_BC2_UNORM;
     case Canvas::GfxFormat::BC3_UNorm: return DXGI_FORMAT_BC3_UNORM;

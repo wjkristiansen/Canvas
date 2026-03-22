@@ -61,6 +61,7 @@ namespace Canvas
         R8G8B8_UInt,
         R8G8B8_Norm,
         R8G8B8_Int,
+        R8_UNorm,
         BC1_UNorm,
         BC2_UNorm,
         BC3_UNorm,
