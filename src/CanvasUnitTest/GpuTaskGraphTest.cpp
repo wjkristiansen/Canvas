@@ -98,7 +98,7 @@ namespace CanvasUnitTest
         {
             CGpuTaskGraph graph;
             GpuTaskHandle task = graph.CreateTask("MyPass");
-            Assert::AreEqual(std::string("MyPass"), graph.GetTask(task).Name);
+            Assert::AreEqual("MyPass", graph.GetTask(task).Name);
         }
 
         //--------------------------------------------------------------------

@@ -155,6 +155,33 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pCommandQueue.Attach(pCQ.Detach());
     m_pFence.Attach(pFence.Detach());
 
+    // Create UI overlay command list and its own allocator pool
+    CComPtr<ID3D12CommandAllocator> pUICA = m_UICommandAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
+    CComPtr<ID3D12GraphicsCommandList> pUICL;
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pUICA, nullptr, IID_PPV_ARGS(&pUICL))));
+
+    CComPtr<ID3D12GraphicsCommandList7> pUICL7;
+    if (SUCCEEDED(pUICL->QueryInterface(IID_PPV_ARGS(&pUICL7))))
+        m_pUICommandList7 = pUICL7;
+
+    // Start closed — opened each frame in BeginFrame
+    pUICL->Close();
+    m_pUICommandAllocator.Attach(pUICA.Detach());
+    m_pUICommandList.Attach(pUICL.Detach());
+
+    // Create fixup command list for ECL-time layout bridging
+    CComPtr<ID3D12CommandAllocator> pFixupCA = m_FixupCommandAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
+    CComPtr<ID3D12GraphicsCommandList> pFixupCL;
+    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pFixupCA, nullptr, IID_PPV_ARGS(&pFixupCL))));
+
+    CComPtr<ID3D12GraphicsCommandList7> pFixupCL7;
+    if (SUCCEEDED(pFixupCL->QueryInterface(IID_PPV_ARGS(&pFixupCL7))))
+        m_pFixupCommandList7 = pFixupCL7;
+
+    pFixupCL->Close();
+    m_pFixupCommandAllocator.Attach(pFixupCA.Detach());
+    m_pFixupCommandList.Attach(pFixupCL.Detach());
+
     // NOTE: Texture layout tracking is initialized after resource creation elsewhere
 }
 
@@ -201,11 +228,80 @@ D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurfac
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::Flush()
 {
-    // Update device committed state from task graph final layouts
-    if (m_TaskGraphActive)
+    // Helper: compute fixup barriers to bridge actual→assumed for a task graph's first-use layouts
+    auto computeFixupBarriers = [](
+        const std::unordered_map<ID3D12Resource*, Canvas::GpuTaskGraphLayoutState>& initialLayouts,
+        const std::unordered_map<ID3D12Resource*, SubresourceLayoutState>& committedLayouts,
+        const std::unordered_map<ID3D12Resource*, Canvas::GpuTaskGraphLayoutState>* pOverrides)
+        -> std::vector<D3D12_TEXTURE_BARRIER>
     {
-        m_GpuTaskGraph.ComputeFinalLayouts();
-        const auto& finalLayouts = m_GpuTaskGraph.GetFinalLayouts();
+        std::vector<D3D12_TEXTURE_BARRIER> fixups;
+        for (const auto& [pResource, assumedState] : initialLayouts)
+        {
+            D3D12_BARRIER_LAYOUT assumed = assumedState.UniformLayout.value_or(D3D12_BARRIER_LAYOUT_COMMON);
+
+            // Determine actual layout: overrides (previous CL finals) take priority over committed
+            D3D12_BARRIER_LAYOUT actual = D3D12_BARRIER_LAYOUT_COMMON;
+            if (pOverrides)
+            {
+                auto oIt = pOverrides->find(pResource);
+                if (oIt != pOverrides->end() && oIt->second.UniformLayout.has_value())
+                {
+                    actual = oIt->second.UniformLayout.value();
+                }
+                else
+                {
+                    auto cIt = committedLayouts.find(pResource);
+                    if (cIt != committedLayouts.end() && cIt->second.uniformLayout.has_value())
+                        actual = cIt->second.uniformLayout.value();
+                }
+            }
+            else
+            {
+                auto cIt = committedLayouts.find(pResource);
+                if (cIt != committedLayouts.end() && cIt->second.uniformLayout.has_value())
+                    actual = cIt->second.uniformLayout.value();
+            }
+
+            if (actual != assumed)
+            {
+                D3D12_TEXTURE_BARRIER tb = {};
+                // Fixup: layout-only transition at ECL boundary.
+                // Batched with the work CL in the same ECL scope.
+                tb.SyncBefore = D3D12_BARRIER_SYNC_NONE;
+                tb.SyncAfter = D3D12_BARRIER_SYNC_ALL;
+                tb.AccessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
+                tb.AccessAfter = D3D12_BARRIER_ACCESS_COMMON;
+                tb.LayoutBefore = actual;
+                tb.LayoutAfter = assumed;
+                tb.pResource = pResource;
+                tb.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFF;
+                tb.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+                fixups.push_back(tb);
+            }
+        }
+        return fixups;
+    };
+
+    // Helper: emit fixup barriers into the fixup CL
+    auto emitFixups = [this](const std::vector<D3D12_TEXTURE_BARRIER>& fixups)
+    {
+        ThrowFailedHResult(m_pFixupCommandList->Reset(m_pFixupCommandAllocator, nullptr));
+        if (!fixups.empty() && m_pFixupCommandList7)
+        {
+            D3D12_BARRIER_GROUP group = {};
+            group.Type = D3D12_BARRIER_TYPE_TEXTURE;
+            group.NumBarriers = static_cast<UINT>(fixups.size());
+            group.pTextureBarriers = fixups.data();
+            m_pFixupCommandList7->Barrier(1, &group);
+        }
+        ThrowFailedHResult(m_pFixupCommandList->Close());
+    };
+
+    // Helper: update committed state from a task graph's final layouts
+    auto commitFinalLayouts = [this](const Canvas::CGpuTaskGraph& graph)
+    {
+        const auto& finalLayouts = graph.GetFinalLayouts();
         for (const auto& [pResource, layoutState] : finalLayouts)
         {
             auto& committed = m_pDevice->m_TextureCurrentLayouts[pResource];
@@ -220,21 +316,89 @@ void CRenderQueue12::Flush()
                 committed.perSubresourceLayouts = layoutState.PerSubresourceLayouts;
             }
         }
-    }
-    
-    // Close and submit
+    };
+
+    // Compute final layouts for all active task graphs
+    if (m_TaskGraphActive)
+        m_GpuTaskGraph.ComputeFinalLayouts();
+
+    // Close the scene command list
     ThrowFailedHResult(m_pCommandList->Close());
-    ID3D12CommandList* pLists[] = { m_pCommandList };
-    m_pCommandQueue->ExecuteCommandLists(1, pLists);
+
+    if (m_UICommandListOpen)
+    {
+        m_UIGpuTaskGraph.ComputeFinalLayouts();
+        ThrowFailedHResult(m_pUICommandList->Close());
+        m_UICommandListOpen = false;
+
+        const auto& committed = m_pDevice->m_TextureCurrentLayouts;
+
+        // Scene fixup: committed → scene first-use
+        auto sceneFixups = computeFixupBarriers(
+            m_GpuTaskGraph.GetInitialLayouts(), committed, nullptr);
+        emitFixups(sceneFixups);
+
+        // Submit: [scene_fixup, scene_CL] in same ECL scope
+        {
+            ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pCommandList };
+            m_pCommandQueue->ExecuteCommandLists(2, pLists);
+        }
+
+        // UI fixup: (committed + scene final overlay) → UI first-use
+        const auto& sceneFinals = m_GpuTaskGraph.GetFinalLayouts();
+        auto uiFixups = computeFixupBarriers(
+            m_UIGpuTaskGraph.GetInitialLayouts(), committed, &sceneFinals);
+
+        m_pFixupCommandAllocator = m_FixupCommandAllocatorPool.RotateAllocators(this);
+        m_pFixupCommandAllocator->Reset();
+        emitFixups(uiFixups);
+
+        // Submit: [ui_fixup, UI_CL] in same ECL scope
+        {
+            ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pUICommandList };
+            m_pCommandQueue->ExecuteCommandLists(2, pLists);
+        }
+
+        // Update committed state: scene first, then UI overrides
+        commitFinalLayouts(m_GpuTaskGraph);
+        commitFinalLayouts(m_UIGpuTaskGraph);
+    }
+    else
+    {
+        // Scene-only: fixup + scene CL
+        if (m_TaskGraphActive)
+        {
+            auto sceneFixups = computeFixupBarriers(
+                m_GpuTaskGraph.GetInitialLayouts(), m_pDevice->m_TextureCurrentLayouts, nullptr);
+            emitFixups(sceneFixups);
+
+            ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pCommandList };
+            m_pCommandQueue->ExecuteCommandLists(2, pLists);
+
+            commitFinalLayouts(m_GpuTaskGraph);
+        }
+        else
+        {
+            m_pCommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList**>(&m_pCommandList.p));
+        }
+    }
     
     // Signal fence
     m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
     
-    // Reset for next frame
+    // Reset CLs for next frame
     m_pCommandAllocator = m_CommandAllocatorPool.RotateAllocators(this);
     m_pCommandAllocator->Reset();
     ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
+
+    m_pUICommandAllocator = m_UICommandAllocatorPool.RotateAllocators(this);
+    m_pUICommandAllocator->Reset();
+
+    m_pFixupCommandAllocator = m_FixupCommandAllocatorPool.RotateAllocators(this);
+    m_pFixupCommandAllocator->Reset();
+
     m_GpuTaskGraph.Reset();
+    m_UIGpuTaskGraph.Reset();
     m_TaskGraphActive = false;
 }
 
@@ -245,18 +409,34 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
     {
         CSwapChain12 *pIntSwapChain = static_cast<CSwapChain12 *>(pSwapChain);
 
-        // Back buffer must be in COMMON for Present — add a barrier-only task
+        // Back buffer must be in COMMON for Present.
+        // Add as a task to whichever task graph governs the last CL to touch it.
         if (pIntSwapChain->m_BackBufferModified)
         {
             ID3D12Resource* pBackBufferResource = pIntSwapChain->m_pSurface->GetD3DResource();
 
-            EnsureTaskGraphActive();
-            auto presentTask = CreateGpuTask("PresentTransition");
-            DeclareGpuTextureUsage(presentTask, pBackBufferResource,
-                D3D12_BARRIER_LAYOUT_COMMON,
-                D3D12_BARRIER_SYNC_ALL,
-                D3D12_BARRIER_ACCESS_COMMON);
-            PrepareGpuTask(presentTask);  // Emits barrier, no commands to record
+            if (m_UICommandListOpen)
+            {
+                // UI CL executes last — declare present transition via UI task graph
+                auto presentTask = m_UIGpuTaskGraph.CreateTask("PresentTransition");
+                m_UIGpuTaskGraph.DeclareTextureUsage(presentTask, pBackBufferResource,
+                    D3D12_BARRIER_LAYOUT_COMMON,
+                    D3D12_BARRIER_SYNC_ALL,
+                    D3D12_BARRIER_ACCESS_COMMON);
+                Canvas::TaskBarriers barriers = m_UIGpuTaskGraph.PrepareTask(presentTask);
+                EmitBarriersToCommandList(m_pUICommandList7, barriers);
+            }
+            else
+            {
+                // No UI CL — declare on scene CL via scene task graph
+                EnsureTaskGraphActive();
+                auto presentTask = CreateGpuTask("PresentTransition");
+                DeclareGpuTextureUsage(presentTask, pBackBufferResource,
+                    D3D12_BARRIER_LAYOUT_COMMON,
+                    D3D12_BARRIER_SYNC_ALL,
+                    D3D12_BARRIER_ACCESS_COMMON);
+                PrepareGpuTask(presentTask);
+            }
             
             pIntSwapChain->m_BackBufferModified = false;
         }
@@ -468,22 +648,8 @@ void CRenderQueue12::EnsureTaskGraphActive()
 void CRenderQueue12::BeginTaskGraph()
 {
     m_GpuTaskGraph.Reset();
-    
-    // Populate initial layouts from device committed state
-    for (const auto& [pResource, layoutState] : m_pDevice->m_TextureCurrentLayouts)
-    {
-        if (layoutState.uniformLayout.has_value())
-        {
-            m_GpuTaskGraph.SetInitialLayout(pResource, layoutState.uniformLayout.value());
-        }
-        else
-        {
-            for (const auto& [sub, layout] : layoutState.perSubresourceLayouts)
-            {
-                m_GpuTaskGraph.SetInitialLayout(pResource, layout, sub);
-            }
-        }
-    }
+    // No initial layouts set — first-use semantics in PrepareTask will auto-record
+    // assumed initial layouts. Fixup CL at ECL time bridges committed→assumed.
 }
 
 //------------------------------------------------------------------------------------------------
@@ -578,6 +744,67 @@ void CRenderQueue12::EmitBarriers(const Canvas::TaskBarriers& barriers)
     if (!groups.empty() && m_pCommandList7)
     {
         m_pCommandList7->Barrier(static_cast<UINT>(groups.size()), groups.data());
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL7, const Canvas::TaskBarriers& barriers)
+{
+    if (!pCL7)
+        return;
+
+    std::vector<D3D12_TEXTURE_BARRIER> d3dTexBarriers;
+    std::vector<D3D12_BUFFER_BARRIER> d3dBufBarriers;
+
+    for (const auto& tb : barriers.TextureBarriers)
+    {
+        D3D12_TEXTURE_BARRIER d3dBarrier = {};
+        d3dBarrier.SyncBefore = tb.SyncBefore;
+        d3dBarrier.SyncAfter = tb.SyncAfter;
+        d3dBarrier.AccessBefore = tb.AccessBefore;
+        d3dBarrier.AccessAfter = tb.AccessAfter;
+        d3dBarrier.LayoutBefore = tb.LayoutBefore;
+        d3dBarrier.LayoutAfter = tb.LayoutAfter;
+        d3dBarrier.pResource = tb.pResource;
+        d3dBarrier.Subresources.IndexOrFirstMipLevel = tb.Subresources;
+        d3dBarrier.Flags = tb.Flags;
+        d3dTexBarriers.push_back(d3dBarrier);
+    }
+
+    for (const auto& bb : barriers.BufferBarriers)
+    {
+        D3D12_BUFFER_BARRIER d3dBarrier = {};
+        d3dBarrier.SyncBefore = bb.SyncBefore;
+        d3dBarrier.SyncAfter = bb.SyncAfter;
+        d3dBarrier.AccessBefore = bb.AccessBefore;
+        d3dBarrier.AccessAfter = bb.AccessAfter;
+        d3dBarrier.pResource = bb.pResource;
+        d3dBarrier.Offset = bb.Offset;
+        d3dBarrier.Size = bb.Size;
+        d3dBufBarriers.push_back(d3dBarrier);
+    }
+
+    std::vector<D3D12_BARRIER_GROUP> groups;
+    if (!d3dTexBarriers.empty())
+    {
+        D3D12_BARRIER_GROUP group = {};
+        group.Type = D3D12_BARRIER_TYPE_TEXTURE;
+        group.NumBarriers = static_cast<UINT>(d3dTexBarriers.size());
+        group.pTextureBarriers = d3dTexBarriers.data();
+        groups.push_back(group);
+    }
+    if (!d3dBufBarriers.empty())
+    {
+        D3D12_BARRIER_GROUP group = {};
+        group.Type = D3D12_BARRIER_TYPE_BUFFER;
+        group.NumBarriers = static_cast<UINT>(d3dBufBarriers.size());
+        group.pBufferBarriers = d3dBufBarriers.data();
+        groups.push_back(group);
+    }
+
+    if (!groups.empty())
+    {
+        pCL7->Barrier(static_cast<UINT>(groups.size()), groups.data());
     }
 }
 
@@ -840,7 +1067,8 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
     uint32_t dstX, uint32_t dstY,
     uint32_t width, uint32_t height,
     const void *pData,
-    uint32_t srcRowPitch)
+    uint32_t srcRowPitch,
+    Canvas::GfxRenderContext context)
 {
     if (!pDstSurface || !pData || width == 0 || height == 0)
         return Gem::Result::BadPointer;
@@ -874,34 +1102,52 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
         }
         pStagingResource->Unmap(0, nullptr);
 
-        // Declare atlas as copy destination (barrier) and record the copy
-        ResourceUsageBuilder usages;
-        usages.TextureAsCopyDest(pDstResource);
+        // Prepare copy location descriptors
+        D3D12_TEXTURE_COPY_LOCATION src = {};
+        src.pResource                          = pStagingResource;
+        src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        src.PlacedFootprint.Offset             = stagingAlloc.Offset;
+        src.PlacedFootprint.Footprint.Format   = DXGI_FORMAT_R8_UNORM;
+        src.PlacedFootprint.Footprint.Width    = width;
+        src.PlacedFootprint.Footprint.Height   = height;
+        src.PlacedFootprint.Footprint.Depth    = 1;
+        src.PlacedFootprint.Footprint.RowPitch = alignedRowPitch;
 
-        RecordCommandBlock(
-            usages.Build(),
-            [pStagingResource, pDstResource, stagingAlloc, alignedRowPitch, dstX, dstY, width, height]
-            (ID3D12GraphicsCommandList* cmdList)
-            {
-                D3D12_TEXTURE_COPY_LOCATION src = {};
-                src.pResource                          = pStagingResource;
-                src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-                src.PlacedFootprint.Offset             = stagingAlloc.Offset;
-                src.PlacedFootprint.Footprint.Format   = DXGI_FORMAT_R8_UNORM;
-                src.PlacedFootprint.Footprint.Width    = width;
-                src.PlacedFootprint.Footprint.Height   = height;
-                src.PlacedFootprint.Footprint.Depth    = 1;
-                src.PlacedFootprint.Footprint.RowPitch = alignedRowPitch;
+        D3D12_TEXTURE_COPY_LOCATION dst = {};
+        dst.pResource        = pDstResource;
+        dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        dst.SubresourceIndex = 0;
 
-                D3D12_TEXTURE_COPY_LOCATION dst = {};
-                dst.pResource        = pDstResource;
-                dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-                dst.SubresourceIndex = 0;
+        D3D12_BOX srcBox = { 0, 0, 0, width, height, 1 };
 
-                D3D12_BOX srcBox = { 0, 0, 0, width, height, 1 };
-                cmdList->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
-            },
-            "UploadGlyphAtlasRegion");
+        if (context == Canvas::GfxRenderContext::UI && m_UICommandListOpen)
+        {
+            // UI context: declare copy via UI task graph, record into UI CL
+            auto copyTask = m_UIGpuTaskGraph.CreateTask("UploadTextureRegion_UI");
+            m_UIGpuTaskGraph.DeclareTextureUsage(copyTask, pDstResource,
+                D3D12_BARRIER_LAYOUT_COMMON,
+                D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_DEST);
+            Canvas::TaskBarriers copyBarriers = m_UIGpuTaskGraph.PrepareTask(copyTask);
+            EmitBarriersToCommandList(m_pUICommandList7, copyBarriers);
+
+            m_pUICommandList->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
+        }
+        else
+        {
+            // Scene context (or outside a frame): use scene command list via task graph
+            ResourceUsageBuilder usages;
+            usages.TextureAsCopyDest(pDstResource);
+
+            RecordCommandBlock(
+                usages.Build(),
+                [&src, &dst, &srcBox, dstX, dstY]
+                (ID3D12GraphicsCommandList* cmdList)
+                {
+                    cmdList->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
+                },
+                "UploadTextureRegion");
+        }
 
         RetireUploadAllocation(stagingAlloc);
         return Gem::Result::Success;
@@ -997,6 +1243,33 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
         
         m_pCurrentSwapChain = pIntSwapChain;
         pIntSwapChain->m_BackBufferModified = true;
+
+        // Open UI overlay command list for text/HUD recording.
+        ThrowFailedHResult(m_pUICommandList->Reset(m_pUICommandAllocator, nullptr));
+        m_UICommandListOpen = true;
+
+        // Initialize UI task graph — no initial layouts needed.
+        // First-use semantics will auto-record assumed layouts.
+        m_UIGpuTaskGraph.Reset();
+
+        // Declare back buffer as RENDER_TARGET for UI draws.
+        // First-use: no barrier emitted (the fixup CL at ECL time will bridge).
+        auto uiBeginTask = m_UIGpuTaskGraph.CreateTask("UIBeginFrame");
+        m_UIGpuTaskGraph.DeclareTextureUsage(uiBeginTask, pBackBufferResource,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        Canvas::TaskBarriers uiBeginBarriers = m_UIGpuTaskGraph.PrepareTask(uiBeginTask);
+        EmitBarriersToCommandList(m_pUICommandList7, uiBeginBarriers);
+
+        // Set up UI command list state: back buffer RTV, viewport, scissor, descriptor heaps
+        m_pUICommandList->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
+        m_pUICommandList->RSSetViewports(1, &viewport);
+        m_pUICommandList->RSSetScissorRects(1, &scissor);
+
+        ID3D12DescriptorHeap* uiHeaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
+        m_pUICommandList->SetDescriptorHeaps(2, uiHeaps);
+        m_pUICommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     }
     catch (Gem::GemError &e)
     {
@@ -1156,33 +1429,33 @@ GEMMETHODIMP CRenderQueue12::DrawText(
 {
     (void)screenOffset;
 
+    if (!pVertexData || vertexCount == 0 || !pGlyphAtlas || !m_pCurrentSwapChain)
+    {
+        Canvas::LogError(m_pDevice->GetLogger(), "DrawText: invalid arguments (pVertexData=%p, vertexCount=%u, pGlyphAtlas=%p, swapChain=%p)",
+            pVertexData, vertexCount, pGlyphAtlas, m_pCurrentSwapChain);
+        return Gem::Result::InvalidArg;
+    }
+
     Canvas::GfxSuballocation vertexAlloc{};
     Canvas::GfxSuballocation cbAlloc{};
 
     try
     {
-        if (!pVertexData || vertexCount == 0 || !pGlyphAtlas || !m_pCurrentSwapChain)
-        {
-            Canvas::LogError(m_pDevice->GetLogger(), "DrawText: invalid arguments (pVertexData=%p, vertexCount=%u, pGlyphAtlas=%p, swapChain=%p)",
-                pVertexData, vertexCount, pGlyphAtlas, m_pCurrentSwapChain);
-            return Gem::Result::InvalidArg;
-        }
-
         DXGI_FORMAT rtvFormat = m_pCurrentSwapChain->m_pSurface->GetD3DResource()->GetDesc().Format;
         EnsureTextPSO(rtvFormat);
 
         auto pAtlas = static_cast<CSurface12*>(pGlyphAtlas);
 
-        // Issue a barrier to transition the atlas into shader-readable state.
-        // TextureAsShaderResource uses SHADER_RESOURCE_VIEW layout, which properly
-        // synchronises after any preceding CopyTextureRegion (UploadTextureRegion).
-        EnsureTaskGraphActive();
-        auto task = CreateGpuTask("DrawText");
-        DeclareGpuTextureUsage(task, pAtlas->GetD3DResource(),
+        // Declare atlas as SHADER_RESOURCE via UI task graph.
+        // Barriers are emitted into the UI CL based on the assumed initial layout.
+        // The fixup CL at ECL time bridges any discrepancy with actual state.
+        auto atlasTask = m_UIGpuTaskGraph.CreateTask("DrawText_Atlas");
+        m_UIGpuTaskGraph.DeclareTextureUsage(atlasTask, pAtlas->GetD3DResource(),
             D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        PrepareGpuTask(task);
+        Canvas::TaskBarriers atlasBarriers = m_UIGpuTaskGraph.PrepareTask(atlasTask);
+        EmitBarriersToCommandList(m_pUICommandList7, atlasBarriers);
 
         // Vertex buffer: TextVertex = float3 Position + float2 TexCoord + uint Color = 24 bytes
         constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
@@ -1222,26 +1495,22 @@ GEMMETHODIMP CRenderQueue12::DrawText(
         // Atlas SRV (maps to t1 in PSText.hlsl via the descriptor table)
         pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
 
-        // Switch to text pipeline
-        m_pCommandList->SetGraphicsRootSignature(m_pTextRootSig);
-        m_pCommandList->SetPipelineState(m_pTextPSO);
+        // Record draw commands on the UI command list
+        m_pUICommandList->SetGraphicsRootSignature(m_pTextRootSig);
+        m_pUICommandList->SetPipelineState(m_pTextPSO);
 
         // Slot 0: screen constants CBV (b0)
-        m_pCommandList->SetGraphicsRootConstantBufferView(0,
+        m_pUICommandList->SetGraphicsRootConstantBufferView(0,
             pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset);
 
         // Slot 1: vertex StructuredBuffer SRV (t0)
-        m_pCommandList->SetGraphicsRootShaderResourceView(1,
+        m_pUICommandList->SetGraphicsRootShaderResourceView(1,
             pVertexResource->GetGPUVirtualAddress() + vertexAlloc.Offset);
 
         // Slot 2: atlas texture descriptor table (t1)
-        m_pCommandList->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
+        m_pUICommandList->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
 
-        m_pCommandList->DrawInstanced(vertexCount, 1, 0, 0);
-
-        // Restore default pipeline state for subsequent DrawMesh calls (EndFrame)
-        m_pCommandList->SetGraphicsRootSignature(m_pDefaultRootSig);
-        m_pCommandList->SetPipelineState(m_pDefaultPSO);
+        m_pUICommandList->DrawInstanced(vertexCount, 1, 0, 0);
 
         RetireUploadAllocation(vertexAlloc);
         RetireUploadAllocation(cbAlloc);

@@ -135,7 +135,7 @@ struct GpuBufferUsage
 // emits any required barriers.
 struct CGpuTask
 {
-    std::string Name;
+    const char* Name = nullptr;
     std::vector<GpuTextureUsage> TextureUsages;
     std::vector<GpuBufferUsage> BufferUsages;
 
@@ -278,10 +278,9 @@ public:
     void SetInitialLayout(ID3D12Resource* pResource, D3D12_BARRIER_LAYOUT layout, UINT subresource = 0xFFFFFFFF);
 
     // Prepare a task for execution: computes its sync/access scope, and resolves barriers
-    // against all prior tasks. Returns the barriers to emit before recording this task's
-    // commands. Must be called after all DeclareTextureUsage/DeclareBufferUsage for this task.
-    // Tasks must be prepared in forward (creation) order.
-    TaskBarriers PrepareTask(GpuTaskHandle task);
+    // against all prior tasks. Returns barriers to emit before recording this task's commands.
+    // The returned reference is valid until the next PrepareTask call or Reset.
+    const TaskBarriers& PrepareTask(GpuTaskHandle task);
 
     //---------------------------------------------------------------------------------------------
     // Queries
@@ -295,8 +294,17 @@ public:
     // Use this to update device committed state.
     const std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState>& GetFinalLayouts() const;
 
+    // Get the initial layouts that this graph was built against.
+    // Use this at ECL time to compute fixup barriers.
+    const std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState>& GetInitialLayouts() const;
+
     // Get a task by handle (read-only)
     const CGpuTask& GetTask(GpuTaskHandle task) const;
+
+    // Query the current tracked layout for a resource (reflects all PrepareTask calls so far).
+    // Returns the layout the resource will be in after the last task that touched it.
+    // If the resource is not tracked, returns std::nullopt.
+    std::optional<D3D12_BARRIER_LAYOUT> GetCurrentLayout(ID3D12Resource* pResource, UINT subresource = 0xFFFFFFFF) const;
 
     // Get number of tasks
     uint32_t GetTaskCount() const;
@@ -327,6 +335,9 @@ private:
     };
     std::unordered_map<ID3D12Resource*, ResourceBarrierState> m_ResourceState;
     bool m_ResourceStateInitialized = false;
+
+    // Scratch buffer for PrepareTask results (avoids per-call allocation)
+    TaskBarriers m_ScratchBarriers;
 
     void EnsureResourceStateInitialized();
 };

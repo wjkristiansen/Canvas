@@ -315,7 +315,7 @@ XRenderQueue : public XCanvasElement
 
     // Upload CPU data into a sub-region of a GPU surface via a staging copy.
     // Intended for populating persistently-resident textures (e.g., glyph atlas).
-    // The copy is recorded into the current frame's command list.
+    // The copy is recorded into the command list identified by 'context'.
     // dstX/dstY: top-left destination texel in pixel coordinates
     // width/height: extent of the copied region in texels
     // pData: pointer to row-major source data
@@ -325,7 +325,8 @@ XRenderQueue : public XCanvasElement
         uint32_t dstX, uint32_t dstY,
         uint32_t width, uint32_t height,
         const void *pData,
-        uint32_t srcRowPitch) = 0;
+        uint32_t srcRowPitch,
+        GfxRenderContext context = GfxRenderContext::Scene) = 0;
 
     // Private contract with the scene graph: enqueues an element for rendering.
     // Elements are dispatched later when the queue is drained (EndFrame).

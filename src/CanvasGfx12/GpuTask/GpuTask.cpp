@@ -23,7 +23,7 @@ GpuTaskHandle CGpuTaskGraph::CreateTask(const char* name)
 {
     GpuTaskHandle handle = static_cast<GpuTaskHandle>(m_Tasks.size());
     CGpuTask& task = m_Tasks.emplace_back();
-    task.Name = name ? name : "";
+    task.Name = name;
     return handle;
 }
 
@@ -110,13 +110,18 @@ void CGpuTaskGraph::SetInitialLayout(ID3D12Resource* pResource, D3D12_BARRIER_LA
 // PendingAccess is still NO_ACCESS.
 //------------------------------------------------------------------------------------------------
 
-TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
+const TaskBarriers& CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
 {
     assert(task < m_Tasks.size());
 
     EnsureResourceStateInitialized();
 
     auto& taskData = m_Tasks[task];
+
+    // Reuse scratch buffer — clear but retain capacity
+    m_ScratchBarriers.TaskHandle = task;
+    m_ScratchBarriers.TextureBarriers.clear();
+    m_ScratchBarriers.BufferBarriers.clear();
 
     // Compute accumulated sync/access scope for this task
     taskData.SyncScope = D3D12_BARRIER_SYNC_NONE;
@@ -139,13 +144,25 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
         D3D12_BARRIER_ACCESS_COPY_DEST |
         D3D12_BARRIER_ACCESS_STREAM_OUTPUT;
 
-    TaskBarriers result;
-    result.TaskHandle = task;
-
     // Resolve texture barriers
     for (const auto& texUsage : taskData.TextureUsages)
     {
-        auto& state = m_ResourceState[texUsage.pResource];
+        auto stateIt = m_ResourceState.find(texUsage.pResource);
+        if (stateIt == m_ResourceState.end())
+        {
+            // First access to this resource — record its first-use layout as the
+            // assumed initial layout. No barrier emitted; the fixup CL at ECL time
+            // will bridge committed state → this assumed layout.
+            ResourceBarrierState& newState = m_ResourceState[texUsage.pResource];
+            newState.Layouts.SetLayout(texUsage.Subresources, texUsage.RequiredLayout);
+            newState.PendingSync = texUsage.Sync;
+            newState.PendingAccess = texUsage.Access;
+
+            m_InitialLayouts[texUsage.pResource].SetLayout(texUsage.Subresources, texUsage.RequiredLayout);
+            continue;
+        }
+
+        auto& state = stateIt->second;
 
         bool pendingHasWrite = (state.PendingAccess & WRITE_ACCESS_MASK) != 0;
         bool newHasWrite = (texUsage.Access & WRITE_ACCESS_MASK) != 0;
@@ -160,7 +177,6 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
             {
                 if (!state.Layouts.UniformLayout.has_value() && !state.Layouts.PerSubresourceLayouts.empty() && layoutChanged)
                 {
-                    // Mixed layouts - need per-subresource barriers
                     for (const auto& [sub, subLayout] : state.Layouts.PerSubresourceLayouts)
                     {
                         if (subLayout == texUsage.RequiredLayout && !pendingHasWrite && !newHasWrite)
@@ -176,7 +192,7 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
                         b.LayoutAfter = texUsage.RequiredLayout;
                         b.Subresources = sub;
                         b.Flags = texUsage.Flags;
-                        result.TextureBarriers.push_back(b);
+                        m_ScratchBarriers.TextureBarriers.push_back(b);
                     }
                 }
                 else
@@ -191,7 +207,7 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
                     b.LayoutAfter = texUsage.RequiredLayout;
                     b.Subresources = 0xFFFFFFFF;
                     b.Flags = texUsage.Flags;
-                    result.TextureBarriers.push_back(b);
+                    m_ScratchBarriers.TextureBarriers.push_back(b);
                 }
 
                 state.Layouts.SetLayout(0xFFFFFFFF, texUsage.RequiredLayout);
@@ -200,8 +216,6 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
             }
             else
             {
-                // Accumulate read-read usage. NO_ACCESS is a sentinel (0x80000000)
-                // that must never be OR'd with other bits, so assign on first use.
                 if (state.PendingAccess == D3D12_BARRIER_ACCESS_NO_ACCESS)
                 {
                     state.PendingSync = texUsage.Sync;
@@ -232,7 +246,7 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
                 b.LayoutAfter = texUsage.RequiredLayout;
                 b.Subresources = texUsage.Subresources;
                 b.Flags = texUsage.Flags;
-                result.TextureBarriers.push_back(b);
+                m_ScratchBarriers.TextureBarriers.push_back(b);
 
                 state.Layouts.SetLayout(texUsage.Subresources, texUsage.RequiredLayout);
                 state.PendingSync = texUsage.Sync;
@@ -257,7 +271,16 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
     // Resolve buffer barriers
     for (const auto& bufUsage : taskData.BufferUsages)
     {
-        auto& state = m_ResourceState[bufUsage.pResource];
+        auto stateIt = m_ResourceState.find(bufUsage.pResource);
+        if (stateIt == m_ResourceState.end())
+        {
+            ResourceBarrierState& newState = m_ResourceState[bufUsage.pResource];
+            newState.PendingSync = bufUsage.Sync;
+            newState.PendingAccess = bufUsage.Access;
+            continue;
+        }
+
+        auto& state = stateIt->second;
 
         bool pendingHasWrite = (state.PendingAccess & WRITE_ACCESS_MASK) != 0;
         bool newHasWrite = (bufUsage.Access & WRITE_ACCESS_MASK) != 0;
@@ -273,7 +296,7 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
             b.AccessAfter = bufUsage.Access;
             b.Offset = bufUsage.Offset;
             b.Size = bufUsage.Size;
-            result.BufferBarriers.push_back(b);
+            m_ScratchBarriers.BufferBarriers.push_back(b);
 
             state.PendingSync = bufUsage.Sync;
             state.PendingAccess = bufUsage.Access;
@@ -293,7 +316,7 @@ TaskBarriers CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
         }
     }
 
-    return result;
+    return m_ScratchBarriers;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -320,14 +343,12 @@ void CGpuTaskGraph::EnsureResourceStateInitialized()
 
 void CGpuTaskGraph::ComputeFinalLayouts()
 {
-    m_FinalLayouts = m_InitialLayouts;
-
-    for (const auto& task : m_Tasks)
+    // Build final layouts from resource state (already tracked by PrepareTask).
+    // No map copy needed — m_ResourceState has the latest layout for every touched resource.
+    m_FinalLayouts.clear();
+    for (const auto& [pResource, state] : m_ResourceState)
     {
-        for (const auto& texUsage : task.TextureUsages)
-        {
-            m_FinalLayouts[texUsage.pResource].SetLayout(texUsage.Subresources, texUsage.RequiredLayout);
-        }
+        m_FinalLayouts[pResource] = state.Layouts;
     }
 }
 
@@ -340,6 +361,11 @@ const std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState>& CGpuTaskGrap
     return m_FinalLayouts;
 }
 
+const std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState>& CGpuTaskGraph::GetInitialLayouts() const
+{
+    return m_InitialLayouts;
+}
+
 const CGpuTask& CGpuTaskGraph::GetTask(GpuTaskHandle task) const
 {
     assert(task < m_Tasks.size());
@@ -349,6 +375,20 @@ const CGpuTask& CGpuTaskGraph::GetTask(GpuTaskHandle task) const
 uint32_t CGpuTaskGraph::GetTaskCount() const
 {
     return static_cast<uint32_t>(m_Tasks.size());
+}
+
+std::optional<D3D12_BARRIER_LAYOUT> CGpuTaskGraph::GetCurrentLayout(ID3D12Resource* pResource, UINT subresource) const
+{
+    auto it = m_ResourceState.find(pResource);
+    if (it == m_ResourceState.end())
+    {
+        // Not touched by any task — check initial layouts
+        auto initIt = m_InitialLayouts.find(pResource);
+        if (initIt != m_InitialLayouts.end())
+            return initIt->second.GetLayout(subresource);
+        return std::nullopt;
+    }
+    return it->second.Layouts.GetLayout(subresource);
 }
 
 //------------------------------------------------------------------------------------------------

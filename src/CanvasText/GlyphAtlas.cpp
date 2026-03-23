@@ -241,7 +241,8 @@ Gem::Result CGlyphAtlas::CacheGlyph(uint32_t codepoint, const CTrueTypeFont &fon
         atlasRect.X, atlasRect.Y,
         bitmapWidth, bitmapHeight,
         sdfBitmap.Data.data(),
-        bitmapWidth * sdfBitmap.BytesPerPixel);
+        bitmapWidth * sdfBitmap.BytesPerPixel,
+        Canvas::GfxRenderContext::UI);
     if (Gem::Failed(uploadResult))
         return uploadResult;
 

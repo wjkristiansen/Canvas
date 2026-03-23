@@ -461,6 +461,21 @@ public:
     CComPtr<ID3D12GraphicsCommandList7> m_pCommandList7;  // Cached CL7 for Barrier() to avoid QueryInterface per call
     CComPtr<ID3D12CommandAllocator> m_pCommandAllocator;
     CCommandAllocatorPool m_CommandAllocatorPool;
+
+    // UI overlay command list — records text/HUD draws in parallel with scene rendering.
+    // Submitted after the scene command list on the same queue so GPU execution is serialized.
+    CComPtr<ID3D12GraphicsCommandList> m_pUICommandList;
+    CComPtr<ID3D12GraphicsCommandList7> m_pUICommandList7;
+    CComPtr<ID3D12CommandAllocator> m_pUICommandAllocator;
+    CCommandAllocatorPool m_UICommandAllocatorPool;
+    bool m_UICommandListOpen = false;
+
+    // Fixup command list — bridges actual committed layouts to assumed initial layouts
+    // at ExecuteCommandLists time. Prepended before the CL whose assumptions may differ.
+    CComPtr<ID3D12GraphicsCommandList> m_pFixupCommandList;
+    CComPtr<ID3D12GraphicsCommandList7> m_pFixupCommandList7;
+    CComPtr<ID3D12CommandAllocator> m_pFixupCommandAllocator;
+    CCommandAllocatorPool m_FixupCommandAllocatorPool;
     CComPtr<ID3D12DescriptorHeap> m_pShaderResourceDescriptorHeap;
     CComPtr<ID3D12DescriptorHeap> m_pSamplerDescriptorHeap;
     CComPtr<ID3D12DescriptorHeap> m_pRTVDescriptorHeap;
@@ -529,7 +544,7 @@ public:
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(DrawMesh)(Canvas::XGfxMeshData *pMeshData, const Canvas::GfxPerObjectConstants &objectConstants) final;
     GEMMETHOD(DrawText)(const void *pVertexData, uint32_t vertexCount, Canvas::XGfxSurface *pGlyphAtlas, const Canvas::Math::FloatVector4 &screenOffset) final;
-    GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch) final;
+    GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context) final;
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphElement *pElement) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
     GEMMETHOD(EndFrame)() final;
@@ -675,10 +690,14 @@ private:
     // Ensure the task graph is active (lazy initialization)
     void EnsureTaskGraphActive();
     
-    // Emit resolved barriers into the command list
+    // Emit resolved barriers into the scene command list
     void EmitBarriers(const Canvas::TaskBarriers& barriers);
-    
-    // GPU Task Graph instance — all barrier state is tracked here
-    Canvas::CGpuTaskGraph m_GpuTaskGraph;
+
+    // Emit resolved barriers into an arbitrary command list
+    static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL7, const Canvas::TaskBarriers& barriers);
+
+    // GPU Task Graph instances — one per command list context
+    Canvas::CGpuTaskGraph m_GpuTaskGraph;      // Scene CL
+    Canvas::CGpuTaskGraph m_UIGpuTaskGraph;     // UI CL
     bool m_TaskGraphActive = false;
 };

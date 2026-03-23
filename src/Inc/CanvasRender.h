@@ -20,6 +20,13 @@ namespace Canvas
     struct XGfxDevice;
     struct XGfxSurface;
 
+    // Identifies which command list context a GPU operation should be recorded into.
+    enum class GfxRenderContext : uint32_t
+    {
+        Scene,          // Scene rendering command list (geometry, shadows, etc.)
+        UI,             // UI overlay command list (text, HUD, glyph atlas uploads)
+    };
+
     //------------------------------------------------------------------------------------------------
     // Render chunk types - each chunk contains specific renderable data
     enum class RenderChunkType : uint32_t

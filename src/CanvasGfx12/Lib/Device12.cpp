@@ -201,6 +201,27 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
         heapProps.CreationNodeMask = 1;
         heapProps.VisibleNodeMask = 1;
         
+        // Provide optimized clear value for render target and depth-stencil surfaces
+        D3D12_CLEAR_VALUE clearValue = {};
+        const D3D12_CLEAR_VALUE* pOptimizedClearValue = nullptr;
+        
+        if (desc.Flags & Canvas::SurfaceFlag_DepthStencil)
+        {
+            clearValue.Format = resourceDesc.Format;
+            clearValue.DepthStencil.Depth = 0.0f;  // Reverse-Z: far plane
+            clearValue.DepthStencil.Stencil = 0;
+            pOptimizedClearValue = &clearValue;
+        }
+        else if (desc.Flags & Canvas::SurfaceFlag_RenderTarget)
+        {
+            clearValue.Format = resourceDesc.Format;
+            clearValue.Color[0] = 0.0f;
+            clearValue.Color[1] = 0.0f;
+            clearValue.Color[2] = 0.0f;
+            clearValue.Color[3] = 0.0f;
+            pOptimizedClearValue = &clearValue;
+        }
+        
         // Create the resource
         CComPtr<ID3D12Resource> pResource;
         ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource3(
@@ -208,7 +229,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
             initialLayout,
-            nullptr,
+            pOptimizedClearValue,
             nullptr,
             0,
             nullptr,
