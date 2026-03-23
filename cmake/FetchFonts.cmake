@@ -23,11 +23,8 @@ FetchContent_Declare(
     DOWNLOAD_DIR "${CMAKE_BINARY_DIR}/fonts-downloads"
     SOURCE_DIR   "${CMAKE_BINARY_DIR}/fonts-src/inter"
 )
-FetchContent_GetProperties(CanvasFonts_Inter)
-if(NOT canvasfonts_inter_POPULATED)
-    message(STATUS "Canvas: Fetching Inter font...")
-    FetchContent_Populate(CanvasFonts_Inter)
-endif()
+message(STATUS "Canvas: Fetching Inter font...")
+FetchContent_MakeAvailable(CanvasFonts_Inter)
 
 # Locate Inter-Regular.ttf (known path, with glob fallback)
 set(CANVAS_FONT_INTER "${canvasfonts_inter_SOURCE_DIR}/Inter Desktop/Inter-Regular.ttf")
@@ -55,11 +52,8 @@ FetchContent_Declare(
     DOWNLOAD_DIR "${CMAKE_BINARY_DIR}/fonts-downloads"
     SOURCE_DIR   "${CMAKE_BINARY_DIR}/fonts-src/jetbrainsmono"
 )
-FetchContent_GetProperties(CanvasFonts_JetBrainsMono)
-if(NOT canvasfonts_jetbrainsmono_POPULATED)
-    message(STATUS "Canvas: Fetching JetBrains Mono font...")
-    FetchContent_Populate(CanvasFonts_JetBrainsMono)
-endif()
+message(STATUS "Canvas: Fetching JetBrains Mono font...")
+FetchContent_MakeAvailable(CanvasFonts_JetBrainsMono)
 
 set(CANVAS_FONT_JETBRAINSMONO "${canvasfonts_jetbrainsmono_SOURCE_DIR}/fonts/ttf/JetBrainsMono-Regular.ttf")
 if(NOT EXISTS "${CANVAS_FONT_JETBRAINSMONO}")
