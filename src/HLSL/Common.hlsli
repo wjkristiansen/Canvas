@@ -11,6 +11,13 @@ struct PS_INPUT
     float4 ClipPosition : SV_Position;
 };
 
+// G-buffer MRT output from the geometry pass pixel shader
+struct GBufferOutput
+{
+    float4 Normals      : SV_Target0;   // RGB = world-space normal (encoded), A = unused
+    float4 DiffuseColor : SV_Target1;   // RGB = albedo, A = unused
+};
+
 // Per-frame constant buffer (register b0, root CBV slot 0)
 cbuffer PerFrameConstants : register(b0)
 {

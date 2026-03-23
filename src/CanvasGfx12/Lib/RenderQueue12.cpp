@@ -864,6 +864,53 @@ void CRenderQueue12::EnsureDepthBuffer(UINT width, UINT height)
     m_DepthBufferHeight = height;
 }
 
+//================================================================================================
+// G-buffer management
+//================================================================================================
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::EnsureGBuffers(UINT width, UINT height)
+{
+    if (m_pGBufferNormals && m_GBufferWidth == width && m_GBufferHeight == height)
+        return;
+    
+    auto flags = static_cast<Canvas::GfxSurfaceFlags>(
+        Canvas::SurfaceFlag_RenderTarget | Canvas::SurfaceFlag_ShaderResource);
+    
+    // Normals G-buffer
+    {
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            m_GBufferNormalsFormat, width, height, flags);
+        
+        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+        Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
+        
+        Gem::TGemPtr<CSurface12> pGBuffer;
+        pSurface->QueryInterface(&pGBuffer);
+        m_pGBufferNormals = pGBuffer;
+    }
+    
+    // Diffuse color G-buffer
+    {
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            m_GBufferDiffuseFormat, width, height, flags);
+        
+        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+        Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
+        
+        Gem::TGemPtr<CSurface12> pGBuffer;
+        pSurface->QueryInterface(&pGBuffer);
+        m_pGBufferDiffuseColor = pGBuffer;
+    }
+    
+    m_GBufferWidth = width;
+    m_GBufferHeight = height;
+    
+    // Invalidate PSOs since G-buffer formats could have changed
+    m_pDefaultPSO.Release();
+    m_pCompositePSO.Release();
+}
+
 //------------------------------------------------------------------------------------------------
 D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateDepthStencilView(CSurface12 *pSurface)
 {
@@ -912,7 +959,7 @@ D3D12_GPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateShaderResourceView(
 //================================================================================================
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::EnsureDefaultPSO(DXGI_FORMAT rtvFormat)
+void CRenderQueue12::EnsureDefaultPSO()
 {
     if (m_pDefaultPSO)
         return;
@@ -929,7 +976,7 @@ void CRenderQueue12::EnsureDefaultPSO(DXGI_FORMAT rtvFormat)
         Gem::ThrowGemError(Gem::Result::Fail);
     }
     
-    // Create PSO
+    // Create PSO - geometry pass writes to G-buffer MRTs (normals + diffuse)
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
     psoDesc.pRootSignature = m_pDefaultRootSig;
     psoDesc.VS = { vsBytecode.data(), vsBytecode.size() };
@@ -952,15 +999,18 @@ void CRenderQueue12::EnsureDefaultPSO(DXGI_FORMAT rtvFormat)
     
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = rtvFormat;
+    
+    // MRT: two G-buffer render targets (normals + diffuse color)
+    psoDesc.NumRenderTargets = 2;
+    psoDesc.RTVFormats[0] = CanvasFormatToDXGIFormat(m_GBufferNormalsFormat);
+    psoDesc.RTVFormats[1] = CanvasFormatToDXGIFormat(m_GBufferDiffuseFormat);
     psoDesc.SampleDesc.Count = 1;
     psoDesc.SampleDesc.Quality = 0;
     
     ThrowFailedHResult(m_pDevice->GetD3DDevice()->CreateGraphicsPipelineState(
         &psoDesc, IID_PPV_ARGS(&m_pDefaultPSO)));
     
-    Canvas::LogInfo(m_pDevice->GetLogger(), "Uber PSO created successfully");
+    Canvas::LogInfo(m_pDevice->GetLogger(), "Geometry pass PSO created (2 MRT G-buffers)");
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1055,6 +1105,85 @@ void CRenderQueue12::EnsureTextPSO(DXGI_FORMAT rtvFormat)
     m_TextPSOFormat = rtvFormat;
 
     Canvas::LogInfo(m_pDevice->GetLogger(), "Text PSO created successfully");
+}
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
+{
+    if (m_pCompositePSO)
+        return;
+
+    auto shaderDir = GetShaderDirectory();
+    auto vsBytecode = LoadShaderBytecode(shaderDir / "VSFullscreen.cso");
+    auto psBytecode = LoadShaderBytecode(shaderDir / "PSComposite.cso");
+
+    if (vsBytecode.empty() || psBytecode.empty())
+    {
+        Canvas::LogError(m_pDevice->GetLogger(), "Failed to load composite shader bytecode (VS: %s, PS: %s)",
+            vsBytecode.empty() ? "MISSING" : "OK",
+            psBytecode.empty() ? "MISSING" : "OK");
+        Gem::ThrowGemError(Gem::Result::Fail);
+    }
+
+    ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+
+    // Composite root signature:
+    //   Slot 0: Root CBV (b0) — lighting / per-frame constants
+    //   Slot 1: Descriptor table with SRV[2] at t0-t1 — G-buffer textures
+    //   Static sampler s0: point, clamp (exact texel fetch)
+    CD3DX12_STATIC_SAMPLER_DESC pointSampler(
+        0,                                      // shader register s0
+        D3D12_FILTER_MIN_MAG_MIP_POINT,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+
+    CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0,  // SRV[2] at t0-t1, space0
+                  D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
+
+    std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(2);
+    compositeRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
+                                                    D3D12_SHADER_VISIBILITY_PIXEL);
+    compositeRootParams[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC compositeRootSigDesc(
+        static_cast<UINT>(compositeRootParams.size()),
+        compositeRootParams.data(),
+        1, &pointSampler,
+        D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+    CComPtr<ID3DBlob> pRSBlob;
+    ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&compositeRootSigDesc, &pRSBlob, nullptr));
+    CComPtr<ID3D12RootSignature> pCompositeRootSig;
+    ThrowFailedHResult(pD3DDevice->CreateRootSignature(
+        1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pCompositeRootSig)));
+
+    // PSO: fullscreen pass, no depth, single render target (back buffer)
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = pCompositeRootSig;
+    psoDesc.VS = { vsBytecode.data(), vsBytecode.size() };
+    psoDesc.PS = { psBytecode.data(), psBytecode.size() };
+    psoDesc.InputLayout              = { nullptr, 0 };
+    psoDesc.RasterizerState          = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    psoDesc.BlendState               = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.DepthStencilState        = {};  // No depth test for fullscreen pass
+    psoDesc.SampleMask               = UINT_MAX;
+    psoDesc.PrimitiveTopologyType    = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.NumRenderTargets         = 1;
+    psoDesc.RTVFormats[0]            = rtvFormat;
+    psoDesc.DSVFormat                = DXGI_FORMAT_UNKNOWN;
+    psoDesc.SampleDesc.Count         = 1;
+    psoDesc.SampleDesc.Quality       = 0;
+
+    CComPtr<ID3D12PipelineState> pCompositePSO;
+    ThrowFailedHResult(pD3DDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pCompositePSO)));
+
+    m_pCompositeRootSig.Attach(pCompositeRootSig.Detach());
+    m_pCompositePSO.Attach(pCompositePSO.Detach());
+
+    Canvas::LogInfo(m_pDevice->GetLogger(), "Composite PSO created successfully");
 }
 
 //================================================================================================
@@ -1184,14 +1313,26 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
         // Ensure depth buffer matches back buffer size
         EnsureDepthBuffer(width, height);
         
-        // Ensure PSO is created
-        EnsureDefaultPSO(bbDesc.Format);
+        // Ensure G-buffer render targets match back buffer size
+        EnsureGBuffers(width, height);
+        
+        // Ensure PSOs are created
+        EnsureDefaultPSO();
+        EnsureCompositePSO(bbDesc.Format);
         
         EnsureTaskGraphActive();
         
-        // Transition back buffer to render target and depth buffer to depth-stencil write
-        auto task = CreateGpuTask("BeginFrame");
-        DeclareGpuTextureUsage(task, pBackBufferResource,
+        // Transition G-buffers to render target and depth buffer to depth-stencil write
+        // (back buffer stays in COMMON until the composition pass)
+        ID3D12Resource* pNormalsResource = m_pGBufferNormals->GetD3DResource();
+        ID3D12Resource* pDiffuseResource = m_pGBufferDiffuseColor->GetD3DResource();
+
+        auto task = CreateGpuTask("BeginFrame_GBufferPass");
+        DeclareGpuTextureUsage(task, pNormalsResource,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        DeclareGpuTextureUsage(task, pDiffuseResource,
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
             D3D12_BARRIER_ACCESS_RENDER_TARGET);
@@ -1201,17 +1342,23 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
             D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
         PrepareGpuTask(task);
         
-        // Create RTV and DSV
-        m_CurrentRTV = CreateRenderTargetView(pBackBuffer, 0, 0, 0);
+        // Create RTVs for G-buffers and DSV
+        D3D12_CPU_DESCRIPTOR_HANDLE gbufferRTVs[2];
+        gbufferRTVs[0] = CreateRenderTargetView(m_pGBufferNormals, 0, 0, 0);
+        gbufferRTVs[1] = CreateRenderTargetView(m_pGBufferDiffuseColor, 0, 0, 0);
         m_CurrentDSV = CreateDepthStencilView(m_pDepthBuffer);
         
-        // Clear render target and depth buffer
-        const float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-        m_pCommandList->ClearRenderTargetView(m_CurrentRTV, clearColor, 0, nullptr);
+        // Clear G-buffers (alpha=0 marks empty pixels for the composition pass)
+        const float clearGBuffer[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        m_pCommandList->ClearRenderTargetView(gbufferRTVs[0], clearGBuffer, 0, nullptr);
+        m_pCommandList->ClearRenderTargetView(gbufferRTVs[1], clearGBuffer, 0, nullptr);
         m_pCommandList->ClearDepthStencilView(m_CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr); // Reverse-Z: 0.0 = far plane
         
-        // Set render targets
-        m_pCommandList->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, &m_CurrentDSV);
+        // Set G-buffer render targets for the geometry pass
+        m_pCommandList->OMSetRenderTargets(2, gbufferRTVs, FALSE, &m_CurrentDSV);
+        
+        // Store back buffer RTV for later composition pass
+        m_CurrentRTV = CreateRenderTargetView(pBackBuffer, 0, 0, 0);
         
         // Set viewport and scissor
         D3D12_VIEWPORT viewport = {};
@@ -1230,7 +1377,7 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
         scissor.bottom = static_cast<LONG>(height);
         m_pCommandList->RSSetScissorRects(1, &scissor);
         
-        // Set PSO and root signature
+        // Set PSO and root signature for geometry pass
         m_pCommandList->SetPipelineState(m_pDefaultPSO);
         m_pCommandList->SetGraphicsRootSignature(m_pDefaultRootSig);
         
@@ -1588,15 +1735,86 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         
         m_pCommandList->SetGraphicsRootConstantBufferView(0,
             pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset);
-        
-        RetireUploadAllocation(cbAlloc);
 
-        // Drain the renderable queue — all transforms are final after scene Update
+        // Drain the renderable queue — geometry pass renders to G-buffers
         for (auto *pElement : m_RenderableQueue)
         {
             Gem::ThrowGemError(pElement->DispatchForRender(this));
         }
         m_RenderableQueue.clear();
+
+        //==========================================================================================
+        // Composition pass: read G-buffers, perform deferred lighting, write to back buffer
+        //==========================================================================================
+        {
+            ID3D12Resource* pNormalsResource = m_pGBufferNormals->GetD3DResource();
+            ID3D12Resource* pDiffuseResource = m_pGBufferDiffuseColor->GetD3DResource();
+            CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
+            ID3D12Resource* pBackBufferResource = pBackBuffer->GetD3DResource();
+
+            // Transition G-buffers to shader resource and back buffer to render target
+            auto compositeTask = CreateGpuTask("CompositePass");
+            DeclareGpuTextureUsage(compositeTask, pNormalsResource,
+                D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            DeclareGpuTextureUsage(compositeTask, pDiffuseResource,
+                D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            DeclareGpuTextureUsage(compositeTask, pBackBufferResource,
+                D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+                D3D12_BARRIER_SYNC_RENDER_TARGET,
+                D3D12_BARRIER_ACCESS_RENDER_TARGET);
+            PrepareGpuTask(compositeTask);
+
+            // Clear back buffer
+            const float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+            m_pCommandList->ClearRenderTargetView(m_CurrentRTV, clearColor, 0, nullptr);
+
+            // Set back buffer as render target (no depth)
+            m_pCommandList->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
+
+            // Switch to composite pipeline
+            m_pCommandList->SetGraphicsRootSignature(m_pCompositeRootSig);
+            m_pCommandList->SetPipelineState(m_pCompositePSO);
+
+            // Re-bind descriptor heaps (required after root signature change)
+            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
+            m_pCommandList->SetDescriptorHeaps(2, heaps);
+
+            // Slot 0: per-frame constants CBV (reuse the same upload for lighting data)
+            m_pCommandList->SetGraphicsRootConstantBufferView(0,
+                pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset);
+
+            // Slot 1: G-buffer SRV descriptor table (t0 = normals, t1 = diffuse)
+            ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+            UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+            // Allocate 2 contiguous SRV descriptors
+            if (m_NextSRVSlot + 2 > NumShaderResourceDescriptors)
+                m_NextSRVSlot = 0;
+            UINT baseSlot = m_NextSRVSlot;
+            m_NextSRVSlot += 2;
+
+            D3D12_CPU_DESCRIPTOR_HANDLE baseCpuHandle;
+            baseCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
+            D3D12_GPU_DESCRIPTOR_HANDLE baseGpuHandle;
+            baseGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
+
+            // t0: normals G-buffer SRV
+            pD3DDevice->CreateShaderResourceView(pNormalsResource, nullptr, baseCpuHandle);
+            // t1: diffuse color G-buffer SRV
+            D3D12_CPU_DESCRIPTOR_HANDLE diffuseSrvHandle = { baseCpuHandle.ptr + incSize };
+            pD3DDevice->CreateShaderResourceView(pDiffuseResource, nullptr, diffuseSrvHandle);
+
+            m_pCommandList->SetGraphicsRootDescriptorTable(1, baseGpuHandle);
+
+            // Draw fullscreen triangle
+            m_pCommandList->DrawInstanced(3, 1, 0, 0);
+        }
+
+        RetireUploadAllocation(cbAlloc);
     }
     catch (Gem::GemError &e)
     {

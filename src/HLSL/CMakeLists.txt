@@ -86,10 +86,14 @@ endfunction()
 set(SHADER_OUTPUTS "")
 
 # Vertex Shader
-add_hlsl_shader("VSPrimary.hlsl" "vs_5_0" "VSPrimary")
+add_hlsl_shader("VSPrimary.hlsl" "vs_6_0" "VSPrimary")
 
 # Pixel Shader  
-add_hlsl_shader("PSPrimary.hlsl" "ps_5_0" "PSPrimary")
+add_hlsl_shader("PSPrimary.hlsl" "ps_6_0" "PSPrimary")
+
+# Fullscreen composition shaders
+add_hlsl_shader("VSFullscreen.hlsl" "vs_6_0" "VSFullscreen")
+add_hlsl_shader("PSComposite.hlsl" "ps_6_0" "PSComposite")
 
 # Text Vertex/Pixel Shaders
 add_hlsl_shader("VSText.hlsl" "vs_6_0" "main")

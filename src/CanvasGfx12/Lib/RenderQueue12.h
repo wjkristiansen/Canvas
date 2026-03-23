@@ -495,6 +495,18 @@ public:
     UINT m_DepthBufferHeight = 0;
     UINT m_NextDSVSlot = 0;
 
+    // G-buffer render targets for deferred shading
+    Gem::TGemPtr<CSurface12> m_pGBufferNormals;
+    Gem::TGemPtr<CSurface12> m_pGBufferDiffuseColor;
+    Canvas::GfxFormat m_GBufferNormalsFormat = Canvas::GfxFormat::R10G10B10A2_UNorm;
+    Canvas::GfxFormat m_GBufferDiffuseFormat = Canvas::GfxFormat::R10G10B10A2_UNorm;
+    UINT m_GBufferWidth = 0;
+    UINT m_GBufferHeight = 0;
+
+    // Composition pass PSO and root signature
+    CComPtr<ID3D12PipelineState> m_pCompositePSO;
+    CComPtr<ID3D12RootSignature> m_pCompositeRootSig;
+
     // Frame rendering state
     CSwapChain12 *m_pCurrentSwapChain = nullptr;   // Set during BeginFrame..EndFrame
     Canvas::XCamera *m_pActiveCamera = nullptr;     // Set by scene via SetActiveCamera during Update
@@ -561,9 +573,15 @@ public:
     
     // Create or resize the depth buffer to match the given dimensions
     void EnsureDepthBuffer(UINT width, UINT height);
+
+    // Create or resize G-buffer render targets to match the given dimensions
+    void EnsureGBuffers(UINT width, UINT height);
     
-    // Create the default (uber) PSO (lazily, on first use)
-    void EnsureDefaultPSO(DXGI_FORMAT rtvFormat);
+    // Create the default (geometry pass) PSO (lazily, on first use)
+    void EnsureDefaultPSO();
+
+    // Create the composition PSO and root signature (lazily, on first use)
+    void EnsureCompositePSO(DXGI_FORMAT rtvFormat);
     
     // Create the text PSO and root signature (lazily, on first use)
     void EnsureTextPSO(DXGI_FORMAT rtvFormat);

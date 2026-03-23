@@ -1,20 +1,16 @@
 #include "Common.hlsli"
 
-float4 PSPrimary(PS_INPUT Input) : SV_Target0
+GBufferOutput PSPrimary(PS_INPUT Input)
 {
+    GBufferOutput output;
+
+    // Store world-space normal (normalized, mapped to [0,1] for unorm storage)
     float3 N = normalize(Input.Normal);
+    output.Normals = float4(N * 0.5 + 0.5, 1.0);
 
-    // Lambertian diffuse from directional (sun) light
-    float NdotL = saturate(dot(N, SunDirection));
-    float3 diffuse = SunColor * NdotL;
-
-    // Simple ambient term
-    float3 ambient = AmbientLight;
-
-    // Base albedo (white for now)
+    // Store diffuse albedo
     float3 albedo = float3(0.8, 0.8, 0.8);
+    output.DiffuseColor = float4(albedo, 1.0);
 
-    float3 color = albedo * (ambient + diffuse);
-
-    return float4(color, 1.0);
+    return output;
 }
