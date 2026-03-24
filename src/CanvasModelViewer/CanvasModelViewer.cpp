@@ -13,6 +13,8 @@
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+#include <algorithm>
+#include <cmath>
 
 //------------------------------------------------------------------------------------------------
 // D3D12 Agility SDK version exports - required to activate newer D3D12 APIs
@@ -140,6 +142,12 @@ class CApp
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
     float m_fps = 0.0f;
 
+    // Camera controller state
+    float m_CameraYaw = 0.0f;    // Radians, around world Z (up)
+    float m_CameraPitch = 0.0f;  // Radians, around camera right
+    bool m_MouseCaptured = false;
+    POINT m_LastCursorPos = {};
+
 public:
     CApp(HINSTANCE hInstance, PCSTR szTitle, Gem::TGemPtr<Canvas::XLogger> pLogger, int exitFrameCount = -1) :
         m_pLogger(pLogger),
@@ -239,6 +247,10 @@ public:
             // Convert rotation matrix to quaternion
             Canvas::Math::FloatQuaternion cameraRotation = Canvas::Math::QuaternionFromRotationMatrix(rotationMatrix);
             pCameraNode->SetLocalRotation(cameraRotation);
+
+            // Initialize camera yaw/pitch from the look direction
+            m_CameraYaw = atan2f(basisForward[1], basisForward[0]);
+            m_CameraPitch = asinf(std::clamp(basisForward[2], -1.0f, 1.0f));
             
             pScene->GetRootSceneGraphNode()->AddChild(pCameraNode);
 
@@ -466,6 +478,28 @@ public:
         time_point fpsTime = clock::now();
         int frameCount = 0;  // Track frames for auto-exit
 
+        // Camera control constants
+        constexpr float kMoveSpeed = 3.0f;          // units per second
+        constexpr float kMouseSensitivity = 0.003f;  // radians per pixel (~360° over ~2094 px ≈ 8 inches at 96 DPI)
+        constexpr float kPitchLimit = static_cast<float>(Canvas::Math::Pi / 2.0) - 0.01f;
+
+        // Capture cursor on startup
+        {
+            RECT rc;
+            GetClientRect(m_pWindow->m_hWnd, &rc);
+            POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
+            ClientToScreen(m_pWindow->m_hWnd, &center);
+            SetCursorPos(center.x, center.y);
+            m_LastCursorPos = center;
+
+            // Clip cursor to window and hide it
+            GetClientRect(m_pWindow->m_hWnd, &rc);
+            MapWindowPoints(m_pWindow->m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
+            ClipCursor(&rc);
+            while (ShowCursor(FALSE) >= 0) {} // hide until count < 0
+            m_MouseCaptured = true;
+        }
+
         for (; running;)
         {
             time_point currTime = clock::now();
@@ -485,6 +519,93 @@ public:
             }
             ++fpsCounter;
             ++frameCount;
+
+            //==================================================================
+            // Camera controller: mouse look + WASD movement
+            //==================================================================
+            
+            // Track focus changes — release/acquire cursor as needed
+            bool hasFocus = (GetForegroundWindow() == m_pWindow->m_hWnd);
+            if (hasFocus && !m_MouseCaptured)
+            {
+                // Re-acquire cursor
+                RECT rc;
+                GetClientRect(m_pWindow->m_hWnd, &rc);
+                POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
+                ClientToScreen(m_pWindow->m_hWnd, &center);
+                SetCursorPos(center.x, center.y);
+
+                MapWindowPoints(m_pWindow->m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
+                ClipCursor(&rc);
+                while (ShowCursor(FALSE) >= 0) {}
+                m_MouseCaptured = true;
+            }
+            else if (!hasFocus && m_MouseCaptured)
+            {
+                // Release cursor
+                ClipCursor(nullptr);
+                while (ShowCursor(TRUE) < 0) {}
+                m_MouseCaptured = false;
+            }
+
+            if (m_MouseCaptured)
+            {
+                // Mouse delta → yaw/pitch
+                RECT rc;
+                GetClientRect(m_pWindow->m_hWnd, &rc);
+                POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
+                ClientToScreen(m_pWindow->m_hWnd, &center);
+
+                POINT cursorPos;
+                GetCursorPos(&cursorPos);
+                float dx = static_cast<float>(cursorPos.x - center.x);
+                float dy = static_cast<float>(cursorPos.y - center.y);
+                SetCursorPos(center.x, center.y);
+
+                m_CameraYaw   -= dx * kMouseSensitivity;
+                m_CameraPitch -= dy * kMouseSensitivity;
+                m_CameraPitch = std::clamp(m_CameraPitch, -kPitchLimit, kPitchLimit);
+
+                // Build camera orientation matrix from yaw/pitch (Z-up world)
+                // Canvas row-vector convention: row 0 = forward, row 1 = right, row 2 = up
+                float cy = cosf(m_CameraYaw),  sy = sinf(m_CameraYaw);
+                float cp = cosf(m_CameraPitch), sp = sinf(m_CameraPitch);
+
+                Canvas::Math::FloatVector4 forward(cy * cp, sy * cp, sp, 0.0f);
+                Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
+
+                Canvas::Math::FloatMatrix4x4 rotMat = Canvas::Math::IdentityMatrix<float, 4, 4>();
+                rotMat[0] = forward;
+                Canvas::Math::ComposePointToBasisVectors(worldUp, forward, rotMat[1], rotMat[2]);
+                Canvas::Math::FloatQuaternion cameraQuat = Canvas::Math::QuaternionFromRotationMatrix(rotMat);
+
+                // Right vector for WASD strafing (from the rotation matrix)
+                Canvas::Math::FloatVector4 right = rotMat[1];
+
+                // WASD movement in camera-local space
+                Canvas::Math::FloatVector4 moveDir(0.0f, 0.0f, 0.0f, 0.0f);
+                if (GetAsyncKeyState('W') & 0x8000) moveDir = moveDir + forward;
+                if (GetAsyncKeyState('S') & 0x8000) moveDir = moveDir - forward;
+                if (GetAsyncKeyState('D') & 0x8000) moveDir = moveDir - right;
+                if (GetAsyncKeyState('A') & 0x8000) moveDir = moveDir + right;
+                if (GetAsyncKeyState(VK_SPACE) & 0x8000)  moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
+                if (GetAsyncKeyState(VK_SHIFT) & 0x8000)  moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
+                if (GetAsyncKeyState(VK_CONTROL) & 0x8000) moveDir = moveDir - Canvas::Math::FloatVector4(0, 0, 1, 0);
+                if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) { running = false; break; }
+
+                float moveMag = sqrtf(Canvas::Math::DotProduct(moveDir, moveDir));
+                if (moveMag > 0.001f)
+                    moveDir = moveDir * (1.0f / moveMag);
+
+                auto *pCamNode = m_pCamera->GetAttachedNode();
+                if (pCamNode)
+                {
+                    auto pos = pCamNode->GetLocalTranslation();
+                    pos = pos + moveDir * (kMoveSpeed * dtime);
+                    pCamNode->SetLocalTranslation(pos);
+                    pCamNode->SetLocalRotation(cameraQuat);
+                }
+            }
 
             // Update scene, submit renderables (including lights), render
             m_pGfxRenderQueue->BeginFrame(m_pGfxSwapChain);
@@ -565,6 +686,12 @@ public:
             }
             // Optionally: log or use elapsedTime and deltaTime here
         }
+
+        // Release cursor on exit
+        ClipCursor(nullptr);
+        while (ShowCursor(TRUE) < 0) {}
+        m_MouseCaptured = false;
+
         return 0;
     }
 };
