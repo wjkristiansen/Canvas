@@ -14,7 +14,7 @@
 //   graph.SetInitialLayout(pShadowMap, committedLayout);
 //
 //   // Shadow pass
-//   GpuTaskHandle shadowPass = graph.CreateTask("ShadowMap");
+//   auto& shadowPass = graph.CreateTask("ShadowMap");
 //   graph.DeclareTextureUsage(shadowPass, pShadowMap,
 //       D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
 //       D3D12_BARRIER_SYNC_DEPTH_STENCIL,
@@ -24,7 +24,7 @@
 //   RecordShadowMapCommands(pCL);     // caller records directly
 //
 //   // Main pass — reads shadow map written above
-//   GpuTaskHandle mainPass = graph.CreateTask("MainPass");
+//   auto& mainPass = graph.CreateTask("MainPass");
 //   graph.DeclareTextureUsage(mainPass, pShadowMap,
 //       D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
 //       D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -53,11 +53,6 @@ struct ID3D12Resource;
 
 namespace Canvas
 {
-
-//------------------------------------------------------------------------------------------------
-// Handle to a GPU task within a task graph. Lightweight value type.
-using GpuTaskHandle = uint32_t;
-constexpr GpuTaskHandle InvalidGpuTaskHandle = UINT32_MAX;
 
 //------------------------------------------------------------------------------------------------
 // Texture resource usage declared by a GPU task
@@ -135,7 +130,7 @@ struct GpuBufferUsage
 // emits any required barriers.
 struct CGpuTask
 {
-    const char* Name = nullptr;
+    std::string Name;
     std::vector<GpuTextureUsage> TextureUsages;
     std::vector<GpuBufferUsage> BufferUsages;
 
@@ -175,7 +170,6 @@ struct ResolvedBufferBarrier
 // Barriers to insert before a specific task executes
 struct TaskBarriers
 {
-    GpuTaskHandle TaskHandle;
     std::vector<ResolvedTextureBarrier> TextureBarriers;
     std::vector<ResolvedBufferBarrier> BufferBarriers;
 };
@@ -243,12 +237,12 @@ public:
     // Task Creation
     //---------------------------------------------------------------------------------------------
 
-    // Create a new GPU task and return its handle
-    GpuTaskHandle CreateTask(const char* name = nullptr);
+    // Create a new GPU task. The returned reference is valid until Reset().
+    CGpuTask& CreateTask(const char* name = nullptr);
 
     // Declare texture usage for a task
     void DeclareTextureUsage(
-        GpuTaskHandle task,
+        CGpuTask& task,
         ID3D12Resource* pResource,
         D3D12_BARRIER_LAYOUT requiredLayout,
         D3D12_BARRIER_SYNC sync,
@@ -258,7 +252,7 @@ public:
 
     // Declare buffer usage for a task
     void DeclareBufferUsage(
-        GpuTaskHandle task,
+        CGpuTask& task,
         ID3D12Resource* pResource,
         D3D12_BARRIER_SYNC sync,
         D3D12_BARRIER_ACCESS access,
@@ -266,8 +260,7 @@ public:
         UINT64 size = UINT64_MAX);
 
     // Add an explicit dependency (task depends on dependency)
-    // Use this for ordering constraints not captured by resource usage
-    void AddExplicitDependency(GpuTaskHandle task, GpuTaskHandle dependency);
+    void AddExplicitDependency(CGpuTask& task, CGpuTask& dependency);
 
     //---------------------------------------------------------------------------------------------
     // Barrier Resolution
@@ -280,7 +273,7 @@ public:
     // Prepare a task for execution: computes its sync/access scope, and resolves barriers
     // against all prior tasks. Returns barriers to emit before recording this task's commands.
     // The returned reference is valid until the next PrepareTask call or Reset.
-    const TaskBarriers& PrepareTask(GpuTaskHandle task);
+    const TaskBarriers& PrepareTask(CGpuTask& task);
 
     //---------------------------------------------------------------------------------------------
     // Queries
@@ -298,12 +291,7 @@ public:
     // Use this at ECL time to compute fixup barriers.
     const std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState>& GetInitialLayouts() const;
 
-    // Get a task by handle (read-only)
-    const CGpuTask& GetTask(GpuTaskHandle task) const;
-
     // Query the current tracked layout for a resource (reflects all PrepareTask calls so far).
-    // Returns the layout the resource will be in after the last task that touched it.
-    // If the resource is not tracked, returns std::nullopt.
     std::optional<D3D12_BARRIER_LAYOUT> GetCurrentLayout(ID3D12Resource* pResource, UINT subresource = 0xFFFFFFFF) const;
 
     // Get number of tasks
@@ -317,8 +305,9 @@ public:
     void Reset();
 
 private:
-    // All tasks in creation order
+    // Task pool — grow-only, reused across frames via m_TaskCount
     std::vector<CGpuTask> m_Tasks;
+    uint32_t m_TaskCount = 0;
 
     // Initial resource layouts (from device committed state)
     std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState> m_InitialLayouts;

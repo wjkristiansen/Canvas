@@ -89,16 +89,16 @@ namespace CanvasUnitTest
         TEST_METHOD(SingleTaskCreated)
         {
             CGpuTaskGraph graph;
-            GpuTaskHandle task = graph.CreateTask("TestTask");
-            Assert::AreNotEqual(InvalidGpuTaskHandle, task);
+            auto& task = graph.CreateTask("TestTask");
+            Assert::IsNotNull(&task);
             Assert::AreEqual(1u, graph.GetTaskCount());
         }
 
         TEST_METHOD(TaskNamePreserved)
         {
             CGpuTaskGraph graph;
-            GpuTaskHandle task = graph.CreateTask("MyPass");
-            Assert::AreEqual("MyPass", graph.GetTask(task).Name);
+            auto& task = graph.CreateTask("MyPass");
+            Assert::AreEqual(std::string("MyPass"), task.Name);
         }
 
         //--------------------------------------------------------------------
@@ -116,7 +116,7 @@ namespace CanvasUnitTest
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_COMMON);
 
             // Task 0 writes to texture
-            GpuTaskHandle writer = graph.CreateTask("Writer");
+            auto& writer = graph.CreateTask("Writer");
             graph.DeclareTextureUsage(writer, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -124,7 +124,7 @@ namespace CanvasUnitTest
             auto writerBarriers = graph.PrepareTask(writer);
 
             // Task 1 reads from texture — should get RAW barrier
-            GpuTaskHandle reader = graph.CreateTask("Reader");
+            auto& reader = graph.CreateTask("Reader");
             graph.DeclareTextureUsage(reader, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -150,7 +150,7 @@ namespace CanvasUnitTest
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE);
 
             // Task 0 reads
-            GpuTaskHandle reader = graph.CreateTask("Reader");
+            auto& reader = graph.CreateTask("Reader");
             graph.DeclareTextureUsage(reader, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -158,7 +158,7 @@ namespace CanvasUnitTest
             graph.PrepareTask(reader);
 
             // Task 1 writes — WAR hazard requires barrier
-            GpuTaskHandle writer = graph.CreateTask("Writer");
+            auto& writer = graph.CreateTask("Writer");
             graph.DeclareTextureUsage(writer, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -181,14 +181,14 @@ namespace CanvasUnitTest
             CGpuTaskGraph graph;
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_COMMON);
 
-            GpuTaskHandle writer1 = graph.CreateTask("Writer1");
+            auto& writer1 = graph.CreateTask("Writer1");
             graph.DeclareTextureUsage(writer1, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
                 D3D12_BARRIER_ACCESS_RENDER_TARGET);
             graph.PrepareTask(writer1);
 
-            GpuTaskHandle writer2 = graph.CreateTask("Writer2");
+            auto& writer2 = graph.CreateTask("Writer2");
             graph.DeclareTextureUsage(writer2, pTexture,
                 D3D12_BARRIER_LAYOUT_COPY_DEST,
                 D3D12_BARRIER_SYNC_COPY,
@@ -217,7 +217,7 @@ namespace CanvasUnitTest
 
             // Two tasks writing to different textures at same layout — no inter-task barrier needed
             // (each gets its own layout barrier from COMMON if layout differs, or write barrier)
-            GpuTaskHandle taskA = graph.CreateTask("TaskA");
+            auto& taskA = graph.CreateTask("TaskA");
             graph.DeclareTextureUsage(taskA, pTexA,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -226,7 +226,7 @@ namespace CanvasUnitTest
             // First write at same layout from ECL boundary — still gets a barrier because it's a write
             Assert::AreEqual(size_t(1), aBarriers.TextureBarriers.size());
 
-            GpuTaskHandle taskB = graph.CreateTask("TaskB");
+            auto& taskB = graph.CreateTask("TaskB");
             graph.DeclareTextureUsage(taskB, pTexB,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -247,7 +247,7 @@ namespace CanvasUnitTest
             CGpuTaskGraph graph;
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_COMMON);
 
-            GpuTaskHandle writer = graph.CreateTask("Writer");
+            auto& writer = graph.CreateTask("Writer");
             graph.DeclareTextureUsage(writer, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -255,7 +255,7 @@ namespace CanvasUnitTest
             graph.PrepareTask(writer);
 
             // First reader gets barrier (layout RT -> SR)
-            GpuTaskHandle reader1 = graph.CreateTask("Reader1");
+            auto& reader1 = graph.CreateTask("Reader1");
             graph.DeclareTextureUsage(reader1, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -264,7 +264,7 @@ namespace CanvasUnitTest
             Assert::AreEqual(size_t(1), r1Barriers.TextureBarriers.size());
 
             // Second reader at same layout — no barrier needed
-            GpuTaskHandle reader2 = graph.CreateTask("Reader2");
+            auto& reader2 = graph.CreateTask("Reader2");
             graph.DeclareTextureUsage(reader2, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -294,7 +294,7 @@ namespace CanvasUnitTest
             graph.SetInitialLayout(pTexC, D3D12_BARRIER_LAYOUT_COMMON);
 
             // T0 writes A amd B
-            GpuTaskHandle t0 = graph.CreateTask("T0");
+            auto& t0 = graph.CreateTask("T0");
             graph.DeclareTextureUsage(t0, pTexA,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET, D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET);
             graph.DeclareTextureUsage(t0, pTexB,
@@ -302,7 +302,7 @@ namespace CanvasUnitTest
             graph.PrepareTask(t0);
 
             // T1 reads A, writes C
-            GpuTaskHandle t1 = graph.CreateTask("T1");
+            auto& t1 = graph.CreateTask("T1");
             graph.DeclareTextureUsage(t1, pTexA,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, D3D12_BARRIER_SYNC_PIXEL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             graph.DeclareTextureUsage(t1, pTexC,
@@ -312,7 +312,7 @@ namespace CanvasUnitTest
             Assert::AreEqual(size_t(2), t1Barriers.TextureBarriers.size());
 
             // T2 reads B
-            GpuTaskHandle t2 = graph.CreateTask("T2");
+            auto& t2 = graph.CreateTask("T2");
             graph.DeclareTextureUsage(t2, pTexB,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, D3D12_BARRIER_SYNC_PIXEL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             auto t2Barriers = graph.PrepareTask(t2);
@@ -320,7 +320,7 @@ namespace CanvasUnitTest
             Assert::AreEqual(size_t(1), t2Barriers.TextureBarriers.size());
 
             // T3 reads C and B (B is already SR from T2, C needs RT->SR from T1)
-            GpuTaskHandle t3 = graph.CreateTask("T3");
+            auto& t3 = graph.CreateTask("T3");
             graph.DeclareTextureUsage(t3, pTexC,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE, D3D12_BARRIER_SYNC_PIXEL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             graph.DeclareTextureUsage(t3, pTexB,
@@ -353,7 +353,7 @@ namespace CanvasUnitTest
             CGpuTaskGraph graph;
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_COMMON);
 
-            GpuTaskHandle writer = graph.CreateTask("Writer");
+            auto& writer = graph.CreateTask("Writer");
             graph.DeclareTextureUsage(writer, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -365,7 +365,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(writerBarriers.TextureBarriers[0].LayoutBefore == D3D12_BARRIER_LAYOUT_COMMON);
             Assert::IsTrue(writerBarriers.TextureBarriers[0].LayoutAfter == D3D12_BARRIER_LAYOUT_RENDER_TARGET);
 
-            GpuTaskHandle reader = graph.CreateTask("Reader");
+            auto& reader = graph.CreateTask("Reader");
             graph.DeclareTextureUsage(reader, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -389,7 +389,7 @@ namespace CanvasUnitTest
             CGpuTaskGraph graph;
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_SHADER_RESOURCE);
 
-            GpuTaskHandle task = graph.CreateTask("SameLayout");
+            auto& task = graph.CreateTask("SameLayout");
             graph.DeclareTextureUsage(task, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -414,14 +414,14 @@ namespace CanvasUnitTest
             CGpuTaskGraph graph;
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_COMMON);
 
-            GpuTaskHandle writer = graph.CreateTask("Writer");
+            auto& writer = graph.CreateTask("Writer");
             graph.DeclareTextureUsage(writer, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
                 D3D12_BARRIER_ACCESS_RENDER_TARGET);
             graph.PrepareTask(writer);
 
-            GpuTaskHandle reader = graph.CreateTask("Reader");
+            auto& reader = graph.CreateTask("Reader");
             graph.DeclareTextureUsage(reader, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -441,8 +441,8 @@ namespace CanvasUnitTest
         TEST_METHOD(ExplicitDependencyAccepted)
         {
             CGpuTaskGraph graph;
-            GpuTaskHandle taskA = graph.CreateTask("TaskA");
-            GpuTaskHandle taskB = graph.CreateTask("TaskB");
+            auto& taskA = graph.CreateTask("TaskA");
+            auto& taskB = graph.CreateTask("TaskB");
             // Should not throw
             graph.AddExplicitDependency(taskB, taskA);
         }
@@ -460,13 +460,13 @@ namespace CanvasUnitTest
 
             CGpuTaskGraph graph;
 
-            GpuTaskHandle writer = graph.CreateTask("BufferWriter");
+            auto& writer = graph.CreateTask("BufferWriter");
             graph.DeclareBufferUsage(writer, pBuffer,
                 D3D12_BARRIER_SYNC_COPY,
                 D3D12_BARRIER_ACCESS_COPY_DEST);
             graph.PrepareTask(writer);
 
-            GpuTaskHandle reader = graph.CreateTask("BufferReader");
+            auto& reader = graph.CreateTask("BufferReader");
             graph.DeclareBufferUsage(reader, pBuffer,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -485,8 +485,8 @@ namespace CanvasUnitTest
         TEST_METHOD(ResetClearsAllState)
         {
             CGpuTaskGraph graph;
-            GpuTaskHandle t1 = graph.CreateTask("Task1");
-            GpuTaskHandle t2 = graph.CreateTask("Task2");
+            auto& t1 = graph.CreateTask("Task1");
+            auto& t2 = graph.CreateTask("Task2");
             graph.PrepareTask(t1);
             graph.PrepareTask(t2);
             Assert::AreEqual(2u, graph.GetTaskCount());
@@ -517,7 +517,7 @@ namespace CanvasUnitTest
             graph.SetInitialLayout(pBackBuffer, D3D12_BARRIER_LAYOUT_COMMON);
 
             // Shadow pass: writes shadow map
-            GpuTaskHandle shadowPass = graph.CreateTask("ShadowPass");
+            auto& shadowPass = graph.CreateTask("ShadowPass");
             graph.DeclareTextureUsage(shadowPass, pShadowMap,
                 D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
                 D3D12_BARRIER_SYNC_DEPTH_STENCIL,
@@ -525,7 +525,7 @@ namespace CanvasUnitTest
             graph.PrepareTask(shadowPass);
 
             // GBuffer pass: writes GBuffer
-            GpuTaskHandle gbufferPass = graph.CreateTask("GBufferPass");
+            auto& gbufferPass = graph.CreateTask("GBufferPass");
             graph.DeclareTextureUsage(gbufferPass, pGBuffer,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -533,7 +533,7 @@ namespace CanvasUnitTest
             graph.PrepareTask(gbufferPass);
 
             // Lighting pass: reads shadow + GBuffer, writes back buffer
-            GpuTaskHandle lightingPass = graph.CreateTask("LightingPass");
+            auto& lightingPass = graph.CreateTask("LightingPass");
             graph.DeclareTextureUsage(lightingPass, pShadowMap,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -551,7 +551,7 @@ namespace CanvasUnitTest
             Assert::AreEqual(size_t(3), lightingBarriers.TextureBarriers.size());
 
             // Post-process: writes back buffer as UAV
-            GpuTaskHandle postProcess = graph.CreateTask("PostProcess");
+            auto& postProcess = graph.CreateTask("PostProcess");
             graph.DeclareTextureUsage(postProcess, pBackBuffer,
                 D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -584,7 +584,7 @@ namespace CanvasUnitTest
             CGpuTaskGraph graph;
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_COMMON);
 
-            GpuTaskHandle task = graph.CreateTask("MultiResourceTask");
+            auto& task = graph.CreateTask("MultiResourceTask");
             graph.DeclareTextureUsage(task, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -595,13 +595,12 @@ namespace CanvasUnitTest
             graph.PrepareTask(task);
 
             // SyncScope = RENDER_TARGET | VERTEX_SHADING
-            const auto& t = graph.GetTask(task);
-            Assert::IsTrue((t.SyncScope & D3D12_BARRIER_SYNC_RENDER_TARGET) != 0);
-            Assert::IsTrue((t.SyncScope & D3D12_BARRIER_SYNC_VERTEX_SHADING) != 0);
+            Assert::IsTrue((task.SyncScope & D3D12_BARRIER_SYNC_RENDER_TARGET) != 0);
+            Assert::IsTrue((task.SyncScope & D3D12_BARRIER_SYNC_VERTEX_SHADING) != 0);
 
             // AccessScope = RENDER_TARGET | VERTEX_BUFFER
-            Assert::IsTrue((t.AccessScope & D3D12_BARRIER_ACCESS_RENDER_TARGET) != 0);
-            Assert::IsTrue((t.AccessScope & D3D12_BARRIER_ACCESS_VERTEX_BUFFER) != 0);
+            Assert::IsTrue((task.AccessScope & D3D12_BARRIER_ACCESS_RENDER_TARGET) != 0);
+            Assert::IsTrue((task.AccessScope & D3D12_BARRIER_ACCESS_VERTEX_BUFFER) != 0);
         }
 
         //--------------------------------------------------------------------
@@ -619,7 +618,7 @@ namespace CanvasUnitTest
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_COMMON);
 
             // Writer transitions to RT
-            GpuTaskHandle writer = graph.CreateTask("Writer");
+            auto& writer = graph.CreateTask("Writer");
             graph.DeclareTextureUsage(writer, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -627,7 +626,7 @@ namespace CanvasUnitTest
             graph.PrepareTask(writer);
 
             // First reader: RT -> SR (gets barrier)
-            GpuTaskHandle readerPS = graph.CreateTask("ReaderPS");
+            auto& readerPS = graph.CreateTask("ReaderPS");
             graph.DeclareTextureUsage(readerPS, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -640,7 +639,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(psBarriers.TextureBarriers[0].AccessBefore == D3D12_BARRIER_ACCESS_RENDER_TARGET);
 
             // Second reader: same layout, both reads — no barrier
-            GpuTaskHandle readerVS = graph.CreateTask("ReaderVS");
+            auto& readerVS = graph.CreateTask("ReaderVS");
             graph.DeclareTextureUsage(readerVS, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_VERTEX_SHADING,
@@ -663,21 +662,21 @@ namespace CanvasUnitTest
             CGpuTaskGraph graph;
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_COMMON);
 
-            GpuTaskHandle writer = graph.CreateTask("Writer");
+            auto& writer = graph.CreateTask("Writer");
             graph.DeclareTextureUsage(writer, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
                 D3D12_BARRIER_ACCESS_RENDER_TARGET);
             graph.PrepareTask(writer);
 
-            GpuTaskHandle readerPS = graph.CreateTask("ReaderPS");
+            auto& readerPS = graph.CreateTask("ReaderPS");
             graph.DeclareTextureUsage(readerPS, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             graph.PrepareTask(readerPS);
 
-            GpuTaskHandle readerVS = graph.CreateTask("ReaderVS");
+            auto& readerVS = graph.CreateTask("ReaderVS");
             graph.DeclareTextureUsage(readerVS, pTexture,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_VERTEX_SHADING,
@@ -685,7 +684,7 @@ namespace CanvasUnitTest
             graph.PrepareTask(readerVS);
 
             // Second writer must wait for both readers
-            GpuTaskHandle writer2 = graph.CreateTask("Writer2");
+            auto& writer2 = graph.CreateTask("Writer2");
             graph.DeclareTextureUsage(writer2, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -718,7 +717,7 @@ namespace CanvasUnitTest
             CGpuTaskGraph graph;
             graph.SetInitialLayout(pTexture, D3D12_BARRIER_LAYOUT_COMMON);
 
-            GpuTaskHandle task = graph.CreateTask("FirstWrite");
+            auto& task = graph.CreateTask("FirstWrite");
             graph.DeclareTextureUsage(task, pTexture,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,

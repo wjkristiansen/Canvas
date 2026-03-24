@@ -19,16 +19,28 @@ CGpuTaskGraph::~CGpuTaskGraph() = default;
 // Task Creation
 //------------------------------------------------------------------------------------------------
 
-GpuTaskHandle CGpuTaskGraph::CreateTask(const char* name)
+CGpuTask& CGpuTaskGraph::CreateTask(const char* name)
 {
-    GpuTaskHandle handle = static_cast<GpuTaskHandle>(m_Tasks.size());
+    if (m_TaskCount < m_Tasks.size())
+    {
+        // Reuse existing slot — clear vectors but retain capacity
+        CGpuTask& task = m_Tasks[m_TaskCount++];
+        task.Name = name ? name : "";
+        task.TextureUsages.clear();
+        task.BufferUsages.clear();
+        task.SyncScope = D3D12_BARRIER_SYNC_NONE;
+        task.AccessScope = D3D12_BARRIER_ACCESS_NO_ACCESS;
+        return task;
+    }
+    // Grow pool
     CGpuTask& task = m_Tasks.emplace_back();
-    task.Name = name;
-    return handle;
+    m_TaskCount++;
+    task.Name = name ? name : "";
+    return task;
 }
 
 void CGpuTaskGraph::DeclareTextureUsage(
-    GpuTaskHandle task,
+    CGpuTask& task,
     ID3D12Resource* pResource,
     D3D12_BARRIER_LAYOUT requiredLayout,
     D3D12_BARRIER_SYNC sync,
@@ -36,7 +48,6 @@ void CGpuTaskGraph::DeclareTextureUsage(
     UINT subresources,
     D3D12_TEXTURE_BARRIER_FLAGS flags)
 {
-    assert(task < m_Tasks.size());
     assert(pResource != nullptr);
 
     GpuTextureUsage usage;
@@ -47,18 +58,17 @@ void CGpuTaskGraph::DeclareTextureUsage(
     usage.Subresources = subresources;
     usage.Flags = flags;
 
-    m_Tasks[task].TextureUsages.push_back(usage);
+    task.TextureUsages.push_back(usage);
 }
 
 void CGpuTaskGraph::DeclareBufferUsage(
-    GpuTaskHandle task,
+    CGpuTask& task,
     ID3D12Resource* pResource,
     D3D12_BARRIER_SYNC sync,
     D3D12_BARRIER_ACCESS access,
     UINT64 offset,
     UINT64 size)
 {
-    assert(task < m_Tasks.size());
     assert(pResource != nullptr);
 
     GpuBufferUsage usage;
@@ -68,14 +78,11 @@ void CGpuTaskGraph::DeclareBufferUsage(
     usage.Offset = offset;
     usage.Size = size;
 
-    m_Tasks[task].BufferUsages.push_back(usage);
+    task.BufferUsages.push_back(usage);
 }
 
-void CGpuTaskGraph::AddExplicitDependency(GpuTaskHandle task, GpuTaskHandle dependency)
+void CGpuTaskGraph::AddExplicitDependency(CGpuTask& task, CGpuTask& dependency)
 {
-    assert(task < m_Tasks.size());
-    assert(dependency < m_Tasks.size());
-    assert(task != dependency);
     (void)task;
     (void)dependency;
     // Reserved for future use (e.g., ordering constraints not captured by resource usage).
@@ -110,16 +117,11 @@ void CGpuTaskGraph::SetInitialLayout(ID3D12Resource* pResource, D3D12_BARRIER_LA
 // PendingAccess is still NO_ACCESS.
 //------------------------------------------------------------------------------------------------
 
-const TaskBarriers& CGpuTaskGraph::PrepareTask(GpuTaskHandle task)
+const TaskBarriers& CGpuTaskGraph::PrepareTask(CGpuTask& taskData)
 {
-    assert(task < m_Tasks.size());
-
     EnsureResourceStateInitialized();
 
-    auto& taskData = m_Tasks[task];
-
     // Reuse scratch buffer — clear but retain capacity
-    m_ScratchBarriers.TaskHandle = task;
     m_ScratchBarriers.TextureBarriers.clear();
     m_ScratchBarriers.BufferBarriers.clear();
 
@@ -366,15 +368,9 @@ const std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState>& CGpuTaskGrap
     return m_InitialLayouts;
 }
 
-const CGpuTask& CGpuTaskGraph::GetTask(GpuTaskHandle task) const
-{
-    assert(task < m_Tasks.size());
-    return m_Tasks[task];
-}
-
 uint32_t CGpuTaskGraph::GetTaskCount() const
 {
-    return static_cast<uint32_t>(m_Tasks.size());
+    return m_TaskCount;
 }
 
 std::optional<D3D12_BARRIER_LAYOUT> CGpuTaskGraph::GetCurrentLayout(ID3D12Resource* pResource, UINT subresource) const
@@ -397,7 +393,8 @@ std::optional<D3D12_BARRIER_LAYOUT> CGpuTaskGraph::GetCurrentLayout(ID3D12Resour
 
 void CGpuTaskGraph::Reset()
 {
-    m_Tasks.clear();
+    // Pool: retain task vector capacity, just reset count
+    m_TaskCount = 0;
     m_InitialLayouts.clear();
     m_FinalLayouts.clear();
     m_ResourceState.clear();

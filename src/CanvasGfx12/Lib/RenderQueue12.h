@@ -616,15 +616,15 @@ public:
     //   // record commands directly into CL...
     //---------------------------------------------------------------------------------------------
     
-    // Begin a new GPU task graph for this frame. Populates initial layouts from device state.
+    // Begin a new GPU task graph for this frame.
     void BeginTaskGraph();
     
     // Create a GPU task within the current task graph
-    Canvas::GpuTaskHandle CreateGpuTask(const char* name = nullptr);
+    Canvas::CGpuTask& CreateGpuTask(const char* name = nullptr);
     
     // Declare texture usage for a GPU task
     void DeclareGpuTextureUsage(
-        Canvas::GpuTaskHandle task,
+        Canvas::CGpuTask& task,
         ID3D12Resource* pResource,
         D3D12_BARRIER_LAYOUT requiredLayout,
         D3D12_BARRIER_SYNC sync,
@@ -633,7 +633,7 @@ public:
     
     // Declare buffer usage for a GPU task
     void DeclareGpuBufferUsage(
-        Canvas::GpuTaskHandle task,
+        Canvas::CGpuTask& task,
         ID3D12Resource* pResource,
         D3D12_BARRIER_SYNC sync,
         D3D12_BARRIER_ACCESS access,
@@ -641,12 +641,10 @@ public:
         UINT64 size = UINT64_MAX);
     
     // Prepare a GPU task: resolves barriers and emits them into the command list.
-    // Call after all DeclareGpuTextureUsage/DeclareGpuBufferUsage for this task.
-    // After this returns, the caller can record commands directly into the command list.
-    void PrepareGpuTask(Canvas::GpuTaskHandle task);
+    void PrepareGpuTask(Canvas::CGpuTask& task);
     
     // Add an explicit dependency between GPU tasks
-    void AddGpuTaskDependency(Canvas::GpuTaskHandle task, Canvas::GpuTaskHandle dependency);
+    void AddGpuTaskDependency(Canvas::CGpuTask& task, Canvas::CGpuTask& dependency);
     
     // Get the current task graph (for advanced usage)
     Canvas::CGpuTaskGraph& GetTaskGraph() { return m_GpuTaskGraph; }

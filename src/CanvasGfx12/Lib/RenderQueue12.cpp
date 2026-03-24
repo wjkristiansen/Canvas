@@ -418,12 +418,12 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
             if (m_UICommandListOpen)
             {
                 // UI CL executes last — declare present transition via UI task graph
-                auto presentTask = m_UIGpuTaskGraph.CreateTask("PresentTransition");
+                auto& presentTask = m_UIGpuTaskGraph.CreateTask("PresentTransition");
                 m_UIGpuTaskGraph.DeclareTextureUsage(presentTask, pBackBufferResource,
                     D3D12_BARRIER_LAYOUT_COMMON,
                     D3D12_BARRIER_SYNC_ALL,
                     D3D12_BARRIER_ACCESS_COMMON);
-                Canvas::TaskBarriers barriers = m_UIGpuTaskGraph.PrepareTask(presentTask);
+                const Canvas::TaskBarriers& barriers = m_UIGpuTaskGraph.PrepareTask(presentTask);
                 EmitBarriersToCommandList(m_pUICommandList7, barriers);
             }
             else
@@ -653,14 +653,14 @@ void CRenderQueue12::BeginTaskGraph()
 }
 
 //------------------------------------------------------------------------------------------------
-Canvas::GpuTaskHandle CRenderQueue12::CreateGpuTask(const char* name)
+Canvas::CGpuTask& CRenderQueue12::CreateGpuTask(const char* name)
 {
     return m_GpuTaskGraph.CreateTask(name);
 }
 
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::DeclareGpuTextureUsage(
-    Canvas::GpuTaskHandle task,
+    Canvas::CGpuTask& task,
     ID3D12Resource* pResource,
     D3D12_BARRIER_LAYOUT requiredLayout,
     D3D12_BARRIER_SYNC sync,
@@ -672,7 +672,7 @@ void CRenderQueue12::DeclareGpuTextureUsage(
 
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::DeclareGpuBufferUsage(
-    Canvas::GpuTaskHandle task,
+    Canvas::CGpuTask& task,
     ID3D12Resource* pResource,
     D3D12_BARRIER_SYNC sync,
     D3D12_BARRIER_ACCESS access,
@@ -683,9 +683,9 @@ void CRenderQueue12::DeclareGpuBufferUsage(
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::PrepareGpuTask(Canvas::GpuTaskHandle task)
+void CRenderQueue12::PrepareGpuTask(Canvas::CGpuTask& task)
 {
-    Canvas::TaskBarriers barriers = m_GpuTaskGraph.PrepareTask(task);
+    const Canvas::TaskBarriers& barriers = m_GpuTaskGraph.PrepareTask(task);
     EmitBarriers(barriers);
 }
 
@@ -1252,12 +1252,12 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
         if (context == Canvas::GfxRenderContext::UI && m_UICommandListOpen)
         {
             // UI context: declare copy via UI task graph, record into UI CL
-            auto copyTask = m_UIGpuTaskGraph.CreateTask("UploadTextureRegion_UI");
+            auto& copyTask = m_UIGpuTaskGraph.CreateTask("UploadTextureRegion_UI");
             m_UIGpuTaskGraph.DeclareTextureUsage(copyTask, pDstResource,
                 D3D12_BARRIER_LAYOUT_COMMON,
                 D3D12_BARRIER_SYNC_COPY,
                 D3D12_BARRIER_ACCESS_COPY_DEST);
-            Canvas::TaskBarriers copyBarriers = m_UIGpuTaskGraph.PrepareTask(copyTask);
+            const Canvas::TaskBarriers& copyBarriers = m_UIGpuTaskGraph.PrepareTask(copyTask);
             EmitBarriersToCommandList(m_pUICommandList7, copyBarriers);
 
             m_pUICommandList->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
@@ -1401,12 +1401,12 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
 
         // Declare back buffer as RENDER_TARGET for UI draws.
         // First-use: no barrier emitted (the fixup CL at ECL time will bridge).
-        auto uiBeginTask = m_UIGpuTaskGraph.CreateTask("UIBeginFrame");
+        auto& uiBeginTask = m_UIGpuTaskGraph.CreateTask("UIBeginFrame");
         m_UIGpuTaskGraph.DeclareTextureUsage(uiBeginTask, pBackBufferResource,
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
             D3D12_BARRIER_ACCESS_RENDER_TARGET);
-        Canvas::TaskBarriers uiBeginBarriers = m_UIGpuTaskGraph.PrepareTask(uiBeginTask);
+        const Canvas::TaskBarriers& uiBeginBarriers = m_UIGpuTaskGraph.PrepareTask(uiBeginTask);
         EmitBarriersToCommandList(m_pUICommandList7, uiBeginBarriers);
 
         // Set up UI command list state: back buffer RTV, viewport, scissor, descriptor heaps
@@ -1596,12 +1596,12 @@ GEMMETHODIMP CRenderQueue12::DrawText(
         // Declare atlas as SHADER_RESOURCE via UI task graph.
         // Barriers are emitted into the UI CL based on the assumed initial layout.
         // The fixup CL at ECL time bridges any discrepancy with actual state.
-        auto atlasTask = m_UIGpuTaskGraph.CreateTask("DrawText_Atlas");
+        auto& atlasTask = m_UIGpuTaskGraph.CreateTask("DrawText_Atlas");
         m_UIGpuTaskGraph.DeclareTextureUsage(atlasTask, pAtlas->GetD3DResource(),
             D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        Canvas::TaskBarriers atlasBarriers = m_UIGpuTaskGraph.PrepareTask(atlasTask);
+        const Canvas::TaskBarriers& atlasBarriers = m_UIGpuTaskGraph.PrepareTask(atlasTask);
         EmitBarriersToCommandList(m_pUICommandList7, atlasBarriers);
 
         // Vertex buffer: TextVertex = float3 Position + float2 TexCoord + uint Color = 24 bytes
@@ -1830,7 +1830,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::AddGpuTaskDependency(Canvas::GpuTaskHandle task, Canvas::GpuTaskHandle dependency)
+void CRenderQueue12::AddGpuTaskDependency(Canvas::CGpuTask& task, Canvas::CGpuTask& dependency)
 {
     m_GpuTaskGraph.AddExplicitDependency(task, dependency);
 }
