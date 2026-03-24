@@ -537,6 +537,14 @@ public:
     };
     std::vector<PendingUploadRetirement> m_PendingUploadRetirements;
 
+    // Scratch buffer for fixup barrier computation (reused across frames)
+    std::vector<D3D12_TEXTURE_BARRIER> m_FixupBarriers;
+
+    // Scratch buffers for barrier emission (reused across calls)
+    std::vector<D3D12_TEXTURE_BARRIER> m_EmitTexBarriers;
+    std::vector<D3D12_BUFFER_BARRIER> m_EmitBufBarriers;
+    std::vector<D3D12_BARRIER_GROUP> m_EmitBarrierGroups;
+
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
         GEM_INTERFACE_ENTRY(Canvas::XRenderQueue)
@@ -710,7 +718,7 @@ private:
     void EmitBarriers(const Canvas::TaskBarriers& barriers);
 
     // Emit resolved barriers into an arbitrary command list
-    static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL7, const Canvas::TaskBarriers& barriers);
+    void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL7, const Canvas::TaskBarriers& barriers);
 
     // GPU Task Graph instances — one per command list context
     Canvas::CGpuTaskGraph m_GpuTaskGraph;      // Scene CL

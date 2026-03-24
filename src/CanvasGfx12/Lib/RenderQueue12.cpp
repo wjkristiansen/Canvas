@@ -228,14 +228,13 @@ D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurfac
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::Flush()
 {
-    // Helper: compute fixup barriers to bridge actual→assumed for a task graph's first-use layouts
-    auto computeFixupBarriers = [](
+    // Helper: compute fixup barriers into m_FixupBarriers (clears, retains capacity)
+    auto computeFixupBarriers = [this](
         const std::unordered_map<ID3D12Resource*, Canvas::GpuTaskGraphLayoutState>& initialLayouts,
         const std::unordered_map<ID3D12Resource*, SubresourceLayoutState>& committedLayouts,
         const std::unordered_map<ID3D12Resource*, Canvas::GpuTaskGraphLayoutState>* pOverrides)
-        -> std::vector<D3D12_TEXTURE_BARRIER>
     {
-        std::vector<D3D12_TEXTURE_BARRIER> fixups;
+        m_FixupBarriers.clear();
         for (const auto& [pResource, assumedState] : initialLayouts)
         {
             D3D12_BARRIER_LAYOUT assumed = assumedState.UniformLayout.value_or(D3D12_BARRIER_LAYOUT_COMMON);
@@ -277,22 +276,21 @@ void CRenderQueue12::Flush()
                 tb.pResource = pResource;
                 tb.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFF;
                 tb.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
-                fixups.push_back(tb);
+                m_FixupBarriers.push_back(tb);
             }
         }
-        return fixups;
     };
 
     // Helper: emit fixup barriers into the fixup CL
-    auto emitFixups = [this](const std::vector<D3D12_TEXTURE_BARRIER>& fixups)
+    auto emitFixups = [this]()
     {
         ThrowFailedHResult(m_pFixupCommandList->Reset(m_pFixupCommandAllocator, nullptr));
-        if (!fixups.empty() && m_pFixupCommandList7)
+        if (!m_FixupBarriers.empty() && m_pFixupCommandList7)
         {
             D3D12_BARRIER_GROUP group = {};
             group.Type = D3D12_BARRIER_TYPE_TEXTURE;
-            group.NumBarriers = static_cast<UINT>(fixups.size());
-            group.pTextureBarriers = fixups.data();
+            group.NumBarriers = static_cast<UINT>(m_FixupBarriers.size());
+            group.pTextureBarriers = m_FixupBarriers.data();
             m_pFixupCommandList7->Barrier(1, &group);
         }
         ThrowFailedHResult(m_pFixupCommandList->Close());
@@ -333,47 +331,51 @@ void CRenderQueue12::Flush()
 
         const auto& committed = m_pDevice->m_TextureCurrentLayouts;
 
-        // Scene fixup: committed → scene first-use
-        auto sceneFixups = computeFixupBarriers(
-            m_GpuTaskGraph.GetInitialLayouts(), committed, nullptr);
-        emitFixups(sceneFixups);
-
-        // Submit: [scene_fixup, scene_CL] in same ECL scope
+        // Scene fixup + scene CL
+        computeFixupBarriers(m_GpuTaskGraph.GetInitialLayouts(), committed, nullptr);
+        if (!m_FixupBarriers.empty())
         {
+            emitFixups();
             ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pCommandList };
             m_pCommandQueue->ExecuteCommandLists(2, pLists);
         }
-
-        // UI fixup: (committed + scene final overlay) → UI first-use
-        const auto& sceneFinals = m_GpuTaskGraph.GetFinalLayouts();
-        auto uiFixups = computeFixupBarriers(
-            m_UIGpuTaskGraph.GetInitialLayouts(), committed, &sceneFinals);
-
-        // Reuse the same fixup CL and allocator — just Reset the CL (not the allocator).
-        // The allocator can back multiple CL recordings within the same frame.
-        emitFixups(uiFixups);
-
-        // Submit: [ui_fixup, UI_CL] in same ECL scope
+        else
         {
+            m_pCommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList**>(&m_pCommandList.p));
+        }
+
+        // UI fixup + UI CL
+        const auto& sceneFinals = m_GpuTaskGraph.GetFinalLayouts();
+        computeFixupBarriers(m_UIGpuTaskGraph.GetInitialLayouts(), committed, &sceneFinals);
+        if (!m_FixupBarriers.empty())
+        {
+            emitFixups();
             ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pUICommandList };
             m_pCommandQueue->ExecuteCommandLists(2, pLists);
         }
+        else
+        {
+            m_pCommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList**>(&m_pUICommandList.p));
+        }
 
-        // Update committed state: scene first, then UI overrides
         commitFinalLayouts(m_GpuTaskGraph);
         commitFinalLayouts(m_UIGpuTaskGraph);
     }
     else
     {
-        // Scene-only: fixup + scene CL
         if (m_TaskGraphActive)
         {
-            auto sceneFixups = computeFixupBarriers(
-                m_GpuTaskGraph.GetInitialLayouts(), m_pDevice->m_TextureCurrentLayouts, nullptr);
-            emitFixups(sceneFixups);
-
-            ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pCommandList };
-            m_pCommandQueue->ExecuteCommandLists(2, pLists);
+            computeFixupBarriers(m_GpuTaskGraph.GetInitialLayouts(), m_pDevice->m_TextureCurrentLayouts, nullptr);
+            if (!m_FixupBarriers.empty())
+            {
+                emitFixups();
+                ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pCommandList };
+                m_pCommandQueue->ExecuteCommandLists(2, pLists);
+            }
+            else
+            {
+                m_pCommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList**>(&m_pCommandList.p));
+            }
 
             commitFinalLayouts(m_GpuTaskGraph);
         }
@@ -692,59 +694,7 @@ void CRenderQueue12::PrepareGpuTask(Canvas::CGpuTask& task)
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::EmitBarriers(const Canvas::TaskBarriers& barriers)
 {
-    std::vector<D3D12_TEXTURE_BARRIER> d3dTexBarriers;
-    std::vector<D3D12_BUFFER_BARRIER> d3dBufBarriers;
-    
-    for (const auto& tb : barriers.TextureBarriers)
-    {
-        D3D12_TEXTURE_BARRIER d3dBarrier = {};
-        d3dBarrier.SyncBefore = tb.SyncBefore;
-        d3dBarrier.SyncAfter = tb.SyncAfter;
-        d3dBarrier.AccessBefore = tb.AccessBefore;
-        d3dBarrier.AccessAfter = tb.AccessAfter;
-        d3dBarrier.LayoutBefore = tb.LayoutBefore;
-        d3dBarrier.LayoutAfter = tb.LayoutAfter;
-        d3dBarrier.pResource = tb.pResource;
-        d3dBarrier.Subresources.IndexOrFirstMipLevel = tb.Subresources;
-        d3dBarrier.Flags = tb.Flags;
-        d3dTexBarriers.push_back(d3dBarrier);
-    }
-    
-    for (const auto& bb : barriers.BufferBarriers)
-    {
-        D3D12_BUFFER_BARRIER d3dBarrier = {};
-        d3dBarrier.SyncBefore = bb.SyncBefore;
-        d3dBarrier.SyncAfter = bb.SyncAfter;
-        d3dBarrier.AccessBefore = bb.AccessBefore;
-        d3dBarrier.AccessAfter = bb.AccessAfter;
-        d3dBarrier.pResource = bb.pResource;
-        d3dBarrier.Offset = bb.Offset;
-        d3dBarrier.Size = bb.Size;
-        d3dBufBarriers.push_back(d3dBarrier);
-    }
-    
-    std::vector<D3D12_BARRIER_GROUP> groups;
-    if (!d3dTexBarriers.empty())
-    {
-        D3D12_BARRIER_GROUP group = {};
-        group.Type = D3D12_BARRIER_TYPE_TEXTURE;
-        group.NumBarriers = static_cast<UINT>(d3dTexBarriers.size());
-        group.pTextureBarriers = d3dTexBarriers.data();
-        groups.push_back(group);
-    }
-    if (!d3dBufBarriers.empty())
-    {
-        D3D12_BARRIER_GROUP group = {};
-        group.Type = D3D12_BARRIER_TYPE_BUFFER;
-        group.NumBarriers = static_cast<UINT>(d3dBufBarriers.size());
-        group.pBufferBarriers = d3dBufBarriers.data();
-        groups.push_back(group);
-    }
-    
-    if (!groups.empty() && m_pCommandList7)
-    {
-        m_pCommandList7->Barrier(static_cast<UINT>(groups.size()), groups.data());
-    }
+    EmitBarriersToCommandList(m_pCommandList7, barriers);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -753,8 +703,9 @@ void CRenderQueue12::EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL7,
     if (!pCL7)
         return;
 
-    std::vector<D3D12_TEXTURE_BARRIER> d3dTexBarriers;
-    std::vector<D3D12_BUFFER_BARRIER> d3dBufBarriers;
+    m_EmitTexBarriers.clear();
+    m_EmitBufBarriers.clear();
+    m_EmitBarrierGroups.clear();
 
     for (const auto& tb : barriers.TextureBarriers)
     {
@@ -768,7 +719,7 @@ void CRenderQueue12::EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL7,
         d3dBarrier.pResource = tb.pResource;
         d3dBarrier.Subresources.IndexOrFirstMipLevel = tb.Subresources;
         d3dBarrier.Flags = tb.Flags;
-        d3dTexBarriers.push_back(d3dBarrier);
+        m_EmitTexBarriers.push_back(d3dBarrier);
     }
 
     for (const auto& bb : barriers.BufferBarriers)
@@ -781,30 +732,29 @@ void CRenderQueue12::EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL7,
         d3dBarrier.pResource = bb.pResource;
         d3dBarrier.Offset = bb.Offset;
         d3dBarrier.Size = bb.Size;
-        d3dBufBarriers.push_back(d3dBarrier);
+        m_EmitBufBarriers.push_back(d3dBarrier);
     }
 
-    std::vector<D3D12_BARRIER_GROUP> groups;
-    if (!d3dTexBarriers.empty())
+    if (!m_EmitTexBarriers.empty())
     {
         D3D12_BARRIER_GROUP group = {};
         group.Type = D3D12_BARRIER_TYPE_TEXTURE;
-        group.NumBarriers = static_cast<UINT>(d3dTexBarriers.size());
-        group.pTextureBarriers = d3dTexBarriers.data();
-        groups.push_back(group);
+        group.NumBarriers = static_cast<UINT>(m_EmitTexBarriers.size());
+        group.pTextureBarriers = m_EmitTexBarriers.data();
+        m_EmitBarrierGroups.push_back(group);
     }
-    if (!d3dBufBarriers.empty())
+    if (!m_EmitBufBarriers.empty())
     {
         D3D12_BARRIER_GROUP group = {};
         group.Type = D3D12_BARRIER_TYPE_BUFFER;
-        group.NumBarriers = static_cast<UINT>(d3dBufBarriers.size());
-        group.pBufferBarriers = d3dBufBarriers.data();
-        groups.push_back(group);
+        group.NumBarriers = static_cast<UINT>(m_EmitBufBarriers.size());
+        group.pBufferBarriers = m_EmitBufBarriers.data();
+        m_EmitBarrierGroups.push_back(group);
     }
 
-    if (!groups.empty())
+    if (!m_EmitBarrierGroups.empty())
     {
-        pCL7->Barrier(static_cast<UINT>(groups.size()), groups.data());
+        pCL7->Barrier(static_cast<UINT>(m_EmitBarrierGroups.size()), m_EmitBarrierGroups.data());
     }
 }
 
@@ -1631,8 +1581,10 @@ GEMMETHODIMP CRenderQueue12::DrawText(
         // One atlas SRV descriptor in the SRV heap
         ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
         UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
+            m_NextSRVSlot = 0;
         UINT srvSlot = m_NextSRVSlot;
-        m_NextSRVSlot = (m_NextSRVSlot + 1) % NumShaderResourceDescriptors;
+        m_NextSRVSlot += 1;
 
         D3D12_CPU_DESCRIPTOR_HANDLE srvCpuHandle;
         srvCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
