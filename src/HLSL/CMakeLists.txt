@@ -59,6 +59,7 @@ function(add_hlsl_shader SHADER_FILE PROFILE ENTRY_POINT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/Common.hlsli
+                    ${CMAKE_CURRENT_SOURCE_DIR}/HlslTypes.h
             COMMENT "Compiling HLSL shader ${SHADER_FILE} with DXC"
             VERBATIM
         )
@@ -73,6 +74,7 @@ function(add_hlsl_shader SHADER_FILE PROFILE ENTRY_POINT)
                 ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/Common.hlsli
+                    ${CMAKE_CURRENT_SOURCE_DIR}/HlslTypes.h
             COMMENT "Compiling HLSL shader ${SHADER_FILE} with FXC"
             VERBATIM
         )

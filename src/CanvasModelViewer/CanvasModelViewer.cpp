@@ -135,6 +135,8 @@ class CApp
     Gem::TGemPtr<Canvas::XFont> m_pFont;
     Gem::TGemPtr<Canvas::XFont> m_pFontMono;
     Gem::TGemPtr<Canvas::XGlyphAtlas> m_pGlyphAtlas;
+    Gem::TGemPtr<Canvas::XLight> m_pSunLight;
+    Gem::TGemPtr<Canvas::XLight> m_pAmbientLight;
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
     float m_fps = 0.0f;
 
@@ -379,6 +381,40 @@ public:
 
             Gem::ThrowGemError(Canvas::CreateGlyphAtlas(pCanvas, pDevice, pGfxRenderQueue, 512, &pGlyphAtlas));
 
+            // Create lights
+            Gem::TGemPtr<Canvas::XLight> pSunLight;
+            Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &pSunLight, "SunLight"));
+            pSunLight->SetColor(Canvas::Math::FloatVector4(1.0f, 0.95f, 0.85f, 0.0f));
+            pSunLight->SetIntensity(1.0f);
+
+            Gem::TGemPtr<Canvas::XLight> pAmbientLight;
+            Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Ambient, &pAmbientLight, "AmbientLight"));
+            pAmbientLight->SetColor(Canvas::Math::FloatVector4(0.15f, 0.15f, 0.2f, 0.0f));
+            pAmbientLight->SetIntensity(1.0f);
+
+            // Attach sun light to a node for direction (node's forward row = light direction)
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pSunNode;
+            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pSunNode, "SunLightNode"));
+            Gem::ThrowGemError(pSunNode->BindElement(pSunLight));
+
+            // Set sun direction via node rotation: forward (row 0) = normalized (0.3, 0.5, 0.7)
+            {
+                Canvas::Math::FloatVector4 sunForward(0.3f, 0.5f, 0.7f, 0.0f);
+                sunForward = sunForward.Normalize();
+                Canvas::Math::FloatMatrix4x4 sunRotation = Canvas::Math::IdentityMatrix<float, 4, 4>();
+                sunRotation[0] = sunForward;
+                Canvas::Math::FloatVector4 up(0.0f, 0.0f, 1.0f, 0.0f);
+                Canvas::Math::ComposePointToBasisVectors(up, sunForward, sunRotation[1], sunRotation[2]);
+                pSunNode->SetLocalRotation(Canvas::Math::QuaternionFromRotationMatrix(sunRotation));
+            }
+            pScene->GetRootSceneGraphNode()->AddChild(pSunNode);
+
+            // Attach ambient light to a node (no direction needed, but must be in scene graph)
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pAmbientNode;
+            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pAmbientNode, "AmbientLightNode"));
+            Gem::ThrowGemError(pAmbientNode->BindElement(pAmbientLight));
+            pScene->GetRootSceneGraphNode()->AddChild(pAmbientNode);
+
             m_pGfxPlugin.Attach(pGfxPlugin.Detach());
             m_pGfxDevice.Attach(pDevice.Detach());
             m_pGfxRenderQueue.Attach(pGfxRenderQueue.Detach());
@@ -392,6 +428,8 @@ public:
             m_pFont.Attach(pFont.Detach());
             m_pFontMono.Attach(pFontMono.Detach());
             m_pGlyphAtlas.Attach(pGlyphAtlas.Detach());
+            m_pSunLight.Attach(pSunLight.Detach());
+            m_pAmbientLight.Attach(pAmbientLight.Detach());
 
             m_pWindow = std::move(pWindow);
 
@@ -448,7 +486,7 @@ public:
             ++fpsCounter;
             ++frameCount;
 
-            // Update scene, submit renderables, render
+            // Update scene, submit renderables (including lights), render
             m_pGfxRenderQueue->BeginFrame(m_pGfxSwapChain);
             m_pScene->Update(dtime);
             m_pScene->SubmitRenderables(m_pGfxRenderQueue);

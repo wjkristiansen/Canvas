@@ -191,17 +191,6 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    // Per-frame constant buffer data (matches HLSL PerFrameConstants)
-    struct alignas(16) GfxPerFrameConstants
-    {
-        Math::FloatMatrix4x4 ViewProj;         // Combined view-projection matrix
-        Math::FloatVector4 CameraWorldPos;     // Camera position in world space (w unused)
-        Math::FloatVector4 AmbientLight;       // Ambient light color/intensity (w unused)
-        Math::FloatVector4 SunDirection;       // Direction toward sun (w unused)
-        Math::FloatVector4 SunColor;           // Sun color * intensity (w unused)
-    };
-
-    //------------------------------------------------------------------------------------------------
     // Submits tasks to the graphics subsystem.
     struct XGfxRenderQueue : public XRenderQueue
     {

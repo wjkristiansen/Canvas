@@ -8,19 +8,9 @@ Texture2D GBufferDiffuseColor : register(t1);
 // Point sampler for exact texel fetch (G-buffer is 1:1 with screen)
 SamplerState PointSampler : register(s0);
 
-// Lighting constants (same layout as PerFrameConstants in Common.hlsli)
-cbuffer CompositeConstants : register(b0)
-{
-    row_major float4x4 ViewProj;
-    float3 CameraWorldPos;
-    float _pad0;
-    float3 AmbientLight;
-    float _pad1;
-    float3 SunDirection;
-    float _pad2;
-    float3 SunColor;
-    float _pad3;
-};
+#include "HlslTypes.h"
+
+ConstantBuffer<HlslPerFrameConstants> PerFrame : register(b0);
 
 struct FSInput
 {
@@ -34,20 +24,33 @@ float4 PSComposite(FSInput input) : SV_Target0
     float4 normalSample  = GBufferNormals.Sample(PointSampler, input.TexCoord);
     float4 diffuseSample = GBufferDiffuseColor.Sample(PointSampler, input.TexCoord);
 
-    // Decode world-space normal from [0,1] → [-1,1]
-    float3 N = normalize(normalSample.rgb * 2.0 - 1.0);
-
-    float3 albedo = diffuseSample.rgb;
-
-    // Skip lighting for pixels with no geometry (alpha == 0 means nothing was written)
+    // Skip pixels with no geometry (alpha == 0 means nothing was written)
     if (normalSample.a == 0.0)
         discard;
 
-    // Lambertian diffuse from directional (sun) light
-    float NdotL = saturate(dot(N, SunDirection));
-    float3 diffuse = SunColor * NdotL;
+    // Decode world-space normal from [0,1] → [-1,1]
+    float3 N = normalize(normalSample.rgb * 2.0 - 1.0);
+    float3 albedo = diffuseSample.rgb;
 
-    float3 color = albedo * (AmbientLight + diffuse);
+    // Accumulate lighting from all active lights
+    float3 totalLight = float3(0.0, 0.0, 0.0);
 
+    for (uint i = 0; i < PerFrame.LightCount && i < MAX_LIGHTS_PER_REGION; ++i)
+    {
+        HlslLight light = PerFrame.Lights[i];
+
+        if (light.Type == LIGHT_DIRECTIONAL)
+        {
+            float3 L = normalize(light.DirectionOrPosition.xyz);
+            float NdotL = saturate(dot(N, L));
+            totalLight += light.Color.rgb * NdotL;
+        }
+        else if (light.Type == LIGHT_AMBIENT)
+        {
+            totalLight += light.Color.rgb;
+        }
+    }
+
+    float3 color = albedo * totalLight;
     return float4(color, 1.0);
 }

@@ -1638,6 +1638,11 @@ GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphElement *pElemen
     if (!pElement)
         return Gem::Result::InvalidArg;
 
+    // Route lights directly to SubmitLight — they don't go in the renderable queue
+    Gem::TGemPtr<Canvas::XLight> pLight;
+    if (SUCCEEDED(pElement->QueryInterface(&pLight)))
+        return SubmitLight(pLight);
+
     m_RenderableQueue.push_back(pElement);
     return Gem::Result::Success;
 }
@@ -1649,32 +1654,76 @@ GEMMETHODIMP_(void) CRenderQueue12::SetActiveCamera(Canvas::XCamera *pCamera)
 }
 
 //------------------------------------------------------------------------------------------------
+Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
+{
+    if (!pLight || m_LightCount >= MAX_LIGHTS_PER_REGION)
+        return Gem::Result::Success;
+
+    // Skip disabled lights
+    if (!(pLight->GetFlags() & Canvas::LightFlags::Enabled))
+        return Gem::Result::Success;
+
+    HlslTypes::HlslLight& gpu = m_Lights[m_LightCount++];
+    gpu = {};
+    gpu.Type = static_cast<uint32_t>(pLight->GetType());
+    gpu.Range = pLight->GetRange();
+
+    // Pre-multiply color by intensity
+    auto color = pLight->GetColor();
+    float intensity = pLight->GetIntensity();
+    gpu.Color = { color[0] * intensity, color[1] * intensity, color[2] * intensity, 0.0f };
+
+    // Extract direction/position from the attached scene graph node
+    auto *pNode = pLight->GetAttachedNode();
+    if (pNode)
+    {
+        auto world = pNode->GetGlobalMatrix();
+        if (pLight->GetType() == Canvas::LightType::Directional)
+        {
+            Canvas::Math::FloatVector4 dir(world[0][0], world[0][1], world[0][2], 0.0f);
+            dir = dir.Normalize();
+            gpu.DirectionOrPosition = { dir[0], dir[1], dir[2], 0.0f };
+        }
+        else
+        {
+            gpu.DirectionOrPosition = { world[3][0], world[3][1], world[3][2], 1.0f };
+        }
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::EndFrame()
 {
     try
     {
-        // Build per-frame constants from the active camera
-        Canvas::GfxPerFrameConstants frameConstants = {};
+        // Build per-frame constants from the active camera + accumulated lights
+        // (lights were accumulated during SubmitForRender via SubmitLight)
+        HlslTypes::HlslPerFrameConstants frameConstants = {};
         
         if (m_pActiveCamera)
         {
-            frameConstants.ViewProj = m_pActiveCamera->GetViewProjectionMatrix();
+            auto viewProj = m_pActiveCamera->GetViewProjectionMatrix();
+            memcpy(&frameConstants.ViewProj, &viewProj, sizeof(frameConstants.ViewProj));
+
             auto *pCameraNode = m_pActiveCamera->GetAttachedNode();
             if (pCameraNode)
-                frameConstants.CameraWorldPos = pCameraNode->GetGlobalTranslation();
+            {
+                auto camPos = pCameraNode->GetGlobalTranslation();
+                memcpy(&frameConstants.CameraWorldPos, &camPos, sizeof(frameConstants.CameraWorldPos));
+            }
         }
 
-        // Default lighting — TODO: gather from scene lights
-        Canvas::Math::FloatVector4 sunDir(0.3f, 0.5f, 0.7f, 0.0f);
-        frameConstants.SunDirection = sunDir.Normalize();
-        frameConstants.SunColor = Canvas::Math::FloatVector4(1.0f, 0.95f, 0.85f, 0.0f);
-        frameConstants.AmbientLight = Canvas::Math::FloatVector4(0.15f, 0.15f, 0.2f, 0.0f);
+        frameConstants.LightCount = m_LightCount;
+        if (m_LightCount > 0)
+            memcpy(frameConstants.Lights, m_Lights, m_LightCount * sizeof(HlslTypes::HlslLight));
 
         // Upload per-frame constants and bind to root CBV (slot 0, register b0)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         Canvas::GfxSuballocation cbAlloc;
         Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(
-            (sizeof(Canvas::GfxPerFrameConstants) + cbAlignment - 1) & ~(cbAlignment - 1), cbAlloc));
+            (sizeof(HlslTypes::HlslPerFrameConstants) + cbAlignment - 1) & ~(cbAlignment - 1), cbAlloc));
         
         auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
         ID3D12Resource* pHostResource = pHostBuf->GetD3DResource();
@@ -1682,13 +1731,13 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         void* pMapped = nullptr;
         ThrowFailedHResult(pHostResource->Map(0, nullptr, &pMapped));
         memcpy(static_cast<uint8_t*>(pMapped) + cbAlloc.Offset,
-               &frameConstants, sizeof(Canvas::GfxPerFrameConstants));
+               &frameConstants, sizeof(HlslTypes::HlslPerFrameConstants));
         pHostResource->Unmap(0, nullptr);
         
         m_pCommandList->SetGraphicsRootConstantBufferView(0,
             pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset);
 
-        // Drain the renderable queue — geometry pass renders to G-buffers
+        // Drain the renderable queue (meshes only — lights already accumulated)
         for (auto *pElement : m_RenderableQueue)
         {
             Gem::ThrowGemError(pElement->DispatchForRender(this));
@@ -1778,6 +1827,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
     m_pCurrentSwapChain = nullptr;
     m_pActiveCamera = nullptr;
+    m_LightCount = 0;
     return Gem::Result::Success;
 }
 

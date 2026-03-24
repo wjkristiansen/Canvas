@@ -6,6 +6,7 @@
 
 #include "CanvasGfx12.h"
 #include "GpuTask.h"
+#include "HlslTypes.h"
 
 // Forward declarations
 class CSurface12;
@@ -510,6 +511,8 @@ public:
     // Frame rendering state
     CSwapChain12 *m_pCurrentSwapChain = nullptr;   // Set during BeginFrame..EndFrame
     Canvas::XCamera *m_pActiveCamera = nullptr;     // Set by scene via SetActiveCamera during Update
+    HlslTypes::HlslLight m_Lights[MAX_LIGHTS_PER_REGION] = {};
+    uint32_t m_LightCount = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentDSV = {};
 
@@ -713,6 +716,9 @@ public:
 private:
     // Ensure the task graph is active (lazy initialization)
     void EnsureTaskGraphActive();
+
+    // Accumulate a light for the current frame's deferred lighting pass
+    Gem::Result SubmitLight(Canvas::XLight *pLight);
     
     // Emit resolved barriers into the scene command list
     void EmitBarriers(const Canvas::TaskBarriers& barriers);

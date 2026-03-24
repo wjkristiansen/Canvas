@@ -12,14 +12,14 @@ PS_INPUT VSPrimary(VS_INPUT Input)
     float3 nrm = Normals[Input.VertexId].xyz;
 
     // Transform position to world space (row-vector: pos * World)
-    float4 worldPos = mul(float4(pos, 1.0), World);
+    float4 worldPos = mul(float4(pos, 1.0), PerObject.World);
     Output.WorldPosition = worldPos.xyz;
 
     // Transform normal to world space using inverse-transpose
-    Output.Normal = normalize(mul(float4(nrm, 0.0), WorldInvTranspose).xyz);
+    Output.Normal = normalize(mul(float4(nrm, 0.0), PerObject.WorldInvTranspose).xyz);
 
     // Transform to clip space (row-vector: worldPos * ViewProj)
-    Output.ClipPosition = mul(worldPos, ViewProj);
+    Output.ClipPosition = mul(worldPos, PerFrame.ViewProj);
 
     return Output;
 }

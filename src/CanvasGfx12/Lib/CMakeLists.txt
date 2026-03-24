@@ -30,6 +30,7 @@ target_include_directories(CanvasGfx12
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../HLSL
 )
 
 # Preprocessor definitions
