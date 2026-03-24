@@ -349,8 +349,8 @@ void CRenderQueue12::Flush()
         auto uiFixups = computeFixupBarriers(
             m_UIGpuTaskGraph.GetInitialLayouts(), committed, &sceneFinals);
 
-        m_pFixupCommandAllocator = m_FixupCommandAllocatorPool.RotateAllocators(this);
-        m_pFixupCommandAllocator->Reset();
+        // Reuse the same fixup CL and allocator — just Reset the CL (not the allocator).
+        // The allocator can back multiple CL recordings within the same frame.
         emitFixups(uiFixups);
 
         // Submit: [ui_fixup, UI_CL] in same ECL scope
