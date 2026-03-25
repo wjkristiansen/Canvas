@@ -423,8 +423,8 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
                 auto& presentTask = m_UIGpuTaskGraph.CreateTask("PresentTransition");
                 m_UIGpuTaskGraph.DeclareTextureUsage(presentTask, pBackBufferResource,
                     D3D12_BARRIER_LAYOUT_COMMON,
-                    D3D12_BARRIER_SYNC_ALL,
-                    D3D12_BARRIER_ACCESS_COMMON);
+                    D3D12_BARRIER_SYNC_NONE,
+                    D3D12_BARRIER_ACCESS_NO_ACCESS);
                 const Canvas::TaskBarriers& barriers = m_UIGpuTaskGraph.PrepareTask(presentTask);
                 EmitBarriersToCommandList(m_pUICommandList7, barriers);
             }
@@ -435,8 +435,8 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
                 auto presentTask = CreateGpuTask("PresentTransition");
                 DeclareGpuTextureUsage(presentTask, pBackBufferResource,
                     D3D12_BARRIER_LAYOUT_COMMON,
-                    D3D12_BARRIER_SYNC_ALL,
-                    D3D12_BARRIER_ACCESS_COMMON);
+                    D3D12_BARRIER_SYNC_NONE,
+                    D3D12_BARRIER_ACCESS_NO_ACCESS);
                 PrepareGpuTask(presentTask);
             }
             
@@ -812,6 +812,7 @@ void CRenderQueue12::EnsureDepthBuffer(UINT width, UINT height)
     m_pDepthBuffer = pDepthSurface;
     m_DepthBufferWidth = width;
     m_DepthBufferHeight = height;
+    m_GBufferDescriptorsDirty = true;
 }
 
 //================================================================================================
@@ -856,9 +857,10 @@ void CRenderQueue12::EnsureGBuffers(UINT width, UINT height)
     m_GBufferWidth = width;
     m_GBufferHeight = height;
     
-    // Invalidate PSOs since G-buffer formats could have changed
+    // Invalidate PSOs and cached descriptors since G-buffer formats could have changed
     m_pDefaultPSO.Release();
     m_pCompositePSO.Release();
+    m_GBufferDescriptorsDirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1296,16 +1298,16 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
         D3D12_CPU_DESCRIPTOR_HANDLE gbufferRTVs[2];
         gbufferRTVs[0] = CreateRenderTargetView(m_pGBufferNormals, 0, 0, 0);
         gbufferRTVs[1] = CreateRenderTargetView(m_pGBufferDiffuseColor, 0, 0, 0);
-        m_CurrentDSV = CreateDepthStencilView(m_pDepthBuffer);
+        auto dsv = CreateDepthStencilView(m_pDepthBuffer);
         
         // Clear G-buffers (alpha=0 marks empty pixels for the composition pass)
         const float clearGBuffer[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
         m_pCommandList->ClearRenderTargetView(gbufferRTVs[0], clearGBuffer, 0, nullptr);
         m_pCommandList->ClearRenderTargetView(gbufferRTVs[1], clearGBuffer, 0, nullptr);
-        m_pCommandList->ClearDepthStencilView(m_CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr); // Reverse-Z: 0.0 = far plane
+        m_pCommandList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
         
         // Set G-buffer render targets for the geometry pass
-        m_pCommandList->OMSetRenderTargets(2, gbufferRTVs, FALSE, &m_CurrentDSV);
+        m_pCommandList->OMSetRenderTargets(2, gbufferRTVs, FALSE, &dsv);
         
         // Store back buffer RTV for later composition pass
         m_CurrentRTV = CreateRenderTargetView(pBackBuffer, 0, 0, 0);

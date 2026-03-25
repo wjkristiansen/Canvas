@@ -504,6 +504,8 @@ public:
     UINT m_GBufferWidth = 0;
     UINT m_GBufferHeight = 0;
 
+    bool m_GBufferDescriptorsDirty = true;
+
     // Composition pass PSO and root signature
     CComPtr<ID3D12PipelineState> m_pCompositePSO;
     CComPtr<ID3D12RootSignature> m_pCompositeRootSig;

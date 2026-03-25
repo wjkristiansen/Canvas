@@ -289,6 +289,7 @@ Gem::Result QueueTextRender(
 
         // Cache and collect glyph entries
         std::vector<GlyphAtlasEntry> glyphEntries;
+        glyphEntries.reserve(codepoints.size());
         Math::FloatVector3 cursorPos = screenPosition;
         const CTrueTypeFont::FontMetrics& metrics = pFontData->GetMetrics();
         float lineHeightUnits = (metrics.Ascender - metrics.Descender + metrics.LineGap);
@@ -334,8 +335,9 @@ Gem::Result QueueTextRender(
             glyphEntries.push_back(entry);
         }
 
-        // Generate vertex data
+        // Generate vertex data (6 vertices per glyph quad)
         std::vector<TextVertex> vertices;
+        vertices.reserve(glyphEntries.size() * 6);
         cursorPos = screenPosition;
 
         size_t glyphIdx = 0;
