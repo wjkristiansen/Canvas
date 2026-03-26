@@ -59,6 +59,9 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo;MinSizeRel" CACHE ST
 # Include Windows-specific configuration
 include(cmake/WindowsConfig.cmake)
 
+# Set up shared runtime image directory (all binaries + data in one place)
+include(cmake/RuntimeStaging.cmake)
+
 # Include directories
 include_directories(src/Inc)
 

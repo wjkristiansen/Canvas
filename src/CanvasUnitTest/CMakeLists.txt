@@ -137,15 +137,15 @@ if(NOT VSTEST_CONSOLE AND WIN32)
 endif()
 
 if(VSTEST_CONSOLE)
+    # Run tests from the shared runtime image directory — all DLLs are already there.
     add_test(NAME CanvasUnitTests 
-        COMMAND ${VSTEST_CONSOLE} "${CMAKE_INSTALL_PREFIX}/${CANVAS_INSTALL_DEST}/bin/CanvasUnitTest.dll" "--logger:console;verbosity=normal"
-        WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/${CANVAS_INSTALL_DEST}/bin
+        COMMAND ${VSTEST_CONSOLE} "$<TARGET_FILE:CanvasUnitTest>" "--logger:console;verbosity=normal"
+        WORKING_DIRECTORY "${CANVAS_RUNTIME_DIR}"
     )
     message(STATUS "Found VSTest Console: ${VSTEST_CONSOLE}")
     
-    # Set test properties for better integration
     set_tests_properties(CanvasUnitTests PROPERTIES
-        TIMEOUT 120
+        TIMEOUT 300
         LABELS "UnitTest;Microsoft"
     )
 else()

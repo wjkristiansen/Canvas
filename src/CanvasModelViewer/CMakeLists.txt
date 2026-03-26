@@ -93,3 +93,12 @@ install(FILES
     "${CANVAS_FONT_JETBRAINSMONO}"
     DESTINATION ${CANVAS_INSTALL_DEST}/bin/fonts
 )
+
+# Stage fonts into the shared runtime image directory
+add_custom_command(TARGET CanvasModelViewer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CANVAS_RUNTIME_DIR}/fonts"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CANVAS_FONT_INTER}" "${CANVAS_RUNTIME_DIR}/fonts/"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CANVAS_FONT_JETBRAINSMONO}" "${CANVAS_RUNTIME_DIR}/fonts/"
+    COMMENT "Staging fonts to runtime directory"
+    VERBATIM
+)

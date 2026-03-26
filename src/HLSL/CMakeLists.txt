@@ -39,7 +39,8 @@ else()
     message(STATUS "Using FXC Shader Compiler: ${SHADER_COMPILER}")
 endif()
 
-# Define shader output directory
+# Define shader output directory — compile to a fixed build-tree location.
+# Shaders are staged into the runtime image via a post-build copy below.
 set(SHADER_OUTPUT_DIR ${CMAKE_BINARY_DIR}/shaders)
 file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
 
@@ -105,6 +106,14 @@ add_hlsl_shader("PSText.hlsl" "ps_6_0" "main")
 add_custom_target(HLSL ALL
     DEPENDS ${SHADER_OUTPUTS}
     COMMENT "Building HLSL shaders"
+)
+
+# Stage compiled shaders into the shared runtime image directory
+add_custom_command(TARGET HLSL POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CANVAS_RUNTIME_DIR}/shaders"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${SHADER_OUTPUT_DIR}" "${CANVAS_RUNTIME_DIR}/shaders"
+    COMMENT "Staging shaders to runtime directory"
+    VERBATIM
 )
 
 # Copy header files

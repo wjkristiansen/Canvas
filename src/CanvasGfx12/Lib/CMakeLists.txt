@@ -84,12 +84,10 @@ install(TARGETS CanvasGfx12
 install(FILES $<TARGET_PDB_FILE:CanvasGfx12> DESTINATION ${CANVAS_INSTALL_DEST}/bin OPTIONAL)
 
 
-
-# Add post-build command to copy Agility SDK DLLs to output directory for development
+# Stage Agility SDK DLLs into the shared runtime image directory
 set(AGILITY_BIN_PATH "${CMAKE_BINARY_DIR}/_deps/AgilityD3D12/extracted/build/native/bin/x64")
 if(WIN32 AND EXISTS "${AGILITY_BIN_PATH}/D3D12Core.dll")
-    # Runtime deployment layout recommended by Microsoft: D3D12/<Version>/D3D12Core.dll etc.
-    set(AGILITY_RUNTIME_DIR $<TARGET_FILE_DIR:CanvasGfx12>/D3D12/1.616.1)
+    set(AGILITY_RUNTIME_DIR ${CANVAS_RUNTIME_DIR}/D3D12/1.616.1)
     add_custom_command(TARGET CanvasGfx12 POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${AGILITY_RUNTIME_DIR}"
         COMMAND ${CMAKE_COMMAND} -E echo "[AgilitySDK] Copying runtime DLLs to ${AGILITY_RUNTIME_DIR}"
