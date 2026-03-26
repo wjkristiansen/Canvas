@@ -1836,5 +1836,5 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::AddGpuTaskDependency(Canvas::CGpuTask& task, Canvas::CGpuTask& dependency)
 {
-    m_GpuTaskGraph.AddExplicitDependency(task, dependency);
+    m_GpuTaskGraph.AddDependency(task, dependency);
 }

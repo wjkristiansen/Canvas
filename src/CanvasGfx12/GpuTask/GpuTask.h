@@ -1,37 +1,43 @@
 //================================================================================================
-// GpuTask.h - GPU-centric Task System
+// GpuTask.h - GPU Task Graph with Explicit Dependencies
 //
-// GPU tasks are the fundamental unit of GPU work in Canvas. Each task represents a discrete
-// GPU operation (similar to a render pass) with declared resource usage. Tasks are created
-// in forward execution order into a shared command list. The task graph handles:
+// A task graph manages GPU synchronization within a single ExecuteCommandLists (ECL) scope.
+// Tasks form a directed acyclic graph (DAG): each task declares which resources it uses and
+// which prior tasks it depends on. The graph resolves D3D12 Enhanced Barriers based on
+// resource usage transitions.
 //
-//   1. Incremental barrier resolution using D3D12 Enhanced Barriers
-//   2. Per-resource layout, sync, and access state tracking across tasks
-//   3. Final layout computation for updating device committed state
+// Key properties:
+//   - Tasks are purely declarative — they describe resource usage, not commands
+//   - Tasks CAN be recorded into separate command lists, provided the caller executes
+//     them in task creation order within the same ECL call
+//   - Dependencies must reference tasks already created in the same graph
+//   - Cross-ECL layout fixups are the caller's responsibility, using GetInitialLayouts()
+//     and GetFinalLayouts() to bridge committed state between execution scopes
 //
-// USAGE PATTERN:
+// USAGE:
 //   CGpuTaskGraph graph;
 //   graph.SetInitialLayout(pShadowMap, committedLayout);
 //
-//   // Shadow pass
+//   // Shadow pass — writes shadow map
 //   auto& shadowPass = graph.CreateTask("ShadowMap");
 //   graph.DeclareTextureUsage(shadowPass, pShadowMap,
 //       D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
 //       D3D12_BARRIER_SYNC_DEPTH_STENCIL,
 //       D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
-//   auto barriers = graph.PrepareTask(shadowPass);
-//   EmitBarriers(barriers);           // caller emits into command list
-//   RecordShadowMapCommands(pCL);     // caller records directly
+//   const auto& barriers = graph.PrepareTask(shadowPass);
+//   EmitBarriers(pCL, barriers);
+//   RecordShadowPass(pCL);
 //
-//   // Main pass — reads shadow map written above
+//   // Main pass — reads shadow map, depends on shadow pass
 //   auto& mainPass = graph.CreateTask("MainPass");
+//   graph.AddDependency(mainPass, shadowPass);
 //   graph.DeclareTextureUsage(mainPass, pShadowMap,
 //       D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
 //       D3D12_BARRIER_SYNC_PIXEL_SHADING,
 //       D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-//   barriers = graph.PrepareTask(mainPass);
-//   EmitBarriers(barriers);
-//   RecordMainPassCommands(pCL);
+//   const auto& barriers2 = graph.PrepareTask(mainPass);
+//   EmitBarriers(pCL, barriers2);
+//   RecordMainPass(pCL);
 //
 //   // Finalize — update committed state
 //   graph.ComputeFinalLayouts();
@@ -43,6 +49,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -118,26 +125,37 @@ struct GpuBufferUsage
 };
 
 //------------------------------------------------------------------------------------------------
-// A single GPU task - represents a discrete GPU operation (render pass equivalent)
+// Inherited resource state entry — tracks the last known sync/access/layout for a
+// specific subresource through a task's dependency chain. Keyed by (pResource, Subresource).
+// Subresource 0xFFFFFFFF means "all subresources not otherwise specified" (uniform default).
+struct ResourceStateEntry
+{
+    ID3D12Resource* pResource = nullptr;
+    UINT Subresource = 0xFFFFFFFF;  // specific or 0xFFFFFFFF for uniform/all
+    D3D12_BARRIER_SYNC Sync = D3D12_BARRIER_SYNC_NONE;
+    D3D12_BARRIER_ACCESS Access = D3D12_BARRIER_ACCESS_NO_ACCESS;
+    D3D12_BARRIER_LAYOUT Layout = D3D12_BARRIER_LAYOUT_COMMON;  // textures only; ignored for buffers
+    bool Inherited = true;  // true = inherited from dependency chain, false = declared by owning task
+};
+
+//------------------------------------------------------------------------------------------------
+// A single GPU task — a discrete GPU operation with declared resource usage and dependencies
 //
-// Each task is a sync scope: it declares which resources it uses, what layouts they need,
-// and which pipeline stages / access types are involved. The accumulated SyncScope and
-// AccessScope masks represent the total set of GPU operations performed by this task,
-// enabling precise SyncBefore/AccessBefore values on barriers.
-//
-// Tasks are purely declarative — they describe resource usage, not command recording.
-// Commands are recorded directly into the command list by the caller after PrepareTask()
-// emits any required barriers.
+// Tasks are sync scopes: they declare which resources they use, what layouts/sync/access
+// are required, and which prior tasks they depend on. The task graph uses this to resolve
+// barriers. Commands are recorded by the caller, not by the task.
 struct CGpuTask
 {
     std::string Name;
+    uint32_t Index = 0;  // Creation order within graph
+    std::vector<const CGpuTask*> Dependencies;
     std::vector<GpuTextureUsage> TextureUsages;
     std::vector<GpuBufferUsage> BufferUsages;
 
-    // Accumulated scope: union of all declared resource usage sync/access bits.
-    // Represents the total set of GPU pipeline stages and access types used by this task.
-    D3D12_BARRIER_SYNC SyncScope = D3D12_BARRIER_SYNC_NONE;
-    D3D12_BARRIER_ACCESS AccessScope = D3D12_BARRIER_ACCESS_NO_ACCESS;
+    // Inherited resource state table — populated by PrepareTask().
+    // Contains the state of every resource reachable through this task's dependency
+    // chain, including this task's own usages. Used by downstream tasks for O(n) lookup.
+    std::vector<ResourceStateEntry> ResourceStates;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -208,18 +226,21 @@ struct GpuTaskGraphLayoutState
 //------------------------------------------------------------------------------------------------
 // GPU Task Graph
 //
-// Collects GPU tasks and resolves barriers incrementally. Tasks are assumed to be created
-// in forward execution order. When PrepareTask() is called after declaring resource usage,
-// barriers are resolved immediately against all prior tasks — no deferred compilation needed.
+// Manages GPU synchronization within a single ExecuteCommandLists scope. Tasks form a DAG
+// with explicit dependencies. Barriers are resolved incrementally via PrepareTask() — tasks
+// must be prepared in creation order.
+//
+// Tasks do not record commands — the caller records directly after emitting barriers.
+// Tasks CAN target separate command lists within the same ECL call.
 //
 // Lifecycle:
-//   1. SetInitialLayout() for resources (from device committed state)
+//   1. SetInitialLayout() for known resource states
 //   2. For each operation:
-//      a. CreateTask() + DeclareTextureUsage() / DeclareBufferUsage()
-//      b. PrepareTask() — resolves barriers, returns them for immediate emission
-//      c. Caller records commands directly into the command list
-//   3. After all tasks: GetFinalLayouts() to update device committed state
-//   4. Reset() to reuse the graph for the next frame
+//      a. CreateTask() + AddDependency() + DeclareTextureUsage/DeclareBufferUsage()
+//      b. PrepareTask() — resolves and returns barriers for immediate emission
+//      c. Caller emits barriers and records commands
+//   3. ComputeFinalLayouts() → caller updates device committed state
+//   4. Reset() for next frame
 //
 class CGpuTaskGraph
 {
@@ -259,20 +280,23 @@ public:
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX);
 
-    // Add an explicit dependency (task depends on dependency)
-    void AddExplicitDependency(CGpuTask& task, CGpuTask& dependency);
+    // Add a dependency: task will not execute until dependency completes.
+    // Sets an error via GetLastError() if the dependency is invalid.
+    void AddDependency(CGpuTask& task, const CGpuTask& dependency);
 
     //---------------------------------------------------------------------------------------------
     // Barrier Resolution
     //---------------------------------------------------------------------------------------------
 
-    // Set the initial layout for a resource before this graph executes.
-    // Must be called for all resources used by tasks, typically from device committed state.
+    // Set initial layout for a resource (from committed state). Resources not set
+    // use first-use semantics: the first task's required layout is assumed, and the
+    // caller bridges via fixup barriers at ECL time.
     void SetInitialLayout(ID3D12Resource* pResource, D3D12_BARRIER_LAYOUT layout, UINT subresource = 0xFFFFFFFF);
 
-    // Prepare a task for execution: computes its sync/access scope, and resolves barriers
-    // against all prior tasks. Returns barriers to emit before recording this task's commands.
-    // The returned reference is valid until the next PrepareTask call or Reset.
+    // Resolve barriers for a task based on resource usage and graph state.
+    // Must be called in task creation order. Returns barriers to emit before
+    // recording this task's commands. Valid until the next PrepareTask() or Reset().
+    // Sets an error via GetLastError() if dependency conflicts are detected.
     const TaskBarriers& PrepareTask(CGpuTask& task);
 
     //---------------------------------------------------------------------------------------------
@@ -291,22 +315,26 @@ public:
     // Use this at ECL time to compute fixup barriers.
     const std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState>& GetInitialLayouts() const;
 
-    // Query the current tracked layout for a resource (reflects all PrepareTask calls so far).
-    std::optional<D3D12_BARRIER_LAYOUT> GetCurrentLayout(ID3D12Resource* pResource, UINT subresource = 0xFFFFFFFF) const;
-
     // Get number of tasks
     uint32_t GetTaskCount() const;
+
+    // Last error message from AddDependency or PrepareTask (empty if no error)
+    const std::string& GetLastError() const;
 
     //---------------------------------------------------------------------------------------------
     // Lifecycle
     //---------------------------------------------------------------------------------------------
 
-    // Reset the graph for reuse (clears all tasks and state)
+    // Reset the graph for reuse (clears logical state, preserves pool capacity)
     void Reset();
 
+    // Release all pooled memory (scene transitions, shutdown). Next use rebuilds pools.
+    void ReleaseMemory();
+
 private:
-    // Task pool — grow-only, reused across frames via m_TaskCount
-    std::vector<CGpuTask> m_Tasks;
+    // Task pool — grow-only deque (references remain valid across push_back).
+    // Reused across frames via m_TaskCount.
+    std::deque<CGpuTask> m_Tasks;
     uint32_t m_TaskCount = 0;
 
     // Initial resource layouts (from device committed state)
@@ -315,20 +343,89 @@ private:
     // Final resource layouts after graph execution
     std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState> m_FinalLayouts;
 
-    // Per-resource barrier resolution state (accumulated sync/access since last barrier)
-    struct ResourceBarrierState
-    {
-        GpuTaskGraphLayoutState Layouts;
-        D3D12_BARRIER_SYNC PendingSync = D3D12_BARRIER_SYNC_NONE;
-        D3D12_BARRIER_ACCESS PendingAccess = D3D12_BARRIER_ACCESS_NO_ACCESS;
-    };
-    std::unordered_map<ID3D12Resource*, ResourceBarrierState> m_ResourceState;
-    bool m_ResourceStateInitialized = false;
-
     // Scratch buffer for PrepareTask results (avoids per-call allocation)
     TaskBarriers m_ScratchBarriers;
 
-    void EnsureResourceStateInitialized();
+    // Last error from validation
+    std::string m_LastError;
+
+    // Look up a resource+subresource in a task's inherited resource state table.
+    // Tries exact (pResource, subresource) match first, falls back to uniform entry (0xFFFFFFFF).
+    // Returns nullptr if the resource is not in the table.
+    static const ResourceStateEntry* FindResourceState(
+        const std::vector<ResourceStateEntry>& table, ID3D12Resource* pResource, UINT subresource = 0xFFFFFFFF);
+
+    // Merge a resource state entry into a table (overwrite if exists, append if not).
+    static void MergeResourceState(
+        std::vector<ResourceStateEntry>& table, const ResourceStateEntry& entry);
+
+    // Union a resource state entry into a table (OR sync/access if exists).
+    static void UnionResourceState(
+        std::vector<ResourceStateEntry>& table, const ResourceStateEntry& entry);
+
+    // Validate that direct dependencies don't leave any resource in conflicting states.
+    // Allocates a temporary map. Sets m_LastError if conflicts detected.
+    void ValidateDependencyConflicts(const CGpuTask& task);
 };
+
+//------------------------------------------------------------------------------------------------
+// Predefined usage helpers — correct sync/access/layout for common patterns.
+// Prefer DIRECT_QUEUE-specific layouts for optimal performance on direct queues.
+//------------------------------------------------------------------------------------------------
+
+// Texture helpers
+inline GpuTextureUsage TextureUsageRenderTarget(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+    return { p, D3D12_BARRIER_LAYOUT_RENDER_TARGET, D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET, sub };
+}
+inline GpuTextureUsage TextureUsageDepthStencilWrite(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+    return { p, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, D3D12_BARRIER_SYNC_DEPTH_STENCIL, D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, sub };
+}
+inline GpuTextureUsage TextureUsageDepthStencilRead(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+    return { p, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ, D3D12_BARRIER_SYNC_DEPTH_STENCIL, D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ, sub };
+}
+inline GpuTextureUsage TextureUsagePixelShaderResource(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+    return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE, D3D12_BARRIER_SYNC_PIXEL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE, sub };
+}
+inline GpuTextureUsage TextureUsageNonPixelShaderResource(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+    return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE, D3D12_BARRIER_SYNC_NON_PIXEL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE, sub };
+}
+inline GpuTextureUsage TextureUsageAllShaderResource(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+    return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE, D3D12_BARRIER_SYNC_ALL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE, sub };
+}
+inline GpuTextureUsage TextureUsageCopySource(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+    return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_SOURCE, D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE, sub };
+}
+inline GpuTextureUsage TextureUsageCopyDest(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+    return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_DEST, D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_DEST, sub };
+}
+inline GpuTextureUsage TextureUsageUnorderedAccess(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+    return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_UNORDERED_ACCESS, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, sub };
+}
+inline GpuTextureUsage TextureUsagePresent(ID3D12Resource* p) {
+    return { p, D3D12_BARRIER_LAYOUT_COMMON, D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_NO_ACCESS, 0xFFFFFFFF };
+}
+
+// Buffer helpers
+inline GpuBufferUsage BufferUsageVertexBuffer(ID3D12Resource* p) {
+    return { p, D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_VERTEX_BUFFER };
+}
+inline GpuBufferUsage BufferUsageIndexBuffer(ID3D12Resource* p) {
+    return { p, D3D12_BARRIER_SYNC_INDEX_INPUT, D3D12_BARRIER_ACCESS_INDEX_BUFFER };
+}
+inline GpuBufferUsage BufferUsageConstantBuffer(ID3D12Resource* p) {
+    return { p, D3D12_BARRIER_SYNC_ALL_SHADING, D3D12_BARRIER_ACCESS_CONSTANT_BUFFER };
+}
+inline GpuBufferUsage BufferUsageCopySource(ID3D12Resource* p) {
+    return { p, D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE };
+}
+inline GpuBufferUsage BufferUsageCopyDest(ID3D12Resource* p) {
+    return { p, D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_DEST };
+}
+inline GpuBufferUsage BufferUsageUnorderedAccess(ID3D12Resource* p) {
+    return { p, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_ACCESS_UNORDERED_ACCESS };
+}
+inline GpuBufferUsage BufferUsageIndirectArgument(ID3D12Resource* p) {
+    return { p, D3D12_BARRIER_SYNC_EXECUTE_INDIRECT, D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT };
+}
 
 } // namespace Canvas
