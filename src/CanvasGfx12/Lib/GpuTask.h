@@ -50,13 +50,19 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <optional>
 
-// Forward declarations for D3D12 types (included via pch.h in .cpp)
+#include "CommandAllocatorPool.h"
+#include "D3D12ResourceUtils.h"
+#include "Buffer12.h"
+#include "Surface12.h"
+
 struct ID3D12Resource;
+struct ID3D12Device;
 
 namespace Canvas
 {
@@ -65,7 +71,7 @@ namespace Canvas
 // Texture resource usage declared by a GPU task
 struct GpuTextureUsage
 {
-    ID3D12Resource* pResource = nullptr;
+    CSurface12* pSurface = nullptr;
     D3D12_BARRIER_LAYOUT RequiredLayout = D3D12_BARRIER_LAYOUT_COMMON;
     D3D12_BARRIER_SYNC Sync = D3D12_BARRIER_SYNC_NONE;
     D3D12_BARRIER_ACCESS Access = D3D12_BARRIER_ACCESS_NO_ACCESS;
@@ -99,7 +105,7 @@ struct GpuTextureUsage
 // Buffer resource usage declared by a GPU task
 struct GpuBufferUsage
 {
-    ID3D12Resource* pResource = nullptr;
+    CBuffer12* pBuffer = nullptr;
     D3D12_BARRIER_SYNC Sync = D3D12_BARRIER_SYNC_NONE;
     D3D12_BARRIER_ACCESS Access = D3D12_BARRIER_ACCESS_NO_ACCESS;
     UINT64 Offset = 0;
@@ -141,9 +147,8 @@ struct ResourceStateEntry
 //------------------------------------------------------------------------------------------------
 // A single GPU task — a discrete GPU operation with declared resource usage and dependencies
 //
-// Tasks are sync scopes: they declare which resources they use, what layouts/sync/access
-// are required, and which prior tasks they depend on. The task graph uses this to resolve
-// barriers. Commands are recorded by the caller, not by the task.
+// Each task has a recording function that records GPU commands into the graph's work CL.
+// The graph resolves barriers and invokes the recording function atomically at insertion time.
 struct CGpuTask
 {
     std::string Name;
@@ -152,9 +157,13 @@ struct CGpuTask
     std::vector<GpuTextureUsage> TextureUsages;
     std::vector<GpuBufferUsage> BufferUsages;
 
-    // Inherited resource state table — populated by PrepareTask().
-    // Contains the state of every resource reachable through this task's dependency
-    // chain, including this task's own usages. Used by downstream tasks for O(n) lookup.
+    // Recording function — invoked synchronously by InsertTask after barriers are emitted.
+    // Receives the graph's work CL for command recording. Capturing stack locals by reference
+    // is safe because InsertTask never defers invocation.
+    // May be null for transition-only tasks (e.g. PresentTransition).
+    std::function<void(ID3D12GraphicsCommandList*)> RecordFunc;
+
+    // Inherited resource state table — populated by PrepareTask/InsertTask().
     std::vector<ResourceStateEntry> ResourceStates;
 };
 
@@ -162,7 +171,7 @@ struct CGpuTask
 // Resolved barrier to emit before a task executes
 struct ResolvedTextureBarrier
 {
-    ID3D12Resource* pResource;
+    CSurface12* pSurface;
     D3D12_BARRIER_SYNC SyncBefore;
     D3D12_BARRIER_SYNC SyncAfter;
     D3D12_BARRIER_ACCESS AccessBefore;
@@ -175,7 +184,7 @@ struct ResolvedTextureBarrier
 
 struct ResolvedBufferBarrier
 {
-    ID3D12Resource* pResource;
+    CBuffer12* pBuffer;
     D3D12_BARRIER_SYNC SyncBefore;
     D3D12_BARRIER_SYNC SyncAfter;
     D3D12_BARRIER_ACCESS AccessBefore;
@@ -193,54 +202,29 @@ struct TaskBarriers
 };
 
 //------------------------------------------------------------------------------------------------
-// Per-resource layout state tracking for initial/final layouts
-// Used to interface with the device's committed layout tracking
-struct GpuTaskGraphLayoutState
-{
-    std::optional<D3D12_BARRIER_LAYOUT> UniformLayout;
-    std::unordered_map<UINT, D3D12_BARRIER_LAYOUT> PerSubresourceLayouts;
-
-    D3D12_BARRIER_LAYOUT GetLayout(UINT subresource) const
-    {
-        if (UniformLayout.has_value())
-            return UniformLayout.value();
-        auto it = PerSubresourceLayouts.find(subresource);
-        return (it != PerSubresourceLayouts.end()) ? it->second : D3D12_BARRIER_LAYOUT_COMMON;
-    }
-
-    void SetLayout(UINT subresource, D3D12_BARRIER_LAYOUT layout)
-    {
-        if (subresource == 0xFFFFFFFF)
-        {
-            UniformLayout = layout;
-            PerSubresourceLayouts.clear();
-        }
-        else
-        {
-            UniformLayout.reset();
-            PerSubresourceLayouts[subresource] = layout;
-        }
-    }
-};
-
-//------------------------------------------------------------------------------------------------
 // GPU Task Graph
 //
 // Manages GPU synchronization within a single ExecuteCommandLists scope. Tasks form a DAG
-// with explicit dependencies. Barriers are resolved incrementally via PrepareTask() — tasks
-// must be prepared in creation order.
+// with explicit dependencies. Each task has a recording function that records GPU commands.
 //
-// Tasks do not record commands — the caller records directly after emitting barriers.
-// Tasks CAN target separate command lists within the same ECL call.
+// The graph owns a work CL and fixup CL (set via SetCommandLists). When a task is inserted:
+//   1. Barriers are resolved from the dependency-driven state table
+//   2. Resolved barriers are emitted into the work CL
+//   3. The task's recording function is invoked with the work CL
+// These three steps happen atomically in InsertTask().
+//
+// At dispatch time, fixup barriers bridge committed device state to assumed initial layouts.
 //
 // Lifecycle:
-//   1. SetInitialLayout() for known resource states
+//   1. Init(device, workAllocator, fixupAllocator) — creates owned CLs
 //   2. For each operation:
 //      a. CreateTask() + AddDependency() + DeclareTextureUsage/DeclareBufferUsage()
-//      b. PrepareTask() — resolves and returns barriers for immediate emission
-//      c. Caller emits barriers and records commands
-//   3. ComputeFinalLayouts() → caller updates device committed state
-//   4. Reset() for next frame
+//      b. Set task.RecordFunc (optional for transition-only tasks)
+//      c. InsertTask() — resolves barriers, emits, invokes recording function
+//   3. Dispatch(committedLayouts) — closes work CL, fixup barriers, closes fixup CL
+//   4. Caller submits [GetFixupCommandList(), GetWorkCommandList()] via ECL
+//   5. Caller updates committed state from GetFinalLayouts()
+//   6. Reset(workAlloc, fixupAlloc) for next frame
 //
 class CGpuTaskGraph
 {
@@ -255,6 +239,15 @@ public:
     CGpuTaskGraph& operator=(CGpuTaskGraph&&) = default;
 
     //---------------------------------------------------------------------------------------------
+    // Initialization
+    //---------------------------------------------------------------------------------------------
+
+    // Initialize the graph with a D3D12 device, command queue, and allocator pools.
+    // Creates and owns the work CL and fixup CL. Pulls initial CAs from the pools.
+    // The work CL is left in recording state; the fixup CL starts closed (opened at Dispatch).
+    void Init(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, CCommandAllocatorPool* pWorkPool, CCommandAllocatorPool* pFixupPool);
+
+    //---------------------------------------------------------------------------------------------
     // Task Creation
     //---------------------------------------------------------------------------------------------
 
@@ -264,7 +257,7 @@ public:
     // Declare texture usage for a task
     void DeclareTextureUsage(
         CGpuTask& task,
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         D3D12_BARRIER_LAYOUT requiredLayout,
         D3D12_BARRIER_SYNC sync,
         D3D12_BARRIER_ACCESS access,
@@ -274,7 +267,7 @@ public:
     // Declare buffer usage for a task
     void DeclareBufferUsage(
         CGpuTask& task,
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         D3D12_BARRIER_SYNC sync,
         D3D12_BARRIER_ACCESS access,
         UINT64 offset = 0,
@@ -289,31 +282,43 @@ public:
     //---------------------------------------------------------------------------------------------
 
     // Set initial layout for a resource (from committed state). Resources not set
-    // use first-use semantics: the first task's required layout is assumed, and the
-    // caller bridges via fixup barriers at ECL time.
-    void SetInitialLayout(ID3D12Resource* pResource, D3D12_BARRIER_LAYOUT layout, UINT subresource = 0xFFFFFFFF);
+    // use first-use semantics: the first task's required layout is assumed.
+    void SetInitialLayout(CSurface12* pSurface, D3D12_BARRIER_LAYOUT layout, UINT subresource = 0xFFFFFFFF);
 
-    // Resolve barriers for a task based on resource usage and graph state.
-    // Must be called in task creation order. Returns barriers to emit before
-    // recording this task's commands. Valid until the next PrepareTask() or Reset().
-    // Sets an error via GetLastError() if dependency conflicts are detected.
+    // Insert a task into the graph: resolve barriers, emit into work CL, invoke RecordFunc.
+    // Must be called in task creation order. The task's resource usages and dependencies
+    // must be fully declared before calling this.
+    void InsertTask(CGpuTask& task);
+
+    // Resolve barriers for a task without emitting or invoking (for unit tests).
+    // Returns barriers that would be emitted. Valid until next PrepareTask/InsertTask/Reset.
     const TaskBarriers& PrepareTask(CGpuTask& task);
+
+    //---------------------------------------------------------------------------------------------
+    // Dispatch
+    //---------------------------------------------------------------------------------------------
+
+    // Finalize the graph: close the work CL, compute fixup barriers into the owned
+    // fixup CL, close the fixup CL, submit [fixup CL, work CL] via ExecuteCommandLists,
+    // and update committed layouts on CSurface12 objects.
+    // Call after all tasks have been inserted.
+    void Dispatch();
 
     //---------------------------------------------------------------------------------------------
     // Queries
     //---------------------------------------------------------------------------------------------
 
-    // Compute final layouts from all tasks created so far.
-    // Call after all tasks have been prepared.
-    void ComputeFinalLayouts();
+    // Get the work command list (for callers that need direct CL access, e.g. DrawMesh).
+    ID3D12GraphicsCommandList* GetWorkCommandList() const;
 
-    // Get the final layout of each resource after the graph completes.
-    // Use this to update device committed state.
-    const std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState>& GetFinalLayouts() const;
+    // Get the fixup command list (for ECL submission after Dispatch).
+    ID3D12GraphicsCommandList* GetFixupCommandList() const;
 
-    // Get the initial layouts that this graph was built against.
-    // Use this at ECL time to compute fixup barriers.
-    const std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState>& GetInitialLayouts() const;
+    // Get current work allocator (for reopening the work CL after it was closed).
+    ID3D12CommandAllocator* GetWorkAllocator() const;
+
+    // Get current fixup allocator.
+    ID3D12CommandAllocator* GetFixupAllocator() const;
 
     // Get number of tasks
     uint32_t GetTaskCount() const;
@@ -325,29 +330,60 @@ public:
     // Lifecycle
     //---------------------------------------------------------------------------------------------
 
-    // Reset the graph for reuse (clears logical state, preserves pool capacity)
+    // Compute final layouts from all tasks and update CSurface12::m_CurrentLayout.
+    // Called internally by Dispatch().
+    void ComputeFinalLayouts();
+
+    // Reset the graph for next frame. Rotates allocators from pools.
+    // pRenderQueue is used for fence-based allocator wait.
+    void Reset(CRenderQueue12* pRenderQueue);
+
+    // Reset without allocators (for unit tests that don't have real CLs).
     void Reset();
 
     // Release all pooled memory (scene transitions, shutdown). Next use rebuilds pools.
     void ReleaseMemory();
 
 private:
+
+    // Owned command lists (created by Init, released by ReleaseMemory)
+    CComPtr<ID3D12GraphicsCommandList> m_pWorkCL;
+    CComPtr<ID3D12GraphicsCommandList7> m_pWorkCL7;
+    CComPtr<ID3D12GraphicsCommandList> m_pFixupCL;
+    CComPtr<ID3D12GraphicsCommandList7> m_pFixupCL7;
+
+    // Command queue for ECL submission (not owned — provided at Init)
+    ID3D12CommandQueue* m_pCommandQueue = nullptr;
+
+    // Allocator pools (not owned — provided at Init, used at Reset/Dispatch)
+    CCommandAllocatorPool* m_pWorkPool = nullptr;
+    CCommandAllocatorPool* m_pFixupPool = nullptr;
+
+    // Current allocators (pulled from pools)
+    CComPtr<ID3D12CommandAllocator> m_pWorkAllocator;
+    CComPtr<ID3D12CommandAllocator> m_pFixupAllocator;
+
     // Task pool — grow-only deque (references remain valid across push_back).
     // Reused across frames via m_TaskCount.
     std::deque<CGpuTask> m_Tasks;
     uint32_t m_TaskCount = 0;
 
-    // Initial resource layouts (from device committed state)
-    std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState> m_InitialLayouts;
+    // Surfaces used by this graph (for initial/final layout tracking)
+    // Maps ID3D12Resource* → CSurface12* for committed layout access.
+    std::unordered_map<ID3D12Resource*, CSurface12*> m_Surfaces;
 
-    // Final resource layouts after graph execution
-    std::unordered_map<ID3D12Resource*, GpuTaskGraphLayoutState> m_FinalLayouts;
+    // Initial assumed layouts (recorded by first-use semantics for fixup barrier computation).
+    // Per-resource SubresourceLayout tracks which layout the work CL assumed for each subresource.
+    std::unordered_map<ID3D12Resource*, SubresourceLayout> m_ExpectedInitialLayouts;
 
     // Scratch buffer for PrepareTask results (avoids per-call allocation)
     TaskBarriers m_ScratchBarriers;
 
     // Last error from validation
     std::string m_LastError;
+
+    // Whether Dispatch() was called this frame (Reset clears this)
+    bool m_Dispatched = false;
 
     // Look up a resource+subresource in a task's inherited resource state table.
     // Tries exact (pResource, subresource) match first, falls back to uniform entry (0xFFFFFFFF).
@@ -374,57 +410,57 @@ private:
 //------------------------------------------------------------------------------------------------
 
 // Texture helpers
-inline GpuTextureUsage TextureUsageRenderTarget(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+inline GpuTextureUsage TextureUsageRenderTarget(CSurface12* p, UINT sub = 0xFFFFFFFF) {
     return { p, D3D12_BARRIER_LAYOUT_RENDER_TARGET, D3D12_BARRIER_SYNC_RENDER_TARGET, D3D12_BARRIER_ACCESS_RENDER_TARGET, sub };
 }
-inline GpuTextureUsage TextureUsageDepthStencilWrite(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+inline GpuTextureUsage TextureUsageDepthStencilWrite(CSurface12* p, UINT sub = 0xFFFFFFFF) {
     return { p, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE, D3D12_BARRIER_SYNC_DEPTH_STENCIL, D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE, sub };
 }
-inline GpuTextureUsage TextureUsageDepthStencilRead(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+inline GpuTextureUsage TextureUsageDepthStencilRead(CSurface12* p, UINT sub = 0xFFFFFFFF) {
     return { p, D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ, D3D12_BARRIER_SYNC_DEPTH_STENCIL, D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ, sub };
 }
-inline GpuTextureUsage TextureUsagePixelShaderResource(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+inline GpuTextureUsage TextureUsagePixelShaderResource(CSurface12* p, UINT sub = 0xFFFFFFFF) {
     return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE, D3D12_BARRIER_SYNC_PIXEL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE, sub };
 }
-inline GpuTextureUsage TextureUsageNonPixelShaderResource(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+inline GpuTextureUsage TextureUsageNonPixelShaderResource(CSurface12* p, UINT sub = 0xFFFFFFFF) {
     return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE, D3D12_BARRIER_SYNC_NON_PIXEL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE, sub };
 }
-inline GpuTextureUsage TextureUsageAllShaderResource(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+inline GpuTextureUsage TextureUsageAllShaderResource(CSurface12* p, UINT sub = 0xFFFFFFFF) {
     return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE, D3D12_BARRIER_SYNC_ALL_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE, sub };
 }
-inline GpuTextureUsage TextureUsageCopySource(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+inline GpuTextureUsage TextureUsageCopySource(CSurface12* p, UINT sub = 0xFFFFFFFF) {
     return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_SOURCE, D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE, sub };
 }
-inline GpuTextureUsage TextureUsageCopyDest(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+inline GpuTextureUsage TextureUsageCopyDest(CSurface12* p, UINT sub = 0xFFFFFFFF) {
     return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_DEST, D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_DEST, sub };
 }
-inline GpuTextureUsage TextureUsageUnorderedAccess(ID3D12Resource* p, UINT sub = 0xFFFFFFFF) {
+inline GpuTextureUsage TextureUsageUnorderedAccess(CSurface12* p, UINT sub = 0xFFFFFFFF) {
     return { p, D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_UNORDERED_ACCESS, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, sub };
 }
-inline GpuTextureUsage TextureUsagePresent(ID3D12Resource* p) {
+inline GpuTextureUsage TextureUsagePresent(CSurface12* p) {
     return { p, D3D12_BARRIER_LAYOUT_COMMON, D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_NO_ACCESS, 0xFFFFFFFF };
 }
 
 // Buffer helpers
-inline GpuBufferUsage BufferUsageVertexBuffer(ID3D12Resource* p) {
+inline GpuBufferUsage BufferUsageVertexBuffer(CBuffer12* p) {
     return { p, D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_VERTEX_BUFFER };
 }
-inline GpuBufferUsage BufferUsageIndexBuffer(ID3D12Resource* p) {
+inline GpuBufferUsage BufferUsageIndexBuffer(CBuffer12* p) {
     return { p, D3D12_BARRIER_SYNC_INDEX_INPUT, D3D12_BARRIER_ACCESS_INDEX_BUFFER };
 }
-inline GpuBufferUsage BufferUsageConstantBuffer(ID3D12Resource* p) {
+inline GpuBufferUsage BufferUsageConstantBuffer(CBuffer12* p) {
     return { p, D3D12_BARRIER_SYNC_ALL_SHADING, D3D12_BARRIER_ACCESS_CONSTANT_BUFFER };
 }
-inline GpuBufferUsage BufferUsageCopySource(ID3D12Resource* p) {
+inline GpuBufferUsage BufferUsageCopySource(CBuffer12* p) {
     return { p, D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE };
 }
-inline GpuBufferUsage BufferUsageCopyDest(ID3D12Resource* p) {
+inline GpuBufferUsage BufferUsageCopyDest(CBuffer12* p) {
     return { p, D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_DEST };
 }
-inline GpuBufferUsage BufferUsageUnorderedAccess(ID3D12Resource* p) {
+inline GpuBufferUsage BufferUsageUnorderedAccess(CBuffer12* p) {
     return { p, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_ACCESS_UNORDERED_ACCESS };
 }
-inline GpuBufferUsage BufferUsageIndirectArgument(ID3D12Resource* p) {
+inline GpuBufferUsage BufferUsageIndirectArgument(CBuffer12* p) {
     return { p, D3D12_BARRIER_SYNC_EXECUTE_INDIRECT, D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT };
 }
 

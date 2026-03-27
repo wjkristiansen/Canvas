@@ -49,15 +49,6 @@ CSwapChain12::CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, c
     CComPtr<IDXGISwapChain4> pSwapChain4;
     ThrowFailedHResult(pSwapChain1->QueryInterface(&pSwapChain4));
 
-    // Initialize committed layout state for ALL back buffers (not just current one)
-    // Swap chain buffers start in COMMON layout by spec
-    for (UINT i = 0; i < NumBuffers; i++)
-    {
-        CComPtr<ID3D12Resource> pBuffer;
-        ThrowFailedHResult(pSwapChain4->GetBuffer(i, IID_PPV_ARGS(&pBuffer)));
-        pDevice->InitializeTextureLayout(pBuffer, D3D12_BARRIER_LAYOUT_COMMON);
-    }
-
     // Get current back buffer and create surface for it
     CComPtr<ID3D12Resource> pBackBuffer;
     UINT bbindex = pSwapChain4->GetCurrentBackBufferIndex();
@@ -103,8 +94,8 @@ Gem::Result CSwapChain12::Present()
         ThrowFailedHResult(m_pSwapChain->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
         m_pSurface->Rename(pBackBuffer);
 
-        // Initialize committed layout state: new back buffer starts in COMMON layout by spec
-        m_pRenderQueue->GetDevice()->InitializeTextureLayout(pBackBuffer, D3D12_BARRIER_LAYOUT_COMMON);
+        // Reset committed layout: new back buffer starts in COMMON layout by spec
+        m_pSurface->m_CurrentLayout = SubresourceLayout(D3D12_BARRIER_LAYOUT_COMMON, m_pSurface->m_NumSubresources);
 
         // Increment the swapchain fence value and queue a signal
         m_FenceValue++;

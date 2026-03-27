@@ -4,7 +4,9 @@ cmake_minimum_required(VERSION 3.24)
 # Define the library
 add_library(CanvasGfx12 SHARED
     CanvasGfx12.cpp
+    CommandAllocatorPool.cpp
     Device12.cpp
+    GpuTask.cpp
     RenderQueue12.cpp
     Buffer12.cpp
     Surface12.cpp
@@ -66,7 +68,6 @@ endif()
 target_link_libraries(CanvasGfx12 PRIVATE
     CanvasCore
     D3D12ResourceUtils
-    GpuTask
     GEM
     Allocators
 )

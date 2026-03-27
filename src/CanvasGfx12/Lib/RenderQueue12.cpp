@@ -19,44 +19,6 @@
 #include <fstream>
 
 //------------------------------------------------------------------------------------------------
-CCommandAllocatorPool::CCommandAllocatorPool()
-{
-}
-
-//------------------------------------------------------------------------------------------------
-ID3D12CommandAllocator *CCommandAllocatorPool::Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators)
-{
-    Canvas::CFunctionSentinel sentinel("CCommandAllocatorPool::Init", pDevice->GetLogger());
-    
-    for (UINT i = 0; i < NumAllocators; ++i)
-    {
-        CComPtr<ID3D12CommandAllocator> pAllocator;
-        ID3D12Device *pD3DDevice = pDevice->GetD3DDevice();
-        pD3DDevice->CreateCommandAllocator(Type, IID_PPV_ARGS(&pAllocator));
-        CommandAllocators.push_back({ pAllocator, 0 });
-    }
-
-    AllocatorIndex = 0;
-    return CommandAllocators[0].pCommandAllocator;
-}
-
-//------------------------------------------------------------------------------------------------
-ID3D12CommandAllocator *CCommandAllocatorPool::RotateAllocators(CRenderQueue12 *pRenderQueue)
-{
-    CommandAllocators[AllocatorIndex].FenceValue = pRenderQueue->m_FenceValue;
-    AllocatorIndex = (AllocatorIndex + 1) % CommandAllocators.size();
-
-    if (CommandAllocators[AllocatorIndex].FenceValue > pRenderQueue->m_pFence->GetCompletedValue())
-    {
-        HANDLE hEvent = CreateEvent(nullptr, 0, 0, nullptr);
-        pRenderQueue->m_pFence->SetEventOnCompletion(CommandAllocators[AllocatorIndex].FenceValue, hEvent);
-        WaitForSingleObject(hEvent, INFINITE);
-        CloseHandle(hEvent);
-    }
-
-    return CommandAllocators[AllocatorIndex].pCommandAllocator;
-}
-
 //------------------------------------------------------------------------------------------------
 CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCSTR name) :
     TGfxElement(pCanvas),
@@ -75,17 +37,18 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
 
     Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
 
-    CComPtr<ID3D12CommandAllocator> pCA = m_CommandAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
+    // Initialize allocator pools (4 allocators each = 4 frames of pipeline depth)
+    m_SceneWorkAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
+    m_SceneFixupAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
+    m_UIWorkAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
+    m_UIFixupAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
+    m_PresentWorkAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
+    m_PresentFixupAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
 
-    CComPtr<ID3D12GraphicsCommandList> pCL;
-    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pCA, nullptr, IID_PPV_ARGS(&pCL))));
-    
-    // Cache the ID3D12GraphicsCommandList7 interface once to avoid QueryInterface per barrier flush
-    CComPtr<ID3D12GraphicsCommandList7> pCL7;
-    if (SUCCEEDED(pCL->QueryInterface(IID_PPV_ARGS(&pCL7))))
-    {
-        m_pCommandList7 = pCL7;
-    }
+    // Initialize task graphs — all start with work CLs closed
+    m_GpuTaskGraph.Init(pD3DDevice, pCQ, &m_SceneWorkAllocatorPool, &m_SceneFixupAllocatorPool);
+    m_UIGpuTaskGraph.Init(pD3DDevice, pCQ, &m_UIWorkAllocatorPool, &m_UIFixupAllocatorPool);
+    m_PresentGpuTaskGraph.Init(pD3DDevice, pCQ, &m_PresentWorkAllocatorPool, &m_PresentFixupAllocatorPool);
 
     CComPtr<ID3D12DescriptorHeap> pResDH;
     D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
@@ -150,39 +113,8 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pSamplerDescriptorHeap.Attach(pSamplerDH.Detach());
     m_pRTVDescriptorHeap.Attach(pRTVDH.Detach());
     m_pDSVDescriptorHeap.Attach(pDSVDH.Detach());
-    m_pCommandAllocator.Attach(pCA.Detach());
-    m_pCommandList.Attach(pCL.Detach());
     m_pCommandQueue.Attach(pCQ.Detach());
     m_pFence.Attach(pFence.Detach());
-
-    // Create UI overlay command list and its own allocator pool
-    CComPtr<ID3D12CommandAllocator> pUICA = m_UICommandAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
-    CComPtr<ID3D12GraphicsCommandList> pUICL;
-    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pUICA, nullptr, IID_PPV_ARGS(&pUICL))));
-
-    CComPtr<ID3D12GraphicsCommandList7> pUICL7;
-    if (SUCCEEDED(pUICL->QueryInterface(IID_PPV_ARGS(&pUICL7))))
-        m_pUICommandList7 = pUICL7;
-
-    // Start closed — opened each frame in BeginFrame
-    pUICL->Close();
-    m_pUICommandAllocator.Attach(pUICA.Detach());
-    m_pUICommandList.Attach(pUICL.Detach());
-
-    // Create fixup command list for ECL-time layout bridging
-    CComPtr<ID3D12CommandAllocator> pFixupCA = m_FixupCommandAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
-    CComPtr<ID3D12GraphicsCommandList> pFixupCL;
-    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pFixupCA, nullptr, IID_PPV_ARGS(&pFixupCL))));
-
-    CComPtr<ID3D12GraphicsCommandList7> pFixupCL7;
-    if (SUCCEEDED(pFixupCL->QueryInterface(IID_PPV_ARGS(&pFixupCL7))))
-        m_pFixupCommandList7 = pFixupCL7;
-
-    pFixupCL->Close();
-    m_pFixupCommandAllocator.Attach(pFixupCA.Detach());
-    m_pFixupCommandList.Attach(pFixupCL.Detach());
-
-    // NOTE: Texture layout tracking is initialized after resource creation elsewhere
 }
 
 //------------------------------------------------------------------------------------------------
@@ -228,179 +160,23 @@ D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurfac
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::Flush()
 {
-    // Helper: compute fixup barriers into m_FixupBarriers (clears, retains capacity)
-    auto computeFixupBarriers = [this](
-        const std::unordered_map<ID3D12Resource*, Canvas::GpuTaskGraphLayoutState>& initialLayouts,
-        const std::unordered_map<ID3D12Resource*, SubresourceLayoutState>& committedLayouts,
-        const std::unordered_map<ID3D12Resource*, Canvas::GpuTaskGraphLayoutState>* pOverrides)
-    {
-        m_FixupBarriers.clear();
-        for (const auto& [pResource, assumedState] : initialLayouts)
-        {
-            D3D12_BARRIER_LAYOUT assumed = assumedState.UniformLayout.value_or(D3D12_BARRIER_LAYOUT_COMMON);
-
-            // Determine actual layout: overrides (previous CL finals) take priority over committed
-            D3D12_BARRIER_LAYOUT actual = D3D12_BARRIER_LAYOUT_COMMON;
-            if (pOverrides)
-            {
-                auto oIt = pOverrides->find(pResource);
-                if (oIt != pOverrides->end() && oIt->second.UniformLayout.has_value())
-                {
-                    actual = oIt->second.UniformLayout.value();
-                }
-                else
-                {
-                    auto cIt = committedLayouts.find(pResource);
-                    if (cIt != committedLayouts.end() && cIt->second.uniformLayout.has_value())
-                        actual = cIt->second.uniformLayout.value();
-                }
-            }
-            else
-            {
-                auto cIt = committedLayouts.find(pResource);
-                if (cIt != committedLayouts.end() && cIt->second.uniformLayout.has_value())
-                    actual = cIt->second.uniformLayout.value();
-            }
-
-            if (actual != assumed)
-            {
-                D3D12_TEXTURE_BARRIER tb = {};
-                // Fixup: layout-only transition at ECL boundary.
-                // Batched with the work CL in the same ECL scope.
-                tb.SyncBefore = D3D12_BARRIER_SYNC_NONE;
-                tb.SyncAfter = D3D12_BARRIER_SYNC_ALL;
-                tb.AccessBefore = D3D12_BARRIER_ACCESS_NO_ACCESS;
-                tb.AccessAfter = D3D12_BARRIER_ACCESS_COMMON;
-                tb.LayoutBefore = actual;
-                tb.LayoutAfter = assumed;
-                tb.pResource = pResource;
-                tb.Subresources.IndexOrFirstMipLevel = 0xFFFFFFFF;
-                tb.Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
-                m_FixupBarriers.push_back(tb);
-            }
-        }
-    };
-
-    // Helper: emit fixup barriers into the fixup CL
-    auto emitFixups = [this]()
-    {
-        ThrowFailedHResult(m_pFixupCommandList->Reset(m_pFixupCommandAllocator, nullptr));
-        if (!m_FixupBarriers.empty() && m_pFixupCommandList7)
-        {
-            D3D12_BARRIER_GROUP group = {};
-            group.Type = D3D12_BARRIER_TYPE_TEXTURE;
-            group.NumBarriers = static_cast<UINT>(m_FixupBarriers.size());
-            group.pTextureBarriers = m_FixupBarriers.data();
-            m_pFixupCommandList7->Barrier(1, &group);
-        }
-        ThrowFailedHResult(m_pFixupCommandList->Close());
-    };
-
-    // Helper: update committed state from a task graph's final layouts
-    auto commitFinalLayouts = [this](const Canvas::CGpuTaskGraph& graph)
-    {
-        const auto& finalLayouts = graph.GetFinalLayouts();
-        for (const auto& [pResource, layoutState] : finalLayouts)
-        {
-            auto& committed = m_pDevice->m_TextureCurrentLayouts[pResource];
-            if (layoutState.UniformLayout.has_value())
-            {
-                committed.uniformLayout = layoutState.UniformLayout.value();
-                committed.perSubresourceLayouts.clear();
-            }
-            else
-            {
-                committed.uniformLayout.reset();
-                committed.perSubresourceLayouts = layoutState.PerSubresourceLayouts;
-            }
-        }
-    };
-
-    // Compute final layouts for all active task graphs
+    // Dispatch order: scene → UI
     if (m_TaskGraphActive)
-        m_GpuTaskGraph.ComputeFinalLayouts();
-
-    // Close the scene command list
-    ThrowFailedHResult(m_pCommandList->Close());
+        m_GpuTaskGraph.Dispatch();
 
     if (m_UICommandListOpen)
     {
-        m_UIGpuTaskGraph.ComputeFinalLayouts();
-        ThrowFailedHResult(m_pUICommandList->Close());
         m_UICommandListOpen = false;
-
-        const auto& committed = m_pDevice->m_TextureCurrentLayouts;
-
-        // Scene fixup + scene CL
-        computeFixupBarriers(m_GpuTaskGraph.GetInitialLayouts(), committed, nullptr);
-        if (!m_FixupBarriers.empty())
-        {
-            emitFixups();
-            ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pCommandList };
-            m_pCommandQueue->ExecuteCommandLists(2, pLists);
-        }
-        else
-        {
-            m_pCommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList**>(&m_pCommandList.p));
-        }
-
-        // UI fixup + UI CL
-        const auto& sceneFinals = m_GpuTaskGraph.GetFinalLayouts();
-        computeFixupBarriers(m_UIGpuTaskGraph.GetInitialLayouts(), committed, &sceneFinals);
-        if (!m_FixupBarriers.empty())
-        {
-            emitFixups();
-            ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pUICommandList };
-            m_pCommandQueue->ExecuteCommandLists(2, pLists);
-        }
-        else
-        {
-            m_pCommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList**>(&m_pUICommandList.p));
-        }
-
-        commitFinalLayouts(m_GpuTaskGraph);
-        commitFinalLayouts(m_UIGpuTaskGraph);
-    }
-    else
-    {
-        if (m_TaskGraphActive)
-        {
-            computeFixupBarriers(m_GpuTaskGraph.GetInitialLayouts(), m_pDevice->m_TextureCurrentLayouts, nullptr);
-            if (!m_FixupBarriers.empty())
-            {
-                emitFixups();
-                ID3D12CommandList* pLists[] = { m_pFixupCommandList, m_pCommandList };
-                m_pCommandQueue->ExecuteCommandLists(2, pLists);
-            }
-            else
-            {
-                m_pCommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList**>(&m_pCommandList.p));
-            }
-
-            commitFinalLayouts(m_GpuTaskGraph);
-        }
-        else
-        {
-            m_pCommandQueue->ExecuteCommandLists(1, reinterpret_cast<ID3D12CommandList**>(&m_pCommandList.p));
-        }
+        m_UIGpuTaskGraph.Dispatch();
     }
     
-    // Signal fence
+    // Signal fence for scene + UI work (allocator rotation depends on this)
     m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
-    
-    // Reset CLs for next frame
-    m_pCommandAllocator = m_CommandAllocatorPool.RotateAllocators(this);
-    m_pCommandAllocator->Reset();
-    ThrowFailedHResult(m_pCommandList->Reset(m_pCommandAllocator, nullptr));
 
-    m_pUICommandAllocator = m_UICommandAllocatorPool.RotateAllocators(this);
-    m_pUICommandAllocator->Reset();
+    // Reset scene and UI graphs for next frame
+    m_GpuTaskGraph.Reset(this);
+    m_UIGpuTaskGraph.Reset(this);
 
-    m_pFixupCommandAllocator = m_FixupCommandAllocatorPool.RotateAllocators(this);
-    m_pFixupCommandAllocator->Reset();
-
-    m_GpuTaskGraph.Reset();
-    m_UIGpuTaskGraph.Reset();
     m_TaskGraphActive = false;
 }
 
@@ -411,40 +187,31 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
     {
         CSwapChain12 *pIntSwapChain = static_cast<CSwapChain12 *>(pSwapChain);
 
-        // Back buffer must be in COMMON for Present.
-        // Add as a task to whichever task graph governs the last CL to touch it.
+        // Dispatch scene and UI graphs first
+        Flush();
+
+        // Back buffer → COMMON for Present. Always dispatched last via the present graph.
         if (pIntSwapChain->m_BackBufferModified)
         {
-            ID3D12Resource* pBackBufferResource = pIntSwapChain->m_pSurface->GetD3DResource();
+            CSurface12* pBackBuffer = pIntSwapChain->m_pSurface;
 
-            if (m_UICommandListOpen)
-            {
-                // UI CL executes last — declare present transition via UI task graph
-                auto& presentTask = m_UIGpuTaskGraph.CreateTask("PresentTransition");
-                m_UIGpuTaskGraph.DeclareTextureUsage(presentTask, pBackBufferResource,
-                    D3D12_BARRIER_LAYOUT_COMMON,
-                    D3D12_BARRIER_SYNC_NONE,
-                    D3D12_BARRIER_ACCESS_NO_ACCESS);
-                const Canvas::TaskBarriers& barriers = m_UIGpuTaskGraph.PrepareTask(presentTask);
-                EmitBarriersToCommandList(m_pUICommandList7, barriers);
-            }
-            else
-            {
-                // No UI CL — declare on scene CL via scene task graph
-                EnsureTaskGraphActive();
-                auto presentTask = CreateGpuTask("PresentTransition");
-                DeclareGpuTextureUsage(presentTask, pBackBufferResource,
-                    D3D12_BARRIER_LAYOUT_COMMON,
-                    D3D12_BARRIER_SYNC_NONE,
-                    D3D12_BARRIER_ACCESS_NO_ACCESS);
-                PrepareGpuTask(presentTask);
-            }
+            // Open present graph work CL and insert the transition task
+            m_PresentGpuTaskGraph.GetWorkCommandList()->Reset(
+                m_PresentGpuTaskGraph.GetWorkAllocator(), nullptr);
+            auto& presentTask = m_PresentGpuTaskGraph.CreateTask("PresentTransition");
+            m_PresentGpuTaskGraph.DeclareTextureUsage(presentTask, pBackBuffer,
+                D3D12_BARRIER_LAYOUT_COMMON,
+                D3D12_BARRIER_SYNC_NONE,
+                D3D12_BARRIER_ACCESS_NO_ACCESS);
+            m_PresentGpuTaskGraph.InsertTask(presentTask);
+            m_PresentGpuTaskGraph.Dispatch();
             
             pIntSwapChain->m_BackBufferModified = false;
         }
 
-        // Finalize layouts, close, and submit the command list
-        Flush();
+        // Signal fence after all graphs have been submitted
+        m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
+        m_PresentGpuTaskGraph.Reset(this);
 
         // Wait for frame latency and present
         pIntSwapChain->WaitForFrameLatency();
@@ -465,8 +232,6 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 void CRenderQueue12::Uninitialize()
 {
     Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::Uninitialize", m_pDevice->GetLogger(), Canvas::LogLevel::Info);
-
-    m_pCommandList->Close();
 
     // Wait for GPU to reach current fence value
     UINT64 completedValue = m_pFence->GetCompletedValue();
@@ -534,12 +299,12 @@ void CRenderQueue12::RecordCommandBlock(
     EnsureTaskGraphActive();
     
     // Create a task and translate ResourceUsages to GpuTask declarations
-    auto task = CreateGpuTask(name ? name : "UnnamedCommandTask");
+    auto& task = CreateGpuTask(name ? name : "UnnamedCommandTask");
     
     for (const auto& texUsage : resourceUsages.TextureUsages)
     {
         if (!texUsage.IsValid()) continue;
-        DeclareGpuTextureUsage(task, texUsage.pResource,
+        DeclareGpuTextureUsage(task, texUsage.pSurface,
             texUsage.RequiredLayout,
             texUsage.SyncForUsage,
             texUsage.AccessForUsage,
@@ -549,15 +314,15 @@ void CRenderQueue12::RecordCommandBlock(
     for (const auto& bufUsage : resourceUsages.BufferUsages)
     {
         if (!bufUsage.IsValid()) continue;
-        DeclareGpuBufferUsage(task, bufUsage.pResource,
+        DeclareGpuBufferUsage(task, bufUsage.pBuffer,
             bufUsage.SyncForUsage,
             bufUsage.AccessForUsage,
             bufUsage.Offset,
             bufUsage.Size);
     }
     
-    PrepareGpuTask(task);
-    recordFunc(m_pCommandList);
+    task.RecordFunc = std::move(recordFunc);
+    m_GpuTaskGraph.InsertTask(task);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -574,23 +339,14 @@ bool CRenderQueue12::ValidateResourceUsageNoWriteConflicts(const ResourceUsages&
 }
 
 //------------------------------------------------------------------------------------------------
-CRenderQueue12::ResourceStateSnapshot CRenderQueue12::GetResourceState(ID3D12Resource* pResource) const
+CRenderQueue12::ResourceStateSnapshot CRenderQueue12::GetResourceState(CSurface12* pSurface) const
 {
     ResourceStateSnapshot snapshot;
     
-    // Read from device committed state (the ground truth for resource layouts)
-    auto it = m_pDevice->m_TextureCurrentLayouts.find(pResource);
-    if (it != m_pDevice->m_TextureCurrentLayouts.end())
+    if (pSurface)
     {
-        const auto& layoutState = it->second;
-        if (layoutState.uniformLayout.has_value())
-        {
-            snapshot.UniformLayout = layoutState.uniformLayout.value();
-        }
-        else
-        {
-            snapshot.PerSubresourceLayouts = layoutState.perSubresourceLayouts;
-        }
+        // Read committed layout directly from the surface wrapper
+        snapshot.UniformLayout = pSurface->GetCurSubresourceLayout(0);
     }
     
     return snapshot;
@@ -641,19 +397,13 @@ void CRenderQueue12::EnsureTaskGraphActive()
 {
     if (!m_TaskGraphActive)
     {
-        BeginTaskGraph();
+        // Open the scene work CL for recording
+        m_GpuTaskGraph.GetWorkCommandList()->Reset(m_GpuTaskGraph.GetWorkAllocator(), nullptr);
         m_TaskGraphActive = true;
     }
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::BeginTaskGraph()
-{
-    m_GpuTaskGraph.Reset();
-    // No initial layouts set — first-use semantics in PrepareTask will auto-record
-    // assumed initial layouts. Fixup CL at ECL time bridges committed→assumed.
-}
-
 //------------------------------------------------------------------------------------------------
 Canvas::CGpuTask& CRenderQueue12::CreateGpuTask(const char* name)
 {
@@ -663,99 +413,25 @@ Canvas::CGpuTask& CRenderQueue12::CreateGpuTask(const char* name)
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::DeclareGpuTextureUsage(
     Canvas::CGpuTask& task,
-    ID3D12Resource* pResource,
+    CSurface12* pSurface,
     D3D12_BARRIER_LAYOUT requiredLayout,
     D3D12_BARRIER_SYNC sync,
     D3D12_BARRIER_ACCESS access,
     UINT subresources)
 {
-    m_GpuTaskGraph.DeclareTextureUsage(task, pResource, requiredLayout, sync, access, subresources);
+    m_GpuTaskGraph.DeclareTextureUsage(task, pSurface, requiredLayout, sync, access, subresources);
 }
 
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::DeclareGpuBufferUsage(
     Canvas::CGpuTask& task,
-    ID3D12Resource* pResource,
+    CBuffer12* pBuffer,
     D3D12_BARRIER_SYNC sync,
     D3D12_BARRIER_ACCESS access,
     UINT64 offset,
     UINT64 size)
 {
-    m_GpuTaskGraph.DeclareBufferUsage(task, pResource, sync, access, offset, size);
-}
-
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::PrepareGpuTask(Canvas::CGpuTask& task)
-{
-    const Canvas::TaskBarriers& barriers = m_GpuTaskGraph.PrepareTask(task);
-    EmitBarriers(barriers);
-}
-
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::EmitBarriers(const Canvas::TaskBarriers& barriers)
-{
-    EmitBarriersToCommandList(m_pCommandList7, barriers);
-}
-
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL7, const Canvas::TaskBarriers& barriers)
-{
-    if (!pCL7)
-        return;
-
-    m_EmitTexBarriers.clear();
-    m_EmitBufBarriers.clear();
-    m_EmitBarrierGroups.clear();
-
-    for (const auto& tb : barriers.TextureBarriers)
-    {
-        D3D12_TEXTURE_BARRIER d3dBarrier = {};
-        d3dBarrier.SyncBefore = tb.SyncBefore;
-        d3dBarrier.SyncAfter = tb.SyncAfter;
-        d3dBarrier.AccessBefore = tb.AccessBefore;
-        d3dBarrier.AccessAfter = tb.AccessAfter;
-        d3dBarrier.LayoutBefore = tb.LayoutBefore;
-        d3dBarrier.LayoutAfter = tb.LayoutAfter;
-        d3dBarrier.pResource = tb.pResource;
-        d3dBarrier.Subresources.IndexOrFirstMipLevel = tb.Subresources;
-        d3dBarrier.Flags = tb.Flags;
-        m_EmitTexBarriers.push_back(d3dBarrier);
-    }
-
-    for (const auto& bb : barriers.BufferBarriers)
-    {
-        D3D12_BUFFER_BARRIER d3dBarrier = {};
-        d3dBarrier.SyncBefore = bb.SyncBefore;
-        d3dBarrier.SyncAfter = bb.SyncAfter;
-        d3dBarrier.AccessBefore = bb.AccessBefore;
-        d3dBarrier.AccessAfter = bb.AccessAfter;
-        d3dBarrier.pResource = bb.pResource;
-        d3dBarrier.Offset = bb.Offset;
-        d3dBarrier.Size = bb.Size;
-        m_EmitBufBarriers.push_back(d3dBarrier);
-    }
-
-    if (!m_EmitTexBarriers.empty())
-    {
-        D3D12_BARRIER_GROUP group = {};
-        group.Type = D3D12_BARRIER_TYPE_TEXTURE;
-        group.NumBarriers = static_cast<UINT>(m_EmitTexBarriers.size());
-        group.pTextureBarriers = m_EmitTexBarriers.data();
-        m_EmitBarrierGroups.push_back(group);
-    }
-    if (!m_EmitBufBarriers.empty())
-    {
-        D3D12_BARRIER_GROUP group = {};
-        group.Type = D3D12_BARRIER_TYPE_BUFFER;
-        group.NumBarriers = static_cast<UINT>(m_EmitBufBarriers.size());
-        group.pBufferBarriers = m_EmitBufBarriers.data();
-        m_EmitBarrierGroups.push_back(group);
-    }
-
-    if (!m_EmitBarrierGroups.empty())
-    {
-        pCL7->Barrier(static_cast<UINT>(m_EmitBarrierGroups.size()), m_EmitBarrierGroups.data());
-    }
+    m_GpuTaskGraph.DeclareBufferUsage(task, pBuffer, sync, access, offset, size);
 }
 
 //================================================================================================
@@ -1203,22 +879,23 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
 
         if (context == Canvas::GfxRenderContext::UI && m_UICommandListOpen)
         {
-            // UI context: declare copy via UI task graph, record into UI CL
+            // UI context: declare copy via UI task graph
             auto& copyTask = m_UIGpuTaskGraph.CreateTask("UploadTextureRegion_UI");
-            m_UIGpuTaskGraph.DeclareTextureUsage(copyTask, pDstResource,
+            m_UIGpuTaskGraph.DeclareTextureUsage(copyTask, pDst,
                 D3D12_BARRIER_LAYOUT_COMMON,
                 D3D12_BARRIER_SYNC_COPY,
                 D3D12_BARRIER_ACCESS_COPY_DEST);
-            const Canvas::TaskBarriers& copyBarriers = m_UIGpuTaskGraph.PrepareTask(copyTask);
-            EmitBarriersToCommandList(m_pUICommandList7, copyBarriers);
-
-            m_pUICommandList->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
+            copyTask.RecordFunc = [&dst, &src, &srcBox, dstX, dstY](ID3D12GraphicsCommandList* pCL)
+            {
+                pCL->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
+            };
+            m_UIGpuTaskGraph.InsertTask(copyTask);
         }
         else
         {
-            // Scene context (or outside a frame): use scene command list via task graph
+            // Scene context: use scene command list via task graph
             ResourceUsageBuilder usages;
-            usages.TextureAsCopyDest(pDstResource);
+            usages.TextureAsCopyDest(pDst);
 
             RecordCommandBlock(
                 usages.Build(),
@@ -1274,45 +951,12 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
         
         EnsureTaskGraphActive();
         
-        // Transition G-buffers to render target and depth buffer to depth-stencil write
-        // (back buffer stays in COMMON until the composition pass)
-        ID3D12Resource* pNormalsResource = m_pGBufferNormals->GetD3DResource();
-        ID3D12Resource* pDiffuseResource = m_pGBufferDiffuseColor->GetD3DResource();
-
-        auto task = CreateGpuTask("BeginFrame_GBufferPass");
-        DeclareGpuTextureUsage(task, pNormalsResource,
-            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
-            D3D12_BARRIER_SYNC_RENDER_TARGET,
-            D3D12_BARRIER_ACCESS_RENDER_TARGET);
-        DeclareGpuTextureUsage(task, pDiffuseResource,
-            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
-            D3D12_BARRIER_SYNC_RENDER_TARGET,
-            D3D12_BARRIER_ACCESS_RENDER_TARGET);
-        DeclareGpuTextureUsage(task, m_pDepthBuffer->GetD3DResource(),
-            D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
-            D3D12_BARRIER_SYNC_DEPTH_STENCIL,
-            D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
-        PrepareGpuTask(task);
-        
-        // Create RTVs for G-buffers and DSV
-        D3D12_CPU_DESCRIPTOR_HANDLE gbufferRTVs[2];
-        gbufferRTVs[0] = CreateRenderTargetView(m_pGBufferNormals, 0, 0, 0);
-        gbufferRTVs[1] = CreateRenderTargetView(m_pGBufferDiffuseColor, 0, 0, 0);
-        auto dsv = CreateDepthStencilView(m_pDepthBuffer);
-        
-        // Clear G-buffers (alpha=0 marks empty pixels for the composition pass)
-        const float clearGBuffer[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-        m_pCommandList->ClearRenderTargetView(gbufferRTVs[0], clearGBuffer, 0, nullptr);
-        m_pCommandList->ClearRenderTargetView(gbufferRTVs[1], clearGBuffer, 0, nullptr);
-        m_pCommandList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
-        
-        // Set G-buffer render targets for the geometry pass
-        m_pCommandList->OMSetRenderTargets(2, gbufferRTVs, FALSE, &dsv);
-        
-        // Store back buffer RTV for later composition pass
+        // CPU work: create descriptors and compute viewport/scissor
+        m_GBufferRTVs[0] = CreateRenderTargetView(m_pGBufferNormals, 0, 0, 0);
+        m_GBufferRTVs[1] = CreateRenderTargetView(m_pGBufferDiffuseColor, 0, 0, 0);
+        m_CurrentDSV = CreateDepthStencilView(m_pDepthBuffer);
         m_CurrentRTV = CreateRenderTargetView(pBackBuffer, 0, 0, 0);
-        
-        // Set viewport and scissor
+
         D3D12_VIEWPORT viewport = {};
         viewport.TopLeftX = 0.0f;
         viewport.TopLeftY = 0.0f;
@@ -1320,55 +964,68 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
         viewport.Height = static_cast<float>(height);
         viewport.MinDepth = 0.0f;
         viewport.MaxDepth = 1.0f;
-        m_pCommandList->RSSetViewports(1, &viewport);
-        
+
         D3D12_RECT scissor = {};
         scissor.left = 0;
         scissor.top = 0;
         scissor.right = static_cast<LONG>(width);
         scissor.bottom = static_cast<LONG>(height);
-        m_pCommandList->RSSetScissorRects(1, &scissor);
-        
-        // Set PSO and root signature for geometry pass
-        m_pCommandList->SetPipelineState(m_pDefaultPSO);
-        m_pCommandList->SetGraphicsRootSignature(m_pDefaultRootSig);
-        
-        // Set descriptor heaps
-        ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-        m_pCommandList->SetDescriptorHeaps(2, heaps);
-        
-        // Set topology
-        m_pCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        // Scene task: transition G-buffers + depth, then set up geometry pass state
+        auto& task = CreateGpuTask("BeginFrame_GBufferPass");
+        DeclareGpuTextureUsage(task, m_pGBufferNormals,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        DeclareGpuTextureUsage(task, m_pGBufferDiffuseColor,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        DeclareGpuTextureUsage(task, m_pDepthBuffer,
+            D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
+            D3D12_BARRIER_SYNC_DEPTH_STENCIL,
+            D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
+        task.RecordFunc = [&, this](ID3D12GraphicsCommandList* pCL)
+        {
+            const float clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            pCL->ClearRenderTargetView(m_GBufferRTVs[0], clearColor, 0, nullptr);
+            pCL->ClearRenderTargetView(m_GBufferRTVs[1], clearColor, 0, nullptr);
+            pCL->ClearDepthStencilView(m_CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
+            pCL->OMSetRenderTargets(2, m_GBufferRTVs, FALSE, &m_CurrentDSV);
+            pCL->RSSetViewports(1, &viewport);
+            pCL->RSSetScissorRects(1, &scissor);
+            pCL->SetPipelineState(m_pDefaultPSO);
+            pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
+            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
+            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        };
+        m_GpuTaskGraph.InsertTask(task);
         
         m_pCurrentSwapChain = pIntSwapChain;
         pIntSwapChain->m_BackBufferModified = true;
 
-        // Open UI overlay command list for text/HUD recording.
-        ThrowFailedHResult(m_pUICommandList->Reset(m_pUICommandAllocator, nullptr));
+        // Open UI graph work CL for text/HUD recording
+        m_UIGpuTaskGraph.GetWorkCommandList()->Reset(
+            m_UIGpuTaskGraph.GetWorkAllocator(), nullptr);
         m_UICommandListOpen = true;
 
-        // Initialize UI task graph — no initial layouts needed.
-        // First-use semantics will auto-record assumed layouts.
-        m_UIGpuTaskGraph.Reset();
-
-        // Declare back buffer as RENDER_TARGET for UI draws.
-        // First-use: no barrier emitted (the fixup CL at ECL time will bridge).
+        // UI task: set up back buffer as render target for UI draws
         auto& uiBeginTask = m_UIGpuTaskGraph.CreateTask("UIBeginFrame");
-        m_UIGpuTaskGraph.DeclareTextureUsage(uiBeginTask, pBackBufferResource,
+        m_UIGpuTaskGraph.DeclareTextureUsage(uiBeginTask, pBackBuffer,
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
             D3D12_BARRIER_ACCESS_RENDER_TARGET);
-        const Canvas::TaskBarriers& uiBeginBarriers = m_UIGpuTaskGraph.PrepareTask(uiBeginTask);
-        EmitBarriersToCommandList(m_pUICommandList7, uiBeginBarriers);
-
-        // Set up UI command list state: back buffer RTV, viewport, scissor, descriptor heaps
-        m_pUICommandList->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
-        m_pUICommandList->RSSetViewports(1, &viewport);
-        m_pUICommandList->RSSetScissorRects(1, &scissor);
-
-        ID3D12DescriptorHeap* uiHeaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-        m_pUICommandList->SetDescriptorHeaps(2, uiHeaps);
-        m_pUICommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        uiBeginTask.RecordFunc = [&, this](ID3D12GraphicsCommandList* pCL)
+        {
+            pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
+            pCL->RSSetViewports(1, &viewport);
+            pCL->RSSetScissorRects(1, &scissor);
+            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
+            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        };
+        m_UIGpuTaskGraph.InsertTask(uiBeginTask);
     }
     catch (Gem::GemError &e)
     {
@@ -1493,19 +1150,29 @@ GEMMETHODIMP CRenderQueue12::DrawMesh(
             pD3DDevice->CreateUnorderedAccessView(nullptr, nullptr, &nullUavDesc, { baseCpuHandle.ptr + i * incSize });
         
         // Set root SRV (slot 1) for positions (t0)
-        m_pCommandList->SetGraphicsRootShaderResourceView(1,
-            pPosBuf->GetD3DResource()->GetGPUVirtualAddress());
-        
-        // Set descriptor table (slot 3)
-        m_pCommandList->SetGraphicsRootDescriptorTable(3, baseGpuHandle);
-        
+        D3D12_GPU_VIRTUAL_ADDRESS posGpuAddr = pPosBuf->GetD3DResource()->GetGPUVirtualAddress();
+
         RetireUploadAllocation(cbAlloc);
         
         // Determine vertex count from position buffer size
         D3D12_RESOURCE_DESC posDesc = pPosBuf->GetD3DResource()->GetDesc();
         UINT vertexCount = static_cast<UINT>(posDesc.Width / sizeof(Canvas::Math::FloatVector4));
         
-        m_pCommandList->DrawInstanced(vertexCount, 1, 0, 0);
+        // Create a task for the draw call
+        auto& drawTask = CreateGpuTask("DrawMesh");
+        drawTask.RecordFunc = [posGpuAddr, baseGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
+        {
+            pCL->SetPipelineState(m_pDefaultPSO);
+            pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
+            pCL->OMSetRenderTargets(2, m_GBufferRTVs, FALSE, &m_CurrentDSV);
+            pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
+            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetGraphicsRootShaderResourceView(1, posGpuAddr);
+            pCL->SetGraphicsRootDescriptorTable(3, baseGpuHandle);
+            pCL->DrawInstanced(vertexCount, 1, 0, 0);
+        };
+        m_GpuTaskGraph.InsertTask(drawTask);
     }
     catch (Gem::GemError &e)
     {
@@ -1544,17 +1211,18 @@ GEMMETHODIMP CRenderQueue12::DrawText(
         EnsureTextPSO(rtvFormat);
 
         auto pAtlas = static_cast<CSurface12*>(pGlyphAtlas);
+        CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
 
-        // Declare atlas as SHADER_RESOURCE via UI task graph.
-        // Barriers are emitted into the UI CL based on the assumed initial layout.
-        // The fixup CL at ECL time bridges any discrepancy with actual state.
-        auto& atlasTask = m_UIGpuTaskGraph.CreateTask("DrawText_Atlas");
-        m_UIGpuTaskGraph.DeclareTextureUsage(atlasTask, pAtlas->GetD3DResource(),
+        // Create text draw task on the UI graph
+        auto& textTask = m_UIGpuTaskGraph.CreateTask("DrawText");
+        m_UIGpuTaskGraph.DeclareTextureUsage(textTask, pAtlas,
             D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        const Canvas::TaskBarriers& atlasBarriers = m_UIGpuTaskGraph.PrepareTask(atlasTask);
-        EmitBarriersToCommandList(m_pUICommandList7, atlasBarriers);
+        m_UIGpuTaskGraph.DeclareTextureUsage(textTask, pBackBuffer,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
 
         // Vertex buffer: TextVertex = float3 Position + float2 TexCoord + uint Color = 24 bytes
         constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
@@ -1580,7 +1248,7 @@ GEMMETHODIMP CRenderQueue12::DrawText(
         memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
         pCBResource->Unmap(0, nullptr);
 
-        // One atlas SRV descriptor in the SRV heap
+        // CPU work: create atlas SRV descriptor
         ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
         UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
@@ -1593,25 +1261,26 @@ GEMMETHODIMP CRenderQueue12::DrawText(
         D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle;
         srvGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
 
-        // Atlas SRV (maps to t1 in PSText.hlsl via the descriptor table)
         pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
 
-        // Record draw commands on the UI command list
-        m_pUICommandList->SetGraphicsRootSignature(m_pTextRootSig);
-        m_pUICommandList->SetPipelineState(m_pTextPSO);
+        // Capture GPU addresses for the recording lambda
+        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+        D3D12_GPU_VIRTUAL_ADDRESS vertexSrvAddr = pVertexResource->GetGPUVirtualAddress() + vertexAlloc.Offset;
 
-        // Slot 0: screen constants CBV (b0)
-        m_pUICommandList->SetGraphicsRootConstantBufferView(0,
-            pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset);
-
-        // Slot 1: vertex StructuredBuffer SRV (t0)
-        m_pUICommandList->SetGraphicsRootShaderResourceView(1,
-            pVertexResource->GetGPUVirtualAddress() + vertexAlloc.Offset);
-
-        // Slot 2: atlas texture descriptor table (t1)
-        m_pUICommandList->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
-
-        m_pUICommandList->DrawInstanced(vertexCount, 1, 0, 0);
+        textTask.RecordFunc = [cbvAddr, vertexSrvAddr, srvGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
+        {
+            pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
+            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
+            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetGraphicsRootSignature(m_pTextRootSig);
+            pCL->SetPipelineState(m_pTextPSO);
+            pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
+            pCL->SetGraphicsRootShaderResourceView(1, vertexSrvAddr);
+            pCL->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
+            pCL->DrawInstanced(vertexCount, 1, 0, 0);
+        };
+        m_UIGpuTaskGraph.InsertTask(textTask);
 
         RetireUploadAllocation(vertexAlloc);
         RetireUploadAllocation(cbAlloc);
@@ -1736,8 +1405,15 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                &frameConstants, sizeof(HlslTypes::HlslPerFrameConstants));
         pHostResource->Unmap(0, nullptr);
         
-        m_pCommandList->SetGraphicsRootConstantBufferView(0,
-            pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset);
+        D3D12_GPU_VIRTUAL_ADDRESS frameCBVAddress = pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+
+        // Bind per-frame constants for the geometry pass
+        auto& frameConstTask = CreateGpuTask("FrameConstants");
+        frameConstTask.RecordFunc = [frameCBVAddress](ID3D12GraphicsCommandList* pCL)
+        {
+            pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
+        };
+        m_GpuTaskGraph.InsertTask(frameConstTask);
 
         // Drain the renderable queue (meshes only — lights already accumulated)
         for (auto *pElement : m_RenderableQueue)
@@ -1750,51 +1426,12 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         // Composition pass: read G-buffers, perform deferred lighting, write to back buffer
         //==========================================================================================
         {
-            ID3D12Resource* pNormalsResource = m_pGBufferNormals->GetD3DResource();
-            ID3D12Resource* pDiffuseResource = m_pGBufferDiffuseColor->GetD3DResource();
             CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
-            ID3D12Resource* pBackBufferResource = pBackBuffer->GetD3DResource();
 
-            // Transition G-buffers to shader resource and back buffer to render target
-            auto compositeTask = CreateGpuTask("CompositePass");
-            DeclareGpuTextureUsage(compositeTask, pNormalsResource,
-                D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            DeclareGpuTextureUsage(compositeTask, pDiffuseResource,
-                D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            DeclareGpuTextureUsage(compositeTask, pBackBufferResource,
-                D3D12_BARRIER_LAYOUT_RENDER_TARGET,
-                D3D12_BARRIER_SYNC_RENDER_TARGET,
-                D3D12_BARRIER_ACCESS_RENDER_TARGET);
-            PrepareGpuTask(compositeTask);
-
-            // Clear back buffer
-            const float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-            m_pCommandList->ClearRenderTargetView(m_CurrentRTV, clearColor, 0, nullptr);
-
-            // Set back buffer as render target (no depth)
-            m_pCommandList->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
-
-            // Switch to composite pipeline
-            m_pCommandList->SetGraphicsRootSignature(m_pCompositeRootSig);
-            m_pCommandList->SetPipelineState(m_pCompositePSO);
-
-            // Re-bind descriptor heaps (required after root signature change)
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            m_pCommandList->SetDescriptorHeaps(2, heaps);
-
-            // Slot 0: per-frame constants CBV (reuse the same upload for lighting data)
-            m_pCommandList->SetGraphicsRootConstantBufferView(0,
-                pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset);
-
-            // Slot 1: G-buffer SRV descriptor table (t0 = normals, t1 = diffuse)
+            // CPU work: allocate SRV descriptors and create SRVs
             ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
             UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-            // Allocate 2 contiguous SRV descriptors
             if (m_NextSRVSlot + 2 > NumShaderResourceDescriptors)
                 m_NextSRVSlot = 0;
             UINT baseSlot = m_NextSRVSlot;
@@ -1805,16 +1442,38 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             D3D12_GPU_DESCRIPTOR_HANDLE baseGpuHandle;
             baseGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
 
-            // t0: normals G-buffer SRV
-            pD3DDevice->CreateShaderResourceView(pNormalsResource, nullptr, baseCpuHandle);
-            // t1: diffuse color G-buffer SRV
+            pD3DDevice->CreateShaderResourceView(m_pGBufferNormals->GetD3DResource(), nullptr, baseCpuHandle);
             D3D12_CPU_DESCRIPTOR_HANDLE diffuseSrvHandle = { baseCpuHandle.ptr + incSize };
-            pD3DDevice->CreateShaderResourceView(pDiffuseResource, nullptr, diffuseSrvHandle);
+            pD3DDevice->CreateShaderResourceView(m_pGBufferDiffuseColor->GetD3DResource(), nullptr, diffuseSrvHandle);
 
-            m_pCommandList->SetGraphicsRootDescriptorTable(1, baseGpuHandle);
-
-            // Draw fullscreen triangle
-            m_pCommandList->DrawInstanced(3, 1, 0, 0);
+            // Composite task: transition G-buffers to SR, back buffer to RT, then draw
+            auto& compositeTask = CreateGpuTask("CompositePass");
+            DeclareGpuTextureUsage(compositeTask, m_pGBufferNormals,
+                D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            DeclareGpuTextureUsage(compositeTask, m_pGBufferDiffuseColor,
+                D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            DeclareGpuTextureUsage(compositeTask, pBackBuffer,
+                D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+                D3D12_BARRIER_SYNC_RENDER_TARGET,
+                D3D12_BARRIER_ACCESS_RENDER_TARGET);
+            compositeTask.RecordFunc = [frameCBVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
+            {
+                const float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+                pCL->ClearRenderTargetView(m_CurrentRTV, clearColor, 0, nullptr);
+                pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
+                pCL->SetGraphicsRootSignature(m_pCompositeRootSig);
+                pCL->SetPipelineState(m_pCompositePSO);
+                ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
+                pCL->SetDescriptorHeaps(2, heaps);
+                pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
+                pCL->SetGraphicsRootDescriptorTable(1, baseGpuHandle);
+                pCL->DrawInstanced(3, 1, 0, 0);
+            };
+            m_GpuTaskGraph.InsertTask(compositeTask);
         }
 
         RetireUploadAllocation(cbAlloc);
@@ -1831,10 +1490,4 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     m_pActiveCamera = nullptr;
     m_LightCount = 0;
     return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::AddGpuTaskDependency(Canvas::CGpuTask& task, Canvas::CGpuTask& dependency)
-{
-    m_GpuTaskGraph.AddDependency(task, dependency);
 }

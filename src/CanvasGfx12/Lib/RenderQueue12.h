@@ -7,6 +7,7 @@
 #include "CanvasGfx12.h"
 #include "GpuTask.h"
 #include "HlslTypes.h"
+#include "CommandAllocatorPool.h"
 
 // Forward declarations
 class CSurface12;
@@ -33,7 +34,7 @@ class CSwapChain12;
 // NOTE: Access type determines read/write semantics - no separate UsageType enum
 struct TextureUsage
 {
-    ID3D12Resource* pResource = nullptr;
+    CSurface12* pSurface = nullptr;
     
     // Layout state during this task's execution
     D3D12_BARRIER_LAYOUT RequiredLayout = D3D12_BARRIER_LAYOUT_COMMON;
@@ -47,7 +48,7 @@ struct TextureUsage
     D3D12_TEXTURE_BARRIER_FLAGS Flags = D3D12_TEXTURE_BARRIER_FLAG_NONE;
     
     // Validation helpers - infer from D3D12_BARRIER_ACCESS
-    bool IsValid() const { return pResource != nullptr && AccessForUsage != D3D12_BARRIER_ACCESS_NO_ACCESS; }
+    bool IsValid() const { return pSurface != nullptr && AccessForUsage != D3D12_BARRIER_ACCESS_NO_ACCESS; }
     bool IsWriteUsage() const
     {
         // Check for any write access bits
@@ -73,7 +74,7 @@ struct TextureUsage
 // NOTE: Access type determines read/write semantics - no separate UsageType enum
 struct BufferUsage
 {
-    ID3D12Resource* pResource = nullptr;
+    CBuffer12* pBuffer = nullptr;
     
     // GPU sync/access needed for this usage - this is the source of truth for what operation is happening
     D3D12_BARRIER_SYNC SyncForUsage = D3D12_BARRIER_SYNC_NONE;
@@ -84,7 +85,7 @@ struct BufferUsage
     UINT64 Size = UINT64_MAX;  // Whole resource by default
     
     // Validation helpers - infer from D3D12_BARRIER_ACCESS
-    bool IsValid() const { return pResource != nullptr && AccessForUsage != D3D12_BARRIER_ACCESS_NO_ACCESS; }
+    bool IsValid() const { return pBuffer != nullptr && AccessForUsage != D3D12_BARRIER_ACCESS_NO_ACCESS; }
     bool IsWriteUsage() const
     {
         // Check for any write access bits
@@ -131,7 +132,7 @@ struct ResourceUsages
                 if (!TextureUsages[j].IsWriteUsage())
                     continue;
                 // Two write accesses to same resource = error
-                if (TextureUsages[i].pResource == TextureUsages[j].pResource)
+                if (TextureUsages[i].pSurface == TextureUsages[j].pSurface)
                 {
                     // Same resource but different subresources might be OK
                     // (though it's usually a mistake). For now, allow different subresources.
@@ -155,7 +156,7 @@ struct ResourceUsages
                 if (!BufferUsages[j].IsWriteUsage())
                     continue;
                 // Two write accesses to same resource = error
-                if (BufferUsages[i].pResource == BufferUsages[j].pResource)
+                if (BufferUsages[i].pBuffer == BufferUsages[j].pBuffer)
                 {
                     // Check if ranges overlap
                     UINT64 i_end = BufferUsages[i].Offset + BufferUsages[i].Size;
@@ -183,14 +184,14 @@ public:
     // Primary texture usage method - explicitly specify all parameters
     //---------------------------------------------------------------------------------------------
     ResourceUsageBuilder& SetTextureUsage(
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         D3D12_BARRIER_LAYOUT requiredLayout,
         D3D12_BARRIER_SYNC syncForUsage,
         D3D12_BARRIER_ACCESS accessForUsage,
         UINT subresources = 0xFFFFFFFF)
     {
         TextureUsage usage;
-        usage.pResource = pResource;
+        usage.pSurface = pSurface;
         usage.RequiredLayout = requiredLayout;
         usage.SyncForUsage = syncForUsage;
         usage.AccessForUsage = accessForUsage;
@@ -201,11 +202,11 @@ public:
     
     // Convenience: Texture as shader resource (read-only)
     ResourceUsageBuilder& TextureAsShaderResource(
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         UINT subresources = 0xFFFFFFFF)
     {
         return SetTextureUsage(
-            pResource,
+            pSurface,
             D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -214,11 +215,11 @@ public:
     
     // Convenience: Texture as unordered access view (read-write)
     ResourceUsageBuilder& TextureAsUnorderedAccess(
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         UINT subresources = 0xFFFFFFFF)
     {
         return SetTextureUsage(
-            pResource,
+            pSurface,
             D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -227,11 +228,11 @@ public:
     
     // Convenience: Texture as render target
     ResourceUsageBuilder& TextureAsRenderTarget(
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         UINT subresources = 0xFFFFFFFF)
     {
         return SetTextureUsage(
-            pResource,
+            pSurface,
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
             D3D12_BARRIER_ACCESS_RENDER_TARGET,
@@ -240,11 +241,11 @@ public:
     
     // Convenience: Texture as depth-stencil target (write)
     ResourceUsageBuilder& TextureAsDepthStencilWrite(
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         UINT subresources = 0xFFFFFFFF)
     {
         return SetTextureUsage(
-            pResource,
+            pSurface,
             D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
             D3D12_BARRIER_SYNC_DEPTH_STENCIL,
             D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE,
@@ -253,11 +254,11 @@ public:
     
     // Convenience: Texture as depth-stencil resource (read)
     ResourceUsageBuilder& TextureAsDepthStencilRead(
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         UINT subresources = 0xFFFFFFFF)
     {
         return SetTextureUsage(
-            pResource,
+            pSurface,
             D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ,
             D3D12_BARRIER_SYNC_DEPTH_STENCIL,
             D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ,
@@ -266,11 +267,11 @@ public:
     
     // Convenience: Texture as copy destination
     ResourceUsageBuilder& TextureAsCopyDest(
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         UINT subresources = 0xFFFFFFFF)
     {
         return SetTextureUsage(
-            pResource,
+            pSurface,
             D3D12_BARRIER_LAYOUT_COMMON,
             D3D12_BARRIER_SYNC_COPY,
             D3D12_BARRIER_ACCESS_COPY_DEST,
@@ -279,11 +280,11 @@ public:
     
     // Convenience: Texture as copy source (read-only)
     ResourceUsageBuilder& TextureAsCopySource(
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         UINT subresources = 0xFFFFFFFF)
     {
         return SetTextureUsage(
-            pResource,
+            pSurface,
             D3D12_BARRIER_LAYOUT_COMMON,
             D3D12_BARRIER_SYNC_COPY,
             D3D12_BARRIER_ACCESS_COPY_SOURCE,
@@ -294,14 +295,14 @@ public:
     // Primary buffer usage method - explicitly specify all parameters
     //---------------------------------------------------------------------------------------------
     ResourceUsageBuilder& SetBufferUsage(
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         D3D12_BARRIER_SYNC syncForUsage,
         D3D12_BARRIER_ACCESS accessForUsage,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
     {
         BufferUsage usage;
-        usage.pResource = pResource;
+        usage.pBuffer = pBuffer;
         usage.SyncForUsage = syncForUsage;
         usage.AccessForUsage = accessForUsage;
         usage.Offset = offset;
@@ -312,12 +313,12 @@ public:
     
     // Convenience: Buffer as shader resource (read-only)
     ResourceUsageBuilder& BufferAsShaderResource(
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
     {
         return SetBufferUsage(
-            pResource,
+            pBuffer,
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
             offset,
@@ -326,12 +327,12 @@ public:
     
     // Convenience: Buffer as unordered access (read-write)
     ResourceUsageBuilder& BufferAsUnorderedAccess(
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
     {
         return SetBufferUsage(
-            pResource,
+            pBuffer,
             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
             offset,
@@ -340,12 +341,12 @@ public:
     
     // Convenience: Buffer as constant buffer (read-only)
     ResourceUsageBuilder& BufferAsConstantBuffer(
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
     {
         return SetBufferUsage(
-            pResource,
+            pBuffer,
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
             D3D12_BARRIER_ACCESS_CONSTANT_BUFFER,
             offset,
@@ -354,12 +355,12 @@ public:
     
     // Convenience: Buffer as vertex buffer (read-only)
     ResourceUsageBuilder& BufferAsVertexBuffer(
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
     {
         return SetBufferUsage(
-            pResource,
+            pBuffer,
             D3D12_BARRIER_SYNC_VERTEX_SHADING,
             D3D12_BARRIER_ACCESS_VERTEX_BUFFER,
             offset,
@@ -368,12 +369,12 @@ public:
     
     // Convenience: Buffer as index buffer (read-only)
     ResourceUsageBuilder& BufferAsIndexBuffer(
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
     {
         return SetBufferUsage(
-            pResource,
+            pBuffer,
             D3D12_BARRIER_SYNC_INDEX_INPUT,
             D3D12_BARRIER_ACCESS_INDEX_BUFFER,
             offset,
@@ -382,12 +383,12 @@ public:
     
     // Convenience: Buffer as copy destination
     ResourceUsageBuilder& BufferAsCopyDest(
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
     {
         return SetBufferUsage(
-            pResource,
+            pBuffer,
             D3D12_BARRIER_SYNC_COPY,
             D3D12_BARRIER_ACCESS_COPY_DEST,
             offset,
@@ -396,12 +397,12 @@ public:
     
     // Convenience: Buffer as copy source (read-only)
     ResourceUsageBuilder& BufferAsCopySource(
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX)
     {
         return SetBufferUsage(
-            pResource,
+            pBuffer,
             D3D12_BARRIER_SYNC_COPY,
             D3D12_BARRIER_ACCESS_COPY_SOURCE,
             offset,
@@ -424,25 +425,6 @@ struct GpuSyncPoint
 };
 
 //------------------------------------------------------------------------------------------------
-class CCommandAllocatorPool
-{
-    struct AllocatorElement
-    {
-        CComPtr<ID3D12CommandAllocator> pCommandAllocator;
-        UINT64 FenceValue;
-    };
-
-    std::vector<AllocatorElement> CommandAllocators;
-    UINT AllocatorIndex = 0;
-
-public:
-    CCommandAllocatorPool();
-
-    ID3D12CommandAllocator *Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators);
-    ID3D12CommandAllocator *RotateAllocators(class CRenderQueue12 *pRenderQueue);
-};
-
-//------------------------------------------------------------------------------------------------
 // CRenderQueue12 - D3D12 Command Queue Wrapper
 //
 // THREADING MODEL: NOT THREAD-SAFE
@@ -458,25 +440,15 @@ class CRenderQueue12 :
 
 public:
     CComPtr<ID3D12CommandQueue> m_pCommandQueue;
-    CComPtr<ID3D12GraphicsCommandList> m_pCommandList;
-    CComPtr<ID3D12GraphicsCommandList7> m_pCommandList7;  // Cached CL7 for Barrier() to avoid QueryInterface per call
-    CComPtr<ID3D12CommandAllocator> m_pCommandAllocator;
-    CCommandAllocatorPool m_CommandAllocatorPool;
 
-    // UI overlay command list — records text/HUD draws in parallel with scene rendering.
-    // Submitted after the scene command list on the same queue so GPU execution is serialized.
-    CComPtr<ID3D12GraphicsCommandList> m_pUICommandList;
-    CComPtr<ID3D12GraphicsCommandList7> m_pUICommandList7;
-    CComPtr<ID3D12CommandAllocator> m_pUICommandAllocator;
-    CCommandAllocatorPool m_UICommandAllocatorPool;
+    // Per-graph allocator pools (each graph has dedicated work + fixup pools)
+    CCommandAllocatorPool m_SceneWorkAllocatorPool;
+    CCommandAllocatorPool m_SceneFixupAllocatorPool;
+    CCommandAllocatorPool m_UIWorkAllocatorPool;
+    CCommandAllocatorPool m_UIFixupAllocatorPool;
+    CCommandAllocatorPool m_PresentWorkAllocatorPool;
+    CCommandAllocatorPool m_PresentFixupAllocatorPool;
     bool m_UICommandListOpen = false;
-
-    // Fixup command list — bridges actual committed layouts to assumed initial layouts
-    // at ExecuteCommandLists time. Prepended before the CL whose assumptions may differ.
-    CComPtr<ID3D12GraphicsCommandList> m_pFixupCommandList;
-    CComPtr<ID3D12GraphicsCommandList7> m_pFixupCommandList7;
-    CComPtr<ID3D12CommandAllocator> m_pFixupCommandAllocator;
-    CCommandAllocatorPool m_FixupCommandAllocatorPool;
     CComPtr<ID3D12DescriptorHeap> m_pShaderResourceDescriptorHeap;
     CComPtr<ID3D12DescriptorHeap> m_pSamplerDescriptorHeap;
     CComPtr<ID3D12DescriptorHeap> m_pRTVDescriptorHeap;
@@ -517,6 +489,7 @@ public:
     uint32_t m_LightCount = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentDSV = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[2] = {};
 
     // Renderable elements enqueued during scene graph update, dispatched during EndFrame
     std::vector<Canvas::XSceneGraphElement*> m_RenderableQueue;
@@ -541,14 +514,6 @@ public:
         UINT64 FenceValue;  // Release once GPU completes past this fence value
     };
     std::vector<PendingUploadRetirement> m_PendingUploadRetirements;
-
-    // Scratch buffer for fixup barrier computation (reused across frames)
-    std::vector<D3D12_TEXTURE_BARRIER> m_FixupBarriers;
-
-    // Scratch buffers for barrier emission (reused across calls)
-    std::vector<D3D12_TEXTURE_BARRIER> m_EmitTexBarriers;
-    std::vector<D3D12_BUFFER_BARRIER> m_EmitBufBarriers;
-    std::vector<D3D12_BARRIER_GROUP> m_EmitBarrierGroups;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
@@ -618,19 +583,16 @@ public:
     //---------------------------------------------------------------------------------------------
     // GPU Task Graph API
     //
-    // Tasks are GPU operations (render passes). Each declares its resource usage.
-    // Barriers are resolved immediately when a task is prepared. Commands are recorded
-    // directly into the command list by the caller — no deferred callbacks.
+    // Tasks are GPU operations (render passes). Each has a recording function and declares
+    // resource usage. InsertGpuTask resolves barriers, emits them into the work CL, and
+    // invokes the recording function — all atomically.
     //
     // Usage:
-    //   auto task = CreateGpuTask("ShadowPass");
+    //   auto& task = CreateGpuTask("ShadowPass");
     //   DeclareGpuTextureUsage(task, pShadowMap, DEPTH_STENCIL_WRITE, ...);
-    //   PrepareGpuTask(task);   // emits barriers into CL
-    //   // record commands directly into CL...
+    //   task.RecordFunc = [](ID3D12GraphicsCommandList* pCL) { ... };
+    //   InsertGpuTask(task);
     //---------------------------------------------------------------------------------------------
-    
-    // Begin a new GPU task graph for this frame.
-    void BeginTaskGraph();
     
     // Create a GPU task within the current task graph
     Canvas::CGpuTask& CreateGpuTask(const char* name = nullptr);
@@ -638,7 +600,7 @@ public:
     // Declare texture usage for a GPU task
     void DeclareGpuTextureUsage(
         Canvas::CGpuTask& task,
-        ID3D12Resource* pResource,
+        CSurface12* pSurface,
         D3D12_BARRIER_LAYOUT requiredLayout,
         D3D12_BARRIER_SYNC sync,
         D3D12_BARRIER_ACCESS access,
@@ -647,17 +609,11 @@ public:
     // Declare buffer usage for a GPU task
     void DeclareGpuBufferUsage(
         Canvas::CGpuTask& task,
-        ID3D12Resource* pResource,
+        CBuffer12* pBuffer,
         D3D12_BARRIER_SYNC sync,
         D3D12_BARRIER_ACCESS access,
         UINT64 offset = 0,
         UINT64 size = UINT64_MAX);
-    
-    // Prepare a GPU task: resolves barriers and emits them into the command list.
-    void PrepareGpuTask(Canvas::CGpuTask& task);
-    
-    // Add an explicit dependency between GPU tasks
-    void AddGpuTaskDependency(Canvas::CGpuTask& task, Canvas::CGpuTask& dependency);
     
     // Get the current task graph (for advanced usage)
     Canvas::CGpuTaskGraph& GetTaskGraph() { return m_GpuTaskGraph; }
@@ -710,7 +666,7 @@ public:
         }
     };
     
-    ResourceStateSnapshot GetResourceState(ID3D12Resource* pResource) const;
+    ResourceStateSnapshot GetResourceState(CSurface12* pSurface) const;
     
     // Process completed GPU work (release deferred resources)
     void ProcessCompletedWork();
@@ -722,14 +678,9 @@ private:
     // Accumulate a light for the current frame's deferred lighting pass
     Gem::Result SubmitLight(Canvas::XLight *pLight);
     
-    // Emit resolved barriers into the scene command list
-    void EmitBarriers(const Canvas::TaskBarriers& barriers);
-
-    // Emit resolved barriers into an arbitrary command list
-    void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL7, const Canvas::TaskBarriers& barriers);
-
-    // GPU Task Graph instances — one per command list context
-    Canvas::CGpuTaskGraph m_GpuTaskGraph;      // Scene CL
-    Canvas::CGpuTaskGraph m_UIGpuTaskGraph;     // UI CL
+    // GPU Task Graphs — three graphs dispatched in order: scene → UI → present
+    Canvas::CGpuTaskGraph m_GpuTaskGraph;        // Scene: geometry, composite
+    Canvas::CGpuTaskGraph m_UIGpuTaskGraph;       // UI: text, HUD overlays
+    Canvas::CGpuTaskGraph m_PresentGpuTaskGraph;  // Present: back buffer → COMMON
     bool m_TaskGraphActive = false;
 };

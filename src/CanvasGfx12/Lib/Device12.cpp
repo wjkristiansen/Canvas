@@ -105,20 +105,6 @@ GEMMETHODIMP CDevice12::CreateMaterial()
 }
 
 //------------------------------------------------------------------------------------------------
-void CDevice12::InitializeTextureLayout(ID3D12Resource* pResource, D3D12_BARRIER_LAYOUT initialLayout)
-{
-    if (!pResource)
-    {
-        Canvas::LogError(GetLogger(), "InitializeTextureLayout: null resource");
-        return;
-    }
-    
-    // Set the committed layout state for a newly created or acquired resource
-    // This is called when textures are created or when swap chain buffers are rotated
-    m_TextureCurrentLayouts[pResource].SetLayout(0xFFFFFFFF, initialLayout);
-}
-
-//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas::XGfxSurface **ppSurface)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateSurface", GetLogger());
@@ -235,15 +221,9 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
             nullptr,
             IID_PPV_ARGS(&pResource)));
         
-        // Create and register the CSurface12 wrapper (pass COMMON for legacy state tracking)
+        // Create and register the CSurface12 wrapper
         Gem::TGemPtr<CSurface12> pSurface;
-        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, D3D12_BARRIER_LAYOUT_COMMON, nullptr));
-        
-        // Initialize committed layout tracking
-        if (initialLayout != D3D12_BARRIER_LAYOUT_UNDEFINED)
-        {
-            InitializeTextureLayout(pResource, initialLayout);
-        }
+        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, initialLayout, nullptr));
         
         return pSurface->QueryInterface(ppSurface);
     }
@@ -433,12 +413,12 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
             // Declare resource usage: destination buffers need barriers for copy
             ResourceUsageBuilder usages;
             usages.SetBufferUsage(
-                static_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource(),
+                static_cast<CBuffer12*>(pPosBuffer.Get()),
                 D3D12_BARRIER_SYNC_COPY,
                 D3D12_BARRIER_ACCESS_COPY_DEST);
 
             usages.SetBufferUsage(
-                static_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource(),
+                static_cast<CBuffer12*>(pNormBuffer.Get()),
                 D3D12_BARRIER_SYNC_COPY,
                 D3D12_BARRIER_ACCESS_COPY_DEST);
 
