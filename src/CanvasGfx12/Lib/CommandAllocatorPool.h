@@ -2,25 +2,19 @@
 
 #include <atlbase.h>
 #include <d3d12.h>
-#include <vector>
+#include <map>
 
 class CDevice12;
-class CRenderQueue12;
 
 class CCommandAllocatorPool
 {
-    struct AllocatorElement
-    {
-        CComPtr<ID3D12CommandAllocator> pCommandAllocator;
-        UINT64 FenceValue;
-    };
-
-    std::vector<AllocatorElement> CommandAllocators;
-    UINT AllocatorIndex = 0;
+    std::multimap<UINT64, CComPtr<ID3D12CommandAllocator>> m_Allocators;
+    CComPtr<ID3D12Device> m_pDevice;
+    D3D12_COMMAND_LIST_TYPE m_Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
 public:
     CCommandAllocatorPool();
 
-    ID3D12CommandAllocator *Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type, UINT NumAllocators);
-    ID3D12CommandAllocator *RotateAllocators(CRenderQueue12 *pRenderQueue);
+    void Init(CDevice12 *pDevice, D3D12_COMMAND_LIST_TYPE Type);
+    void SwapAllocator(CComPtr<ID3D12CommandAllocator> &allocator, UINT64 fenceValue, UINT64 completedFenceValue);
 };

@@ -37,18 +37,13 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
 
     Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateCommandQueue(&CQDesc, IID_PPV_ARGS(&pCQ))));
 
-    // Initialize allocator pools (4 allocators each = 4 frames of pipeline depth)
-    m_SceneWorkAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
-    m_SceneFixupAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
-    m_UIWorkAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
-    m_UIFixupAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
-    m_PresentWorkAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
-    m_PresentFixupAllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, 4);
+    // Initialize allocator pool (grows on demand as allocators are needed)
+    m_AllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT);
 
     // Initialize task graphs — all start with work CLs closed
-    m_GpuTaskGraph.Init(pD3DDevice, pCQ, &m_SceneWorkAllocatorPool, &m_SceneFixupAllocatorPool);
-    m_UIGpuTaskGraph.Init(pD3DDevice, pCQ, &m_UIWorkAllocatorPool, &m_UIFixupAllocatorPool);
-    m_PresentGpuTaskGraph.Init(pD3DDevice, pCQ, &m_PresentWorkAllocatorPool, &m_PresentFixupAllocatorPool);
+    m_GpuTaskGraph.Init(pD3DDevice, pCQ, &m_AllocatorPool);
+    m_UIGpuTaskGraph.Init(pD3DDevice, pCQ, &m_AllocatorPool);
+    m_PresentGpuTaskGraph.Init(pD3DDevice, pCQ, &m_AllocatorPool);
 
     CComPtr<ID3D12DescriptorHeap> pResDH;
     D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
@@ -174,8 +169,9 @@ void CRenderQueue12::Flush()
     m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
 
     // Reset scene and UI graphs for next frame
-    m_GpuTaskGraph.Reset(this);
-    m_UIGpuTaskGraph.Reset(this);
+    UINT64 completedFenceValue = m_pFence->GetCompletedValue();
+    m_GpuTaskGraph.Reset(m_FenceValue, completedFenceValue);
+    m_UIGpuTaskGraph.Reset(m_FenceValue, completedFenceValue);
 
     m_TaskGraphActive = false;
 }
@@ -211,7 +207,7 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
 
         // Signal fence after all graphs have been submitted
         m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
-        m_PresentGpuTaskGraph.Reset(this);
+        m_PresentGpuTaskGraph.Reset(m_FenceValue, m_pFence->GetCompletedValue());
 
         // Wait for frame latency and present
         pIntSwapChain->WaitForFrameLatency();

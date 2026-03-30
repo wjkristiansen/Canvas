@@ -441,13 +441,8 @@ class CRenderQueue12 :
 public:
     CComPtr<ID3D12CommandQueue> m_pCommandQueue;
 
-    // Per-graph allocator pools (each graph has dedicated work + fixup pools)
-    CCommandAllocatorPool m_SceneWorkAllocatorPool;
-    CCommandAllocatorPool m_SceneFixupAllocatorPool;
-    CCommandAllocatorPool m_UIWorkAllocatorPool;
-    CCommandAllocatorPool m_UIFixupAllocatorPool;
-    CCommandAllocatorPool m_PresentWorkAllocatorPool;
-    CCommandAllocatorPool m_PresentFixupAllocatorPool;
+    // Shared allocator pool for all task graphs
+    CCommandAllocatorPool m_AllocatorPool;
     bool m_UICommandListOpen = false;
     CComPtr<ID3D12DescriptorHeap> m_pShaderResourceDescriptorHeap;
     CComPtr<ID3D12DescriptorHeap> m_pSamplerDescriptorHeap;

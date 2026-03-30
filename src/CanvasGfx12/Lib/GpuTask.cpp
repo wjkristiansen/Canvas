@@ -6,7 +6,6 @@
 #include "GpuTask.h"
 #include "Surface12.h"
 #include "Buffer12.h"
-#include "RenderQueue12.h"
 
 namespace Canvas
 {
@@ -108,14 +107,13 @@ void CGpuTaskGraph::AddDependency(CGpuTask& task, const CGpuTask& dependency)
 // Initialization
 //------------------------------------------------------------------------------------------------
 
-void CGpuTaskGraph::Init(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, CCommandAllocatorPool* pWorkPool, CCommandAllocatorPool* pFixupPool)
+void CGpuTaskGraph::Init(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, CCommandAllocatorPool* pAllocatorPool)
 {
     m_pCommandQueue = pCommandQueue;
-    m_pWorkPool = pWorkPool;
-    m_pFixupPool = pFixupPool;
+    m_pAllocatorPool = pAllocatorPool;
 
-    m_pWorkAllocator = pWorkPool->RotateAllocators(nullptr);
-    m_pFixupAllocator = pFixupPool->RotateAllocators(nullptr);
+    pAllocatorPool->SwapAllocator(m_pWorkAllocator, 0, 0);
+    pAllocatorPool->SwapAllocator(m_pFixupAllocator, 0, 0);
 
     pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_pWorkAllocator, nullptr, IID_PPV_ARGS(&m_pWorkCL));
     m_pWorkCL->Close();
@@ -667,21 +665,21 @@ void CGpuTaskGraph::ComputeFinalLayouts()
 // Lifecycle
 //------------------------------------------------------------------------------------------------
 
-void CGpuTaskGraph::Reset(CRenderQueue12* pRenderQueue)
+void CGpuTaskGraph::Reset(UINT64 fenceValue, UINT64 completedFenceValue)
 {
     m_TaskCount = 0;
     m_Surfaces.clear();
     m_ExpectedInitialLayouts.clear();
     m_LastError.clear();
 
-    if (m_pWorkPool)
+    if (m_pAllocatorPool)
     {
-        m_pWorkAllocator = m_pWorkPool->RotateAllocators(pRenderQueue);
+        m_pAllocatorPool->SwapAllocator(m_pWorkAllocator, fenceValue, completedFenceValue);
         m_pWorkAllocator->Reset();
     }
-    if (m_pFixupPool)
+    if (m_pAllocatorPool)
     {
-        m_pFixupAllocator = m_pFixupPool->RotateAllocators(pRenderQueue);
+        m_pAllocatorPool->SwapAllocator(m_pFixupAllocator, fenceValue, completedFenceValue);
         m_pFixupAllocator->Reset();
     }
 
@@ -701,17 +699,12 @@ void CGpuTaskGraph::Reset(CRenderQueue12* pRenderQueue)
     m_Dispatched = false;
 }
 
-void CGpuTaskGraph::Reset()
+void CGpuTaskGraph::ReleaseMemory()
 {
     m_TaskCount = 0;
     m_Surfaces.clear();
     m_ExpectedInitialLayouts.clear();
     m_LastError.clear();
-}
-
-void CGpuTaskGraph::ReleaseMemory()
-{
-    Reset();
     m_Tasks.clear();
     m_Tasks.shrink_to_fit();
     m_ScratchBarriers.TextureBarriers.clear();
@@ -724,8 +717,7 @@ void CGpuTaskGraph::ReleaseMemory()
     m_pFixupCL.Release();
     m_pFixupCL7.Release();
     m_pFixupAllocator.Release();
-    m_pWorkPool = nullptr;
-    m_pFixupPool = nullptr;
+    m_pAllocatorPool = nullptr;
 }
 
 } // namespace Canvas

@@ -245,7 +245,7 @@ public:
     // Initialize the graph with a D3D12 device, command queue, and allocator pools.
     // Creates and owns the work CL and fixup CL. Pulls initial CAs from the pools.
     // The work CL is left in recording state; the fixup CL starts closed (opened at Dispatch).
-    void Init(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, CCommandAllocatorPool* pWorkPool, CCommandAllocatorPool* pFixupPool);
+    void Init(ID3D12Device* pDevice, ID3D12CommandQueue* pCommandQueue, CCommandAllocatorPool* pAllocatorPool);
 
     //---------------------------------------------------------------------------------------------
     // Task Creation
@@ -334,12 +334,10 @@ public:
     // Called internally by Dispatch().
     void ComputeFinalLayouts();
 
-    // Reset the graph for next frame. Rotates allocators from pools.
-    // pRenderQueue is used for fence-based allocator wait.
-    void Reset(CRenderQueue12* pRenderQueue);
-
-    // Reset without allocators (for unit tests that don't have real CLs).
-    void Reset();
+    // Reset the graph for next frame. Swaps allocators from pool.
+    // fenceValue: the fence value covering this frame's GPU work.
+    // completedFenceValue: the latest GPU-completed fence value.
+    void Reset(UINT64 fenceValue, UINT64 completedFenceValue);
 
     // Release all pooled memory (scene transitions, shutdown). Next use rebuilds pools.
     void ReleaseMemory();
@@ -355,9 +353,8 @@ private:
     // Command queue for ECL submission (not owned — provided at Init)
     ID3D12CommandQueue* m_pCommandQueue = nullptr;
 
-    // Allocator pools (not owned — provided at Init, used at Reset/Dispatch)
-    CCommandAllocatorPool* m_pWorkPool = nullptr;
-    CCommandAllocatorPool* m_pFixupPool = nullptr;
+    // Allocator pool (not owned — provided at Init, used at Reset/Dispatch)
+    CCommandAllocatorPool* m_pAllocatorPool = nullptr;
 
     // Current allocators (pulled from pools)
     CComPtr<ID3D12CommandAllocator> m_pWorkAllocator;
