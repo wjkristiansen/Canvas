@@ -11,6 +11,12 @@
 #include <unordered_map>
 #include <cstring>
 
+// Windows.h pollutes the global namespace with GetGlyphOutline → GetGlyphOutlineA/W.
+// Undo it so our method name is not mangled.
+#ifdef GetGlyphOutline
+#undef GetGlyphOutline
+#endif
+
 namespace Canvas
 {
 

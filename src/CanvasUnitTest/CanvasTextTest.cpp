@@ -13,9 +13,9 @@
 #include <fstream>
 #include "Font.h"
 #include "SDFGenerator.h"
-#include "GlyphAtlas.h"
+#include "RectanglePacker.h"
 #include "TextLayout.h"
-#include "CanvasText.h"
+#include "GlyphAtlas.h"
 
 // System font to exercise real font parsing (tests gracefully skip if absent).
 // Must match the font the app actually loads (segoeui.ttf, with arial.ttf as fallback).

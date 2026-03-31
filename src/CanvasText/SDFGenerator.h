@@ -109,6 +109,4 @@ private:
                               uint32_t bitmapSize);
 };
 
-// GlyphAtlasEntry is defined in the public CanvasText.h header
-
 } // namespace Canvas

@@ -11,6 +11,9 @@
 #include "Mesh.h"
 #include "Scene.h"
 #include "CanvasGfx.h"
+#include "FontImpl.h"
+#include "GlyphAtlas.h"
+#include "UIGraph.h"
 
 namespace Canvas
 {
@@ -175,6 +178,61 @@ GEMMETHODIMP CCanvas::CreateMeshInstance(XMeshInstance **ppMeshInstance, PCSTR n
     CFunctionSentinel sentinel("XCanvas::CreateMeshInstance", m_pLogger);
 
     return CreateElement<CMeshInstance>(ppMeshInstance, name);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateFont(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateFont", m_pLogger);
+
+    if (!pTTFData || !ppFont)
+        return Gem::Result::BadPointer;
+
+    Gem::TGemPtr<CFont> pFont;
+    Gem::Result result = Gem::TGenericImpl<CFont>::Create(&pFont, name ? name : "");
+    if (Gem::Failed(result))
+        return result;
+
+    result = pFont->LoadFromBuffer(pTTFData, dataSize);
+    if (Gem::Failed(result))
+        return result;
+
+    *ppFont = pFont.Detach();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateGlyphAtlas(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size, XGlyphAtlas** ppAtlas)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateGlyphAtlas", m_pLogger);
+
+    if (!pDevice || !pRenderQueue || !ppAtlas)
+        return Gem::Result::BadPointer;
+
+    Gem::TGemPtr<CGlyphAtlasImpl> pAtlas;
+    Gem::Result result = Gem::TGenericImpl<CGlyphAtlasImpl>::Create(&pAtlas, size);
+    if (Gem::Failed(result))
+        return result;
+
+    result = pAtlas->InitializeGPU(pDevice, pRenderQueue);
+    if (Gem::Failed(result))
+        return result;
+
+    *ppAtlas = pAtlas.Detach();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateUIGraph(XUIGraph** ppGraph)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateUIGraph", m_pLogger);
+
+    if (!ppGraph)
+        return Gem::Result::BadPointer;
+
+    auto pGraph = std::make_unique<CUIGraph>();
+    *ppGraph = pGraph.release();
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------

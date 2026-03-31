@@ -26,6 +26,7 @@ target_include_directories(CanvasUnitTest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasText
+    ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasCore
     ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasGfx12/Lib
     ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasGfx12/D3D12ResourceUtils
 )

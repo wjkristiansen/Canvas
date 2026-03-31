@@ -70,7 +70,6 @@ endif()
 # Link with Canvas libraries
 target_link_libraries(CanvasModelViewer PRIVATE
     CanvasCore
-    CanvasText
     ThinWin
     InCommandLib
     InCommandHeaders

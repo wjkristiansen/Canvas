@@ -129,6 +129,11 @@ public:
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;
     GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, PCSTR name = nullptr) final;
 
+    // Text/UI factory methods
+    GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) final;
+    GEMMETHOD(CreateGlyphAtlas)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size, XGlyphAtlas** ppAtlas) final;
+    GEMMETHOD(CreateUIGraph)(XUIGraph** ppGraph) final;
+
     GEMMETHOD_(XLogger *, GetLogger)() final
     {
         return m_pLogger;

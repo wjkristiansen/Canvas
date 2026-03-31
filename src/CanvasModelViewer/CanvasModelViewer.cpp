@@ -5,7 +5,6 @@
 #include "CanvasModelViewer.h"
 #include "CanvasCore.h"
 #include "CanvasGfx.h"
-#include "CanvasText.h"
 #include "QLogAdapter.h"
 #include "TokenParser.h"
 #include "InCommand.h"
@@ -383,7 +382,7 @@ public:
                 f.read(reinterpret_cast<char*>(data.data()), size);
 
                 Gem::TGemPtr<Canvas::XFont> pF;
-                Gem::ThrowGemError(Canvas::CreateFontFromBuffer(pCanvas, data.data(), data.size(), name, &pF));
+                Gem::ThrowGemError(pCanvas->CreateFont(data.data(), data.size(), name, &pF));
                 Canvas::LogInfo(m_pLogger.Get(), "Loaded font: %s", name);
                 return pF;
             };
@@ -391,7 +390,7 @@ public:
             pFont     = LoadFont(fontsDir / "Inter-Regular.ttf",         "Inter");
             pFontMono = LoadFont(fontsDir / "JetBrainsMono-Regular.ttf", "JetBrainsMono");
 
-            Gem::ThrowGemError(Canvas::CreateGlyphAtlas(pCanvas, pDevice, pGfxRenderQueue, 512, &pGlyphAtlas));
+            Gem::ThrowGemError(pCanvas->CreateGlyphAtlas(pDevice, pGfxRenderQueue, 512, &pGlyphAtlas));
 
             // Create lights
             Gem::TGemPtr<Canvas::XLight> pSunLight;

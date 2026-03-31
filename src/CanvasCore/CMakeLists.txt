@@ -10,6 +10,11 @@ add_library(CanvasCore SHARED
     Scene.cpp
     Timer.cpp
     SceneGraph.cpp
+    UIElement.cpp
+    FontImpl.cpp
+    GlyphAtlas.cpp
+    TextLayout.cpp
+    UIGraph.cpp
     
     # Header files (for IDE organization)
     ../Inc/CanvasCore.h
@@ -18,6 +23,11 @@ add_library(CanvasCore SHARED
     ../Inc/CanvasRender.h
     Camera.h
     Canvas.h
+    UIElement.h
+    FontImpl.h
+    GlyphAtlas.h
+    TextLayout.h
+    UIGraph.h
     DataSource.h
     Light.h
     Mesh.h
@@ -61,6 +71,11 @@ target_link_libraries(CanvasCore PUBLIC
     WIL
     GEM
     QLog
+)
+
+# Link CanvasText static lib (Font, SDFGenerator, RectanglePacker)
+target_link_libraries(CanvasCore PRIVATE
+    CanvasText
 )
 
 # Windows-specific settings

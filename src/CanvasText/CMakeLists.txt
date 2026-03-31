@@ -6,14 +6,12 @@ add_library(CanvasText STATIC
     # Source files
     Font.cpp
     SDFGenerator.cpp
-    GlyphAtlas.cpp
-    CanvasText.cpp
-    TextLayout.cpp
+    RectanglePacker.cpp
     
     # Header files (for IDE organization)
     Font.h
     SDFGenerator.h
-    GlyphAtlas.h
+    RectanglePacker.h
     pch.h
 )
 
@@ -27,11 +25,9 @@ set_target_properties(CanvasText PROPERTIES
 target_include_directories(CanvasText 
     PUBLIC 
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../Inc>
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../Inc
 )
 
 # Preprocessor definitions
@@ -40,14 +36,6 @@ target_compile_definitions(CanvasText
         $<$<CONFIG:Debug>:_DEBUG>
         $<$<CONFIG:Release>:NDEBUG>
         NOMINMAX
-)
-
-# Link with Canvas libraries
-target_link_libraries(CanvasText PUBLIC
-    CanvasCore
-    GEM
-    WIL
-    QLog
 )
 
 # Windows-specific settings

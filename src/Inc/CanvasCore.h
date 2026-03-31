@@ -42,6 +42,9 @@ struct XMeshInstance;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
 struct XRenderQueue;
+struct XFont;
+struct XGlyphAtlas;
+struct XUIGraph;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -170,6 +173,11 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, PCSTR name = nullptr) = 0;
+
+    // Text/UI factory methods
+    GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
+    GEMMETHOD(CreateGlyphAtlas)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size, XGlyphAtlas** ppAtlas) = 0;
+    GEMMETHOD(CreateUIGraph)(XUIGraph** ppGraph) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
@@ -441,6 +449,126 @@ XMeshInstance : public XSceneGraphElement
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;
     GEMMETHOD_(uint32_t, GetMaterialGroupIndex)() = 0;
 };
+
+//================================================================================================
+// UI Graph - Hierarchical UI/HUD elements with dirty tracking
+//================================================================================================
+
+//------------------------------------------------------------------------------------------------
+// XFont - Font resource interface
+//------------------------------------------------------------------------------------------------
+
+struct XFont : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XFont, 0x7C3F5B8A2E1D9F06);
+
+    GEMMETHOD_(float, GetAscender)() = 0;
+    GEMMETHOD_(float, GetDescender)() = 0;
+    GEMMETHOD_(float, GetLineGap)() = 0;
+    GEMMETHOD_(uint16_t, GetUnitsPerEm)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+// XGlyphAtlas - GPU glyph atlas interface
+//------------------------------------------------------------------------------------------------
+
+struct XGlyphAtlas : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XGlyphAtlas, 0x9E2A6D7C1F4B8A3D);
+
+    GEMMETHOD_(XGfxSurface*, GetAtlasTexture)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+// Text layout configuration
+//------------------------------------------------------------------------------------------------
+
+struct TextLayoutConfig
+{
+    float FontSize;              // Size in pixels
+    uint32_t Color;              // RGBA packed as uint32
+    float LineHeight;            // Multiplier of font's line gap
+    bool DisableKerning;
+
+    TextLayoutConfig()
+        : FontSize(16.0f), Color(0xFFFFFFFF), LineHeight(1.0f), DisableKerning(false)
+    {}
+};
+
+//------------------------------------------------------------------------------------------------
+enum class UIElementType : uint32_t
+{
+    Root = 0,
+    Text,
+    Rect,
+};
+
+//------------------------------------------------------------------------------------------------
+struct XUIElement : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(XUIElement, 0xA1B2C3D4E5F60718);
+
+    GEMMETHOD_(UIElementType, GetType)() const = 0;
+
+    GEMMETHOD_(const Math::FloatVector2&, GetPosition)() const = 0;
+    GEMMETHOD_(void, SetPosition)(const Math::FloatVector2& position) = 0;
+
+    GEMMETHOD_(bool, IsVisible)() const = 0;
+    GEMMETHOD_(void, SetVisible)(bool visible) = 0;
+
+    GEMMETHOD_(XUIElement*, GetParent)() = 0;
+    GEMMETHOD_(XUIElement*, GetFirstChild)() = 0;
+    GEMMETHOD_(XUIElement*, GetNextSibling)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct XUITextElement : public XUIElement
+{
+    GEM_INTERFACE_DECLARE(XUITextElement, 0xB2C3D4E5F6071829);
+
+    GEMMETHOD_(void, SetText)(PCSTR utf8Text) = 0;
+    GEMMETHOD_(PCSTR, GetText)() const = 0;
+    GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
+    GEMMETHOD_(void, SetGlyphAtlas)(XGlyphAtlas* pAtlas) = 0;
+    GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
+    GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct XUIRectElement : public XUIElement
+{
+    GEM_INTERFACE_DECLARE(XUIRectElement, 0xC3D4E5F607182930);
+
+    GEMMETHOD_(void, SetSize)(const Math::FloatVector2& size) = 0;
+    GEMMETHOD_(const Math::FloatVector2&, GetSize)() const = 0;
+    GEMMETHOD_(void, SetFillColor)(uint32_t color) = 0;
+    GEMMETHOD_(uint32_t, GetFillColor)() const = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct XUIGraph : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(XUIGraph, 0xD4E5F60718293041);
+
+    GEMMETHOD_(XUIElement*, GetRoot)() = 0;
+    GEMMETHOD(CreateTextElement)(XUIElement* pParent, XUITextElement** ppElement) = 0;
+    GEMMETHOD(CreateRectElement)(XUIElement* pParent, XUIRectElement** ppElement) = 0;
+    GEMMETHOD(RemoveElement)(XUIElement* pElement) = 0;
+
+    GEMMETHOD(Update)() = 0;
+    GEMMETHOD(Submit)(XRenderQueue* pRenderQueue) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+Gem::Result CANVAS_API QueueTextRender(
+    XGfxRenderQueue *pRenderQueue,
+    XGfxDevice *pGfxDevice,
+    PCSTR utf8Text,
+    XFont *pFont,
+    XGlyphAtlas *pAtlas,
+    const Math::FloatVector3& screenPosition,
+    const TextLayoutConfig& config,
+    XLogger *pLogger = nullptr);
 
 //------------------------------------------------------------------------------------------------
 enum TypeId : uint64_t
