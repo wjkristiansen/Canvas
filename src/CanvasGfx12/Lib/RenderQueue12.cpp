@@ -382,6 +382,19 @@ void CRenderQueue12::ProcessCompletedWork()
             ++it;
         }
     }
+
+    // Release old persistent buffers (from growth) whose fence has completed
+    for (auto it = m_PendingBufferRetirements.begin(); it != m_PendingBufferRetirements.end();)
+    {
+        if (it->FenceValue <= completedValue)
+        {
+            it = m_PendingBufferRetirements.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 //================================================================================================
@@ -1293,6 +1306,264 @@ GEMMETHODIMP CRenderQueue12::DrawText(
         if (vertexAlloc.pBuffer) RetireUploadAllocation(vertexAlloc);
         if (cbAlloc.pBuffer)     RetireUploadAllocation(cbAlloc);
         Canvas::LogError(m_pDevice->GetLogger(), "DrawText failed: HRESULT=0x%08X", (unsigned)e.Error());
+        return ResultFromHRESULT(e.Error());
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::EnsureUITextVertexBuffer()
+{
+    if (m_pUITextVertexBuffer)
+        return;
+
+    constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
+    uint64_t bufferSize = kInitialUITextVertexCapacity * kTextVertexSize;
+
+    Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
+    Gem::ThrowGemError(m_pDevice->CreateBuffer(bufferSize, Canvas::GfxMemoryUsage::DeviceLocal, &pBuffer));
+    m_pUITextVertexBuffer = std::move(pBuffer);
+    m_pUITextVertexAllocator = std::make_unique<TBuddySuballocator<uint32_t>>(kInitialUITextVertexCapacity);
+}
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::GrowUITextVertexBuffer(uint32_t newCapacity)
+{
+    constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
+    uint64_t oldSize = m_pUITextVertexAllocator->GetCapacity() * kTextVertexSize;
+    uint64_t newSize = newCapacity * kTextVertexSize;
+
+    Gem::TGemPtr<Canvas::XGfxBuffer> pNewBuffer;
+    Gem::ThrowGemError(m_pDevice->CreateBuffer(newSize, Canvas::GfxMemoryUsage::DeviceLocal, &pNewBuffer));
+
+    // GPU copy old buffer contents → new buffer (existing allocations keep their offsets)
+    auto pOldBuf = static_cast<CBuffer12*>(m_pUITextVertexBuffer.Get());
+    auto pNewBuf = static_cast<CBuffer12*>(pNewBuffer.Get());
+
+    auto& copyTask = m_UIGpuTaskGraph.CreateTask("GrowUITextBuffer");
+    m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pOldBuf,
+        D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE);
+    m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pNewBuf,
+        D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_DEST);
+
+    ID3D12Resource* pOldResource = pOldBuf->GetD3DResource();
+    ID3D12Resource* pNewResource = pNewBuf->GetD3DResource();
+    copyTask.RecordFunc = [pOldResource, pNewResource, oldSize](ID3D12GraphicsCommandList* pCL)
+    {
+        pCL->CopyBufferRegion(pNewResource, 0, pOldResource, 0, oldSize);
+    };
+    m_UIGpuTaskGraph.InsertTask(copyTask);
+
+    // Retarget pending staged uploads to the new buffer (offsets unchanged)
+    // The staged copies haven't been flushed yet — they'll target the new buffer
+    // when DrawUITextBatch flushes them.
+
+    // Retire old buffer after GPU completes
+    m_PendingBufferRetirements.push_back({ std::move(m_pUITextVertexBuffer), m_FenceValue + 1 });
+
+    m_pUITextVertexBuffer = std::move(pNewBuffer);
+    m_pUITextVertexAllocator->Grow();
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::AllocUITextVertices(uint32_t maxVertexCount, uint32_t* pStartVertex)
+{
+    if (!pStartVertex || maxVertexCount == 0)
+        return Gem::Result::InvalidArg;
+
+    try
+    {
+        EnsureUITextVertexBuffer();
+
+        TBuddyBlock<uint32_t> block;
+        if (m_pUITextVertexAllocator->TryAllocate(maxVertexCount, block))
+        {
+            *pStartVertex = block.Start();
+            return Gem::Result::Success;
+        }
+
+        // Buddy allocator full — grow and retry
+        GrowUITextVertexBuffer(
+            static_cast<uint32_t>(m_pUITextVertexAllocator->GetCapacity()) * 2);
+
+        if (m_pUITextVertexAllocator->TryAllocate(maxVertexCount, block))
+        {
+            *pStartVertex = block.Start();
+            return Gem::Result::Success;
+        }
+
+        return Gem::Result::OutOfMemory;
+    }
+    catch (Gem::GemError& e) { return e.Result(); }
+    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CRenderQueue12::FreeUITextVertices(uint32_t startVertex, uint32_t maxVertexCount)
+{
+    if (m_pUITextVertexAllocator && maxVertexCount > 0)
+    {
+        auto block = TBuddySuballocator<uint32_t>::ReconstructBlock(startVertex, maxVertexCount);
+        m_pUITextVertexAllocator->TryFree(block);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::UploadUITextVertices(
+    uint32_t startVertex,
+    const void* pVertexData,
+    uint32_t vertexCount)
+{
+    if (!pVertexData || vertexCount == 0)
+        return Gem::Result::InvalidArg;
+
+    try
+    {
+        EnsureUITextVertexBuffer();
+
+        constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
+        uint64_t copySize = vertexCount * kTextVertexSize;
+        uint64_t dstOffset = startVertex * kTextVertexSize;
+
+        // Stage vertex data in UPLOAD heap — no GPU task yet
+        Canvas::GfxSuballocation staging{};
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(copySize, staging));
+
+        auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
+        ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
+        void* pMapped = nullptr;
+        ThrowFailedHResult(pStagingResource->Map(0, nullptr, &pMapped));
+        memcpy(static_cast<uint8_t*>(pMapped) + staging.Offset, pVertexData, copySize);
+        pStagingResource->Unmap(0, nullptr);
+
+        m_PendingUITextUploads.push_back({ staging, dstOffset, copySize });
+    }
+    catch (Gem::GemError& e) { return e.Result(); }
+    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
+    const Canvas::UITextDrawCommand* pCommands,
+    uint32_t commandCount,
+    Canvas::XGfxSurface* pGlyphAtlas)
+{
+    if (!pCommands || commandCount == 0 || !pGlyphAtlas || !m_pCurrentSwapChain || !m_pUITextVertexBuffer)
+        return Gem::Result::InvalidArg;
+
+    Canvas::GfxSuballocation cbAlloc{};
+
+    try
+    {
+        DXGI_FORMAT rtvFormat = m_pCurrentSwapChain->m_pSurface->GetD3DResource()->GetDesc().Format;
+        EnsureTextPSO(rtvFormat);
+
+        auto pAtlas = static_cast<CSurface12*>(pGlyphAtlas);
+        CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
+        auto pVertexBuf = static_cast<CBuffer12*>(m_pUITextVertexBuffer.Get());
+
+        // Flush all pending uploads as a single GPU copy task
+        if (!m_PendingUITextUploads.empty())
+        {
+            auto& copyTask = m_UIGpuTaskGraph.CreateTask("FlushUITextUploads");
+            m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pVertexBuf,
+                D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_DEST);
+
+            auto uploads = std::move(m_PendingUITextUploads);
+            m_PendingUITextUploads.clear();
+
+            ID3D12Resource* pDstResource = pVertexBuf->GetD3DResource();
+            copyTask.RecordFunc = [pDstResource, uploads](ID3D12GraphicsCommandList* pCL)
+            {
+                for (const auto& u : uploads)
+                {
+                    auto pSrcBuf = static_cast<CBuffer12*>(u.Staging.pBuffer.Get());
+                    pCL->CopyBufferRegion(pDstResource, u.DstOffset,
+                        pSrcBuf->GetD3DResource(), u.Staging.Offset, u.CopySize);
+                }
+            };
+            m_UIGpuTaskGraph.InsertTask(copyTask);
+
+            for (auto& u : uploads)
+                RetireUploadAllocation(u.Staging);
+        }
+
+        // Draw task — reads persistent buffer after copies complete
+        auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUITextBatch");
+        m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pAtlas,
+            D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+            D3D12_BARRIER_SYNC_PIXEL_SHADING,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pBackBuffer,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        m_UIGpuTaskGraph.DeclareBufferUsage(drawTask, pVertexBuf,
+            D3D12_BARRIER_SYNC_PIXEL_SHADING,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+
+        // Shared screen constants CBV (one allocation for entire batch)
+        constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
+
+        auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
+        ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
+        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), 0.0f, 0.0f };
+        void* pCBMapped = nullptr;
+        ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
+        memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
+        pCBResource->Unmap(0, nullptr);
+
+        // Atlas SRV descriptor
+        ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+        UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
+            m_NextSRVSlot = 0;
+        UINT srvSlot = m_NextSRVSlot++;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE srvCpuHandle;
+        srvCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
+        D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle;
+        srvGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
+        pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
+
+        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+        D3D12_GPU_VIRTUAL_ADDRESS vertexSrvAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress();
+
+        // Copy draw commands for lambda capture
+        std::vector<Canvas::UITextDrawCommand> commands(pCommands, pCommands + commandCount);
+
+        drawTask.RecordFunc = [cbvAddr, vertexSrvAddr, srvGpuHandle, cmds = std::move(commands), this](ID3D12GraphicsCommandList* pCL)
+        {
+            pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
+            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
+            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetGraphicsRootSignature(m_pTextRootSig);
+            pCL->SetPipelineState(m_pTextPSO);
+            pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
+            pCL->SetGraphicsRootShaderResourceView(1, vertexSrvAddr);
+            pCL->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
+
+            for (const auto& cmd : cmds)
+                pCL->DrawInstanced(cmd.VertexCount, 1, cmd.StartVertex, 0);
+        };
+        m_UIGpuTaskGraph.InsertTask(drawTask);
+
+        RetireUploadAllocation(cbAlloc);
+    }
+    catch (Gem::GemError& e)
+    {
+        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
+        return e.Result();
+    }
+    catch (_com_error& e)
+    {
+        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
         return ResultFromHRESULT(e.Error());
     }
 

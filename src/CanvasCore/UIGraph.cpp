@@ -73,6 +73,15 @@ Gem::Result CUIGraph::RemoveElement(XUIElement* pElement)
     if (!pCore)
         return Gem::Result::InvalidArg;
 
+    // Defer vertex slot free to next Submit (we don't have XRenderQueue here)
+    auto& slot = pCore->GetBufferSlot();
+    if (slot.MaxVertexCount > 0)
+    {
+        m_PendingVertexSlotFrees.push_back({ slot.StartVertex, slot.MaxVertexCount });
+        slot.StartVertex = 0;
+        slot.MaxVertexCount = 0;
+    }
+
     pCore->RemoveFromParent();
 
     for (auto it = m_OwnedElements.begin(); it != m_OwnedElements.end(); ++it)
@@ -104,6 +113,7 @@ void CUIGraph::UpdateElement(CUIElementCore* pElement)
     if (dirty & (CUIElementCore::DirtyContent | CUIElementCore::DirtyPosition))
     {
         pElement->RegenerateVertices();
+        pElement->GetBufferSlot().GpuDirty = true;
         pElement->ClearDirtyFlags(CUIElementCore::DirtyContent | CUIElementCore::DirtyPosition);
     }
 
@@ -124,39 +134,98 @@ Gem::Result CUIGraph::Submit(XRenderQueue* pRenderQueue)
     if (!pRenderQueue)
         return Gem::Result::BadPointer;
 
-    SubmitElement(&m_Root, pRenderQueue);
-    return Gem::Result::Success;
+    // Free vertex slots from removed elements
+    for (auto& free : m_PendingVertexSlotFrees)
+        pRenderQueue->FreeUITextVertices(free.StartVertex, free.MaxVertexCount);
+    m_PendingVertexSlotFrees.clear();
+
+    // Collect visible text elements
+    m_VisibleTextElements.clear();
+    CollectVisibleTextElements(&m_Root);
+
+    if (m_VisibleTextElements.empty())
+        return Gem::Result::Success;
+
+    // Alloc/realloc vertex slots and upload dirty data
+    XGfxSurface* pAtlasTexture = nullptr;
+
+    for (CUITextElement* pText : m_VisibleTextElements)
+    {
+        auto& slot = pText->GetBufferSlot();
+        uint32_t vertexCount = pText->GetCachedVertexCount();
+
+        // Allocate or grow the slot if vertex count exceeds capacity
+        if (vertexCount > slot.MaxVertexCount)
+        {
+            if (slot.MaxVertexCount > 0)
+                pRenderQueue->FreeUITextVertices(slot.StartVertex, slot.MaxVertexCount);
+
+            uint32_t startVertex = 0;
+            Gem::Result r = pRenderQueue->AllocUITextVertices(vertexCount, &startVertex);
+            if (Failed(r))
+                return r;
+
+            slot.StartVertex = startVertex;
+            slot.MaxVertexCount = vertexCount;
+            slot.GpuDirty = true;
+        }
+
+        // Upload dirty vertex data
+        if (slot.GpuDirty && vertexCount > 0)
+        {
+            Gem::Result r = pRenderQueue->UploadUITextVertices(
+                slot.StartVertex, pText->GetCachedVertexData(), vertexCount);
+            if (Failed(r))
+                return r;
+            slot.GpuDirty = false;
+        }
+
+        // Track atlas (single shared atlas assumed)
+        if (!pAtlasTexture && pText->GetGlyphAtlas())
+            pAtlasTexture = pText->GetGlyphAtlas()->GetAtlasTexture();
+    }
+
+    if (!pAtlasTexture)
+        return Gem::Result::Success;
+
+    // Build draw command array
+    m_DrawCommands.clear();
+    for (CUITextElement* pText : m_VisibleTextElements)
+    {
+        uint32_t vertexCount = pText->GetCachedVertexCount();
+        if (vertexCount > 0)
+        {
+            auto& slot = pText->GetBufferSlot();
+            m_DrawCommands.push_back({ slot.StartVertex, vertexCount });
+        }
+    }
+
+    if (m_DrawCommands.empty())
+        return Gem::Result::Success;
+
+    return pRenderQueue->DrawUITextBatch(
+        m_DrawCommands.data(),
+        static_cast<uint32_t>(m_DrawCommands.size()),
+        pAtlasTexture);
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIGraph::SubmitElement(CUIElementCore* pElement, XRenderQueue* pRenderQueue)
+void CUIGraph::CollectVisibleTextElements(CUIElementCore* pElement)
 {
     if (!pElement->IsEffectivelyVisible())
         return;
 
     if (pElement->GetType() == UIElementType::Text)
     {
-        CUITextElement* pText = static_cast<CUITextElement*>(pElement);
-        uint32_t vertexCount = pText->GetCachedVertexCount();
-        if (vertexCount > 0 && pText->GetGlyphAtlas())
-        {
-            XGfxSurface* pAtlasTexture = pText->GetGlyphAtlas()->GetAtlasTexture();
-            if (pAtlasTexture)
-            {
-                const Math::FloatVector2& pos = pText->GetAbsolutePosition();
-                pRenderQueue->DrawText(
-                    pText->GetCachedVertexData(),
-                    vertexCount,
-                    pAtlasTexture,
-                    Math::FloatVector4(pos.X, pos.Y, 0.0f, 0.0f));
-            }
-        }
+        auto pText = static_cast<CUITextElement*>(pElement);
+        if (pText->GetCachedVertexCount() > 0 && pText->GetGlyphAtlas())
+            m_VisibleTextElements.push_back(pText);
     }
 
     CUIElementCore* pChild = pElement->GetFirstChildCore();
     while (pChild)
     {
-        SubmitElement(pChild, pRenderQueue);
+        CollectVisibleTextElements(pChild);
         pChild = pChild->GetNextSiblingCore();
     }
 }

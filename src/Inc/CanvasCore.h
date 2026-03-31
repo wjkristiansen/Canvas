@@ -304,6 +304,13 @@ struct alignas(16) GfxPerObjectConstants
     Math::FloatMatrix4x4 WorldInvTranspose; // For transforming normals
 };
 
+// Draw command for batched UI text rendering from a persistent vertex buffer
+struct UITextDrawCommand
+{
+    uint32_t StartVertex;   // Offset into persistent vertex buffer
+    uint32_t VertexCount;   // Number of vertices to draw
+};
+
 struct
 XRenderQueue : public XCanvasElement
 {
@@ -320,6 +327,22 @@ XRenderQueue : public XCanvasElement
         uint32_t vertexCount,            // Number of vertices
         XGfxSurface *pGlyphAtlas,       // SDF glyph atlas texture
         const Math::FloatVector4 &screenOffset) = 0;  // Screen-space position (x, y, z=depth, w=unused)
+
+    // Persistent UI text vertex buffer management
+    // Allocates a contiguous region in the persistent GPU vertex buffer.
+    // Returns the start vertex index via pStartVertex.
+    GEMMETHOD(AllocUITextVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) = 0;
+
+    // Frees a previously allocated region in the persistent GPU vertex buffer.
+    GEMMETHOD_(void, FreeUITextVertices)(uint32_t startVertex, uint32_t maxVertexCount) = 0;
+
+    // Uploads CPU vertex data into an allocated region of the persistent GPU vertex buffer.
+    // Stages data in UPLOAD heap and issues a CopyBufferRegion to the DEFAULT heap buffer.
+    GEMMETHOD(UploadUITextVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) = 0;
+
+    // Batch draw UI text from the persistent vertex buffer.
+    // Issues a single PSO bind and one DrawInstanced per command.
+    GEMMETHOD(DrawUITextBatch)(const UITextDrawCommand* pCommands, uint32_t commandCount, XGfxSurface* pGlyphAtlas) = 0;
 
     // Upload CPU data into a sub-region of a GPU surface via a staging copy.
     // Intended for populating persistently-resident textures (e.g., glyph atlas).

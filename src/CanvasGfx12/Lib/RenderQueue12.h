@@ -8,6 +8,7 @@
 #include "GpuTask.h"
 #include "HlslTypes.h"
 #include "CommandAllocatorPool.h"
+#include "BuddySuballocator.h"
 
 // Forward declarations
 class CSurface12;
@@ -510,6 +511,29 @@ public:
     };
     std::vector<PendingUploadRetirement> m_PendingUploadRetirements;
 
+    // Persistent UI text vertex buffer (DEFAULT heap)
+    static const uint32_t kInitialUITextVertexCapacity = 4096;  // Must be power of 2
+    Gem::TGemPtr<Canvas::XGfxBuffer> m_pUITextVertexBuffer;
+    std::unique_ptr<TBuddySuballocator<uint32_t>> m_pUITextVertexAllocator;
+
+    // Staged uploads: CPU data staged in UPLOAD heap, flushed by DrawUITextBatch
+    // as a single GPU copy task before the draw task (one write, then one read).
+    struct PendingUITextUpload
+    {
+        Canvas::GfxSuballocation Staging;
+        uint64_t DstOffset;     // Byte offset into persistent buffer
+        uint64_t CopySize;      // Bytes to copy
+    };
+    std::vector<PendingUITextUpload> m_PendingUITextUploads;
+
+    // Pending buffer retirements: old persistent buffers kept alive until GPU fence completes
+    struct PendingBufferRetirement
+    {
+        Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
+        UINT64 FenceValue;
+    };
+    std::vector<PendingBufferRetirement> m_PendingBufferRetirements;
+
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
         GEM_INTERFACE_ENTRY(Canvas::XRenderQueue)
@@ -529,6 +553,10 @@ public:
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(DrawMesh)(Canvas::XGfxMeshData *pMeshData, const Canvas::GfxPerObjectConstants &objectConstants) final;
     GEMMETHOD(DrawText)(const void *pVertexData, uint32_t vertexCount, Canvas::XGfxSurface *pGlyphAtlas, const Canvas::Math::FloatVector4 &screenOffset) final;
+    GEMMETHOD(AllocUITextVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) final;
+    GEMMETHOD_(void, FreeUITextVertices)(uint32_t startVertex, uint32_t maxVertexCount) final;
+    GEMMETHOD(UploadUITextVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) final;
+    GEMMETHOD(DrawUITextBatch)(const Canvas::UITextDrawCommand* pCommands, uint32_t commandCount, Canvas::XGfxSurface* pGlyphAtlas) final;
     GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context) final;
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphElement *pElement) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
@@ -558,6 +586,12 @@ public:
     
     // Create the text PSO and root signature (lazily, on first use)
     void EnsureTextPSO(DXGI_FORMAT rtvFormat);
+
+    // Create the persistent UI text vertex buffer (lazily, on first use)
+    void EnsureUITextVertexBuffer();
+
+    // Grow the persistent UI text vertex buffer to at least newCapacity vertices
+    void GrowUITextVertexBuffer(uint32_t newCapacity);
     
     // Allocate a shader-visible SRV descriptor slot and return GPU handle
     D3D12_GPU_DESCRIPTOR_HANDLE CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc);
