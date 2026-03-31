@@ -6,12 +6,10 @@ add_library(CanvasText STATIC
     # Source files
     Font.cpp
     SDFGenerator.cpp
-    RectanglePacker.cpp
     
     # Header files (for IDE organization)
     Font.h
     SDFGenerator.h
-    RectanglePacker.h
     pch.h
 )
 

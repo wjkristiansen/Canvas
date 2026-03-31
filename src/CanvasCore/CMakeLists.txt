@@ -73,9 +73,10 @@ target_link_libraries(CanvasCore PUBLIC
     QLog
 )
 
-# Link CanvasText static lib (Font, SDFGenerator, RectanglePacker)
+# Link CanvasText static lib (Font, SDFGenerator)
 target_link_libraries(CanvasCore PRIVATE
     CanvasText
+    RectanglePacker
 )
 
 # Windows-specific settings
