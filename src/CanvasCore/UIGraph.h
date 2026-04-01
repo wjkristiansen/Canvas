@@ -16,12 +16,15 @@ class CUIGraph : public Gem::TGeneric<XUIGraph>
     // Scratch buffers for Submit (reused across frames to avoid per-frame allocations)
     std::vector<CUITextElement*> m_VisibleTextElements;
     std::vector<UITextDrawCommand> m_DrawCommands;
+    std::vector<CUIRectElement*> m_VisibleRectElements;
+    std::vector<UIRectDrawCommand> m_RectDrawCommands;
 
     // Vertex slots freed by RemoveElement, processed in next Submit
     struct PendingVertexSlotFree
     {
         uint32_t StartVertex;
         uint32_t MaxVertexCount;
+        UIElementType Type;
     };
     std::vector<PendingVertexSlotFree> m_PendingVertexSlotFrees;
 
@@ -47,6 +50,7 @@ public:
 private:
     void UpdateElement(CUIElementCore* pElement);
     void CollectVisibleTextElements(CUIElementCore* pElement);
+    void CollectVisibleRectElements(CUIElementCore* pElement);
     static CUIElementCore* GetCore(XUIElement* pElement);
 };
 

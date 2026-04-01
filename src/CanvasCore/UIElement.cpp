@@ -272,7 +272,8 @@ void CUITextElement::SetGlyphAtlasInternal(CGlyphAtlasImpl* pAtlas)
 void CUITextElement::SetLayoutConfig(const TextLayoutConfig& config)
 {
     if (m_Config.FontSize == config.FontSize &&
-        m_Config.Color == config.Color &&
+        m_Config.Color.X == config.Color.X && m_Config.Color.Y == config.Color.Y &&
+        m_Config.Color.Z == config.Color.Z && m_Config.Color.W == config.Color.W &&
         m_Config.LineHeight == config.LineHeight &&
         m_Config.DisableKerning == config.DisableKerning)
         return;
@@ -396,9 +397,10 @@ void CUIRectElement::SetSize(const Math::FloatVector2& size)
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIRectElement::SetFillColor(uint32_t color)
+void CUIRectElement::SetFillColor(const Math::FloatVector4& color)
 {
-    if (m_FillColor == color)
+    if (m_FillColor.X == color.X && m_FillColor.Y == color.Y &&
+        m_FillColor.Z == color.Z && m_FillColor.W == color.W)
         return;
 
     m_FillColor = color;
@@ -421,12 +423,12 @@ void CUIRectElement::RegenerateVertices()
 
     m_CachedVertices.resize(6);
 
-    auto makeVertex = [](float x, float y, uint32_t color) -> TextVertex
+    auto makeVertex = [](float x, float y, const Math::FloatVector4& color) -> TextVertex
     {
         TextVertex v;
         v.Position = { x, y, 0.0f };
         v.TexCoord = {};
-        v.Color = color;
+        v.SetColor(color);
         return v;
     };
 

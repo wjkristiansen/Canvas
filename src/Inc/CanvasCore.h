@@ -323,22 +323,19 @@ struct UITextDrawCommand
     uint32_t VertexCount;   // Number of vertices to draw
 };
 
+// Draw command for batched UI rect rendering from a persistent vertex buffer
+struct UIRectDrawCommand
+{
+    uint32_t StartVertex;   // Offset into persistent rect vertex buffer
+    uint32_t VertexCount;   // Number of vertices to draw
+};
+
 struct
 XRenderQueue : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XRenderQueue, 0x3B35719161878DCC);
 
     GEMMETHOD(DrawMesh)(XGfxMeshData *pMeshData, const GfxPerObjectConstants &objectConstants) = 0;
-
-    // Draw text with SDF glyph atlas
-    // Renders text vertices with glyph atlas texture
-    // data points to an array of TextVertex structures
-    // vertexCount is the number of vertices (must be a multiple of 6 for glyph quads)
-    GEMMETHOD(DrawText)(
-        const void *pVertexData,        // Array of TextVertex structures
-        uint32_t vertexCount,            // Number of vertices
-        XGfxSurface *pGlyphAtlas,       // SDF glyph atlas texture
-        const Math::FloatVector4 &screenOffset) = 0;  // Screen-space position (x, y, z=depth, w=unused)
 
     // Persistent UI text vertex buffer management
     // Allocates a contiguous region in the persistent GPU vertex buffer.
@@ -355,6 +352,15 @@ XRenderQueue : public XCanvasElement
     // Batch draw UI text from the persistent vertex buffer.
     // Issues a single PSO bind and one DrawInstanced per command.
     GEMMETHOD(DrawUITextBatch)(const UITextDrawCommand* pCommands, uint32_t commandCount, XGfxSurface* pGlyphAtlas) = 0;
+
+    // Persistent UI rect vertex buffer management (same pattern as text, separate buffer)
+    GEMMETHOD(AllocUIRectVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) = 0;
+    GEMMETHOD_(void, FreeUIRectVertices)(uint32_t startVertex, uint32_t maxVertexCount) = 0;
+    GEMMETHOD(UploadUIRectVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) = 0;
+
+    // Batch draw UI rects from the persistent rect vertex buffer.
+    // Issues a single PSO bind (no atlas) and one DrawInstanced per command.
+    GEMMETHOD(DrawUIRectBatch)(const UIRectDrawCommand* pCommands, uint32_t commandCount) = 0;
 
     // Upload CPU data into a sub-region of a GPU surface via a staging copy.
     // Intended for populating persistently-resident textures (e.g., glyph atlas).
@@ -564,8 +570,8 @@ struct XUIRectElement : public XUIElement
 
     GEMMETHOD_(void, SetSize)(const Math::FloatVector2& size) = 0;
     GEMMETHOD_(const Math::FloatVector2&, GetSize)() const = 0;
-    GEMMETHOD_(void, SetFillColor)(uint32_t color) = 0;
-    GEMMETHOD_(uint32_t, GetFillColor)() const = 0;
+    GEMMETHOD_(void, SetFillColor)(const Math::FloatVector4& color) = 0;
+    GEMMETHOD_(const Math::FloatVector4&, GetFillColor)() const = 0;
 };
 
 //------------------------------------------------------------------------------------------------

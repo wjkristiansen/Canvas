@@ -161,7 +161,7 @@ public:
 class CUIRectElement : public TUIElement<XUIRectElement>
 {
     Math::FloatVector2 m_Size = {};
-    uint32_t m_FillColor = 0xFFFFFFFF;
+    Math::FloatVector4 m_FillColor = { 1.0f, 1.0f, 1.0f, 1.0f };
     std::vector<TextVertex> m_CachedVertices;
 
 public:
@@ -176,8 +176,8 @@ public:
 
     GEMMETHOD_(void, SetSize)(const Math::FloatVector2& size) override;
     GEMMETHOD_(const Math::FloatVector2&, GetSize)() const override { return m_Size; }
-    GEMMETHOD_(void, SetFillColor)(uint32_t color) override;
-    GEMMETHOD_(uint32_t, GetFillColor)() const override { return m_FillColor; }
+    GEMMETHOD_(void, SetFillColor)(const Math::FloatVector4& color) override;
+    GEMMETHOD_(const Math::FloatVector4&, GetFillColor)() const override { return m_FillColor; }
 
     void RegenerateVertices() override;
     const void* GetCachedVertexData() const override { return m_CachedVertices.data(); }

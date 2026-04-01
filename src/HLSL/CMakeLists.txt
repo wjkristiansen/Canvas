@@ -102,6 +102,10 @@ add_hlsl_shader("PSComposite.hlsl" "ps_6_0" "PSComposite")
 add_hlsl_shader("VSText.hlsl" "vs_6_0" "main")
 add_hlsl_shader("PSText.hlsl" "ps_6_0" "main")
 
+# Rect Vertex/Pixel Shaders
+add_hlsl_shader("VSRect.hlsl" "vs_6_0" "main")
+add_hlsl_shader("PSRect.hlsl" "ps_6_0" "main")
+
 # Create the HLSL target
 add_custom_target(HLSL ALL
     DEPENDS ${SHADER_OUTPUTS}

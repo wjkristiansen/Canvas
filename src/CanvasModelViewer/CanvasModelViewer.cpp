@@ -138,6 +138,7 @@ class CApp
     Gem::TGemPtr<Canvas::XLight> m_pSunLight;
     Gem::TGemPtr<Canvas::XLight> m_pAmbientLight;
     Gem::TGemPtr<Canvas::XUIGraph> m_pUIGraph;
+    Gem::TGemPtr<Canvas::XUIRectElement> m_pHudPanel;
     Gem::TGemPtr<Canvas::XUITextElement> m_pTitleText;
     Gem::TGemPtr<Canvas::XUITextElement> m_pFpsText;
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
@@ -396,30 +397,37 @@ public:
             Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
             Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, pGfxRenderQueue, &pUIGraph));
 
-            // Title text element — static, set once
+            // HUD background panel — semi-transparent dark rect behind title + FPS
+            Gem::TGemPtr<Canvas::XUIRectElement> pHudPanel;
+            Gem::ThrowGemError(pUIGraph->CreateRectElement(nullptr, &pHudPanel));
+            pHudPanel->SetPosition(Canvas::Math::FloatVector2(6.0f, 6.0f));
+            pHudPanel->SetSize(Canvas::Math::FloatVector2(340.0f, 70.0f));
+            pHudPanel->SetFillColor(Canvas::Math::FloatVector4(0.125f, 0.125f, 0.125f, 0.75f));
+
+            // Title text element — static, child of HUD panel
             Gem::TGemPtr<Canvas::XUITextElement> pTitleText;
-            Gem::ThrowGemError(pUIGraph->CreateTextElement(pUIGraph->GetRoot(), &pTitleText));
+            Gem::ThrowGemError(pUIGraph->CreateTextElement(pHudPanel, &pTitleText));
             pTitleText->SetFont(pFont);
             {
-Canvas::TextLayoutConfig titleConfig;
-            titleConfig.FontSize = 32.0f;
-            titleConfig.Color = 0xFFFFFFFF;
-            pTitleText->SetLayoutConfig(titleConfig);
+                Canvas::TextLayoutConfig titleConfig;
+                titleConfig.FontSize = 32.0f;
+                titleConfig.Color = Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f);
+                pTitleText->SetLayoutConfig(titleConfig);
             }
-pTitleText->SetPosition(Canvas::Math::FloatVector2(10.0f, 10.0f));
+            pTitleText->SetPosition(Canvas::Math::FloatVector2(4.0f, 4.0f));
             pTitleText->SetText("Canvas Model Viewer");
 
-            // FPS text element — dynamic, updated when value changes
+            // FPS text element — dynamic, child of HUD panel
             Gem::TGemPtr<Canvas::XUITextElement> pFpsText;
-            Gem::ThrowGemError(pUIGraph->CreateTextElement(pUIGraph->GetRoot(), &pFpsText));
+            Gem::ThrowGemError(pUIGraph->CreateTextElement(pHudPanel, &pFpsText));
             pFpsText->SetFont(pFontMono);
             {
                 Canvas::TextLayoutConfig monoConfig;
                 monoConfig.FontSize = 18.0f;
-                monoConfig.Color = 0xFFCCCCCC;
+                monoConfig.Color = Canvas::Math::FloatVector4(0.8f, 0.8f, 0.8f, 1.0f);
                 pFpsText->SetLayoutConfig(monoConfig);
             }
-            pFpsText->SetPosition(Canvas::Math::FloatVector2(10.0f, 50.0f));
+            pFpsText->SetPosition(Canvas::Math::FloatVector2(4.0f, 40.0f));
             pFpsText->SetText("FPS: --");
 
             // Create lights
@@ -471,6 +479,7 @@ pTitleText->SetPosition(Canvas::Math::FloatVector2(10.0f, 10.0f));
             m_pSunLight.Attach(pSunLight.Detach());
             m_pAmbientLight.Attach(pAmbientLight.Detach());
             m_pUIGraph.Attach(pUIGraph.Detach());
+            m_pHudPanel.Attach(pHudPanel.Detach());
             m_pTitleText.Attach(pTitleText.Detach());
             m_pFpsText.Attach(pFpsText.Detach());
 

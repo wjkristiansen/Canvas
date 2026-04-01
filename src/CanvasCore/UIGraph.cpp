@@ -45,12 +45,10 @@ Gem::Result CUIGraph::CreateRectElement(XUIElement* pParent, XUIRectElement** pp
     if (!pParentCore)
         return Gem::Result::InvalidArg;
 
-    auto pElement = std::make_unique<CUIRectElement>();
-    CUIRectElement* pRaw = pElement.get();
-    pParentCore->AddChild(pRaw);
-    m_OwnedElements.push_back(std::move(pElement));
+    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>();
+    pParentCore->AddChild(pElement);
 
-    *ppElement = pRaw;
+    *ppElement = pElement.Detach();
     return Gem::Result::Success;
 }
 
@@ -119,10 +117,69 @@ Gem::Result CUIGraph::Submit(XRenderQueue* pRenderQueue)
 
     // Free vertex slots from removed elements
     for (auto& free : m_PendingVertexSlotFrees)
-        pRenderQueue->FreeUITextVertices(free.StartVertex, free.MaxVertexCount);
+    {
+        if (free.Type == UIElementType::Rect)
+            pRenderQueue->FreeUIRectVertices(free.StartVertex, free.MaxVertexCount);
+        else
+            pRenderQueue->FreeUITextVertices(free.StartVertex, free.MaxVertexCount);
+    }
     m_PendingVertexSlotFrees.clear();
 
-    // Collect visible text elements
+    // --- Rect batch (drawn first, behind text) ---
+    m_VisibleRectElements.clear();
+    CollectVisibleRectElements(&m_Root);
+
+    for (CUIRectElement* pRect : m_VisibleRectElements)
+    {
+        auto& slot = pRect->GetBufferSlot();
+        uint32_t vertexCount = pRect->GetCachedVertexCount();
+
+        if (vertexCount > slot.MaxVertexCount)
+        {
+            if (slot.MaxVertexCount > 0)
+                pRenderQueue->FreeUIRectVertices(slot.StartVertex, slot.MaxVertexCount);
+
+            uint32_t startVertex = 0;
+            Gem::Result r = pRenderQueue->AllocUIRectVertices(vertexCount, &startVertex);
+            if (Failed(r))
+                return r;
+
+            slot.StartVertex = startVertex;
+            slot.MaxVertexCount = vertexCount;
+            slot.GpuDirty = true;
+        }
+
+        if (slot.GpuDirty && vertexCount > 0)
+        {
+            Gem::Result r = pRenderQueue->UploadUIRectVertices(
+                slot.StartVertex, pRect->GetCachedVertexData(), vertexCount);
+            if (Failed(r))
+                return r;
+            slot.GpuDirty = false;
+        }
+    }
+
+    m_RectDrawCommands.clear();
+    for (CUIRectElement* pRect : m_VisibleRectElements)
+    {
+        uint32_t vertexCount = pRect->GetCachedVertexCount();
+        if (vertexCount > 0)
+        {
+            auto& slot = pRect->GetBufferSlot();
+            m_RectDrawCommands.push_back({ slot.StartVertex, vertexCount });
+        }
+    }
+
+    if (!m_RectDrawCommands.empty())
+    {
+        Gem::Result r = pRenderQueue->DrawUIRectBatch(
+            m_RectDrawCommands.data(),
+            static_cast<uint32_t>(m_RectDrawCommands.size()));
+        if (Failed(r))
+            return r;
+    }
+
+    // --- Text batch (drawn after rects) ---
     m_VisibleTextElements.clear();
     if (!m_pAtlas)
         return Gem::Result::Success;
@@ -211,6 +268,27 @@ void CUIGraph::CollectVisibleTextElements(CUIElementCore* pElement)
     while (pChild)
     {
         CollectVisibleTextElements(pChild);
+        pChild = pChild->GetNextSiblingCore();
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CUIGraph::CollectVisibleRectElements(CUIElementCore* pElement)
+{
+    if (!pElement->IsEffectivelyVisible())
+        return;
+
+    if (pElement->GetType() == UIElementType::Rect)
+    {
+        auto pRect = static_cast<CUIRectElement*>(pElement);
+        if (pRect->GetCachedVertexCount() > 0)
+            m_VisibleRectElements.push_back(pRect);
+    }
+
+    CUIElementCore* pChild = pElement->GetFirstChildCore();
+    while (pChild)
+    {
+        CollectVisibleRectElements(pChild);
         pChild = pChild->GetNextSiblingCore();
     }
 }

@@ -454,6 +454,9 @@ public:
     CComPtr<ID3D12RootSignature> m_pTextRootSig;
     CComPtr<ID3D12PipelineState> m_pTextPSO;
     DXGI_FORMAT m_TextPSOFormat = DXGI_FORMAT_UNKNOWN;
+    CComPtr<ID3D12RootSignature> m_pRectRootSig;
+    CComPtr<ID3D12PipelineState> m_pRectPSO;
+    DXGI_FORMAT m_RectPSOFormat = DXGI_FORMAT_UNKNOWN;
     UINT64 m_FenceValue = 0;
     CComPtr<ID3D12Fence> m_pFence;
     CDevice12 *m_pDevice = nullptr; // weak pointer
@@ -526,6 +529,19 @@ public:
     };
     std::vector<PendingUITextUpload> m_PendingUITextUploads;
 
+    // Persistent UI rect vertex buffer (DEFAULT heap, same pattern as text)
+    static const uint32_t kInitialUIRectVertexCapacity = 1024;  // Must be power of 2
+    Gem::TGemPtr<Canvas::XGfxBuffer> m_pUIRectVertexBuffer;
+    std::unique_ptr<TBuddySuballocator<uint32_t>> m_pUIRectVertexAllocator;
+
+    struct PendingUIRectUpload
+    {
+        Canvas::GfxSuballocation Staging;
+        uint64_t DstOffset;
+        uint64_t CopySize;
+    };
+    std::vector<PendingUIRectUpload> m_PendingUIRectUploads;
+
     // Pending buffer retirements: old persistent buffers kept alive until GPU fence completes
     struct PendingBufferRetirement
     {
@@ -556,6 +572,10 @@ public:
     GEMMETHOD_(void, FreeUITextVertices)(uint32_t startVertex, uint32_t maxVertexCount) final;
     GEMMETHOD(UploadUITextVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) final;
     GEMMETHOD(DrawUITextBatch)(const Canvas::UITextDrawCommand* pCommands, uint32_t commandCount, Canvas::XGfxSurface* pGlyphAtlas) final;
+    GEMMETHOD(AllocUIRectVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) final;
+    GEMMETHOD_(void, FreeUIRectVertices)(uint32_t startVertex, uint32_t maxVertexCount) final;
+    GEMMETHOD(UploadUIRectVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) final;
+    GEMMETHOD(DrawUIRectBatch)(const Canvas::UIRectDrawCommand* pCommands, uint32_t commandCount) final;
     GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context) final;
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphElement *pElement) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
@@ -586,8 +606,17 @@ public:
     // Create the text PSO and root signature (lazily, on first use)
     void EnsureTextPSO(DXGI_FORMAT rtvFormat);
 
+    // Create the rect PSO and root signature (lazily, on first use)
+    void EnsureRectPSO(DXGI_FORMAT rtvFormat);
+
     // Create the persistent UI text vertex buffer (lazily, on first use)
     void EnsureUITextVertexBuffer();
+
+    // Create the persistent UI rect vertex buffer (lazily, on first use)
+    void EnsureUIRectVertexBuffer();
+
+    // Grow the persistent UI rect vertex buffer to at least newCapacity vertices
+    void GrowUIRectVertexBuffer(uint32_t newCapacity);
 
     // Grow the persistent UI text vertex buffer to at least newCapacity vertices
     void GrowUITextVertexBuffer(uint32_t newCapacity);
