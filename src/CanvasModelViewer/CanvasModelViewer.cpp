@@ -138,8 +138,12 @@ class CApp
     Gem::TGemPtr<Canvas::XGlyphAtlas> m_pGlyphAtlas;
     Gem::TGemPtr<Canvas::XLight> m_pSunLight;
     Gem::TGemPtr<Canvas::XLight> m_pAmbientLight;
+    Gem::TGemPtr<Canvas::XUIGraph> m_pUIGraph;
+    Canvas::XUITextElement* m_pTitleText = nullptr;
+    Canvas::XUITextElement* m_pFpsText = nullptr;
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
     float m_fps = 0.0f;
+    std::string m_fpsString;
 
     // Camera controller state
     float m_CameraYaw = 0.0f;    // Radians, around world Z (up)
@@ -392,6 +396,37 @@ public:
 
             Gem::ThrowGemError(pCanvas->CreateGlyphAtlas(pDevice, pGfxRenderQueue, 512, &pGlyphAtlas));
 
+            // Create UI graph for text rendering
+            Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
+            Gem::ThrowGemError(pCanvas->CreateUIGraph(&pUIGraph));
+
+            // Title text element — static, set once
+            Canvas::XUITextElement* pTitleText = nullptr;
+            Gem::ThrowGemError(pUIGraph->CreateTextElement(pUIGraph->GetRoot(), &pTitleText));
+            pTitleText->SetFont(pFont);
+            pTitleText->SetGlyphAtlas(pGlyphAtlas);
+            {
+                Canvas::TextLayoutConfig titleConfig;
+                titleConfig.FontSize = 32.0f;
+                titleConfig.Color = 0xFFFFFFFF;
+                pTitleText->SetLayoutConfig(titleConfig);
+            }
+            pTitleText->SetPosition(Canvas::Math::FloatVector2(10.0f, 10.0f));
+            pTitleText->SetText("Canvas Model Viewer");
+
+            // FPS text element — dynamic, updated when value changes
+            Canvas::XUITextElement* pFpsText = nullptr;
+            Gem::ThrowGemError(pUIGraph->CreateTextElement(pUIGraph->GetRoot(), &pFpsText));
+            pFpsText->SetFont(pFontMono);
+            pFpsText->SetGlyphAtlas(pGlyphAtlas);
+            {
+                Canvas::TextLayoutConfig monoConfig;
+                monoConfig.FontSize = 18.0f;
+                monoConfig.Color = 0xFFCCCCCC;
+                pFpsText->SetLayoutConfig(monoConfig);
+            }
+            pFpsText->SetPosition(Canvas::Math::FloatVector2(10.0f, 50.0f));
+
             // Create lights
             Gem::TGemPtr<Canvas::XLight> pSunLight;
             Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &pSunLight, "SunLight"));
@@ -441,6 +476,9 @@ public:
             m_pGlyphAtlas.Attach(pGlyphAtlas.Detach());
             m_pSunLight.Attach(pSunLight.Detach());
             m_pAmbientLight.Attach(pAmbientLight.Detach());
+            m_pUIGraph.Attach(pUIGraph.Detach());
+            m_pTitleText = pTitleText;
+            m_pFpsText = pFpsText;
 
             m_pWindow = std::move(pWindow);
 
@@ -611,52 +649,21 @@ public:
             m_pScene->Update(dtime);
             m_pScene->SubmitRenderables(m_pGfxRenderQueue);
             
-            // Render title text (Inter) in top-left corner
-            {
-                Canvas::TextLayoutConfig textConfig;
-                textConfig.FontSize = 32.0f;
-                textConfig.Color = 0xFFFFFFFF;
-
-                Canvas::Math::FloatVector3 screenPosition(10.0f, 10.0f, 0.0f);
-
-                Gem::Result textResult = Canvas::QueueTextRender(
-                    m_pGfxRenderQueue,
-                    m_pGfxDevice,
-                    "Hello Canvas",
-                    m_pFont,
-                    m_pGlyphAtlas,
-                    screenPosition,
-                    textConfig,
-                    m_pLogger);
-                if (Gem::Failed(textResult))
-                    Canvas::LogError(m_pLogger.Get(), "QueueTextRender failed (result=0x%08X)", (unsigned)textResult);
-            }
-
-            // Render FPS counter (JetBrains Mono) below title
+            // Update FPS text only when the formatted string changes
             if (m_fps > 0.0f)
             {
                 char fpsBuf[32];
                 snprintf(fpsBuf, sizeof(fpsBuf), "FPS: %.1f", m_fps);
-
-                Canvas::TextLayoutConfig monoConfig;
-                monoConfig.FontSize = 18.0f;
-                monoConfig.Color = 0xFFCCCCCC;  // Light grey
-
-                Canvas::Math::FloatVector3 fpsPos(10.0f, 50.0f, 0.0f);
-
-                Gem::Result fpsResult = Canvas::QueueTextRender(
-                    m_pGfxRenderQueue,
-                    m_pGfxDevice,
-                    fpsBuf,
-                    m_pFontMono,
-                    m_pGlyphAtlas,
-                    fpsPos,
-                    monoConfig,
-                    m_pLogger);
-                if (Gem::Failed(fpsResult))
-                    Canvas::LogError(m_pLogger.Get(), "QueueTextRender (fps) failed (result=0x%08X)", (unsigned)fpsResult);
+                if (m_fpsString != fpsBuf)
+                {
+                    m_fpsString = fpsBuf;
+                    m_pFpsText->SetText(fpsBuf);
+                }
             }
-            
+
+            m_pUIGraph->Update();
+            m_pUIGraph->Submit(m_pGfxRenderQueue);
+
             m_pGfxRenderQueue->EndFrame();
             m_pGfxRenderQueue->FlushAndPresent(m_pGfxSwapChain);
 
