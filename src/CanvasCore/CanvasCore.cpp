@@ -202,36 +202,34 @@ GEMMETHODIMP CCanvas::CreateFont(const uint8_t* pTTFData, size_t dataSize, PCSTR
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateGlyphAtlas(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size, XGlyphAtlas** ppAtlas)
+std::unique_ptr<CGlyphAtlasImpl> CCanvas::CreateGlyphAtlas(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size)
 {
-    CFunctionSentinel sentinel("XCanvas::CreateGlyphAtlas", m_pLogger);
+    CFunctionSentinel sentinel("CCanvas::CreateGlyphAtlas", m_pLogger);
 
-    if (!pDevice || !pRenderQueue || !ppAtlas)
-        return Gem::Result::BadPointer;
+    auto pAtlas = std::make_unique<CGlyphAtlasImpl>(size);
 
-    Gem::TGemPtr<CGlyphAtlasImpl> pAtlas;
-    Gem::Result result = Gem::TGenericImpl<CGlyphAtlasImpl>::Create(&pAtlas, size);
+    Gem::Result result = pAtlas->InitializeGPU(pDevice, pRenderQueue);
     if (Gem::Failed(result))
-        return result;
+        return nullptr;
 
-    result = pAtlas->InitializeGPU(pDevice, pRenderQueue);
-    if (Gem::Failed(result))
-        return result;
-
-    *ppAtlas = pAtlas.Detach();
-    return Gem::Result::Success;
+    return pAtlas;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateUIGraph(XUIGraph** ppGraph)
+GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph)
 {
     CFunctionSentinel sentinel("XCanvas::CreateUIGraph", m_pLogger);
 
-    if (!ppGraph)
+    if (!pDevice || !pRenderQueue || !ppGraph)
         return Gem::Result::BadPointer;
 
-    auto pGraph = std::make_unique<CUIGraph>();
-    *ppGraph = pGraph.release();
+    auto pAtlas = CreateGlyphAtlas(pDevice, pRenderQueue, 512);
+    if (!pAtlas)
+        return Gem::Result::Fail;
+
+    Gem::TGemPtr<CUIGraph> pGraph = new Gem::TGenericImpl<CUIGraph>();
+    pGraph->SetAtlas(std::move(pAtlas));
+    *ppGraph = pGraph.Detach();
     return Gem::Result::Success;
 }
 

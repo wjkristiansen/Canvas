@@ -17,17 +17,7 @@ namespace Canvas
 // Text Vertex - vertex format for text rendering
 //
 // Six vertices form one glyph quad (two triangles).
-// Layout: Position (12 bytes) + TexCoord (8 bytes) + Color (4 bytes) = 24 bytes total
-//------------------------------------------------------------------------------------------------
-
-struct TextVertex
-{
-    Math::FloatVector3 Position;    // 3D screen/world position (12 bytes)
-    Math::FloatVector2 TexCoord;    // Atlas UV coordinates (8 bytes)
-    uint32_t Color;                 // RGBA packed as uint32 (4 bytes)
-    
-    TextVertex() : Color(0xFFFFFFFF) {}
-};
+// TextVertex is defined in CanvasCore.h (shared with CanvasGfx12)
 
 //------------------------------------------------------------------------------------------------
 // Text Layout Engine
@@ -60,7 +50,7 @@ public:
         const CTrueTypeFont& font,
         const GlyphAtlasEntry& atlasEntry,
         const Math::FloatVector3& position,
-        uint32_t color,
+        const Math::FloatVector4& color,
         float fontSize,
         std::vector<TextVertex>& outVertices
     );

@@ -135,12 +135,11 @@ class CApp
     Gem::TGemPtr<Canvas::XSceneGraphNode> m_pDebugCubeNode;
     Gem::TGemPtr<Canvas::XFont> m_pFont;
     Gem::TGemPtr<Canvas::XFont> m_pFontMono;
-    Gem::TGemPtr<Canvas::XGlyphAtlas> m_pGlyphAtlas;
     Gem::TGemPtr<Canvas::XLight> m_pSunLight;
     Gem::TGemPtr<Canvas::XLight> m_pAmbientLight;
     Gem::TGemPtr<Canvas::XUIGraph> m_pUIGraph;
-    Canvas::XUITextElement* m_pTitleText = nullptr;
-    Canvas::XUITextElement* m_pFpsText = nullptr;
+    Gem::TGemPtr<Canvas::XUITextElement> m_pTitleText;
+    Gem::TGemPtr<Canvas::XUITextElement> m_pFpsText;
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
     float m_fps = 0.0f;
     std::string m_fpsString;
@@ -365,7 +364,6 @@ public:
             // Fonts are bundled at bin/fonts/ alongside the executable (fetched at CMake configure time).
             Gem::TGemPtr<Canvas::XFont> pFont;
             Gem::TGemPtr<Canvas::XFont> pFontMono;
-            Gem::TGemPtr<Canvas::XGlyphAtlas> pGlyphAtlas;
 
             wchar_t exePath[MAX_PATH] = {};
             GetModuleFileNameW(nullptr, exePath, MAX_PATH);
@@ -394,31 +392,27 @@ public:
             pFont     = LoadFont(fontsDir / "Inter-Regular.ttf",         "Inter");
             pFontMono = LoadFont(fontsDir / "JetBrainsMono-Regular.ttf", "JetBrainsMono");
 
-            Gem::ThrowGemError(pCanvas->CreateGlyphAtlas(pDevice, pGfxRenderQueue, 512, &pGlyphAtlas));
-
             // Create UI graph for text rendering
             Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
-            Gem::ThrowGemError(pCanvas->CreateUIGraph(&pUIGraph));
+            Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, pGfxRenderQueue, &pUIGraph));
 
             // Title text element — static, set once
-            Canvas::XUITextElement* pTitleText = nullptr;
+            Gem::TGemPtr<Canvas::XUITextElement> pTitleText;
             Gem::ThrowGemError(pUIGraph->CreateTextElement(pUIGraph->GetRoot(), &pTitleText));
             pTitleText->SetFont(pFont);
-            pTitleText->SetGlyphAtlas(pGlyphAtlas);
             {
-                Canvas::TextLayoutConfig titleConfig;
-                titleConfig.FontSize = 32.0f;
-                titleConfig.Color = 0xFFFFFFFF;
-                pTitleText->SetLayoutConfig(titleConfig);
+Canvas::TextLayoutConfig titleConfig;
+            titleConfig.FontSize = 32.0f;
+            titleConfig.Color = 0xFFFFFFFF;
+            pTitleText->SetLayoutConfig(titleConfig);
             }
-            pTitleText->SetPosition(Canvas::Math::FloatVector2(10.0f, 10.0f));
+pTitleText->SetPosition(Canvas::Math::FloatVector2(10.0f, 10.0f));
             pTitleText->SetText("Canvas Model Viewer");
 
             // FPS text element — dynamic, updated when value changes
-            Canvas::XUITextElement* pFpsText = nullptr;
+            Gem::TGemPtr<Canvas::XUITextElement> pFpsText;
             Gem::ThrowGemError(pUIGraph->CreateTextElement(pUIGraph->GetRoot(), &pFpsText));
             pFpsText->SetFont(pFontMono);
-            pFpsText->SetGlyphAtlas(pGlyphAtlas);
             {
                 Canvas::TextLayoutConfig monoConfig;
                 monoConfig.FontSize = 18.0f;
@@ -426,6 +420,7 @@ public:
                 pFpsText->SetLayoutConfig(monoConfig);
             }
             pFpsText->SetPosition(Canvas::Math::FloatVector2(10.0f, 50.0f));
+            pFpsText->SetText("FPS: --");
 
             // Create lights
             Gem::TGemPtr<Canvas::XLight> pSunLight;
@@ -473,12 +468,11 @@ public:
             m_pDebugCubeNode.Attach(pDebugCubeNode.Detach());
             m_pFont.Attach(pFont.Detach());
             m_pFontMono.Attach(pFontMono.Detach());
-            m_pGlyphAtlas.Attach(pGlyphAtlas.Detach());
             m_pSunLight.Attach(pSunLight.Detach());
             m_pAmbientLight.Attach(pAmbientLight.Detach());
             m_pUIGraph.Attach(pUIGraph.Detach());
-            m_pTitleText = pTitleText;
-            m_pFpsText = pFpsText;
+            m_pTitleText.Attach(pTitleText.Detach());
+            m_pFpsText.Attach(pFpsText.Detach());
 
             m_pWindow = std::move(pWindow);
 

@@ -84,22 +84,16 @@ private:
 };
 
 //------------------------------------------------------------------------------------------------
-// CGlyphAtlasImpl - Gem interface implementation of XGlyphAtlas
+// CGlyphAtlasImpl - Manages glyph atlas with SDF generation
 //------------------------------------------------------------------------------------------------
 
-class CGlyphAtlasImpl : public Gem::TGeneric<XGlyphAtlas>
+class CGlyphAtlasImpl
 {
 private:
     std::unique_ptr<CGlyphAtlas> m_pAtlas;
     CSDFGenerator::Config m_SDFConfig;
 
 public:
-    BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XNamedElement)
-        GEM_INTERFACE_ENTRY(XCanvasElement)
-        GEM_INTERFACE_ENTRY(XGlyphAtlas)
-    END_GEM_INTERFACE_MAP()
-
     CGlyphAtlasImpl(uint32_t atlasSize)
     {
         m_pAtlas = std::make_unique<CGlyphAtlas>(atlasSize);
@@ -109,9 +103,7 @@ public:
         m_SDFConfig.GenerateMSDF = false;
     }
 
-    void Initialize() {}
-
-    virtual ~CGlyphAtlasImpl() {}
+    ~CGlyphAtlasImpl() = default;
 
     Gem::Result InitializeGPU(XGfxDevice *pDevice, XGfxRenderQueue *pRenderQueue)
     {
@@ -120,23 +112,7 @@ public:
         return m_pAtlas->Initialize(pDevice, pRenderQueue);
     }
 
-    void SetSDFConfig(const CSDFGenerator::Config &config)
-    {
-        m_SDFConfig = config;
-    }
-
-    // XCanvasElement methods
-    GEMMETHOD_(XCanvas*, GetCanvas)() override { return nullptr; }
-    GEMMETHOD_(PCSTR, GetTypeName)() override { return "XGlyphAtlas"; }
-    GEMMETHOD(Register)(XCanvas *pCanvas) override { UNREFERENCED_PARAMETER(pCanvas); return Gem::Result::Success; }
-    GEMMETHOD(Unregister)() override { return Gem::Result::Success; }
-    
-    // XNamedElement methods
-    GEMMETHOD_(PCSTR, GetName)() override { return "GlyphAtlas"; }
-    GEMMETHOD_(void, SetName)(PCSTR szName) override { UNREFERENCED_PARAMETER(szName); }
-    
-    // XGlyphAtlas methods
-    GEMMETHOD_(XGfxSurface*, GetAtlasTexture)() override
+    XGfxSurface* GetAtlasTexture() const
     {
         return m_pAtlas->GetAtlasTexture();
     }

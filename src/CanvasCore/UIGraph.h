@@ -11,7 +11,7 @@ namespace Canvas
 class CUIGraph : public Gem::TGeneric<XUIGraph>
 {
     CUIElementCore m_Root;
-    std::vector<std::unique_ptr<CUIElementCore>> m_OwnedElements;
+    std::unique_ptr<CGlyphAtlasImpl> m_pAtlas;
 
     // Scratch buffers for Submit (reused across frames to avoid per-frame allocations)
     std::vector<CUITextElement*> m_VisibleTextElements;
@@ -30,15 +30,12 @@ public:
         GEM_INTERFACE_ENTRY(XUIGraph)
     END_GEM_INTERFACE_MAP()
 
-    // Stub ref counting — caller owns via raw pointer or TGemPtr.
-    GEMMETHOD_(unsigned long, AddRef)() override { return 1; }
-    GEMMETHOD_(unsigned long, Release)() override { return 1; }
-    GEMMETHOD(QueryInterface)(Gem::InterfaceId iid, void** ppObj) override
-    {
-        return InternalQueryInterface(iid, ppObj);
-    }
-
     CUIGraph() = default;
+
+    void Initialize() {}
+    void Uninitialize() {}
+
+    void SetAtlas(std::unique_ptr<CGlyphAtlasImpl> pAtlas) { m_pAtlas = std::move(pAtlas); }
 
     GEMMETHOD_(XUIElement*, GetRoot)() override { return nullptr; }
     GEMMETHOD(CreateTextElement)(XUIElement* pParent, XUITextElement** ppElement) override;

@@ -15,32 +15,71 @@ namespace Canvas
 
 CUIElementCore::CUIElementCore()
 {
-    m_SiblingNode.pElement = this;
 }
 
 CUIElementCore::~CUIElementCore()
 {
-    while (m_pFirstChild)
+    // Free all child wrapper nodes (drops refs on children)
+    ChildNode* pChild = m_pFirstChild;
+    while (pChild)
     {
-        CUIElementCore* pChild = m_pFirstChild->pElement;
-        RemoveChild(pChild);
+        CUIElementCore* pChildCore = GetCore(pChild->pElement);
+        if (pChildCore)
+            pChildCore->m_pParent = nullptr;
+        ChildNode* pNext = pChild->pNext;
+        delete pChild;
+        pChild = pNext;
     }
+    m_pFirstChild = nullptr;
 
     RemoveFromParent();
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIElementCore::AddChild(CUIElementCore* pChild)
+CUIElementCore* CUIElementCore::GetCore(XUIElement* pElement)
 {
-    if (!pChild || pChild->m_pParent == this)
+    if (!pElement)
+        return nullptr;
+
+    switch (pElement->GetType())
+    {
+    case UIElementType::Text:
+        return static_cast<CUITextElement*>(static_cast<XUITextElement*>(pElement));
+    case UIElementType::Rect:
+        return static_cast<CUIRectElement*>(static_cast<XUIRectElement*>(pElement));
+    default:
+        return nullptr;
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+CUIElementCore::ChildNode* CUIElementCore::FindChildNode(XUIElement* pChild)
+{
+    for (ChildNode* pNode = m_pFirstChild; pNode; pNode = pNode->pNext)
+    {
+        if (pNode->pElement.Get() == pChild)
+            return pNode;
+    }
+    return nullptr;
+}
+
+//------------------------------------------------------------------------------------------------
+void CUIElementCore::AddChild(XUIElement* pChild)
+{
+    if (!pChild)
         return;
 
-    pChild->RemoveFromParent();
-    pChild->m_pParent = this;
+    CUIElementCore* pChildCore = GetCore(pChild);
+    if (!pChildCore || pChildCore->m_pParent == this)
+        return;
 
-    ChildNode* pNode = &pChild->m_SiblingNode;
-    pNode->pPrev = nullptr;
-    pNode->pNext = nullptr;
+    // Remove from old parent if any
+    pChildCore->RemoveFromParent();
+    pChildCore->m_pParent = this;
+
+    // Create wrapper node (AddRefs via TGemPtr)
+    ChildNode* pNode = new ChildNode();
+    pNode->pElement = pChild;
 
     if (!m_pFirstChild)
     {
@@ -55,16 +94,22 @@ void CUIElementCore::AddChild(CUIElementCore* pChild)
         pNode->pPrev = pLast;
     }
 
-    pChild->InvalidatePosition();
+    pChildCore->InvalidatePosition();
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIElementCore::RemoveChild(CUIElementCore* pChild)
+void CUIElementCore::RemoveChild(XUIElement* pChild)
 {
-    if (!pChild || pChild->m_pParent != this)
+    if (!pChild)
         return;
 
-    ChildNode* pNode = &pChild->m_SiblingNode;
+    ChildNode* pNode = FindChildNode(pChild);
+    if (!pNode)
+        return;
+
+    CUIElementCore* pChildCore = GetCore(pChild);
+    if (pChildCore)
+        pChildCore->m_pParent = nullptr;
 
     if (pNode->pPrev)
         pNode->pPrev->pNext = pNode->pNext;
@@ -74,28 +119,33 @@ void CUIElementCore::RemoveChild(CUIElementCore* pChild)
     if (pNode->pNext)
         pNode->pNext->pPrev = pNode->pPrev;
 
-    pNode->pPrev = nullptr;
-    pNode->pNext = nullptr;
-    pChild->m_pParent = nullptr;
+    delete pNode;  // drops TGemPtr ref
 }
 
 //------------------------------------------------------------------------------------------------
 void CUIElementCore::RemoveFromParent()
 {
     if (m_pParent)
-        m_pParent->RemoveChild(this);
+        m_pParent->RemoveChild(GetInterface());
 }
 
 //------------------------------------------------------------------------------------------------
 CUIElementCore* CUIElementCore::GetFirstChildCore()
 {
-    return m_pFirstChild ? m_pFirstChild->pElement : nullptr;
+    return m_pFirstChild ? GetCore(m_pFirstChild->pElement) : nullptr;
 }
 
 //------------------------------------------------------------------------------------------------
 CUIElementCore* CUIElementCore::GetNextSiblingCore()
 {
-    return m_SiblingNode.pNext ? m_SiblingNode.pNext->pElement : nullptr;
+    if (!m_pParent)
+        return nullptr;
+
+    // Find our wrapper node in parent's child list, then return the next
+    ChildNode* pNode = m_pParent->FindChildNode(GetInterface());
+    if (pNode && pNode->pNext)
+        return GetCore(pNode->pNext->pElement);
+    return nullptr;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -144,11 +194,11 @@ void CUIElementCore::InvalidatePosition()
 
     m_DirtyFlags |= DirtyPosition;
 
-    ChildNode* pChild = m_pFirstChild;
-    while (pChild)
+    for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->pNext)
     {
-        pChild->pElement->InvalidatePosition();
-        pChild = pChild->pNext;
+        CUIElementCore* pCore = GetCore(pChild->pElement);
+        if (pCore)
+            pCore->InvalidatePosition();
     }
 }
 
@@ -157,11 +207,11 @@ void CUIElementCore::InvalidateVisibility()
 {
     m_DirtyFlags |= DirtyVisibility;
 
-    ChildNode* pChild = m_pFirstChild;
-    while (pChild)
+    for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->pNext)
     {
-        pChild->pElement->InvalidateVisibility();
-        pChild = pChild->pNext;
+        CUIElementCore* pCore = GetCore(pChild->pElement);
+        if (pCore)
+            pCore->InvalidateVisibility();
     }
 }
 
@@ -209,7 +259,7 @@ void CUITextElement::SetFont(XFont* pFont)
 }
 
 //------------------------------------------------------------------------------------------------
-void CUITextElement::SetGlyphAtlas(XGlyphAtlas* pAtlas)
+void CUITextElement::SetGlyphAtlasInternal(CGlyphAtlasImpl* pAtlas)
 {
     if (m_pAtlas == pAtlas)
         return;
@@ -259,8 +309,6 @@ void CUITextElement::RegenerateVertices()
     glyphEntries.reserve(codepoints.size());
     Math::FloatVector3 cursorPos = screenPos;
 
-    CGlyphAtlasImpl* pAtlasImpl = static_cast<CGlyphAtlasImpl*>(m_pAtlas);
-
     for (uint32_t codepoint : codepoints)
     {
         if (codepoint == '\n')
@@ -276,7 +324,7 @@ void CUITextElement::RegenerateVertices()
             for (int i = 0; i < 4; i++)
             {
                 GlyphAtlasEntry entry = {};
-                result = pAtlasImpl->InternalCacheGlyph(spaceCP, m_pFont, entry);
+                result = m_pAtlas->InternalCacheGlyph(spaceCP, m_pFont, entry);
                 if (Gem::Failed(result))
                     return;
                 cursorPos.X += entry.AdvanceWidth * m_Config.FontSize;
@@ -288,7 +336,7 @@ void CUITextElement::RegenerateVertices()
             continue;
 
         GlyphAtlasEntry entry = {};
-        result = pAtlasImpl->InternalCacheGlyph(codepoint, m_pFont, entry);
+        result = m_pAtlas->InternalCacheGlyph(codepoint, m_pFont, entry);
         if (Gem::Failed(result))
             return;
 

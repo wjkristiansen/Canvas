@@ -24,7 +24,7 @@ class CUIElementCore
 public:
     struct ChildNode
     {
-        CUIElementCore* pElement = nullptr;
+        Gem::TGemPtr<XUIElement> pElement;
         ChildNode* pPrev = nullptr;
         ChildNode* pNext = nullptr;
     };
@@ -48,7 +48,6 @@ public:
 protected:
     CUIElementCore* m_pParent = nullptr;
     ChildNode* m_pFirstChild = nullptr;
-    ChildNode m_SiblingNode;
 
     Math::FloatVector2 m_Position = {};
     Math::FloatVector2 m_AbsolutePosition = {};
@@ -60,8 +59,8 @@ public:
     CUIElementCore();
     virtual ~CUIElementCore();
 
-    void AddChild(CUIElementCore* pChild);
-    void RemoveChild(CUIElementCore* pChild);
+    void AddChild(XUIElement* pChild);
+    void RemoveChild(XUIElement* pChild);
     void RemoveFromParent();
 
     CUIElementCore* GetParentCore() { return m_pParent; }
@@ -80,13 +79,18 @@ public:
     void ClearDirtyFlags(uint32_t flags) { m_DirtyFlags &= ~flags; }
 
     virtual UIElementType GetType() const { return UIElementType::Root; }
+    virtual XUIElement* GetInterface() { return nullptr; }
     virtual void RegenerateVertices() {}
     virtual const void* GetCachedVertexData() const { return nullptr; }
     virtual uint32_t GetCachedVertexCount() const { return 0; }
 
     VertexBufferSlot& GetBufferSlot() { return m_BufferSlot; }
 
+    // Resolve CUIElementCore* from an XUIElement* (static helper, mirrors CUIGraph::GetCore)
+    static CUIElementCore* GetCore(XUIElement* pElement);
+
 private:
+    ChildNode* FindChildNode(XUIElement* pChild);
     void InvalidatePosition();
     void InvalidateVisibility();
     void RecomputeAbsolutePosition();
@@ -100,14 +104,11 @@ template<class TInterface>
 class TUIElement : public Gem::TGeneric<TInterface>, public CUIElementCore
 {
 public:
-    GEMMETHOD_(unsigned long, AddRef)() override { return 1; }
-    GEMMETHOD_(unsigned long, Release)() override { return 1; }
-    GEMMETHOD(QueryInterface)(Gem::InterfaceId iid, void** ppObj) override
-    {
-        return Gem::TGeneric<TInterface>::InternalQueryInterface(iid, ppObj);
-    }
+    void Initialize() {}
+    void Uninitialize() {}
 
     GEMMETHOD_(UIElementType, GetType)() const override { return CUIElementCore::GetType(); }
+    XUIElement* GetInterface() override { return static_cast<TInterface*>(this); }
     GEMMETHOD_(const Math::FloatVector2&, GetPosition)() const override { return CUIElementCore::GetPosition(); }
     GEMMETHOD_(void, SetPosition)(const Math::FloatVector2& position) override { CUIElementCore::SetPosition(position); }
     GEMMETHOD_(bool, IsVisible)() const override { return CUIElementCore::IsVisible(); }
@@ -125,7 +126,7 @@ class CUITextElement : public TUIElement<XUITextElement>
 {
     std::string m_Text;
     XFont* m_pFont = nullptr;
-    XGlyphAtlas* m_pAtlas = nullptr;
+    CGlyphAtlasImpl* m_pAtlas = nullptr;
     TextLayoutConfig m_Config;
     std::vector<TextVertex> m_CachedVertices;
 
@@ -142,7 +143,6 @@ public:
     GEMMETHOD_(void, SetText)(PCSTR utf8Text) override;
     GEMMETHOD_(PCSTR, GetText)() const override { return m_Text.c_str(); }
     GEMMETHOD_(void, SetFont)(XFont* pFont) override;
-    GEMMETHOD_(void, SetGlyphAtlas)(XGlyphAtlas* pAtlas) override;
     GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) override;
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const override { return m_Config; }
 
@@ -150,7 +150,8 @@ public:
     const void* GetCachedVertexData() const override { return m_CachedVertices.data(); }
     uint32_t GetCachedVertexCount() const override { return static_cast<uint32_t>(m_CachedVertices.size()); }
 
-    XGlyphAtlas* GetGlyphAtlas() const { return m_pAtlas; }
+    void SetGlyphAtlasInternal(CGlyphAtlasImpl* pAtlas);
+    CGlyphAtlasImpl* GetGlyphAtlas() const { return m_pAtlas; }
 };
 
 //================================================================================================

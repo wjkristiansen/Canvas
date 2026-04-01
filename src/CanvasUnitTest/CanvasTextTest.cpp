@@ -159,7 +159,7 @@ public:
         Math::FloatVector3 pos(10.0f, 20.0f, 0.0f);
         std::vector<TextVertex> verts;
 
-        CTextLayout::LayoutGlyph(0x41, CTrueTypeFont{}, entry, pos, 0xFFFFFFFF, 1.0f, verts);
+        CTextLayout::LayoutGlyph(0x41, CTrueTypeFont{}, entry, pos, Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f), 1.0f, verts);
 
         Assert::AreEqual((size_t)6, verts.size());
     }
@@ -171,7 +171,7 @@ public:
         Math::FloatVector3 pos(0.0f, 0.0f, 0.0f);
         std::vector<TextVertex> verts;
 
-        CTextLayout::LayoutGlyph(' ', CTrueTypeFont{}, entry, pos, 0xFFFFFFFF, 1.0f, verts);
+        CTextLayout::LayoutGlyph(' ', CTrueTypeFont{}, entry, pos, Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f), 1.0f, verts);
 
         Assert::AreEqual((size_t)0, verts.size());
     }
@@ -183,7 +183,7 @@ public:
         Math::FloatVector3 pos(0.0f, 0.0f, 0.0f);
         std::vector<TextVertex> verts;
 
-        float adv = CTextLayout::LayoutGlyph(' ', CTrueTypeFont{}, entry, pos, 0xFFFFFFFF, 1.0f, verts);
+        float adv = CTextLayout::LayoutGlyph(' ', CTrueTypeFont{}, entry, pos, Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f), 1.0f, verts);
 
         Assert::AreEqual(0.35f, adv, L"Advance must be returned even for zero-size (whitespace) glyph");
     }
@@ -196,7 +196,7 @@ public:
         Math::FloatVector3 pos(100.0f, 200.0f, 0.5f);
         std::vector<TextVertex> verts;
 
-        CTextLayout::LayoutGlyph(0x41, CTrueTypeFont{}, entry, pos, 0xFFFF0000, 1.0f, verts);
+        CTextLayout::LayoutGlyph(0x41, CTrueTypeFont{}, entry, pos, Math::FloatVector4(0.0f, 0.0f, 1.0f, 1.0f), 1.0f, verts);
 
         Assert::AreEqual(6u, (unsigned)verts.size());
 
@@ -218,7 +218,7 @@ public:
         Math::FloatVector3 pos(0.0f, 0.0f, 0.0f);
         std::vector<TextVertex> verts;
 
-        CTextLayout::LayoutGlyph(0x41, CTrueTypeFont{}, entry, pos, 0xFFFFFFFF, 1.0f, verts);
+        CTextLayout::LayoutGlyph(0x41, CTrueTypeFont{}, entry, pos, Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f), 1.0f, verts);
 
         // All UVs must lie within the atlas entry's UV bounds
         for (const auto& v : verts)
@@ -233,12 +233,17 @@ public:
         GlyphAtlasEntry entry = MakeEntry();
         Math::FloatVector3 pos(0.0f, 0.0f, 0.0f);
         std::vector<TextVertex> verts;
-        uint32_t color = 0xDEADBEEFu;
+        Math::FloatVector4 color(0.87f, 0.68f, 0.93f, 0.49f);
 
         CTextLayout::LayoutGlyph(0x41, CTrueTypeFont{}, entry, pos, color, 1.0f, verts);
 
         for (const auto& v : verts)
-            Assert::AreEqual(color, v.Color);
+        {
+            Assert::AreEqual(color.X, v.Color[0], 1e-6f);
+            Assert::AreEqual(color.Y, v.Color[1], 1e-6f);
+            Assert::AreEqual(color.Z, v.Color[2], 1e-6f);
+            Assert::AreEqual(color.W, v.Color[3], 1e-6f);
+        }
     }
 };
 

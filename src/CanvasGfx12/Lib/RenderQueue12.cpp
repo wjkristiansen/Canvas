@@ -1196,129 +1196,13 @@ GEMMETHODIMP CRenderQueue12::DrawMesh(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::DrawText(
-    const void *pVertexData,
-    uint32_t vertexCount,
-    Canvas::XGfxSurface *pGlyphAtlas,
-    const Canvas::Math::FloatVector4 &screenOffset)
-{
-    (void)screenOffset;
-
-    if (!pVertexData || vertexCount == 0 || !pGlyphAtlas || !m_pCurrentSwapChain)
-    {
-        Canvas::LogError(m_pDevice->GetLogger(), "DrawText: invalid arguments (pVertexData=%p, vertexCount=%u, pGlyphAtlas=%p, swapChain=%p)",
-            pVertexData, vertexCount, pGlyphAtlas, m_pCurrentSwapChain);
-        return Gem::Result::InvalidArg;
-    }
-
-    Canvas::GfxSuballocation vertexAlloc{};
-    Canvas::GfxSuballocation cbAlloc{};
-
-    try
-    {
-        DXGI_FORMAT rtvFormat = m_pCurrentSwapChain->m_pSurface->GetD3DResource()->GetDesc().Format;
-        EnsureTextPSO(rtvFormat);
-
-        auto pAtlas = static_cast<CSurface12*>(pGlyphAtlas);
-        CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
-
-        // Create text draw task on the UI graph
-        auto& textTask = m_UIGpuTaskGraph.CreateTask("DrawText");
-        m_UIGpuTaskGraph.DeclareTextureUsage(textTask, pAtlas,
-            D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-            D3D12_BARRIER_SYNC_PIXEL_SHADING,
-            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        m_UIGpuTaskGraph.DeclareTextureUsage(textTask, pBackBuffer,
-            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
-            D3D12_BARRIER_SYNC_RENDER_TARGET,
-            D3D12_BARRIER_ACCESS_RENDER_TARGET);
-
-        // Vertex buffer: TextVertex = float3 Position + float2 TexCoord + uint Color = 24 bytes
-        constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
-        uint64_t vertexBufferSize = vertexCount * kTextVertexSize;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(vertexBufferSize, vertexAlloc));
-
-        auto pVertexBuf  = static_cast<CBuffer12*>(vertexAlloc.pBuffer.Get());
-        ID3D12Resource*  pVertexResource = pVertexBuf->GetD3DResource();
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pVertexResource->Map(0, nullptr, &pMapped));
-        memcpy(static_cast<uint8_t*>(pMapped) + vertexAlloc.Offset, pVertexData, vertexBufferSize);
-        pVertexResource->Unmap(0, nullptr);
-
-        // Screen constants CBV: float2 ScreenSize + float2 padding = 16 bytes, padded to 256
-        constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
-
-        auto pCBBuf     = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
-        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), 0.0f, 0.0f };
-        void* pCBMapped = nullptr;
-        ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
-        memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
-        pCBResource->Unmap(0, nullptr);
-
-        // CPU work: create atlas SRV descriptor
-        ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
-        UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
-            m_NextSRVSlot = 0;
-        UINT srvSlot = m_NextSRVSlot;
-        m_NextSRVSlot += 1;
-
-        D3D12_CPU_DESCRIPTOR_HANDLE srvCpuHandle;
-        srvCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
-        D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle;
-        srvGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
-
-        pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
-
-        // Capture GPU addresses for the recording lambda
-        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
-        D3D12_GPU_VIRTUAL_ADDRESS vertexSrvAddr = pVertexResource->GetGPUVirtualAddress() + vertexAlloc.Offset;
-
-        textTask.RecordFunc = [cbvAddr, vertexSrvAddr, srvGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
-        {
-            pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            pCL->SetDescriptorHeaps(2, heaps);
-            pCL->SetGraphicsRootSignature(m_pTextRootSig);
-            pCL->SetPipelineState(m_pTextPSO);
-            pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
-            pCL->SetGraphicsRootShaderResourceView(1, vertexSrvAddr);
-            pCL->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
-            pCL->DrawInstanced(vertexCount, 1, 0, 0);
-        };
-        m_UIGpuTaskGraph.InsertTask(textTask);
-
-        RetireUploadAllocation(vertexAlloc);
-        RetireUploadAllocation(cbAlloc);
-    }
-    catch (Gem::GemError& e)
-    {
-        if (vertexAlloc.pBuffer) RetireUploadAllocation(vertexAlloc);
-        if (cbAlloc.pBuffer)     RetireUploadAllocation(cbAlloc);
-        Canvas::LogError(m_pDevice->GetLogger(), "DrawText failed: result=0x%08X", (unsigned)e.Result());
-        return e.Result();
-    }
-    catch (_com_error& e)
-    {
-        if (vertexAlloc.pBuffer) RetireUploadAllocation(vertexAlloc);
-        if (cbAlloc.pBuffer)     RetireUploadAllocation(cbAlloc);
-        Canvas::LogError(m_pDevice->GetLogger(), "DrawText failed: HRESULT=0x%08X", (unsigned)e.Error());
-        return ResultFromHRESULT(e.Error());
-    }
-
-    return Gem::Result::Success;
-}
-
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::EnsureUITextVertexBuffer()
 {
     if (m_pUITextVertexBuffer)
         return;
 
-    constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
+    constexpr uint64_t kTextVertexSize = sizeof(Canvas::TextVertex);
     uint64_t bufferSize = kInitialUITextVertexCapacity * kTextVertexSize;
 
     Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
@@ -1330,7 +1214,7 @@ void CRenderQueue12::EnsureUITextVertexBuffer()
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::GrowUITextVertexBuffer(uint32_t newCapacity)
 {
-    constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
+    constexpr uint64_t kTextVertexSize = sizeof(Canvas::TextVertex);
     uint64_t oldSize = m_pUITextVertexAllocator->GetCapacity() * kTextVertexSize;
     uint64_t newSize = newCapacity * kTextVertexSize;
 
@@ -1422,7 +1306,7 @@ GEMMETHODIMP CRenderQueue12::UploadUITextVertices(
     {
         EnsureUITextVertexBuffer();
 
-        constexpr uint64_t kTextVertexSize = sizeof(float) * 5 + sizeof(uint32_t); // 24
+        constexpr uint64_t kTextVertexSize = sizeof(Canvas::TextVertex);
         uint64_t copySize = vertexCount * kTextVertexSize;
         uint64_t dstOffset = startVertex * kTextVertexSize;
 
@@ -1532,13 +1416,18 @@ GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
         pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
 
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
-        D3D12_GPU_VIRTUAL_ADDRESS vertexSrvAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress();
+        D3D12_GPU_VIRTUAL_ADDRESS vertexBaseAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress();
 
         // Copy draw commands for lambda capture
         std::vector<Canvas::UITextDrawCommand> commands(pCommands, pCommands + commandCount);
 
-        drawTask.RecordFunc = [cbvAddr, vertexSrvAddr, srvGpuHandle, cmds = std::move(commands), this](ID3D12GraphicsCommandList* pCL)
+        // SV_VertexID is not offset by StartVertexLocation when no IA vertex buffer is bound.
+        // Instead, offset the root SRV address per draw command so the shader reads from the
+        // correct region of the persistent buffer, and always use StartVertex=0.
+
+        drawTask.RecordFunc = [cbvAddr, vertexBaseAddr, srvGpuHandle, cmds = std::move(commands), this](ID3D12GraphicsCommandList* pCL)
         {
+            constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
             ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
             pCL->SetDescriptorHeaps(2, heaps);
@@ -1546,11 +1435,13 @@ GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
             pCL->SetPipelineState(m_pTextPSO);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
-            pCL->SetGraphicsRootShaderResourceView(1, vertexSrvAddr);
             pCL->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
 
             for (const auto& cmd : cmds)
-                pCL->DrawInstanced(cmd.VertexCount, 1, cmd.StartVertex, 0);
+            {
+                pCL->SetGraphicsRootShaderResourceView(1, vertexBaseAddr + cmd.StartVertex * kVertexStride);
+                pCL->DrawInstanced(cmd.VertexCount, 1, 0, 0);
+            }
         };
         m_UIGpuTaskGraph.InsertTask(drawTask);
 

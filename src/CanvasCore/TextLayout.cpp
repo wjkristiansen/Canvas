@@ -75,7 +75,7 @@ float CTextLayout::LayoutGlyph(
     const CTrueTypeFont& font,
     const GlyphAtlasEntry& atlasEntry,
     const Math::FloatVector3& position,
-    uint32_t color,
+    const Math::FloatVector4& color,
     float fontSize,
     std::vector<TextVertex>& outVertices)
 {
@@ -107,27 +107,27 @@ float CTextLayout::LayoutGlyph(
     
     v[0].Position = Math::FloatVector3(x0, y0, z);
     v[0].TexCoord = Math::FloatVector2(u0, v0);
-    v[0].Color = color;
+    v[0].SetColor(color);
     
     v[1].Position = Math::FloatVector3(x0, y1, z);
     v[1].TexCoord = Math::FloatVector2(u0, v1);
-    v[1].Color = color;
+    v[1].SetColor(color);
     
     v[2].Position = Math::FloatVector3(x1, y0, z);
     v[2].TexCoord = Math::FloatVector2(u1, v0);
-    v[2].Color = color;
+    v[2].SetColor(color);
     
     v[3].Position = Math::FloatVector3(x0, y1, z);
     v[3].TexCoord = Math::FloatVector2(u0, v1);
-    v[3].Color = color;
+    v[3].SetColor(color);
     
     v[4].Position = Math::FloatVector3(x1, y1, z);
     v[4].TexCoord = Math::FloatVector2(u1, v1);
-    v[4].Color = color;
+    v[4].SetColor(color);
     
     v[5].Position = Math::FloatVector3(x1, y0, z);
     v[5].TexCoord = Math::FloatVector2(u1, v0);
-    v[5].Color = color;
+    v[5].SetColor(color);
     
     for (int i = 0; i < 6; i++)
         outVertices.push_back(v[i]);
@@ -184,166 +184,6 @@ Gem::Result CTextLayout::GenerateGeometry(
     }
     
     return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-// QueueTextRender - High-level helper that combines layout + GPU buffer creation + render submission.
-//------------------------------------------------------------------------------------------------
-
-Gem::Result CANVAS_API QueueTextRender(
-    XGfxRenderQueue *pRenderQueue,
-    XGfxDevice *pGfxDevice,
-    PCSTR utf8Text,
-    XFont *pFont,
-    XGlyphAtlas *pAtlas,
-    const Math::FloatVector3& screenPosition,
-    const TextLayoutConfig& config,
-    XLogger *pLogger)
-{
-    if (!pRenderQueue || !pGfxDevice || !utf8Text || !pFont || !pAtlas)
-    {
-        LogError(pLogger, "QueueTextRender: null argument (queue=%p device=%p text=%p font=%p atlas=%p)",
-            pRenderQueue, pGfxDevice, utf8Text, pFont, pAtlas);
-        return Gem::Result::BadPointer;
-    }
-
-    if (!utf8Text[0])
-        return Gem::Result::Success;
-
-    CGlyphAtlasImpl* pAtlasImpl = static_cast<CGlyphAtlasImpl*>(pAtlas);
-
-    try
-    {
-        CFont* pFontImpl = static_cast<CFont*>(pFont);
-        CTrueTypeFont* pFontData = pFontImpl->GetFontData();
-        if (!pFontData)
-        {
-            LogError(pLogger, "QueueTextRender: font has no internal data");
-            return Gem::Result::BadPointer;
-        }
-
-        std::vector<uint32_t> codepoints;
-        Gem::Result result = CTextLayout::DecodeUtf8(utf8Text, codepoints);
-        if (Gem::Failed(result))
-        {
-            LogError(pLogger, "QueueTextRender: UTF-8 decode failed (result=0x%08X)", (unsigned)result);
-            return result;
-        }
-
-        std::vector<GlyphAtlasEntry> glyphEntries;
-        glyphEntries.reserve(codepoints.size());
-        Math::FloatVector3 cursorPos = screenPosition;
-        const CTrueTypeFont::FontMetrics& metrics = pFontData->GetMetrics();
-        float lineHeightUnits = (metrics.Ascender - metrics.Descender + metrics.LineGap);
-        float lineHeightPixels = lineHeightUnits * (config.FontSize / pFontData->GetUnitsPerEm());
-
-        for (uint32_t codepoint : codepoints)
-        {
-            if (codepoint == '\n')
-            {
-                cursorPos.X = screenPosition.X;
-                cursorPos.Y += lineHeightPixels * config.LineHeight;
-                continue;
-            }
-
-            if (codepoint == '\t')
-            {
-                codepoint = ' ';
-                for (int i = 0; i < 4; i++)
-                {
-                    GlyphAtlasEntry entry = {};
-                    result = pAtlasImpl->InternalCacheGlyph(codepoint, pFont, entry);
-                    if (Gem::Failed(result))
-                    {
-                        LogError(pLogger, "QueueTextRender: CacheGlyph failed for tab-space (result=0x%08X)", (unsigned)result);
-                        return result;
-                    }
-                    cursorPos.X += entry.AdvanceWidth * config.FontSize;
-                }
-                continue;
-            }
-
-            if (codepoint < 32)
-                continue;
-
-            GlyphAtlasEntry entry = {};
-            result = pAtlasImpl->InternalCacheGlyph(codepoint, pFont, entry);
-            if (Gem::Failed(result))
-            {
-                LogError(pLogger, "QueueTextRender: CacheGlyph failed for codepoint U+%04X (result=0x%08X)", codepoint, (unsigned)result);
-                return result;
-            }
-
-            glyphEntries.push_back(entry);
-        }
-
-        std::vector<TextVertex> vertices;
-        vertices.reserve(glyphEntries.size() * 6);
-        cursorPos = screenPosition;
-
-        size_t glyphIdx = 0;
-        for (uint32_t codepoint : codepoints)
-        {
-            if (codepoint == '\n')
-            {
-                cursorPos.X = screenPosition.X;
-                cursorPos.Y += lineHeightPixels * config.LineHeight;
-                continue;
-            }
-
-            if (codepoint < 32)
-            {
-                if (codepoint == '\t')
-                    glyphIdx += 4;
-                continue;
-            }
-
-            if (glyphIdx >= glyphEntries.size())
-                break;
-
-            float advance = CTextLayout::LayoutGlyph(
-                codepoint,
-                *pFontData,
-                glyphEntries[glyphIdx],
-                cursorPos,
-                config.Color,
-                config.FontSize,
-                vertices);
-
-            cursorPos.X += advance * config.FontSize;
-            glyphIdx++;
-        }
-
-        if (vertices.empty())
-        {
-            LogWarn(pLogger, "QueueTextRender: no renderable glyphs produced for text \"%s\"", utf8Text);
-            return Gem::Result::Success;
-        }
-
-        XGfxSurface* pAtlasTexture = pAtlas->GetAtlasTexture();
-        if (!pAtlasTexture)
-        {
-            LogError(pLogger, "QueueTextRender: atlas texture is null");
-            return Gem::Result::InvalidArg;
-        }
-
-        result = pRenderQueue->DrawText(vertices.data(), static_cast<uint32_t>(vertices.size()),
-            pAtlasTexture, Math::FloatVector4(screenPosition.X, screenPosition.Y, screenPosition.Z, 0.0f));
-        if (Gem::Failed(result))
-            LogError(pLogger, "QueueTextRender: DrawText failed (result=0x%08X)", (unsigned)result);
-
-        return result;
-    }
-    catch (std::bad_alloc)
-    {
-        LogError(pLogger, "QueueTextRender: out of memory");
-        return Gem::Result::OutOfMemory;
-    }
-    catch (Gem::GemError &e)
-    {
-        LogError(pLogger, "QueueTextRender: exception (result=0x%08X)", (unsigned)e.Result());
-        return e.Result();
-    }
 }
 
 } // namespace Canvas

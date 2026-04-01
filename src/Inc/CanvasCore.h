@@ -43,7 +43,6 @@ struct XSceneGraphNode;
 struct XSceneGraphElement;
 struct XRenderQueue;
 struct XFont;
-struct XGlyphAtlas;
 struct XUIGraph;
 
 //------------------------------------------------------------------------------------------------
@@ -176,8 +175,7 @@ XCanvas : public Gem::XGeneric
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
-    GEMMETHOD(CreateGlyphAtlas)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size, XGlyphAtlas** ppAtlas) = 0;
-    GEMMETHOD(CreateUIGraph)(XUIGraph** ppGraph) = 0;
+    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
@@ -302,6 +300,20 @@ struct alignas(16) GfxPerObjectConstants
 {
     Math::FloatMatrix4x4 World;            // Object-to-world transform
     Math::FloatMatrix4x4 WorldInvTranspose; // For transforming normals
+};
+
+// Text vertex structure — shared between CanvasCore (vertex generation) and CanvasGfx (rendering)
+// Layout must match HLSL StructuredBuffer<TextVertex> in VSText.hlsl
+struct TextVertex
+{
+    Math::FloatVector3 Position;    // Screen-space pixel position (12 bytes)
+    Math::FloatVector2 TexCoord;    // Atlas UV coordinates (8 bytes)
+    float Color[4];                 // RGBA float color (16 bytes)
+
+    TextVertex() : Color{1.0f, 1.0f, 1.0f, 1.0f} {}
+
+    void SetColor(const Math::FloatVector4& c) { Color[0] = c.X; Color[1] = c.Y; Color[2] = c.Z; Color[3] = c.W; }
+    void SetColor(float r, float g, float b, float a) { Color[0] = r; Color[1] = g; Color[2] = b; Color[3] = a; }
 };
 
 // Draw command for batched UI text rendering from a persistent vertex buffer
@@ -492,29 +504,18 @@ struct XFont : public XCanvasElement
 };
 
 //------------------------------------------------------------------------------------------------
-// XGlyphAtlas - GPU glyph atlas interface
-//------------------------------------------------------------------------------------------------
-
-struct XGlyphAtlas : public XCanvasElement
-{
-    GEM_INTERFACE_DECLARE(XGlyphAtlas, 0x9E2A6D7C1F4B8A3D);
-
-    GEMMETHOD_(XGfxSurface*, GetAtlasTexture)() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
 // Text layout configuration
 //------------------------------------------------------------------------------------------------
 
 struct TextLayoutConfig
 {
+    Math::FloatVector4 Color;    // RGBA float (0..1 per channel)
     float FontSize;              // Size in pixels
-    uint32_t Color;              // RGBA packed as uint32
     float LineHeight;            // Multiplier of font's line gap
     bool DisableKerning;
 
     TextLayoutConfig()
-        : FontSize(16.0f), Color(0xFFFFFFFF), LineHeight(1.0f), DisableKerning(false)
+        : Color(1.0f, 1.0f, 1.0f, 1.0f), FontSize(16.0f), LineHeight(1.0f), DisableKerning(false)
     {}
 };
 
@@ -552,7 +553,6 @@ struct XUITextElement : public XUIElement
     GEMMETHOD_(void, SetText)(PCSTR utf8Text) = 0;
     GEMMETHOD_(PCSTR, GetText)() const = 0;
     GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
-    GEMMETHOD_(void, SetGlyphAtlas)(XGlyphAtlas* pAtlas) = 0;
     GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
 };
@@ -581,17 +581,6 @@ struct XUIGraph : public Gem::XGeneric
     GEMMETHOD(Update)() = 0;
     GEMMETHOD(Submit)(XRenderQueue* pRenderQueue) = 0;
 };
-
-//------------------------------------------------------------------------------------------------
-Gem::Result CANVAS_API QueueTextRender(
-    XGfxRenderQueue *pRenderQueue,
-    XGfxDevice *pGfxDevice,
-    PCSTR utf8Text,
-    XFont *pFont,
-    XGlyphAtlas *pAtlas,
-    const Math::FloatVector3& screenPosition,
-    const TextLayoutConfig& config,
-    XLogger *pLogger = nullptr);
 
 //------------------------------------------------------------------------------------------------
 enum TypeId : uint64_t

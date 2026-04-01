@@ -12,6 +12,8 @@
 namespace Canvas
 {
 
+class CGlyphAtlasImpl;
+
 //------------------------------------------------------------------------------------------------
 class CCanvasPluginModule
 {
@@ -131,8 +133,7 @@ public:
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) final;
-    GEMMETHOD(CreateGlyphAtlas)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size, XGlyphAtlas** ppAtlas) final;
-    GEMMETHOD(CreateUIGraph)(XUIGraph** ppGraph) final;
+    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph) final;
 
     GEMMETHOD_(XLogger *, GetLogger)() final
     {
@@ -166,6 +167,9 @@ public:
 
     Gem::Result Initialize();
     virtual void Uninitialize() override;
+
+private:
+    std::unique_ptr<CGlyphAtlasImpl> CreateGlyphAtlas(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size);
 };
 
 }

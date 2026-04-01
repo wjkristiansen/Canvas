@@ -11,18 +11,7 @@ namespace Canvas
 //------------------------------------------------------------------------------------------------
 CUIElementCore* CUIGraph::GetCore(XUIElement* pElement)
 {
-    if (!pElement)
-        return nullptr;
-
-    switch (pElement->GetType())
-    {
-    case UIElementType::Text:
-        return static_cast<CUITextElement*>(static_cast<XUITextElement*>(pElement));
-    case UIElementType::Rect:
-        return static_cast<CUIRectElement*>(static_cast<XUIRectElement*>(pElement));
-    default:
-        return nullptr;
-    }
+    return CUIElementCore::GetCore(pElement);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -35,12 +24,14 @@ Gem::Result CUIGraph::CreateTextElement(XUIElement* pParent, XUITextElement** pp
     if (!pParentCore)
         return Gem::Result::InvalidArg;
 
-    auto pElement = std::make_unique<CUITextElement>();
-    CUITextElement* pRaw = pElement.get();
-    pParentCore->AddChild(pRaw);
-    m_OwnedElements.push_back(std::move(pElement));
+    // TGenericImpl provides ref counting; element starts with refcount=1 (caller's ref)
+    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>();
+    pElement->SetGlyphAtlasInternal(m_pAtlas.get());
 
-    *ppElement = pRaw;
+    // AddChild AddRefs the element (parent holds a ref via TGemPtr in ChildNode)
+    pParentCore->AddChild(pElement);
+
+    *ppElement = pElement.Detach();  // Transfer caller's ref
     return Gem::Result::Success;
 }
 
@@ -77,21 +68,13 @@ Gem::Result CUIGraph::RemoveElement(XUIElement* pElement)
     auto& slot = pCore->GetBufferSlot();
     if (slot.MaxVertexCount > 0)
     {
-        m_PendingVertexSlotFrees.push_back({ slot.StartVertex, slot.MaxVertexCount });
+        m_PendingVertexSlotFrees.push_back({ slot.StartVertex, slot.MaxVertexCount, pCore->GetType() });
         slot.StartVertex = 0;
         slot.MaxVertexCount = 0;
     }
 
+    // RemoveFromParent drops the parent's ref
     pCore->RemoveFromParent();
-
-    for (auto it = m_OwnedElements.begin(); it != m_OwnedElements.end(); ++it)
-    {
-        if (it->get() == pCore)
-        {
-            m_OwnedElements.erase(it);
-            break;
-        }
-    }
 
     return Gem::Result::Success;
 }
@@ -141,6 +124,8 @@ Gem::Result CUIGraph::Submit(XRenderQueue* pRenderQueue)
 
     // Collect visible text elements
     m_VisibleTextElements.clear();
+    if (!m_pAtlas)
+        return Gem::Result::Success;
     CollectVisibleTextElements(&m_Root);
 
     if (m_VisibleTextElements.empty())
@@ -180,9 +165,9 @@ Gem::Result CUIGraph::Submit(XRenderQueue* pRenderQueue)
             slot.GpuDirty = false;
         }
 
-        // Track atlas (single shared atlas assumed)
-        if (!pAtlasTexture && pText->GetGlyphAtlas())
-            pAtlasTexture = pText->GetGlyphAtlas()->GetAtlasTexture();
+        // Track atlas texture (graph owns the atlas)
+        if (!pAtlasTexture)
+            pAtlasTexture = m_pAtlas->GetAtlasTexture();
     }
 
     if (!pAtlasTexture)
@@ -218,7 +203,7 @@ void CUIGraph::CollectVisibleTextElements(CUIElementCore* pElement)
     if (pElement->GetType() == UIElementType::Text)
     {
         auto pText = static_cast<CUITextElement*>(pElement);
-        if (pText->GetCachedVertexCount() > 0 && pText->GetGlyphAtlas())
+        if (pText->GetCachedVertexCount() > 0)
             m_VisibleTextElements.push_back(pText);
     }
 
