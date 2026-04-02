@@ -14,6 +14,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <conio.h>
 
 //------------------------------------------------------------------------------------------------
 // D3D12 Agility SDK version exports - required to activate newer D3D12 APIs
@@ -22,97 +23,68 @@
 extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 616; }
 extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\"; }
 
+//------------------------------------------------------------------------------------------------
+// CConsole — allocates a dedicated console window for live log output.
+// Only created when the "log --console" option is specified.  Never
+// attaches to the parent terminal, avoiding the console-mode corruption
+// that plagued earlier versions.
+//------------------------------------------------------------------------------------------------
 class CConsole
 {
-    FILE *m_stdin;
-    FILE *m_stdout;
-    FILE *m_stderr;
-    bool m_attachedToParent;
-    bool m_filesOpened;
+    FILE* m_stdout;
+    FILE* m_stderr;
 
 public:
     CConsole()
-        : m_stdin(nullptr)
-        , m_stdout(nullptr)
+        : m_stdout(nullptr)
         , m_stderr(nullptr)
-        , m_attachedToParent(false)
-        , m_filesOpened(false)
     {
-        // Try to attach to parent console first (if launched from console)
-        if (AttachConsole(ATTACH_PARENT_PROCESS))
-        {
-            // Check if stdout handle is actually valid and usable
-            HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-            DWORD mode = 0;
-            
-            // GetConsoleMode succeeds only if it's a real console (not redirected/piped)
-            if (hStdOut != INVALID_HANDLE_VALUE && GetConsoleMode(hStdOut, &mode))
-            {
-                // Valid console - use it
-                m_attachedToParent = true;
-            }
-            else
-            {
-                // Console exists but may not be visible (e.g., VS Code debugger with redirected I/O)
-                // Detach and create our own visible console
-                FreeConsole();
-                AllocConsole();
-                m_attachedToParent = false;
-            }
-        }
-        else
-        {
-            // No parent console, create our own
-            AllocConsole();
-            m_attachedToParent = false;
-        }
-
-        // Reopen standard streams to use the console
-        if (freopen_s(&m_stdin, "CONIN$", "r", stdin) == 0 &&
-            freopen_s(&m_stdout, "CONOUT$", "w", stdout) == 0 &&
-            freopen_s(&m_stderr, "CONOUT$", "w", stderr) == 0)
-        {
-            m_filesOpened = true;
-        }
+        AllocConsole();
+        SetConsoleTitleA("CanvasModelViewer - Log");
+        freopen_s(&m_stdout, "CONOUT$", "w", stdout);
+        freopen_s(&m_stderr, "CONOUT$", "w", stderr);
     }
 
     ~CConsole()
     {
-        if (m_filesOpened)
-        {
-            if (m_stdin) fclose(m_stdin);
-            if (m_stdout) fclose(m_stdout);
-            if (m_stderr) fclose(m_stderr);
-        }
-
-        // Only free console if we created it (not if we attached to parent)
-        if (!m_attachedToParent)
-        {
-            FreeConsole();
-        }
+        if (m_stdout) fclose(m_stdout);
+        if (m_stderr) fclose(m_stderr);
+        FreeConsole();
     }
-
-    bool IsAttachedToParent() const { return m_attachedToParent; }
 };
 
 //------------------------------------------------------------------------------------------------
 class CLogSink : public QLog::Sink
 {
-    void OutputString(PCSTR sz)
+    std::ofstream m_logFile;
+    bool m_consoleOutput;
+
+public:
+    CLogSink(const std::filesystem::path& logFilePath, bool consoleOutput)
+        : m_consoleOutput(consoleOutput)
     {
-        OutputDebugStringA(sz); // Debugger
-        fputs(sz, stdout); // Console
+        if (!logFilePath.empty())
+            m_logFile.open(logFilePath, std::ios::out | std::ios::trunc);
     }
 
     void Write(const QLog::Message& message) override
     {
-        // Use QLog's FormatTimestamp helper for clean, consistent formatting
         std::ostringstream oss;
-        
         oss << QLog::FormatTimestamp(message) << QLog::ToString(message.level) << ": " << message.text << '\n';
-        
         std::string formatted = oss.str();
-        OutputString(formatted.c_str());
+
+        OutputDebugStringA(formatted.c_str());
+
+        if (m_logFile.is_open())
+        {
+            m_logFile << formatted;
+            m_logFile.flush();
+        }
+
+        if (m_consoleOutput)
+        {
+            fputs(formatted.c_str(), stdout);
+        }
     }
 };
 
@@ -142,6 +114,7 @@ class CApp
     Gem::TGemPtr<Canvas::XUITextElement> m_pTitleText;
     Gem::TGemPtr<Canvas::XUITextElement> m_pFpsText;
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
+    bool m_logFps;
     float m_fps = 0.0f;
     std::string m_fpsString;
 
@@ -152,11 +125,12 @@ class CApp
     POINT m_LastCursorPos = {};
 
 public:
-    CApp(HINSTANCE hInstance, PCSTR szTitle, Gem::TGemPtr<Canvas::XLogger> pLogger, int exitFrameCount = -1) :
+    CApp(HINSTANCE hInstance, PCSTR szTitle, Gem::TGemPtr<Canvas::XLogger> pLogger, int exitFrameCount = -1, bool logFps = false) :
         m_pLogger(pLogger),
         m_Title(szTitle),
         m_hInstance(hInstance),
-        m_exitFrameCount(exitFrameCount)
+        m_exitFrameCount(exitFrameCount),
+        m_logFps(logFps)
         {
         }
 
@@ -553,7 +527,7 @@ public:
             if (fpsDTime > 1.0f)
             {
                 m_fps = fpsCounter / fpsDTime;
-                Canvas::LogInfo(m_pLogger.Get(), "FPS: %.1f", m_fps);
+                if (m_logFps) Canvas::LogInfo(m_pLogger.Get(), "FPS: %.1f", m_fps);
                 fpsTime = currTime;
                 fpsCounter = 0;
             }
@@ -696,11 +670,6 @@ public:
             // Optionally: log or use elapsedTime and deltaTime here
         }
 
-        // Release cursor on exit
-        ClipCursor(nullptr);
-        while (ShowCursor(TRUE) < 0) {}
-        m_MouseCaptured = false;
-
         return 0;
     }
 };
@@ -727,13 +696,11 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     }
     int argc = static_cast<int>(argv.size());
 
-    bool noConsole = false;
     std::string logLevel = "info";
+    std::string logFile;
+    bool logConsole = false;
+    bool logFps = false;
     int exitFrameCount = -1;  // -1 means don't exit automatically
-
-    // Create console early - will attach to parent if launched from console, or create new one
-    std::unique_ptr<CConsole> pConsole = std::make_unique<CConsole>();
-    bool attachedToParent = pConsole->IsAttachedToParent();
 
     try
     {
@@ -741,71 +708,73 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         InCommand::CommandParser cmdParser("CanvasModelViewer");
         auto& rootCmd = cmdParser.GetAppCommandDecl();
         rootCmd.SetDescription("Canvas 3D Model Viewer");
-        
-        // Add command line options
-        rootCmd.AddOption(InCommand::OptionType::Switch, "no-console")
-            .SetDescription("Disable console window (ignored when launched from existing console)")
-            .BindTo(noConsole);
-        
-        rootCmd.AddOption(InCommand::OptionType::Variable, "log")
-            .SetDescription("Set logging level")
-            .SetDomain({"trace", "debug", "info", "warn", "error", "critical", "off"})
-            .BindTo(logLevel);
-        
+
         rootCmd.AddOption(InCommand::OptionType::Variable, "exitframecount")
             .SetDescription("Exit application after N frames (useful for automated testing)")
             .BindTo(exitFrameCount);
-        
-        // Enable auto-help (built-in --help/-h support)
-        cmdParser.EnableAutoHelp("help", 'h', std::cout);
+
+        // "log" subcommand — all logging configuration lives here
+        //   CanvasModelViewer.exe log --level debug --file mylog.txt --console --fps
+        auto& logCmd = rootCmd.AddSubCommand("log");
+        logCmd.SetDescription("Configure logging output");
+
+        logCmd.AddOption(InCommand::OptionType::Variable, "level", 'l')
+            .SetDescription("Set logging level")
+            .SetDomain({"trace", "debug", "info", "warn", "error", "critical", "off"})
+            .BindTo(logLevel);
+
+        logCmd.AddOption(InCommand::OptionType::Variable, "file", 'f')
+            .SetDescription("Log file path (default: CanvasModelViewer.log next to executable)")
+            .BindTo(logFile);
+
+        logCmd.AddOption(InCommand::OptionType::Switch, "console", 'c')
+            .SetDescription("Spawn a console window with live log output")
+            .BindTo(logConsole);
+
+        logCmd.AddOption(InCommand::OptionType::Switch, "fps")
+            .SetDescription("Log FPS to the log output")
+            .BindTo(logFps);
+
+        // Capture help text to a stream — no console is attached to write to directly
+        std::ostringstream helpStream;
+        cmdParser.EnableAutoHelp("help", 'h', helpStream);
         
         // Parse the command line
         cmdParser.ParseArgs(argc, argv.data());
         
-        // If help was requested, exit gracefully
+        // If help was requested, show in a dedicated console window
         if (cmdParser.WasAutoHelpRequested())
         {
-            // If attached to parent console, print newline so prompt appears on new line
-            if (attachedToParent)
-            {
-                std::cout << std::endl;
-            }
+            AllocConsole();
+            SetConsoleTitleA("CanvasModelViewer - Help");
+            FILE* tmpOut = nullptr;
+            FILE* tmpIn = nullptr;
+            freopen_s(&tmpOut, "CONOUT$", "w", stdout);
+            freopen_s(&tmpIn, "CONIN$", "r", stdin);
+            std::cout << helpStream.str() << std::endl;
+            std::cout << "Press any key to close..." << std::endl;
+            (void)_getch();
+            if (tmpOut) fclose(tmpOut);
+            if (tmpIn) fclose(tmpIn);
+            FreeConsole();
             return 0;
         }
-        
-        // Apply parsed options are now in noConsole and logLevel variables
     }
     catch (const InCommand::SyntaxException& e)
     {
-        // Console is already open for error display
-        std::cerr << "Command line error: " << e.GetMessage();
+        std::ostringstream oss;
+        oss << "Command line error: " << e.GetMessage();
         if (!e.GetToken().empty())
-        {
-            std::cerr << " (token: '" << e.GetToken() << "')";
-        }
-        std::cerr << std::endl;
-        // If attached to parent console, print newline for prompt
-        if (attachedToParent)
-        {
-            std::cerr << std::endl;
-        }
+            oss << " (token: '" << e.GetToken() << "')";
+        MessageBoxA(nullptr, oss.str().c_str(), "CanvasModelViewer", MB_OK | MB_ICONERROR);
         return -1;
     }
     catch (const InCommand::ApiException& e)
     {
-        std::cerr << "Internal error: " << e.GetMessage() << std::endl;
-        // If attached to parent console, print newline for prompt
-        if (attachedToParent)
-        {
-            std::cerr << std::endl;
-        }
+        std::ostringstream oss;
+        oss << "Internal error: " << e.GetMessage();
+        MessageBoxA(nullptr, oss.str().c_str(), "CanvasModelViewer", MB_OK | MB_ICONERROR);
         return -1;
-    }
-
-    // If --no-console was specified and we're NOT attached to parent, close the console
-    if (noConsole && !attachedToParent)
-    {
-        pConsole.reset();
     }
 
     // Map log level string to QLog::Level
@@ -825,9 +794,32 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     else if (logLevel == "off")
         qlogLevel = QLog::Level::Off;
 
-    // Initialize logger with parsed log level
-    CLogSink consoleSink;
-    auto qlogLogger = std::make_unique<QLog::Logger>(consoleSink, qlogLevel);
+    // Determine log file path — default to a timestamped file next to the executable
+    wchar_t exePathBuf[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exePathBuf, MAX_PATH);
+    std::filesystem::path logFilePath;
+    if (logFile.empty())
+    {
+        auto now = std::chrono::system_clock::now();
+        std::time_t tt = std::chrono::system_clock::to_time_t(now);
+        std::tm tm{};
+        localtime_s(&tm, &tt);
+        char timeBuf[32];
+        std::strftime(timeBuf, sizeof(timeBuf), "%Y%m%d%H%M%S", &tm);
+        std::string filename = std::string("CanvasModelViewer_") + timeBuf + ".log";
+        logFilePath = std::filesystem::path(exePathBuf).parent_path() / filename;
+    }
+    else
+        logFilePath = logFile;
+
+    // Spawn optional console window for live log output (--log-console)
+    std::unique_ptr<CConsole> pConsole;
+    if (logConsole)
+        pConsole = std::make_unique<CConsole>();
+
+    // Initialize logger — writes to OutputDebugString always, log file, and optional console
+    CLogSink logSink(logFilePath, logConsole);
+    auto qlogLogger = std::make_unique<QLog::Logger>(logSink, qlogLevel);
     
     // Create QLogAdapter to wrap QLog logger for Canvas
     Gem::TGemPtr<Canvas::QLogAdapter> pAdapter;
@@ -836,16 +828,18 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     Gem::TGemPtr<Canvas::XLogger> pLogger;
     pAdapter->QueryInterface(&pLogger);
 
+    Canvas::LogInfo(pLogger.Get(), "Log file: %s", logFilePath.string().c_str());
+
     // Register the application window class
     char szTitle[MAX_LOADSTRING];
     LoadStringA(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
     ThinWin::CWindow::RegisterWindowClass(hInstance);
 
     // Create the application object
-    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount));
+    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps));
 
     // Initialize the application
-    if (!pApp->Initialize (nCmdShow))
+    if (!pApp->Initialize(nCmdShow))
     {
         return FALSE;
     }
