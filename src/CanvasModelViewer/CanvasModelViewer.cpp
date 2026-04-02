@@ -497,6 +497,24 @@ public:
         constexpr float kMouseSensitivity = 0.003f;  // radians per pixel (~360° over ~2094 px ≈ 8 inches at 96 DPI)
         constexpr float kPitchLimit = static_cast<float>(Canvas::Math::Pi / 2.0) - 0.01f;
 
+        // RAII guard to ensure cursor is always unclipped/shown on exit, even if we
+        // terminate abnormally.  Leaving the cursor clipped or hidden is a system-wide
+        // side-effect that survives the process.
+        struct CursorGuard
+        {
+            bool* pCaptured;
+            CursorGuard(bool* p) : pCaptured(p) {}
+            ~CursorGuard()
+            {
+                if (*pCaptured)
+                {
+                    ClipCursor(nullptr);
+                    while (ShowCursor(TRUE) < 0) {}
+                    *pCaptured = false;
+                }
+            }
+        } cursorGuard(&m_MouseCaptured);
+
         // Capture cursor on startup
         {
             RECT rc;
