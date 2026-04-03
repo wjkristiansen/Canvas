@@ -25,6 +25,7 @@ set_target_properties(CanvasModelViewer PROPERTIES
 target_include_directories(CanvasModelViewer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasFbx/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/../ThinWin/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/../Common
     ${CMAKE_CURRENT_SOURCE_DIR}/../../deps/InCommand/inc
@@ -70,6 +71,7 @@ endif()
 # Link with Canvas libraries
 target_link_libraries(CanvasModelViewer PRIVATE
     CanvasCore
+    CanvasFbx
     ThinWin
     InCommandLib
     InCommandHeaders

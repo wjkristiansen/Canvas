@@ -5,6 +5,7 @@
 #include "CanvasModelViewer.h"
 #include "CanvasCore.h"
 #include "CanvasGfx.h"
+#include "CanvasFbx.h"
 #include "QLogAdapter.h"
 #include "TokenParser.h"
 #include "InCommand.h"
@@ -117,6 +118,11 @@ class CApp
     bool m_logFps;
     float m_fps = 0.0f;
     std::string m_fpsString;
+    std::filesystem::path m_ModelPath;
+
+    std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> m_ImportedMeshData;
+    std::vector<Gem::TGemPtr<Canvas::XMeshInstance>> m_ImportedMeshInstances;
+    std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> m_ImportedNodes;
 
     // Camera controller state
     float m_CameraYaw = 0.0f;    // Radians, around world Z (up)
@@ -124,13 +130,146 @@ class CApp
     bool m_MouseCaptured = false;
     POINT m_LastCursorPos = {};
 
+    void FrameCameraToBounds(
+        _In_ Canvas::XSceneGraphNode *pCameraNode,
+        _In_ const Canvas::Math::AABB &bounds)
+    {
+        if (!pCameraNode || !bounds.IsValid())
+            return;
+
+        const Canvas::Math::FloatVector4 center = bounds.GetCenter();
+        const Canvas::Math::FloatVector4 extents = bounds.GetExtents();
+        const float radius = std::max({ extents.X, extents.Y, extents.Z, 0.1f });
+        const float distance = std::max(radius * 3.0f, 2.0f);
+
+        const Canvas::Math::FloatVector4 cameraPosition = center + Canvas::Math::FloatVector4(-distance, -distance, distance * 0.6f, 0.0f);
+        const Canvas::Math::FloatVector4 basisForward = (center - cameraPosition).Normalize();
+        const Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
+
+        Canvas::Math::FloatMatrix4x4 rotationMatrix = Canvas::Math::IdentityMatrix<float, 4, 4>();
+        rotationMatrix[0] = basisForward;
+        Canvas::Math::ComposePointToBasisVectors(worldUp, basisForward, rotationMatrix[1], rotationMatrix[2]);
+
+        pCameraNode->SetLocalTranslation(cameraPosition);
+        pCameraNode->SetLocalRotation(Canvas::Math::QuaternionFromRotationMatrix(rotationMatrix));
+
+        m_CameraYaw = atan2f(basisForward[1], basisForward[0]);
+        m_CameraPitch = asinf(std::clamp(basisForward[2], -1.0f, 1.0f));
+    }
+
+    bool TryLoadImportedScene(
+        _In_ Canvas::XCanvas *pCanvas,
+        _In_ Canvas::XScene *pScene,
+        _In_ Canvas::XGfxDevice *pDevice,
+        _In_ Canvas::XGfxRenderQueue *pGfxRenderQueue,
+        _In_ Canvas::XSceneGraphNode *pCameraNode)
+    {
+        if (m_ModelPath.empty())
+            return false;
+
+        Canvas::Fbx::ImportOptions options;
+        Canvas::Fbx::ImportedScene imported;
+
+        const std::wstring widePath = m_ModelPath.wstring();
+        const HRESULT hr = Canvas::Fbx::ImportScene(widePath.c_str(), options, &imported);
+
+        for (const Canvas::Fbx::ImportDiag &diag : imported.Diagnostics)
+        {
+            if (diag.Level == Canvas::Fbx::DiagLevel::Error)
+                Canvas::LogError(m_pLogger.Get(), "FBX: %s", diag.Message.c_str());
+            else if (diag.Level == Canvas::Fbx::DiagLevel::Warning)
+                Canvas::LogWarn(m_pLogger.Get(), "FBX: %s", diag.Message.c_str());
+            else
+                Canvas::LogInfo(m_pLogger.Get(), "FBX: %s", diag.Message.c_str());
+        }
+
+        if (FAILED(hr) || imported.HasErrors() || imported.Meshes.empty())
+        {
+            Canvas::LogWarn(m_pLogger.Get(), "FBX import failed or produced no meshes, falling back to debug cube: %s", m_ModelPath.string().c_str());
+            return false;
+        }
+
+        std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> meshDataByIndex(imported.Meshes.size());
+        for (size_t meshIndex = 0; meshIndex < imported.Meshes.size(); ++meshIndex)
+        {
+            const Canvas::Fbx::ImportedMesh &srcMesh = imported.Meshes[meshIndex];
+            if (srcMesh.Positions.empty() || srcMesh.Positions.size() != srcMesh.Normals.size())
+            {
+                Canvas::LogWarn(m_pLogger.Get(), "Skipping imported mesh '%s': invalid vertex streams", srcMesh.Name.c_str());
+                continue;
+            }
+
+            Gem::TGemPtr<Canvas::XGfxMeshData> pMeshData;
+            Gem::ThrowGemError(pDevice->CreateDebugMeshData(
+                static_cast<uint32_t>(srcMesh.Positions.size()),
+                srcMesh.Positions.data(),
+                srcMesh.Normals.data(),
+                pGfxRenderQueue,
+                &pMeshData));
+
+            meshDataByIndex[meshIndex].Attach(pMeshData.Detach());
+            m_ImportedMeshData.push_back(meshDataByIndex[meshIndex]);
+        }
+
+        std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> nodes(imported.Nodes.size());
+        for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
+        {
+            const Canvas::Fbx::ImportedNode &srcNode = imported.Nodes[nodeIndex];
+            const std::string nodeName = srcNode.Name.empty() ? ("ImportedNode_" + std::to_string(nodeIndex)) : srcNode.Name;
+
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
+            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pNode, nodeName.c_str()));
+            pNode->SetName(nodeName.c_str());
+            pNode->SetLocalTranslation(srcNode.Translation);
+            pNode->SetLocalRotation(srcNode.Rotation);
+            pNode->SetLocalScale(srcNode.Scale);
+
+            if (srcNode.MeshIndex >= 0 && static_cast<size_t>(srcNode.MeshIndex) < meshDataByIndex.size())
+            {
+                Canvas::XGfxMeshData *pMeshData = meshDataByIndex[static_cast<size_t>(srcNode.MeshIndex)].Get();
+                if (pMeshData)
+                {
+                    const std::string meshInstanceName = nodeName + "_Mesh";
+                    Gem::TGemPtr<Canvas::XMeshInstance> pMeshInstance;
+                    Gem::ThrowGemError(pCanvas->CreateMeshInstance(&pMeshInstance, meshInstanceName.c_str()));
+                    pMeshInstance->SetMeshData(pMeshData);
+                    Gem::ThrowGemError(pNode->BindElement(pMeshInstance));
+                    m_ImportedMeshInstances.push_back(pMeshInstance);
+                }
+            }
+
+            nodes[nodeIndex].Attach(pNode.Detach());
+        }
+
+        for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
+        {
+            const int32_t parentIndex = imported.Nodes[nodeIndex].ParentIndex;
+            if (parentIndex >= 0 && static_cast<size_t>(parentIndex) < nodes.size())
+                nodes[static_cast<size_t>(parentIndex)]->AddChild(nodes[nodeIndex]);
+            else
+                pScene->GetRootSceneGraphNode()->AddChild(nodes[nodeIndex]);
+        }
+
+        m_ImportedNodes = std::move(nodes);
+        FrameCameraToBounds(pCameraNode, imported.SceneBounds);
+        Canvas::LogInfo(m_pLogger.Get(), "Loaded FBX scene '%s' (%zu meshes, %zu nodes)", m_ModelPath.string().c_str(), imported.Meshes.size(), imported.Nodes.size());
+        return true;
+    }
+
 public:
-    CApp(HINSTANCE hInstance, PCSTR szTitle, Gem::TGemPtr<Canvas::XLogger> pLogger, int exitFrameCount = -1, bool logFps = false) :
+    CApp(
+        HINSTANCE hInstance,
+        PCSTR szTitle,
+        Gem::TGemPtr<Canvas::XLogger> pLogger,
+        int exitFrameCount = -1,
+        bool logFps = false,
+        std::filesystem::path modelPath = {}) :
         m_pLogger(pLogger),
         m_Title(szTitle),
         m_hInstance(hInstance),
         m_exitFrameCount(exitFrameCount),
-        m_logFps(logFps)
+        m_logFps(logFps),
+        m_ModelPath(std::move(modelPath))
         {
         }
 
@@ -231,106 +370,110 @@ public:
             
             pScene->GetRootSceneGraphNode()->AddChild(pCameraNode);
 
-            // Create a unit cube mesh centered at the origin
-            // 6 faces × 2 triangles × 3 vertices = 36 vertices
-            // Each face has its own normal (face normal), so vertices are not shared between faces
-            const float h = 0.5f; // half-edge length for unit cube
-            
-            // Define the 8 corners of the cube
-            // In Z-up coordinate system: X=right, Y=forward, Z=up
-            Canvas::Math::FloatVector4 corners[8] = {
-                Canvas::Math::FloatVector4(-h, -h, -h, 1.0f), // 0: left-back-bottom
-                Canvas::Math::FloatVector4( h, -h, -h, 1.0f), // 1: right-back-bottom
-                Canvas::Math::FloatVector4( h,  h, -h, 1.0f), // 2: right-front-bottom
-                Canvas::Math::FloatVector4(-h,  h, -h, 1.0f), // 3: left-front-bottom
-                Canvas::Math::FloatVector4(-h, -h,  h, 1.0f), // 4: left-back-top
-                Canvas::Math::FloatVector4( h, -h,  h, 1.0f), // 5: right-back-top
-                Canvas::Math::FloatVector4( h,  h,  h, 1.0f), // 6: right-front-top
-                Canvas::Math::FloatVector4(-h,  h,  h, 1.0f), // 7: left-front-top
-            };
-            
-            // Define face normals
-            Canvas::Math::FloatVector4 normalPosX( 1.0f,  0.0f,  0.0f, 0.0f); // +X face (right)
-            Canvas::Math::FloatVector4 normalNegX(-1.0f,  0.0f,  0.0f, 0.0f); // -X face (left)
-            Canvas::Math::FloatVector4 normalPosY( 0.0f,  1.0f,  0.0f, 0.0f); // +Y face (front)
-            Canvas::Math::FloatVector4 normalNegY( 0.0f, -1.0f,  0.0f, 0.0f); // -Y face (back)
-            Canvas::Math::FloatVector4 normalPosZ( 0.0f,  0.0f,  1.0f, 0.0f); // +Z face (top)
-            Canvas::Math::FloatVector4 normalNegZ( 0.0f,  0.0f, -1.0f, 0.0f); // -Z face (bottom)
-            
-            // 36 vertices: 6 faces × 2 triangles × 3 vertices
-            Canvas::Math::FloatVector4 cubePositions[36];
-            Canvas::Math::FloatVector4 cubeNormals[36];
-            
-            int v = 0;
-            
-            // +X face (right): corners 1, 2, 6, 5 (CCW when viewed from +X)
-            cubePositions[v] = corners[1]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[1]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[5]; cubeNormals[v++] = normalPosX;
-            
-            // -X face (left): corners 0, 4, 7, 3 (CCW when viewed from -X)
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[4]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[3]; cubeNormals[v++] = normalNegX;
-            
-            // +Y face (front): corners 2, 3, 7, 6 (CCW when viewed from +Y)
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[3]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosY;
-            
-            // -Y face (back): corners 0, 1, 5, 4 (CCW when viewed from -Y)
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[1]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[5]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[5]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[4]; cubeNormals[v++] = normalNegY;
-            
-            // +Z face (top): corners 4, 5, 6, 7 (CCW when viewed from +Z)
-            cubePositions[v] = corners[4]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[5]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[4]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalPosZ;
-            
-            // -Z face (bottom): corners 0, 3, 2, 1 (CCW when viewed from -Z)
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[1]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[3]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalNegZ;
-            
             Gem::TGemPtr<Canvas::XGfxMeshData> pCubeMesh;
-            Gem::ThrowGemError(pDevice->CreateDebugMeshData(
-                36,
-                cubePositions,
-                cubeNormals,
-                pGfxRenderQueue,
-                &pCubeMesh));
-
-            // Create a mesh element and bind the cube mesh to it
             Gem::TGemPtr<Canvas::XMeshInstance> pCube;
-            Gem::ThrowGemError(pCanvas->CreateMeshInstance(&pCube, "DebugCubeMeshInstance"));
-            pCube->SetMeshData(pCubeMesh);
-
-            // Create a scene graph node for the debug cube and bind the mesh element
             Gem::TGemPtr<Canvas::XSceneGraphNode> pDebugCubeNode;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pDebugCubeNode, "DebugCubeNode"));
-            Gem::ThrowGemError(pDebugCubeNode->BindElement(pCube));
 
-            // Add the debug cube node to the scene
-            pScene->GetRootSceneGraphNode()->AddChild(pDebugCubeNode);
+            if (!TryLoadImportedScene(pCanvas, pScene, pDevice, pGfxRenderQueue, pCameraNode))
+            {
+                // Create a unit cube mesh centered at the origin
+                // 6 faces × 2 triangles × 3 vertices = 36 vertices
+                // Each face has its own normal (face normal), so vertices are not shared between faces
+                const float h = 0.5f; // half-edge length for unit cube
+
+                // Define the 8 corners of the cube
+                // In Z-up coordinate system: X=right, Y=forward, Z=up
+                Canvas::Math::FloatVector4 corners[8] = {
+                    Canvas::Math::FloatVector4(-h, -h, -h, 1.0f), // 0: left-back-bottom
+                    Canvas::Math::FloatVector4( h, -h, -h, 1.0f), // 1: right-back-bottom
+                    Canvas::Math::FloatVector4( h,  h, -h, 1.0f), // 2: right-front-bottom
+                    Canvas::Math::FloatVector4(-h,  h, -h, 1.0f), // 3: left-front-bottom
+                    Canvas::Math::FloatVector4(-h, -h,  h, 1.0f), // 4: left-back-top
+                    Canvas::Math::FloatVector4( h, -h,  h, 1.0f), // 5: right-back-top
+                    Canvas::Math::FloatVector4( h,  h,  h, 1.0f), // 6: right-front-top
+                    Canvas::Math::FloatVector4(-h,  h,  h, 1.0f), // 7: left-front-top
+                };
+
+                // Define face normals
+                Canvas::Math::FloatVector4 normalPosX( 1.0f,  0.0f,  0.0f, 0.0f); // +X face (right)
+                Canvas::Math::FloatVector4 normalNegX(-1.0f,  0.0f,  0.0f, 0.0f); // -X face (left)
+                Canvas::Math::FloatVector4 normalPosY( 0.0f,  1.0f,  0.0f, 0.0f); // +Y face (front)
+                Canvas::Math::FloatVector4 normalNegY( 0.0f, -1.0f,  0.0f, 0.0f); // -Y face (back)
+                Canvas::Math::FloatVector4 normalPosZ( 0.0f,  0.0f,  1.0f, 0.0f); // +Z face (top)
+                Canvas::Math::FloatVector4 normalNegZ( 0.0f,  0.0f, -1.0f, 0.0f); // -Z face (bottom)
+
+                // 36 vertices: 6 faces × 2 triangles × 3 vertices
+                Canvas::Math::FloatVector4 cubePositions[36];
+                Canvas::Math::FloatVector4 cubeNormals[36];
+
+                int v = 0;
+
+                // +X face (right): corners 1, 2, 6, 5 (CCW when viewed from +X)
+                cubePositions[v] = corners[1]; cubeNormals[v++] = normalPosX;
+                cubePositions[v] = corners[2]; cubeNormals[v++] = normalPosX;
+                cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosX;
+                cubePositions[v] = corners[1]; cubeNormals[v++] = normalPosX;
+                cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosX;
+                cubePositions[v] = corners[5]; cubeNormals[v++] = normalPosX;
+
+                // -X face (left): corners 0, 4, 7, 3 (CCW when viewed from -X)
+                cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegX;
+                cubePositions[v] = corners[4]; cubeNormals[v++] = normalNegX;
+                cubePositions[v] = corners[7]; cubeNormals[v++] = normalNegX;
+                cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegX;
+                cubePositions[v] = corners[7]; cubeNormals[v++] = normalNegX;
+                cubePositions[v] = corners[3]; cubeNormals[v++] = normalNegX;
+
+                // +Y face (front): corners 2, 3, 7, 6 (CCW when viewed from +Y)
+                cubePositions[v] = corners[2]; cubeNormals[v++] = normalPosY;
+                cubePositions[v] = corners[3]; cubeNormals[v++] = normalPosY;
+                cubePositions[v] = corners[7]; cubeNormals[v++] = normalPosY;
+                cubePositions[v] = corners[2]; cubeNormals[v++] = normalPosY;
+                cubePositions[v] = corners[7]; cubeNormals[v++] = normalPosY;
+                cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosY;
+
+                // -Y face (back): corners 0, 1, 5, 4 (CCW when viewed from -Y)
+                cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegY;
+                cubePositions[v] = corners[1]; cubeNormals[v++] = normalNegY;
+                cubePositions[v] = corners[5]; cubeNormals[v++] = normalNegY;
+                cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegY;
+                cubePositions[v] = corners[5]; cubeNormals[v++] = normalNegY;
+                cubePositions[v] = corners[4]; cubeNormals[v++] = normalNegY;
+
+                // +Z face (top): corners 4, 5, 6, 7 (CCW when viewed from +Z)
+                cubePositions[v] = corners[4]; cubeNormals[v++] = normalPosZ;
+                cubePositions[v] = corners[5]; cubeNormals[v++] = normalPosZ;
+                cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosZ;
+                cubePositions[v] = corners[4]; cubeNormals[v++] = normalPosZ;
+                cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosZ;
+                cubePositions[v] = corners[7]; cubeNormals[v++] = normalPosZ;
+
+                // -Z face (bottom): corners 0, 3, 2, 1 (CCW when viewed from -Z)
+                cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegZ;
+                cubePositions[v] = corners[2]; cubeNormals[v++] = normalNegZ;
+                cubePositions[v] = corners[1]; cubeNormals[v++] = normalNegZ;
+                cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegZ;
+                cubePositions[v] = corners[3]; cubeNormals[v++] = normalNegZ;
+                cubePositions[v] = corners[2]; cubeNormals[v++] = normalNegZ;
+
+                Gem::ThrowGemError(pDevice->CreateDebugMeshData(
+                    36,
+                    cubePositions,
+                    cubeNormals,
+                    pGfxRenderQueue,
+                    &pCubeMesh));
+
+                // Create a mesh element and bind the cube mesh to it
+                Gem::ThrowGemError(pCanvas->CreateMeshInstance(&pCube, "DebugCubeMeshInstance"));
+                pCube->SetMeshData(pCubeMesh);
+
+                // Create a scene graph node for the debug cube and bind the mesh element
+                Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pDebugCubeNode, "DebugCubeNode"));
+                Gem::ThrowGemError(pDebugCubeNode->BindElement(pCube));
+
+                // Add the debug cube node to the scene
+                pScene->GetRootSceneGraphNode()->AddChild(pDebugCubeNode);
+            }
 
             // Set the active camera for the scene
             pScene->SetActiveCamera(pCamera);
@@ -718,6 +861,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     std::string logFile;
     bool logConsole = false;
     bool logFps = false;
+    std::string fbxPath;
     int exitFrameCount = -1;  // -1 means don't exit automatically
 
     try
@@ -730,6 +874,10 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         rootCmd.AddOption(InCommand::OptionType::Variable, "exitframecount")
             .SetDescription("Exit application after N frames (useful for automated testing)")
             .BindTo(exitFrameCount);
+
+        rootCmd.AddOption(InCommand::OptionType::Variable, "fbx")
+            .SetDescription("Path to an FBX file to import at startup")
+            .BindTo(fbxPath);
 
         // "log" subcommand — all logging configuration lives here
         //   CanvasModelViewer.exe log --level debug --file mylog.txt --console --fps
@@ -854,7 +1002,11 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     ThinWin::CWindow::RegisterWindowClass(hInstance);
 
     // Create the application object
-    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps));
+    std::filesystem::path modelPath;
+    if (!fbxPath.empty())
+        modelPath = std::filesystem::u8path(fbxPath);
+
+    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps, modelPath));
 
     // Initialize the application
     if (!pApp->Initialize(nCmdShow))
