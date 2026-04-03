@@ -19,6 +19,7 @@
 #include "CanvasCore.h"
 #include "CanvasMath.hpp"
 
+#include <filesystem>
 #include <vector>
 #include <string>
 #include <cstdint>
