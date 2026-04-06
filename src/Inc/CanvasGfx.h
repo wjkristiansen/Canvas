@@ -317,6 +317,12 @@ namespace Canvas
         GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, GfxMemoryUsage memoryUsage, XGfxBuffer **ppBuffer) = 0;
         GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxSuballocation &suballocationInfo) = 0;
         GEMMETHOD_(void, FreeHostWriteRegion)(GfxSuballocation &suballocationInfo) = 0;
+        GEMMETHOD(CreateMeshData)(
+            uint32_t vertexCount,
+            const Canvas::Math::FloatVector4 *positions,
+            const Canvas::Math::FloatVector4 *normals,
+            XGfxRenderQueue *pRenderQueue,
+            XGfxMeshData **ppMesh) = 0;
         GEMMETHOD(CreateDebugMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,

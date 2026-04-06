@@ -470,8 +470,10 @@ public:
     // G-buffer render targets for deferred shading
     Gem::TGemPtr<CSurface12> m_pGBufferNormals;
     Gem::TGemPtr<CSurface12> m_pGBufferDiffuseColor;
+    Gem::TGemPtr<CSurface12> m_pGBufferWorldPos;
     Canvas::GfxFormat m_GBufferNormalsFormat = Canvas::GfxFormat::R10G10B10A2_UNorm;
     Canvas::GfxFormat m_GBufferDiffuseFormat = Canvas::GfxFormat::R10G10B10A2_UNorm;
+    Canvas::GfxFormat m_GBufferWorldPosFormat = Canvas::GfxFormat::R16G16B16A16_Float;
     UINT m_GBufferWidth = 0;
     UINT m_GBufferHeight = 0;
 
@@ -488,7 +490,7 @@ public:
     uint32_t m_LightCount = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentDSV = {};
-    D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[2] = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[3] = {};
 
     // Renderable elements enqueued during scene graph update, dispatched during EndFrame
     std::vector<Canvas::XSceneGraphElement*> m_RenderableQueue;

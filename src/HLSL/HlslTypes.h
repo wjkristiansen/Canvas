@@ -35,8 +35,9 @@ struct ALIGN16 HlslLight
 {
     float4 DirectionOrPosition;
     float4 Color;
+    float4 DirectionAndSpot;
+    float4 AttenuationAndRange;
     uint   Type;
-    float  Range;
 };
 
 struct ALIGN16 HlslPerFrameConstants
@@ -44,6 +45,7 @@ struct ALIGN16 HlslPerFrameConstants
     ROW_MAJOR float4x4 ViewProj;
     float4 CameraWorldPos;
     uint LightCount;
+    float LightCullThreshold;
     HlslLight Lights[MAX_LIGHTS_PER_REGION];
 };
 

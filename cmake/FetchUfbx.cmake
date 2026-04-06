@@ -36,10 +36,18 @@ message(STATUS "Canvas: Using ufbx sources at ${UFBX_ROOT}")
 if(NOT TARGET ufbx)
     add_library(ufbx STATIC "${UFBX_ROOT}/ufbx.c")
     target_include_directories(ufbx PUBLIC "${UFBX_ROOT}")
-    target_compile_definitions(ufbx PRIVATE UFBX_REAL_IS_FLOAT=1)
+    # UFBX_REAL_IS_FLOAT affects public struct layout (eg ufbx_scene/ufbx_node fields),
+    # so consumers that include ufbx.h must use the same definition as the ufbx library.
+    target_compile_definitions(ufbx PUBLIC UFBX_REAL_IS_FLOAT=1)
+    if(MSVC)
+        # Keep ufbx runtime consistent with Canvas root policy: /MDd for Debug, /MD otherwise.
+        target_compile_options(ufbx PRIVATE
+            $<$<CONFIG:Debug>:/MDd>
+            $<$<NOT:$<CONFIG:Debug>>:/MD>
+        )
+    endif()
     set_target_properties(ufbx PROPERTIES
         C_STANDARD 99
         C_STANDARD_REQUIRED ON
-        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
     )
 endif()

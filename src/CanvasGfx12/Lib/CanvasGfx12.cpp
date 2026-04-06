@@ -85,9 +85,24 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
 CCanvasPlugin::CCanvasPlugin()
 {
 #if defined(_DEBUG)
-    CComPtr<ID3D12Debug3> pDebug;
-    ThrowFailedHResult(D3D12GetDebugInterface(IID_PPV_ARGS(&pDebug)));
-    pDebug->EnableDebugLayer();
+    bool enableDebugLayer = IsDebuggerPresent() != FALSE;
+
+    // Allow explicit override for local troubleshooting without requiring a debugger.
+    // Values: 0 = force off, 1 = force on.
+    if (const char *pOverride = std::getenv("CANVAS_D3D12_DEBUG_LAYER"))
+    {
+        if (pOverride[0] == '0' && pOverride[1] == '\0')
+            enableDebugLayer = false;
+        else if (pOverride[0] == '1' && pOverride[1] == '\0')
+            enableDebugLayer = true;
+    }
+
+    if (enableDebugLayer)
+    {
+        CComPtr<ID3D12Debug3> pDebug;
+        ThrowFailedHResult(D3D12GetDebugInterface(IID_PPV_ARGS(&pDebug)));
+        pDebug->EnableDebugLayer();
+    }
 #endif
 }
 

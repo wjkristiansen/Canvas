@@ -94,6 +94,18 @@ struct ImportedLight
 #pragma warning(pop)
 
 //------------------------------------------------------------------------------------------------
+// Imported camera
+//------------------------------------------------------------------------------------------------
+struct ImportedCamera
+{
+  std::string         Name;
+  float               NearClip        = 0.1f;
+  float               FarClip         = 1000.0f;
+  float               FovAngle        = static_cast<float>(Math::Pi / 4.0); // radians, vertical when available
+  float               AspectRatio     = 16.0f / 9.0f;
+};
+
+//------------------------------------------------------------------------------------------------
 // A node in the imported scene hierarchy.
 // Indices refer into ImportedScene::Nodes (self-referencing flat array).
 // MeshIndex / LightIndex are -1 when no payload is bound.
@@ -113,6 +125,7 @@ struct ImportedNode
     // Payload binding (-1 = none)
     int32_t                 MeshIndex       = -1;       // → ImportedScene::Meshes[i]
     int32_t                 LightIndex      = -1;       // → ImportedScene::Lights[i]
+    int32_t                 CameraIndex     = -1;       // → ImportedScene::Cameras[i]
 };
 #pragma warning(pop)
 
@@ -123,12 +136,15 @@ struct ImportedScene
 {
     std::vector<ImportedMesh>   Meshes;
     std::vector<ImportedLight>  Lights;
+  std::vector<ImportedCamera> Cameras;
     std::vector<ImportedNode>   Nodes;
     std::vector<ImportDiag>     Diagnostics;
     Math::AABB                  SceneBounds;    // union of all mesh bounds (Canvas space)
+  int32_t                     ActiveCameraNodeIndex = -1;
 
     bool HasMeshes()  const { return !Meshes.empty(); }
     bool HasLights()  const { return !Lights.empty(); }
+  bool HasCameras() const { return !Cameras.empty(); }
     bool HasErrors()  const;
 };
 

@@ -39,7 +39,7 @@ GEMMETHODIMP_(Canvas::GfxVertexBuffer*) CMeshData12::GetVertexBuffer(uint32_t ma
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(Canvas::XGfxMaterial*) CMeshData12::GetMaterial([[maybe_unused]] uint32_t materialIndex)
 {
-    // Not implemented for debug mesh
+    // Material binding is not implemented yet for mesh data.
     return nullptr;
 }
 

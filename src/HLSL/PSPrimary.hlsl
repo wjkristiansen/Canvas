@@ -12,5 +12,8 @@ GBufferOutput PSPrimary(PS_INPUT Input)
     float3 albedo = float3(0.8, 0.8, 0.8);
     output.DiffuseColor = float4(albedo, 1.0);
 
+    // Store world position for accurate point/spot lighting in composite pass.
+    output.WorldPos = float4(Input.WorldPosition, 1.0);
+
     return output;
 }

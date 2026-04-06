@@ -16,6 +16,7 @@ struct GBufferOutput
 {
     float4 Normals      : SV_Target0;   // RGB = world-space normal (encoded), A = unused
     float4 DiffuseColor : SV_Target1;   // RGB = albedo, A = unused
+    float4 WorldPos     : SV_Target2;   // RGB = world position, A = coverage
 };
 
 #include "HlslTypes.h"
