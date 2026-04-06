@@ -3,8 +3,9 @@ cmake_minimum_required(VERSION 3.24)
 
 #---------------------------------------------------------------------------
 # ufbx discovery
-# Prefer open-source ufbx backend for FBX parsing. If unavailable, target still
-# builds in stub mode and importer returns E_NOTIMPL at runtime.
+# CanvasFbx requires the ufbx submodule when CANVAS_FBX_ENABLE is ON; the
+# configure step fails fast with FATAL_ERROR if it is not found. To build
+# Canvas without the FBX importer, configure with -DCANVAS_FBX_ENABLE=OFF.
 #---------------------------------------------------------------------------
 option(CANVAS_FBX_ENABLE "Enable FBX importer backend" ON)
 
@@ -18,8 +19,12 @@ if(CANVAS_FBX_ENABLE)
     endif()
 endif()
 
-if(NOT CANVASFBX_HAS_UFBX)
-    message(STATUS "CanvasFbx: Building without ufbx (stub importer only)")
+if(CANVAS_FBX_ENABLE AND NOT CANVASFBX_HAS_UFBX)
+    message(FATAL_ERROR
+        "CanvasFbx: CANVAS_FBX_ENABLE is ON but ufbx was not found.\n"
+        "  Initialize submodules:  git submodule update --init --recursive\n"
+        "  Or provide:             -DUFBX_ROOT=<path containing ufbx.h and ufbx.c>\n"
+        "  Or disable the backend: -DCANVAS_FBX_ENABLE=OFF")
 endif()
 
 #---------------------------------------------------------------------------
