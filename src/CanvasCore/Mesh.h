@@ -42,20 +42,6 @@ public:
         return TSceneGraphElement<XMeshInstance>::NotifyNodeContextChanged(pNode);
     }
 
-    GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) final
-    {
-        auto *pNode = GetAttachedNode();
-        if (!pNode || !m_pMeshData)
-            return Gem::Result::Success;
-
-        GfxPerObjectConstants objConstants = {};
-        objConstants.World = pNode->GetGlobalMatrix();
-        objConstants.WorldInvTranspose = objConstants.World;
-        objConstants.WorldInvTranspose[3] = Math::FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
-
-        return pRenderQueue->DrawMesh(m_pMeshData, objConstants);
-    }
-
     // XMeshInstance methods
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() final 
     { 

@@ -83,6 +83,7 @@ public:
     virtual void RegenerateVertices() {}
     virtual const void* GetCachedVertexData() const { return nullptr; }
     virtual uint32_t GetCachedVertexCount() const { return 0; }
+    virtual bool HasContent() const { return false; }
 
     VertexBufferSlot& GetBufferSlot() { return m_BufferSlot; }
 
@@ -149,6 +150,7 @@ public:
     void RegenerateVertices() override;
     const void* GetCachedVertexData() const override { return m_CachedVertices.data(); }
     uint32_t GetCachedVertexCount() const override { return static_cast<uint32_t>(m_CachedVertices.size()); }
+    bool HasContent() const override { return !m_Text.empty(); }
 
     void SetGlyphAtlasInternal(CGlyphAtlasImpl* pAtlas);
     CGlyphAtlasImpl* GetGlyphAtlas() const { return m_pAtlas; }
@@ -182,6 +184,7 @@ public:
     void RegenerateVertices() override;
     const void* GetCachedVertexData() const override { return m_CachedVertices.data(); }
     uint32_t GetCachedVertexCount() const override { return static_cast<uint32_t>(m_CachedVertices.size()); }
+    bool HasContent() const override { return m_Size.X > 0.0f && m_Size.Y > 0.0f; }
 };
 
 } // namespace Canvas

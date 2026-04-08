@@ -34,6 +34,11 @@ class CDevice12 : public TGfxElement<Canvas::XGfxDevice>
 {
 public:
     CComPtr<ID3D12Device10> m_pD3DDevice;
+
+    // Host-write (upload) scratch buffer.  The buddy suballocator tracks in
+    // units of kHostWriteUnitSize bytes so that tracking overhead stays small
+    // (16K entries for 4 MB instead of 4M entries at byte granularity).
+    static constexpr uint64_t kHostWriteUnitSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT; // 256
     uint64_t m_HostWriteSize = 4 * 1024 * 1024; // 4 MB default
     TBuddySuballocator<uint64_t> m_HostWriteSuballocator;
     Gem::TGemPtr<Canvas::XGfxBuffer> m_pHostWriteBuffer;

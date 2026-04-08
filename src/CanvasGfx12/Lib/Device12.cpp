@@ -12,7 +12,7 @@
 //------------------------------------------------------------------------------------------------
 CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
     TGfxElement(pCanvas),
-    m_HostWriteSuballocator(m_HostWriteSize)
+    m_HostWriteSuballocator(m_HostWriteSize / kHostWriteUnitSize)
 {
     if (name != nullptr)
         SetName(name);
@@ -316,9 +316,10 @@ GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::Gf
     
     try
     {
-        // Allocate a region from the scratch suballocator
-        auto block = m_HostWriteSuballocator.Allocate(sizeInBytes);
-        suballocation.Offset = block.Start();
+        // Allocate a region from the scratch suballocator (operates in kHostWriteUnitSize-byte units)
+        uint64_t sizeInUnits = (sizeInBytes + kHostWriteUnitSize - 1) / kHostWriteUnitSize;
+        auto block = m_HostWriteSuballocator.Allocate(sizeInUnits);
+        suballocation.Offset = block.Start() * kHostWriteUnitSize;
         suballocation.Size = sizeInBytes;
         suballocation.pBuffer = m_pHostWriteBuffer;
 
@@ -354,8 +355,10 @@ GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxSuballocation &sub
         return;
     }
     
-    // Free the region back to the scratch suballocator
-    auto block = TBuddySuballocator<uint64_t>::ReconstructBlock(suballocation.Offset, suballocation.Size);
+    // Free the region back to the scratch suballocator (convert bytes → units)
+    uint64_t offsetInUnits = suballocation.Offset / kHostWriteUnitSize;
+    uint64_t sizeInUnits = (suballocation.Size + kHostWriteUnitSize - 1) / kHostWriteUnitSize;
+    auto block = TBuddySuballocator<uint64_t>::ReconstructBlock(offsetInUnits, sizeInUnits);
     m_HostWriteSuballocator.Free(block);
     suballocation.pBuffer = nullptr;
     suballocation.Offset = 0;

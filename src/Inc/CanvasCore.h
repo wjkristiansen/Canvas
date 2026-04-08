@@ -293,15 +293,6 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD(Update)(float dtime) = 0;
 };
 
-//------------------------------------------------------------------------------------------------
-//------------------------------------------------------------------------------------------------
-// Per-object constant buffer data (matches HLSL PerObjectConstants)
-struct alignas(16) GfxPerObjectConstants
-{
-    Math::FloatMatrix4x4 World;            // Object-to-world transform
-    Math::FloatMatrix4x4 WorldInvTranspose; // For transforming normals
-};
-
 // Text vertex structure — shared between CanvasCore (vertex generation) and CanvasGfx (rendering)
 // Layout must match HLSL StructuredBuffer<TextVertex> in VSText.hlsl
 struct TextVertex
@@ -334,8 +325,6 @@ struct
 XRenderQueue : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XRenderQueue, 0x3B35719161878DCC);
-
-    GEMMETHOD(DrawMesh)(XGfxMeshData *pMeshData, const GfxPerObjectConstants &objectConstants) = 0;
 
     // Persistent UI text vertex buffer management
     // Allocates a contiguous region in the persistent GPU vertex buffer.
@@ -377,9 +366,9 @@ XRenderQueue : public XCanvasElement
         uint32_t srcRowPitch,
         GfxRenderContext context = GfxRenderContext::Scene) = 0;
 
-    // Private contract with the scene graph: enqueues an element for rendering.
-    // Elements are dispatched later when the queue is drained (EndFrame).
-    GEMMETHOD(SubmitForRender)(XSceneGraphElement *pElement) = 0;
+    // Private contract with the scene graph: enqueues a scene graph node for rendering.
+    // Nodes are dispatched later when the queue is drained (EndFrame).
+    GEMMETHOD(SubmitForRender)(XSceneGraphNode *pNode) = 0;
 
     // Private contract with the scene: sets the active camera for frame constant generation.
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
@@ -402,9 +391,6 @@ XSceneGraphElement : public XCanvasElement
     // This is called both when binding and when transforms invalidate
     // Elements can query node transforms via GetAttachedNode() when needed
     GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode) = 0;
-
-    // Dispatches the element for rendering
-    GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
 };

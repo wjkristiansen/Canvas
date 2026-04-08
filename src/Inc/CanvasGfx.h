@@ -201,7 +201,6 @@ namespace Canvas
 
         // Frame rendering
         GEMMETHOD(BeginFrame)(XGfxSwapChain *pSwapChain) = 0;
-        GEMMETHOD(DrawMesh)(XGfxMeshData *pMeshData, const GfxPerObjectConstants &objectConstants) = 0;
         GEMMETHOD(EndFrame)() = 0;
     };
 

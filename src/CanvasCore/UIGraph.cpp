@@ -95,7 +95,12 @@ void CUIGraph::UpdateElement(CUIElementCore* pElement)
     {
         pElement->RegenerateVertices();
         pElement->GetBufferSlot().GpuDirty = true;
-        pElement->ClearDirtyFlags(CUIElementCore::DirtyContent | CUIElementCore::DirtyPosition);
+
+        // Only clear dirty flags if regeneration succeeded.  If a transient
+        // resource shortage caused zero vertices for non-empty content, keep
+        // the element dirty so it retries on the next update.
+        if (pElement->GetCachedVertexCount() > 0 || !pElement->HasContent())
+            pElement->ClearDirtyFlags(CUIElementCore::DirtyContent | CUIElementCore::DirtyPosition);
     }
 
     if (dirty & CUIElementCore::DirtyVisibility)

@@ -23,22 +23,6 @@ namespace
     // Global light culling threshold.
     // 0 disables intensity-based culling until an explicit tuned value is provided.
     constexpr float kDefaultLightCullThreshold = 0.0f;
-
-    Gem::Result AllocateDedicatedHostWriteRegion(
-        CDevice12* pDevice,
-        uint64_t sizeInBytes,
-        Canvas::GfxSuballocation& suballocation)
-    {
-        Gem::TGemPtr<Canvas::XGfxBuffer> pDedicatedUploadBuffer;
-        Gem::Result result = pDevice->CreateBuffer(sizeInBytes, Canvas::GfxMemoryUsage::HostWrite, &pDedicatedUploadBuffer);
-        if (FAILED(result))
-            return result;
-
-        suballocation.pBuffer = pDedicatedUploadBuffer;
-        suballocation.Offset = 0;
-        suballocation.Size = sizeInBytes;
-        return Gem::Result::Success;
-    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -967,9 +951,8 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
         uint32_t alignedRowPitch = (srcRowPitch + kPitchAlign - 1) & ~(kPitchAlign - 1);
         uint64_t stagingSize = static_cast<uint64_t>(alignedRowPitch) * height;
 
-        // Allocate staging buffer (power-of-2 size satisfies D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT=512)
         Canvas::GfxSuballocation stagingAlloc;
-        Gem::ThrowGemError(AllocateDedicatedHostWriteRegion(m_pDevice, stagingSize, stagingAlloc));
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(stagingSize, stagingAlloc));
 
         // Copy rows from source into staging buffer (may need re-striding)
         auto pStagingBuf = static_cast<CBuffer12*>(stagingAlloc.pBuffer.Get());
@@ -1011,7 +994,7 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
                 D3D12_BARRIER_LAYOUT_COMMON,
                 D3D12_BARRIER_SYNC_COPY,
                 D3D12_BARRIER_ACCESS_COPY_DEST);
-            copyTask.RecordFunc = [&dst, &src, &srcBox, dstX, dstY](ID3D12GraphicsCommandList* pCL)
+            copyTask.RecordFunc = [dst, src, srcBox, dstX, dstY](ID3D12GraphicsCommandList* pCL)
             {
                 pCL->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
             };
@@ -1025,7 +1008,7 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
 
             RecordCommandBlock(
                 usages.Build(),
-                [&src, &dst, &srcBox, dstX, dstY]
+                [src, dst, srcBox, dstX, dstY]
                 (ID3D12GraphicsCommandList* cmdList)
                 {
                     cmdList->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
@@ -1172,9 +1155,9 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::DrawMesh(
+Gem::Result CRenderQueue12::DrawMesh(
     Canvas::XGfxMeshData *pMeshData,
-    const Canvas::GfxPerObjectConstants &objectConstants)
+    const Canvas::Math::FloatMatrix4x4 &worldTransform)
 {
     try
     {
@@ -1194,13 +1177,25 @@ GEMMETHODIMP CRenderQueue12::DrawMesh(
         CBuffer12* pNormBuf = (pNormEntry && pNormEntry->pBuffer)
             ? static_cast<CBuffer12*>(pNormEntry->pBuffer.Get())
             : nullptr;
+
+        // Pack per-object constants from the world transform
+        HlslTypes::HlslPerObjectConstants objectConstants = {};
+        static_assert(sizeof(objectConstants.World) == sizeof(worldTransform),
+                      "HlslTypes::float4x4 and Math::FloatMatrix4x4 must be layout-compatible");
+        memcpy(&objectConstants.World, &worldTransform, sizeof(objectConstants.World));
+        memcpy(&objectConstants.WorldInvTranspose, &worldTransform, sizeof(objectConstants.WorldInvTranspose));
+        // Zero translation row for normal transform (inverse transpose of upper 3x3)
+        objectConstants.WorldInvTranspose.m[3][0] = 0.0f;
+        objectConstants.WorldInvTranspose.m[3][1] = 0.0f;
+        objectConstants.WorldInvTranspose.m[3][2] = 0.0f;
+        objectConstants.WorldInvTranspose.m[3][3] = 1.0f;
         
         // Upload per-object constants to upload heap
         // CBVs require 256-byte aligned BufferLocation (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        const uint64_t cbSize = (sizeof(Canvas::GfxPerObjectConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
+        const uint64_t cbSize = (sizeof(HlslTypes::HlslPerObjectConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
         Canvas::GfxSuballocation cbAlloc;
-        Gem::ThrowGemError(AllocateDedicatedHostWriteRegion(m_pDevice, cbSize, cbAlloc));
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(cbSize, cbAlloc));
         
         auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
         ID3D12Resource* pHostResource = pHostBuf->GetD3DResource();
@@ -1208,7 +1203,7 @@ GEMMETHODIMP CRenderQueue12::DrawMesh(
         void* pMapped = nullptr;
         ThrowFailedHResult(pHostResource->Map(0, nullptr, &pMapped));
         memcpy(static_cast<uint8_t*>(pMapped) + cbAlloc.Offset,
-               &objectConstants, sizeof(Canvas::GfxPerObjectConstants));
+               &objectConstants, sizeof(HlslTypes::HlslPerObjectConstants));
         pHostResource->Unmap(0, nullptr);
         
         // Create CBV for per-object constants in descriptor table
@@ -1234,7 +1229,7 @@ GEMMETHODIMP CRenderQueue12::DrawMesh(
         // Slot 0 of table: CBV for per-object constants (b1)
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
         cbvDesc.BufferLocation = pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset;
-        cbvDesc.SizeInBytes = static_cast<UINT>((sizeof(Canvas::GfxPerObjectConstants) + 255) & ~255); // 256-byte aligned
+        cbvDesc.SizeInBytes = static_cast<UINT>((sizeof(HlslTypes::HlslPerObjectConstants) + 255) & ~255); // 256-byte aligned
         pD3DDevice->CreateConstantBufferView(&cbvDesc, baseCpuHandle);
         
         // Slot 1 of table: CBV[1] placeholder (b2) - null
@@ -1435,7 +1430,7 @@ GEMMETHODIMP CRenderQueue12::UploadUITextVertices(
 
         // Stage vertex data in UPLOAD heap — no GPU task yet
         Canvas::GfxSuballocation staging{};
-        Gem::ThrowGemError(AllocateDedicatedHostWriteRegion(m_pDevice, copySize, staging));
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(copySize, staging));
 
         auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
         ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
@@ -1515,7 +1510,7 @@ GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
 
         // Shared screen constants CBV (one allocation for entire batch)
         constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Gem::ThrowGemError(AllocateDedicatedHostWriteRegion(m_pDevice, kCBVSize, cbAlloc));
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
 
         auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
         ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
@@ -1692,7 +1687,7 @@ GEMMETHODIMP CRenderQueue12::UploadUIRectVertices(
         uint64_t dstOffset = startVertex * kVertexSize;
 
         Canvas::GfxSuballocation staging{};
-        Gem::ThrowGemError(AllocateDedicatedHostWriteRegion(m_pDevice, copySize, staging));
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(copySize, staging));
 
         auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
         ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
@@ -1766,7 +1761,7 @@ GEMMETHODIMP CRenderQueue12::DrawUIRectBatch(
 
         // Shared screen constants CBV
         constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Gem::ThrowGemError(AllocateDedicatedHostWriteRegion(m_pDevice, kCBVSize, cbAlloc));
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
 
         auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
         ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
@@ -1815,17 +1810,21 @@ GEMMETHODIMP CRenderQueue12::DrawUIRectBatch(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphElement *pElement)
+GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphNode *pNode)
 {
-    if (!pElement)
+    if (!pNode)
         return Gem::Result::InvalidArg;
 
     // Route lights directly to SubmitLight — they don't go in the renderable queue
-    Gem::TGemPtr<Canvas::XLight> pLight;
-    if (SUCCEEDED(pElement->QueryInterface(&pLight)))
-        return SubmitLight(pLight);
+    UINT elementCount = pNode->GetBoundElementCount();
+    for (UINT i = 0; i < elementCount; ++i)
+    {
+        Gem::TGemPtr<Canvas::XLight> pLight;
+        if (SUCCEEDED(pNode->GetBoundElement(i)->QueryInterface(&pLight)))
+            Gem::ThrowGemError(SubmitLight(pLight));
+    }
 
-    m_RenderableQueue.push_back(pElement);
+    m_RenderableQueue.push_back(pNode);
     return Gem::Result::Success;
 }
 
@@ -1958,7 +1957,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         const uint64_t cbSize = (sizeof(HlslTypes::HlslPerFrameConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
         Canvas::GfxSuballocation cbAlloc;
-        Gem::ThrowGemError(AllocateDedicatedHostWriteRegion(m_pDevice, cbSize, cbAlloc));
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(cbSize, cbAlloc));
         
         auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
         ID3D12Resource* pHostResource = pHostBuf->GetD3DResource();
@@ -1979,10 +1978,26 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         };
         m_GpuTaskGraph.InsertTask(frameConstTask);
 
-        // Drain the renderable queue (meshes only — lights already accumulated)
-        for (auto *pElement : m_RenderableQueue)
+        // Drain the renderable queue — process nodes inline
+        for (auto *pNode : m_RenderableQueue)
         {
-            Gem::ThrowGemError(pElement->DispatchForRender(this));
+            UINT elementCount = pNode->GetBoundElementCount();
+            for (UINT i = 0; i < elementCount; ++i)
+            {
+                auto *pElement = pNode->GetBoundElement(i);
+
+                // Mesh instances: build per-object constants from node transform, draw internally
+                Gem::TGemPtr<Canvas::XMeshInstance> pMeshInstance;
+                if (SUCCEEDED(pElement->QueryInterface(&pMeshInstance)))
+                {
+                    auto *pMeshData = pMeshInstance->GetMeshData();
+                    if (pMeshData)
+                    {
+                        Gem::ThrowGemError(DrawMesh(pMeshData, pNode->GetGlobalMatrix()));
+                    }
+                }
+                // Lights were already accumulated during SubmitForRender — skip here
+            }
         }
         m_RenderableQueue.clear();
 

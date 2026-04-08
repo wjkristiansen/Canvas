@@ -56,12 +56,9 @@ GEMMETHODIMP CScene::SubmitRenderables(XRenderQueue *pRenderQueue)
             XSceneGraphNode *pNode = m_TraversalStack.back();
             m_TraversalStack.pop_back();
 
-            // Submit all bound elements on this node
-            UINT elementCount = pNode->GetBoundElementCount();
-            for (UINT i = 0; i < elementCount; ++i)
-            {
-                Gem::ThrowGemError(pRenderQueue->SubmitForRender(pNode->GetBoundElement(i)));
-            }
+            // Submit this node for rendering (render queue handles its elements)
+            if (pNode->GetBoundElementCount() > 0)
+                Gem::ThrowGemError(pRenderQueue->SubmitForRender(pNode));
 
             // Push children onto stack for traversal
             for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))

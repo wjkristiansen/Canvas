@@ -34,7 +34,6 @@ public:
         m_pNode = pNode;
         return Gem::Result::Success;
     }
-    GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) override;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -249,13 +248,6 @@ template<class _Base>
 GEMMETHODIMP_(XSceneGraphNode *) TSceneGraphElement<_Base>::GetAttachedNode()
 {
     return m_pNode;
-}
-
-template<class _Base>
-GEMMETHODIMP TSceneGraphElement<_Base>::DispatchForRender(XRenderQueue */*pRenderQueue*/)
-{
-    // TODO: Implement render dispatch logic
-    return Gem::Result::Success;
 }
 
 }

@@ -492,8 +492,8 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentDSV = {};
     D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[3] = {};
 
-    // Renderable elements enqueued during scene graph update, dispatched during EndFrame
-    std::vector<Canvas::XSceneGraphElement*> m_RenderableQueue;
+    // Renderable nodes enqueued during scene graph update, dispatched during EndFrame
+    std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
 
     // SRV descriptor allocation for per-draw structured buffers
     UINT m_NextSRVSlot = 0;
@@ -569,7 +569,6 @@ public:
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers) final;
     GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
-    GEMMETHOD(DrawMesh)(Canvas::XGfxMeshData *pMeshData, const Canvas::GfxPerObjectConstants &objectConstants) final;
     GEMMETHOD(AllocUITextVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) final;
     GEMMETHOD_(void, FreeUITextVertices)(uint32_t startVertex, uint32_t maxVertexCount) final;
     GEMMETHOD(UploadUITextVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) final;
@@ -579,13 +578,16 @@ public:
     GEMMETHOD(UploadUIRectVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) final;
     GEMMETHOD(DrawUIRectBatch)(const Canvas::UIRectDrawCommand* pCommands, uint32_t commandCount) final;
     GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context) final;
-    GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphElement *pElement) final;
+    GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
     GEMMETHOD(EndFrame)() final;
 
     // Internal functions
     CDevice12 *GetDevice() const { return m_pDevice; }
     ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
+
+    // Internal mesh drawing (called from EndFrame, not on any public interface)
+    Gem::Result DrawMesh(Canvas::XGfxMeshData *pMeshData, const Canvas::Math::FloatMatrix4x4 &worldTransform);
 
     // Flush: compute final layouts, update committed state, close/submit CL
     void Flush();
