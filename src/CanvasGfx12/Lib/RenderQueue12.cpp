@@ -960,11 +960,18 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
 
         void* pMapped = nullptr;
         ThrowFailedHResult(pStagingResource->Map(0, nullptr, &pMapped));
-        for (uint32_t row = 0; row < height; ++row)
+        if (srcRowPitch == alignedRowPitch)
         {
-            const uint8_t* pSrcRow = static_cast<const uint8_t*>(pData) + row * srcRowPitch;
-            uint8_t* pDstRow = static_cast<uint8_t*>(pMapped) + stagingAlloc.Offset + row * alignedRowPitch;
-            memcpy(pDstRow, pSrcRow, srcRowPitch);
+            memcpy(static_cast<uint8_t*>(pMapped) + stagingAlloc.Offset, pData, srcRowPitch * height);
+        }
+        else
+        {
+            for (uint32_t row = 0; row < height; ++row)
+            {
+                const uint8_t* pSrcRow = static_cast<const uint8_t*>(pData) + row * srcRowPitch;
+                uint8_t* pDstRow = static_cast<uint8_t*>(pMapped) + stagingAlloc.Offset + row * alignedRowPitch;
+                memcpy(pDstRow, pSrcRow, srcRowPitch);
+            }
         }
         pStagingResource->Unmap(0, nullptr);
 
