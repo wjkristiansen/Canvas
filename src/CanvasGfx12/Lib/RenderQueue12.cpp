@@ -1543,14 +1543,11 @@ GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
         D3D12_GPU_VIRTUAL_ADDRESS vertexBaseAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress();
 
-        // Copy draw commands for lambda capture
-        std::vector<Canvas::UITextDrawCommand> commands(pCommands, pCommands + commandCount);
-
         // SV_VertexID is not offset by StartVertexLocation when no IA vertex buffer is bound.
         // Instead, offset the root SRV address per draw command so the shader reads from the
         // correct region of the persistent buffer, and always use StartVertex=0.
 
-        drawTask.RecordFunc = [cbvAddr, vertexBaseAddr, srvGpuHandle, cmds = std::move(commands), this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [cbvAddr, vertexBaseAddr, srvGpuHandle, pCommands, commandCount, this](ID3D12GraphicsCommandList* pCL)
         {
             constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
@@ -1562,8 +1559,9 @@ GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
             pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
             pCL->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
 
-            for (const auto& cmd : cmds)
+            for (uint32_t ci = 0; ci < commandCount; ++ci)
             {
+                const auto& cmd = pCommands[ci];
                 pCL->SetGraphicsRootShaderResourceView(1, vertexBaseAddr + cmd.StartVertex * kVertexStride);
                 pCL->DrawInstanced(cmd.VertexCount, 1, 0, 0);
             }
@@ -1781,9 +1779,7 @@ GEMMETHODIMP CRenderQueue12::DrawUIRectBatch(
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
         D3D12_GPU_VIRTUAL_ADDRESS vertexBaseAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress();
 
-        std::vector<Canvas::UIRectDrawCommand> commands(pCommands, pCommands + commandCount);
-
-        drawTask.RecordFunc = [cbvAddr, vertexBaseAddr, cmds = std::move(commands), this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [cbvAddr, vertexBaseAddr, pCommands, commandCount, this](ID3D12GraphicsCommandList* pCL)
         {
             constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
@@ -1792,8 +1788,9 @@ GEMMETHODIMP CRenderQueue12::DrawUIRectBatch(
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
 
-            for (const auto& cmd : cmds)
+            for (uint32_t ci = 0; ci < commandCount; ++ci)
             {
+                const auto& cmd = pCommands[ci];
                 pCL->SetGraphicsRootShaderResourceView(1, vertexBaseAddr + cmd.StartVertex * kVertexStride);
                 pCL->DrawInstanced(cmd.VertexCount, 1, 0, 0);
             }
