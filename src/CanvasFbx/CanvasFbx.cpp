@@ -184,6 +184,11 @@ bool ImportMesh(
     bool warnedInvalidNormal = false;
     std::vector<uint32_t> triIndices(pMesh->max_face_triangles * 3);
 
+    // Pre-reserve vertex vectors to avoid per-triangle reallocation
+    const size_t estimatedVertexCount = pMesh->faces.count * 3;
+    pOut->Positions.reserve(estimatedVertexCount);
+    pOut->Normals.reserve(estimatedVertexCount);
+
     for (size_t fi = 0; fi < pMesh->faces.count; ++fi)
     {
         const ufbx_face face = pMesh->faces[fi];

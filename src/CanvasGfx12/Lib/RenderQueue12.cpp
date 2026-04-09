@@ -117,6 +117,12 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pDSVDescriptorHeap.Attach(pDSVDH.Detach());
     m_pCommandQueue.Attach(pCQ.Detach());
     m_pFence.Attach(pFence.Detach());
+
+    // Pre-allocate per-frame queues to avoid repeated heap reallocations
+    m_PendingUploadRetirements.reserve(256);
+    m_PendingBufferRetirements.reserve(32);
+    m_PendingUITextUploads.reserve(64);
+    m_RenderableQueue.reserve(128);
 }
 
 //------------------------------------------------------------------------------------------------
