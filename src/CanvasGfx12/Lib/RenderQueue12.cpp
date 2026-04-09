@@ -17,13 +17,70 @@
 
 #include <filesystem>
 #include <fstream>
+#include <cmath>
+#include <algorithm>
 
 namespace
 {
     // Global light culling threshold.
     // 0 disables intensity-based culling until an explicit tuned value is provided.
     constexpr float kDefaultLightCullThreshold = 0.0f;
+
+    // Computes the maximum distance at which a light contributes above the cull threshold,
+    // given its attenuation coefficients and authored range.  The result is stored in
+    // HlslLight::AttenuationAndRange.w so the shader can early-out without recomputing it.
+    float ComputeLightCutoffDistance(
+        float peakIntensity,
+        float c, float l, float q,
+        float range,
+        float threshold)
+    {
+        if (threshold <= 0.0f)
+            return range > 0.0f ? range : 1e20f;
+
+        if (peakIntensity <= threshold)
+            return 0.0f;
+
+        c = (std::max)(c, 0.0f);
+        l = (std::max)(l, 0.0f);
+        q = (std::max)(q, 0.0f);
+
+        float targetDenom = peakIntensity / threshold;
+
+        float cutoff = 1e20f;
+        if (q > 1e-8f)
+        {
+            float disc = l * l - 4.0f * q * (c - targetDenom);
+            if (disc < 0.0f)
+                return 0.0f;
+            cutoff = (std::max)(0.0f, (-l + std::sqrt(disc)) / (2.0f * q));
+        }
+        else if (l > 1e-8f)
+        {
+            cutoff = (std::max)(0.0f, (targetDenom - c) / l);
+        }
+        else if (c > 1e-8f)
+        {
+            cutoff = (peakIntensity / c > threshold) ? 1e20f : 0.0f;
+        }
+        else
+        {
+            cutoff = 0.0f;
+        }
+
+        if (range > 0.0f)
+            cutoff = (std::min)(cutoff, range);
+
+        return cutoff;
+    }
 }
+
+// Verify Canvas::LightType enum values match the HLSL LIGHT_* defines (HlslTypes.h).
+static_assert(static_cast<uint32_t>(Canvas::LightType::Ambient)     == LIGHT_AMBIENT,     "LightType::Ambient mismatch");
+static_assert(static_cast<uint32_t>(Canvas::LightType::Point)       == LIGHT_POINT,       "LightType::Point mismatch");
+static_assert(static_cast<uint32_t>(Canvas::LightType::Directional) == LIGHT_DIRECTIONAL, "LightType::Directional mismatch");
+static_assert(static_cast<uint32_t>(Canvas::LightType::Spot)        == LIGHT_SPOT,        "LightType::Spot mismatch");
+static_assert(static_cast<uint32_t>(Canvas::LightType::Area)        == LIGHT_AREA,        "LightType::Area mismatch");
 
 //------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------
@@ -1931,6 +1988,17 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
     {
         gpu.DirectionAndSpot = { 0.0f, 0.0f, 0.0f, -1.0f };
         gpu.AttenuationAndRange = { 1.0f, 0.0f, 0.0f, 0.0f };
+    }
+
+    // Precompute cutoff distance on CPU for point/spot lights so the shader can
+    // skip the per-pixel quadratic solve.  Stored in AttenuationAndRange.w,
+    // replacing the raw authored range (which was only used to clamp this value).
+    if (pLight->GetType() == Canvas::LightType::Point || pLight->GetType() == Canvas::LightType::Spot)
+    {
+        float peakIntensity = (std::max)(gpu.Color.x, (std::max)(gpu.Color.y, gpu.Color.z));
+        gpu.AttenuationAndRange.w = ComputeLightCutoffDistance(
+            peakIntensity, attenConstant, attenLinear, attenQuadratic,
+            range, kDefaultLightCullThreshold);
     }
 
     return Gem::Result::Success;

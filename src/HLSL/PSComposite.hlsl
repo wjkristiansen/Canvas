@@ -31,48 +31,6 @@ float ComputeAttenuation(float4 attenuationAndRange, float dist, float distSq)
     return (denom > 1e-6) ? rcp(denom) : 1.0;
 }
 
-float ComputeCutoffDistance(float peakIntensity, float4 attenuationAndRange, float threshold)
-{
-    if (threshold <= 0.0)
-        return attenuationAndRange.w > 0.0 ? attenuationAndRange.w : 1e20;
-
-    if (peakIntensity <= threshold)
-        return 0.0;
-
-    float c = max(attenuationAndRange.x, 0.0);
-    float l = max(attenuationAndRange.y, 0.0);
-    float q = max(attenuationAndRange.z, 0.0);
-
-    float targetDenom = peakIntensity / threshold;
-
-    float cutoff = 1e20;
-    if (q > 1e-8)
-    {
-        float disc = l * l - 4.0 * q * (c - targetDenom);
-        if (disc < 0.0)
-            return 0.0;
-        cutoff = max(0.0, (-l + sqrt(disc)) / (2.0 * q));
-    }
-    else if (l > 1e-8)
-    {
-        cutoff = max(0.0, (targetDenom - c) / l);
-    }
-    else if (c > 1e-8)
-    {
-        cutoff = (peakIntensity / c > threshold) ? 1e20 : 0.0;
-    }
-    else
-    {
-        cutoff = 0.0;
-    }
-
-    float authoredRange = attenuationAndRange.w;
-    if (authoredRange > 0.0)
-        cutoff = min(cutoff, authoredRange);
-
-    return cutoff;
-}
-
 float4 PSComposite(FSInput input) : SV_Target0
 {
     // Sample G-buffers
@@ -112,8 +70,9 @@ float4 PSComposite(FSInput input) : SV_Target0
                 continue;
 
             float dist = sqrt(distSq);
-            float peakIntensity = max(light.Color.r, max(light.Color.g, light.Color.b));
-            float cutoffDist = ComputeCutoffDistance(peakIntensity, light.AttenuationAndRange, PerFrame.LightCullThreshold);
+
+            // Cutoff distance is precomputed on the CPU and stored in .w
+            float cutoffDist = light.AttenuationAndRange.w;
             if (cutoffDist <= 0.0 || dist > cutoffDist)
                 continue;
 
@@ -135,8 +94,9 @@ float4 PSComposite(FSInput input) : SV_Target0
                 continue;
 
             float dist = sqrt(distSq);
-            float peakIntensity = max(light.Color.r, max(light.Color.g, light.Color.b));
-            float cutoffDist = ComputeCutoffDistance(peakIntensity, light.AttenuationAndRange, PerFrame.LightCullThreshold);
+
+            // Cutoff distance is precomputed on the CPU and stored in .w
+            float cutoffDist = light.AttenuationAndRange.w;
             if (cutoffDist <= 0.0 || dist > cutoffDist)
                 continue;
 
