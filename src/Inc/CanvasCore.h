@@ -44,6 +44,7 @@ struct XSceneGraphElement;
 struct XRenderQueue;
 struct XFont;
 struct XUIGraph;
+struct XUIGraphNode;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -370,6 +371,9 @@ XRenderQueue : public XCanvasElement
     // Nodes are dispatched later when the queue is drained (EndFrame).
     GEMMETHOD(SubmitForRender)(XSceneGraphNode *pNode) = 0;
 
+    // Private contract with the UI graph: enqueues a UI graph node for rendering.
+    GEMMETHOD(SubmitForUIRender)(XUIGraphNode *pNode) = 0;
+
     // Private contract with the scene: sets the active camera for frame constant generation.
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
 };
@@ -520,7 +524,6 @@ enum class UIElementType : uint32_t
 };
 
 //------------------------------------------------------------------------------------------------
-struct XUIGraphNode;
 
 struct XUIElement : public Gem::XGeneric
 {
@@ -587,7 +590,7 @@ struct XUIGraph : public Gem::XGeneric
     GEMMETHOD(CreateNode)(XUIGraphNode* pParent, XUIGraphNode** ppNode) = 0;
     GEMMETHOD_(XUIGraphNode*, GetRootNode)() = 0;
     GEMMETHOD(Update)() = 0;
-    GEMMETHOD(Submit)(XRenderQueue* pRenderQueue) = 0;
+    GEMMETHOD(SubmitRenderables)(XRenderQueue* pRenderQueue) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

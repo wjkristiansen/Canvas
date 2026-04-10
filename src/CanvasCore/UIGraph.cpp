@@ -131,10 +131,29 @@ void CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::Submit(XRenderQueue* pRenderQueue)
+Gem::Result CUIGraph::SubmitRenderables(XRenderQueue* pRenderQueue)
 {
     if (!pRenderQueue)
         return Gem::Result::BadPointer;
+
+    // Submit UI graph nodes to the render queue (mirrors CScene::SubmitRenderables)
+    if (m_pRootNode)
+    {
+        // Walk node tree and submit each node with bound elements
+        std::vector<XUIGraphNode*> stack;
+        stack.push_back(m_pRootNode.Get());
+        while (!stack.empty())
+        {
+            XUIGraphNode* pNode = stack.back();
+            stack.pop_back();
+
+            if (pNode->GetBoundElementCount() > 0)
+                Gem::ThrowGemError(pRenderQueue->SubmitForUIRender(pNode));
+
+            for (XUIGraphNode* pChild = pNode->GetFirstChild(); pChild; pChild = pChild->GetNextSibling())
+                stack.push_back(pChild);
+        }
+    }
 
     // Free vertex slots from removed elements
     for (auto& free : m_PendingVertexSlotFrees)

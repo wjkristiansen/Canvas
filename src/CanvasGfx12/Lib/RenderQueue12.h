@@ -495,6 +495,9 @@ public:
     // Renderable nodes enqueued during scene graph update, dispatched during EndFrame
     std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
 
+    // UI graph nodes enqueued during UI graph submission, dispatched during EndFrame
+    std::vector<Canvas::XUIGraphNode*> m_UIRenderableQueue;
+
     // SRV descriptor allocation for per-draw structured buffers
     UINT m_NextSRVSlot = 0;
 
@@ -579,6 +582,7 @@ public:
     GEMMETHOD(DrawUIRectBatch)(const Canvas::UIRectDrawCommand* pCommands, uint32_t commandCount) final;
     GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context) final;
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
+    GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
     GEMMETHOD(EndFrame)() final;
 

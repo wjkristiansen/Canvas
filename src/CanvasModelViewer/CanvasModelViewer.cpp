@@ -1050,7 +1050,7 @@ public:
             }
 
             m_pUIGraph->Update();
-            m_pUIGraph->Submit(m_pGfxRenderQueue);
+            m_pUIGraph->SubmitRenderables(m_pGfxRenderQueue);
 
             m_pGfxRenderQueue->EndFrame();
             m_pGfxRenderQueue->FlushAndPresent(m_pGfxSwapChain);

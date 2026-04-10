@@ -1896,6 +1896,16 @@ GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphNode *pNode)
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::SubmitForUIRender(Canvas::XUIGraphNode *pNode)
+{
+    if (!pNode)
+        return Gem::Result::InvalidArg;
+
+    m_UIRenderableQueue.push_back(pNode);
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CRenderQueue12::SetActiveCamera(Canvas::XCamera *pCamera)
 {
     m_pActiveCamera = pCamera;
@@ -2078,6 +2088,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             }
         }
         m_RenderableQueue.clear();
+        m_UIRenderableQueue.clear();
 
         //==========================================================================================
         // Composition pass: read G-buffers, perform deferred lighting, write to back buffer
@@ -2145,6 +2156,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     catch (Gem::GemError &e)
     {
         m_RenderableQueue.clear();
+        m_UIRenderableQueue.clear();
         m_pCurrentSwapChain = nullptr;
         m_pActiveCamera = nullptr;
         return e.Result();
