@@ -514,7 +514,7 @@ public:
     // Pending upload allocation retirements: freed once GPU advances past the fence value
     struct PendingUploadRetirement
     {
-        Canvas::GfxSuballocation Suballocation;
+        Canvas::GfxBufferSuballocation Suballocation;
         UINT64 FenceValue;  // Release once GPU completes past this fence value
     };
     std::vector<PendingUploadRetirement> m_PendingUploadRetirements;
@@ -528,7 +528,7 @@ public:
     // as a single GPU copy task before the draw task (one write, then one read).
     struct PendingUITextUpload
     {
-        Canvas::GfxSuballocation Staging;
+        Canvas::GfxBufferSuballocation Staging;
         uint64_t DstOffset;     // Byte offset into persistent buffer
         uint64_t CopySize;      // Bytes to copy
     };
@@ -541,7 +541,7 @@ public:
 
     struct PendingUIRectUpload
     {
-        Canvas::GfxSuballocation Staging;
+        Canvas::GfxBufferSuballocation Staging;
         uint64_t DstOffset;
         uint64_t CopySize;
     };
@@ -659,7 +659,7 @@ public:
 
     // Schedule release of a host-write suballocation after the current GPU work completes.
     // The release is deferred until the GPU fence advances past the current value.
-    void RetireUploadAllocation(const Canvas::GfxSuballocation& suballocation);
+    void RetireUploadAllocation(const Canvas::GfxBufferSuballocation& suballocation);
     
     //---------------------------------------------------------------------------------------------
     // GPU Task Graph API

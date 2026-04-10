@@ -60,8 +60,8 @@ public:
     GEMMETHOD(CreateMaterial)() final;
     GEMMETHOD(CreateSurface)(const Canvas::GfxSurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
     GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, Canvas::GfxMemoryUsage memoryUsage, Canvas::XGfxBuffer **ppBuffer) final;
-    GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, Canvas::GfxSuballocation &suballocationInfo) final;
-    GEMMETHOD_(void, FreeHostWriteRegion)(Canvas::GfxSuballocation &suballocationInfo) final;
+    GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, Canvas::GfxBufferSuballocation &suballocationInfo) final;
+    GEMMETHOD_(void, FreeHostWriteRegion)(Canvas::GfxBufferSuballocation &suballocationInfo) final;
     GEMMETHOD(CreateMeshData)(
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,

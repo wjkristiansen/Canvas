@@ -20,7 +20,7 @@ GEMMETHODIMP_(uint32_t) CMeshData12::GetNumMaterialGroups()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(Canvas::GfxVertexBuffer*) CMeshData12::GetVertexBuffer(uint32_t materialIndex, Canvas::GfxVertexBufferType type)
+GEMMETHODIMP_(Canvas::GfxBufferSuballocation*) CMeshData12::GetVertexBuffer(uint32_t materialIndex, Canvas::GfxVertexBufferType type)
 {
     if (materialIndex != 0)
         return nullptr;

@@ -343,7 +343,7 @@ void CRenderQueue12::WaitForGpuFence(UINT64 fenceValue)
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::RetireUploadAllocation(const Canvas::GfxSuballocation& suballocation)
+void CRenderQueue12::RetireUploadAllocation(const Canvas::GfxBufferSuballocation& suballocation)
 {
     // Defer release until the GPU completes the next submit (current fence value + 1).
     // ProcessCompletedWork will free the suballocation once the fence advances past this value.
@@ -430,7 +430,7 @@ void CRenderQueue12::ProcessCompletedWork()
         {
             if (m_pDevice)
             {
-                m_pDevice->FreeHostWriteRegion(const_cast<Canvas::GfxSuballocation&>(it->Suballocation));
+                m_pDevice->FreeHostWriteRegion(const_cast<Canvas::GfxBufferSuballocation&>(it->Suballocation));
             }
             it = m_PendingUploadRetirements.erase(it);
         }
@@ -1014,7 +1014,7 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
         uint32_t alignedRowPitch = (srcRowPitch + kPitchAlign - 1) & ~(kPitchAlign - 1);
         uint64_t stagingSize = static_cast<uint64_t>(alignedRowPitch) * height;
 
-        Canvas::GfxSuballocation stagingAlloc;
+        Canvas::GfxBufferSuballocation stagingAlloc;
         Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(stagingSize, stagingAlloc));
 
         // Copy rows from source into staging buffer (may need re-striding)
@@ -1264,7 +1264,7 @@ Gem::Result CRenderQueue12::DrawMesh(
         // CBVs require 256-byte aligned BufferLocation (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         const uint64_t cbSize = (sizeof(HlslTypes::HlslPerObjectConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
-        Canvas::GfxSuballocation cbAlloc;
+        Canvas::GfxBufferSuballocation cbAlloc;
         Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(cbSize, cbAlloc));
         
         auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
@@ -1499,7 +1499,7 @@ Gem::Result CRenderQueue12::UploadUITextVertices(
         uint64_t dstOffset = startVertex * kTextVertexSize;
 
         // Stage vertex data in UPLOAD heap — no GPU task yet
-        Canvas::GfxSuballocation staging{};
+        Canvas::GfxBufferSuballocation staging{};
         Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(copySize, staging));
 
         auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
@@ -1526,7 +1526,7 @@ Gem::Result CRenderQueue12::DrawUITextBatch(
     if (!pCommands || commandCount == 0 || !pGlyphAtlas || !m_pCurrentSwapChain || !m_pUITextVertexBuffer)
         return Gem::Result::InvalidArg;
 
-    Canvas::GfxSuballocation cbAlloc{};
+    Canvas::GfxBufferSuballocation cbAlloc{};
 
     try
     {
@@ -1754,7 +1754,7 @@ Gem::Result CRenderQueue12::UploadUIRectVertices(
         uint64_t copySize = vertexCount * kVertexSize;
         uint64_t dstOffset = startVertex * kVertexSize;
 
-        Canvas::GfxSuballocation staging{};
+        Canvas::GfxBufferSuballocation staging{};
         Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(copySize, staging));
 
         auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
@@ -1780,7 +1780,7 @@ Gem::Result CRenderQueue12::DrawUIRectBatch(
     if (!pCommands || commandCount == 0 || !m_pCurrentSwapChain || !m_pUIRectVertexBuffer)
         return Gem::Result::InvalidArg;
 
-    Canvas::GfxSuballocation cbAlloc{};
+    Canvas::GfxBufferSuballocation cbAlloc{};
 
     try
     {
@@ -2166,7 +2166,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         // Upload per-frame constants and bind to root CBV (slot 0, register b0)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         const uint64_t cbSize = (sizeof(HlslTypes::HlslPerFrameConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
-        Canvas::GfxSuballocation cbAlloc;
+        Canvas::GfxBufferSuballocation cbAlloc;
         Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(cbSize, cbAlloc));
         
         auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());

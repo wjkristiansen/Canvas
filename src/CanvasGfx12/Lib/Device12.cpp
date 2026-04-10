@@ -310,7 +310,7 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::GfxSuballocation &suballocation)
+GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::GfxBufferSuballocation &suballocation)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::AllocateHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
     
@@ -338,7 +338,7 @@ GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::Gf
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxSuballocation &suballocation)
+GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxBufferSuballocation &suballocation)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::FreeHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
 
@@ -395,7 +395,7 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         // Allocate space in the host-write (upload) scratch buffer.
         // For uploads larger than the shared pool capacity, bypass the pool
         // to avoid expected allocator OOM noise and use a dedicated buffer.
-        Canvas::GfxSuballocation suballocation;
+        Canvas::GfxBufferSuballocation suballocation;
         if (allocationSize > m_HostWriteSize)
         {
             Gem::TGemPtr<Canvas::XGfxBuffer> pDedicatedUploadBuffer;

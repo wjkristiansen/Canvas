@@ -157,10 +157,11 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    struct GfxVertexBuffer
+    struct GfxBufferSuballocation
     {
         Gem::TGemPtr<XGfxBuffer> pBuffer;
-        uint64_t Offset;
+        uint64_t Offset = 0;
+        uint64_t Size = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -170,7 +171,7 @@ namespace Canvas
         GEM_INTERFACE_DECLARE(XGfxMeshData, 0x7EBC2A5A40CC96D3);
 
         GEMMETHOD_(uint32_t, GetNumMaterialGroups)() = 0;
-        GEMMETHOD_(GfxVertexBuffer *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
+        GEMMETHOD_(GfxBufferSuballocation *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
         GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t materialIndex) = 0;
     };
 
@@ -297,14 +298,6 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    struct GfxSuballocation
-    {
-        uint64_t Offset;
-        uint64_t Size;
-        Gem::TGemPtr<XGfxBuffer> pBuffer;
-    };
-
-    //------------------------------------------------------------------------------------------------
     // Interface to a graphics device
     struct XGfxDevice : public XCanvasElement
     {
@@ -314,8 +307,8 @@ namespace Canvas
         GEMMETHOD(CreateMaterial)() = 0;
         GEMMETHOD(CreateSurface)(const GfxSurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
         GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, GfxMemoryUsage memoryUsage, XGfxBuffer **ppBuffer) = 0;
-        GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxSuballocation &suballocationInfo) = 0;
-        GEMMETHOD_(void, FreeHostWriteRegion)(GfxSuballocation &suballocationInfo) = 0;
+        GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxBufferSuballocation &suballocationInfo) = 0;
+        GEMMETHOD_(void, FreeHostWriteRegion)(GfxBufferSuballocation &suballocationInfo) = 0;
         GEMMETHOD(CreateMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,

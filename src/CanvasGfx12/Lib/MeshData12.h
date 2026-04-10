@@ -23,7 +23,7 @@ public:
 
     // XGfxMeshData interface
     GEMMETHOD_(uint32_t, GetNumMaterialGroups)() override;
-    GEMMETHOD_(Canvas::GfxVertexBuffer*, GetVertexBuffer)(uint32_t materialIndex, Canvas::GfxVertexBufferType type) override;
+    GEMMETHOD_(Canvas::GfxBufferSuballocation*, GetVertexBuffer)(uint32_t materialIndex, Canvas::GfxVertexBufferType type) override;
     GEMMETHOD_(Canvas::XGfxMaterial*, GetMaterial)(uint32_t materialIndex) override;
 
     // Internal methods for setting up buffers
@@ -31,6 +31,6 @@ public:
     void SetNormalBuffer(Canvas::XGfxBuffer* pBuffer);
 
 private:
-    Canvas::GfxVertexBuffer m_PositionVB;
-    Canvas::GfxVertexBuffer m_NormalVB;
+    Canvas::GfxBufferSuballocation m_PositionVB;
+    Canvas::GfxBufferSuballocation m_NormalVB;
 };
