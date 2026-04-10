@@ -327,31 +327,6 @@ XRenderQueue : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XRenderQueue, 0x3B35719161878DCC);
 
-    // Persistent UI text vertex buffer management
-    // Allocates a contiguous region in the persistent GPU vertex buffer.
-    // Returns the start vertex index via pStartVertex.
-    GEMMETHOD(AllocUITextVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) = 0;
-
-    // Frees a previously allocated region in the persistent GPU vertex buffer.
-    GEMMETHOD_(void, FreeUITextVertices)(uint32_t startVertex, uint32_t maxVertexCount) = 0;
-
-    // Uploads CPU vertex data into an allocated region of the persistent GPU vertex buffer.
-    // Stages data in UPLOAD heap and issues a CopyBufferRegion to the DEFAULT heap buffer.
-    GEMMETHOD(UploadUITextVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) = 0;
-
-    // Batch draw UI text from the persistent vertex buffer.
-    // Issues a single PSO bind and one DrawInstanced per command.
-    GEMMETHOD(DrawUITextBatch)(const UITextDrawCommand* pCommands, uint32_t commandCount, XGfxSurface* pGlyphAtlas) = 0;
-
-    // Persistent UI rect vertex buffer management (same pattern as text, separate buffer)
-    GEMMETHOD(AllocUIRectVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) = 0;
-    GEMMETHOD_(void, FreeUIRectVertices)(uint32_t startVertex, uint32_t maxVertexCount) = 0;
-    GEMMETHOD(UploadUIRectVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) = 0;
-
-    // Batch draw UI rects from the persistent rect vertex buffer.
-    // Issues a single PSO bind (no atlas) and one DrawInstanced per command.
-    GEMMETHOD(DrawUIRectBatch)(const UIRectDrawCommand* pCommands, uint32_t commandCount) = 0;
-
     // Upload CPU data into a sub-region of a GPU surface via a staging copy.
     // Intended for populating persistently-resident textures (e.g., glyph atlas).
     // The copy is recorded into the command list identified by 'context'.
@@ -533,6 +508,11 @@ struct XUIElement : public Gem::XGeneric
     GEMMETHOD_(bool, IsVisible)() const = 0;
     GEMMETHOD_(void, SetVisible)(bool visible) = 0;
     GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() = 0;
+
+    // Vertex data access for render queue
+    GEMMETHOD_(uint32_t, GetVertexCount)() const = 0;
+    GEMMETHOD_(const void*, GetVertexData)() const = 0;
+    GEMMETHOD_(bool, HasContent)() const = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -545,6 +525,9 @@ struct XUITextElement : public XUIElement
     GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
     GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
+
+    // Atlas texture access for render queue
+    GEMMETHOD_(XGfxSurface*, GetGlyphAtlasTexture)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

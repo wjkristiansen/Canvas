@@ -120,9 +120,6 @@ public:
 
     virtual UIElementType GetType() const { return UIElementType::Root; }
     virtual void RegenerateVertices() {}
-    virtual const void* GetCachedVertexData() const { return nullptr; }
-    virtual uint32_t GetCachedVertexCount() const { return 0; }
-    virtual bool HasContent() const { return false; }
 
     // Resolve CUIElementState* from an XUIElement*
     static CUIElementState* GetState(XUIElement* pElement);
@@ -143,6 +140,11 @@ public:
     GEMMETHOD_(bool, IsVisible)() const override { return CUIElementState::IsVisible(); }
     GEMMETHOD_(void, SetVisible)(bool visible) override { CUIElementState::SetVisible(visible); }
     GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
+
+    // Default vertex data access (no content)
+    GEMMETHOD_(uint32_t, GetVertexCount)() const override { return 0; }
+    GEMMETHOD_(const void*, GetVertexData)() const override { return nullptr; }
+    GEMMETHOD_(bool, HasContent)() const override { return false; }
 };
 
 //================================================================================================
@@ -174,9 +176,10 @@ public:
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const override { return m_Config; }
 
     void RegenerateVertices() override;
-    const void* GetCachedVertexData() const override { return m_CachedVertices.data(); }
-    uint32_t GetCachedVertexCount() const override { return static_cast<uint32_t>(m_CachedVertices.size()); }
-    bool HasContent() const override { return !m_Text.empty(); }
+    GEMMETHOD_(uint32_t, GetVertexCount)() const override { return static_cast<uint32_t>(m_CachedVertices.size()); }
+    GEMMETHOD_(const void*, GetVertexData)() const override { return m_CachedVertices.data(); }
+    GEMMETHOD_(bool, HasContent)() const override { return !m_Text.empty(); }
+    GEMMETHOD_(XGfxSurface*, GetGlyphAtlasTexture)() override;
 
     void SetGlyphAtlasInternal(CGlyphAtlasImpl* pAtlas);
     CGlyphAtlasImpl* GetGlyphAtlas() const { return m_pAtlas; }
@@ -208,9 +211,9 @@ public:
     GEMMETHOD_(const Math::FloatVector4&, GetFillColor)() const override { return m_FillColor; }
 
     void RegenerateVertices() override;
-    const void* GetCachedVertexData() const override { return m_CachedVertices.data(); }
-    uint32_t GetCachedVertexCount() const override { return static_cast<uint32_t>(m_CachedVertices.size()); }
-    bool HasContent() const override { return m_Size.X > 0.0f && m_Size.Y > 0.0f; }
+    GEMMETHOD_(uint32_t, GetVertexCount)() const override { return static_cast<uint32_t>(m_CachedVertices.size()); }
+    GEMMETHOD_(const void*, GetVertexData)() const override { return m_CachedVertices.data(); }
+    GEMMETHOD_(bool, HasContent)() const override { return m_Size.X > 0.0f && m_Size.Y > 0.0f; }
 };
 
 } // namespace Canvas

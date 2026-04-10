@@ -13,21 +13,6 @@ class CUIGraph : public Gem::TGeneric<XUIGraph>
     Gem::TGemPtr<CUIGraphNodeImpl> m_pRootNode;
     std::unique_ptr<CGlyphAtlasImpl> m_pAtlas;
 
-    // Scratch buffers for Submit (reused across frames)
-    std::vector<CUITextElement*> m_VisibleTextElements;
-    std::vector<UITextDrawCommand> m_DrawCommands;
-    std::vector<CUIRectElement*> m_VisibleRectElements;
-    std::vector<UIRectDrawCommand> m_RectDrawCommands;
-
-    // Vertex slots freed by RemoveElement, processed in next Submit
-    struct PendingVertexSlotFree
-    {
-        uint32_t StartVertex;
-        uint32_t MaxVertexCount;
-        UIElementType Type;
-    };
-    std::vector<PendingVertexSlotFree> m_PendingVertexSlotFrees;
-
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XUIGraph)
@@ -50,8 +35,6 @@ public:
 
 private:
     void UpdateNode(CUIGraphNodeImpl* pNode);
-    void CollectVisibleTextElements(CUIGraphNodeImpl* pNode);
-    void CollectVisibleRectElements(CUIGraphNodeImpl* pNode);
 };
 
 } // namespace Canvas

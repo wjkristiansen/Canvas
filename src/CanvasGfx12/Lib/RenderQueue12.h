@@ -572,14 +572,6 @@ public:
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers) final;
     GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
-    GEMMETHOD(AllocUITextVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) final;
-    GEMMETHOD_(void, FreeUITextVertices)(uint32_t startVertex, uint32_t maxVertexCount) final;
-    GEMMETHOD(UploadUITextVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) final;
-    GEMMETHOD(DrawUITextBatch)(const Canvas::UITextDrawCommand* pCommands, uint32_t commandCount, Canvas::XGfxSurface* pGlyphAtlas) final;
-    GEMMETHOD(AllocUIRectVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) final;
-    GEMMETHOD_(void, FreeUIRectVertices)(uint32_t startVertex, uint32_t maxVertexCount) final;
-    GEMMETHOD(UploadUIRectVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) final;
-    GEMMETHOD(DrawUIRectBatch)(const Canvas::UIRectDrawCommand* pCommands, uint32_t commandCount) final;
     GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context) final;
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
     GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
@@ -628,6 +620,30 @@ public:
 
     // Grow the persistent UI text vertex buffer to at least newCapacity vertices
     void GrowUITextVertexBuffer(uint32_t newCapacity);
+
+    // Internal UI rendering (called from EndFrame)
+    Gem::Result AllocUITextVertices(uint32_t maxVertexCount, uint32_t* pStartVertex);
+    void FreeUITextVertices(uint32_t startVertex, uint32_t maxVertexCount);
+    Gem::Result UploadUITextVertices(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount);
+    Gem::Result DrawUITextBatch(const Canvas::UITextDrawCommand* pCommands, uint32_t commandCount, Canvas::XGfxSurface* pGlyphAtlas);
+    Gem::Result AllocUIRectVertices(uint32_t maxVertexCount, uint32_t* pStartVertex);
+    void FreeUIRectVertices(uint32_t startVertex, uint32_t maxVertexCount);
+    Gem::Result UploadUIRectVertices(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount);
+    Gem::Result DrawUIRectBatch(const Canvas::UIRectDrawCommand* pCommands, uint32_t commandCount);
+
+    void ProcessUIRenderables();
+
+    struct UIElementSlot
+    {
+        uint32_t StartVertex = 0;
+        uint32_t MaxVertexCount = 0;
+    };
+    std::unordered_map<Canvas::XUIElement*, UIElementSlot> m_UITextElementSlots;
+    std::unordered_map<Canvas::XUIElement*, UIElementSlot> m_UIRectElementSlots;
+
+    // Scratch buffers for UI draw command batching (reused across frames)
+    std::vector<Canvas::UITextDrawCommand> m_UITextDrawCommands;
+    std::vector<Canvas::UIRectDrawCommand> m_UIRectDrawCommands;
     
     // Allocate a shader-visible SRV descriptor slot and return GPU handle
     D3D12_GPU_DESCRIPTOR_HANDLE CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc);

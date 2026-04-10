@@ -1439,7 +1439,7 @@ void CRenderQueue12::GrowUITextVertexBuffer(uint32_t newCapacity)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::AllocUITextVertices(uint32_t maxVertexCount, uint32_t* pStartVertex)
+Gem::Result CRenderQueue12::AllocUITextVertices(uint32_t maxVertexCount, uint32_t* pStartVertex)
 {
     if (!pStartVertex || maxVertexCount == 0)
         return Gem::Result::InvalidArg;
@@ -1472,7 +1472,7 @@ GEMMETHODIMP CRenderQueue12::AllocUITextVertices(uint32_t maxVertexCount, uint32
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CRenderQueue12::FreeUITextVertices(uint32_t startVertex, uint32_t maxVertexCount)
+void CRenderQueue12::FreeUITextVertices(uint32_t startVertex, uint32_t maxVertexCount)
 {
     if (m_pUITextVertexAllocator && maxVertexCount > 0)
     {
@@ -1482,7 +1482,7 @@ GEMMETHODIMP_(void) CRenderQueue12::FreeUITextVertices(uint32_t startVertex, uin
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::UploadUITextVertices(
+Gem::Result CRenderQueue12::UploadUITextVertices(
     uint32_t startVertex,
     const void* pVertexData,
     uint32_t vertexCount)
@@ -1518,7 +1518,7 @@ GEMMETHODIMP CRenderQueue12::UploadUITextVertices(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
+Gem::Result CRenderQueue12::DrawUITextBatch(
     const Canvas::UITextDrawCommand* pCommands,
     uint32_t commandCount,
     Canvas::XGfxSurface* pGlyphAtlas)
@@ -1696,7 +1696,7 @@ void CRenderQueue12::GrowUIRectVertexBuffer(uint32_t newCapacity)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::AllocUIRectVertices(uint32_t maxVertexCount, uint32_t* pStartVertex)
+Gem::Result CRenderQueue12::AllocUIRectVertices(uint32_t maxVertexCount, uint32_t* pStartVertex)
 {
     if (!pStartVertex || maxVertexCount == 0)
         return Gem::Result::InvalidArg;
@@ -1728,7 +1728,7 @@ GEMMETHODIMP CRenderQueue12::AllocUIRectVertices(uint32_t maxVertexCount, uint32
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CRenderQueue12::FreeUIRectVertices(uint32_t startVertex, uint32_t maxVertexCount)
+void CRenderQueue12::FreeUIRectVertices(uint32_t startVertex, uint32_t maxVertexCount)
 {
     if (m_pUIRectVertexAllocator && maxVertexCount > 0)
     {
@@ -1738,7 +1738,7 @@ GEMMETHODIMP_(void) CRenderQueue12::FreeUIRectVertices(uint32_t startVertex, uin
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::UploadUIRectVertices(
+Gem::Result CRenderQueue12::UploadUIRectVertices(
     uint32_t startVertex,
     const void* pVertexData,
     uint32_t vertexCount)
@@ -1773,7 +1773,7 @@ GEMMETHODIMP CRenderQueue12::UploadUIRectVertices(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::DrawUIRectBatch(
+Gem::Result CRenderQueue12::DrawUIRectBatch(
     const Canvas::UIRectDrawCommand* pCommands,
     uint32_t commandCount)
 {
@@ -2015,6 +2015,128 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
 }
 
 //------------------------------------------------------------------------------------------------
+void CRenderQueue12::ProcessUIRenderables()
+{
+    // Detect removed elements by tracking which ones appear this frame
+    std::unordered_set<Canvas::XUIElement*> textSeen, rectSeen;
+
+    // Collect visible elements from submitted UI nodes
+    struct VisibleText { Canvas::XUIElement* pElement; uint32_t VertexCount; };
+    struct VisibleRect { Canvas::XUIElement* pElement; uint32_t VertexCount; };
+    std::vector<VisibleText> visibleTexts;
+    std::vector<VisibleRect> visibleRects;
+    Canvas::XGfxSurface* pAtlasTexture = nullptr;
+
+    for (Canvas::XUIGraphNode* pNode : m_UIRenderableQueue)
+    {
+        UINT elemCount = pNode->GetBoundElementCount();
+        for (UINT i = 0; i < elemCount; ++i)
+        {
+            Canvas::XUIElement* pElem = pNode->GetBoundElement(i);
+            if (!pElem->IsVisible())
+                continue;
+
+            uint32_t vertexCount = pElem->GetVertexCount();
+            if (pElem->GetType() == Canvas::UIElementType::Text)
+            {
+                textSeen.insert(pElem);
+                if (vertexCount > 0)
+                {
+                    visibleTexts.push_back({ pElem, vertexCount });
+                    if (!pAtlasTexture)
+                    {
+                        Gem::TGemPtr<Canvas::XUITextElement> pText;
+                        if (SUCCEEDED(pElem->QueryInterface(&pText)))
+                            pAtlasTexture = pText->GetGlyphAtlasTexture();
+                    }
+                }
+            }
+            else if (pElem->GetType() == Canvas::UIElementType::Rect)
+            {
+                rectSeen.insert(pElem);
+                if (vertexCount > 0)
+                    visibleRects.push_back({ pElem, vertexCount });
+            }
+        }
+    }
+
+    // Free slots for elements that disappeared since last frame
+    for (auto it = m_UITextElementSlots.begin(); it != m_UITextElementSlots.end();)
+    {
+        if (textSeen.find(it->first) == textSeen.end())
+        {
+            FreeUITextVertices(it->second.StartVertex, it->second.MaxVertexCount);
+            it = m_UITextElementSlots.erase(it);
+        }
+        else
+            ++it;
+    }
+    for (auto it = m_UIRectElementSlots.begin(); it != m_UIRectElementSlots.end();)
+    {
+        if (rectSeen.find(it->first) == rectSeen.end())
+        {
+            FreeUIRectVertices(it->second.StartVertex, it->second.MaxVertexCount);
+            it = m_UIRectElementSlots.erase(it);
+        }
+        else
+            ++it;
+    }
+
+    // --- Rect batch (drawn first, behind text) ---
+    for (auto& vis : visibleRects)
+    {
+        auto& slot = m_UIRectElementSlots[vis.pElement];
+        if (vis.VertexCount > slot.MaxVertexCount)
+        {
+            if (slot.MaxVertexCount > 0)
+                FreeUIRectVertices(slot.StartVertex, slot.MaxVertexCount);
+            uint32_t startVertex = 0;
+            Gem::ThrowGemError(AllocUIRectVertices(vis.VertexCount, &startVertex));
+            slot.StartVertex = startVertex;
+            slot.MaxVertexCount = vis.VertexCount;
+        }
+        Gem::ThrowGemError(UploadUIRectVertices(slot.StartVertex, vis.pElement->GetVertexData(), vis.VertexCount));
+    }
+
+    m_UIRectDrawCommands.clear();
+    for (auto& vis : visibleRects)
+    {
+        auto& slot = m_UIRectElementSlots[vis.pElement];
+        m_UIRectDrawCommands.push_back({ slot.StartVertex, vis.VertexCount });
+    }
+    if (!m_UIRectDrawCommands.empty())
+        Gem::ThrowGemError(DrawUIRectBatch(m_UIRectDrawCommands.data(), static_cast<uint32_t>(m_UIRectDrawCommands.size())));
+
+    // --- Text batch (drawn after rects) ---
+    if (!pAtlasTexture || visibleTexts.empty())
+        return;
+
+    for (auto& vis : visibleTexts)
+    {
+        auto& slot = m_UITextElementSlots[vis.pElement];
+        if (vis.VertexCount > slot.MaxVertexCount)
+        {
+            if (slot.MaxVertexCount > 0)
+                FreeUITextVertices(slot.StartVertex, slot.MaxVertexCount);
+            uint32_t startVertex = 0;
+            Gem::ThrowGemError(AllocUITextVertices(vis.VertexCount, &startVertex));
+            slot.StartVertex = startVertex;
+            slot.MaxVertexCount = vis.VertexCount;
+        }
+        Gem::ThrowGemError(UploadUITextVertices(slot.StartVertex, vis.pElement->GetVertexData(), vis.VertexCount));
+    }
+
+    m_UITextDrawCommands.clear();
+    for (auto& vis : visibleTexts)
+    {
+        auto& slot = m_UITextElementSlots[vis.pElement];
+        m_UITextDrawCommands.push_back({ slot.StartVertex, vis.VertexCount });
+    }
+    if (!m_UITextDrawCommands.empty())
+        Gem::ThrowGemError(DrawUITextBatch(m_UITextDrawCommands.data(), static_cast<uint32_t>(m_UITextDrawCommands.size()), pAtlasTexture));
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::EndFrame()
 {
     try
@@ -2088,7 +2210,6 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             }
         }
         m_RenderableQueue.clear();
-        m_UIRenderableQueue.clear();
 
         //==========================================================================================
         // Composition pass: read G-buffers, perform deferred lighting, write to back buffer
@@ -2152,6 +2273,10 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         }
 
         RetireUploadAllocation(cbAlloc);
+
+        // Process UI renderables (rect and text draw batching)
+        ProcessUIRenderables();
+        m_UIRenderableQueue.clear();
     }
     catch (Gem::GemError &e)
     {
