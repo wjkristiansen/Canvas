@@ -767,16 +767,24 @@ public:
             Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
             Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, pGfxRenderQueue, &pUIGraph));
 
-            // HUD background panel — semi-transparent dark rect behind title + FPS
+            // Create UI graph nodes for positioning
+            Gem::TGemPtr<Canvas::XUIGraphNode> pHudNode;
+            Gem::ThrowGemError(pUIGraph->CreateNode(nullptr, &pHudNode));
+            pHudNode->SetLocalPosition(Canvas::Math::FloatVector2(6.0f, 6.0f));
+
+            // HUD background panel
             Gem::TGemPtr<Canvas::XUIRectElement> pHudPanel;
-            Gem::ThrowGemError(pUIGraph->CreateRectElement(nullptr, &pHudPanel));
-            pHudPanel->SetPosition(Canvas::Math::FloatVector2(6.0f, 6.0f));
+            Gem::ThrowGemError(pUIGraph->CreateRectElement(pHudNode, &pHudPanel));
             pHudPanel->SetSize(Canvas::Math::FloatVector2(340.0f, 70.0f));
             pHudPanel->SetFillColor(Canvas::Math::FloatVector4(0.125f, 0.125f, 0.125f, 0.75f));
 
-            // Title text element — static, child of HUD panel
+            // Title text — child node of HUD
+            Gem::TGemPtr<Canvas::XUIGraphNode> pTitleNode;
+            Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pTitleNode));
+            pTitleNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 4.0f));
+
             Gem::TGemPtr<Canvas::XUITextElement> pTitleText;
-            Gem::ThrowGemError(pUIGraph->CreateTextElement(pHudPanel, &pTitleText));
+            Gem::ThrowGemError(pUIGraph->CreateTextElement(pTitleNode, &pTitleText));
             pTitleText->SetFont(pFont);
             {
                 Canvas::TextLayoutConfig titleConfig;
@@ -784,12 +792,15 @@ public:
                 titleConfig.Color = Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f);
                 pTitleText->SetLayoutConfig(titleConfig);
             }
-            pTitleText->SetPosition(Canvas::Math::FloatVector2(4.0f, 4.0f));
             pTitleText->SetText("Canvas Model Viewer");
 
-            // FPS text element — dynamic, child of HUD panel
+            // FPS text — child node of HUD
+            Gem::TGemPtr<Canvas::XUIGraphNode> pFpsNode;
+            Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pFpsNode));
+            pFpsNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 40.0f));
+
             Gem::TGemPtr<Canvas::XUITextElement> pFpsText;
-            Gem::ThrowGemError(pUIGraph->CreateTextElement(pHudPanel, &pFpsText));
+            Gem::ThrowGemError(pUIGraph->CreateTextElement(pFpsNode, &pFpsText));
             pFpsText->SetFont(pFontMono);
             {
                 Canvas::TextLayoutConfig monoConfig;
@@ -797,7 +808,6 @@ public:
                 monoConfig.Color = Canvas::Math::FloatVector4(0.8f, 0.8f, 0.8f, 1.0f);
                 pFpsText->SetLayoutConfig(monoConfig);
             }
-            pFpsText->SetPosition(Canvas::Math::FloatVector2(4.0f, 40.0f));
             pFpsText->SetText("FPS: --");
 
             initStep = "finalize_members";

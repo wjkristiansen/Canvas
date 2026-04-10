@@ -9,44 +9,54 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CUIElementCore* CUIGraph::GetCore(XUIElement* pElement)
+GEMMETHODIMP_(XUIGraphNode*) CUIGraph::GetRootNode()
 {
-    return CUIElementCore::GetCore(pElement);
+    if (!m_pRootNode)
+        m_pRootNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
+    return m_pRootNode.Get();
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::CreateTextElement(XUIElement* pParent, XUITextElement** ppElement)
+Gem::Result CUIGraph::CreateNode(XUIGraphNode* pParent, XUIGraphNode** ppNode)
 {
-    if (!ppElement)
+    if (!ppNode)
         return Gem::Result::BadPointer;
 
-    CUIElementCore* pParentCore = pParent ? GetCore(pParent) : &m_Root;
-    if (!pParentCore)
-        return Gem::Result::InvalidArg;
+    XUIGraphNode* pParentNode = pParent ? pParent : GetRootNode();
 
-    // TGenericImpl provides ref counting; element starts with refcount=1 (caller's ref)
-    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>();
-    pElement->SetGlyphAtlasInternal(m_pAtlas.get());
+    Gem::TGemPtr<CUIGraphNodeImpl> pNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
+    pParentNode->AddChild(pNode);
 
-    // AddChild AddRefs the element (parent holds a ref via TGemPtr in ChildNode)
-    pParentCore->AddChild(pElement);
-
-    *ppElement = pElement.Detach();  // Transfer caller's ref
+    *ppNode = pNode.Detach();
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::CreateRectElement(XUIElement* pParent, XUIRectElement** ppElement)
+Gem::Result CUIGraph::CreateTextElement(XUIGraphNode* pNode, XUITextElement** ppElement)
 {
     if (!ppElement)
         return Gem::Result::BadPointer;
+    if (!pNode)
+        pNode = GetRootNode();
 
-    CUIElementCore* pParentCore = pParent ? GetCore(pParent) : &m_Root;
-    if (!pParentCore)
-        return Gem::Result::InvalidArg;
+    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>();
+    pElement->SetGlyphAtlasInternal(m_pAtlas.get());
+    pNode->BindElement(pElement);
+
+    *ppElement = pElement.Detach();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+Gem::Result CUIGraph::CreateRectElement(XUIGraphNode* pNode, XUIRectElement** ppElement)
+{
+    if (!ppElement)
+        return Gem::Result::BadPointer;
+    if (!pNode)
+        pNode = GetRootNode();
 
     Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>();
-    pParentCore->AddChild(pElement);
+    pNode->BindElement(pElement);
 
     *ppElement = pElement.Detach();
     return Gem::Result::Success;
@@ -58,21 +68,26 @@ Gem::Result CUIGraph::RemoveElement(XUIElement* pElement)
     if (!pElement)
         return Gem::Result::BadPointer;
 
-    CUIElementCore* pCore = GetCore(pElement);
-    if (!pCore)
+    CUIElementState* pState = CUIElementState::GetState(pElement);
+    if (!pState)
         return Gem::Result::InvalidArg;
 
-    // Defer vertex slot free to next Submit (we don't have XRenderQueue here)
-    auto& slot = pCore->GetBufferSlot();
+    // Defer vertex slot free to next Submit
+    auto& slot = pState->GetBufferSlot();
     if (slot.MaxVertexCount > 0)
     {
-        m_PendingVertexSlotFrees.push_back({ slot.StartVertex, slot.MaxVertexCount, pCore->GetType() });
+        m_PendingVertexSlotFrees.push_back({ slot.StartVertex, slot.MaxVertexCount, pState->GetType() });
         slot.StartVertex = 0;
         slot.MaxVertexCount = 0;
     }
 
-    // RemoveFromParent drops the parent's ref
-    pCore->RemoveFromParent();
+    // Unbind from node
+    XUIGraphNode* pNode = pState->GetAttachedNode();
+    if (pNode)
+    {
+        CUIGraphNodeImpl* pImpl = static_cast<CUIGraphNodeImpl*>(pNode);
+        pImpl->UnbindElement(pElement);
+    }
 
     return Gem::Result::Success;
 }
@@ -80,37 +95,38 @@ Gem::Result CUIGraph::RemoveElement(XUIElement* pElement)
 //------------------------------------------------------------------------------------------------
 Gem::Result CUIGraph::Update()
 {
-    UpdateElement(&m_Root);
+    if (m_pRootNode)
+        UpdateNode(m_pRootNode.Get());
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIGraph::UpdateElement(CUIElementCore* pElement)
+void CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
 {
-    if (!pElement->IsEffectivelyVisible())
-        return;
-
-    uint32_t dirty = pElement->GetDirtyFlags();
-    if (dirty & (CUIElementCore::DirtyContent | CUIElementCore::DirtyPosition))
+    // Update bound elements on this node
+    for (UINT i = 0; i < pNode->GetBoundElementCount(); ++i)
     {
-        pElement->RegenerateVertices();
-        pElement->GetBufferSlot().GpuDirty = true;
+        CUIElementState* pState = CUIElementState::GetState(pNode->GetBoundElement(i));
+        if (!pState || !pState->IsVisible())
+            continue;
 
-        // Only clear dirty flags if regeneration succeeded.  If a transient
-        // resource shortage caused zero vertices for non-empty content, keep
-        // the element dirty so it retries on the next update.
-        if (pElement->GetCachedVertexCount() > 0 || !pElement->HasContent())
-            pElement->ClearDirtyFlags(CUIElementCore::DirtyContent | CUIElementCore::DirtyPosition);
+        uint32_t dirty = pState->GetDirtyFlags();
+        if (dirty & (CUIElementState::DirtyContent | CUIElementState::DirtyPosition))
+        {
+            pState->RegenerateVertices();
+            pState->GetBufferSlot().GpuDirty = true;
+
+            if (pState->GetCachedVertexCount() > 0 || !pState->HasContent())
+                pState->ClearDirtyFlags(CUIElementState::DirtyContent | CUIElementState::DirtyPosition);
+        }
     }
 
-    if (dirty & CUIElementCore::DirtyVisibility)
-        pElement->ClearDirtyFlags(CUIElementCore::DirtyVisibility);
-
-    CUIElementCore* pChild = pElement->GetFirstChildCore();
+    // Recurse to child nodes
+    XUIGraphNode* pChild = pNode->GetFirstChild();
     while (pChild)
     {
-        UpdateElement(pChild);
-        pChild = pChild->GetNextSiblingCore();
+        UpdateNode(static_cast<CUIGraphNodeImpl*>(pChild));
+        pChild = pChild->GetNextSibling();
     }
 }
 
@@ -132,7 +148,8 @@ Gem::Result CUIGraph::Submit(XRenderQueue* pRenderQueue)
 
     // --- Rect batch (drawn first, behind text) ---
     m_VisibleRectElements.clear();
-    CollectVisibleRectElements(&m_Root);
+    if (m_pRootNode)
+        CollectVisibleRectElements(m_pRootNode.Get());
 
     for (CUIRectElement* pRect : m_VisibleRectElements)
     {
@@ -188,7 +205,8 @@ Gem::Result CUIGraph::Submit(XRenderQueue* pRenderQueue)
     m_VisibleTextElements.clear();
     if (!m_pAtlas)
         return Gem::Result::Success;
-    CollectVisibleTextElements(&m_Root);
+    if (m_pRootNode)
+        CollectVisibleTextElements(m_pRootNode.Get());
 
     if (m_VisibleTextElements.empty())
         return Gem::Result::Success;
@@ -257,44 +275,44 @@ Gem::Result CUIGraph::Submit(XRenderQueue* pRenderQueue)
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIGraph::CollectVisibleTextElements(CUIElementCore* pElement)
+void CUIGraph::CollectVisibleTextElements(CUIGraphNodeImpl* pNode)
 {
-    if (!pElement->IsEffectivelyVisible())
-        return;
-
-    if (pElement->GetType() == UIElementType::Text)
+    for (UINT i = 0; i < pNode->GetBoundElementCount(); ++i)
     {
-        auto pText = static_cast<CUITextElement*>(pElement);
-        if (pText->GetCachedVertexCount() > 0)
-            m_VisibleTextElements.push_back(pText);
+        XUIElement* pElem = pNode->GetBoundElement(i);
+        CUIElementState* pState = CUIElementState::GetState(pElem);
+        if (pState && pState->IsVisible() && pState->GetType() == UIElementType::Text)
+        {
+            m_VisibleTextElements.push_back(static_cast<CUITextElement*>(static_cast<XUITextElement*>(pElem)));
+        }
     }
 
-    CUIElementCore* pChild = pElement->GetFirstChildCore();
+    XUIGraphNode* pChild = pNode->GetFirstChild();
     while (pChild)
     {
-        CollectVisibleTextElements(pChild);
-        pChild = pChild->GetNextSiblingCore();
+        CollectVisibleTextElements(static_cast<CUIGraphNodeImpl*>(pChild));
+        pChild = pChild->GetNextSibling();
     }
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIGraph::CollectVisibleRectElements(CUIElementCore* pElement)
+void CUIGraph::CollectVisibleRectElements(CUIGraphNodeImpl* pNode)
 {
-    if (!pElement->IsEffectivelyVisible())
-        return;
-
-    if (pElement->GetType() == UIElementType::Rect)
+    for (UINT i = 0; i < pNode->GetBoundElementCount(); ++i)
     {
-        auto pRect = static_cast<CUIRectElement*>(pElement);
-        if (pRect->GetCachedVertexCount() > 0)
-            m_VisibleRectElements.push_back(pRect);
+        XUIElement* pElem = pNode->GetBoundElement(i);
+        CUIElementState* pState = CUIElementState::GetState(pElem);
+        if (pState && pState->IsVisible() && pState->GetType() == UIElementType::Rect)
+        {
+            m_VisibleRectElements.push_back(static_cast<CUIRectElement*>(static_cast<XUIRectElement*>(pElem)));
+        }
     }
 
-    CUIElementCore* pChild = pElement->GetFirstChildCore();
+    XUIGraphNode* pChild = pNode->GetFirstChild();
     while (pChild)
     {
-        CollectVisibleRectElements(pChild);
-        pChild = pChild->GetNextSiblingCore();
+        CollectVisibleRectElements(static_cast<CUIGraphNodeImpl*>(pChild));
+        pChild = pChild->GetNextSibling();
     }
 }
 

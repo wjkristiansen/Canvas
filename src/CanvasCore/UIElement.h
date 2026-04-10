@@ -1,8 +1,9 @@
 //================================================================================================
-// UIElement - Base class, Gem-interface template, and concrete UI element types
+// UIElement - UI graph nodes and element types
 //
-// CUIElementCore: parent-child hierarchy, position, visibility, dirty tracking
-// TUIElement<T>: Gem QueryInterface bridge for concrete element types
+// CUIGraphNodeImpl: XUIGraphNode implementation — tree structure and screen-space position
+// CUIElementState: Non-Gem base for element dirty tracking, vertex slot, visibility
+// TUIElement<T>: Gem interface bridge for concrete element types
 // CUITextElement: text element with cached vertex generation
 // CUIRectElement: rectangle element with cached vertex generation
 //================================================================================================
@@ -16,85 +17,115 @@ namespace Canvas
 {
 
 //================================================================================================
-// CUIElementCore - Non-Gem base class for hierarchy and dirty tracking
+// CUIGraphNodeImpl - XUIGraphNode implementation (repurposed from CUIElementCore)
 //================================================================================================
 
-class CUIElementCore
+class CUIGraphNodeImpl : public Gem::TGeneric<XUIGraphNode>
 {
 public:
     struct ChildNode
     {
-        Gem::TGemPtr<XUIElement> pElement;
+        Gem::TGemPtr<XUIGraphNode> pNode;
         ChildNode* pPrev = nullptr;
         ChildNode* pNext = nullptr;
     };
 
+protected:
+    CUIGraphNodeImpl* m_pParent = nullptr;
+    ChildNode* m_pFirstChild = nullptr;
+    ChildNode* m_pMyEntry = nullptr;    // This node's entry in parent's child list
+
+    Math::FloatVector2 m_LocalPosition = {};
+
+    std::vector<Gem::TGemPtr<XUIElement>> m_Elements;
+
+public:
+    BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XUIGraphNode)
+    END_GEM_INTERFACE_MAP()
+
+    CUIGraphNodeImpl() = default;
+    ~CUIGraphNodeImpl();
+
+    void Initialize() {}
+    void Uninitialize() {}
+
+    // XUIGraphNode interface
+    GEMMETHOD(AddChild)(_In_ XUIGraphNode* pChild) final;
+    GEMMETHOD(RemoveChild)(_In_ XUIGraphNode* pChild) final;
+    GEMMETHOD_(XUIGraphNode*, GetParent)() final { return m_pParent; }
+    GEMMETHOD_(XUIGraphNode*, GetFirstChild)() final;
+    GEMMETHOD_(XUIGraphNode*, GetNextSibling)() final;
+
+    GEMMETHOD_(const Math::FloatVector2&, GetLocalPosition)() const final { return m_LocalPosition; }
+    GEMMETHOD_(void, SetLocalPosition)(const Math::FloatVector2& position) final;
+    GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() final;
+
+    GEMMETHOD(BindElement)(_In_ XUIElement* pElement) final;
+    GEMMETHOD_(UINT, GetBoundElementCount)() final { return static_cast<UINT>(m_Elements.size()); }
+    GEMMETHOD_(XUIElement*, GetBoundElement)(UINT index) final { return m_Elements[index].Get(); }
+
+    // Internal
+    void UnbindElement(XUIElement* pElement);
+
+private:
+    static CUIGraphNodeImpl* GetImpl(XUIGraphNode* pNode);
+    ChildNode* FindChildNode(XUIGraphNode* pChild);
+    void InvalidateElementPositions();
+    void InvalidateElementPositionsRecursive();
+};
+
+//================================================================================================
+// CUIElementState - Non-Gem base class for element dirty tracking and vertex slot
+//================================================================================================
+
+struct VertexBufferSlot
+{
+    uint32_t StartVertex = 0;
+    uint32_t MaxVertexCount = 0;
+    bool GpuDirty = true;
+};
+
+class CUIElementState
+{
+public:
     enum DirtyFlags : uint32_t
     {
         DirtyNone = 0,
         DirtyContent = 1 << 0,
         DirtyPosition = 1 << 1,
-        DirtyVisibility = 1 << 2,
-        DirtyAll = DirtyContent | DirtyPosition | DirtyVisibility,
-    };
-
-    struct VertexBufferSlot
-    {
-        uint32_t StartVertex = 0;
-        uint32_t MaxVertexCount = 0;
-        bool GpuDirty = true;
+        DirtyAll = DirtyContent | DirtyPosition,
     };
 
 protected:
-    CUIElementCore* m_pParent = nullptr;
-    ChildNode* m_pFirstChild = nullptr;
-
-    Math::FloatVector2 m_Position = {};
-    Math::FloatVector2 m_AbsolutePosition = {};
+    XUIGraphNode* m_pAttachedNode = nullptr;    // Weak pointer to owning node
     bool m_Visible = true;
     uint32_t m_DirtyFlags = DirtyAll;
     VertexBufferSlot m_BufferSlot;
 
 public:
-    CUIElementCore();
-    virtual ~CUIElementCore();
+    virtual ~CUIElementState() = default;
 
-    void AddChild(XUIElement* pChild);
-    void RemoveChild(XUIElement* pChild);
-    void RemoveFromParent();
-
-    CUIElementCore* GetParentCore() { return m_pParent; }
-    CUIElementCore* GetFirstChildCore();
-    CUIElementCore* GetNextSiblingCore();
-
-    const Math::FloatVector2& GetPosition() const { return m_Position; }
-    void SetPosition(const Math::FloatVector2& position);
-    const Math::FloatVector2& GetAbsolutePosition();
+    XUIGraphNode* GetAttachedNode() { return m_pAttachedNode; }
+    void SetAttachedNode(XUIGraphNode* pNode) { m_pAttachedNode = pNode; }
 
     bool IsVisible() const { return m_Visible; }
-    void SetVisible(bool visible);
-    bool IsEffectivelyVisible() const;
+    void SetVisible(bool visible) { m_Visible = visible; }
 
     uint32_t GetDirtyFlags() const { return m_DirtyFlags; }
     void ClearDirtyFlags(uint32_t flags) { m_DirtyFlags &= ~flags; }
+    void MarkPositionDirty() { m_DirtyFlags |= DirtyPosition; }
+
+    VertexBufferSlot& GetBufferSlot() { return m_BufferSlot; }
 
     virtual UIElementType GetType() const { return UIElementType::Root; }
-    virtual XUIElement* GetInterface() { return nullptr; }
     virtual void RegenerateVertices() {}
     virtual const void* GetCachedVertexData() const { return nullptr; }
     virtual uint32_t GetCachedVertexCount() const { return 0; }
     virtual bool HasContent() const { return false; }
 
-    VertexBufferSlot& GetBufferSlot() { return m_BufferSlot; }
-
-    // Resolve CUIElementCore* from an XUIElement* (static helper, mirrors CUIGraph::GetCore)
-    static CUIElementCore* GetCore(XUIElement* pElement);
-
-private:
-    ChildNode* FindChildNode(XUIElement* pChild);
-    void InvalidatePosition();
-    void InvalidateVisibility();
-    void RecomputeAbsolutePosition();
+    // Resolve CUIElementState* from an XUIElement*
+    static CUIElementState* GetState(XUIElement* pElement);
 };
 
 //================================================================================================
@@ -102,21 +133,16 @@ private:
 //================================================================================================
 
 template<class TInterface>
-class TUIElement : public Gem::TGeneric<TInterface>, public CUIElementCore
+class TUIElement : public Gem::TGeneric<TInterface>, public CUIElementState
 {
 public:
     void Initialize() {}
     void Uninitialize() {}
 
-    GEMMETHOD_(UIElementType, GetType)() const override { return CUIElementCore::GetType(); }
-    XUIElement* GetInterface() override { return static_cast<TInterface*>(this); }
-    GEMMETHOD_(const Math::FloatVector2&, GetPosition)() const override { return CUIElementCore::GetPosition(); }
-    GEMMETHOD_(void, SetPosition)(const Math::FloatVector2& position) override { CUIElementCore::SetPosition(position); }
-    GEMMETHOD_(bool, IsVisible)() const override { return CUIElementCore::IsVisible(); }
-    GEMMETHOD_(void, SetVisible)(bool visible) override { CUIElementCore::SetVisible(visible); }
-    GEMMETHOD_(XUIElement*, GetParent)() override { return nullptr; }
-    GEMMETHOD_(XUIElement*, GetFirstChild)() override { return nullptr; }
-    GEMMETHOD_(XUIElement*, GetNextSibling)() override { return nullptr; }
+    GEMMETHOD_(UIElementType, GetType)() const override { return CUIElementState::GetType(); }
+    GEMMETHOD_(bool, IsVisible)() const override { return CUIElementState::IsVisible(); }
+    GEMMETHOD_(void, SetVisible)(bool visible) override { CUIElementState::SetVisible(visible); }
+    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
 };
 
 //================================================================================================
@@ -162,8 +188,8 @@ public:
 
 class CUIRectElement : public TUIElement<XUIRectElement>
 {
-    Math::FloatVector2 m_Size = {};
     Math::FloatVector4 m_FillColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+    Math::FloatVector2 m_Size = {};
     std::vector<TextVertex> m_CachedVertices;
 
 public:

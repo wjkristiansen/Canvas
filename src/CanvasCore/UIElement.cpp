@@ -10,33 +10,205 @@ namespace Canvas
 {
 
 //================================================================================================
-// CUIElementCore
+// CUIGraphNodeImpl
 //================================================================================================
 
-CUIElementCore::CUIElementCore()
+CUIGraphNodeImpl* CUIGraphNodeImpl::GetImpl(XUIGraphNode* pNode)
 {
+    return static_cast<CUIGraphNodeImpl*>(pNode);
 }
 
-CUIElementCore::~CUIElementCore()
+CUIGraphNodeImpl::~CUIGraphNodeImpl()
 {
-    // Free all child wrapper nodes (drops refs on children)
     ChildNode* pChild = m_pFirstChild;
     while (pChild)
     {
-        CUIElementCore* pChildCore = GetCore(pChild->pElement);
-        if (pChildCore)
-            pChildCore->m_pParent = nullptr;
+        CUIGraphNodeImpl* pImpl = GetImpl(pChild->pNode);
+        if (pImpl)
+        {
+            pImpl->m_pParent = nullptr;
+            pImpl->m_pMyEntry = nullptr;
+        }
         ChildNode* pNext = pChild->pNext;
         delete pChild;
         pChild = pNext;
     }
     m_pFirstChild = nullptr;
-
-    RemoveFromParent();
 }
 
-//------------------------------------------------------------------------------------------------
-CUIElementCore* CUIElementCore::GetCore(XUIElement* pElement)
+CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XUIGraphNode* pChild)
+{
+    for (ChildNode* pNode = m_pFirstChild; pNode; pNode = pNode->pNext)
+    {
+        if (pNode->pNode.Get() == pChild)
+            return pNode;
+    }
+    return nullptr;
+}
+
+GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XUIGraphNode* pChild)
+{
+    if (!pChild)
+        return Gem::Result::BadPointer;
+
+    CUIGraphNodeImpl* pImpl = GetImpl(pChild);
+    if (!pImpl || pImpl->m_pParent == this)
+        return Gem::Result::Success;
+
+    if (pImpl->m_pParent)
+        pImpl->m_pParent->RemoveChild(pChild);
+
+    pImpl->m_pParent = this;
+
+    ChildNode* pEntry = new ChildNode();
+    pEntry->pNode = pChild;
+    pImpl->m_pMyEntry = pEntry;
+
+    if (!m_pFirstChild)
+    {
+        m_pFirstChild = pEntry;
+    }
+    else
+    {
+        ChildNode* pLast = m_pFirstChild;
+        while (pLast->pNext)
+            pLast = pLast->pNext;
+        pLast->pNext = pEntry;
+        pEntry->pPrev = pLast;
+    }
+
+    pImpl->InvalidateElementPositionsRecursive();
+    return Gem::Result::Success;
+}
+
+GEMMETHODIMP CUIGraphNodeImpl::RemoveChild(_In_ XUIGraphNode* pChild)
+{
+    if (!pChild)
+        return Gem::Result::BadPointer;
+
+    ChildNode* pEntry = FindChildNode(pChild);
+    if (!pEntry)
+        return Gem::Result::Success;
+
+    CUIGraphNodeImpl* pImpl = GetImpl(pChild);
+    if (pImpl)
+    {
+        pImpl->m_pParent = nullptr;
+        pImpl->m_pMyEntry = nullptr;
+    }
+
+    if (pEntry->pPrev)
+        pEntry->pPrev->pNext = pEntry->pNext;
+    else
+        m_pFirstChild = pEntry->pNext;
+
+    if (pEntry->pNext)
+        pEntry->pNext->pPrev = pEntry->pPrev;
+
+    delete pEntry;
+    return Gem::Result::Success;
+}
+
+GEMMETHODIMP_(XUIGraphNode*) CUIGraphNodeImpl::GetFirstChild()
+{
+    return m_pFirstChild ? m_pFirstChild->pNode.Get() : nullptr;
+}
+
+GEMMETHODIMP_(XUIGraphNode*) CUIGraphNodeImpl::GetNextSibling()
+{
+    if (!m_pMyEntry || !m_pMyEntry->pNext)
+        return nullptr;
+    return m_pMyEntry->pNext->pNode.Get();
+}
+
+void CUIGraphNodeImpl::SetLocalPosition(const Math::FloatVector2& position)
+{
+    if (m_LocalPosition.X == position.X && m_LocalPosition.Y == position.Y)
+        return;
+
+    m_LocalPosition = position;
+    InvalidateElementPositionsRecursive();
+}
+
+GEMMETHODIMP_(Math::FloatVector2) CUIGraphNodeImpl::GetGlobalPosition()
+{
+    if (m_pParent)
+    {
+        Math::FloatVector2 parentGlobal = m_pParent->GetGlobalPosition();
+        return Math::FloatVector2(parentGlobal.X + m_LocalPosition.X,
+                                  parentGlobal.Y + m_LocalPosition.Y);
+    }
+    return m_LocalPosition;
+}
+
+GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XUIElement* pElement)
+{
+    if (!pElement)
+        return Gem::Result::BadPointer;
+
+    XUIGraphNode* pCurrentNode = pElement->GetAttachedNode();
+    if (pCurrentNode == this)
+    {
+        // Already bound to this node; nothing to do.
+        return Gem::Result::Success;
+    }
+
+    if (pCurrentNode != nullptr)
+    {
+        // Detach from the previous owner so a single element is never present
+        // in two nodes' bound-element lists at once.
+        static_cast<CUIGraphNodeImpl*>(pCurrentNode)->UnbindElement(pElement);
+    }
+
+    CUIElementState* pState = CUIElementState::GetState(pElement);
+    if (pState)
+        pState->SetAttachedNode(this);
+
+    m_Elements.emplace_back(pElement);
+    return Gem::Result::Success;
+}
+
+void CUIGraphNodeImpl::UnbindElement(XUIElement* pElement)
+{
+    for (auto it = m_Elements.begin(); it != m_Elements.end(); ++it)
+    {
+        if (it->Get() == pElement)
+        {
+            CUIElementState* pState = CUIElementState::GetState(pElement);
+            if (pState)
+                pState->SetAttachedNode(nullptr);
+            m_Elements.erase(it);
+            return;
+        }
+    }
+}
+
+void CUIGraphNodeImpl::InvalidateElementPositions()
+{
+    for (auto& elem : m_Elements)
+    {
+        CUIElementState* pState = CUIElementState::GetState(elem.Get());
+        if (pState)
+            pState->MarkPositionDirty();
+    }
+}
+
+void CUIGraphNodeImpl::InvalidateElementPositionsRecursive()
+{
+    InvalidateElementPositions();
+    for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->pNext)
+    {
+        CUIGraphNodeImpl* pImpl = GetImpl(pChild->pNode.Get());
+        if (pImpl)
+            pImpl->InvalidateElementPositionsRecursive();
+    }
+}
+
+//================================================================================================
+// CUIElementState
+//================================================================================================
+
+CUIElementState* CUIElementState::GetState(XUIElement* pElement)
 {
     if (!pElement)
         return nullptr;
@@ -50,186 +222,6 @@ CUIElementCore* CUIElementCore::GetCore(XUIElement* pElement)
     default:
         return nullptr;
     }
-}
-
-//------------------------------------------------------------------------------------------------
-CUIElementCore::ChildNode* CUIElementCore::FindChildNode(XUIElement* pChild)
-{
-    for (ChildNode* pNode = m_pFirstChild; pNode; pNode = pNode->pNext)
-    {
-        if (pNode->pElement.Get() == pChild)
-            return pNode;
-    }
-    return nullptr;
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::AddChild(XUIElement* pChild)
-{
-    if (!pChild)
-        return;
-
-    CUIElementCore* pChildCore = GetCore(pChild);
-    if (!pChildCore || pChildCore->m_pParent == this)
-        return;
-
-    // Remove from old parent if any
-    pChildCore->RemoveFromParent();
-    pChildCore->m_pParent = this;
-
-    // Create wrapper node (AddRefs via TGemPtr)
-    ChildNode* pNode = new ChildNode();
-    pNode->pElement = pChild;
-
-    if (!m_pFirstChild)
-    {
-        m_pFirstChild = pNode;
-    }
-    else
-    {
-        ChildNode* pLast = m_pFirstChild;
-        while (pLast->pNext)
-            pLast = pLast->pNext;
-        pLast->pNext = pNode;
-        pNode->pPrev = pLast;
-    }
-
-    pChildCore->InvalidatePosition();
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::RemoveChild(XUIElement* pChild)
-{
-    if (!pChild)
-        return;
-
-    ChildNode* pNode = FindChildNode(pChild);
-    if (!pNode)
-        return;
-
-    CUIElementCore* pChildCore = GetCore(pChild);
-    if (pChildCore)
-        pChildCore->m_pParent = nullptr;
-
-    if (pNode->pPrev)
-        pNode->pPrev->pNext = pNode->pNext;
-    else
-        m_pFirstChild = pNode->pNext;
-
-    if (pNode->pNext)
-        pNode->pNext->pPrev = pNode->pPrev;
-
-    delete pNode;  // drops TGemPtr ref
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::RemoveFromParent()
-{
-    if (m_pParent)
-        m_pParent->RemoveChild(GetInterface());
-}
-
-//------------------------------------------------------------------------------------------------
-CUIElementCore* CUIElementCore::GetFirstChildCore()
-{
-    return m_pFirstChild ? GetCore(m_pFirstChild->pElement) : nullptr;
-}
-
-//------------------------------------------------------------------------------------------------
-CUIElementCore* CUIElementCore::GetNextSiblingCore()
-{
-    if (!m_pParent)
-        return nullptr;
-
-    // Find our wrapper node in parent's child list, then return the next
-    ChildNode* pNode = m_pParent->FindChildNode(GetInterface());
-    if (pNode && pNode->pNext)
-        return GetCore(pNode->pNext->pElement);
-    return nullptr;
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::SetPosition(const Math::FloatVector2& position)
-{
-    if (m_Position.X == position.X && m_Position.Y == position.Y)
-        return;
-
-    m_Position = position;
-    InvalidatePosition();
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::SetVisible(bool visible)
-{
-    if (m_Visible == visible)
-        return;
-
-    m_Visible = visible;
-    InvalidateVisibility();
-}
-
-//------------------------------------------------------------------------------------------------
-bool CUIElementCore::IsEffectivelyVisible() const
-{
-    if (!m_Visible)
-        return false;
-    if (m_pParent)
-        return m_pParent->IsEffectivelyVisible();
-    return true;
-}
-
-//------------------------------------------------------------------------------------------------
-const Math::FloatVector2& CUIElementCore::GetAbsolutePosition()
-{
-    if (m_DirtyFlags & DirtyPosition)
-        RecomputeAbsolutePosition();
-    return m_AbsolutePosition;
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::InvalidatePosition()
-{
-    if (m_DirtyFlags & DirtyPosition)
-        return;
-
-    m_DirtyFlags |= DirtyPosition;
-
-    for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->pNext)
-    {
-        CUIElementCore* pCore = GetCore(pChild->pElement);
-        if (pCore)
-            pCore->InvalidatePosition();
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::InvalidateVisibility()
-{
-    m_DirtyFlags |= DirtyVisibility;
-
-    for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->pNext)
-    {
-        CUIElementCore* pCore = GetCore(pChild->pElement);
-        if (pCore)
-            pCore->InvalidateVisibility();
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::RecomputeAbsolutePosition()
-{
-    if (m_pParent)
-    {
-        const auto& parentAbs = m_pParent->GetAbsolutePosition();
-        m_AbsolutePosition.X = parentAbs.X + m_Position.X;
-        m_AbsolutePosition.Y = parentAbs.Y + m_Position.Y;
-    }
-    else
-    {
-        m_AbsolutePosition = m_Position;
-    }
-
-    m_DirtyFlags &= ~DirtyPosition;
 }
 
 //================================================================================================
@@ -299,7 +291,9 @@ void CUITextElement::RegenerateVertices()
     if (Gem::Failed(result))
         return;
 
-    const Math::FloatVector2& absPos = GetAbsolutePosition();
+    Math::FloatVector2 absPos = {};
+    if (m_pAttachedNode)
+        absPos = m_pAttachedNode->GetGlobalPosition();
     Math::FloatVector3 screenPos(absPos.X, absPos.Y, 0.0f);
 
     const CTrueTypeFont::FontMetrics& metrics = pFontData->GetMetrics();
@@ -415,7 +409,9 @@ void CUIRectElement::RegenerateVertices()
     if (m_Size.X <= 0.0f || m_Size.Y <= 0.0f)
         return;
 
-    const Math::FloatVector2& absPos = GetAbsolutePosition();
+    Math::FloatVector2 absPos = {};
+    if (m_pAttachedNode)
+        absPos = m_pAttachedNode->GetGlobalPosition();
     float x0 = absPos.X;
     float y0 = absPos.Y;
     float x1 = x0 + m_Size.X;

@@ -520,21 +520,16 @@ enum class UIElementType : uint32_t
 };
 
 //------------------------------------------------------------------------------------------------
+struct XUIGraphNode;
+
 struct XUIElement : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XUIElement, 0xA1B2C3D4E5F60718);
 
     GEMMETHOD_(UIElementType, GetType)() const = 0;
-
-    GEMMETHOD_(const Math::FloatVector2&, GetPosition)() const = 0;
-    GEMMETHOD_(void, SetPosition)(const Math::FloatVector2& position) = 0;
-
     GEMMETHOD_(bool, IsVisible)() const = 0;
     GEMMETHOD_(void, SetVisible)(bool visible) = 0;
-
-    GEMMETHOD_(XUIElement*, GetParent)() = 0;
-    GEMMETHOD_(XUIElement*, GetFirstChild)() = 0;
-    GEMMETHOD_(XUIElement*, GetNextSibling)() = 0;
+    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -561,15 +556,36 @@ struct XUIRectElement : public XUIElement
 };
 
 //------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------
+struct XUIGraphNode : public Gem::XGeneric
+{
+    GEM_INTERFACE_DECLARE(XUIGraphNode, 0xE5F6071829304152);
+
+    GEMMETHOD(AddChild)(_In_ XUIGraphNode* pChild) = 0;
+    GEMMETHOD(RemoveChild)(_In_ XUIGraphNode* pChild) = 0;
+    GEMMETHOD_(XUIGraphNode*, GetParent)() = 0;
+    GEMMETHOD_(XUIGraphNode*, GetFirstChild)() = 0;
+    GEMMETHOD_(XUIGraphNode*, GetNextSibling)() = 0;
+
+    GEMMETHOD_(const Math::FloatVector2&, GetLocalPosition)() const = 0;
+    GEMMETHOD_(void, SetLocalPosition)(const Math::FloatVector2& position) = 0;
+    GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() = 0;
+
+    GEMMETHOD(BindElement)(_In_ XUIElement* pElement) = 0;
+    GEMMETHOD_(UINT, GetBoundElementCount)() = 0;
+    GEMMETHOD_(XUIElement*, GetBoundElement)(UINT index) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
 struct XUIGraph : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XUIGraph, 0xD4E5F60718293041);
 
-    GEMMETHOD_(XUIElement*, GetRoot)() = 0;
-    GEMMETHOD(CreateTextElement)(XUIElement* pParent, XUITextElement** ppElement) = 0;
-    GEMMETHOD(CreateRectElement)(XUIElement* pParent, XUIRectElement** ppElement) = 0;
+    GEMMETHOD(CreateTextElement)(XUIGraphNode* pNode, XUITextElement** ppElement) = 0;
+    GEMMETHOD(CreateRectElement)(XUIGraphNode* pNode, XUIRectElement** ppElement) = 0;
     GEMMETHOD(RemoveElement)(XUIElement* pElement) = 0;
-
+    GEMMETHOD(CreateNode)(XUIGraphNode* pParent, XUIGraphNode** ppNode) = 0;
+    GEMMETHOD_(XUIGraphNode*, GetRootNode)() = 0;
     GEMMETHOD(Update)() = 0;
     GEMMETHOD(Submit)(XRenderQueue* pRenderQueue) = 0;
 };
