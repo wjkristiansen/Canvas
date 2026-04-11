@@ -2,7 +2,7 @@
 // UIElement - UI graph nodes and element types
 //
 // CUIGraphNodeImpl: XGfxUIGraphNode implementation — tree structure and screen-space position
-// CUIElementState: Non-Gem base for element dirty tracking, vertex slot, visibility
+// CUIElementState: Non-Gem base for element dirty tracking, vertex buffer, visibility
 // TUIElement<T>: Gem interface bridge for concrete element types
 // CUITextElement: text element with cached vertex generation
 // CUIRectElement: rectangle element with cached vertex generation
@@ -12,6 +12,14 @@
 #include "Canvas.h"
 #include "TextLayout.h"
 #include "GlyphAtlas.h"
+
+// FloatVector4 has alignas(16) for SIMD. Classes containing it as a member
+// (e.g. CUIRectElement::m_FillColor) trigger C4324. Suppress until a
+// dedicated Color4f type without forced alignment replaces FloatVector4 for colors.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4324)
+#endif
 
 namespace Canvas
 {
@@ -76,15 +84,8 @@ private:
 };
 
 //================================================================================================
-// CUIElementState - Non-Gem base class for element dirty tracking and vertex slot
+// CUIElementState - Non-Gem base class for element dirty tracking and vertex buffer
 //================================================================================================
-
-struct VertexBufferSlot
-{
-    uint32_t StartVertex = 0;
-    uint32_t MaxVertexCount = 0;
-    bool GpuDirty = true;
-};
 
 class CUIElementState
 {
@@ -98,10 +99,10 @@ public:
     };
 
 protected:
+    GfxBufferSuballocation m_VertexBuffer;
     XGfxUIGraphNode* m_pAttachedNode = nullptr;    // Weak pointer to owning node
-    bool m_Visible = true;
     uint32_t m_DirtyFlags = DirtyAll;
-    VertexBufferSlot m_BufferSlot;
+    bool m_Visible = true;
 
 public:
     virtual ~CUIElementState() = default;
@@ -115,8 +116,6 @@ public:
     uint32_t GetDirtyFlags() const { return m_DirtyFlags; }
     void ClearDirtyFlags(uint32_t flags) { m_DirtyFlags &= ~flags; }
     void MarkPositionDirty() { m_DirtyFlags |= DirtyPosition; }
-
-    VertexBufferSlot& GetBufferSlot() { return m_BufferSlot; }
 
     virtual UIElementType GetType() const { return UIElementType::Root; }
     virtual void RegenerateVertices() {}
@@ -145,6 +144,10 @@ public:
     GEMMETHOD_(uint32_t, GetVertexCount)() const override { return 0; }
     GEMMETHOD_(const void*, GetVertexData)() const override { return nullptr; }
     GEMMETHOD_(bool, HasContent)() const override { return false; }
+
+    // GPU vertex buffer suballocation (assigned by render queue after upload)
+    GEMMETHOD_(const GfxBufferSuballocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
+    GEMMETHOD_(void, SetVertexBuffer)(const GfxBufferSuballocation& buffer) override { m_VertexBuffer = buffer; }
 };
 
 //================================================================================================
@@ -217,3 +220,7 @@ public:
 };
 
 } // namespace Canvas
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

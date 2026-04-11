@@ -2021,10 +2021,8 @@ void CRenderQueue12::ProcessUIRenderables()
     std::unordered_set<Canvas::XGfxUIElement*> textSeen, rectSeen;
 
     // Collect visible elements from submitted UI nodes
-    struct VisibleText { Canvas::XGfxUIElement* pElement; uint32_t VertexCount; };
-    struct VisibleRect { Canvas::XGfxUIElement* pElement; uint32_t VertexCount; };
-    std::vector<VisibleText> visibleTexts;
-    std::vector<VisibleRect> visibleRects;
+    struct VisibleElement { Canvas::XGfxUIElement* pElement; uint32_t VertexCount; };
+    std::vector<VisibleElement> visibleTexts, visibleRects;
     Canvas::XGfxSurface* pAtlasTexture = nullptr;
 
     for (Canvas::XGfxUIGraphNode* pNode : m_UIRenderableQueue)
@@ -2060,23 +2058,31 @@ void CRenderQueue12::ProcessUIRenderables()
         }
     }
 
-    // Free slots for elements that disappeared since last frame
-    for (auto it = m_UITextElementSlots.begin(); it != m_UITextElementSlots.end();)
+    // Free allocations for elements no longer present
+    constexpr uint64_t kTextVertexStride = sizeof(Canvas::TextVertex);
+
+    for (auto it = m_UITextAllocatedElements.begin(); it != m_UITextAllocatedElements.end();)
     {
-        if (textSeen.find(it->first) == textSeen.end())
+        if (textSeen.find(*it) == textSeen.end())
         {
-            FreeUITextVertices(it->second.StartVertex, it->second.MaxVertexCount);
-            it = m_UITextElementSlots.erase(it);
+            auto vb = (*it)->GetVertexBuffer();
+            if (vb.Size > 0)
+                FreeUITextVertices(static_cast<uint32_t>(vb.Offset / kTextVertexStride), static_cast<uint32_t>(vb.Size / kTextVertexStride));
+            (*it)->SetVertexBuffer({});
+            it = m_UITextAllocatedElements.erase(it);
         }
         else
             ++it;
     }
-    for (auto it = m_UIRectElementSlots.begin(); it != m_UIRectElementSlots.end();)
+    for (auto it = m_UIRectAllocatedElements.begin(); it != m_UIRectAllocatedElements.end();)
     {
-        if (rectSeen.find(it->first) == rectSeen.end())
+        if (rectSeen.find(*it) == rectSeen.end())
         {
-            FreeUIRectVertices(it->second.StartVertex, it->second.MaxVertexCount);
-            it = m_UIRectElementSlots.erase(it);
+            auto vb = (*it)->GetVertexBuffer();
+            if (vb.Size > 0)
+                FreeUIRectVertices(static_cast<uint32_t>(vb.Offset / kTextVertexStride), static_cast<uint32_t>(vb.Size / kTextVertexStride));
+            (*it)->SetVertexBuffer({});
+            it = m_UIRectAllocatedElements.erase(it);
         }
         else
             ++it;
@@ -2085,24 +2091,34 @@ void CRenderQueue12::ProcessUIRenderables()
     // --- Rect batch (drawn first, behind text) ---
     for (auto& vis : visibleRects)
     {
-        auto& slot = m_UIRectElementSlots[vis.pElement];
-        if (vis.VertexCount > slot.MaxVertexCount)
+        auto vb = vis.pElement->GetVertexBuffer();
+        uint64_t neededSize = static_cast<uint64_t>(vis.VertexCount) * kTextVertexStride;
+        if (neededSize > vb.Size)
         {
-            if (slot.MaxVertexCount > 0)
-                FreeUIRectVertices(slot.StartVertex, slot.MaxVertexCount);
+            if (vb.Size > 0)
+                FreeUIRectVertices(static_cast<uint32_t>(vb.Offset / kTextVertexStride), static_cast<uint32_t>(vb.Size / kTextVertexStride));
             uint32_t startVertex = 0;
             Gem::ThrowGemError(AllocUIRectVertices(vis.VertexCount, &startVertex));
-            slot.StartVertex = startVertex;
-            slot.MaxVertexCount = vis.VertexCount;
+            vb.pBuffer = m_pUIRectVertexBuffer;
+            vb.Offset = static_cast<uint64_t>(startVertex) * kTextVertexStride;
+            vb.Size = neededSize;
+            vis.pElement->SetVertexBuffer(vb);
+            m_UIRectAllocatedElements.insert(vis.pElement);
         }
-        Gem::ThrowGemError(UploadUIRectVertices(slot.StartVertex, vis.pElement->GetVertexData(), vis.VertexCount));
+        else if (vb.pBuffer.Get() != m_pUIRectVertexBuffer.Get())
+        {
+            // Buffer grew since last allocation — update the buffer reference
+            vb.pBuffer = m_pUIRectVertexBuffer;
+            vis.pElement->SetVertexBuffer(vb);
+        }
+        Gem::ThrowGemError(UploadUIRectVertices(static_cast<uint32_t>(vb.Offset / kTextVertexStride), vis.pElement->GetVertexData(), vis.VertexCount));
     }
 
     m_UIRectDrawCommands.clear();
     for (auto& vis : visibleRects)
     {
-        auto& slot = m_UIRectElementSlots[vis.pElement];
-        m_UIRectDrawCommands.push_back({ slot.StartVertex, vis.VertexCount });
+        auto& vb = vis.pElement->GetVertexBuffer();
+        m_UIRectDrawCommands.push_back({ static_cast<uint32_t>(vb.Offset / kTextVertexStride), vis.VertexCount });
     }
     if (!m_UIRectDrawCommands.empty())
         Gem::ThrowGemError(DrawUIRectBatch(m_UIRectDrawCommands.data(), static_cast<uint32_t>(m_UIRectDrawCommands.size())));
@@ -2113,24 +2129,33 @@ void CRenderQueue12::ProcessUIRenderables()
 
     for (auto& vis : visibleTexts)
     {
-        auto& slot = m_UITextElementSlots[vis.pElement];
-        if (vis.VertexCount > slot.MaxVertexCount)
+        auto vb = vis.pElement->GetVertexBuffer();
+        uint64_t neededSize = static_cast<uint64_t>(vis.VertexCount) * kTextVertexStride;
+        if (neededSize > vb.Size)
         {
-            if (slot.MaxVertexCount > 0)
-                FreeUITextVertices(slot.StartVertex, slot.MaxVertexCount);
+            if (vb.Size > 0)
+                FreeUITextVertices(static_cast<uint32_t>(vb.Offset / kTextVertexStride), static_cast<uint32_t>(vb.Size / kTextVertexStride));
             uint32_t startVertex = 0;
             Gem::ThrowGemError(AllocUITextVertices(vis.VertexCount, &startVertex));
-            slot.StartVertex = startVertex;
-            slot.MaxVertexCount = vis.VertexCount;
+            vb.pBuffer = m_pUITextVertexBuffer;
+            vb.Offset = static_cast<uint64_t>(startVertex) * kTextVertexStride;
+            vb.Size = neededSize;
+            vis.pElement->SetVertexBuffer(vb);
+            m_UITextAllocatedElements.insert(vis.pElement);
         }
-        Gem::ThrowGemError(UploadUITextVertices(slot.StartVertex, vis.pElement->GetVertexData(), vis.VertexCount));
+        else if (vb.pBuffer.Get() != m_pUITextVertexBuffer.Get())
+        {
+            vb.pBuffer = m_pUITextVertexBuffer;
+            vis.pElement->SetVertexBuffer(vb);
+        }
+        Gem::ThrowGemError(UploadUITextVertices(static_cast<uint32_t>(vb.Offset / kTextVertexStride), vis.pElement->GetVertexData(), vis.VertexCount));
     }
 
     m_UITextDrawCommands.clear();
     for (auto& vis : visibleTexts)
     {
-        auto& slot = m_UITextElementSlots[vis.pElement];
-        m_UITextDrawCommands.push_back({ slot.StartVertex, vis.VertexCount });
+        auto& vb = vis.pElement->GetVertexBuffer();
+        m_UITextDrawCommands.push_back({ static_cast<uint32_t>(vb.Offset / kTextVertexStride), vis.VertexCount });
     }
     if (!m_UITextDrawCommands.empty())
         Gem::ThrowGemError(DrawUITextBatch(m_UITextDrawCommands.data(), static_cast<uint32_t>(m_UITextDrawCommands.size()), pAtlasTexture));

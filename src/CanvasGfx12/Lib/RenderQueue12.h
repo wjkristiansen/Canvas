@@ -633,13 +633,9 @@ public:
 
     void ProcessUIRenderables();
 
-    struct UIElementSlot
-    {
-        uint32_t StartVertex = 0;
-        uint32_t MaxVertexCount = 0;
-    };
-    std::unordered_map<Canvas::XGfxUIElement*, UIElementSlot> m_UITextElementSlots;
-    std::unordered_map<Canvas::XGfxUIElement*, UIElementSlot> m_UIRectElementSlots;
+    // Tracking sets for elements with active vertex buffer allocations
+    std::unordered_set<Canvas::XGfxUIElement*> m_UITextAllocatedElements;
+    std::unordered_set<Canvas::XGfxUIElement*> m_UIRectAllocatedElements;
 
     // Scratch buffers for UI draw command batching (reused across frames)
     std::vector<Canvas::UITextDrawCommand> m_UITextDrawCommands;

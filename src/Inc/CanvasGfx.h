@@ -220,10 +220,14 @@ namespace Canvas
         GEMMETHOD_(void, SetVisible)(bool visible) = 0;
         GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() = 0;
 
-        // Vertex data access for render queue
+        // CPU vertex data (for upload)
         GEMMETHOD_(uint32_t, GetVertexCount)() const = 0;
         GEMMETHOD_(const void*, GetVertexData)() const = 0;
         GEMMETHOD_(bool, HasContent)() const = 0;
+
+        // GPU vertex buffer suballocation (assigned by render queue after upload)
+        GEMMETHOD_(const GfxBufferSuballocation&, GetVertexBuffer)() const = 0;
+        GEMMETHOD_(void, SetVertexBuffer)(const GfxBufferSuballocation& buffer) = 0;
     };
 
     //------------------------------------------------------------------------------------------------

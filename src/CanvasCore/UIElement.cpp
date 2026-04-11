@@ -373,8 +373,6 @@ void CUITextElement::RegenerateVertices()
         cursorPos.X += advance * m_Config.FontSize;
         glyphIdx++;
     }
-
-    m_BufferSlot.GpuDirty = true;
 }
 
 //================================================================================================
@@ -443,8 +441,6 @@ void CUIRectElement::RegenerateVertices()
     m_CachedVertices[3] = makeVertex(x0, y1, m_FillColor);
     m_CachedVertices[4] = makeVertex(x1, y1, m_FillColor);
     m_CachedVertices[5] = makeVertex(x1, y0, m_FillColor);
-
-    m_BufferSlot.GpuDirty = true;
 }
 
 } // namespace Canvas
