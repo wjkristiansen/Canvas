@@ -205,6 +205,87 @@ namespace Canvas
         GEMMETHOD(EndFrame)() = 0;
     };
 
+    //================================================================================================
+    // UI Graph - Hierarchical UI/HUD elements with dirty tracking
+    //================================================================================================
+
+    //------------------------------------------------------------------------------------------------
+
+    struct XGfxUIElement : public Gem::XGeneric
+    {
+        GEM_INTERFACE_DECLARE(XGfxUIElement, 0xA1B2C3D4E5F60718);
+
+        GEMMETHOD_(UIElementType, GetType)() const = 0;
+        GEMMETHOD_(bool, IsVisible)() const = 0;
+        GEMMETHOD_(void, SetVisible)(bool visible) = 0;
+        GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() = 0;
+
+        // Vertex data access for render queue
+        GEMMETHOD_(uint32_t, GetVertexCount)() const = 0;
+        GEMMETHOD_(const void*, GetVertexData)() const = 0;
+        GEMMETHOD_(bool, HasContent)() const = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct XGfxUITextElement : public XGfxUIElement
+    {
+        GEM_INTERFACE_DECLARE(XGfxUITextElement, 0xB2C3D4E5F6071829);
+
+        GEMMETHOD_(void, SetText)(PCSTR utf8Text) = 0;
+        GEMMETHOD_(PCSTR, GetText)() const = 0;
+        GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
+        GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
+        GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
+
+        // Atlas texture access for render queue
+        GEMMETHOD_(XGfxSurface*, GetGlyphAtlasTexture)() = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct XGfxUIRectElement : public XGfxUIElement
+    {
+        GEM_INTERFACE_DECLARE(XGfxUIRectElement, 0xC3D4E5F607182930);
+
+        GEMMETHOD_(void, SetSize)(const Math::FloatVector2& size) = 0;
+        GEMMETHOD_(const Math::FloatVector2&, GetSize)() const = 0;
+        GEMMETHOD_(void, SetFillColor)(const Math::FloatVector4& color) = 0;
+        GEMMETHOD_(const Math::FloatVector4&, GetFillColor)() const = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct XGfxUIGraphNode : public Gem::XGeneric
+    {
+        GEM_INTERFACE_DECLARE(XGfxUIGraphNode, 0xE5F6071829304152);
+
+        GEMMETHOD(AddChild)(_In_ XGfxUIGraphNode* pChild) = 0;
+        GEMMETHOD(RemoveChild)(_In_ XGfxUIGraphNode* pChild) = 0;
+        GEMMETHOD_(XGfxUIGraphNode*, GetParent)() = 0;
+        GEMMETHOD_(XGfxUIGraphNode*, GetFirstChild)() = 0;
+        GEMMETHOD_(XGfxUIGraphNode*, GetNextSibling)() = 0;
+
+        GEMMETHOD_(const Math::FloatVector2&, GetLocalPosition)() const = 0;
+        GEMMETHOD_(void, SetLocalPosition)(const Math::FloatVector2& position) = 0;
+        GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() = 0;
+
+        GEMMETHOD(BindElement)(_In_ XGfxUIElement* pElement) = 0;
+        GEMMETHOD_(UINT, GetBoundElementCount)() = 0;
+        GEMMETHOD_(XGfxUIElement*, GetBoundElement)(UINT index) = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct XGfxUIGraph : public Gem::XGeneric
+    {
+        GEM_INTERFACE_DECLARE(XGfxUIGraph, 0xD4E5F60718293041);
+
+        GEMMETHOD(CreateTextElement)(XGfxUIGraphNode* pNode, XGfxUITextElement** ppElement) = 0;
+        GEMMETHOD(CreateRectElement)(XGfxUIGraphNode* pNode, XGfxUIRectElement** ppElement) = 0;
+        GEMMETHOD(RemoveElement)(XGfxUIElement* pElement) = 0;
+        GEMMETHOD(CreateNode)(XGfxUIGraphNode* pParent, XGfxUIGraphNode** ppNode) = 0;
+        GEMMETHOD_(XGfxUIGraphNode*, GetRootNode)() = 0;
+        GEMMETHOD(Update)() = 0;
+        GEMMETHOD(SubmitRenderables)(XRenderQueue* pRenderQueue) = 0;
+    };
+
     enum GfxSurfaceFlags : uint32_t
     {
         SurfaceFlag_None = 0,

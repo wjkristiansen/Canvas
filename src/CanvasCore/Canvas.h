@@ -125,7 +125,7 @@ public:
     GEMMETHOD(UnregisterElement)(XCanvasElement *) final;
 
     GEMMETHOD(LoadPlugin)(PCSTR path, XCanvasPlugin **ppPlugin) final;
-    GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) final;
+    GEMMETHOD(CreateSceneGraph)(XSceneGraph **ppScene, PCSTR name = nullptr) final;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;
@@ -133,7 +133,7 @@ public:
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) final;
-    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph) final;
+    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XGfxUIGraph** ppGraph) final;
 
     GEMMETHOD_(XLogger *, GetLogger)() final
     {

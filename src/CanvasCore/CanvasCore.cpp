@@ -136,11 +136,11 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene, PCSTR name)
+GEMMETHODIMP CCanvas::CreateSceneGraph(XSceneGraph **ppScene, PCSTR name)
 {
-    CFunctionSentinel sentinel("XCanvas::CreateScene", m_pLogger);
+    CFunctionSentinel sentinel("XCanvas::CreateSceneGraph", m_pLogger);
 
-    return CreateElement<CScene>(ppScene, name);
+    return CreateElement<CSceneGraph>(ppScene, name);
 
     return Gem::Result::Success;
 }
@@ -216,7 +216,7 @@ std::unique_ptr<CGlyphAtlasImpl> CCanvas::CreateGlyphAtlas(XGfxDevice* pDevice, 
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph)
+GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XGfxUIGraph** ppGraph)
 {
     CFunctionSentinel sentinel("XCanvas::CreateUIGraph", m_pLogger);
 

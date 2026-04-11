@@ -10,13 +10,13 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CScene::CScene(XCanvas *pCanvas) :
+CSceneGraph::CSceneGraph(XCanvas *pCanvas) :
     TCanvasElement(pCanvas)
 {
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CScene::Initialize()
+GEMMETHODIMP CSceneGraph::Initialize()
 {
     try
     {
@@ -34,13 +34,13 @@ GEMMETHODIMP CScene::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CScene::GetRootSceneGraphNode()
+GEMMETHODIMP_(XSceneGraphNode *) CSceneGraph::GetRootSceneGraphNode()
 {
     return m_pRoot.Get();
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CScene::SubmitRenderables(XRenderQueue *pRenderQueue)
+GEMMETHODIMP CSceneGraph::SubmitRenderables(XRenderQueue *pRenderQueue)
 {
     try
     {

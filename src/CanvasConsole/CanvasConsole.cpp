@@ -33,8 +33,8 @@ int main()
     Gem::TGemPtr<Canvas::XCanvas> pCanvas;
     Gem::Result result = Canvas::CreateCanvas(nullptr, &pCanvas);
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    result = pCanvas->CreateScene(&pScene);
+    Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+    result = pCanvas->CreateSceneGraph(&pScene);
 
     Gem::TGemPtr<Canvas::XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);

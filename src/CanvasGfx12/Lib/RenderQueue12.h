@@ -496,7 +496,7 @@ public:
     std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
 
     // UI graph nodes enqueued during UI graph submission, dispatched during EndFrame
-    std::vector<Canvas::XUIGraphNode*> m_UIRenderableQueue;
+    std::vector<Canvas::XGfxUIGraphNode*> m_UIRenderableQueue;
 
     // SRV descriptor allocation for per-draw structured buffers
     UINT m_NextSRVSlot = 0;
@@ -574,7 +574,7 @@ public:
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context) final;
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
-    GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
+    GEMMETHOD(SubmitForUIRender)(Canvas::XGfxUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
     GEMMETHOD(EndFrame)() final;
 
@@ -638,8 +638,8 @@ public:
         uint32_t StartVertex = 0;
         uint32_t MaxVertexCount = 0;
     };
-    std::unordered_map<Canvas::XUIElement*, UIElementSlot> m_UITextElementSlots;
-    std::unordered_map<Canvas::XUIElement*, UIElementSlot> m_UIRectElementSlots;
+    std::unordered_map<Canvas::XGfxUIElement*, UIElementSlot> m_UITextElementSlots;
+    std::unordered_map<Canvas::XGfxUIElement*, UIElementSlot> m_UIRectElementSlots;
 
     // Scratch buffers for UI draw command batching (reused across frames)
     std::vector<Canvas::UITextDrawCommand> m_UITextDrawCommands;

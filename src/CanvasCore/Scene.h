@@ -11,8 +11,8 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-class CScene :
-    public TCanvasElement<XScene>
+class CSceneGraph :
+    public TCanvasElement<XSceneGraph>
 {
 private:
     Gem::TGemPtr<XSceneGraphNode> m_pRoot;
@@ -23,15 +23,15 @@ public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
         GEM_INTERFACE_ENTRY(XCanvasElement)
-        GEM_INTERFACE_ENTRY(XScene)
+        GEM_INTERFACE_ENTRY(XSceneGraph)
     END_GEM_INTERFACE_MAP()
 
-    CScene(XCanvas *pCanvas);
+    CSceneGraph(XCanvas *pCanvas);
 
     Gem::Result Initialize();
     void Uninitialize() {}
     
-public: // XScene methods
+public: // XSceneGraph methods
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)();
 
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) final

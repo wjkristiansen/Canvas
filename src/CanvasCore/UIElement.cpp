@@ -13,7 +13,7 @@ namespace Canvas
 // CUIGraphNodeImpl
 //================================================================================================
 
-CUIGraphNodeImpl* CUIGraphNodeImpl::GetImpl(XUIGraphNode* pNode)
+CUIGraphNodeImpl* CUIGraphNodeImpl::GetImpl(XGfxUIGraphNode* pNode)
 {
     return static_cast<CUIGraphNodeImpl*>(pNode);
 }
@@ -36,7 +36,7 @@ CUIGraphNodeImpl::~CUIGraphNodeImpl()
     m_pFirstChild = nullptr;
 }
 
-CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XUIGraphNode* pChild)
+CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XGfxUIGraphNode* pChild)
 {
     for (ChildNode* pNode = m_pFirstChild; pNode; pNode = pNode->pNext)
     {
@@ -46,7 +46,7 @@ CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XUIGraphNode* pChil
     return nullptr;
 }
 
-GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XUIGraphNode* pChild)
+GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XGfxUIGraphNode* pChild)
 {
     if (!pChild)
         return Gem::Result::BadPointer;
@@ -81,7 +81,7 @@ GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XUIGraphNode* pChild)
     return Gem::Result::Success;
 }
 
-GEMMETHODIMP CUIGraphNodeImpl::RemoveChild(_In_ XUIGraphNode* pChild)
+GEMMETHODIMP CUIGraphNodeImpl::RemoveChild(_In_ XGfxUIGraphNode* pChild)
 {
     if (!pChild)
         return Gem::Result::BadPointer;
@@ -109,12 +109,12 @@ GEMMETHODIMP CUIGraphNodeImpl::RemoveChild(_In_ XUIGraphNode* pChild)
     return Gem::Result::Success;
 }
 
-GEMMETHODIMP_(XUIGraphNode*) CUIGraphNodeImpl::GetFirstChild()
+GEMMETHODIMP_(XGfxUIGraphNode*) CUIGraphNodeImpl::GetFirstChild()
 {
     return m_pFirstChild ? m_pFirstChild->pNode.Get() : nullptr;
 }
 
-GEMMETHODIMP_(XUIGraphNode*) CUIGraphNodeImpl::GetNextSibling()
+GEMMETHODIMP_(XGfxUIGraphNode*) CUIGraphNodeImpl::GetNextSibling()
 {
     if (!m_pMyEntry || !m_pMyEntry->pNext)
         return nullptr;
@@ -141,7 +141,7 @@ GEMMETHODIMP_(Math::FloatVector2) CUIGraphNodeImpl::GetGlobalPosition()
     return m_LocalPosition;
 }
 
-GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XUIElement* pElement)
+GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XGfxUIElement* pElement)
 {
     if (!pElement)
         return Gem::Result::BadPointer;
@@ -168,7 +168,7 @@ GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XUIElement* pElement)
     return Gem::Result::Success;
 }
 
-void CUIGraphNodeImpl::UnbindElement(XUIElement* pElement)
+void CUIGraphNodeImpl::UnbindElement(XGfxUIElement* pElement)
 {
     for (auto it = m_Elements.begin(); it != m_Elements.end(); ++it)
     {
@@ -208,7 +208,7 @@ void CUIGraphNodeImpl::InvalidateElementPositionsRecursive()
 // CUIElementState
 //================================================================================================
 
-CUIElementState* CUIElementState::GetState(XUIElement* pElement)
+CUIElementState* CUIElementState::GetState(XGfxUIElement* pElement)
 {
     if (!pElement)
         return nullptr;
@@ -216,9 +216,9 @@ CUIElementState* CUIElementState::GetState(XUIElement* pElement)
     switch (pElement->GetType())
     {
     case UIElementType::Text:
-        return static_cast<CUITextElement*>(static_cast<XUITextElement*>(pElement));
+        return static_cast<CUITextElement*>(static_cast<XGfxUITextElement*>(pElement));
     case UIElementType::Rect:
-        return static_cast<CUIRectElement*>(static_cast<XUIRectElement*>(pElement));
+        return static_cast<CUIRectElement*>(static_cast<XGfxUIRectElement*>(pElement));
     default:
         return nullptr;
     }

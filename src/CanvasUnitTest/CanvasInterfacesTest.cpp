@@ -20,9 +20,9 @@ namespace CanvasUnitTest
             Gem::TGemPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
 
-            // Create XScene object
-            Gem::TGemPtr<Canvas::XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+            // Create XSceneGraph object
+            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(&pScene)));
 
             // Create an empty XSceneGraphNode
             Gem::TGemPtr<Canvas::XSceneGraphNode> pSceneGraphNode;
@@ -44,9 +44,9 @@ namespace CanvasUnitTest
             Gem::TGemPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
 
-            // Create XScene object
-            Gem::TGemPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+            // Create XSceneGraph object
+            Gem::TGemPtr<XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(&pScene)));
 
             // Create nodes
             Gem::TGemPtr<XSceneGraphNode> pNodes[6];
@@ -117,8 +117,8 @@ namespace CanvasUnitTest
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
-            Gem::TGemPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+            Gem::TGemPtr<XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(&pScene)));
 
             // Create a small hierarchy: root -> A -> B
             Gem::TGemPtr<XSceneGraphNode> pA, pB;
@@ -274,8 +274,8 @@ namespace CanvasUnitTest
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
-            Gem::TGemPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+            Gem::TGemPtr<XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(&pScene)));
 
             // Create a hierarchy: root -> A -> B -> cameraNode
             Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
@@ -426,8 +426,8 @@ namespace CanvasUnitTest
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
-            Gem::TGemPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+            Gem::TGemPtr<XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(&pScene)));
 
             // Create two separate branches: root -> A and root -> B
             Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
@@ -511,8 +511,8 @@ namespace CanvasUnitTest
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
-            Gem::TGemPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+            Gem::TGemPtr<XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(&pScene)));
 
             // Create camera node
             Gem::TGemPtr<XSceneGraphNode> pCameraNode;
@@ -580,8 +580,8 @@ namespace CanvasUnitTest
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
-            Gem::TGemPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+            Gem::TGemPtr<XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(&pScene)));
 
             // Create a hierarchy: root -> A -> B -> lightNode
             Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
@@ -646,8 +646,8 @@ namespace CanvasUnitTest
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
-            Gem::TGemPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+            Gem::TGemPtr<XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(&pScene)));
 
             // Create nodes: A, B, and lightNode
             Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
@@ -717,8 +717,8 @@ namespace CanvasUnitTest
             // Create Canvas and Scene
             Gem::TGemPtr<XCanvas> pCanvas;
             Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
-            Gem::TGemPtr<XScene> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateScene(&pScene)));
+            Gem::TGemPtr<XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(&pScene)));
 
             // Create hierarchy: root -> parent -> lightNode
             Gem::TGemPtr<XSceneGraphNode> pParent, pLightNode;

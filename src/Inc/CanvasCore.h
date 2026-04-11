@@ -33,7 +33,7 @@ namespace Canvas
 #endif
 
 // Forward declarations
-struct XScene;
+struct XSceneGraph;
 struct XCamera;
 struct XLight;
 struct XGfxBuffer;
@@ -43,8 +43,8 @@ struct XSceneGraphNode;
 struct XSceneGraphElement;
 struct XRenderQueue;
 struct XFont;
-struct XUIGraph;
-struct XUIGraphNode;
+struct XGfxUIGraph;
+struct XGfxUIGraphNode;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -168,7 +168,7 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(LoadPlugin)(PCSTR path, struct XCanvasPlugin **ppPlugin) = 0;
 
-    GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateSceneGraph)(XSceneGraph **ppScene, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
@@ -176,7 +176,7 @@ XCanvas : public Gem::XGeneric
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
-    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph) = 0;
+    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XGfxUIGraph** ppGraph) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
@@ -347,7 +347,7 @@ XRenderQueue : public XCanvasElement
     GEMMETHOD(SubmitForRender)(XSceneGraphNode *pNode) = 0;
 
     // Private contract with the UI graph: enqueues a UI graph node for rendering.
-    GEMMETHOD(SubmitForUIRender)(XUIGraphNode *pNode) = 0;
+    GEMMETHOD(SubmitForUIRender)(XGfxUIGraphNode *pNode) = 0;
 
     // Private contract with the scene: sets the active camera for frame constant generation.
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
@@ -432,9 +432,9 @@ XLight : public XSceneGraphElement
 
 //------------------------------------------------------------------------------------------------
 struct
-XScene : public XCanvasElement
+XSceneGraph : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(XScene, 0x0A470E86351AF96A);
+    GEM_INTERFACE_DECLARE(XSceneGraph, 0x0A470E86351AF96A);
 
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
 
@@ -498,83 +498,6 @@ enum class UIElementType : uint32_t
     Rect,
 };
 
-//------------------------------------------------------------------------------------------------
-
-struct XUIElement : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(XUIElement, 0xA1B2C3D4E5F60718);
-
-    GEMMETHOD_(UIElementType, GetType)() const = 0;
-    GEMMETHOD_(bool, IsVisible)() const = 0;
-    GEMMETHOD_(void, SetVisible)(bool visible) = 0;
-    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() = 0;
-
-    // Vertex data access for render queue
-    GEMMETHOD_(uint32_t, GetVertexCount)() const = 0;
-    GEMMETHOD_(const void*, GetVertexData)() const = 0;
-    GEMMETHOD_(bool, HasContent)() const = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct XUITextElement : public XUIElement
-{
-    GEM_INTERFACE_DECLARE(XUITextElement, 0xB2C3D4E5F6071829);
-
-    GEMMETHOD_(void, SetText)(PCSTR utf8Text) = 0;
-    GEMMETHOD_(PCSTR, GetText)() const = 0;
-    GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
-    GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
-    GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
-
-    // Atlas texture access for render queue
-    GEMMETHOD_(XGfxSurface*, GetGlyphAtlasTexture)() = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct XUIRectElement : public XUIElement
-{
-    GEM_INTERFACE_DECLARE(XUIRectElement, 0xC3D4E5F607182930);
-
-    GEMMETHOD_(void, SetSize)(const Math::FloatVector2& size) = 0;
-    GEMMETHOD_(const Math::FloatVector2&, GetSize)() const = 0;
-    GEMMETHOD_(void, SetFillColor)(const Math::FloatVector4& color) = 0;
-    GEMMETHOD_(const Math::FloatVector4&, GetFillColor)() const = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-//------------------------------------------------------------------------------------------------
-struct XUIGraphNode : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(XUIGraphNode, 0xE5F6071829304152);
-
-    GEMMETHOD(AddChild)(_In_ XUIGraphNode* pChild) = 0;
-    GEMMETHOD(RemoveChild)(_In_ XUIGraphNode* pChild) = 0;
-    GEMMETHOD_(XUIGraphNode*, GetParent)() = 0;
-    GEMMETHOD_(XUIGraphNode*, GetFirstChild)() = 0;
-    GEMMETHOD_(XUIGraphNode*, GetNextSibling)() = 0;
-
-    GEMMETHOD_(const Math::FloatVector2&, GetLocalPosition)() const = 0;
-    GEMMETHOD_(void, SetLocalPosition)(const Math::FloatVector2& position) = 0;
-    GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() = 0;
-
-    GEMMETHOD(BindElement)(_In_ XUIElement* pElement) = 0;
-    GEMMETHOD_(UINT, GetBoundElementCount)() = 0;
-    GEMMETHOD_(XUIElement*, GetBoundElement)(UINT index) = 0;
-};
-
-//------------------------------------------------------------------------------------------------
-struct XUIGraph : public Gem::XGeneric
-{
-    GEM_INTERFACE_DECLARE(XUIGraph, 0xD4E5F60718293041);
-
-    GEMMETHOD(CreateTextElement)(XUIGraphNode* pNode, XUITextElement** ppElement) = 0;
-    GEMMETHOD(CreateRectElement)(XUIGraphNode* pNode, XUIRectElement** ppElement) = 0;
-    GEMMETHOD(RemoveElement)(XUIElement* pElement) = 0;
-    GEMMETHOD(CreateNode)(XUIGraphNode* pParent, XUIGraphNode** ppNode) = 0;
-    GEMMETHOD_(XUIGraphNode*, GetRootNode)() = 0;
-    GEMMETHOD(Update)() = 0;
-    GEMMETHOD(SubmitRenderables)(XRenderQueue* pRenderQueue) = 0;
-};
 
 //------------------------------------------------------------------------------------------------
 enum TypeId : uint64_t

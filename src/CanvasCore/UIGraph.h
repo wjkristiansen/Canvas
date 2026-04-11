@@ -8,14 +8,14 @@
 namespace Canvas
 {
 
-class CUIGraph : public Gem::TGeneric<XUIGraph>
+class CUIGraph : public Gem::TGeneric<XGfxUIGraph>
 {
     Gem::TGemPtr<CUIGraphNodeImpl> m_pRootNode;
     std::unique_ptr<CGlyphAtlasImpl> m_pAtlas;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XUIGraph)
+        GEM_INTERFACE_ENTRY(XGfxUIGraph)
     END_GEM_INTERFACE_MAP()
 
     CUIGraph() = default;
@@ -25,11 +25,11 @@ public:
 
     void SetAtlas(std::unique_ptr<CGlyphAtlasImpl> pAtlas) { m_pAtlas = std::move(pAtlas); }
 
-    GEMMETHOD(CreateTextElement)(XUIGraphNode* pNode, XUITextElement** ppElement) override;
-    GEMMETHOD(CreateRectElement)(XUIGraphNode* pNode, XUIRectElement** ppElement) override;
-    GEMMETHOD(RemoveElement)(XUIElement* pElement) override;
-    GEMMETHOD(CreateNode)(XUIGraphNode* pParent, XUIGraphNode** ppNode) override;
-    GEMMETHOD_(XUIGraphNode*, GetRootNode)() override;
+    GEMMETHOD(CreateTextElement)(XGfxUIGraphNode* pNode, XGfxUITextElement** ppElement) override;
+    GEMMETHOD(CreateRectElement)(XGfxUIGraphNode* pNode, XGfxUIRectElement** ppElement) override;
+    GEMMETHOD(RemoveElement)(XGfxUIElement* pElement) override;
+    GEMMETHOD(CreateNode)(XGfxUIGraphNode* pParent, XGfxUIGraphNode** ppNode) override;
+    GEMMETHOD_(XGfxUIGraphNode*, GetRootNode)() override;
     GEMMETHOD(Update)() override;
     GEMMETHOD(SubmitRenderables)(XRenderQueue* pRenderQueue) override;
 

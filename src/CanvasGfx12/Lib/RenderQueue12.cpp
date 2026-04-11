@@ -1896,7 +1896,7 @@ GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphNode *pNode)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::SubmitForUIRender(Canvas::XUIGraphNode *pNode)
+GEMMETHODIMP CRenderQueue12::SubmitForUIRender(Canvas::XGfxUIGraphNode *pNode)
 {
     if (!pNode)
         return Gem::Result::InvalidArg;
@@ -2018,21 +2018,21 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
 void CRenderQueue12::ProcessUIRenderables()
 {
     // Detect removed elements by tracking which ones appear this frame
-    std::unordered_set<Canvas::XUIElement*> textSeen, rectSeen;
+    std::unordered_set<Canvas::XGfxUIElement*> textSeen, rectSeen;
 
     // Collect visible elements from submitted UI nodes
-    struct VisibleText { Canvas::XUIElement* pElement; uint32_t VertexCount; };
-    struct VisibleRect { Canvas::XUIElement* pElement; uint32_t VertexCount; };
+    struct VisibleText { Canvas::XGfxUIElement* pElement; uint32_t VertexCount; };
+    struct VisibleRect { Canvas::XGfxUIElement* pElement; uint32_t VertexCount; };
     std::vector<VisibleText> visibleTexts;
     std::vector<VisibleRect> visibleRects;
     Canvas::XGfxSurface* pAtlasTexture = nullptr;
 
-    for (Canvas::XUIGraphNode* pNode : m_UIRenderableQueue)
+    for (Canvas::XGfxUIGraphNode* pNode : m_UIRenderableQueue)
     {
         UINT elemCount = pNode->GetBoundElementCount();
         for (UINT i = 0; i < elemCount; ++i)
         {
-            Canvas::XUIElement* pElem = pNode->GetBoundElement(i);
+            Canvas::XGfxUIElement* pElem = pNode->GetBoundElement(i);
             if (!pElem->IsVisible())
                 continue;
 
@@ -2045,7 +2045,7 @@ void CRenderQueue12::ProcessUIRenderables()
                     visibleTexts.push_back({ pElem, vertexCount });
                     if (!pAtlasTexture)
                     {
-                        Gem::TGemPtr<Canvas::XUITextElement> pText;
+                        Gem::TGemPtr<Canvas::XGfxUITextElement> pText;
                         if (SUCCEEDED(pElem->QueryInterface(&pText)))
                             pAtlasTexture = pText->GetGlyphAtlasTexture();
                     }

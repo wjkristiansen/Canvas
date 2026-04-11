@@ -1,7 +1,7 @@
 //================================================================================================
 // UIElement - UI graph nodes and element types
 //
-// CUIGraphNodeImpl: XUIGraphNode implementation — tree structure and screen-space position
+// CUIGraphNodeImpl: XGfxUIGraphNode implementation — tree structure and screen-space position
 // CUIElementState: Non-Gem base for element dirty tracking, vertex slot, visibility
 // TUIElement<T>: Gem interface bridge for concrete element types
 // CUITextElement: text element with cached vertex generation
@@ -17,15 +17,15 @@ namespace Canvas
 {
 
 //================================================================================================
-// CUIGraphNodeImpl - XUIGraphNode implementation (repurposed from CUIElementCore)
+// CUIGraphNodeImpl - XGfxUIGraphNode implementation (repurposed from CUIElementCore)
 //================================================================================================
 
-class CUIGraphNodeImpl : public Gem::TGeneric<XUIGraphNode>
+class CUIGraphNodeImpl : public Gem::TGeneric<XGfxUIGraphNode>
 {
 public:
     struct ChildNode
     {
-        Gem::TGemPtr<XUIGraphNode> pNode;
+        Gem::TGemPtr<XGfxUIGraphNode> pNode;
         ChildNode* pPrev = nullptr;
         ChildNode* pNext = nullptr;
     };
@@ -37,11 +37,11 @@ protected:
 
     Math::FloatVector2 m_LocalPosition = {};
 
-    std::vector<Gem::TGemPtr<XUIElement>> m_Elements;
+    std::vector<Gem::TGemPtr<XGfxUIElement>> m_Elements;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XUIGraphNode)
+        GEM_INTERFACE_ENTRY(XGfxUIGraphNode)
     END_GEM_INTERFACE_MAP()
 
     CUIGraphNodeImpl() = default;
@@ -50,27 +50,27 @@ public:
     void Initialize() {}
     void Uninitialize() {}
 
-    // XUIGraphNode interface
-    GEMMETHOD(AddChild)(_In_ XUIGraphNode* pChild) final;
-    GEMMETHOD(RemoveChild)(_In_ XUIGraphNode* pChild) final;
-    GEMMETHOD_(XUIGraphNode*, GetParent)() final { return m_pParent; }
-    GEMMETHOD_(XUIGraphNode*, GetFirstChild)() final;
-    GEMMETHOD_(XUIGraphNode*, GetNextSibling)() final;
+    // XGfxUIGraphNode interface
+    GEMMETHOD(AddChild)(_In_ XGfxUIGraphNode* pChild) final;
+    GEMMETHOD(RemoveChild)(_In_ XGfxUIGraphNode* pChild) final;
+    GEMMETHOD_(XGfxUIGraphNode*, GetParent)() final { return m_pParent; }
+    GEMMETHOD_(XGfxUIGraphNode*, GetFirstChild)() final;
+    GEMMETHOD_(XGfxUIGraphNode*, GetNextSibling)() final;
 
     GEMMETHOD_(const Math::FloatVector2&, GetLocalPosition)() const final { return m_LocalPosition; }
     GEMMETHOD_(void, SetLocalPosition)(const Math::FloatVector2& position) final;
     GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() final;
 
-    GEMMETHOD(BindElement)(_In_ XUIElement* pElement) final;
+    GEMMETHOD(BindElement)(_In_ XGfxUIElement* pElement) final;
     GEMMETHOD_(UINT, GetBoundElementCount)() final { return static_cast<UINT>(m_Elements.size()); }
-    GEMMETHOD_(XUIElement*, GetBoundElement)(UINT index) final { return m_Elements[index].Get(); }
+    GEMMETHOD_(XGfxUIElement*, GetBoundElement)(UINT index) final { return m_Elements[index].Get(); }
 
     // Internal
-    void UnbindElement(XUIElement* pElement);
+    void UnbindElement(XGfxUIElement* pElement);
 
 private:
-    static CUIGraphNodeImpl* GetImpl(XUIGraphNode* pNode);
-    ChildNode* FindChildNode(XUIGraphNode* pChild);
+    static CUIGraphNodeImpl* GetImpl(XGfxUIGraphNode* pNode);
+    ChildNode* FindChildNode(XGfxUIGraphNode* pChild);
     void InvalidateElementPositions();
     void InvalidateElementPositionsRecursive();
 };
@@ -98,7 +98,7 @@ public:
     };
 
 protected:
-    XUIGraphNode* m_pAttachedNode = nullptr;    // Weak pointer to owning node
+    XGfxUIGraphNode* m_pAttachedNode = nullptr;    // Weak pointer to owning node
     bool m_Visible = true;
     uint32_t m_DirtyFlags = DirtyAll;
     VertexBufferSlot m_BufferSlot;
@@ -106,8 +106,8 @@ protected:
 public:
     virtual ~CUIElementState() = default;
 
-    XUIGraphNode* GetAttachedNode() { return m_pAttachedNode; }
-    void SetAttachedNode(XUIGraphNode* pNode) { m_pAttachedNode = pNode; }
+    XGfxUIGraphNode* GetAttachedNode() { return m_pAttachedNode; }
+    void SetAttachedNode(XGfxUIGraphNode* pNode) { m_pAttachedNode = pNode; }
 
     bool IsVisible() const { return m_Visible; }
     void SetVisible(bool visible) { m_Visible = visible; }
@@ -121,8 +121,8 @@ public:
     virtual UIElementType GetType() const { return UIElementType::Root; }
     virtual void RegenerateVertices() {}
 
-    // Resolve CUIElementState* from an XUIElement*
-    static CUIElementState* GetState(XUIElement* pElement);
+    // Resolve CUIElementState* from an XGfxUIElement*
+    static CUIElementState* GetState(XGfxUIElement* pElement);
 };
 
 //================================================================================================
@@ -139,7 +139,7 @@ public:
     GEMMETHOD_(UIElementType, GetType)() const override { return CUIElementState::GetType(); }
     GEMMETHOD_(bool, IsVisible)() const override { return CUIElementState::IsVisible(); }
     GEMMETHOD_(void, SetVisible)(bool visible) override { CUIElementState::SetVisible(visible); }
-    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
+    GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
 
     // Default vertex data access (no content)
     GEMMETHOD_(uint32_t, GetVertexCount)() const override { return 0; }
@@ -151,7 +151,7 @@ public:
 // CUITextElement - Text element with cached vertex generation
 //================================================================================================
 
-class CUITextElement : public TUIElement<XUITextElement>
+class CUITextElement : public TUIElement<XGfxUITextElement>
 {
     std::string m_Text;
     XFont* m_pFont = nullptr;
@@ -161,8 +161,8 @@ class CUITextElement : public TUIElement<XUITextElement>
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XUIElement)
-        GEM_INTERFACE_ENTRY(XUITextElement)
+        GEM_INTERFACE_ENTRY(XGfxUIElement)
+        GEM_INTERFACE_ENTRY(XGfxUITextElement)
     END_GEM_INTERFACE_MAP()
 
     CUITextElement() = default;
@@ -189,7 +189,7 @@ public:
 // CUIRectElement - Rectangle element with cached vertex generation
 //================================================================================================
 
-class CUIRectElement : public TUIElement<XUIRectElement>
+class CUIRectElement : public TUIElement<XGfxUIRectElement>
 {
     Math::FloatVector4 m_FillColor = { 1.0f, 1.0f, 1.0f, 1.0f };
     Math::FloatVector2 m_Size = {};
@@ -197,8 +197,8 @@ class CUIRectElement : public TUIElement<XUIRectElement>
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
-        GEM_INTERFACE_ENTRY(XUIElement)
-        GEM_INTERFACE_ENTRY(XUIRectElement)
+        GEM_INTERFACE_ENTRY(XGfxUIElement)
+        GEM_INTERFACE_ENTRY(XGfxUIRectElement)
     END_GEM_INTERFACE_MAP()
 
     CUIRectElement() = default;
