@@ -519,3 +519,124 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
 {
     return CreateMeshData(vertexCount, positions, normals, pRenderQueue, ppMesh);
 }
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::EnsureUIVertexPool(UIVertexPool& pool, uint32_t pageCapacity, uint64_t vertexStride)
+{
+    if (pool.pAllocator)
+        return;
+
+    pool.PageCapacity = pageCapacity;
+    pool.VertexStride = vertexStride;
+    pool.pAllocator = std::make_unique<TBuddySuballocator<uint32_t>>(pageCapacity);
+
+    uint64_t bufferSize = static_cast<uint64_t>(pageCapacity) * vertexStride;
+    Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
+    Gem::ThrowGemError(CreateBuffer(bufferSize, Canvas::GfxMemoryUsage::DeviceLocal, &pBuffer));
+    pool.Pages.push_back(std::move(pBuffer));
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::GrowUIVertexPool(UIVertexPool& pool)
+{
+    pool.pAllocator->Grow();
+
+    uint64_t bufferSize = static_cast<uint64_t>(pool.PageCapacity) * pool.VertexStride;
+    Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
+    Gem::ThrowGemError(CreateBuffer(bufferSize, Canvas::GfxMemoryUsage::DeviceLocal, &pBuffer));
+    pool.Pages.push_back(std::move(pBuffer));
+}
+
+//------------------------------------------------------------------------------------------------
+Gem::Result CDevice12::AllocUITextVertices(uint32_t vertexCount, Canvas::GfxBufferSuballocation& out)
+{
+    if (vertexCount == 0)
+        return Gem::Result::InvalidArg;
+
+    try
+    {
+        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
+        EnsureUIVertexPool(m_UITextVertexPool, 4096, kVertexStride);
+
+        TBuddyBlock<uint32_t> block;
+        if (!m_UITextVertexPool.pAllocator->TryAllocate(vertexCount, block))
+        {
+            GrowUIVertexPool(m_UITextVertexPool);
+            if (!m_UITextVertexPool.pAllocator->TryAllocate(vertexCount, block))
+                return Gem::Result::OutOfMemory;
+        }
+
+        uint32_t logicalOffset = block.Start();
+        uint32_t pageIndex = logicalOffset / m_UITextVertexPool.PageCapacity;
+        uint32_t offsetInPage = logicalOffset % m_UITextVertexPool.PageCapacity;
+
+        out.pBuffer = m_UITextVertexPool.Pages[pageIndex];
+        out.Offset = static_cast<uint64_t>(offsetInPage) * kVertexStride;
+        out.Size = static_cast<uint64_t>(block.Size()) * kVertexStride;
+        out.AllocationKey = logicalOffset;
+
+        return Gem::Result::Success;
+    }
+    catch (Gem::GemError& e) { return e.Result(); }
+    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::FreeUITextVertices(const Canvas::GfxBufferSuballocation& suballoc)
+{
+    if (m_UITextVertexPool.pAllocator && suballoc.Size > 0)
+    {
+        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
+        uint32_t logicalOffset = static_cast<uint32_t>(suballoc.AllocationKey);
+        uint32_t vertexCount = static_cast<uint32_t>(suballoc.Size / kVertexStride);
+        auto block = TBuddySuballocator<uint32_t>::ReconstructBlock(logicalOffset, vertexCount);
+        m_UITextVertexPool.pAllocator->TryFree(block);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+Gem::Result CDevice12::AllocUIRectVertices(uint32_t vertexCount, Canvas::GfxBufferSuballocation& out)
+{
+    if (vertexCount == 0)
+        return Gem::Result::InvalidArg;
+
+    try
+    {
+        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
+        EnsureUIVertexPool(m_UIRectVertexPool, 1024, kVertexStride);
+
+        TBuddyBlock<uint32_t> block;
+        if (!m_UIRectVertexPool.pAllocator->TryAllocate(vertexCount, block))
+        {
+            GrowUIVertexPool(m_UIRectVertexPool);
+            if (!m_UIRectVertexPool.pAllocator->TryAllocate(vertexCount, block))
+                return Gem::Result::OutOfMemory;
+        }
+
+        uint32_t logicalOffset = block.Start();
+        uint32_t pageIndex = logicalOffset / m_UIRectVertexPool.PageCapacity;
+        uint32_t offsetInPage = logicalOffset % m_UIRectVertexPool.PageCapacity;
+
+        out.pBuffer = m_UIRectVertexPool.Pages[pageIndex];
+        out.Offset = static_cast<uint64_t>(offsetInPage) * kVertexStride;
+        out.Size = static_cast<uint64_t>(block.Size()) * kVertexStride;
+        out.AllocationKey = logicalOffset;
+
+        return Gem::Result::Success;
+    }
+    catch (Gem::GemError& e) { return e.Result(); }
+    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::FreeUIRectVertices(const Canvas::GfxBufferSuballocation& suballoc)
+{
+    if (m_UIRectVertexPool.pAllocator && suballoc.Size > 0)
+    {
+        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
+        uint32_t logicalOffset = static_cast<uint32_t>(suballoc.AllocationKey);
+        uint32_t vertexCount = static_cast<uint32_t>(suballoc.Size / kVertexStride);
+        auto block = TBuddySuballocator<uint32_t>::ReconstructBlock(logicalOffset, vertexCount);
+        m_UIRectVertexPool.pAllocator->TryFree(block);
+    }
+}

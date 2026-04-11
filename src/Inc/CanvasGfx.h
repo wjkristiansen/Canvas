@@ -162,6 +162,7 @@ namespace Canvas
         Gem::TGemPtr<XGfxBuffer> pBuffer;
         uint64_t Offset = 0;
         uint64_t Size = 0;
+        uint64_t AllocationKey = 0;     // Opaque key for suballocator deallocation
     };
 
     //------------------------------------------------------------------------------------------------

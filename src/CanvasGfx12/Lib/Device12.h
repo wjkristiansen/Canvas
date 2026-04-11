@@ -82,4 +82,27 @@ public:
         auto pCanvas = GetCanvas();
         return pCanvas ? pCanvas->GetLogger() : nullptr;
     }
+
+    // UI vertex buffer paged allocation
+    // Each pool has a buddy allocator (logical vertex-index space) + page table of GPU buffers
+    struct UIVertexPool
+    {
+        std::unique_ptr<TBuddySuballocator<uint32_t>> pAllocator;
+        std::vector<Gem::TGemPtr<Canvas::XGfxBuffer>> Pages;
+        uint32_t PageCapacity = 0;      // Vertices per page (power of 2)
+        uint64_t VertexStride = 0;      // Bytes per vertex
+    };
+
+    UIVertexPool m_UITextVertexPool;
+    UIVertexPool m_UIRectVertexPool;
+
+    void EnsureUIVertexPool(UIVertexPool& pool, uint32_t pageCapacity, uint64_t vertexStride);
+    void GrowUIVertexPool(UIVertexPool& pool);
+
+    // Internal UI vertex allocation (not on XGfxDevice interface)
+    Gem::Result AllocUITextVertices(uint32_t vertexCount, Canvas::GfxBufferSuballocation& out);
+    void FreeUITextVertices(const Canvas::GfxBufferSuballocation& suballoc);
+
+    Gem::Result AllocUIRectVertices(uint32_t vertexCount, Canvas::GfxBufferSuballocation& out);
+    void FreeUIRectVertices(const Canvas::GfxBufferSuballocation& suballoc);
 };
