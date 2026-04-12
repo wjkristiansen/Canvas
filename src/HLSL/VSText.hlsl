@@ -8,12 +8,12 @@
 cbuffer TextScreenConstants : register(b0)
 {
     float2 ScreenSize;   // Viewport width, height in pixels
-    float2 Padding;
+    float2 ElementOffset; // Element screen-space position (pixels)
 };
 
 struct TextVertex
 {
-    float3 Position;   // Screen-space pixel position (xy) + depth (z, ignored - always front)
+    float3 Position;   // Element-local pixel position (xy) + depth (z, ignored - always front)
     float2 TexCoord;   // Atlas UV [0,1]
     float4 Color;      // RGBA float color
 };
@@ -31,14 +31,12 @@ VSOutput main(uint vertexId : SV_VertexID)
 {
     TextVertex v = Vertices[vertexId];
 
-    // Convert screen-pixel (x,y) to NDC [-1,1].
-    // Vertex positions are quad corner coordinates in screen pixels (integer boundaries).
-    // Direct mapping: x=0 → NDC -1 (left edge), x=W → NDC +1 (right edge).
-    float ndcX =  (v.Position.x / ScreenSize.x) * 2.0f - 1.0f;
-    float ndcY = -(v.Position.y / ScreenSize.y) * 2.0f + 1.0f;
+    // Apply element offset and convert to NDC [-1,1].
+    float ndcX =  ((v.Position.x + ElementOffset.x) / ScreenSize.x) * 2.0f - 1.0f;
+    float ndcY = -((v.Position.y + ElementOffset.y) / ScreenSize.y) * 2.0f + 1.0f;
 
     VSOutput output;
-    output.Position = float4(ndcX, ndcY, 0.0f, 1.0f);  // z=0 → draws in front (regular Z)
+    output.Position = float4(ndcX, ndcY, 0.0f, 1.0f);
     output.TexCoord = v.TexCoord;
     output.Color = v.Color;
 

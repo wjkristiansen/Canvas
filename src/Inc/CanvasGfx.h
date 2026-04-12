@@ -221,12 +221,7 @@ namespace Canvas
         GEMMETHOD_(void, SetVisible)(bool visible) = 0;
         GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() = 0;
 
-        // CPU vertex data (for upload)
-        GEMMETHOD_(uint32_t, GetVertexCount)() const = 0;
-        GEMMETHOD_(const void*, GetVertexData)() const = 0;
-        GEMMETHOD_(bool, HasContent)() const = 0;
-
-        // GPU vertex buffer suballocation (assigned by render queue after upload)
+        // GPU vertex buffer (ready to draw, managed by graph + device)
         GEMMETHOD_(const GfxBufferSuballocation&, GetVertexBuffer)() const = 0;
         GEMMETHOD_(void, SetVertexBuffer)(const GfxBufferSuballocation& buffer) = 0;
     };
@@ -407,6 +402,12 @@ namespace Canvas
             const Canvas::Math::FloatVector4 *normals,
             XGfxRenderQueue *pRenderQueue,
             XGfxMeshData **ppMesh) = 0;
+
+        // UI vertex buffer suballocation (alloc + upload in one call)
+        GEMMETHOD(AllocUITextVertices)(uint32_t vertexCount, const void* pVertexData, XGfxRenderQueue* pRQ, GfxBufferSuballocation& out) = 0;
+        GEMMETHOD_(void, FreeUITextVertices)(const GfxBufferSuballocation& suballoc) = 0;
+        GEMMETHOD(AllocUIRectVertices)(uint32_t vertexCount, const void* pVertexData, XGfxRenderQueue* pRQ, GfxBufferSuballocation& out) = 0;
+        GEMMETHOD_(void, FreeUIRectVertices)(const GfxBufferSuballocation& suballoc) = 0;
     };
 }
 

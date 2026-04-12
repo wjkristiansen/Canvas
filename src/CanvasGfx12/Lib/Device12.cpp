@@ -548,9 +548,9 @@ void CDevice12::GrowUIVertexPool(UIVertexPool& pool)
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CDevice12::AllocUITextVertices(uint32_t vertexCount, Canvas::GfxBufferSuballocation& out)
+GEMMETHODIMP CDevice12::AllocUITextVertices(uint32_t vertexCount, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out)
 {
-    if (vertexCount == 0)
+    if (vertexCount == 0 || !pVertexData || !pRQ)
         return Gem::Result::InvalidArg;
 
     try
@@ -572,8 +572,12 @@ Gem::Result CDevice12::AllocUITextVertices(uint32_t vertexCount, Canvas::GfxBuff
 
         out.pBuffer = m_UITextVertexPool.Pages[pageIndex];
         out.Offset = static_cast<uint64_t>(offsetInPage) * kVertexStride;
-        out.Size = static_cast<uint64_t>(block.Size()) * kVertexStride;
+        out.Size = static_cast<uint64_t>(vertexCount) * kVertexStride;
         out.AllocationKey = logicalOffset;
+
+        // Stage the upload via the render queue
+        auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
+        Gem::ThrowGemError(pRQ12->StageBufferUpload(out, pVertexData, out.Size));
 
         return Gem::Result::Success;
     }
@@ -582,7 +586,7 @@ Gem::Result CDevice12::AllocUITextVertices(uint32_t vertexCount, Canvas::GfxBuff
 }
 
 //------------------------------------------------------------------------------------------------
-void CDevice12::FreeUITextVertices(const Canvas::GfxBufferSuballocation& suballoc)
+GEMMETHODIMP_(void) CDevice12::FreeUITextVertices(const Canvas::GfxBufferSuballocation& suballoc)
 {
     if (m_UITextVertexPool.pAllocator && suballoc.Size > 0)
     {
@@ -595,9 +599,9 @@ void CDevice12::FreeUITextVertices(const Canvas::GfxBufferSuballocation& suballo
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CDevice12::AllocUIRectVertices(uint32_t vertexCount, Canvas::GfxBufferSuballocation& out)
+GEMMETHODIMP CDevice12::AllocUIRectVertices(uint32_t vertexCount, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out)
 {
-    if (vertexCount == 0)
+    if (vertexCount == 0 || !pVertexData || !pRQ)
         return Gem::Result::InvalidArg;
 
     try
@@ -619,8 +623,12 @@ Gem::Result CDevice12::AllocUIRectVertices(uint32_t vertexCount, Canvas::GfxBuff
 
         out.pBuffer = m_UIRectVertexPool.Pages[pageIndex];
         out.Offset = static_cast<uint64_t>(offsetInPage) * kVertexStride;
-        out.Size = static_cast<uint64_t>(block.Size()) * kVertexStride;
+        out.Size = static_cast<uint64_t>(vertexCount) * kVertexStride;
         out.AllocationKey = logicalOffset;
+
+        // Stage the upload via the render queue
+        auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
+        Gem::ThrowGemError(pRQ12->StageBufferUpload(out, pVertexData, out.Size));
 
         return Gem::Result::Success;
     }
@@ -629,7 +637,7 @@ Gem::Result CDevice12::AllocUIRectVertices(uint32_t vertexCount, Canvas::GfxBuff
 }
 
 //------------------------------------------------------------------------------------------------
-void CDevice12::FreeUIRectVertices(const Canvas::GfxBufferSuballocation& suballoc)
+GEMMETHODIMP_(void) CDevice12::FreeUIRectVertices(const Canvas::GfxBufferSuballocation& suballoc)
 {
     if (m_UIRectVertexPool.pAllocator && suballoc.Size > 0)
     {

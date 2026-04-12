@@ -1395,7 +1395,21 @@ Gem::Result CRenderQueue12::StageBufferUpload(
     try
     {
         Canvas::GfxBufferSuballocation staging{};
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(dataSize, staging));
+        Gem::Result allocResult = m_pDevice->AllocateHostWriteRegion(dataSize, staging);
+        if (allocResult == Gem::Result::OutOfMemory)
+        {
+            // Shared pool exhausted — fall back to a dedicated upload buffer
+            // (same pattern as CreateMeshData)
+            Gem::TGemPtr<Canvas::XGfxBuffer> pDedicatedBuffer;
+            Gem::ThrowGemError(m_pDevice->CreateBuffer(dataSize, Canvas::GfxMemoryUsage::HostWrite, &pDedicatedBuffer));
+            staging.pBuffer = pDedicatedBuffer;
+            staging.Offset = 0;
+            staging.Size = dataSize;
+        }
+        else
+        {
+            Gem::ThrowGemError(allocResult);
+        }
 
         auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
         ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
@@ -1413,13 +1427,12 @@ Gem::Result CRenderQueue12::StageBufferUpload(
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CRenderQueue12::DrawUITextBatch(
-    const Canvas::UITextDrawCommand* pCommands,
-    uint32_t commandCount,
+Gem::Result CRenderQueue12::DrawUIText(
+    const Canvas::GfxBufferSuballocation& vertexBuffer,
     Canvas::XGfxSurface* pGlyphAtlas,
-    Canvas::XGfxBuffer* pVertexBuffer)
+    const Canvas::Math::FloatVector2& elementOffset)
 {
-    if (!pCommands || commandCount == 0 || !pGlyphAtlas || !m_pCurrentSwapChain || !pVertexBuffer)
+    if (!pGlyphAtlas || !m_pCurrentSwapChain || !vertexBuffer.pBuffer)
         return Gem::Result::InvalidArg;
 
     Canvas::GfxBufferSuballocation cbAlloc{};
@@ -1431,38 +1444,21 @@ Gem::Result CRenderQueue12::DrawUITextBatch(
 
         auto pAtlas = static_cast<CSurface12*>(pGlyphAtlas);
         CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
-        auto pVertexBuf = static_cast<CBuffer12*>(pVertexBuffer);
+        auto pVertexBuf = static_cast<CBuffer12*>(vertexBuffer.pBuffer.Get());
+        uint32_t vertexCount = static_cast<uint32_t>(vertexBuffer.Size / sizeof(Canvas::TextVertex));
 
-        // Flush all pending buffer uploads before drawing
-        FlushPendingBufferUploads();
-
-        // Draw task — reads page buffer after copies complete
-        auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUITextBatch");
-        m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pAtlas,
-            D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-            D3D12_BARRIER_SYNC_PIXEL_SHADING,
-            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pBackBuffer,
-            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
-            D3D12_BARRIER_SYNC_RENDER_TARGET,
-            D3D12_BARRIER_ACCESS_RENDER_TARGET);
-        m_UIGpuTaskGraph.DeclareBufferUsage(drawTask, pVertexBuf,
-            D3D12_BARRIER_SYNC_PIXEL_SHADING,
-            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-
-        // Shared screen constants CBV (one allocation for entire batch)
+        // Allocate all CPU-side resources before creating the GPU task
         constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
 
         auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
         ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
-        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), 0.0f, 0.0f };
+        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
         void* pCBMapped = nullptr;
         ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
         memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
         pCBResource->Unmap(0, nullptr);
 
-        // Atlas SRV descriptor
         ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
         UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
@@ -1476,15 +1472,24 @@ Gem::Result CRenderQueue12::DrawUITextBatch(
         pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
 
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
-        D3D12_GPU_VIRTUAL_ADDRESS vertexBaseAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress();
+        D3D12_GPU_VIRTUAL_ADDRESS vertexAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress() + vertexBuffer.Offset;
 
-        // SV_VertexID is not offset by StartVertexLocation when no IA vertex buffer is bound.
-        // Instead, offset the root SRV address per draw command so the shader reads from the
-        // correct region of the page buffer, and always use StartVertex=0.
+        // All resources ready — now create the GPU task
+        auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIText");
+        m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pAtlas,
+            D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+            D3D12_BARRIER_SYNC_PIXEL_SHADING,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pBackBuffer,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        m_UIGpuTaskGraph.DeclareBufferUsage(drawTask, pVertexBuf,
+            D3D12_BARRIER_SYNC_PIXEL_SHADING,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-        drawTask.RecordFunc = [cbvAddr, vertexBaseAddr, srvGpuHandle, pCommands, commandCount, this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [cbvAddr, vertexAddr, srvGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
-            constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
             ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
             pCL->SetDescriptorHeaps(2, heaps);
@@ -1493,13 +1498,8 @@ Gem::Result CRenderQueue12::DrawUITextBatch(
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
             pCL->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
-
-            for (uint32_t ci = 0; ci < commandCount; ++ci)
-            {
-                const auto& cmd = pCommands[ci];
-                pCL->SetGraphicsRootShaderResourceView(1, vertexBaseAddr + cmd.StartVertex * kVertexStride);
-                pCL->DrawInstanced(cmd.VertexCount, 1, 0, 0);
-            }
+            pCL->SetGraphicsRootShaderResourceView(1, vertexAddr);
+            pCL->DrawInstanced(vertexCount, 1, 0, 0);
         };
         m_UIGpuTaskGraph.InsertTask(drawTask);
 
@@ -1549,7 +1549,7 @@ void CRenderQueue12::FlushPendingBufferUploads()
             auto pDstBuf = static_cast<CBuffer12*>(u.Destination.pBuffer.Get());
             auto pSrcBuf = static_cast<CBuffer12*>(u.Staging.pBuffer.Get());
             pCL->CopyBufferRegion(pDstBuf->GetD3DResource(), u.Destination.Offset,
-                pSrcBuf->GetD3DResource(), u.Staging.Offset, u.Destination.Size);
+                pSrcBuf->GetD3DResource(), u.Staging.Offset, u.Staging.Size);
         }
     };
     m_UIGpuTaskGraph.InsertTask(copyTask);
@@ -1559,12 +1559,11 @@ void CRenderQueue12::FlushPendingBufferUploads()
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CRenderQueue12::DrawUIRectBatch(
-    const Canvas::UIRectDrawCommand* pCommands,
-    uint32_t commandCount,
-    Canvas::XGfxBuffer* pVertexBuffer)
+Gem::Result CRenderQueue12::DrawUIRect(
+    const Canvas::GfxBufferSuballocation& vertexBuffer,
+    const Canvas::Math::FloatVector2& elementOffset)
 {
-    if (!pCommands || commandCount == 0 || !m_pCurrentSwapChain || !pVertexBuffer)
+    if (!m_pCurrentSwapChain || !vertexBuffer.pBuffer)
         return Gem::Result::InvalidArg;
 
     Canvas::GfxBufferSuballocation cbAlloc{};
@@ -1575,13 +1574,26 @@ Gem::Result CRenderQueue12::DrawUIRectBatch(
         EnsureRectPSO(rtvFormat);
 
         CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
-        auto pVertexBuf = static_cast<CBuffer12*>(pVertexBuffer);
+        auto pVertexBuf = static_cast<CBuffer12*>(vertexBuffer.pBuffer.Get());
+        uint32_t vertexCount = static_cast<uint32_t>(vertexBuffer.Size / sizeof(Canvas::TextVertex));
 
-        // Flush all pending buffer uploads before drawing
-        FlushPendingBufferUploads();
+        // Allocate all CPU-side resources before creating the GPU task
+        constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
 
-        // Draw task — reads page buffer after copies complete
-        auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIRectBatch");
+        auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
+        ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
+        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
+        void* pCBMapped = nullptr;
+        ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
+        memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
+        pCBResource->Unmap(0, nullptr);
+
+        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+        D3D12_GPU_VIRTUAL_ADDRESS vertexAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress() + vertexBuffer.Offset;
+
+        // All resources ready — now create the GPU task
+        auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIRect");
         m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pBackBuffer,
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -1590,36 +1602,15 @@ Gem::Result CRenderQueue12::DrawUIRectBatch(
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-        // Shared screen constants CBV
-        constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
-
-        auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
-        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), 0.0f, 0.0f };
-        void* pCBMapped = nullptr;
-        ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
-        memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
-        pCBResource->Unmap(0, nullptr);
-
-        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
-        D3D12_GPU_VIRTUAL_ADDRESS vertexBaseAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress();
-
-        drawTask.RecordFunc = [cbvAddr, vertexBaseAddr, pCommands, commandCount, this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [cbvAddr, vertexAddr, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
-            constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
             pCL->SetGraphicsRootSignature(m_pRectRootSig);
             pCL->SetPipelineState(m_pRectPSO);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
-
-            for (uint32_t ci = 0; ci < commandCount; ++ci)
-            {
-                const auto& cmd = pCommands[ci];
-                pCL->SetGraphicsRootShaderResourceView(1, vertexBaseAddr + cmd.StartVertex * kVertexStride);
-                pCL->DrawInstanced(cmd.VertexCount, 1, 0, 0);
-            }
+            pCL->SetGraphicsRootShaderResourceView(1, vertexAddr);
+            pCL->DrawInstanced(vertexCount, 1, 0, 0);
         };
         m_UIGpuTaskGraph.InsertTask(drawTask);
 
@@ -1778,149 +1769,6 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::ProcessUIRenderables()
-{
-    // Detect removed elements by tracking which ones appear this frame
-    std::unordered_set<Canvas::XGfxUIElement*> textSeen, rectSeen;
-
-    // Collect visible elements from submitted UI nodes
-    struct VisibleElement { Canvas::XGfxUIElement* pElement; uint32_t VertexCount; };
-    std::vector<VisibleElement> visibleTexts, visibleRects;
-    Canvas::XGfxSurface* pAtlasTexture = nullptr;
-
-    for (Canvas::XGfxUIGraphNode* pNode : m_UIRenderableQueue)
-    {
-        UINT elemCount = pNode->GetBoundElementCount();
-        for (UINT i = 0; i < elemCount; ++i)
-        {
-            Canvas::XGfxUIElement* pElem = pNode->GetBoundElement(i);
-            if (!pElem->IsVisible())
-                continue;
-
-            uint32_t vertexCount = pElem->GetVertexCount();
-            if (pElem->GetType() == Canvas::UIElementType::Text)
-            {
-                textSeen.insert(pElem);
-                if (vertexCount > 0)
-                {
-                    visibleTexts.push_back({ pElem, vertexCount });
-                    if (!pAtlasTexture)
-                    {
-                        Gem::TGemPtr<Canvas::XGfxUITextElement> pText;
-                        if (SUCCEEDED(pElem->QueryInterface(&pText)))
-                            pAtlasTexture = pText->GetGlyphAtlasTexture();
-                    }
-                }
-            }
-            else if (pElem->GetType() == Canvas::UIElementType::Rect)
-            {
-                rectSeen.insert(pElem);
-                if (vertexCount > 0)
-                    visibleRects.push_back({ pElem, vertexCount });
-            }
-        }
-    }
-
-    // Free allocations for elements no longer present
-    constexpr uint64_t kTextVertexStride = sizeof(Canvas::TextVertex);
-
-    for (auto it = m_UITextAllocatedElements.begin(); it != m_UITextAllocatedElements.end();)
-    {
-        if (textSeen.find(*it) == textSeen.end())
-        {
-            auto vb = (*it)->GetVertexBuffer();
-            if (vb.Size > 0)
-                m_pDevice->FreeUITextVertices(vb);
-            (*it)->SetVertexBuffer({});
-            it = m_UITextAllocatedElements.erase(it);
-        }
-        else
-            ++it;
-    }
-    for (auto it = m_UIRectAllocatedElements.begin(); it != m_UIRectAllocatedElements.end();)
-    {
-        if (rectSeen.find(*it) == rectSeen.end())
-        {
-            auto vb = (*it)->GetVertexBuffer();
-            if (vb.Size > 0)
-                m_pDevice->FreeUIRectVertices(vb);
-            (*it)->SetVertexBuffer({});
-            it = m_UIRectAllocatedElements.erase(it);
-        }
-        else
-            ++it;
-    }
-
-    // --- Rect batch (drawn first, behind text) ---
-    for (auto& vis : visibleRects)
-    {
-        auto vb = vis.pElement->GetVertexBuffer();
-        uint64_t neededSize = static_cast<uint64_t>(vis.VertexCount) * kTextVertexStride;
-        if (neededSize > vb.Size)
-        {
-            if (vb.Size > 0)
-                m_pDevice->FreeUIRectVertices(vb);
-            Canvas::GfxBufferSuballocation newVb{};
-            Gem::ThrowGemError(m_pDevice->AllocUIRectVertices(vis.VertexCount, newVb));
-            vis.pElement->SetVertexBuffer(newVb);
-            m_UIRectAllocatedElements.insert(vis.pElement);
-        }
-        auto& currentVb = vis.pElement->GetVertexBuffer();
-        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
-        Gem::ThrowGemError(StageBufferUpload(currentVb, vis.pElement->GetVertexData(),
-            static_cast<uint64_t>(vis.VertexCount) * kVertexStride));
-    }
-
-    // Group rect draw commands by page buffer
-    std::unordered_map<Canvas::XGfxBuffer*, std::vector<Canvas::UIRectDrawCommand>> rectCommandsByPage;
-    for (auto& vis : visibleRects)
-    {
-        auto& vb = vis.pElement->GetVertexBuffer();
-        uint32_t startVertex = static_cast<uint32_t>(vb.Offset / kTextVertexStride);
-        rectCommandsByPage[vb.pBuffer.Get()].push_back({ startVertex, vis.VertexCount });
-    }
-    for (auto& [pBuffer, commands] : rectCommandsByPage)
-    {
-        Gem::ThrowGemError(DrawUIRectBatch(commands.data(), static_cast<uint32_t>(commands.size()), pBuffer));
-    }
-
-    // --- Text batch (drawn after rects) ---
-    if (!pAtlasTexture || visibleTexts.empty())
-        return;
-
-    for (auto& vis : visibleTexts)
-    {
-        auto vb = vis.pElement->GetVertexBuffer();
-        uint64_t neededSize = static_cast<uint64_t>(vis.VertexCount) * kTextVertexStride;
-        if (neededSize > vb.Size)
-        {
-            if (vb.Size > 0)
-                m_pDevice->FreeUITextVertices(vb);
-            Canvas::GfxBufferSuballocation newVb{};
-            Gem::ThrowGemError(m_pDevice->AllocUITextVertices(vis.VertexCount, newVb));
-            vis.pElement->SetVertexBuffer(newVb);
-            m_UITextAllocatedElements.insert(vis.pElement);
-        }
-        auto& currentVb = vis.pElement->GetVertexBuffer();
-        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
-        Gem::ThrowGemError(StageBufferUpload(currentVb, vis.pElement->GetVertexData(),
-            static_cast<uint64_t>(vis.VertexCount) * kVertexStride));
-    }
-
-    // Group text draw commands by page buffer
-    std::unordered_map<Canvas::XGfxBuffer*, std::vector<Canvas::UITextDrawCommand>> textCommandsByPage;
-    for (auto& vis : visibleTexts)
-    {
-        auto& vb = vis.pElement->GetVertexBuffer();
-        uint32_t startVertex = static_cast<uint32_t>(vb.Offset / kTextVertexStride);
-        textCommandsByPage[vb.pBuffer.Get()].push_back({ startVertex, vis.VertexCount });
-    }
-    for (auto& [pBuffer, commands] : textCommandsByPage)
-    {
-        Gem::ThrowGemError(DrawUITextBatch(commands.data(), static_cast<uint32_t>(commands.size()), pAtlasTexture, pBuffer));
-    }
-}
-
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::EndFrame()
 {
@@ -2059,8 +1907,39 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
         RetireUploadAllocation(cbAlloc);
 
-        // Process UI renderables (rect and text draw batching)
-        ProcessUIRenderables();
+        // Flush pending vertex uploads staged during SubmitRenderables
+        FlushPendingBufferUploads();
+
+        // Draw UI elements (pure draw — uploads already staged by SubmitRenderables)
+        for (auto* pNode : m_UIRenderableQueue)
+        {
+            UINT elemCount = pNode->GetBoundElementCount();
+            for (UINT i = 0; i < elemCount; ++i)
+            {
+                auto* pElem = pNode->GetBoundElement(i);
+                if (!pElem->IsVisible())
+                    continue;
+                auto& vb = pElem->GetVertexBuffer();
+                if (vb.Size == 0)
+                    continue;
+
+                Canvas::Math::FloatVector2 elementOffset = pNode->GetGlobalPosition();
+
+                if (pElem->GetType() == Canvas::UIElementType::Rect)
+                {
+                    Gem::ThrowGemError(DrawUIRect(vb, elementOffset));
+                }
+                else if (pElem->GetType() == Canvas::UIElementType::Text)
+                {
+                    Canvas::XGfxSurface* pAtlas = nullptr;
+                    Gem::TGemPtr<Canvas::XGfxUITextElement> pText;
+                    if (SUCCEEDED(pElem->QueryInterface(&pText)))
+                        pAtlas = pText->GetGlyphAtlasTexture();
+                    if (pAtlas)
+                        Gem::ThrowGemError(DrawUIText(vb, pAtlas, elementOffset));
+                }
+            }
+        }
         m_UIRenderableQueue.clear();
     }
     catch (Gem::GemError &e)

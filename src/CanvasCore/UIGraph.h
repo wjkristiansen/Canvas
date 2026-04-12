@@ -12,6 +12,7 @@ class CUIGraph : public Gem::TGeneric<XGfxUIGraph>
 {
     Gem::TGemPtr<CUIGraphNodeImpl> m_pRootNode;
     std::unique_ptr<CGlyphAtlasImpl> m_pAtlas;
+    XGfxDevice* m_pDevice = nullptr;        // Weak ref for vertex allocation
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -24,6 +25,7 @@ public:
     void Uninitialize() {}
 
     void SetAtlas(std::unique_ptr<CGlyphAtlasImpl> pAtlas) { m_pAtlas = std::move(pAtlas); }
+    void SetDevice(XGfxDevice* pDevice) { m_pDevice = pDevice; }
 
     GEMMETHOD(CreateTextElement)(XGfxUIGraphNode* pNode, XGfxUITextElement** ppElement) override;
     GEMMETHOD(CreateRectElement)(XGfxUIGraphNode* pNode, XGfxUIRectElement** ppElement) override;

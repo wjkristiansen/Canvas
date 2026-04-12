@@ -77,7 +77,6 @@ GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XGfxUIGraphNode* pChild)
         pEntry->pPrev = pLast;
     }
 
-    pImpl->InvalidateElementPositionsRecursive();
     return Gem::Result::Success;
 }
 
@@ -127,7 +126,6 @@ void CUIGraphNodeImpl::SetLocalPosition(const Math::FloatVector2& position)
         return;
 
     m_LocalPosition = position;
-    InvalidateElementPositionsRecursive();
 }
 
 GEMMETHODIMP_(Math::FloatVector2) CUIGraphNodeImpl::GetGlobalPosition()
@@ -146,7 +144,7 @@ GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XGfxUIElement* pElement)
     if (!pElement)
         return Gem::Result::BadPointer;
 
-    XUIGraphNode* pCurrentNode = pElement->GetAttachedNode();
+    XGfxUIGraphNode* pCurrentNode = pElement->GetAttachedNode();
     if (pCurrentNode == this)
     {
         // Already bound to this node; nothing to do.
@@ -160,9 +158,10 @@ GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XGfxUIElement* pElement)
         static_cast<CUIGraphNodeImpl*>(pCurrentNode)->UnbindElement(pElement);
     }
 
-    CUIElementState* pState = CUIElementState::GetState(pElement);
-    if (pState)
-        pState->SetAttachedNode(this);
+    if (pElement->GetType() == UIElementType::Text)
+        AsText(pElement)->SetAttachedNode(this);
+    else if (pElement->GetType() == UIElementType::Rect)
+        AsRect(pElement)->SetAttachedNode(this);
 
     m_Elements.emplace_back(pElement);
     return Gem::Result::Success;
@@ -174,53 +173,13 @@ void CUIGraphNodeImpl::UnbindElement(XGfxUIElement* pElement)
     {
         if (it->Get() == pElement)
         {
-            CUIElementState* pState = CUIElementState::GetState(pElement);
-            if (pState)
-                pState->SetAttachedNode(nullptr);
+            if (pElement->GetType() == UIElementType::Text)
+                AsText(pElement)->SetAttachedNode(nullptr);
+            else if (pElement->GetType() == UIElementType::Rect)
+                AsRect(pElement)->SetAttachedNode(nullptr);
             m_Elements.erase(it);
             return;
         }
-    }
-}
-
-void CUIGraphNodeImpl::InvalidateElementPositions()
-{
-    for (auto& elem : m_Elements)
-    {
-        CUIElementState* pState = CUIElementState::GetState(elem.Get());
-        if (pState)
-            pState->MarkPositionDirty();
-    }
-}
-
-void CUIGraphNodeImpl::InvalidateElementPositionsRecursive()
-{
-    InvalidateElementPositions();
-    for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->pNext)
-    {
-        CUIGraphNodeImpl* pImpl = GetImpl(pChild->pNode.Get());
-        if (pImpl)
-            pImpl->InvalidateElementPositionsRecursive();
-    }
-}
-
-//================================================================================================
-// CUIElementState
-//================================================================================================
-
-CUIElementState* CUIElementState::GetState(XGfxUIElement* pElement)
-{
-    if (!pElement)
-        return nullptr;
-
-    switch (pElement->GetType())
-    {
-    case UIElementType::Text:
-        return static_cast<CUITextElement*>(static_cast<XGfxUITextElement*>(pElement));
-    case UIElementType::Rect:
-        return static_cast<CUIRectElement*>(static_cast<XGfxUIRectElement*>(pElement));
-    default:
-        return nullptr;
     }
 }
 
@@ -237,7 +196,7 @@ void CUITextElement::SetText(PCSTR utf8Text)
         return;
 
     m_Text = utf8Text;
-    m_DirtyFlags |= DirtyContent;
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -247,7 +206,7 @@ void CUITextElement::SetFont(XFont* pFont)
         return;
 
     m_pFont = pFont;
-    m_DirtyFlags |= DirtyContent;
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -257,7 +216,7 @@ void CUITextElement::SetGlyphAtlasInternal(CGlyphAtlasImpl* pAtlas)
         return;
 
     m_pAtlas = pAtlas;
-    m_DirtyFlags |= DirtyContent;
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -271,7 +230,7 @@ void CUITextElement::SetLayoutConfig(const TextLayoutConfig& config)
         return;
 
     m_Config = config;
-    m_DirtyFlags |= DirtyContent;
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -291,10 +250,9 @@ void CUITextElement::RegenerateVertices()
     if (Gem::Failed(result))
         return;
 
-    Math::FloatVector2 absPos = {};
-    if (m_pAttachedNode)
-        absPos = m_pAttachedNode->GetGlobalPosition();
-    Math::FloatVector3 screenPos(absPos.X, absPos.Y, 0.0f);
+    // Generate vertices in element-local space (origin at 0,0).
+    // The node's screen-space position is applied as a per-draw constant by the shader.
+    Math::FloatVector3 screenPos(0.0f, 0.0f, 0.0f);
 
     const CTrueTypeFont::FontMetrics& metrics = pFontData->GetMetrics();
     float lineHeightUnits = (metrics.Ascender - metrics.Descender + metrics.LineGap);
@@ -394,7 +352,7 @@ void CUIRectElement::SetSize(const Math::FloatVector2& size)
         return;
 
     m_Size = size;
-    m_DirtyFlags |= DirtyContent;
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -405,7 +363,9 @@ void CUIRectElement::SetFillColor(const Math::FloatVector4& color)
         return;
 
     m_FillColor = color;
-    m_DirtyFlags |= DirtyContent;
+    // TODO: Color is still baked into vertices (TextVertex::Color). Once color moves
+    // to a per-draw constant, this no longer needs to mark dirty.
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -416,13 +376,12 @@ void CUIRectElement::RegenerateVertices()
     if (m_Size.X <= 0.0f || m_Size.Y <= 0.0f)
         return;
 
-    Math::FloatVector2 absPos = {};
-    if (m_pAttachedNode)
-        absPos = m_pAttachedNode->GetGlobalPosition();
-    float x0 = absPos.X;
-    float y0 = absPos.Y;
-    float x1 = x0 + m_Size.X;
-    float y1 = y0 + m_Size.Y;
+    // Generate vertices in element-local space (origin at 0,0).
+    // The node's screen-space position is applied as a per-draw constant by the shader.
+    float x0 = 0.0f;
+    float y0 = 0.0f;
+    float x1 = m_Size.X;
+    float y1 = m_Size.Y;
 
     m_CachedVertices.resize(6);
 

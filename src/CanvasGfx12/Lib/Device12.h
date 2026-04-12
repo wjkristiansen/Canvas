@@ -99,10 +99,9 @@ public:
     void EnsureUIVertexPool(UIVertexPool& pool, uint32_t pageCapacity, uint64_t vertexStride);
     void GrowUIVertexPool(UIVertexPool& pool);
 
-    // Internal UI vertex allocation (not on XGfxDevice interface)
-    Gem::Result AllocUITextVertices(uint32_t vertexCount, Canvas::GfxBufferSuballocation& out);
-    void FreeUITextVertices(const Canvas::GfxBufferSuballocation& suballoc);
-
-    Gem::Result AllocUIRectVertices(uint32_t vertexCount, Canvas::GfxBufferSuballocation& out);
-    void FreeUIRectVertices(const Canvas::GfxBufferSuballocation& suballoc);
+    // UI vertex buffer paged allocation (XGfxDevice interface — alloc + upload)
+    GEMMETHOD(AllocUITextVertices)(uint32_t vertexCount, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out) final;
+    GEMMETHOD_(void, FreeUITextVertices)(const Canvas::GfxBufferSuballocation& suballoc) final;
+    GEMMETHOD(AllocUIRectVertices)(uint32_t vertexCount, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out) final;
+    GEMMETHOD_(void, FreeUIRectVertices)(const Canvas::GfxBufferSuballocation& suballoc) final;
 };

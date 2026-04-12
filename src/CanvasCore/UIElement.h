@@ -2,8 +2,6 @@
 // UIElement - UI graph nodes and element types
 //
 // CUIGraphNodeImpl: XGfxUIGraphNode implementation — tree structure and screen-space position
-// CUIElementState: Non-Gem base for element dirty tracking, vertex buffer, visibility
-// TUIElement<T>: Gem interface bridge for concrete element types
 // CUITextElement: text element with cached vertex generation
 // CUIRectElement: rectangle element with cached vertex generation
 //================================================================================================
@@ -79,88 +77,26 @@ public:
 private:
     static CUIGraphNodeImpl* GetImpl(XGfxUIGraphNode* pNode);
     ChildNode* FindChildNode(XGfxUIGraphNode* pChild);
-    void InvalidateElementPositions();
-    void InvalidateElementPositionsRecursive();
-};
-
-//================================================================================================
-// CUIElementState - Non-Gem base class for element dirty tracking and vertex buffer
-//================================================================================================
-
-class CUIElementState
-{
-public:
-    enum DirtyFlags : uint32_t
-    {
-        DirtyNone = 0,
-        DirtyContent = 1 << 0,
-        DirtyPosition = 1 << 1,
-        DirtyAll = DirtyContent | DirtyPosition,
-    };
-
-protected:
-    GfxBufferSuballocation m_VertexBuffer;
-    XGfxUIGraphNode* m_pAttachedNode = nullptr;    // Weak pointer to owning node
-    uint32_t m_DirtyFlags = DirtyAll;
-    bool m_Visible = true;
-
-public:
-    virtual ~CUIElementState() = default;
-
-    XGfxUIGraphNode* GetAttachedNode() { return m_pAttachedNode; }
-    void SetAttachedNode(XGfxUIGraphNode* pNode) { m_pAttachedNode = pNode; }
-
-    bool IsVisible() const { return m_Visible; }
-    void SetVisible(bool visible) { m_Visible = visible; }
-
-    uint32_t GetDirtyFlags() const { return m_DirtyFlags; }
-    void ClearDirtyFlags(uint32_t flags) { m_DirtyFlags &= ~flags; }
-    void MarkPositionDirty() { m_DirtyFlags |= DirtyPosition; }
-
-    virtual UIElementType GetType() const { return UIElementType::Root; }
-    virtual void RegenerateVertices() {}
-
-    // Resolve CUIElementState* from an XGfxUIElement*
-    static CUIElementState* GetState(XGfxUIElement* pElement);
-};
-
-//================================================================================================
-// TUIElement - Gem-interface template for concrete UI element types
-//================================================================================================
-
-template<class TInterface>
-class TUIElement : public Gem::TGeneric<TInterface>, public CUIElementState
-{
-public:
-    void Initialize() {}
-    void Uninitialize() {}
-
-    GEMMETHOD_(UIElementType, GetType)() const override { return CUIElementState::GetType(); }
-    GEMMETHOD_(bool, IsVisible)() const override { return CUIElementState::IsVisible(); }
-    GEMMETHOD_(void, SetVisible)(bool visible) override { CUIElementState::SetVisible(visible); }
-    GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
-
-    // Default vertex data access (no content)
-    GEMMETHOD_(uint32_t, GetVertexCount)() const override { return 0; }
-    GEMMETHOD_(const void*, GetVertexData)() const override { return nullptr; }
-    GEMMETHOD_(bool, HasContent)() const override { return false; }
-
-    // GPU vertex buffer suballocation (assigned by render queue after upload)
-    GEMMETHOD_(const GfxBufferSuballocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
-    GEMMETHOD_(void, SetVertexBuffer)(const GfxBufferSuballocation& buffer) override { m_VertexBuffer = buffer; }
 };
 
 //================================================================================================
 // CUITextElement - Text element with cached vertex generation
 //================================================================================================
 
-class CUITextElement : public TUIElement<XGfxUITextElement>
+class CUITextElement : public Gem::TGeneric<XGfxUITextElement>
 {
+    // Content
     std::string m_Text;
     XFont* m_pFont = nullptr;
     CGlyphAtlasImpl* m_pAtlas = nullptr;
     TextLayoutConfig m_Config;
     std::vector<TextVertex> m_CachedVertices;
+
+    // State
+    XGfxUIGraphNode* m_pAttachedNode = nullptr;
+    GfxBufferSuballocation m_VertexBuffer;
+    bool m_Visible = true;
+    bool m_Dirty = true;  // Content changed, needs vertex regen + GPU upload
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -169,20 +105,33 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CUITextElement() = default;
+    void Initialize() {}
+    void Uninitialize() {}
 
-    UIElementType GetType() const override { return UIElementType::Text; }
+    // XGfxUIElement
+    GEMMETHOD_(UIElementType, GetType)() const override { return UIElementType::Text; }
+    GEMMETHOD_(bool, IsVisible)() const override { return m_Visible; }
+    GEMMETHOD_(void, SetVisible)(bool visible) override { m_Visible = visible; }
+    GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
+    GEMMETHOD_(const GfxBufferSuballocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
+    GEMMETHOD_(void, SetVertexBuffer)(const GfxBufferSuballocation& buffer) override { m_VertexBuffer = buffer; }
 
+    // XGfxUITextElement
     GEMMETHOD_(void, SetText)(PCSTR utf8Text) override;
     GEMMETHOD_(PCSTR, GetText)() const override { return m_Text.c_str(); }
     GEMMETHOD_(void, SetFont)(XFont* pFont) override;
     GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) override;
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const override { return m_Config; }
-
-    void RegenerateVertices() override;
-    GEMMETHOD_(uint32_t, GetVertexCount)() const override { return static_cast<uint32_t>(m_CachedVertices.size()); }
-    GEMMETHOD_(const void*, GetVertexData)() const override { return m_CachedVertices.data(); }
-    GEMMETHOD_(bool, HasContent)() const override { return !m_Text.empty(); }
     GEMMETHOD_(XGfxSurface*, GetGlyphAtlasTexture)() override;
+
+    // Internal (accessed by CUIGraph during walk)
+    void SetAttachedNode(XGfxUIGraphNode* pNode) { m_pAttachedNode = pNode; }
+    bool IsDirty() const { return m_Dirty; }
+    void ClearDirty() { m_Dirty = false; }
+    void RegenerateVertices();
+    uint32_t GetVertexCount() const { return static_cast<uint32_t>(m_CachedVertices.size()); }
+    const void* GetVertexData() const { return m_CachedVertices.data(); }
+    bool HasContent() const { return !m_Text.empty(); }
 
     void SetGlyphAtlasInternal(CGlyphAtlasImpl* pAtlas);
     CGlyphAtlasImpl* GetGlyphAtlas() const { return m_pAtlas; }
@@ -192,11 +141,16 @@ public:
 // CUIRectElement - Rectangle element with cached vertex generation
 //================================================================================================
 
-class CUIRectElement : public TUIElement<XGfxUIRectElement>
+class CUIRectElement : public Gem::TGeneric<XGfxUIRectElement>
 {
     Math::FloatVector4 m_FillColor = { 1.0f, 1.0f, 1.0f, 1.0f };
     Math::FloatVector2 m_Size = {};
     std::vector<TextVertex> m_CachedVertices;
+
+    XGfxUIGraphNode* m_pAttachedNode = nullptr;
+    GfxBufferSuballocation m_VertexBuffer;
+    bool m_Visible = true;
+    bool m_Dirty = true;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -205,19 +159,36 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CUIRectElement() = default;
+    void Initialize() {}
+    void Uninitialize() {}
 
-    UIElementType GetType() const override { return UIElementType::Rect; }
+    // XGfxUIElement
+    GEMMETHOD_(UIElementType, GetType)() const override { return UIElementType::Rect; }
+    GEMMETHOD_(bool, IsVisible)() const override { return m_Visible; }
+    GEMMETHOD_(void, SetVisible)(bool visible) override { m_Visible = visible; }
+    GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
+    GEMMETHOD_(const GfxBufferSuballocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
+    GEMMETHOD_(void, SetVertexBuffer)(const GfxBufferSuballocation& buffer) override { m_VertexBuffer = buffer; }
 
+    // XGfxUIRectElement
     GEMMETHOD_(void, SetSize)(const Math::FloatVector2& size) override;
     GEMMETHOD_(const Math::FloatVector2&, GetSize)() const override { return m_Size; }
     GEMMETHOD_(void, SetFillColor)(const Math::FloatVector4& color) override;
     GEMMETHOD_(const Math::FloatVector4&, GetFillColor)() const override { return m_FillColor; }
 
-    void RegenerateVertices() override;
-    GEMMETHOD_(uint32_t, GetVertexCount)() const override { return static_cast<uint32_t>(m_CachedVertices.size()); }
-    GEMMETHOD_(const void*, GetVertexData)() const override { return m_CachedVertices.data(); }
-    GEMMETHOD_(bool, HasContent)() const override { return m_Size.X > 0.0f && m_Size.Y > 0.0f; }
+    // Internal
+    void SetAttachedNode(XGfxUIGraphNode* pNode) { m_pAttachedNode = pNode; }
+    bool IsDirty() const { return m_Dirty; }
+    void ClearDirty() { m_Dirty = false; }
+    void RegenerateVertices();
+    uint32_t GetVertexCount() const { return static_cast<uint32_t>(m_CachedVertices.size()); }
+    const void* GetVertexData() const { return m_CachedVertices.data(); }
+    bool HasContent() const { return m_Size.X > 0.0f && m_Size.Y > 0.0f; }
 };
+
+// Concrete-type cast helpers (used by CUIGraph during tree walk)
+inline CUITextElement* AsText(XGfxUIElement* p) { return static_cast<CUITextElement*>(static_cast<XGfxUITextElement*>(p)); }
+inline CUIRectElement* AsRect(XGfxUIElement* p) { return static_cast<CUIRectElement*>(static_cast<XGfxUIRectElement*>(p)); }
 
 } // namespace Canvas
 

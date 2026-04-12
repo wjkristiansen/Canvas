@@ -68,12 +68,8 @@ Gem::Result CUIGraph::RemoveElement(XGfxUIElement* pElement)
     if (!pElement)
         return Gem::Result::BadPointer;
 
-    CUIElementState* pState = CUIElementState::GetState(pElement);
-    if (!pState)
-        return Gem::Result::InvalidArg;
-
-    // Unbind from node
-    XGfxUIGraphNode* pNode = pState->GetAttachedNode();
+    // Unbind from node — vertex allocation stays with the element
+    XGfxUIGraphNode* pNode = pElement->GetAttachedNode();
     if (pNode)
     {
         CUIGraphNodeImpl* pImpl = static_cast<CUIGraphNodeImpl*>(pNode);
@@ -94,21 +90,23 @@ Gem::Result CUIGraph::Update()
 //------------------------------------------------------------------------------------------------
 void CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
 {
-    // Update bound elements on this node
     for (UINT i = 0; i < pNode->GetBoundElementCount(); ++i)
     {
         XGfxUIElement* pElem = pNode->GetBoundElement(i);
-        CUIElementState* pState = CUIElementState::GetState(pElem);
-        if (!pState || !pState->IsVisible())
+        if (!pElem->IsVisible())
             continue;
 
-        uint32_t dirty = pState->GetDirtyFlags();
-        if (dirty & (CUIElementState::DirtyContent | CUIElementState::DirtyPosition))
+        if (pElem->GetType() == UIElementType::Text)
         {
-            pState->RegenerateVertices();
-
-            if (pElem->GetVertexCount() > 0 || !pElem->HasContent())
-                pState->ClearDirtyFlags(CUIElementState::DirtyContent | CUIElementState::DirtyPosition);
+            auto* pText = AsText(pElem);
+            if (pText->IsDirty())
+                pText->RegenerateVertices();
+        }
+        else if (pElem->GetType() == UIElementType::Rect)
+        {
+            auto* pRect = AsRect(pElem);
+            if (pRect->IsDirty())
+                pRect->RegenerateVertices();
         }
     }
 
@@ -124,9 +122,15 @@ void CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
 //------------------------------------------------------------------------------------------------
 Gem::Result CUIGraph::SubmitRenderables(XRenderQueue* pRenderQueue)
 {
-    if (!pRenderQueue || !m_pRootNode)
-        return !pRenderQueue ? Gem::Result::BadPointer : Gem::Result::Success;
+    if (!m_pDevice || !m_pRootNode)
+        return Gem::Result::Success;
+    if (!pRenderQueue)
+        return Gem::Result::BadPointer;
 
+    Gem::TGemPtr<XGfxRenderQueue> pGfxRQ;
+    Gem::ThrowGemError(pRenderQueue->QueryInterface(&pGfxRQ));
+
+    // Walk node tree: alloc+upload for dirty elements, submit nodes with visible content
     std::vector<XGfxUIGraphNode*> stack;
     stack.push_back(m_pRootNode.Get());
     while (!stack.empty())
@@ -134,7 +138,55 @@ Gem::Result CUIGraph::SubmitRenderables(XRenderQueue* pRenderQueue)
         XGfxUIGraphNode* pNode = stack.back();
         stack.pop_back();
 
-        if (pNode->GetBoundElementCount() > 0)
+        bool hasVisibleElements = false;
+        UINT elemCount = pNode->GetBoundElementCount();
+        for (UINT i = 0; i < elemCount; ++i)
+        {
+            XGfxUIElement* pElem = pNode->GetBoundElement(i);
+            if (!pElem->IsVisible())
+                continue;
+
+            if (pElem->GetType() == UIElementType::Text)
+            {
+                auto* pText = AsText(pElem);
+                if (!pText->HasContent() || pText->GetVertexCount() == 0)
+                    continue;
+                hasVisibleElements = true;
+
+                if (pText->IsDirty())
+                {
+                    auto vb = pText->GetVertexBuffer();
+                    if (vb.Size > 0)
+                        m_pDevice->FreeUITextVertices(vb);
+                    GfxBufferSuballocation newVb{};
+                    Gem::ThrowGemError(m_pDevice->AllocUITextVertices(
+                        pText->GetVertexCount(), pText->GetVertexData(), pGfxRQ, newVb));
+                    pText->SetVertexBuffer(newVb);
+                    pText->ClearDirty();
+                }
+            }
+            else if (pElem->GetType() == UIElementType::Rect)
+            {
+                auto* pRect = AsRect(pElem);
+                if (!pRect->HasContent() || pRect->GetVertexCount() == 0)
+                    continue;
+                hasVisibleElements = true;
+
+                if (pRect->IsDirty())
+                {
+                    auto vb = pRect->GetVertexBuffer();
+                    if (vb.Size > 0)
+                        m_pDevice->FreeUIRectVertices(vb);
+                    GfxBufferSuballocation newVb{};
+                    Gem::ThrowGemError(m_pDevice->AllocUIRectVertices(
+                        pRect->GetVertexCount(), pRect->GetVertexData(), pGfxRQ, newVb));
+                    pRect->SetVertexBuffer(newVb);
+                    pRect->ClearDirty();
+                }
+            }
+        }
+
+        if (hasVisibleElements)
             Gem::ThrowGemError(pRenderQueue->SubmitForUIRender(pNode));
 
         for (XGfxUIGraphNode* pChild = pNode->GetFirstChild(); pChild; pChild = pChild->GetNextSibling())

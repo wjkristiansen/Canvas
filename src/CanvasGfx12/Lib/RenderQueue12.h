@@ -590,14 +590,9 @@ public:
 
     Gem::Result StageBufferUpload(const Canvas::GfxBufferSuballocation& destination, const void* pData, uint64_t dataSize);
     void FlushPendingBufferUploads();
-    Gem::Result DrawUITextBatch(const Canvas::UITextDrawCommand* pCommands, uint32_t commandCount, Canvas::XGfxSurface* pGlyphAtlas, Canvas::XGfxBuffer* pVertexBuffer);
-    Gem::Result DrawUIRectBatch(const Canvas::UIRectDrawCommand* pCommands, uint32_t commandCount, Canvas::XGfxBuffer* pVertexBuffer);
-
-    void ProcessUIRenderables();
-
-    // Tracking sets for elements with active vertex buffer allocations
-    std::unordered_set<Canvas::XGfxUIElement*> m_UITextAllocatedElements;
-    std::unordered_set<Canvas::XGfxUIElement*> m_UIRectAllocatedElements;
+    // Internal UI element drawing (mirrors DrawMesh pattern)
+    Gem::Result DrawUIText(const Canvas::GfxBufferSuballocation& vertexBuffer, Canvas::XGfxSurface* pGlyphAtlas, const Canvas::Math::FloatVector2& elementOffset);
+    Gem::Result DrawUIRect(const Canvas::GfxBufferSuballocation& vertexBuffer, const Canvas::Math::FloatVector2& elementOffset);
     
     // Allocate a shader-visible SRV descriptor slot and return GPU handle
     D3D12_GPU_DESCRIPTOR_HANDLE CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc);
