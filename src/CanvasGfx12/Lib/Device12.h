@@ -35,13 +35,17 @@ class CDevice12 : public TGfxElement<Canvas::XGfxDevice>
 public:
     CComPtr<ID3D12Device10> m_pD3DDevice;
 
-    // Host-write (upload) scratch buffer.  The buddy suballocator tracks in
-    // units of kHostWriteUnitSize bytes so that tracking overhead stays small
-    // (16K entries for 4 MB instead of 4M entries at byte granularity).
-    static constexpr uint64_t kHostWriteUnitSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT; // 256
-    uint64_t m_HostWriteSize = 4 * 1024 * 1024; // 4 MB default
-    TBuddySuballocator<uint64_t> m_HostWriteSuballocator;
-    Gem::TGemPtr<Canvas::XGfxBuffer> m_pHostWriteBuffer;
+    // Bucketed pool for UPLOAD heap buffers (host-write staging).
+    // Buckets cover powers of 2 from 256 B to 4 MB.  Oversized requests
+    // get a dedicated unpooled buffer.
+    static constexpr uint64_t kMinBucketSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT; // 256 bytes
+    static constexpr uint64_t kMaxBucketSize = 4 * 1024 * 1024;  // 4 MB
+    static constexpr uint32_t kMinBucketLog2 = 8;   // log2(256)
+    static constexpr uint32_t kMaxBucketLog2 = 22;  // log2(4 MB)
+    static constexpr uint32_t kNumBuckets = kMaxBucketLog2 - kMinBucketLog2 + 1;  // 15
+    static constexpr uint32_t kBucketPoolCap = 8;    // Max buffers retained per bucket
+
+    std::vector<Gem::TGemPtr<Canvas::XGfxBuffer>> m_HostWriteBuckets[kNumBuckets];
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxDevice)

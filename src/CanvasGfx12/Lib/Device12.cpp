@@ -11,8 +11,7 @@
 
 //------------------------------------------------------------------------------------------------
 CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
-    TGfxElement(pCanvas),
-    m_HostWriteSuballocator(m_HostWriteSize / kHostWriteUnitSize)
+    TGfxElement(pCanvas)
 {
     if (name != nullptr)
         SetName(name);
@@ -62,11 +61,6 @@ Gem::Result CDevice12::Initialize()
             Canvas::LogInfo(GetLogger(), "D3D12 Device created: %s (VendorId: 0x%04X, DeviceId: 0x%04X)", 
                             deviceName, adapterDesc.VendorId, adapterDesc.DeviceId);
         }
-
-        // Create an upload heap scratch buffer for CPU write operations
-        Gem::TGemPtr<Canvas::XGfxBuffer> pScratchBuffer;
-        Gem::ThrowGemError(CreateBuffer(m_HostWriteSize, Canvas::GfxMemoryUsage::HostWrite, &pScratchBuffer));
-        m_pHostWriteBuffer = pScratchBuffer;
     }
     catch (_com_error &e)
     {
@@ -313,28 +307,56 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
 GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::GfxBufferSuballocation &suballocation)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::AllocateHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
-    
+
+    if (sizeInBytes == 0)
+        return Gem::Result::InvalidArg;
+
     try
     {
-        // Allocate a region from the scratch suballocator (operates in kHostWriteUnitSize-byte units)
-        uint64_t sizeInUnits = (sizeInBytes + kHostWriteUnitSize - 1) / kHostWriteUnitSize;
-        auto block = m_HostWriteSuballocator.Allocate(sizeInUnits);
-        suballocation.Offset = block.Start() * kHostWriteUnitSize;
-        suballocation.Size = sizeInBytes;
-        suballocation.pBuffer = m_pHostWriteBuffer;
+        // Round up to next power of 2 (min kMinBucketSize)
+        uint64_t allocSize = uint64_t(1) << Log2Ceil(sizeInBytes > kMinBucketSize ? sizeInBytes : kMinBucketSize);
+
+        Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
+
+        if (allocSize > kMaxBucketSize)
+        {
+            // Oversized: dedicated unpooled buffer
+            Gem::ThrowGemError(CreateBuffer(allocSize, Canvas::GfxMemoryUsage::HostWrite, &pBuffer));
+            suballocation.pBuffer = pBuffer;
+            suballocation.Offset = 0;
+            suballocation.Size = sizeInBytes;
+            suballocation.AllocationKey = 0;  // 0 = unpooled
+        }
+        else
+        {
+            // Compute bucket index from log2(allocSize)
+            uint32_t bucketIndex = Log2Ceil(allocSize) - kMinBucketLog2;
+
+            auto& bucket = m_HostWriteBuckets[bucketIndex];
+            if (!bucket.empty())
+            {
+                pBuffer = std::move(bucket.back());
+                bucket.pop_back();
+            }
+            else
+            {
+                Gem::ThrowGemError(CreateBuffer(allocSize, Canvas::GfxMemoryUsage::HostWrite, &pBuffer));
+            }
+
+            suballocation.pBuffer = pBuffer;
+            suballocation.Offset = 0;
+            suballocation.Size = sizeInBytes;
+            suballocation.AllocationKey = bucketIndex + 1;  // 1-based bucket index
+        }
 
         return Gem::Result::Success;
-    }
-    catch (const BuddySuballocatorException &)
-    {
-        Canvas::LogDebug(GetLogger(), "CDevice12::AllocateHostWriteRegion: scratch allocator temporarily unavailable");
-        return Gem::Result::OutOfMemory;
     }
     catch (const Gem::GemError &e)
     {
         sentinel.SetResultCode(e.Result());
         return e.Result();
     }
+    catch (const _com_error &e) { return ResultFromHRESULT(e.Error()); }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -345,24 +367,26 @@ GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxBufferSuballocatio
     if (!suballocation.pBuffer)
         return;
 
-    // Dedicated upload buffers (used as fallback for large one-shot uploads)
-    // are not tracked by the buddy suballocator.
-    if (suballocation.pBuffer.Get() != m_pHostWriteBuffer.Get())
+    if (suballocation.AllocationKey == 0)
     {
-        suballocation.pBuffer = nullptr;
-        suballocation.Offset = 0;
-        suballocation.Size = 0;
+        // Unpooled (oversized): just release
+        suballocation = {};
         return;
     }
-    
-    // Free the region back to the scratch suballocator (convert bytes → units)
-    uint64_t offsetInUnits = suballocation.Offset / kHostWriteUnitSize;
-    uint64_t sizeInUnits = (suballocation.Size + kHostWriteUnitSize - 1) / kHostWriteUnitSize;
-    auto block = TBuddySuballocator<uint64_t>::ReconstructBlock(offsetInUnits, sizeInUnits);
-    m_HostWriteSuballocator.Free(block);
-    suballocation.pBuffer = nullptr;
-    suballocation.Offset = 0;
-    suballocation.Size = 0;
+
+    // Return to bucket pool
+    uint32_t bucketIndex = static_cast<uint32_t>(suballocation.AllocationKey) - 1;
+    if (bucketIndex < kNumBuckets)
+    {
+        auto& bucket = m_HostWriteBuckets[bucketIndex];
+        if (bucket.size() < kBucketPoolCap)
+        {
+            bucket.push_back(std::move(suballocation.pBuffer));
+        }
+        // else: drop the ref — buffer released when TGemPtr goes out of scope
+    }
+
+    suballocation = {};
 }
 
 //------------------------------------------------------------------------------------------------
@@ -392,45 +416,9 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         Gem::ThrowGemError(CreateBuffer(posSize, Canvas::GfxMemoryUsage::DeviceLocal, &pPosBuffer));
         Gem::ThrowGemError(CreateBuffer(normSize, Canvas::GfxMemoryUsage::DeviceLocal, &pNormBuffer));
 
-        // Allocate space in the host-write (upload) scratch buffer.
-        // For uploads larger than the shared pool capacity, bypass the pool
-        // to avoid expected allocator OOM noise and use a dedicated buffer.
+        // Allocate space in the host-write (upload) buffer pool.
         Canvas::GfxBufferSuballocation suballocation;
-        if (allocationSize > m_HostWriteSize)
-        {
-            Gem::TGemPtr<Canvas::XGfxBuffer> pDedicatedUploadBuffer;
-            Gem::ThrowGemError(CreateBuffer(allocationSize, Canvas::GfxMemoryUsage::HostWrite, &pDedicatedUploadBuffer));
-
-            suballocation.pBuffer = pDedicatedUploadBuffer;
-            suballocation.Offset = 0;
-            suballocation.Size = allocationSize;
-
-            Canvas::LogWarn(GetLogger(),
-                "CreateMeshData: upload size %llu exceeds shared host-write pool size %llu, using dedicated upload buffer",
-                static_cast<unsigned long long>(allocationSize),
-                static_cast<unsigned long long>(allocationSize));
-        }
-        else
-        {
-            Gem::Result allocResult = AllocateHostWriteRegion(allocationSize, suballocation);
-            if (allocResult == Gem::Result::OutOfMemory)
-            {
-                Gem::TGemPtr<Canvas::XGfxBuffer> pDedicatedUploadBuffer;
-                Gem::ThrowGemError(CreateBuffer(allocationSize, Canvas::GfxMemoryUsage::HostWrite, &pDedicatedUploadBuffer));
-
-                suballocation.pBuffer = pDedicatedUploadBuffer;
-                suballocation.Offset = 0;
-                suballocation.Size = allocationSize;
-
-                Canvas::LogWarn(GetLogger(),
-                    "CreateMeshData: shared host-write pool temporarily unavailable for %llu bytes, using dedicated upload buffer",
-                    static_cast<unsigned long long>(allocationSize));
-            }
-            else
-            {
-                Gem::ThrowGemError(allocResult);
-            }
-        }
+        Gem::ThrowGemError(AllocateHostWriteRegion(allocationSize, suballocation));
 
         // Copy data into the upload buffer immediately on CPU timeline
         {

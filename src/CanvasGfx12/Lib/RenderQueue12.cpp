@@ -1395,21 +1395,7 @@ Gem::Result CRenderQueue12::StageBufferUpload(
     try
     {
         Canvas::GfxBufferSuballocation staging{};
-        Gem::Result allocResult = m_pDevice->AllocateHostWriteRegion(dataSize, staging);
-        if (allocResult == Gem::Result::OutOfMemory)
-        {
-            // Shared pool exhausted — fall back to a dedicated upload buffer
-            // (same pattern as CreateMeshData)
-            Gem::TGemPtr<Canvas::XGfxBuffer> pDedicatedBuffer;
-            Gem::ThrowGemError(m_pDevice->CreateBuffer(dataSize, Canvas::GfxMemoryUsage::HostWrite, &pDedicatedBuffer));
-            staging.pBuffer = pDedicatedBuffer;
-            staging.Offset = 0;
-            staging.Size = dataSize;
-        }
-        else
-        {
-            Gem::ThrowGemError(allocResult);
-        }
+        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(dataSize, staging));
 
         auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
         ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
