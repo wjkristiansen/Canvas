@@ -238,6 +238,9 @@ void CRenderQueue12::Flush()
     // Signal fence for scene + UI work (allocator rotation depends on this)
     m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
 
+    // Record ring buffer usage for this frame
+    m_pDevice->MarkUploadRingFrameEnd(m_FenceValue);
+
     // Reset scene and UI graphs for next frame
     UINT64 completedFenceValue = m_pFence->GetCompletedValue();
     m_GpuTaskGraph.Reset(m_FenceValue, completedFenceValue);
@@ -423,15 +426,16 @@ void CRenderQueue12::ProcessCompletedWork()
 {
     UINT64 completedValue = m_pFence->GetCompletedValue();
     
-    // Release deferred host-write suballocations whose fence has completed
+    // Reclaim upload ring buffer space in bulk
+    m_pDevice->ReclaimUploadRingSpace(completedValue);
+
+    // Release deferred host-write suballocations whose fence has completed.
+    // Ring buffer space is already reclaimed above; this drops TGemPtr refs
+    // (needed for dedicated oversized buffers and old ring buffers after grow).
     for (auto it = m_PendingUploadRetirements.begin(); it != m_PendingUploadRetirements.end();)
     {
         if (it->FenceValue <= completedValue)
         {
-            if (m_pDevice)
-            {
-                m_pDevice->FreeHostWriteRegion(const_cast<Canvas::GfxResourceAllocation&>(it->Suballocation));
-            }
             it = m_PendingUploadRetirements.erase(it);
         }
         else

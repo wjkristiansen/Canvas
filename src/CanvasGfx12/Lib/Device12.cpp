@@ -315,41 +315,76 @@ GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::Gf
 
     try
     {
-        // Round up to next power of 2 (min kMinBucketSize)
-        uint64_t allocSize = uint64_t(1) << Log2Ceil(sizeInBytes > kMinBucketSize ? sizeInBytes : kMinBucketSize);
-
-        Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
-
-        if (allocSize > kMaxBucketSize)
+        // Oversized: dedicated committed resource (don't let one alloc take >50% of ring)
+        if (sizeInBytes > m_UploadRingSize / 2)
         {
-            // Oversized: dedicated unpooled buffer
-            Gem::ThrowGemError(CreateBuffer(allocSize, Canvas::GfxMemoryUsage::HostWrite, &pBuffer));
-            suballocation.pBuffer = pBuffer;
+            Gem::TGemPtr<Canvas::XGfxBuffer> pDedicated;
+            Gem::ThrowGemError(CreateBuffer(sizeInBytes, Canvas::GfxMemoryUsage::HostWrite, &pDedicated));
+            suballocation.pBuffer = pDedicated;
             suballocation.Offset = 0;
             suballocation.Size = sizeInBytes;
-            suballocation.AllocationKey = 0;  // 0 = unpooled
+            suballocation.AllocationKey = 0;  // 0 = dedicated
+            return Gem::Result::Success;
         }
-        else
-        {
-            // Compute bucket index from log2(allocSize)
-            uint32_t bucketIndex = Log2Ceil(allocSize) - kMinBucketLog2;
 
-            auto& bucket = m_HostWriteBuckets[bucketIndex];
-            if (!bucket.empty())
+        // Align up to 256 bytes
+        constexpr uint64_t kAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        uint64_t alignedSize = (sizeInBytes + kAlignment - 1) & ~(kAlignment - 1);
+
+        // Ensure ring buffer exists
+        if (!m_pUploadRingBuffer)
+        {
+            Gem::ThrowGemError(CreateBuffer(m_UploadRingSize, Canvas::GfxMemoryUsage::HostWrite, &m_pUploadRingBuffer));
+        }
+
+        // Check available space
+        uint64_t available;
+        if (m_UploadRingWriteOffset >= m_UploadRingReadOffset)
+            available = m_UploadRingSize - m_UploadRingWriteOffset + m_UploadRingReadOffset;
+        else
+            available = m_UploadRingReadOffset - m_UploadRingWriteOffset;
+
+        // If not enough space, try reclaiming completed frames
+        if (alignedSize > available)
+        {
+            ReclaimUploadRingSpace(0);  // 0 = no-op; caller should have called with real fence
+            // Recompute
+            if (m_UploadRingWriteOffset >= m_UploadRingReadOffset)
+                available = m_UploadRingSize - m_UploadRingWriteOffset + m_UploadRingReadOffset;
+            else
+                available = m_UploadRingReadOffset - m_UploadRingWriteOffset;
+        }
+
+        // If STILL not enough, grow the ring buffer
+        if (alignedSize > available)
+        {
+            uint64_t needed = m_UploadRingSize;
+            while (needed < alignedSize)
+                needed *= 2;
+            GrowUploadRingBuffer(needed * 2);
+        }
+
+        // Handle wrap-around: if the allocation doesn't fit at the end, waste the tail and wrap
+        if (m_UploadRingWriteOffset + alignedSize > m_UploadRingSize)
+        {
+            if (alignedSize > m_UploadRingReadOffset)
             {
-                pBuffer = std::move(bucket.back());
-                bucket.pop_back();
+                // Not enough space even at the start — grow
+                GrowUploadRingBuffer(m_UploadRingSize * 2);
             }
             else
             {
-                Gem::ThrowGemError(CreateBuffer(allocSize, Canvas::GfxMemoryUsage::HostWrite, &pBuffer));
+                // Waste the remaining tail space, wrap to 0
+                m_UploadRingWriteOffset = 0;
             }
-
-            suballocation.pBuffer = pBuffer;
-            suballocation.Offset = 0;
-            suballocation.Size = sizeInBytes;
-            suballocation.AllocationKey = bucketIndex + 1;  // 1-based bucket index
         }
+
+        suballocation.pBuffer = m_pUploadRingBuffer;
+        suballocation.Offset = m_UploadRingWriteOffset;
+        suballocation.Size = sizeInBytes;
+        suballocation.AllocationKey = 1;  // Nonzero = ring buffer
+
+        m_UploadRingWriteOffset += alignedSize;
 
         return Gem::Result::Success;
     }
@@ -369,26 +404,44 @@ GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxResourceAllocation
     if (!suballocation.pBuffer)
         return;
 
-    if (suballocation.AllocationKey == 0)
-    {
-        // Unpooled (oversized): just release
-        suballocation = {};
-        return;
-    }
-
-    // Return to bucket pool
-    uint32_t bucketIndex = static_cast<uint32_t>(suballocation.AllocationKey) - 1;
-    if (bucketIndex < kNumBuckets)
-    {
-        auto& bucket = m_HostWriteBuckets[bucketIndex];
-        if (bucket.size() < kBucketPoolCap)
-        {
-            bucket.push_back(std::move(suballocation.pBuffer));
-        }
-        // else: drop the ref — buffer released when TGemPtr goes out of scope
-    }
-
+    // Ring buffer allocations (AllocationKey != 0) are freed by frame marker advancement.
+    // Dedicated (AllocationKey == 0) buffers just drop their ref.
     suballocation = {};
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::MarkUploadRingFrameEnd(UINT64 fenceValue)
+{
+    m_UploadRingFrameMarkers.push_back({ fenceValue, m_UploadRingWriteOffset });
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::ReclaimUploadRingSpace(UINT64 completedFenceValue)
+{
+    while (!m_UploadRingFrameMarkers.empty())
+    {
+        auto& oldest = m_UploadRingFrameMarkers.front();
+        if (oldest.FenceValue > completedFenceValue)
+            break;
+        m_UploadRingReadOffset = oldest.WriteOffset;
+        m_UploadRingFrameMarkers.pop_front();
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::GrowUploadRingBuffer(uint64_t newSize)
+{
+    // Create new larger buffer
+    Gem::TGemPtr<Canvas::XGfxBuffer> pNewBuffer;
+    Gem::ThrowGemError(CreateBuffer(newSize, Canvas::GfxMemoryUsage::HostWrite, &pNewBuffer));
+
+    // Old buffer stays alive via any outstanding GfxResourceAllocation refs (TGemPtr).
+    // New ring buffer starts fresh.
+    m_pUploadRingBuffer = pNewBuffer;
+    m_UploadRingSize = newSize;
+    m_UploadRingWriteOffset = 0;
+    m_UploadRingReadOffset = 0;
+    m_UploadRingFrameMarkers.clear();
 }
 
 //------------------------------------------------------------------------------------------------

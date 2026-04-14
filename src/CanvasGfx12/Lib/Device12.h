@@ -36,17 +36,24 @@ class CDevice12 : public TGfxElement<Canvas::XGfxDevice>
 public:
     CComPtr<ID3D12Device10> m_pD3DDevice;
 
-    // Bucketed pool for UPLOAD heap buffers (host-write staging).
-    // Buckets cover powers of 2 from 256 B to 4 MB.  Oversized requests
-    // get a dedicated unpooled buffer.
-    static constexpr uint64_t kMinBucketSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT; // 256 bytes
-    static constexpr uint64_t kMaxBucketSize = 4 * 1024 * 1024;  // 4 MB
-    static constexpr uint32_t kMinBucketLog2 = 8;   // log2(256)
-    static constexpr uint32_t kMaxBucketLog2 = 22;  // log2(4 MB)
-    static constexpr uint32_t kNumBuckets = kMaxBucketLog2 - kMinBucketLog2 + 1;  // 15
-    static constexpr uint32_t kBucketPoolCap = 8;    // Max buffers retained per bucket
+    // Upload ring buffer for host-write staging.
+    // A single committed UPLOAD buffer with a write pointer that advances linearly.
+    // Oversized allocations (>50% of ring) get a dedicated committed resource.
+    Gem::TGemPtr<Canvas::XGfxBuffer> m_pUploadRingBuffer;
+    uint64_t m_UploadRingSize = 1 * 1024 * 1024;           // 1 MB
+    uint64_t m_UploadRingWriteOffset = 0;                   // Next write position
+    uint64_t m_UploadRingReadOffset = 0;                    // Oldest unreclaimable position
 
-    std::vector<Gem::TGemPtr<Canvas::XGfxBuffer>> m_HostWriteBuckets[kNumBuckets];
+    struct UploadRingFrameMarker
+    {
+        UINT64 FenceValue;
+        uint64_t WriteOffset;   // Write offset at the time this frame was submitted
+    };
+    std::deque<UploadRingFrameMarker> m_UploadRingFrameMarkers;
+
+    void MarkUploadRingFrameEnd(UINT64 fenceValue);
+    void ReclaimUploadRingSpace(UINT64 completedFenceValue);
+    void GrowUploadRingBuffer(uint64_t newSize);
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxDevice)
