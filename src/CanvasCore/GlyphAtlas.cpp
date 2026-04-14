@@ -120,13 +120,13 @@ Gem::Result CGlyphAtlas::CacheGlyph(uint32_t codepoint, const CTrueTypeFont &fon
     outEntry.AtlasU1 = static_cast<float>(atlasRect.X + bitmapWidth)  / m_AtlasSize;
     outEntry.AtlasV1 = static_cast<float>(atlasRect.Y + bitmapHeight) / m_AtlasSize;
     
-    Gem::Result uploadResult = m_pRenderQueue->UploadTextureRegion(
+    Gem::Result uploadResult = m_pDevice->UploadTextureRegion(
         m_pAtlasTexture.Get(),
         atlasRect.X, atlasRect.Y,
         bitmapWidth, bitmapHeight,
         sdfBitmap.Data.data(),
         bitmapWidth * sdfBitmap.BytesPerPixel,
-        Canvas::GfxRenderContext::UI);
+        m_pRenderQueue);
     if (Gem::Failed(uploadResult))
         return uploadResult;
 

@@ -97,15 +97,21 @@ public:
         uint64_t VertexStride = 0;      // Bytes per vertex
     };
 
-    UIVertexPool m_UITextVertexPool;
-    UIVertexPool m_UIRectVertexPool;
+    UIVertexPool m_UIVertexPool;
 
     void EnsureUIVertexPool(UIVertexPool& pool, uint32_t pageCapacity, uint64_t vertexStride);
     void GrowUIVertexPool(UIVertexPool& pool);
 
-    // UI vertex buffer paged allocation (XGfxDevice interface — alloc + upload)
-    GEMMETHOD(AllocUITextVertices)(uint32_t vertexCount, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out) final;
-    GEMMETHOD_(void, FreeUITextVertices)(const Canvas::GfxBufferSuballocation& suballoc) final;
-    GEMMETHOD(AllocUIRectVertices)(uint32_t vertexCount, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out) final;
-    GEMMETHOD_(void, FreeUIRectVertices)(const Canvas::GfxBufferSuballocation& suballoc) final;
+    // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
+    GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out) final;
+    GEMMETHOD_(void, FreeVertexBuffer)(const Canvas::GfxBufferSuballocation& suballoc) final;
+
+    // Texture upload (XGfxDevice interface — delegates to RQ for GPU copy)
+    GEMMETHOD(UploadTextureRegion)(
+        Canvas::XGfxSurface *pDstSurface,
+        uint32_t dstX, uint32_t dstY,
+        uint32_t width, uint32_t height,
+        const void *pData,
+        uint32_t srcRowPitch,
+        Canvas::XGfxRenderQueue *pRenderQueue) final;
 };

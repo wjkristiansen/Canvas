@@ -49,7 +49,7 @@ public: // XSceneGraph methods
         return m_pRoot->Update(dtime);
     }
 
-    GEMMETHOD(SubmitRenderables)(XRenderQueue *pRenderQueue) final;
+    GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) final;
 };
 
 }

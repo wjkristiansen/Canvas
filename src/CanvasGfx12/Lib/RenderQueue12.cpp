@@ -992,7 +992,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
 //================================================================================================
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
+Gem::Result CRenderQueue12::UploadTextureRegion(
     Canvas::XGfxSurface *pDstSurface,
     uint32_t dstX, uint32_t dstY,
     uint32_t width, uint32_t height,

@@ -40,7 +40,7 @@ GEMMETHODIMP_(XSceneGraphNode *) CSceneGraph::GetRootSceneGraphNode()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraph::SubmitRenderables(XRenderQueue *pRenderQueue)
+GEMMETHODIMP CSceneGraph::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
 {
     try
     {

@@ -536,31 +536,30 @@ void CDevice12::GrowUIVertexPool(UIVertexPool& pool)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocUITextVertices(uint32_t vertexCount, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out)
+GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out)
 {
-    if (vertexCount == 0 || !pVertexData || !pRQ)
+    if (vertexCount == 0 || vertexStride == 0 || !pVertexData || !pRQ)
         return Gem::Result::InvalidArg;
 
     try
     {
-        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
-        EnsureUIVertexPool(m_UITextVertexPool, 4096, kVertexStride);
+        EnsureUIVertexPool(m_UIVertexPool, 4096, vertexStride);
 
         TBuddyBlock<uint32_t> block;
-        if (!m_UITextVertexPool.pAllocator->TryAllocate(vertexCount, block))
+        if (!m_UIVertexPool.pAllocator->TryAllocate(vertexCount, block))
         {
-            GrowUIVertexPool(m_UITextVertexPool);
-            if (!m_UITextVertexPool.pAllocator->TryAllocate(vertexCount, block))
+            GrowUIVertexPool(m_UIVertexPool);
+            if (!m_UIVertexPool.pAllocator->TryAllocate(vertexCount, block))
                 return Gem::Result::OutOfMemory;
         }
 
         uint32_t logicalOffset = block.Start();
-        uint32_t pageIndex = logicalOffset / m_UITextVertexPool.PageCapacity;
-        uint32_t offsetInPage = logicalOffset % m_UITextVertexPool.PageCapacity;
+        uint32_t pageIndex = logicalOffset / m_UIVertexPool.PageCapacity;
+        uint32_t offsetInPage = logicalOffset % m_UIVertexPool.PageCapacity;
 
-        out.pBuffer = m_UITextVertexPool.Pages[pageIndex];
-        out.Offset = static_cast<uint64_t>(offsetInPage) * kVertexStride;
-        out.Size = static_cast<uint64_t>(vertexCount) * kVertexStride;
+        out.pBuffer = m_UIVertexPool.Pages[pageIndex];
+        out.Offset = static_cast<uint64_t>(offsetInPage) * vertexStride;
+        out.Size = static_cast<uint64_t>(vertexCount) * vertexStride;
         out.AllocationKey = logicalOffset;
 
         // Stage the upload via the render queue
@@ -574,65 +573,30 @@ GEMMETHODIMP CDevice12::AllocUITextVertices(uint32_t vertexCount, const void* pV
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CDevice12::FreeUITextVertices(const Canvas::GfxBufferSuballocation& suballoc)
+GEMMETHODIMP_(void) CDevice12::FreeVertexBuffer(const Canvas::GfxBufferSuballocation& suballoc)
 {
-    if (m_UITextVertexPool.pAllocator && suballoc.Size > 0)
+    if (m_UIVertexPool.pAllocator && suballoc.Size > 0)
     {
-        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
         uint32_t logicalOffset = static_cast<uint32_t>(suballoc.AllocationKey);
-        uint32_t vertexCount = static_cast<uint32_t>(suballoc.Size / kVertexStride);
+        uint32_t vertexCount = static_cast<uint32_t>(suballoc.Size / m_UIVertexPool.VertexStride);
         auto block = TBuddySuballocator<uint32_t>::ReconstructBlock(logicalOffset, vertexCount);
-        m_UITextVertexPool.pAllocator->TryFree(block);
+        m_UIVertexPool.pAllocator->TryFree(block);
     }
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocUIRectVertices(uint32_t vertexCount, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out)
+GEMMETHODIMP CDevice12::UploadTextureRegion(
+    Canvas::XGfxSurface *pDstSurface,
+    uint32_t dstX, uint32_t dstY,
+    uint32_t width, uint32_t height,
+    const void *pData,
+    uint32_t srcRowPitch,
+    Canvas::XGfxRenderQueue *pRenderQueue)
 {
-    if (vertexCount == 0 || !pVertexData || !pRQ)
-        return Gem::Result::InvalidArg;
+    if (!pDstSurface || !pData || !pRenderQueue || width == 0 || height == 0)
+        return Gem::Result::BadPointer;
 
-    try
-    {
-        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
-        EnsureUIVertexPool(m_UIRectVertexPool, 1024, kVertexStride);
-
-        TBuddyBlock<uint32_t> block;
-        if (!m_UIRectVertexPool.pAllocator->TryAllocate(vertexCount, block))
-        {
-            GrowUIVertexPool(m_UIRectVertexPool);
-            if (!m_UIRectVertexPool.pAllocator->TryAllocate(vertexCount, block))
-                return Gem::Result::OutOfMemory;
-        }
-
-        uint32_t logicalOffset = block.Start();
-        uint32_t pageIndex = logicalOffset / m_UIRectVertexPool.PageCapacity;
-        uint32_t offsetInPage = logicalOffset % m_UIRectVertexPool.PageCapacity;
-
-        out.pBuffer = m_UIRectVertexPool.Pages[pageIndex];
-        out.Offset = static_cast<uint64_t>(offsetInPage) * kVertexStride;
-        out.Size = static_cast<uint64_t>(vertexCount) * kVertexStride;
-        out.AllocationKey = logicalOffset;
-
-        // Stage the upload via the render queue
-        auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
-        Gem::ThrowGemError(pRQ12->StageBufferUpload(out, pVertexData, out.Size));
-
-        return Gem::Result::Success;
-    }
-    catch (Gem::GemError& e) { return e.Result(); }
-    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CDevice12::FreeUIRectVertices(const Canvas::GfxBufferSuballocation& suballoc)
-{
-    if (m_UIRectVertexPool.pAllocator && suballoc.Size > 0)
-    {
-        constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
-        uint32_t logicalOffset = static_cast<uint32_t>(suballoc.AllocationKey);
-        uint32_t vertexCount = static_cast<uint32_t>(suballoc.Size / kVertexStride);
-        auto block = TBuddySuballocator<uint32_t>::ReconstructBlock(logicalOffset, vertexCount);
-        m_UIRectVertexPool.pAllocator->TryFree(block);
-    }
+    auto* pRQ = static_cast<CRenderQueue12*>(pRenderQueue);
+    return pRQ->UploadTextureRegion(pDstSurface, dstX, dstY, width, height, pData, srcRowPitch,
+        Canvas::GfxRenderContext::UI);
 }

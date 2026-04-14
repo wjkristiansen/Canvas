@@ -120,7 +120,7 @@ void CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::SubmitRenderables(XRenderQueue* pRenderQueue)
+Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
 {
     if (!m_pDevice || !m_pRootNode)
         return Gem::Result::Success;
@@ -157,10 +157,10 @@ Gem::Result CUIGraph::SubmitRenderables(XRenderQueue* pRenderQueue)
                 {
                     auto vb = pText->GetVertexBuffer();
                     if (vb.Size > 0)
-                        m_pDevice->FreeUITextVertices(vb);
+                        m_pDevice->FreeVertexBuffer(vb);
                     GfxBufferSuballocation newVb{};
-                    Gem::ThrowGemError(m_pDevice->AllocUITextVertices(
-                        pText->GetVertexCount(), pText->GetVertexData(), pGfxRQ, newVb));
+                    Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
+                        pText->GetVertexCount(), sizeof(TextVertex), pText->GetVertexData(), pGfxRQ, newVb));
                     pText->SetVertexBuffer(newVb);
                     pText->ClearDirty();
                 }
@@ -176,10 +176,10 @@ Gem::Result CUIGraph::SubmitRenderables(XRenderQueue* pRenderQueue)
                 {
                     auto vb = pRect->GetVertexBuffer();
                     if (vb.Size > 0)
-                        m_pDevice->FreeUIRectVertices(vb);
+                        m_pDevice->FreeVertexBuffer(vb);
                     GfxBufferSuballocation newVb{};
-                    Gem::ThrowGemError(m_pDevice->AllocUIRectVertices(
-                        pRect->GetVertexCount(), pRect->GetVertexData(), pGfxRQ, newVb));
+                    Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
+                        pRect->GetVertexCount(), sizeof(TextVertex), pRect->GetVertexData(), pGfxRQ, newVb));
                     pRect->SetVertexBuffer(newVb);
                     pRect->ClearDirty();
                 }

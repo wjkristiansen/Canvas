@@ -536,7 +536,6 @@ public:
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
-        GEM_INTERFACE_ENTRY(Canvas::XRenderQueue)
         GEM_INTERFACE_ENTRY(Canvas::XCanvasElement)
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
@@ -551,7 +550,6 @@ public:
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers) final;
     GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
-    GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context) final;
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
     GEMMETHOD(SubmitForUIRender)(Canvas::XGfxUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
@@ -590,6 +588,7 @@ public:
 
     Gem::Result StageBufferUpload(const Canvas::GfxBufferSuballocation& destination, const void* pData, uint64_t dataSize);
     void FlushPendingBufferUploads();
+    Gem::Result UploadTextureRegion(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context);
     // Internal UI element drawing (mirrors DrawMesh pattern)
     Gem::Result DrawUIText(const Canvas::GfxBufferSuballocation& vertexBuffer, Canvas::XGfxSurface* pGlyphAtlas, const Canvas::Math::FloatVector2& elementOffset);
     Gem::Result DrawUIRect(const Canvas::GfxBufferSuballocation& vertexBuffer, const Canvas::Math::FloatVector2& elementOffset);

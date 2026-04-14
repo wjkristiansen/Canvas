@@ -33,7 +33,7 @@ public:
     GEMMETHOD(CreateNode)(XGfxUIGraphNode* pParent, XGfxUIGraphNode** ppNode) override;
     GEMMETHOD_(XGfxUIGraphNode*, GetRootNode)() override;
     GEMMETHOD(Update)() override;
-    GEMMETHOD(SubmitRenderables)(XRenderQueue* pRenderQueue) override;
+    GEMMETHOD(SubmitRenderables)(XGfxRenderQueue* pRenderQueue) override;
 
 private:
     void UpdateNode(CUIGraphNodeImpl* pNode);

@@ -41,7 +41,7 @@ struct XGfxMeshData;
 struct XMeshInstance;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
-struct XRenderQueue;
+struct XGfxRenderQueue;
 struct XFont;
 struct XGfxUIGraph;
 struct XGfxUIGraphNode;
@@ -322,37 +322,6 @@ struct UIRectDrawCommand
     uint32_t VertexCount;   // Number of vertices to draw
 };
 
-struct
-XRenderQueue : public XCanvasElement
-{
-    GEM_INTERFACE_DECLARE(XRenderQueue, 0x3B35719161878DCC);
-
-    // Upload CPU data into a sub-region of a GPU surface via a staging copy.
-    // Intended for populating persistently-resident textures (e.g., glyph atlas).
-    // The copy is recorded into the command list identified by 'context'.
-    // dstX/dstY: top-left destination texel in pixel coordinates
-    // width/height: extent of the copied region in texels
-    // pData: pointer to row-major source data
-    // srcRowPitch: byte stride between source rows (>= width * bytes-per-texel)
-    GEMMETHOD(UploadTextureRegion)(
-        XGfxSurface *pDstSurface,
-        uint32_t dstX, uint32_t dstY,
-        uint32_t width, uint32_t height,
-        const void *pData,
-        uint32_t srcRowPitch,
-        GfxRenderContext context = GfxRenderContext::Scene) = 0;
-
-    // Private contract with the scene graph: enqueues a scene graph node for rendering.
-    // Nodes are dispatched later when the queue is drained (EndFrame).
-    GEMMETHOD(SubmitForRender)(XSceneGraphNode *pNode) = 0;
-
-    // Private contract with the UI graph: enqueues a UI graph node for rendering.
-    GEMMETHOD(SubmitForUIRender)(XGfxUIGraphNode *pNode) = 0;
-
-    // Private contract with the scene: sets the active camera for frame constant generation.
-    GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
-};
-
 //------------------------------------------------------------------------------------------------
 struct
 XSceneGraphElement : public XCanvasElement
@@ -442,7 +411,7 @@ XSceneGraph : public XCanvasElement
     GEMMETHOD_(XCamera *, GetActiveCamera)() = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
-    GEMMETHOD(SubmitRenderables)(XRenderQueue *pRenderQueue) = 0;
+    GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
 };
 
 //------------------------------------------------------------------------------------------------

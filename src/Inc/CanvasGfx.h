@@ -193,8 +193,8 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    // Submits tasks to the graphics subsystem.
-    struct XGfxRenderQueue : public XRenderQueue
+    // Render queue — submits and executes rendering work.
+    struct XGfxRenderQueue : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
 
@@ -204,6 +204,11 @@ namespace Canvas
         // Frame rendering
         GEMMETHOD(BeginFrame)(XGfxSwapChain *pSwapChain) = 0;
         GEMMETHOD(EndFrame)() = 0;
+
+        // Scene/UI graph submission
+        GEMMETHOD(SubmitForRender)(XSceneGraphNode *pNode) = 0;
+        GEMMETHOD(SubmitForUIRender)(XGfxUIGraphNode *pNode) = 0;
+        GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
     };
 
     //================================================================================================
@@ -283,7 +288,7 @@ namespace Canvas
         GEMMETHOD(CreateNode)(XGfxUIGraphNode* pParent, XGfxUIGraphNode** ppNode) = 0;
         GEMMETHOD_(XGfxUIGraphNode*, GetRootNode)() = 0;
         GEMMETHOD(Update)() = 0;
-        GEMMETHOD(SubmitRenderables)(XRenderQueue* pRenderQueue) = 0;
+        GEMMETHOD(SubmitRenderables)(XGfxRenderQueue* pRenderQueue) = 0;
     };
 
     enum GfxSurfaceFlags : uint32_t
@@ -403,11 +408,18 @@ namespace Canvas
             XGfxRenderQueue *pRenderQueue,
             XGfxMeshData **ppMesh) = 0;
 
-        // UI vertex buffer suballocation (alloc + upload in one call)
-        GEMMETHOD(AllocUITextVertices)(uint32_t vertexCount, const void* pVertexData, XGfxRenderQueue* pRQ, GfxBufferSuballocation& out) = 0;
-        GEMMETHOD_(void, FreeUITextVertices)(const GfxBufferSuballocation& suballoc) = 0;
-        GEMMETHOD(AllocUIRectVertices)(uint32_t vertexCount, const void* pVertexData, XGfxRenderQueue* pRQ, GfxBufferSuballocation& out) = 0;
-        GEMMETHOD_(void, FreeUIRectVertices)(const GfxBufferSuballocation& suballoc) = 0;
+        // Vertex buffer suballocation (alloc + upload in one call)
+        GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxBufferSuballocation& out) = 0;
+        GEMMETHOD_(void, FreeVertexBuffer)(const GfxBufferSuballocation& suballoc) = 0;
+
+        // Upload CPU data into a sub-region of a GPU surface via a staging copy.
+        GEMMETHOD(UploadTextureRegion)(
+            XGfxSurface *pDstSurface,
+            uint32_t dstX, uint32_t dstY,
+            uint32_t width, uint32_t height,
+            const void *pData,
+            uint32_t srcRowPitch,
+            XGfxRenderQueue *pRenderQueue) = 0;
     };
 }
 
