@@ -94,7 +94,7 @@ class CUITextElement : public Gem::TGeneric<XGfxUITextElement>
 
     // State
     XGfxUIGraphNode* m_pAttachedNode = nullptr;
-    GfxBufferSuballocation m_VertexBuffer;
+    GfxResourceAllocation m_VertexBuffer;
     bool m_Visible = true;
     bool m_Dirty = true;  // Content changed, needs vertex regen + GPU upload
 
@@ -113,8 +113,8 @@ public:
     GEMMETHOD_(bool, IsVisible)() const override { return m_Visible; }
     GEMMETHOD_(void, SetVisible)(bool visible) override { m_Visible = visible; }
     GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
-    GEMMETHOD_(const GfxBufferSuballocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
-    GEMMETHOD_(void, SetVertexBuffer)(const GfxBufferSuballocation& buffer) override { m_VertexBuffer = buffer; }
+    GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
+    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) override { m_VertexBuffer = buffer; }
 
     // XGfxUITextElement
     GEMMETHOD_(void, SetText)(PCSTR utf8Text) override;
@@ -148,7 +148,7 @@ class CUIRectElement : public Gem::TGeneric<XGfxUIRectElement>
     std::vector<TextVertex> m_CachedVertices;
 
     XGfxUIGraphNode* m_pAttachedNode = nullptr;
-    GfxBufferSuballocation m_VertexBuffer;
+    GfxResourceAllocation m_VertexBuffer;
     bool m_Visible = true;
     bool m_Dirty = true;
 
@@ -167,8 +167,8 @@ public:
     GEMMETHOD_(bool, IsVisible)() const override { return m_Visible; }
     GEMMETHOD_(void, SetVisible)(bool visible) override { m_Visible = visible; }
     GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
-    GEMMETHOD_(const GfxBufferSuballocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
-    GEMMETHOD_(void, SetVertexBuffer)(const GfxBufferSuballocation& buffer) override { m_VertexBuffer = buffer; }
+    GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
+    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) override { m_VertexBuffer = buffer; }
 
     // XGfxUIRectElement
     GEMMETHOD_(void, SetSize)(const Math::FloatVector2& size) override;

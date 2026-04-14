@@ -13,6 +13,7 @@
 #include "D3D12ResourceUtils.h"
 #include "CanvasGfx12.h"
 #include "BuddySuballocator.h"
+#include "ResourceAllocator.h"
 
 inline constexpr D3D12_HEAP_TYPE GfxMemoryUsageToD3D12HeapType(Canvas::GfxMemoryUsage usage)
 {
@@ -64,8 +65,8 @@ public:
     GEMMETHOD(CreateMaterial)() final;
     GEMMETHOD(CreateSurface)(const Canvas::GfxSurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
     GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, Canvas::GfxMemoryUsage memoryUsage, Canvas::XGfxBuffer **ppBuffer) final;
-    GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, Canvas::GfxBufferSuballocation &suballocationInfo) final;
-    GEMMETHOD_(void, FreeHostWriteRegion)(Canvas::GfxBufferSuballocation &suballocationInfo) final;
+    GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, Canvas::GfxResourceAllocation &suballocationInfo) final;
+    GEMMETHOD_(void, FreeHostWriteRegion)(Canvas::GfxResourceAllocation &suballocationInfo) final;
     GEMMETHOD(CreateMeshData)(
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,
@@ -87,24 +88,12 @@ public:
         return pCanvas ? pCanvas->GetLogger() : nullptr;
     }
 
-    // UI vertex buffer paged allocation
-    // Each pool has a buddy allocator (logical vertex-index space) + page table of GPU buffers
-    struct UIVertexPool
-    {
-        std::unique_ptr<TBuddySuballocator<uint32_t>> pAllocator;
-        std::vector<Gem::TGemPtr<Canvas::XGfxBuffer>> Pages;
-        uint32_t PageCapacity = 0;      // Vertices per page (power of 2)
-        uint64_t VertexStride = 0;      // Bytes per vertex
-    };
-
-    UIVertexPool m_UIVertexPool;
-
-    void EnsureUIVertexPool(UIVertexPool& pool, uint32_t pageCapacity, uint64_t vertexStride);
-    void GrowUIVertexPool(UIVertexPool& pool);
+    // Resource allocator (placed + committed)
+    CResourceAllocator m_ResourceAllocator;
 
     // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
-    GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out) final;
-    GEMMETHOD_(void, FreeVertexBuffer)(const Canvas::GfxBufferSuballocation& suballoc) final;
+    GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& out) final;
+    GEMMETHOD_(void, FreeVertexBuffer)(const Canvas::GfxResourceAllocation& suballoc) final;
 
     // Texture upload (XGfxDevice interface — delegates to RQ for GPU copy)
     GEMMETHOD(UploadTextureRegion)(

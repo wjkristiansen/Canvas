@@ -513,7 +513,7 @@ public:
     // Pending upload allocation retirements: freed once GPU advances past the fence value
     struct PendingUploadRetirement
     {
-        Canvas::GfxBufferSuballocation Suballocation;
+        Canvas::GfxResourceAllocation Suballocation;
         UINT64 FenceValue;  // Release once GPU completes past this fence value
     };
     std::vector<PendingUploadRetirement> m_PendingUploadRetirements;
@@ -521,8 +521,8 @@ public:
     // Staged buffer uploads: CPU data staged in UPLOAD heap, flushed as GPU copy tasks
     struct PendingBufferUpload
     {
-        Canvas::GfxBufferSuballocation Staging;     // Source: upload heap region
-        Canvas::GfxBufferSuballocation Destination; // Dest: target buffer region
+        Canvas::GfxResourceAllocation Staging;     // Source: upload heap region
+        Canvas::GfxResourceAllocation Destination; // Dest: target buffer region
     };
     std::vector<PendingBufferUpload> m_PendingBufferUploads;
 
@@ -586,12 +586,12 @@ public:
     // Create the rect PSO and root signature (lazily, on first use)
     void EnsureRectPSO(DXGI_FORMAT rtvFormat);
 
-    Gem::Result StageBufferUpload(const Canvas::GfxBufferSuballocation& destination, const void* pData, uint64_t dataSize);
+    Gem::Result StageBufferUpload(const Canvas::GfxResourceAllocation& destination, const void* pData, uint64_t dataSize);
     void FlushPendingBufferUploads();
     Gem::Result UploadTextureRegion(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context);
     // Internal UI element drawing (mirrors DrawMesh pattern)
-    Gem::Result DrawUIText(const Canvas::GfxBufferSuballocation& vertexBuffer, Canvas::XGfxSurface* pGlyphAtlas, const Canvas::Math::FloatVector2& elementOffset);
-    Gem::Result DrawUIRect(const Canvas::GfxBufferSuballocation& vertexBuffer, const Canvas::Math::FloatVector2& elementOffset);
+    Gem::Result DrawUIText(const Canvas::GfxResourceAllocation& vertexBuffer, Canvas::XGfxSurface* pGlyphAtlas, const Canvas::Math::FloatVector2& elementOffset);
+    Gem::Result DrawUIRect(const Canvas::GfxResourceAllocation& vertexBuffer, const Canvas::Math::FloatVector2& elementOffset);
     
     // Allocate a shader-visible SRV descriptor slot and return GPU handle
     D3D12_GPU_DESCRIPTOR_HANDLE CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc);
@@ -607,7 +607,7 @@ public:
 
     // Schedule release of a host-write suballocation after the current GPU work completes.
     // The release is deferred until the GPU fence advances past the current value.
-    void RetireUploadAllocation(const Canvas::GfxBufferSuballocation& suballocation);
+    void RetireUploadAllocation(const Canvas::GfxResourceAllocation& suballocation);
     
     //---------------------------------------------------------------------------------------------
     // GPU Task Graph API

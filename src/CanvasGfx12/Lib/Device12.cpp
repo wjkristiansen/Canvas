@@ -68,6 +68,8 @@ Gem::Result CDevice12::Initialize()
         return ResultFromHRESULT(e.Error());
     }
 
+    m_ResourceAllocator.Initialize(this);
+
     return Gem::Result::Success;
 }
 
@@ -304,7 +306,7 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::GfxBufferSuballocation &suballocation)
+GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::GfxResourceAllocation &suballocation)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::AllocateHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
 
@@ -360,7 +362,7 @@ GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::Gf
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxBufferSuballocation &suballocation)
+GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxResourceAllocation &suballocation)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::FreeHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
 
@@ -417,7 +419,7 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         Gem::ThrowGemError(CreateBuffer(normSize, Canvas::GfxMemoryUsage::DeviceLocal, &pNormBuffer));
 
         // Allocate space in the host-write (upload) buffer pool.
-        Canvas::GfxBufferSuballocation suballocation;
+        Canvas::GfxResourceAllocation suballocation;
         Gem::ThrowGemError(AllocateHostWriteRegion(allocationSize, suballocation));
 
         // Copy data into the upload buffer immediately on CPU timeline
@@ -509,62 +511,40 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
 }
 
 //------------------------------------------------------------------------------------------------
-void CDevice12::EnsureUIVertexPool(UIVertexPool& pool, uint32_t pageCapacity, uint64_t vertexStride)
-{
-    if (pool.pAllocator)
-        return;
-
-    pool.PageCapacity = pageCapacity;
-    pool.VertexStride = vertexStride;
-    pool.pAllocator = std::make_unique<TBuddySuballocator<uint32_t>>(pageCapacity);
-
-    uint64_t bufferSize = static_cast<uint64_t>(pageCapacity) * vertexStride;
-    Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
-    Gem::ThrowGemError(CreateBuffer(bufferSize, Canvas::GfxMemoryUsage::DeviceLocal, &pBuffer));
-    pool.Pages.push_back(std::move(pBuffer));
-}
-
-//------------------------------------------------------------------------------------------------
-void CDevice12::GrowUIVertexPool(UIVertexPool& pool)
-{
-    pool.pAllocator->Grow();
-
-    uint64_t bufferSize = static_cast<uint64_t>(pool.PageCapacity) * pool.VertexStride;
-    Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
-    Gem::ThrowGemError(CreateBuffer(bufferSize, Canvas::GfxMemoryUsage::DeviceLocal, &pBuffer));
-    pool.Pages.push_back(std::move(pBuffer));
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxBufferSuballocation& out)
+GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& out)
 {
     if (vertexCount == 0 || vertexStride == 0 || !pVertexData || !pRQ)
         return Gem::Result::InvalidArg;
 
     try
     {
-        EnsureUIVertexPool(m_UIVertexPool, 4096, vertexStride);
+        uint64_t dataSize = static_cast<uint64_t>(vertexCount) * vertexStride;
 
-        TBuddyBlock<uint32_t> block;
-        if (!m_UIVertexPool.pAllocator->TryAllocate(vertexCount, block))
-        {
-            GrowUIVertexPool(m_UIVertexPool);
-            if (!m_UIVertexPool.pAllocator->TryAllocate(vertexCount, block))
-                return Gem::Result::OutOfMemory;
-        }
+        D3D12_RESOURCE_DESC bufferDesc = {};
+        bufferDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+        bufferDesc.Width            = dataSize;
+        bufferDesc.Height           = 1;
+        bufferDesc.DepthOrArraySize = 1;
+        bufferDesc.MipLevels        = 1;
+        bufferDesc.SampleDesc.Count = 1;
+        bufferDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-        uint32_t logicalOffset = block.Start();
-        uint32_t pageIndex = logicalOffset / m_UIVertexPool.PageCapacity;
-        uint32_t offsetInPage = logicalOffset % m_UIVertexPool.PageCapacity;
+        ResourceAllocation alloc;
+        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufferDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, alloc));
 
-        out.pBuffer = m_UIVertexPool.Pages[pageIndex];
-        out.Offset = static_cast<uint64_t>(offsetInPage) * vertexStride;
-        out.Size = static_cast<uint64_t>(vertexCount) * vertexStride;
-        out.AllocationKey = logicalOffset;
+        // Wrap placed/committed resource in CBuffer12
+        Gem::TGemPtr<CBuffer12> pBuffer;
+        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
+            &pBuffer, GetCanvas(), alloc.pResource, nullptr));
+
+        out.pBuffer       = pBuffer;
+        out.Offset        = 0;
+        out.Size          = dataSize;
+        out.AllocationKey = alloc.AllocationKey;
 
         // Stage the upload via the render queue
         auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
-        Gem::ThrowGemError(pRQ12->StageBufferUpload(out, pVertexData, out.Size));
+        Gem::ThrowGemError(pRQ12->StageBufferUpload(out, pVertexData, dataSize));
 
         return Gem::Result::Success;
     }
@@ -573,15 +553,16 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CDevice12::FreeVertexBuffer(const Canvas::GfxBufferSuballocation& suballoc)
+GEMMETHODIMP_(void) CDevice12::FreeVertexBuffer(const Canvas::GfxResourceAllocation& suballoc)
 {
-    if (m_UIVertexPool.pAllocator && suballoc.Size > 0)
-    {
-        uint32_t logicalOffset = static_cast<uint32_t>(suballoc.AllocationKey);
-        uint32_t vertexCount = static_cast<uint32_t>(suballoc.Size / m_UIVertexPool.VertexStride);
-        auto block = TBuddySuballocator<uint32_t>::ReconstructBlock(logicalOffset, vertexCount);
-        m_UIVertexPool.pAllocator->TryFree(block);
-    }
+    if (suballoc.AllocationKey == 0)
+        return;
+
+    ResourceAllocation alloc;
+    alloc.AllocationKey = suballoc.AllocationKey;
+    uint32_t blockStart;
+    ResourceAllocation::DecodeKey(suballoc.AllocationKey, blockStart, alloc.AllocatorTier, alloc.SizeInUnits);
+    m_ResourceAllocator.Free(alloc);
 }
 
 //------------------------------------------------------------------------------------------------

@@ -157,7 +157,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    struct GfxBufferSuballocation
+    struct GfxResourceAllocation
     {
         Gem::TGemPtr<XGfxBuffer> pBuffer;
         uint64_t Offset = 0;
@@ -172,7 +172,7 @@ namespace Canvas
         GEM_INTERFACE_DECLARE(XGfxMeshData, 0x7EBC2A5A40CC96D3);
 
         GEMMETHOD_(uint32_t, GetNumMaterialGroups)() = 0;
-        GEMMETHOD_(GfxBufferSuballocation *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
+        GEMMETHOD_(GfxResourceAllocation *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
         GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t materialIndex) = 0;
     };
 
@@ -227,8 +227,8 @@ namespace Canvas
         GEMMETHOD_(XGfxUIGraphNode*, GetAttachedNode)() = 0;
 
         // GPU vertex buffer (ready to draw, managed by graph + device)
-        GEMMETHOD_(const GfxBufferSuballocation&, GetVertexBuffer)() const = 0;
-        GEMMETHOD_(void, SetVertexBuffer)(const GfxBufferSuballocation& buffer) = 0;
+        GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const = 0;
+        GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -393,8 +393,8 @@ namespace Canvas
         GEMMETHOD(CreateMaterial)() = 0;
         GEMMETHOD(CreateSurface)(const GfxSurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
         GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, GfxMemoryUsage memoryUsage, XGfxBuffer **ppBuffer) = 0;
-        GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxBufferSuballocation &suballocationInfo) = 0;
-        GEMMETHOD_(void, FreeHostWriteRegion)(GfxBufferSuballocation &suballocationInfo) = 0;
+        GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxResourceAllocation &suballocationInfo) = 0;
+        GEMMETHOD_(void, FreeHostWriteRegion)(GfxResourceAllocation &suballocationInfo) = 0;
         GEMMETHOD(CreateMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
@@ -409,8 +409,8 @@ namespace Canvas
             XGfxMeshData **ppMesh) = 0;
 
         // Vertex buffer suballocation (alloc + upload in one call)
-        GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxBufferSuballocation& out) = 0;
-        GEMMETHOD_(void, FreeVertexBuffer)(const GfxBufferSuballocation& suballoc) = 0;
+        GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxResourceAllocation& out) = 0;
+        GEMMETHOD_(void, FreeVertexBuffer)(const GfxResourceAllocation& suballoc) = 0;
 
         // Upload CPU data into a sub-region of a GPU surface via a staging copy.
         GEMMETHOD(UploadTextureRegion)(

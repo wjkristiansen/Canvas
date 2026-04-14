@@ -158,7 +158,7 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
                     auto vb = pText->GetVertexBuffer();
                     if (vb.Size > 0)
                         m_pDevice->FreeVertexBuffer(vb);
-                    GfxBufferSuballocation newVb{};
+                    GfxResourceAllocation newVb{};
                     Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
                         pText->GetVertexCount(), sizeof(TextVertex), pText->GetVertexData(), pGfxRQ, newVb));
                     pText->SetVertexBuffer(newVb);
@@ -177,7 +177,7 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
                     auto vb = pRect->GetVertexBuffer();
                     if (vb.Size > 0)
                         m_pDevice->FreeVertexBuffer(vb);
-                    GfxBufferSuballocation newVb{};
+                    GfxResourceAllocation newVb{};
                     Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
                         pRect->GetVertexCount(), sizeof(TextVertex), pRect->GetVertexData(), pGfxRQ, newVb));
                     pRect->SetVertexBuffer(newVb);
