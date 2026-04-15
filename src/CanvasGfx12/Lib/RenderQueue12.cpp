@@ -176,7 +176,6 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pFence.Attach(pFence.Detach());
 
     // Pre-allocate per-frame queues to avoid repeated heap reallocations
-    m_PendingUploadRetirements.reserve(256);
     m_PendingBufferRetirements.reserve(32);
     m_PendingBufferUploads.reserve(64);
     m_RenderableQueue.reserve(128);
@@ -314,6 +313,9 @@ void CRenderQueue12::Uninitialize()
             CloseHandle(hEvent);
         }
     }
+
+    // GPU is idle — drain any remaining deferred resources.
+    ProcessCompletedWork();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -343,14 +345,6 @@ void CRenderQueue12::WaitForGpuFence(UINT64 fenceValue)
         WaitForSingleObject(hEvent, INFINITE);
         CloseHandle(hEvent);
     }
-}
-
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::RetireUploadAllocation(const Canvas::GfxResourceAllocation& suballocation)
-{
-    // Defer release until the GPU completes the next submit (current fence value + 1).
-    // ProcessCompletedWork will free the suballocation once the fence advances past this value.
-    m_PendingUploadRetirements.push_back({ suballocation, m_FenceValue + 1 });
 }
 
 //------------------------------------------------------------------------------------------------
@@ -429,21 +423,6 @@ void CRenderQueue12::ProcessCompletedWork()
     // Reclaim upload ring buffer space in bulk
     m_pDevice->ReclaimUploadRingSpace(completedValue);
 
-    // Release deferred host-write suballocations whose fence has completed.
-    // Ring buffer space is already reclaimed above; this drops TGemPtr refs
-    // (needed for dedicated oversized buffers and old ring buffers after grow).
-    for (auto it = m_PendingUploadRetirements.begin(); it != m_PendingUploadRetirements.end();)
-    {
-        if (it->FenceValue <= completedValue)
-        {
-            it = m_PendingUploadRetirements.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
-    
     // Clean up completed sync points
     for (auto it = m_GpuSyncPoints.begin(); it != m_GpuSyncPoints.end();)
     {
@@ -1018,35 +997,29 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
         uint32_t alignedRowPitch = (srcRowPitch + kPitchAlign - 1) & ~(kPitchAlign - 1);
         uint64_t stagingSize = static_cast<uint64_t>(alignedRowPitch) * height;
 
-        Canvas::GfxResourceAllocation stagingAlloc;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(stagingSize, stagingAlloc));
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_pDevice->AllocateFromRing(stagingSize, hw));
 
         // Copy rows from source into staging buffer (may need re-striding)
-        auto pStagingBuf = static_cast<CBuffer12*>(stagingAlloc.pBuffer.Get());
-        ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
-
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pStagingResource->Map(0, nullptr, &pMapped));
         if (srcRowPitch == alignedRowPitch)
         {
-            memcpy(static_cast<uint8_t*>(pMapped) + stagingAlloc.Offset, pData, srcRowPitch * height);
+            memcpy(hw.pMapped, pData, srcRowPitch * height);
         }
         else
         {
             for (uint32_t row = 0; row < height; ++row)
             {
                 const uint8_t* pSrcRow = static_cast<const uint8_t*>(pData) + row * srcRowPitch;
-                uint8_t* pDstRow = static_cast<uint8_t*>(pMapped) + stagingAlloc.Offset + row * alignedRowPitch;
+                uint8_t* pDstRow = static_cast<uint8_t*>(hw.pMapped) + row * alignedRowPitch;
                 memcpy(pDstRow, pSrcRow, srcRowPitch);
             }
         }
-        pStagingResource->Unmap(0, nullptr);
 
         // Prepare copy location descriptors
         D3D12_TEXTURE_COPY_LOCATION src = {};
-        src.pResource                          = pStagingResource;
+        src.pResource                          = hw.pResource;
         src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-        src.PlacedFootprint.Offset             = stagingAlloc.Offset;
+        src.PlacedFootprint.Offset             = hw.ResourceOffset;
         src.PlacedFootprint.Footprint.Format   = DXGI_FORMAT_R8_UNORM;
         src.PlacedFootprint.Footprint.Width    = width;
         src.PlacedFootprint.Footprint.Height   = height;
@@ -1090,7 +1063,6 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
                 "UploadTextureRegion");
         }
 
-        RetireUploadAllocation(stagingAlloc);
         return Gem::Result::Success;
     }
     catch (Gem::GemError& e)
@@ -1268,17 +1240,10 @@ Gem::Result CRenderQueue12::DrawMesh(
         // CBVs require 256-byte aligned BufferLocation (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         const uint64_t cbSize = (sizeof(HlslTypes::HlslPerObjectConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
-        Canvas::GfxResourceAllocation cbAlloc;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(cbSize, cbAlloc));
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_pDevice->AllocateFromRing(cbSize, hw));
         
-        auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pHostResource = pHostBuf->GetD3DResource();
-        
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pHostResource->Map(0, nullptr, &pMapped));
-        memcpy(static_cast<uint8_t*>(pMapped) + cbAlloc.Offset,
-               &objectConstants, sizeof(HlslTypes::HlslPerObjectConstants));
-        pHostResource->Unmap(0, nullptr);
+        memcpy(hw.pMapped, &objectConstants, sizeof(HlslTypes::HlslPerObjectConstants));
         
         // Create CBV for per-object constants in descriptor table
         // Descriptor table (slot 3) layout: CBV[2] at b1, SRV[4] at t1, UAV[2] at u1
@@ -1302,7 +1267,7 @@ Gem::Result CRenderQueue12::DrawMesh(
         
         // Slot 0 of table: CBV for per-object constants (b1)
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+        cbvDesc.BufferLocation = hw.GpuAddress;
         cbvDesc.SizeInBytes = static_cast<UINT>((sizeof(HlslTypes::HlslPerObjectConstants) + 255) & ~255); // 256-byte aligned
         pD3DDevice->CreateConstantBufferView(&cbvDesc, baseCpuHandle);
         
@@ -1352,8 +1317,6 @@ Gem::Result CRenderQueue12::DrawMesh(
         
         // Set root SRV (slot 1) for positions (t0)
         D3D12_GPU_VIRTUAL_ADDRESS posGpuAddr = pPosBuf->GetD3DResource()->GetGPUVirtualAddress();
-
-        RetireUploadAllocation(cbAlloc);
         
         // Determine vertex count from position buffer size
         D3D12_RESOURCE_DESC posDesc = pPosBuf->GetD3DResource()->GetDesc();
@@ -1398,17 +1361,11 @@ Gem::Result CRenderQueue12::StageBufferUpload(
 
     try
     {
-        Canvas::GfxResourceAllocation staging{};
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(dataSize, staging));
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_pDevice->AllocateFromRing(dataSize, hw));
+        memcpy(hw.pMapped, pData, dataSize);
 
-        auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
-        ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pStagingResource->Map(0, nullptr, &pMapped));
-        memcpy(static_cast<uint8_t*>(pMapped) + staging.Offset, pData, dataSize);
-        pStagingResource->Unmap(0, nullptr);
-
-        m_PendingBufferUploads.push_back({ staging, destination });
+        m_PendingBufferUploads.push_back({ hw.pResource, hw.ResourceOffset, dataSize, destination });
     }
     catch (Gem::GemError& e) { return e.Result(); }
     catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
@@ -1425,8 +1382,6 @@ Gem::Result CRenderQueue12::DrawUIText(
     if (!pGlyphAtlas || !m_pCurrentSwapChain || !vertexBuffer.pBuffer)
         return Gem::Result::InvalidArg;
 
-    Canvas::GfxResourceAllocation cbAlloc{};
-
     try
     {
         DXGI_FORMAT rtvFormat = m_pCurrentSwapChain->m_pSurface->GetD3DResource()->GetDesc().Format;
@@ -1439,15 +1394,11 @@ Gem::Result CRenderQueue12::DrawUIText(
 
         // Allocate all CPU-side resources before creating the GPU task
         constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_pDevice->AllocateFromRing(kCBVSize, hw));
 
-        auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
         float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
-        void* pCBMapped = nullptr;
-        ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
-        memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
-        pCBResource->Unmap(0, nullptr);
+        memcpy(hw.pMapped, screenConsts, sizeof(screenConsts));
 
         ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
         UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -1461,7 +1412,7 @@ Gem::Result CRenderQueue12::DrawUIText(
         srvGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
         pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
 
-        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
         D3D12_GPU_VIRTUAL_ADDRESS vertexAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress() + vertexBuffer.Offset;
 
         // All resources ready — now create the GPU task
@@ -1492,17 +1443,13 @@ Gem::Result CRenderQueue12::DrawUIText(
             pCL->DrawInstanced(vertexCount, 1, 0, 0);
         };
         m_UIGpuTaskGraph.InsertTask(drawTask);
-
-        RetireUploadAllocation(cbAlloc);
     }
     catch (Gem::GemError& e)
     {
-        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
         return e.Result();
     }
     catch (_com_error& e)
     {
-        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
         return ResultFromHRESULT(e.Error());
     }
 
@@ -1529,23 +1476,31 @@ void CRenderQueue12::FlushPendingBufferUploads()
         }
     }
 
-    auto uploads = std::move(m_PendingBufferUploads);
-    m_PendingBufferUploads.clear();
-
-    copyTask.RecordFunc = [uploads](ID3D12GraphicsCommandList* pCL)
+    // Extract only the raw D3D12 data the lambda needs.
+    // RecordFunc is invoked synchronously by InsertTask, so the PendingBufferUploads
+    // are still alive on the stack when the lambda runs.
+    struct CopyOp { ID3D12Resource* pSrc; uint64_t SrcOffset; ID3D12Resource* pDst; uint64_t DstOffset; uint64_t Size; };
+    std::vector<CopyOp> ops;
+    ops.reserve(m_PendingBufferUploads.size());
+    for (const auto& u : m_PendingBufferUploads)
     {
-        for (const auto& u : uploads)
-        {
-            auto pDstBuf = static_cast<CBuffer12*>(u.Destination.pBuffer.Get());
-            auto pSrcBuf = static_cast<CBuffer12*>(u.Staging.pBuffer.Get());
-            pCL->CopyBufferRegion(pDstBuf->GetD3DResource(), u.Destination.Offset,
-                pSrcBuf->GetD3DResource(), u.Staging.Offset, u.Staging.Size);
-        }
+        ops.push_back({
+            u.pStagingResource,
+            u.StagingOffset,
+            static_cast<CBuffer12*>(u.Destination.pBuffer.Get())->GetD3DResource(),
+            u.Destination.Offset,
+            u.CopySize
+        });
+    }
+
+    copyTask.RecordFunc = [ops = std::move(ops)](ID3D12GraphicsCommandList* pCL)
+    {
+        for (const auto& op : ops)
+            pCL->CopyBufferRegion(op.pDst, op.DstOffset, op.pSrc, op.SrcOffset, op.Size);
     };
     m_UIGpuTaskGraph.InsertTask(copyTask);
 
-    for (auto& u : uploads)
-        RetireUploadAllocation(u.Staging);
+    m_PendingBufferUploads.clear();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1555,8 +1510,6 @@ Gem::Result CRenderQueue12::DrawUIRect(
 {
     if (!m_pCurrentSwapChain || !vertexBuffer.pBuffer)
         return Gem::Result::InvalidArg;
-
-    Canvas::GfxResourceAllocation cbAlloc{};
 
     try
     {
@@ -1569,17 +1522,13 @@ Gem::Result CRenderQueue12::DrawUIRect(
 
         // Allocate all CPU-side resources before creating the GPU task
         constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_pDevice->AllocateFromRing(kCBVSize, hw));
 
-        auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
         float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
-        void* pCBMapped = nullptr;
-        ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
-        memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
-        pCBResource->Unmap(0, nullptr);
+        memcpy(hw.pMapped, screenConsts, sizeof(screenConsts));
 
-        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
         D3D12_GPU_VIRTUAL_ADDRESS vertexAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress() + vertexBuffer.Offset;
 
         // All resources ready — now create the GPU task
@@ -1603,17 +1552,13 @@ Gem::Result CRenderQueue12::DrawUIRect(
             pCL->DrawInstanced(vertexCount, 1, 0, 0);
         };
         m_UIGpuTaskGraph.InsertTask(drawTask);
-
-        RetireUploadAllocation(cbAlloc);
     }
     catch (Gem::GemError& e)
     {
-        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
         return e.Result();
     }
     catch (_com_error& e)
     {
-        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
         return ResultFromHRESULT(e.Error());
     }
 
@@ -1789,19 +1734,12 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         // Upload per-frame constants and bind to root CBV (slot 0, register b0)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         const uint64_t cbSize = (sizeof(HlslTypes::HlslPerFrameConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
-        Canvas::GfxResourceAllocation cbAlloc;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(cbSize, cbAlloc));
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_pDevice->AllocateFromRing(cbSize, hw));
         
-        auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pHostResource = pHostBuf->GetD3DResource();
+        memcpy(hw.pMapped, &frameConstants, sizeof(HlslTypes::HlslPerFrameConstants));
         
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pHostResource->Map(0, nullptr, &pMapped));
-        memcpy(static_cast<uint8_t*>(pMapped) + cbAlloc.Offset,
-               &frameConstants, sizeof(HlslTypes::HlslPerFrameConstants));
-        pHostResource->Unmap(0, nullptr);
-        
-        D3D12_GPU_VIRTUAL_ADDRESS frameCBVAddress = pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+        D3D12_GPU_VIRTUAL_ADDRESS frameCBVAddress = hw.GpuAddress;
 
         // Bind per-frame constants for the geometry pass
         auto& frameConstTask = CreateGpuTask("FrameConstants");
@@ -1894,8 +1832,6 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             };
             m_GpuTaskGraph.InsertTask(compositeTask);
         }
-
-        RetireUploadAllocation(cbAlloc);
 
         // Flush pending vertex uploads staged during SubmitRenderables
         FlushPendingBufferUploads();

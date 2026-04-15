@@ -510,18 +510,12 @@ public:
     // GPU sync point tracking (fence-value based)
     std::unordered_map<UINT64, GpuSyncPoint> m_GpuSyncPoints;
     
-    // Pending upload allocation retirements: freed once GPU advances past the fence value
-    struct PendingUploadRetirement
-    {
-        Canvas::GfxResourceAllocation Suballocation;
-        UINT64 FenceValue;  // Release once GPU completes past this fence value
-    };
-    std::vector<PendingUploadRetirement> m_PendingUploadRetirements;
-
     // Staged buffer uploads: CPU data staged in UPLOAD heap, flushed as GPU copy tasks
     struct PendingBufferUpload
     {
-        Canvas::GfxResourceAllocation Staging;     // Source: upload heap region
+        ID3D12Resource* pStagingResource;          // Source: ring buffer D3D12 resource
+        uint64_t StagingOffset;                    // Offset within ring buffer resource
+        uint64_t CopySize;                         // Number of bytes to copy
         Canvas::GfxResourceAllocation Destination; // Dest: target buffer region
     };
     std::vector<PendingBufferUpload> m_PendingBufferUploads;
@@ -605,10 +599,6 @@ public:
     // Present the swap chain
     void PresentSwapChain(Canvas::XGfxSwapChain* pSwapChain);
 
-    // Schedule release of a host-write suballocation after the current GPU work completes.
-    // The release is deferred until the GPU fence advances past the current value.
-    void RetireUploadAllocation(const Canvas::GfxResourceAllocation& suballocation);
-    
     //---------------------------------------------------------------------------------------------
     // GPU Task Graph API
     //

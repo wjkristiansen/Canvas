@@ -217,7 +217,7 @@ namespace Canvas
 
     //------------------------------------------------------------------------------------------------
 
-    struct XGfxUIElement : public Gem::XGeneric
+    struct XGfxUIElement : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxUIElement, 0xA1B2C3D4E5F60718);
 
@@ -258,7 +258,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    struct XGfxUIGraphNode : public Gem::XGeneric
+    struct XGfxUIGraphNode : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxUIGraphNode, 0xE5F6071829304152);
 
@@ -278,7 +278,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    struct XGfxUIGraph : public Gem::XGeneric
+    struct XGfxUIGraph : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxUIGraph, 0xD4E5F60718293041);
 
@@ -393,8 +393,6 @@ namespace Canvas
         GEMMETHOD(CreateMaterial)() = 0;
         GEMMETHOD(CreateSurface)(const GfxSurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
         GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, GfxMemoryUsage memoryUsage, XGfxBuffer **ppBuffer) = 0;
-        GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxResourceAllocation &suballocationInfo) = 0;
-        GEMMETHOD_(void, FreeHostWriteRegion)(GfxResourceAllocation &suballocationInfo) = 0;
         GEMMETHOD(CreateMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
@@ -412,7 +410,6 @@ namespace Canvas
 
         // Vertex buffer suballocation (alloc + upload in one call)
         GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxResourceAllocation& out) = 0;
-        GEMMETHOD_(void, FreeVertexBuffer)(const GfxResourceAllocation& suballoc) = 0;
 
         // Upload CPU data into a sub-region of a GPU surface via a staging copy.
         GEMMETHOD(UploadTextureRegion)(

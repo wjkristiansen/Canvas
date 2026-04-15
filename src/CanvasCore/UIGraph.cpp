@@ -12,7 +12,11 @@ namespace Canvas
 GEMMETHODIMP_(XGfxUIGraphNode*) CUIGraph::GetRootNode()
 {
     if (!m_pRootNode)
-        m_pRootNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
+    {
+        m_pRootNode = new Gem::TGenericImpl<CUIGraphNodeImpl>(m_pCanvas);
+        if (m_pCanvas) m_pRootNode->Register(m_pCanvas);
+        m_pRootNode->SetName("UIRoot");
+    }
     return m_pRootNode.Get();
 }
 
@@ -24,7 +28,8 @@ Gem::Result CUIGraph::CreateNode(XGfxUIGraphNode* pParent, XGfxUIGraphNode** ppN
 
     XGfxUIGraphNode* pParentNode = pParent ? pParent : GetRootNode();
 
-    Gem::TGemPtr<CUIGraphNodeImpl> pNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
+    Gem::TGemPtr<CUIGraphNodeImpl> pNode = new Gem::TGenericImpl<CUIGraphNodeImpl>(m_pCanvas);
+    if (m_pCanvas) pNode->Register(m_pCanvas);
     pParentNode->AddChild(pNode);
 
     *ppNode = pNode.Detach();
@@ -39,7 +44,8 @@ Gem::Result CUIGraph::CreateTextElement(XGfxUIGraphNode* pNode, XGfxUITextElemen
     if (!pNode)
         pNode = GetRootNode();
 
-    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>();
+    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>(m_pCanvas);
+    if (m_pCanvas) pElement->Register(m_pCanvas);
     pElement->SetGlyphAtlasInternal(m_pAtlas.get());
     pNode->BindElement(pElement);
 
@@ -55,7 +61,8 @@ Gem::Result CUIGraph::CreateRectElement(XGfxUIGraphNode* pNode, XGfxUIRectElemen
     if (!pNode)
         pNode = GetRootNode();
 
-    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>();
+    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>(m_pCanvas);
+    if (m_pCanvas) pElement->Register(m_pCanvas);
     pNode->BindElement(pElement);
 
     *ppElement = pElement.Detach();
@@ -155,9 +162,6 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
 
                 if (pText->IsDirty())
                 {
-                    auto vb = pText->GetVertexBuffer();
-                    if (vb.Size > 0)
-                        m_pDevice->FreeVertexBuffer(vb);
                     GfxResourceAllocation newVb{};
                     Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
                         pText->GetVertexCount(), sizeof(TextVertex), pText->GetVertexData(), pGfxRQ, newVb));
@@ -174,9 +178,6 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
 
                 if (pRect->IsDirty())
                 {
-                    auto vb = pRect->GetVertexBuffer();
-                    if (vb.Size > 0)
-                        m_pDevice->FreeVertexBuffer(vb);
                     GfxResourceAllocation newVb{};
                     Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
                         pRect->GetVertexCount(), sizeof(TextVertex), pRect->GetVertexData(), pGfxRQ, newVb));

@@ -227,7 +227,9 @@ GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XGfxRenderQueue* pRende
     if (!pAtlas)
         return Gem::Result::Fail;
 
-    Gem::TGemPtr<CUIGraph> pGraph = new Gem::TGenericImpl<CUIGraph>();
+    Gem::TGemPtr<CUIGraph> pGraph = new Gem::TGenericImpl<CUIGraph>(this);
+    pGraph->Register(this);
+    pGraph->SetName("UIGraph");
     pGraph->SetAtlas(std::move(pAtlas));
     pGraph->SetDevice(pDevice);
     *ppGraph = pGraph.Detach();

@@ -309,37 +309,50 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::GfxResourceAllocation &suballocation)
+void CDevice12::EnsureUploadRingBuffer()
 {
-    Canvas::CFunctionSentinel sentinel("XGfxDevice::AllocateHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
+    if (m_pUploadRingResource)
+        return;
 
+    D3D12_RESOURCE_DESC1 bufDesc = {};
+    bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+    bufDesc.Width            = m_UploadRingSize;
+    bufDesc.Height           = 1;
+    bufDesc.DepthOrArraySize = 1;
+    bufDesc.MipLevels        = 1;
+    bufDesc.SampleDesc.Count = 1;
+    bufDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    D3D12_HEAP_PROPERTIES heapProps = {};
+    heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+    heapProps.CreationNodeMask = 1;
+    heapProps.VisibleNodeMask = 1;
+
+    ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource3(
+        &heapProps, D3D12_HEAP_FLAG_NONE, &bufDesc,
+        D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr, nullptr, 0, nullptr,
+        IID_PPV_ARGS(&m_pUploadRingResource)));
+    m_pUploadRingResource->SetName(L"CanvasGfx_UploadRing");
+
+    // Persistently map — UPLOAD heap stays mapped for the lifetime of the resource
+    void* pMapped = nullptr;
+    ThrowFailedHResult(m_pUploadRingResource->Map(0, nullptr, &pMapped));
+    m_pUploadRingMapped = static_cast<uint8_t*>(pMapped);
+    m_UploadRingGpuBase = m_pUploadRingResource->GetGPUVirtualAddress();
+}
+
+//------------------------------------------------------------------------------------------------
+Gem::Result CDevice12::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocation& out)
+{
     if (sizeInBytes == 0)
         return Gem::Result::InvalidArg;
 
     try
     {
-        // Oversized: dedicated committed resource (don't let one alloc take >50% of ring)
-        if (sizeInBytes > m_UploadRingSize / 2)
-        {
-            Gem::TGemPtr<Canvas::XGfxBuffer> pDedicated;
-            Gem::ThrowGemError(CreateBuffer(sizeInBytes, Canvas::GfxMemoryUsage::HostWrite, &pDedicated));
-            suballocation.pBuffer = pDedicated;
-            suballocation.Offset = 0;
-            suballocation.Size = sizeInBytes;
-            suballocation.AllocationKey = 0;  // 0 = dedicated
-            return Gem::Result::Success;
-        }
-
-        // Align up to 256 bytes
         constexpr uint64_t kAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         uint64_t alignedSize = (sizeInBytes + kAlignment - 1) & ~(kAlignment - 1);
 
-        // Ensure ring buffer exists
-        if (!m_pUploadRingBuffer)
-        {
-            Gem::ThrowGemError(CreateBuffer(m_UploadRingSize, Canvas::GfxMemoryUsage::HostWrite, &m_pUploadRingBuffer));
-            static_cast<CBuffer12*>(m_pUploadRingBuffer.Get())->GetD3DResource()->SetName(L"CanvasGfx_UploadRing");
-        }
+        EnsureUploadRingBuffer();
 
         // Check available space
         uint64_t available;
@@ -348,18 +361,17 @@ GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::Gf
         else
             available = m_UploadRingReadOffset - m_UploadRingWriteOffset;
 
-        // If not enough space, try reclaiming completed frames
+        // Try reclaiming completed frames
         if (alignedSize > available)
         {
-            ReclaimUploadRingSpace(0);  // 0 = no-op; caller should have called with real fence
-            // Recompute
+            ReclaimUploadRingSpace(m_LastCompletedFenceValue);
             if (m_UploadRingWriteOffset >= m_UploadRingReadOffset)
                 available = m_UploadRingSize - m_UploadRingWriteOffset + m_UploadRingReadOffset;
             else
                 available = m_UploadRingReadOffset - m_UploadRingWriteOffset;
         }
 
-        // If STILL not enough, grow the ring buffer
+        // Grow if needed
         if (alignedSize > available)
         {
             uint64_t needed = m_UploadRingSize;
@@ -368,49 +380,26 @@ GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::Gf
             GrowUploadRingBuffer(needed * 2);
         }
 
-        // Handle wrap-around: if the allocation doesn't fit at the end, waste the tail and wrap
+        // Handle wrap-around
         if (m_UploadRingWriteOffset + alignedSize > m_UploadRingSize)
         {
             if (alignedSize > m_UploadRingReadOffset)
-            {
-                // Not enough space even at the start — grow
                 GrowUploadRingBuffer(m_UploadRingSize * 2);
-            }
             else
-            {
-                // Waste the remaining tail space, wrap to 0
                 m_UploadRingWriteOffset = 0;
-            }
         }
 
-        suballocation.pBuffer = m_pUploadRingBuffer;
-        suballocation.Offset = m_UploadRingWriteOffset;
-        suballocation.Size = sizeInBytes;
-        suballocation.AllocationKey = 1;  // Nonzero = ring buffer
+        out.GpuAddress      = m_UploadRingGpuBase + m_UploadRingWriteOffset;
+        out.pMapped         = m_pUploadRingMapped + m_UploadRingWriteOffset;
+        out.Size            = sizeInBytes;
+        out.pResource       = m_pUploadRingResource;
+        out.ResourceOffset  = m_UploadRingWriteOffset;
 
         m_UploadRingWriteOffset += alignedSize;
-
         return Gem::Result::Success;
     }
-    catch (const Gem::GemError &e)
-    {
-        sentinel.SetResultCode(e.Result());
-        return e.Result();
-    }
+    catch (const Gem::GemError &e) { return e.Result(); }
     catch (const _com_error &e) { return ResultFromHRESULT(e.Error()); }
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxResourceAllocation &suballocation)
-{
-    Canvas::CFunctionSentinel sentinel("XGfxDevice::FreeHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
-
-    if (!suballocation.pBuffer)
-        return;
-
-    // Ring buffer allocations (AllocationKey != 0) are freed by frame marker advancement.
-    // Dedicated (AllocationKey == 0) buffers just drop their ref.
-    suballocation = {};
 }
 
 //------------------------------------------------------------------------------------------------
@@ -422,6 +411,7 @@ void CDevice12::MarkUploadRingFrameEnd(UINT64 fenceValue)
 //------------------------------------------------------------------------------------------------
 void CDevice12::ReclaimUploadRingSpace(UINT64 completedFenceValue)
 {
+    m_LastCompletedFenceValue = completedFenceValue;
     while (!m_UploadRingFrameMarkers.empty())
     {
         auto& oldest = m_UploadRingFrameMarkers.front();
@@ -435,18 +425,21 @@ void CDevice12::ReclaimUploadRingSpace(UINT64 completedFenceValue)
 //------------------------------------------------------------------------------------------------
 void CDevice12::GrowUploadRingBuffer(uint64_t newSize)
 {
-    // Create new larger buffer
-    Gem::TGemPtr<Canvas::XGfxBuffer> pNewBuffer;
-    Gem::ThrowGemError(CreateBuffer(newSize, Canvas::GfxMemoryUsage::HostWrite, &pNewBuffer));
-    static_cast<CBuffer12*>(pNewBuffer.Get())->GetD3DResource()->SetName(L"CanvasGfx_UploadRing");
+    // Unmap and release old ring buffer
+    if (m_pUploadRingResource)
+    {
+        m_pUploadRingResource->Unmap(0, nullptr);
+        m_pUploadRingResource.Release();
+        m_pUploadRingMapped = nullptr;
+        m_UploadRingGpuBase = 0;
+    }
 
-    // Old buffer stays alive via any outstanding GfxResourceAllocation refs (TGemPtr).
-    // New ring buffer starts fresh.
-    m_pUploadRingBuffer = pNewBuffer;
+    // Create new larger buffer
     m_UploadRingSize = newSize;
     m_UploadRingWriteOffset = 0;
     m_UploadRingReadOffset = 0;
     m_UploadRingFrameMarkers.clear();
+    EnsureUploadRingBuffer();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -495,39 +488,24 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         Gem::TGemPtr<CBuffer12> pPosBuffer;
         Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
             &pPosBuffer, GetCanvas(), posAlloc.pResource, posName.c_str()));
-        pPosBuffer->SetAllocationTracking(&m_ResourceAllocator, this, posAlloc.AllocationKey, posAlloc.SizeInUnits, posAlloc.AllocatorTier);
+        pPosBuffer->SetAllocationTracking(this, posAlloc.AllocationKey, posAlloc.SizeInUnits, posAlloc.AllocatorTier);
 
         Gem::TGemPtr<CBuffer12> pNormBuffer;
         Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
             &pNormBuffer, GetCanvas(), normAlloc.pResource, normName.c_str()));
-        pNormBuffer->SetAllocationTracking(&m_ResourceAllocator, this, normAlloc.AllocationKey, normAlloc.SizeInUnits, normAlloc.AllocatorTier);
+        pNormBuffer->SetAllocationTracking(this, normAlloc.AllocationKey, normAlloc.SizeInUnits, normAlloc.AllocatorTier);
 
-        // Allocate space in the host-write (upload) buffer pool.
-        Canvas::GfxResourceAllocation suballocation;
-        Gem::ThrowGemError(AllocateHostWriteRegion(allocationSize, suballocation));
+        // Allocate staging space from upload ring buffer
+        HostWriteAllocation staging;
+        Gem::ThrowGemError(AllocateFromRing(allocationSize, staging));
 
         // Copy data into the upload buffer immediately on CPU timeline
         {
-            auto pHostBufImpl = static_cast<CBuffer12*>(suballocation.pBuffer.Get());
-            ID3D12Resource* pHostResource = pHostBufImpl ? pHostBufImpl->GetD3DResource() : nullptr;
-            if (pHostResource)
-            {
-                void* pMapped = nullptr;
-                HRESULT hr = pHostResource->Map(0, nullptr, &pMapped);
-                if (SUCCEEDED(hr) && pMapped)
-                {
-                    uint64_t posBytes = posSize;
-                    uint64_t normBytes = normSize;
-
-                    uint8_t* dst = static_cast<uint8_t*>(pMapped) + suballocation.Offset;
-                    if (positions && posBytes > 0)
-                        memcpy(dst, positions, static_cast<size_t>(posBytes));
-                    if (normals && normBytes > 0)
-                        memcpy(dst + posBytes, normals, static_cast<size_t>(normBytes));
-
-                    pHostResource->Unmap(0, nullptr);
-                }
-            }
+            uint8_t* dst = static_cast<uint8_t*>(staging.pMapped);
+            if (positions && posSize > 0)
+                memcpy(dst, positions, static_cast<size_t>(posSize));
+            if (normals && normSize > 0)
+                memcpy(dst + posSize, normals, static_cast<size_t>(normSize));
         }
 
         // Schedule copy operations from upload heap to device-local heap
@@ -547,44 +525,35 @@ GEMMETHODIMP CDevice12::CreateMeshData(
                 D3D12_BARRIER_SYNC_COPY,
                 D3D12_BARRIER_ACCESS_COPY_DEST);
 
-            // Schedule GPU copy operations from upload buffer to device-local buffers
+            ID3D12Resource* pSrcRes  = staging.pResource;
+            ID3D12Resource* pDstPos  = pPosBuffer->GetD3DResource();
+            ID3D12Resource* pDstNorm = pNormBuffer->GetD3DResource();
+            uint64_t srcOffset = staging.ResourceOffset;
+
             pRQ->RecordCommandBlock(
                 usages.Build(),
-                [pPosBuffer, pNormBuffer, suballocation, posSize, normSize](ID3D12GraphicsCommandList* cmdList)
+                [pSrcRes, pDstPos, pDstNorm, srcOffset, posSize, normSize](ID3D12GraphicsCommandList* cmdList)
                 {
-                    ID3D12Resource* pSrc = static_cast<CBuffer12*>(suballocation.pBuffer.Get())->GetD3DResource();
-                    ID3D12Resource* pDstPos = static_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource();
-                    ID3D12Resource* pDstNorm = static_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource();
-
-                    if (pSrc && pDstPos)
-                        cmdList->CopyBufferRegion(pDstPos, 0, pSrc, suballocation.Offset, posSize);
-                    if (pSrc && pDstNorm)
-                        cmdList->CopyBufferRegion(pDstNorm, 0, pSrc, suballocation.Offset + posSize, normSize);
+                    cmdList->CopyBufferRegion(pDstPos, 0, pSrcRes, srcOffset, posSize);
+                    cmdList->CopyBufferRegion(pDstNorm, 0, pSrcRes, srcOffset + posSize, normSize);
                 },
                 "Upload Mesh Data");
-
-            // Schedule release of the host-write region after the next submit completes
-            pRQ->RetireUploadAllocation(suballocation);
         }
 
         // Create and register the CMeshData12 object that holds the buffers
         Gem::TGemPtr<CMeshData12> pMeshData;
         Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas()));
         
-        // Build GfxResourceAllocations with AllocationKey for proper cleanup
-        // TODO: CMeshData12 does not currently free these allocations on destruction.
-        // A device reference would be needed to call FreeVertexBuffer in Uninitialize.
+        // Build GfxResourceAllocations for the mesh (CBuffer12 handles cleanup via allocator tracking)
         Canvas::GfxResourceAllocation posVB;
         posVB.pBuffer       = pPosBuffer;
         posVB.Offset        = 0;
         posVB.Size          = posSize;
-        posVB.AllocationKey = posAlloc.AllocationKey;
 
         Canvas::GfxResourceAllocation normVB;
         normVB.pBuffer       = pNormBuffer;
         normVB.Offset        = 0;
         normVB.Size          = normSize;
-        normVB.AllocationKey = normAlloc.AllocationKey;
 
         pMeshData->SetPositionBuffer(posVB);
         pMeshData->SetNormalBuffer(normVB);
@@ -607,7 +576,7 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
     Canvas::XGfxMeshData **ppMesh,
     const char* name)
 {
-    return CreateMeshData(vertexCount, positions, normals, pRenderQueue, ppMesh);
+    return CreateMeshData(vertexCount, positions, normals, pRenderQueue, ppMesh, name);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -636,11 +605,11 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
         Gem::TGemPtr<CBuffer12> pBuffer;
         Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
             &pBuffer, GetCanvas(), alloc.pResource, nullptr));
+        pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
 
         out.pBuffer       = pBuffer;
         out.Offset        = 0;
         out.Size          = dataSize;
-        out.AllocationKey = alloc.AllocationKey;
 
         // Stage the upload via the render queue
         auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
@@ -650,19 +619,6 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
     }
     catch (Gem::GemError& e) { return e.Result(); }
     catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CDevice12::FreeVertexBuffer(const Canvas::GfxResourceAllocation& suballoc)
-{
-    if (suballoc.AllocationKey == 0)
-        return;
-
-    ResourceAllocation alloc;
-    alloc.AllocationKey = suballoc.AllocationKey;
-    uint32_t blockStart;
-    ResourceAllocation::DecodeKey(suballoc.AllocationKey, blockStart, alloc.AllocatorTier, alloc.SizeInUnits);
-    m_ResourceAllocator.Free(alloc);
 }
 
 //------------------------------------------------------------------------------------------------

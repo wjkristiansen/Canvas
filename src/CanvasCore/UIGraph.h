@@ -8,7 +8,7 @@
 namespace Canvas
 {
 
-class CUIGraph : public Gem::TGeneric<XGfxUIGraph>
+class CUIGraph : public TCanvasElement<XGfxUIGraph>
 {
     Gem::TGemPtr<CUIGraphNodeImpl> m_pRootNode;
     std::unique_ptr<CGlyphAtlasImpl> m_pAtlas;
@@ -17,9 +17,12 @@ class CUIGraph : public Gem::TGeneric<XGfxUIGraph>
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxUIGraph)
+        GEM_INTERFACE_ENTRY(XCanvasElement)
+        GEM_INTERFACE_ENTRY(XNamedElement)
     END_GEM_INTERFACE_MAP()
 
     CUIGraph() = default;
+    CUIGraph(XCanvas* pCanvas) : TCanvasElement(pCanvas) {}
 
     void Initialize() {}
     void Uninitialize() {}

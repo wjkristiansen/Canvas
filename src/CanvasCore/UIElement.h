@@ -8,6 +8,7 @@
 
 #pragma once
 #include "Canvas.h"
+#include "CanvasElement.h"
 #include "TextLayout.h"
 #include "GlyphAtlas.h"
 
@@ -26,7 +27,7 @@ namespace Canvas
 // CUIGraphNodeImpl - XGfxUIGraphNode implementation (repurposed from CUIElementCore)
 //================================================================================================
 
-class CUIGraphNodeImpl : public Gem::TGeneric<XGfxUIGraphNode>
+class CUIGraphNodeImpl : public TCanvasElement<XGfxUIGraphNode>
 {
 public:
     struct ChildNode
@@ -48,9 +49,12 @@ protected:
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxUIGraphNode)
+        GEM_INTERFACE_ENTRY(XCanvasElement)
+        GEM_INTERFACE_ENTRY(XNamedElement)
     END_GEM_INTERFACE_MAP()
 
     CUIGraphNodeImpl() = default;
+    CUIGraphNodeImpl(XCanvas* pCanvas) : TCanvasElement(pCanvas) {}
     ~CUIGraphNodeImpl();
 
     void Initialize() {}
@@ -83,7 +87,7 @@ private:
 // CUITextElement - Text element with cached vertex generation
 //================================================================================================
 
-class CUITextElement : public Gem::TGeneric<XGfxUITextElement>
+class CUITextElement : public TCanvasElement<XGfxUITextElement>
 {
     // Content
     std::string m_Text;
@@ -102,9 +106,12 @@ public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxUIElement)
         GEM_INTERFACE_ENTRY(XGfxUITextElement)
+        GEM_INTERFACE_ENTRY(XCanvasElement)
+        GEM_INTERFACE_ENTRY(XNamedElement)
     END_GEM_INTERFACE_MAP()
 
     CUITextElement() = default;
+    CUITextElement(XCanvas* pCanvas) : TCanvasElement(pCanvas) {}
     void Initialize() {}
     void Uninitialize() {}
 
@@ -141,7 +148,7 @@ public:
 // CUIRectElement - Rectangle element with cached vertex generation
 //================================================================================================
 
-class CUIRectElement : public Gem::TGeneric<XGfxUIRectElement>
+class CUIRectElement : public TCanvasElement<XGfxUIRectElement>
 {
     Math::FloatVector4 m_FillColor = { 1.0f, 1.0f, 1.0f, 1.0f };
     Math::FloatVector2 m_Size = {};
@@ -156,9 +163,12 @@ public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XGfxUIElement)
         GEM_INTERFACE_ENTRY(XGfxUIRectElement)
+        GEM_INTERFACE_ENTRY(XCanvasElement)
+        GEM_INTERFACE_ENTRY(XNamedElement)
     END_GEM_INTERFACE_MAP()
 
     CUIRectElement() = default;
+    CUIRectElement(XCanvas* pCanvas) : TCanvasElement(pCanvas) {}
     void Initialize() {}
     void Uninitialize() {}
 
