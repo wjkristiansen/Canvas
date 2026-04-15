@@ -190,7 +190,7 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
         // Create and register the swapchain
         DXGI_FORMAT dxgiFormat = CanvasFormatToDXGIFormat(Format);
         Gem::TGemPtr<CSwapChain12> pSwapChain;
-        Gem::ThrowGemError(TGfxElement<CSwapChain12>::CreateAndRegister<CSwapChain12>(&pSwapChain, GetCanvas(), hWnd, Windowed, this, dxgiFormat, NumBuffers, nullptr));
+        Gem::ThrowGemError(TGfxElement<CSwapChain12>::CreateAndRegister<CSwapChain12>(&pSwapChain, GetCanvas(), hWnd, Windowed, this, dxgiFormat, NumBuffers, "SwapChain"));
         
         return pSwapChain->QueryInterface(ppSwapChain);
     }

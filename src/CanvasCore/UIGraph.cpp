@@ -13,9 +13,9 @@ GEMMETHODIMP_(XGfxUIGraphNode*) CUIGraph::GetRootNode()
 {
     if (!m_pRootNode)
     {
-        m_pRootNode = new Gem::TGenericImpl<CUIGraphNodeImpl>(m_pCanvas);
-        if (m_pCanvas) m_pRootNode->Register(m_pCanvas);
+        m_pRootNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
         m_pRootNode->SetName("UIRoot");
+        if (m_pCanvas) m_pRootNode->Register(m_pCanvas);
     }
     return m_pRootNode.Get();
 }
@@ -28,7 +28,8 @@ Gem::Result CUIGraph::CreateNode(XGfxUIGraphNode* pParent, XGfxUIGraphNode** ppN
 
     XGfxUIGraphNode* pParentNode = pParent ? pParent : GetRootNode();
 
-    Gem::TGemPtr<CUIGraphNodeImpl> pNode = new Gem::TGenericImpl<CUIGraphNodeImpl>(m_pCanvas);
+    Gem::TGemPtr<CUIGraphNodeImpl> pNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
+    pNode->SetName("UINode");
     if (m_pCanvas) pNode->Register(m_pCanvas);
     pParentNode->AddChild(pNode);
 
@@ -44,9 +45,10 @@ Gem::Result CUIGraph::CreateTextElement(XGfxUIGraphNode* pNode, XGfxUITextElemen
     if (!pNode)
         pNode = GetRootNode();
 
-    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>(m_pCanvas);
-    if (m_pCanvas) pElement->Register(m_pCanvas);
+    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>();
+    pElement->SetName("UITextElement");
     pElement->SetGlyphAtlasInternal(m_pAtlas.get());
+    if (m_pCanvas) pElement->Register(m_pCanvas);
     pNode->BindElement(pElement);
 
     *ppElement = pElement.Detach();
@@ -61,7 +63,8 @@ Gem::Result CUIGraph::CreateRectElement(XGfxUIGraphNode* pNode, XGfxUIRectElemen
     if (!pNode)
         pNode = GetRootNode();
 
-    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>(m_pCanvas);
+    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>();
+    pElement->SetName("UIRectElement");
     if (m_pCanvas) pElement->Register(m_pCanvas);
     pNode->BindElement(pElement);
 

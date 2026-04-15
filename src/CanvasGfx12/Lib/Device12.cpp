@@ -81,7 +81,7 @@ GEMMETHODIMP CDevice12::CreateRenderQueue(Canvas::XGfxRenderQueue **ppRenderQueu
     {
         // Create and register the CRenderQueue12
         Gem::TGemPtr<CRenderQueue12> pRenderQueue;
-        Gem::ThrowGemError(TGfxElement<CRenderQueue12>::CreateAndRegister(&pRenderQueue, GetCanvas(), this, nullptr));
+        Gem::ThrowGemError(TGfxElement<CRenderQueue12>::CreateAndRegister(&pRenderQueue, GetCanvas(), this, "RenderQueue"));
         
         return pRenderQueue->QueryInterface(ppRenderQueue);
     }
@@ -219,7 +219,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
         
         // Create and register the CSurface12 wrapper
         Gem::TGemPtr<CSurface12> pSurface;
-        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, initialLayout, nullptr));
+        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, initialLayout, "Surface"));
         
         return pSurface->QueryInterface(ppSurface);
     }
@@ -542,7 +542,7 @@ GEMMETHODIMP CDevice12::CreateMeshData(
 
         // Create and register the CMeshData12 object that holds the buffers
         Gem::TGemPtr<CMeshData12> pMeshData;
-        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas()));
+        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas(), name));
         
         // Build GfxResourceAllocations for the mesh (CBuffer12 handles cleanup via allocator tracking)
         Canvas::GfxResourceAllocation posVB;
@@ -604,7 +604,7 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
         // Wrap placed/committed resource in CBuffer12
         Gem::TGemPtr<CBuffer12> pBuffer;
         Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
-            &pBuffer, GetCanvas(), alloc.pResource, nullptr));
+            &pBuffer, GetCanvas(), alloc.pResource, "VertexBuffer"));
         pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
 
         out.pBuffer       = pBuffer;

@@ -83,7 +83,7 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
         }
         else
         {
-            Canvas::LogInfo(GetLogger(), "Registered element type: %s", pElement->GetTypeName());
+            Canvas::LogWarn(GetLogger(), "Registered unnamed element: %s", pElement->GetTypeName());
         }
     }
     
@@ -227,9 +227,9 @@ GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XGfxRenderQueue* pRende
     if (!pAtlas)
         return Gem::Result::Fail;
 
-    Gem::TGemPtr<CUIGraph> pGraph = new Gem::TGenericImpl<CUIGraph>(this);
-    pGraph->Register(this);
+    Gem::TGemPtr<CUIGraph> pGraph = new Gem::TGenericImpl<CUIGraph>();
     pGraph->SetName("UIGraph");
+    pGraph->Register(this);
     pGraph->SetAtlas(std::move(pAtlas));
     pGraph->SetDevice(pDevice);
     *ppGraph = pGraph.Detach();
