@@ -22,7 +22,7 @@ GEMMETHODIMP CSceneGraph::Initialize()
     {
         
         Gem::TGemPtr<XSceneGraphNode> pRoot;
-        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pRoot));
+        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pRoot, "SceneRoot"));
         m_pRoot = pRoot;
     }
     catch(const Gem::GemError &e)

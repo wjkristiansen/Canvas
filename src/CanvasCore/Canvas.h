@@ -150,6 +150,11 @@ public:
             return Gem::Result::BadPointer;
         }
 
+        if (!name || !name[0])
+        {
+            Canvas::LogWarn(GetLogger(), "CCanvas::CreateElement<%s>: unnamed object created", _Type::BaseType::XFaceName);
+        }
+
         try
         {
             Gem::TGemPtr<_Type> pObj;

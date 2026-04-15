@@ -286,9 +286,12 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
             nullptr,
             IID_PPV_ARGS(&pResource)));
         
-        // Create and register the CBuffer12 wrapper (pass COMMON for legacy state tracking)
+        // Create and register the CBuffer12 wrapper
+        const char* bufferName = (memoryUsage == Canvas::GfxMemoryUsage::HostWrite) ? "CanvasGfx_UploadBuffer"
+                               : (memoryUsage == Canvas::GfxMemoryUsage::DeviceLocal) ? "CanvasGfx_DeviceBuffer"
+                               : "CanvasGfx_Buffer";
         Gem::TGemPtr<CBuffer12> pBuffer;
-        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(&pBuffer, GetCanvas(), pResource, nullptr));
+        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(&pBuffer, GetCanvas(), pResource, bufferName));
         
         return pBuffer->QueryInterface(ppBuffer);
     }
@@ -335,6 +338,7 @@ GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::Gf
         if (!m_pUploadRingBuffer)
         {
             Gem::ThrowGemError(CreateBuffer(m_UploadRingSize, Canvas::GfxMemoryUsage::HostWrite, &m_pUploadRingBuffer));
+            static_cast<CBuffer12*>(m_pUploadRingBuffer.Get())->GetD3DResource()->SetName(L"CanvasGfx_UploadRing");
         }
 
         // Check available space
@@ -434,6 +438,7 @@ void CDevice12::GrowUploadRingBuffer(uint64_t newSize)
     // Create new larger buffer
     Gem::TGemPtr<Canvas::XGfxBuffer> pNewBuffer;
     Gem::ThrowGemError(CreateBuffer(newSize, Canvas::GfxMemoryUsage::HostWrite, &pNewBuffer));
+    static_cast<CBuffer12*>(pNewBuffer.Get())->GetD3DResource()->SetName(L"CanvasGfx_UploadRing");
 
     // Old buffer stays alive via any outstanding GfxResourceAllocation refs (TGemPtr).
     // New ring buffer starts fresh.
@@ -450,7 +455,8 @@ GEMMETHODIMP CDevice12::CreateMeshData(
     [[maybe_unused]] const Canvas::Math::FloatVector4 *positions,
     [[maybe_unused]] const Canvas::Math::FloatVector4 *normals,
     [[maybe_unused]] Canvas::XGfxRenderQueue *pRenderQueue,
-    [[maybe_unused]] Canvas::XGfxMeshData **ppMesh)
+    [[maybe_unused]] Canvas::XGfxMeshData **ppMesh,
+    [[maybe_unused]] const char* name)
 {
     // Two FloatVector4 arrays: positions and normals
     uint64_t posSize = static_cast<uint64_t>(vertexCount) * sizeof(Canvas::Math::FloatVector4);
@@ -473,22 +479,28 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         bufDesc.SampleDesc.Count = 1;
         bufDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
+        // Build debug names from mesh name
+        std::string posName = name ? (std::string(name) + "_Positions") : "MeshPositions";
+        std::string normName = name ? (std::string(name) + "_Normals") : "MeshNormals";
+
         bufDesc.Width = posSize;
         ResourceAllocation posAlloc;
-        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, posAlloc, "MeshPositions"));
+        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, posAlloc, posName.c_str()));
 
         bufDesc.Width = normSize;
         ResourceAllocation normAlloc;
-        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, normAlloc, "MeshNormals"));
+        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, normAlloc, normName.c_str()));
 
         // Wrap placed resources in CBuffer12
         Gem::TGemPtr<CBuffer12> pPosBuffer;
         Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
-            &pPosBuffer, GetCanvas(), posAlloc.pResource, "MeshPositions"));
+            &pPosBuffer, GetCanvas(), posAlloc.pResource, posName.c_str()));
+        pPosBuffer->SetAllocationTracking(&m_ResourceAllocator, this, posAlloc.AllocationKey, posAlloc.SizeInUnits, posAlloc.AllocatorTier);
 
         Gem::TGemPtr<CBuffer12> pNormBuffer;
         Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
-            &pNormBuffer, GetCanvas(), normAlloc.pResource, "MeshNormals"));
+            &pNormBuffer, GetCanvas(), normAlloc.pResource, normName.c_str()));
+        pNormBuffer->SetAllocationTracking(&m_ResourceAllocator, this, normAlloc.AllocationKey, normAlloc.SizeInUnits, normAlloc.AllocatorTier);
 
         // Allocate space in the host-write (upload) buffer pool.
         Canvas::GfxResourceAllocation suballocation;
@@ -592,7 +604,8 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
     const Canvas::Math::FloatVector4 *positions,
     const Canvas::Math::FloatVector4 *normals,
     Canvas::XGfxRenderQueue *pRenderQueue,
-    Canvas::XGfxMeshData **ppMesh)
+    Canvas::XGfxMeshData **ppMesh,
+    const char* name)
 {
     return CreateMeshData(vertexCount, positions, normals, pRenderQueue, ppMesh);
 }

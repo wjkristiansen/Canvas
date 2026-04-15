@@ -370,7 +370,8 @@ class CApp
                 srcMesh.Positions.data(),
                 srcMesh.Normals.data(),
                 pGfxRenderQueue,
-                &pMeshData));
+                &pMeshData,
+                srcMesh.Name.c_str()));
 
             meshDataByIndex[meshIndex].Attach(pMeshData.Detach());
             m_ImportedMeshData.push_back(meshDataByIndex[meshIndex]);

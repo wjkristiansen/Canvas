@@ -161,7 +161,7 @@ Gem::Result CResourceAllocator::AllocPlaced(
     out.SizeInUnits   = sizeInUnits;
     out.AllocatorTier = tier;
 
-    SetResourceName(pResource, name);
+    SetResourceName(pResource, name ? name : "CanvasGfx_PlacedResource");
 
     Canvas::LogDebug(m_pDevice->GetLogger(),
         "CResourceAllocator: Alloc \"%s\" %lluB -> %s pool, heap %u, offset %llu, block [%u,%u]",
@@ -211,7 +211,7 @@ Gem::Result CResourceAllocator::AllocCommitted(
     out.SizeInUnits   = 0;
     out.AllocatorTier = 0;
 
-    SetResourceName(pResource, name);
+    SetResourceName(pResource, name ? name : "CanvasGfx_CommittedResource");
 
     Canvas::LogDebug(m_pDevice->GetLogger(),
         "CResourceAllocator: Alloc \"%s\" -> committed",
@@ -274,6 +274,12 @@ void CResourceAllocator::EnsureHeap(HeapPool& pool, uint32_t heapIndex)
 
         ThrowFailedHResult(m_pDevice->GetD3DDevice()->CreateHeap(
             &heapDesc, IID_PPV_ARGS(&pHeap)));
+
+        // Name the heap for debug tools
+        const wchar_t* poolName = (&pool == &m_SmallPool) ? L"CanvasGfx_SmallHeap" : L"CanvasGfx_LargeHeap";
+        wchar_t heapName[64];
+        swprintf_s(heapName, L"%s_%u", poolName, heapIndex);
+        pHeap->SetName(heapName);
     }
     pool.Heaps[heapIndex] = pHeap;
 }

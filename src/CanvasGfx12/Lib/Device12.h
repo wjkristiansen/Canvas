@@ -79,13 +79,15 @@ public:
         const Canvas::Math::FloatVector4 *positions,
         const Canvas::Math::FloatVector4 *normals,
         Canvas::XGfxRenderQueue *pRenderQueue,
-        Canvas::XGfxMeshData **ppMesh) final;
+        Canvas::XGfxMeshData **ppMesh,
+        const char* name = nullptr) final;
     GEMMETHOD(CreateDebugMeshData)(
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,
         const Canvas::Math::FloatVector4 *normals,
         Canvas::XGfxRenderQueue *pRenderQueue,
-        Canvas::XGfxMeshData **ppMesh) final;
+        Canvas::XGfxMeshData **ppMesh,
+        const char* name = nullptr) final;
 
     ID3D12Device10 *GetD3DDevice() const { return m_pD3DDevice; }
 

@@ -400,13 +400,15 @@ namespace Canvas
             const Canvas::Math::FloatVector4 *positions,
             const Canvas::Math::FloatVector4 *normals,
             XGfxRenderQueue *pRenderQueue,
-            XGfxMeshData **ppMesh) = 0;
+            XGfxMeshData **ppMesh,
+            const char* name = nullptr) = 0;
         GEMMETHOD(CreateDebugMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
             const Canvas::Math::FloatVector4 *normals,
             XGfxRenderQueue *pRenderQueue,
-            XGfxMeshData **ppMesh) = 0;
+            XGfxMeshData **ppMesh,
+            const char* name = nullptr) = 0;
 
         // Vertex buffer suballocation (alloc + upload in one call)
         GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxResourceAllocation& out) = 0;

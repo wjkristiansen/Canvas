@@ -96,7 +96,7 @@ class CUITextElement : public Gem::TGeneric<XGfxUITextElement>
     XGfxUIGraphNode* m_pAttachedNode = nullptr;
     GfxResourceAllocation m_VertexBuffer;
     bool m_Visible = true;
-    bool m_Dirty = true;  // Content changed, needs vertex regen + GPU upload
+    bool m_Dirty = true;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
