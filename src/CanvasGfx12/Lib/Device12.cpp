@@ -464,12 +464,31 @@ GEMMETHODIMP CDevice12::CreateMeshData(
 
     try
     {
-        // Create device-local (default heap) buffers for positions and normals
-        Gem::TGemPtr<Canvas::XGfxBuffer> pPosBuffer;
-        Gem::TGemPtr<Canvas::XGfxBuffer> pNormBuffer;
+        // Allocate device-local buffers via resource allocator (placed in shared heaps)
+        D3D12_RESOURCE_DESC bufDesc = {};
+        bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+        bufDesc.Height           = 1;
+        bufDesc.DepthOrArraySize = 1;
+        bufDesc.MipLevels        = 1;
+        bufDesc.SampleDesc.Count = 1;
+        bufDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-        Gem::ThrowGemError(CreateBuffer(posSize, Canvas::GfxMemoryUsage::DeviceLocal, &pPosBuffer));
-        Gem::ThrowGemError(CreateBuffer(normSize, Canvas::GfxMemoryUsage::DeviceLocal, &pNormBuffer));
+        bufDesc.Width = posSize;
+        ResourceAllocation posAlloc;
+        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, posAlloc, "MeshPositions"));
+
+        bufDesc.Width = normSize;
+        ResourceAllocation normAlloc;
+        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, normAlloc, "MeshNormals"));
+
+        // Wrap placed resources in CBuffer12
+        Gem::TGemPtr<CBuffer12> pPosBuffer;
+        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
+            &pPosBuffer, GetCanvas(), posAlloc.pResource, "MeshPositions"));
+
+        Gem::TGemPtr<CBuffer12> pNormBuffer;
+        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
+            &pNormBuffer, GetCanvas(), normAlloc.pResource, "MeshNormals"));
 
         // Allocate space in the host-write (upload) buffer pool.
         Canvas::GfxResourceAllocation suballocation;
@@ -540,8 +559,23 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         Gem::TGemPtr<CMeshData12> pMeshData;
         Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas()));
         
-        pMeshData->SetPositionBuffer(pPosBuffer);
-        pMeshData->SetNormalBuffer(pNormBuffer);
+        // Build GfxResourceAllocations with AllocationKey for proper cleanup
+        // TODO: CMeshData12 does not currently free these allocations on destruction.
+        // A device reference would be needed to call FreeVertexBuffer in Uninitialize.
+        Canvas::GfxResourceAllocation posVB;
+        posVB.pBuffer       = pPosBuffer;
+        posVB.Offset        = 0;
+        posVB.Size          = posSize;
+        posVB.AllocationKey = posAlloc.AllocationKey;
+
+        Canvas::GfxResourceAllocation normVB;
+        normVB.pBuffer       = pNormBuffer;
+        normVB.Offset        = 0;
+        normVB.Size          = normSize;
+        normVB.AllocationKey = normAlloc.AllocationKey;
+
+        pMeshData->SetPositionBuffer(posVB);
+        pMeshData->SetNormalBuffer(normVB);
         
         *ppMesh = pMeshData.Detach();
         return Gem::Result::Success;

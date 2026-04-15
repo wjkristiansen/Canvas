@@ -44,15 +44,13 @@ GEMMETHODIMP_(Canvas::XGfxMaterial*) CMeshData12::GetMaterial([[maybe_unused]] u
 }
 
 //------------------------------------------------------------------------------------------------
-void CMeshData12::SetPositionBuffer(Canvas::XGfxBuffer* pBuffer)
+void CMeshData12::SetPositionBuffer(const Canvas::GfxResourceAllocation& vb)
 {
-    m_PositionVB.pBuffer = pBuffer;
-    m_PositionVB.Offset = 0;
+    m_PositionVB = vb;
 }
 
 //------------------------------------------------------------------------------------------------
-void CMeshData12::SetNormalBuffer(Canvas::XGfxBuffer* pBuffer)
+void CMeshData12::SetNormalBuffer(const Canvas::GfxResourceAllocation& vb)
 {
-    m_NormalVB.pBuffer = pBuffer;
-    m_NormalVB.Offset = 0;
+    m_NormalVB = vb;
 }

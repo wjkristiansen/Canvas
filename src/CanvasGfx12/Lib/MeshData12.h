@@ -27,8 +27,8 @@ public:
     GEMMETHOD_(Canvas::XGfxMaterial*, GetMaterial)(uint32_t materialIndex) override;
 
     // Internal methods for setting up buffers
-    void SetPositionBuffer(Canvas::XGfxBuffer* pBuffer);
-    void SetNormalBuffer(Canvas::XGfxBuffer* pBuffer);
+    void SetPositionBuffer(const Canvas::GfxResourceAllocation& vb);
+    void SetNormalBuffer(const Canvas::GfxResourceAllocation& vb);
 
 private:
     Canvas::GfxResourceAllocation m_PositionVB;
