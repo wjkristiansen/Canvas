@@ -1541,6 +1541,13 @@ void CRenderQueue12::FlushPendingGlyphUploads()
 }
 
 //------------------------------------------------------------------------------------------------
+void CRenderQueue12::RetireBuffer(Gem::TGemPtr<Canvas::XGfxBuffer>& pBuffer, UINT64 fenceValue)
+{
+    if (pBuffer)
+        m_PendingBufferRetirements.push_back({ std::move(pBuffer), fenceValue });
+}
+
+//------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::DrawUIRect(
     const Canvas::GfxResourceAllocation& vertexBuffer,
     const Canvas::Math::FloatVector2& elementOffset)

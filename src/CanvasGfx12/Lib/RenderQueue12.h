@@ -583,6 +583,9 @@ public:
     Gem::Result StageBufferUpload(const Canvas::GfxResourceAllocation& destination, const void* pData, uint64_t dataSize);
     void FlushPendingBufferUploads();
     void FlushPendingGlyphUploads();
+
+    void RetireBuffer(Gem::TGemPtr<Canvas::XGfxBuffer>& pBuffer, UINT64 fenceValue);
+    UINT64 GetCurrentFenceValue() const { return m_FenceValue; }
     Gem::Result UploadTextureRegion(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context);
     // Internal UI element drawing (mirrors DrawMesh pattern)
     Gem::Result DrawUIText(const Canvas::GfxResourceAllocation& vertexBuffer, Canvas::XGfxSurface* pGlyphAtlas, const Canvas::Math::FloatVector2& elementOffset);
