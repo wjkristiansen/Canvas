@@ -1324,6 +1324,15 @@ Gem::Result CRenderQueue12::DrawMesh(
         
         // Create a task for the draw call
         auto& drawTask = CreateGpuTask("DrawMesh");
+        m_GpuTaskGraph.DeclareBufferUsage(drawTask, pPosBuf,
+            D3D12_BARRIER_SYNC_VERTEX_SHADING,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if (pNormBuf)
+        {
+            m_GpuTaskGraph.DeclareBufferUsage(drawTask, pNormBuf,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        }
         drawTask.RecordFunc = [posGpuAddr, baseGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
             pCL->SetPipelineState(m_pDefaultPSO);
