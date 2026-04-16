@@ -4,6 +4,15 @@
 
 #pragma once
 
+namespace Canvas
+{
+    // Identifies which task graph a GPU operation should be recorded into.
+    enum class GfxRenderContext : uint32_t
+    {
+        Scene,
+        UI,
+    };
+}
 extern DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt);
 
 //------------------------------------------------------------------------------------------------

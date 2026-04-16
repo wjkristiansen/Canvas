@@ -14,7 +14,7 @@
 //================================================================================================
 
 #pragma once
-#include "CanvasRender.h"
+#include "CanvasMath.hpp"
 #include <cstdarg>
 
 namespace Canvas
@@ -42,6 +42,7 @@ struct XMeshInstance;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
 struct XGfxRenderQueue;
+struct XGfxDevice;
 struct XFont;
 struct XUIGraph;
 struct XUIGraphNode;
