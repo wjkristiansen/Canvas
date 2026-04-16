@@ -110,10 +110,10 @@ class CApp
     Gem::TGemPtr<Canvas::XFont> m_pFontMono;
     Gem::TGemPtr<Canvas::XLight> m_pSunLight;
     Gem::TGemPtr<Canvas::XLight> m_pAmbientLight;
-    Gem::TGemPtr<Canvas::XGfxUIGraph> m_pUIGraph;
-    Gem::TGemPtr<Canvas::XGfxUIRectElement> m_pHudPanel;
-    Gem::TGemPtr<Canvas::XGfxUITextElement> m_pTitleText;
-    Gem::TGemPtr<Canvas::XGfxUITextElement> m_pFpsText;
+    Gem::TGemPtr<Canvas::XUIGraph> m_pUIGraph;
+    Gem::TGemPtr<Canvas::XUIRectElement> m_pHudPanel;
+    Gem::TGemPtr<Canvas::XUITextElement> m_pTitleText;
+    Gem::TGemPtr<Canvas::XUITextElement> m_pFpsText;
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
     bool m_logFps;
     float m_fps = 0.0f;
@@ -765,27 +765,29 @@ public:
 
             initStep = "create_ui_graph";
             // Create UI graph for text rendering
-            Gem::TGemPtr<Canvas::XGfxUIGraph> pUIGraph;
+            Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
             Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, pGfxRenderQueue, &pUIGraph));
 
             // Create UI graph nodes for positioning
-            Gem::TGemPtr<Canvas::XGfxUIGraphNode> pHudNode;
+            Gem::TGemPtr<Canvas::XUIGraphNode> pHudNode;
             Gem::ThrowGemError(pUIGraph->CreateNode(nullptr, &pHudNode));
             pHudNode->SetLocalPosition(Canvas::Math::FloatVector2(6.0f, 6.0f));
 
             // HUD background panel
-            Gem::TGemPtr<Canvas::XGfxUIRectElement> pHudPanel;
-            Gem::ThrowGemError(pUIGraph->CreateRectElement(pHudNode, &pHudPanel));
+            Gem::TGemPtr<Canvas::XUIRectElement> pHudPanel;
+            Gem::ThrowGemError(pDevice->CreateRectElement(&pHudPanel));
+            pHudNode->BindElement(pHudPanel);
             pHudPanel->SetSize(Canvas::Math::FloatVector2(340.0f, 70.0f));
             pHudPanel->SetFillColor(Canvas::Math::FloatVector4(0.125f, 0.125f, 0.125f, 0.75f));
 
             // Title text — child node of HUD
-            Gem::TGemPtr<Canvas::XGfxUIGraphNode> pTitleNode;
+            Gem::TGemPtr<Canvas::XUIGraphNode> pTitleNode;
             Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pTitleNode));
             pTitleNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 4.0f));
 
-            Gem::TGemPtr<Canvas::XGfxUITextElement> pTitleText;
-            Gem::ThrowGemError(pUIGraph->CreateTextElement(pTitleNode, &pTitleText));
+            Gem::TGemPtr<Canvas::XUITextElement> pTitleText;
+            Gem::ThrowGemError(pDevice->CreateTextElement(&pTitleText));
+            pTitleNode->BindElement(pTitleText);
             pTitleText->SetFont(pFont);
             {
                 Canvas::TextLayoutConfig titleConfig;
@@ -796,12 +798,13 @@ public:
             pTitleText->SetText("Canvas Model Viewer");
 
             // FPS text — child node of HUD
-            Gem::TGemPtr<Canvas::XGfxUIGraphNode> pFpsNode;
+            Gem::TGemPtr<Canvas::XUIGraphNode> pFpsNode;
             Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pFpsNode));
             pFpsNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 40.0f));
 
-            Gem::TGemPtr<Canvas::XGfxUITextElement> pFpsText;
-            Gem::ThrowGemError(pUIGraph->CreateTextElement(pFpsNode, &pFpsText));
+            Gem::TGemPtr<Canvas::XUITextElement> pFpsText;
+            Gem::ThrowGemError(pDevice->CreateTextElement(&pFpsText));
+            pFpsNode->BindElement(pFpsText);
             pFpsText->SetFont(pFontMono);
             {
                 Canvas::TextLayoutConfig monoConfig;

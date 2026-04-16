@@ -128,4 +128,12 @@ public:
         const void *pData,
         uint32_t srcRowPitch,
         Canvas::XGfxRenderQueue *pRenderQueue) final;
+
+    GEMMETHOD(CreateTextElement)(Canvas::XUITextElement **ppElement) final;
+    GEMMETHOD(CreateRectElement)(Canvas::XUIRectElement **ppElement) final;
+
+    Canvas::XGfxSurface* GetGlyphAtlasSurface();
+
+private:
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pGlyphAtlasSurface;
 };

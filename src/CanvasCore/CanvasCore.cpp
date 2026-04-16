@@ -202,37 +202,44 @@ GEMMETHODIMP CCanvas::CreateFont(const uint8_t* pTTFData, size_t dataSize, PCSTR
 }
 
 //------------------------------------------------------------------------------------------------
-std::unique_ptr<CGlyphAtlasImpl> CCanvas::CreateGlyphAtlas(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size)
-{
-    CFunctionSentinel sentinel("CCanvas::CreateGlyphAtlas", m_pLogger);
-
-    auto pAtlas = std::make_unique<CGlyphAtlasImpl>(size);
-
-    Gem::Result result = pAtlas->InitializeGPU(pDevice, pRenderQueue);
-    if (Gem::Failed(result))
-        return nullptr;
-
-    return pAtlas;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XGfxUIGraph** ppGraph)
+GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph)
 {
     CFunctionSentinel sentinel("XCanvas::CreateUIGraph", m_pLogger);
 
     if (!pDevice || !pRenderQueue || !ppGraph)
         return Gem::Result::BadPointer;
 
-    auto pAtlas = CreateGlyphAtlas(pDevice, pRenderQueue, 512);
-    if (!pAtlas)
-        return Gem::Result::Fail;
-
     Gem::TGemPtr<CUIGraph> pGraph = new Gem::TGenericImpl<CUIGraph>();
     pGraph->SetName("UIGraph");
     pGraph->Register(this);
-    pGraph->SetAtlas(std::move(pAtlas));
     pGraph->SetDevice(pDevice);
     *ppGraph = pGraph.Detach();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateTextElement(XGfxSurface* pAtlasSurface, XUITextElement** ppElement)
+{
+    if (!ppElement)
+        return Gem::Result::BadPointer;
+
+    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>(this, m_GlyphCache.get(), pAtlasSurface);
+    pElement->SetName("UITextElement");
+    pElement->Register(this);
+    *ppElement = pElement.Detach();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateRectElement(XUIRectElement** ppElement)
+{
+    if (!ppElement)
+        return Gem::Result::BadPointer;
+
+    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>(this);
+    pElement->SetName("UIRectElement");
+    pElement->Register(this);
+    *ppElement = pElement.Detach();
     return Gem::Result::Success;
 }
 

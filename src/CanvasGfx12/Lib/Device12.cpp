@@ -8,6 +8,7 @@
 #include "Surface12.h"
 #include "Buffer12.h"
 #include "MeshData12.h"
+#include "GlyphAtlas.h"
 
 //------------------------------------------------------------------------------------------------
 CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
@@ -636,4 +637,53 @@ GEMMETHODIMP CDevice12::UploadTextureRegion(
     auto* pRQ = static_cast<CRenderQueue12*>(pRenderQueue);
     return pRQ->UploadTextureRegion(pDstSurface, dstX, dstY, width, height, pData, srcRowPitch,
         Canvas::GfxRenderContext::UI);
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::XGfxSurface* CDevice12::GetGlyphAtlasSurface()
+{
+    if (!m_pGlyphAtlasSurface)
+    {
+        auto* pCanvas = GetCanvas();
+        if (!pCanvas)
+            return nullptr;
+
+        auto* pCache = pCanvas->GetGlyphCache();
+        if (!pCache)
+            return nullptr;
+
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            Canvas::GfxFormat::R8_UNorm,
+            pCache->GetAtlasSize(), pCache->GetAtlasSize(),
+            Canvas::SurfaceFlag_ShaderResource, 1);
+        CreateSurface(desc, &m_pGlyphAtlasSurface);
+    }
+    return m_pGlyphAtlasSurface.Get();
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::CreateTextElement(Canvas::XUITextElement **ppElement)
+{
+    if (!ppElement)
+        return Gem::Result::BadPointer;
+
+    auto* pCanvas = GetCanvas();
+    if (!pCanvas)
+        return Gem::Result::NotFound;
+
+    auto* pAtlas = GetGlyphAtlasSurface();
+    return pCanvas->CreateTextElement(pAtlas, ppElement);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::CreateRectElement(Canvas::XUIRectElement **ppElement)
+{
+    if (!ppElement)
+        return Gem::Result::BadPointer;
+
+    auto* pCanvas = GetCanvas();
+    if (!pCanvas)
+        return Gem::Result::NotFound;
+
+    return pCanvas->CreateRectElement(ppElement);
 }

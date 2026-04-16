@@ -495,7 +495,7 @@ public:
     std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
 
     // UI graph nodes enqueued during UI graph submission, dispatched during EndFrame
-    std::vector<Canvas::XGfxUIGraphNode*> m_UIRenderableQueue;
+    std::vector<Canvas::XUIGraphNode*> m_UIRenderableQueue;
 
     // SRV descriptor allocation for per-draw structured buffers
     UINT m_NextSRVSlot = 0;
@@ -545,7 +545,7 @@ public:
     GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
-    GEMMETHOD(SubmitForUIRender)(Canvas::XGfxUIGraphNode *pNode) final;
+    GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
     GEMMETHOD(EndFrame)() final;
 
@@ -582,6 +582,7 @@ public:
 
     Gem::Result StageBufferUpload(const Canvas::GfxResourceAllocation& destination, const void* pData, uint64_t dataSize);
     void FlushPendingBufferUploads();
+    void FlushPendingGlyphUploads();
     Gem::Result UploadTextureRegion(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context);
     // Internal UI element drawing (mirrors DrawMesh pattern)
     Gem::Result DrawUIText(const Canvas::GfxResourceAllocation& vertexBuffer, Canvas::XGfxSurface* pGlyphAtlas, const Canvas::Math::FloatVector2& elementOffset);

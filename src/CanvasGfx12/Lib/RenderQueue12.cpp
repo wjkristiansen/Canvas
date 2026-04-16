@@ -14,6 +14,7 @@
 #include "Surface12.h"
 #include "SwapChain12.h"
 #include "MeshData12.h"
+#include "GlyphAtlas.h"
 
 #include <filesystem>
 #include <fstream>
@@ -1513,6 +1514,33 @@ void CRenderQueue12::FlushPendingBufferUploads()
 }
 
 //------------------------------------------------------------------------------------------------
+void CRenderQueue12::FlushPendingGlyphUploads()
+{
+    auto* pCanvas = m_pDevice->GetCanvas();
+    if (!pCanvas)
+        return;
+
+    auto* pCache = pCanvas->GetGlyphCache();
+    if (!pCache || !pCache->HasPendingUploads())
+        return;
+
+    auto* pAtlas = m_pDevice->GetGlyphAtlasSurface();
+    if (!pAtlas)
+        return;
+
+    auto uploads = pCache->TakePendingUploads();
+    for (auto& upload : uploads)
+    {
+        Gem::ThrowGemError(UploadTextureRegion(
+            pAtlas, upload.AtlasX, upload.AtlasY,
+            upload.Width, upload.Height,
+            upload.Pixels.data(),
+            upload.Width * upload.BytesPerPixel,
+            Canvas::GfxRenderContext::UI));
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::DrawUIRect(
     const Canvas::GfxResourceAllocation& vertexBuffer,
     const Canvas::Math::FloatVector2& elementOffset)
@@ -1594,7 +1622,7 @@ GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphNode *pNode)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::SubmitForUIRender(Canvas::XGfxUIGraphNode *pNode)
+GEMMETHODIMP CRenderQueue12::SubmitForUIRender(Canvas::XUIGraphNode *pNode)
 {
     if (!pNode)
         return Gem::Result::InvalidArg;
@@ -1842,6 +1870,9 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             m_GpuTaskGraph.InsertTask(compositeTask);
         }
 
+        // Flush pending glyph atlas uploads (SDF bitmaps → GPU texture)
+        FlushPendingGlyphUploads();
+
         // Flush pending vertex uploads staged during SubmitRenderables
         FlushPendingBufferUploads();
 
@@ -1866,12 +1897,13 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 }
                 else if (pElem->GetType() == Canvas::UIElementType::Text)
                 {
-                    Canvas::XGfxSurface* pAtlas = nullptr;
-                    Gem::TGemPtr<Canvas::XGfxUITextElement> pText;
+                    Gem::TGemPtr<Canvas::XUITextElement> pText;
                     if (SUCCEEDED(pElem->QueryInterface(&pText)))
-                        pAtlas = pText->GetGlyphAtlasTexture();
-                    if (pAtlas)
-                        Gem::ThrowGemError(DrawUIText(vb, pAtlas, elementOffset));
+                    {
+                        auto* pAtlas = pText->GetAtlasSurface();
+                        if (pAtlas)
+                            Gem::ThrowGemError(DrawUIText(vb, pAtlas, elementOffset));
+                    }
                 }
             }
         }

@@ -9,7 +9,7 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XGfxUIGraphNode*) CUIGraph::GetRootNode()
+GEMMETHODIMP_(XUIGraphNode*) CUIGraph::GetRootNode()
 {
     if (!m_pRootNode)
     {
@@ -21,12 +21,12 @@ GEMMETHODIMP_(XGfxUIGraphNode*) CUIGraph::GetRootNode()
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::CreateNode(XGfxUIGraphNode* pParent, XGfxUIGraphNode** ppNode)
+Gem::Result CUIGraph::CreateNode(XUIGraphNode* pParent, XUIGraphNode** ppNode)
 {
     if (!ppNode)
         return Gem::Result::BadPointer;
 
-    XGfxUIGraphNode* pParentNode = pParent ? pParent : GetRootNode();
+    XUIGraphNode* pParentNode = pParent ? pParent : GetRootNode();
 
     Gem::TGemPtr<CUIGraphNodeImpl> pNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
     pNode->SetName("UINode");
@@ -38,48 +38,13 @@ Gem::Result CUIGraph::CreateNode(XGfxUIGraphNode* pParent, XGfxUIGraphNode** ppN
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::CreateTextElement(XGfxUIGraphNode* pNode, XGfxUITextElement** ppElement)
-{
-    if (!ppElement)
-        return Gem::Result::BadPointer;
-    if (!pNode)
-        pNode = GetRootNode();
-
-    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>();
-    pElement->SetName("UITextElement");
-    pElement->SetGlyphAtlasInternal(m_pAtlas.get());
-    if (m_pCanvas) pElement->Register(m_pCanvas);
-    pNode->BindElement(pElement);
-
-    *ppElement = pElement.Detach();
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::CreateRectElement(XGfxUIGraphNode* pNode, XGfxUIRectElement** ppElement)
-{
-    if (!ppElement)
-        return Gem::Result::BadPointer;
-    if (!pNode)
-        pNode = GetRootNode();
-
-    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>();
-    pElement->SetName("UIRectElement");
-    if (m_pCanvas) pElement->Register(m_pCanvas);
-    pNode->BindElement(pElement);
-
-    *ppElement = pElement.Detach();
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::RemoveElement(XGfxUIElement* pElement)
+Gem::Result CUIGraph::RemoveElement(XUIElement* pElement)
 {
     if (!pElement)
         return Gem::Result::BadPointer;
 
     // Unbind from node — vertex allocation stays with the element
-    XGfxUIGraphNode* pNode = pElement->GetAttachedNode();
+    XUIGraphNode* pNode = pElement->GetAttachedNode();
     if (pNode)
     {
         CUIGraphNodeImpl* pImpl = static_cast<CUIGraphNodeImpl*>(pNode);
@@ -93,16 +58,16 @@ Gem::Result CUIGraph::RemoveElement(XGfxUIElement* pElement)
 Gem::Result CUIGraph::Update()
 {
     if (m_pRootNode)
-        UpdateNode(m_pRootNode.Get());
+        return UpdateNode(m_pRootNode.Get());
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
+Gem::Result CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
 {
     for (UINT i = 0; i < pNode->GetBoundElementCount(); ++i)
     {
-        XGfxUIElement* pElem = pNode->GetBoundElement(i);
+        XUIElement* pElem = pNode->GetBoundElement(i);
         if (!pElem->IsVisible())
             continue;
 
@@ -110,23 +75,35 @@ void CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
         {
             auto* pText = AsText(pElem);
             if (pText->IsDirty())
-                pText->RegenerateVertices();
+            {
+                Gem::Result result = pText->RegenerateVertices();
+                if (Gem::Failed(result))
+                    return result;
+            }
         }
         else if (pElem->GetType() == UIElementType::Rect)
         {
             auto* pRect = AsRect(pElem);
             if (pRect->IsDirty())
-                pRect->RegenerateVertices();
+            {
+                Gem::Result result = pRect->RegenerateVertices();
+                if (Gem::Failed(result))
+                    return result;
+            }
         }
     }
 
     // Recurse to child nodes
-    XGfxUIGraphNode* pChild = pNode->GetFirstChild();
+    XUIGraphNode* pChild = pNode->GetFirstChild();
     while (pChild)
     {
-        UpdateNode(static_cast<CUIGraphNodeImpl*>(pChild));
+        Gem::Result result = UpdateNode(static_cast<CUIGraphNodeImpl*>(pChild));
+        if (Gem::Failed(result))
+            return result;
         pChild = pChild->GetNextSibling();
     }
+
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -141,18 +118,18 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
     Gem::ThrowGemError(pRenderQueue->QueryInterface(&pGfxRQ));
 
     // Walk node tree: alloc+upload for dirty elements, submit nodes with visible content
-    std::vector<XGfxUIGraphNode*> stack;
+    std::vector<XUIGraphNode*> stack;
     stack.push_back(m_pRootNode.Get());
     while (!stack.empty())
     {
-        XGfxUIGraphNode* pNode = stack.back();
+        XUIGraphNode* pNode = stack.back();
         stack.pop_back();
 
         bool hasVisibleElements = false;
         UINT elemCount = pNode->GetBoundElementCount();
         for (UINT i = 0; i < elemCount; ++i)
         {
-            XGfxUIElement* pElem = pNode->GetBoundElement(i);
+            XUIElement* pElem = pNode->GetBoundElement(i);
             if (!pElem->IsVisible())
                 continue;
 
@@ -193,7 +170,7 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
         if (hasVisibleElements)
             Gem::ThrowGemError(pRenderQueue->SubmitForUIRender(pNode));
 
-        for (XGfxUIGraphNode* pChild = pNode->GetFirstChild(); pChild; pChild = pChild->GetNextSibling())
+        for (XUIGraphNode* pChild = pNode->GetFirstChild(); pChild; pChild = pChild->GetNextSibling())
             stack.push_back(pChild);
     }
 

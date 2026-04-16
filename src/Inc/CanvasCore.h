@@ -43,8 +43,14 @@ struct XSceneGraphNode;
 struct XSceneGraphElement;
 struct XGfxRenderQueue;
 struct XFont;
-struct XGfxUIGraph;
-struct XGfxUIGraphNode;
+struct XUIGraph;
+struct XUIGraphNode;
+struct XUIElement;
+struct XUITextElement;
+struct XUIRectElement;
+struct GfxResourceAllocation;
+struct XGfxSurface;
+class CGlyphCache;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -176,7 +182,9 @@ XCanvas : public Gem::XGeneric
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
-    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XGfxUIGraph** ppGraph) = 0;
+    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph) = 0;
+    GEMMETHOD(CreateTextElement)(XGfxSurface* pAtlasSurface, XUITextElement** ppElement) = 0;
+    GEMMETHOD(CreateRectElement)(XUIRectElement** ppElement) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
@@ -184,6 +192,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(UnregisterElement)(struct XCanvasElement *) = 0;
 
     GEMMETHOD_(XLogger *, GetLogger)() = 0;
+    GEMMETHOD_(CGlyphCache*, GetGlyphCache)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -465,6 +474,82 @@ enum class UIElementType : uint32_t
     Root = 0,
     Text,
     Rect,
+};
+
+//================================================================================================
+// UI Graph - Hierarchical UI/HUD elements with dirty tracking
+//================================================================================================
+
+//------------------------------------------------------------------------------------------------
+struct XUIElement : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XUIElement, 0xA1B2C3D4E5F60718);
+
+    GEMMETHOD_(UIElementType, GetType)() const = 0;
+    GEMMETHOD_(bool, IsVisible)() const = 0;
+    GEMMETHOD_(void, SetVisible)(bool visible) = 0;
+    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() = 0;
+
+    // GPU vertex buffer (ready to draw, managed by graph + device)
+    GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const = 0;
+    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct XUITextElement : public XUIElement
+{
+    GEM_INTERFACE_DECLARE(XUITextElement, 0xB2C3D4E5F6071829);
+
+    GEMMETHOD_(void, SetText)(PCSTR utf8Text) = 0;
+    GEMMETHOD_(PCSTR, GetText)() const = 0;
+    GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
+    GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
+    GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
+
+    GEMMETHOD_(XGfxSurface*, GetAtlasSurface)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct XUIRectElement : public XUIElement
+{
+    GEM_INTERFACE_DECLARE(XUIRectElement, 0xC3D4E5F607182930);
+
+    GEMMETHOD_(void, SetSize)(const Math::FloatVector2& size) = 0;
+    GEMMETHOD_(const Math::FloatVector2&, GetSize)() const = 0;
+    GEMMETHOD_(void, SetFillColor)(const Math::FloatVector4& color) = 0;
+    GEMMETHOD_(const Math::FloatVector4&, GetFillColor)() const = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct XUIGraphNode : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XUIGraphNode, 0xE5F6071829304152);
+
+    GEMMETHOD(AddChild)(_In_ XUIGraphNode* pChild) = 0;
+    GEMMETHOD(RemoveChild)(_In_ XUIGraphNode* pChild) = 0;
+    GEMMETHOD_(XUIGraphNode*, GetParent)() = 0;
+    GEMMETHOD_(XUIGraphNode*, GetFirstChild)() = 0;
+    GEMMETHOD_(XUIGraphNode*, GetNextSibling)() = 0;
+
+    GEMMETHOD_(const Math::FloatVector2&, GetLocalPosition)() const = 0;
+    GEMMETHOD_(void, SetLocalPosition)(const Math::FloatVector2& position) = 0;
+    GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() = 0;
+
+    GEMMETHOD(BindElement)(_In_ XUIElement* pElement) = 0;
+    GEMMETHOD_(UINT, GetBoundElementCount)() = 0;
+    GEMMETHOD_(XUIElement*, GetBoundElement)(UINT index) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct XUIGraph : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XUIGraph, 0xD4E5F60718293041);
+
+    GEMMETHOD(RemoveElement)(XUIElement* pElement) = 0;
+    GEMMETHOD(CreateNode)(XUIGraphNode* pParent, XUIGraphNode** ppNode) = 0;
+    GEMMETHOD_(XUIGraphNode*, GetRootNode)() = 0;
+    GEMMETHOD(Update)() = 0;
+    GEMMETHOD(SubmitRenderables)(XGfxRenderQueue* pRenderQueue) = 0;
 };
 
 

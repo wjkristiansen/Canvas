@@ -13,7 +13,7 @@ namespace Canvas
 // CUIGraphNodeImpl
 //================================================================================================
 
-CUIGraphNodeImpl* CUIGraphNodeImpl::GetImpl(XGfxUIGraphNode* pNode)
+CUIGraphNodeImpl* CUIGraphNodeImpl::GetImpl(XUIGraphNode* pNode)
 {
     return static_cast<CUIGraphNodeImpl*>(pNode);
 }
@@ -36,7 +36,7 @@ CUIGraphNodeImpl::~CUIGraphNodeImpl()
     m_pFirstChild = nullptr;
 }
 
-CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XGfxUIGraphNode* pChild)
+CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XUIGraphNode* pChild)
 {
     for (ChildNode* pNode = m_pFirstChild; pNode; pNode = pNode->pNext)
     {
@@ -46,7 +46,7 @@ CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XGfxUIGraphNode* pC
     return nullptr;
 }
 
-GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XGfxUIGraphNode* pChild)
+GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XUIGraphNode* pChild)
 {
     if (!pChild)
         return Gem::Result::BadPointer;
@@ -80,7 +80,7 @@ GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XGfxUIGraphNode* pChild)
     return Gem::Result::Success;
 }
 
-GEMMETHODIMP CUIGraphNodeImpl::RemoveChild(_In_ XGfxUIGraphNode* pChild)
+GEMMETHODIMP CUIGraphNodeImpl::RemoveChild(_In_ XUIGraphNode* pChild)
 {
     if (!pChild)
         return Gem::Result::BadPointer;
@@ -108,12 +108,12 @@ GEMMETHODIMP CUIGraphNodeImpl::RemoveChild(_In_ XGfxUIGraphNode* pChild)
     return Gem::Result::Success;
 }
 
-GEMMETHODIMP_(XGfxUIGraphNode*) CUIGraphNodeImpl::GetFirstChild()
+GEMMETHODIMP_(XUIGraphNode*) CUIGraphNodeImpl::GetFirstChild()
 {
     return m_pFirstChild ? m_pFirstChild->pNode.Get() : nullptr;
 }
 
-GEMMETHODIMP_(XGfxUIGraphNode*) CUIGraphNodeImpl::GetNextSibling()
+GEMMETHODIMP_(XUIGraphNode*) CUIGraphNodeImpl::GetNextSibling()
 {
     if (!m_pMyEntry || !m_pMyEntry->pNext)
         return nullptr;
@@ -139,12 +139,12 @@ GEMMETHODIMP_(Math::FloatVector2) CUIGraphNodeImpl::GetGlobalPosition()
     return m_LocalPosition;
 }
 
-GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XGfxUIElement* pElement)
+GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XUIElement* pElement)
 {
     if (!pElement)
         return Gem::Result::BadPointer;
 
-    XGfxUIGraphNode* pCurrentNode = pElement->GetAttachedNode();
+    XUIGraphNode* pCurrentNode = pElement->GetAttachedNode();
     if (pCurrentNode == this)
     {
         // Already bound to this node; nothing to do.
@@ -167,7 +167,7 @@ GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XGfxUIElement* pElement)
     return Gem::Result::Success;
 }
 
-void CUIGraphNodeImpl::UnbindElement(XGfxUIElement* pElement)
+void CUIGraphNodeImpl::UnbindElement(XUIElement* pElement)
 {
     for (auto it = m_Elements.begin(); it != m_Elements.end(); ++it)
     {
@@ -210,16 +210,6 @@ void CUITextElement::SetFont(XFont* pFont)
 }
 
 //------------------------------------------------------------------------------------------------
-void CUITextElement::SetGlyphAtlasInternal(CGlyphAtlasImpl* pAtlas)
-{
-    if (m_pAtlas == pAtlas)
-        return;
-
-    m_pAtlas = pAtlas;
-    m_Dirty = true;
-}
-
-//------------------------------------------------------------------------------------------------
 void CUITextElement::SetLayoutConfig(const TextLayoutConfig& config)
 {
     if (m_Config.FontSize == config.FontSize &&
@@ -234,21 +224,26 @@ void CUITextElement::SetLayoutConfig(const TextLayoutConfig& config)
 }
 
 //------------------------------------------------------------------------------------------------
-void CUITextElement::RegenerateVertices()
+Gem::Result CUITextElement::RegenerateVertices()
 {
     m_CachedVertices.clear();
 
-    if (m_Text.empty() || !m_pFont || !m_pAtlas)
-        return;
+    if (m_Text.empty())
+        return Gem::Result::Success;
+
+    if (!m_pFont)
+        return Gem::Result::BadPointer;
+    if (!m_pGlyphCache)
+        return Gem::Result::BadPointer;
 
     CTrueTypeFont* pFontData = static_cast<CFont*>(m_pFont)->GetFontData();
     if (!pFontData)
-        return;
+        return Gem::Result::BadPointer;
 
     std::vector<uint32_t> codepoints;
     Gem::Result result = CTextLayout::DecodeUtf8(m_Text.c_str(), codepoints);
     if (Gem::Failed(result))
-        return;
+        return result;
 
     // Generate vertices in element-local space (origin at 0,0).
     // The node's screen-space position is applied as a per-draw constant by the shader.
@@ -277,9 +272,9 @@ void CUITextElement::RegenerateVertices()
             for (int i = 0; i < 4; i++)
             {
                 GlyphAtlasEntry entry = {};
-                result = m_pAtlas->InternalCacheGlyph(spaceCP, m_pFont, entry);
+                result = m_pGlyphCache->CacheGlyphForFont(spaceCP, m_pFont, entry);
                 if (Gem::Failed(result))
-                    return;
+                    return result;
                 cursorPos.X += entry.AdvanceWidth * m_Config.FontSize;
             }
             continue;
@@ -289,9 +284,9 @@ void CUITextElement::RegenerateVertices()
             continue;
 
         GlyphAtlasEntry entry = {};
-        result = m_pAtlas->InternalCacheGlyph(codepoint, m_pFont, entry);
+        result = m_pGlyphCache->CacheGlyphForFont(codepoint, m_pFont, entry);
         if (Gem::Failed(result))
-            return;
+            return result;
 
         glyphEntries.push_back(entry);
     }
@@ -331,15 +326,8 @@ void CUITextElement::RegenerateVertices()
         cursorPos.X += advance * m_Config.FontSize;
         glyphIdx++;
     }
-}
 
-//================================================================================================
-// CUITextElement - Atlas texture access
-//================================================================================================
-
-GEMMETHODIMP_(XGfxSurface*) CUITextElement::GetGlyphAtlasTexture()
-{
-    return m_pAtlas ? m_pAtlas->GetAtlasTexture() : nullptr;
+    return Gem::Result::Success;
 }
 
 //================================================================================================
@@ -369,15 +357,13 @@ void CUIRectElement::SetFillColor(const Math::FloatVector4& color)
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIRectElement::RegenerateVertices()
+Gem::Result CUIRectElement::RegenerateVertices()
 {
     m_CachedVertices.clear();
 
     if (m_Size.X <= 0.0f || m_Size.Y <= 0.0f)
-        return;
+        return Gem::Result::Success;
 
-    // Generate vertices in element-local space (origin at 0,0).
-    // The node's screen-space position is applied as a per-draw constant by the shader.
     float x0 = 0.0f;
     float y0 = 0.0f;
     float x1 = m_Size.X;
@@ -400,6 +386,8 @@ void CUIRectElement::RegenerateVertices()
     m_CachedVertices[3] = makeVertex(x0, y1, m_FillColor);
     m_CachedVertices[4] = makeVertex(x1, y1, m_FillColor);
     m_CachedVertices[5] = makeVertex(x1, y0, m_FillColor);
+
+    return Gem::Result::Success;
 }
 
 } // namespace Canvas
