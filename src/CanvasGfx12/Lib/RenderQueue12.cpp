@@ -1504,15 +1504,17 @@ void CRenderQueue12::FlushPendingGlyphUploads()
     if (!pAtlas)
         return;
 
+    const uint8_t* pStagingData = pCache->GetStagingData();
     auto uploads = pCache->TakePendingUploads();
     for (auto& upload : uploads)
     {
         Gem::ThrowGemError(UploadTextureRegion(
             pAtlas, upload.AtlasX, upload.AtlasY,
             upload.Width, upload.Height,
-            upload.Pixels.data(),
+            pStagingData + upload.PixelOffset,
             upload.Width * upload.BytesPerPixel));
     }
+    pCache->ClearStagingBuffer();
 }
 
 //------------------------------------------------------------------------------------------------

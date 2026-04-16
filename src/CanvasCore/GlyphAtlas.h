@@ -54,7 +54,8 @@ struct GlyphAtlasEntry
 
 struct PendingGlyphUpload
 {
-    std::vector<uint8_t> Pixels;
+    uint32_t PixelOffset;       // Offset into CGlyphCache's staging buffer
+    uint32_t PixelSize;         // Size in bytes
     uint32_t Width;
     uint32_t Height;
     uint32_t AtlasX;
@@ -84,6 +85,8 @@ public:
 
     bool HasPendingUploads() const { return !m_PendingUploads.empty(); }
     std::vector<PendingGlyphUpload> TakePendingUploads() { return std::move(m_PendingUploads); }
+    const uint8_t* GetStagingData() const { return m_StagingBuffer.data(); }
+    void ClearStagingBuffer() { m_StagingBuffer.clear(); }
 
     Gem::Result CacheGlyphForFont(uint32_t codepoint, XFont *pFont, GlyphAtlasEntry &outEntry);
 
@@ -93,6 +96,7 @@ private:
     uint32_t m_AtlasSize;
     std::unordered_map<uint32_t, GlyphAtlasEntry> m_CachedGlyphs;
     std::vector<PendingGlyphUpload> m_PendingUploads;
+    std::vector<uint8_t> m_StagingBuffer;
 };
 
 #ifdef _MSC_VER

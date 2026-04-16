@@ -16,6 +16,7 @@ struct CGlyphCache::Impl
 {
     CSDFGenerator::Config SDFConfig;
     std::unique_ptr<CRectanglePacker> pPacker;
+    SDFBitmap StagingBitmap;    // Reused across CacheGlyphForFont calls
 
     Impl(uint32_t atlasSize)
         : pPacker(std::make_unique<CRectanglePacker>(atlasSize, atlasSize))
@@ -66,7 +67,7 @@ Gem::Result CGlyphCache::CacheGlyphForFont(uint32_t codepoint, XFont *pFont, Gly
     if (!pFontData->GetGlyphOutline(glyphIndex, outline))
         return Gem::Result::NotFound;
 
-    SDFBitmap sdfBitmap;
+    SDFBitmap& sdfBitmap = m_pImpl->StagingBitmap;
     CSDFGenerator generator;
     if (!generator.Generate(outline, *pFontData, m_pImpl->SDFConfig, sdfBitmap))
     {
@@ -105,13 +106,15 @@ Gem::Result CGlyphCache::CacheGlyphForFont(uint32_t codepoint, XFont *pFont, Gly
     outEntry.AtlasV1 = static_cast<float>(atlasRect.Y + bitmapHeight) / m_AtlasSize;
 
     PendingGlyphUpload upload;
-    upload.Pixels = std::move(sdfBitmap.Data);
     upload.Width = bitmapWidth;
     upload.Height = bitmapHeight;
     upload.AtlasX = atlasRect.X;
     upload.AtlasY = atlasRect.Y;
     upload.BytesPerPixel = sdfBitmap.BytesPerPixel;
-    m_PendingUploads.push_back(std::move(upload));
+    upload.PixelOffset = static_cast<uint32_t>(m_StagingBuffer.size());
+    upload.PixelSize = static_cast<uint32_t>(sdfBitmap.Data.size());
+    m_StagingBuffer.insert(m_StagingBuffer.end(), sdfBitmap.Data.begin(), sdfBitmap.Data.end());
+    m_PendingUploads.push_back(upload);
 
     m_CachedGlyphs[codepoint] = outEntry;
     return Gem::Result::Success;
