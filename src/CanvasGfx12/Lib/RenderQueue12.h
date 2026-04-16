@@ -458,7 +458,7 @@ public:
     DXGI_FORMAT m_RectPSOFormat = DXGI_FORMAT_UNKNOWN;
     UINT64 m_FenceValue = 0;
     CComPtr<ID3D12Fence> m_pFence;
-    CDevice12 *m_pDevice = nullptr; // weak pointer
+    Gem::TGemPtr<CDevice12> m_pDevice;  // ref-counted; device outlives render queue
 
     // Depth buffer for rendering
     Gem::TGemPtr<CSurface12> m_pDepthBuffer;
@@ -520,13 +520,14 @@ public:
     };
     std::vector<PendingBufferUpload> m_PendingBufferUploads;
 
-    // Pending buffer retirements: old persistent buffers kept alive until GPU fence completes
-    struct PendingBufferRetirement
+    // Per-frame deferred release: resources AddRef'd while in use by GPU, released after fence
+    struct DeferredReleaseFrame
     {
-        Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
         UINT64 FenceValue;
+        std::vector<Gem::TGemPtr<Gem::XGeneric>> Resources;
     };
-    std::vector<PendingBufferRetirement> m_PendingBufferRetirements;
+    std::deque<DeferredReleaseFrame> m_DeferredReleases;
+    DeferredReleaseFrame m_CurrentFrameRefs;  // Accumulates refs for the current frame
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
@@ -584,9 +585,9 @@ public:
     void FlushPendingBufferUploads();
     void FlushPendingGlyphUploads();
 
-    void RetireBuffer(Gem::TGemPtr<Canvas::XGfxBuffer>& pBuffer, UINT64 fenceValue);
-    UINT64 GetCurrentFenceValue() const { return m_FenceValue; }
-    Gem::Result UploadTextureRegion(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context);
+    // Add a GPU resource ref for the current frame (released after fence completes)
+    void DeferRelease(Gem::XGeneric* pResource);
+    Gem::Result UploadTextureRegion(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch);
     // Internal UI element drawing (mirrors DrawMesh pattern)
     Gem::Result DrawUIText(const Canvas::GfxResourceAllocation& vertexBuffer, Canvas::XGfxSurface* pGlyphAtlas, const Canvas::Math::FloatVector2& elementOffset);
     Gem::Result DrawUIRect(const Canvas::GfxResourceAllocation& vertexBuffer, const Canvas::Math::FloatVector2& elementOffset);

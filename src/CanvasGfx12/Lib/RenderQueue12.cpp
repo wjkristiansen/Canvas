@@ -177,7 +177,6 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pFence.Attach(pFence.Detach());
 
     // Pre-allocate per-frame queues to avoid repeated heap reallocations
-    m_PendingBufferRetirements.reserve(32);
     m_PendingBufferUploads.reserve(64);
     m_RenderableQueue.reserve(128);
 }
@@ -240,6 +239,14 @@ void CRenderQueue12::Flush()
 
     // Record ring buffer usage for this frame
     m_pDevice->MarkUploadRingFrameEnd(m_FenceValue);
+
+    // Move current frame's GPU resource refs to the deferred release queue
+    if (!m_CurrentFrameRefs.Resources.empty())
+    {
+        m_CurrentFrameRefs.FenceValue = m_FenceValue;
+        m_DeferredReleases.push_back(std::move(m_CurrentFrameRefs));
+        m_CurrentFrameRefs = {};
+    }
 
     // Reset scene and UI graphs for next frame
     UINT64 completedFenceValue = m_pFence->GetCompletedValue();
@@ -438,17 +445,8 @@ void CRenderQueue12::ProcessCompletedWork()
     }
 
     // Release old persistent buffers (from growth) whose fence has completed
-    for (auto it = m_PendingBufferRetirements.begin(); it != m_PendingBufferRetirements.end();)
-    {
-        if (it->FenceValue <= completedValue)
-        {
-            it = m_PendingBufferRetirements.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
+    while (!m_DeferredReleases.empty() && m_DeferredReleases.front().FenceValue <= completedValue)
+        m_DeferredReleases.pop_front();
 }
 
 //================================================================================================
@@ -981,8 +979,7 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
     uint32_t dstX, uint32_t dstY,
     uint32_t width, uint32_t height,
     const void *pData,
-    uint32_t srcRowPitch,
-    Canvas::GfxRenderContext context)
+    uint32_t srcRowPitch)
 {
     if (!pDstSurface || !pData || width == 0 || height == 0)
         return Gem::Result::BadPointer;
@@ -992,8 +989,6 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
         auto pDst = static_cast<CSurface12*>(pDstSurface);
         ID3D12Resource* pDstResource = pDst->GetD3DResource();
 
-        // Compute aligned row pitch for the staging buffer
-        // D3D12_TEXTURE_DATA_PITCH_ALIGNMENT = 256 bytes
         constexpr uint32_t kPitchAlign = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT;
         uint32_t alignedRowPitch = (srcRowPitch + kPitchAlign - 1) & ~(kPitchAlign - 1);
         uint64_t stagingSize = static_cast<uint64_t>(alignedRowPitch) * height;
@@ -1001,7 +996,6 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
         HostWriteAllocation hw;
         Gem::ThrowGemError(m_pDevice->AllocateFromRing(stagingSize, hw));
 
-        // Copy rows from source into staging buffer (may need re-striding)
         if (srcRowPitch == alignedRowPitch)
         {
             memcpy(hw.pMapped, pData, srcRowPitch * height);
@@ -1016,7 +1010,6 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
             }
         }
 
-        // Prepare copy location descriptors
         D3D12_TEXTURE_COPY_LOCATION src = {};
         src.pResource                          = hw.pResource;
         src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
@@ -1034,35 +1027,18 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
 
         D3D12_BOX srcBox = { 0, 0, 0, width, height, 1 };
 
-        if (context == Canvas::GfxRenderContext::UI && m_UICommandListOpen)
+        // Route to whichever task graph is currently active
+        auto& taskGraph = m_UICommandListOpen ? m_UIGpuTaskGraph : m_GpuTaskGraph;
+        auto& copyTask = taskGraph.CreateTask("UploadTextureRegion");
+        taskGraph.DeclareTextureUsage(copyTask, pDst,
+            D3D12_BARRIER_LAYOUT_COMMON,
+            D3D12_BARRIER_SYNC_COPY,
+            D3D12_BARRIER_ACCESS_COPY_DEST);
+        copyTask.RecordFunc = [dst, src, srcBox, dstX, dstY](ID3D12GraphicsCommandList* pCL)
         {
-            // UI context: declare copy via UI task graph
-            auto& copyTask = m_UIGpuTaskGraph.CreateTask("UploadTextureRegion_UI");
-            m_UIGpuTaskGraph.DeclareTextureUsage(copyTask, pDst,
-                D3D12_BARRIER_LAYOUT_COMMON,
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_DEST);
-            copyTask.RecordFunc = [dst, src, srcBox, dstX, dstY](ID3D12GraphicsCommandList* pCL)
-            {
-                pCL->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
-            };
-            m_UIGpuTaskGraph.InsertTask(copyTask);
-        }
-        else
-        {
-            // Scene context: use scene command list via task graph
-            ResourceUsageBuilder usages;
-            usages.TextureAsCopyDest(pDst);
-
-            RecordCommandBlock(
-                usages.Build(),
-                [src, dst, srcBox, dstX, dstY]
-                (ID3D12GraphicsCommandList* cmdList)
-                {
-                    cmdList->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
-                },
-                "UploadTextureRegion");
-        }
+            pCL->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
+        };
+        taskGraph.InsertTask(copyTask);
 
         return Gem::Result::Success;
     }
@@ -1535,16 +1511,19 @@ void CRenderQueue12::FlushPendingGlyphUploads()
             pAtlas, upload.AtlasX, upload.AtlasY,
             upload.Width, upload.Height,
             upload.Pixels.data(),
-            upload.Width * upload.BytesPerPixel,
-            Canvas::GfxRenderContext::UI));
+            upload.Width * upload.BytesPerPixel));
     }
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::RetireBuffer(Gem::TGemPtr<Canvas::XGfxBuffer>& pBuffer, UINT64 fenceValue)
+void CRenderQueue12::DeferRelease(Gem::XGeneric* pResource)
 {
-    if (pBuffer)
-        m_PendingBufferRetirements.push_back({ std::move(pBuffer), fenceValue });
+    if (pResource)
+    {
+        Gem::TGemPtr<Gem::XGeneric> ref;
+        pResource->QueryInterface(&ref);
+        m_CurrentFrameRefs.Resources.push_back(std::move(ref));
+    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1896,6 +1875,9 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 if (vb.Size == 0)
                     continue;
 
+                // Keep GPU resources alive until this frame's fence completes
+                DeferRelease(vb.pBuffer.Get());
+
                 Canvas::Math::FloatVector2 elementOffset = pNode->GetGlobalPosition();
 
                 if (pElem->GetType() == Canvas::UIElementType::Rect)
@@ -1909,7 +1891,10 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     {
                         auto* pAtlas = pText->GetAtlasSurface();
                         if (pAtlas)
+                        {
+                            DeferRelease(pAtlas);
                             Gem::ThrowGemError(DrawUIText(vb, pAtlas, elementOffset));
+                        }
                     }
                 }
             }

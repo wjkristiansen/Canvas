@@ -581,19 +581,13 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut)
+GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& out)
 {
     if (vertexCount == 0 || vertexStride == 0 || !pVertexData || !pRQ)
         return Gem::Result::InvalidArg;
 
     try
     {
-        auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
-
-        // Retire the previous buffer (if any) so the GPU can finish using it
-        if (inOut.pBuffer)
-            pRQ12->RetireBuffer(inOut.pBuffer, pRQ12->GetCurrentFenceValue() + 1);
-
         uint64_t dataSize = static_cast<uint64_t>(vertexCount) * vertexStride;
 
         D3D12_RESOURCE_DESC bufferDesc = {};
@@ -614,12 +608,13 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
             &pBuffer, GetCanvas(), alloc.pResource, "VertexBuffer"));
         pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
 
-        inOut.pBuffer       = pBuffer;
-        inOut.Offset        = 0;
-        inOut.Size          = dataSize;
+        out.pBuffer       = pBuffer;
+        out.Offset        = 0;
+        out.Size          = dataSize;
 
         // Stage the upload via the render queue
-        Gem::ThrowGemError(pRQ12->StageBufferUpload(inOut, pVertexData, dataSize));
+        auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
+        Gem::ThrowGemError(pRQ12->StageBufferUpload(out, pVertexData, dataSize));
 
         return Gem::Result::Success;
     }
@@ -640,8 +635,7 @@ GEMMETHODIMP CDevice12::UploadTextureRegion(
         return Gem::Result::BadPointer;
 
     auto* pRQ = static_cast<CRenderQueue12*>(pRenderQueue);
-    return pRQ->UploadTextureRegion(pDstSurface, dstX, dstY, width, height, pData, srcRowPitch,
-        Canvas::GfxRenderContext::UI);
+    return pRQ->UploadTextureRegion(pDstSurface, dstX, dstY, width, height, pData, srcRowPitch);
 }
 
 //------------------------------------------------------------------------------------------------

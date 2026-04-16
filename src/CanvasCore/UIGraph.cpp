@@ -142,10 +142,10 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
 
                 if (pText->IsDirty())
                 {
-                    GfxResourceAllocation vb = pText->GetVertexBuffer();
+                    GfxResourceAllocation newVb{};
                     Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
-                        pText->GetVertexCount(), sizeof(TextVertex), pText->GetVertexData(), pGfxRQ, vb));
-                    pText->SetVertexBuffer(vb);
+                        pText->GetVertexCount(), sizeof(TextVertex), pText->GetVertexData(), pGfxRQ, newVb));
+                    pText->SetVertexBuffer(newVb);
                     pText->ClearDirty();
                 }
             }
@@ -158,10 +158,10 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
 
                 if (pRect->IsDirty())
                 {
-                    GfxResourceAllocation vb = pRect->GetVertexBuffer();
+                    GfxResourceAllocation newVb{};
                     Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
-                        pRect->GetVertexCount(), sizeof(TextVertex), pRect->GetVertexData(), pGfxRQ, vb));
-                    pRect->SetVertexBuffer(vb);
+                        pRect->GetVertexCount(), sizeof(TextVertex), pRect->GetVertexData(), pGfxRQ, newVb));
+                    pRect->SetVertexBuffer(newVb);
                     pRect->ClearDirty();
                 }
             }
