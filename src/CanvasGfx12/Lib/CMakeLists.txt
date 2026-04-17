@@ -13,6 +13,7 @@ add_library(CanvasGfx12 SHARED
     SwapChain12.cpp
     MeshData12.cpp
     ResourceAllocator.cpp
+    BufferPool.cpp
     dllmain.cpp
     pch.h
     targetver.h

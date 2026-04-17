@@ -19,6 +19,14 @@ CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
 }
 
 //------------------------------------------------------------------------------------------------
+CDevice12::~CDevice12()
+{
+    // Drain the pool before members are destroyed, breaking the
+    // CDevice12 -> pool -> CBuffer12 -> CDevice12 reference cycle.
+    m_BufferPool.ReleaseAll();
+}
+
+//------------------------------------------------------------------------------------------------
 Gem::Result CDevice12::Initialize()
 {
     try
@@ -581,7 +589,7 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& out)
+GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut)
 {
     if (vertexCount == 0 || vertexStride == 0 || !pVertexData || !pRQ)
         return Gem::Result::InvalidArg;
@@ -589,10 +597,32 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
     try
     {
         uint64_t dataSize = static_cast<uint64_t>(vertexCount) * vertexStride;
+        auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
+
+        // Retire the previous buffer to the pool (if any).
+        // The buffer was last drawn under the current fence value;
+        // it will become available once that fence completes.
+        if (inOut.pBuffer)
+            m_BufferPool.Retire(std::move(inOut), pRQ12->GetFenceValue());
+
+        // Try to reuse a pooled buffer.
+        if (m_BufferPool.Acquire(dataSize, inOut))
+        {
+            inOut.Offset = 0;
+            inOut.Size   = dataSize;
+            return pRQ12->StageBufferUpload(inOut, pVertexData, dataSize);
+        }
+
+        // Pool miss — allocate a new buffer.
+        // Use power-of-2 capacity for poolable sizes so the buffer fits a
+        // bucket exactly when it is later retired.
+        uint64_t capacity = dataSize;
+        if (CBufferPool::IsPoolable(dataSize))
+            capacity = CBufferPool::RoundUpPow2(dataSize);
 
         D3D12_RESOURCE_DESC bufferDesc = {};
         bufferDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
-        bufferDesc.Width            = dataSize;
+        bufferDesc.Width            = capacity;
         bufferDesc.Height           = 1;
         bufferDesc.DepthOrArraySize = 1;
         bufferDesc.MipLevels        = 1;
@@ -608,13 +638,12 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
             &pBuffer, GetCanvas(), alloc.pResource, "VertexBuffer"));
         pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
 
-        out.pBuffer       = pBuffer;
-        out.Offset        = 0;
-        out.Size          = dataSize;
+        inOut.pBuffer       = pBuffer;
+        inOut.Offset        = 0;
+        inOut.Size          = dataSize;
 
         // Stage the upload via the render queue
-        auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
-        Gem::ThrowGemError(pRQ12->StageBufferUpload(out, pVertexData, dataSize));
+        Gem::ThrowGemError(pRQ12->StageBufferUpload(inOut, pVertexData, dataSize));
 
         return Gem::Result::Success;
     }

@@ -324,6 +324,10 @@ void CRenderQueue12::Uninitialize()
 
     // GPU is idle — drain any remaining deferred resources.
     ProcessCompletedWork();
+
+    // Break the CDevice12 → pool → CBuffer12 → CDevice12 reference cycle.
+    // The GPU is idle so every retired buffer is safe to release.
+    m_pDevice->ReleaseBufferPool();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -430,6 +434,9 @@ void CRenderQueue12::ProcessCompletedWork()
     
     // Reclaim upload ring buffer space in bulk
     m_pDevice->ReclaimUploadRingSpace(completedValue);
+
+    // Reclaim vertex buffers whose GPU work has completed
+    m_pDevice->ReclaimBufferPool(completedValue);
 
     // Clean up completed sync points
     for (auto it = m_GpuSyncPoints.begin(); it != m_GpuSyncPoints.end();)

@@ -328,8 +328,10 @@ namespace Canvas
             XGfxMeshData **ppMesh,
             const char* name = nullptr) = 0;
 
-        // Vertex buffer suballocation (alloc + upload in one call)
-        GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxResourceAllocation& out) = 0;
+        // Vertex buffer suballocation (alloc + upload in one call).
+        // If `inOut` already holds a buffer, it is retired to the vertex buffer
+        // pool for future reuse; the caller receives a (possibly pooled) replacement.
+        GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxResourceAllocation& inOut) = 0;
 
         // Upload CPU data into a sub-region of a GPU surface via a staging copy.
         GEMMETHOD(UploadTextureRegion)(

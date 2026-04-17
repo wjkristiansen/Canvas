@@ -14,6 +14,7 @@
 #include "CanvasGfx12.h"
 #include "BuddySuballocator.h"
 #include "ResourceAllocator.h"
+#include "BufferPool.h"
 
 inline constexpr D3D12_HEAP_TYPE GfxMemoryUsageToD3D12HeapType(Canvas::GfxMemoryUsage usage)
 {
@@ -81,7 +82,7 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CDevice12(Canvas::XCanvas* pCanvas, PCSTR name = nullptr);
-    ~CDevice12() = default;
+    ~CDevice12();
 
     Gem::Result Initialize();
     void Uninitialize() {}
@@ -120,6 +121,10 @@ public:
     // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
     GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
 
+    // Buffer pool: reclaim completed and release all (called by RenderQueue)
+    void ReclaimBufferPool(UINT64 completedFenceValue) { m_BufferPool.Reclaim(completedFenceValue); }
+    void ReleaseBufferPool() { m_BufferPool.ReleaseAll(); }
+
     // Texture upload (XGfxDevice interface — delegates to RQ for GPU copy)
     GEMMETHOD(UploadTextureRegion)(
         Canvas::XGfxSurface *pDstSurface,
@@ -136,4 +141,7 @@ public:
 
 private:
     Gem::TGemPtr<Canvas::XGfxSurface> m_pGlyphAtlasSurface;
+
+    // Buffer pool for frequently-changing allocations (UI elements, etc.)
+    CBufferPool m_BufferPool;
 };

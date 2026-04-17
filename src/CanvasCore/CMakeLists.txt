@@ -20,7 +20,6 @@ add_library(CanvasCore SHARED
     ../Inc/CanvasCore.h
     ../Inc/CanvasGfx.h
     ../Inc/CanvasMath.hpp
-    ../Inc/CanvasRender.h
     Camera.h
     Canvas.h
     UIElement.h

@@ -553,6 +553,7 @@ public:
     // Internal functions
     CDevice12 *GetDevice() const { return m_pDevice; }
     ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
+    UINT64 GetFenceValue() const { return m_FenceValue; }
 
     // Internal mesh drawing (called from EndFrame, not on any public interface)
     Gem::Result DrawMesh(Canvas::XGfxMeshData *pMeshData, const Canvas::Math::FloatMatrix4x4 &worldTransform);
