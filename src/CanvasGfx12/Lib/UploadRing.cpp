@@ -95,13 +95,14 @@ Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocat
             available = availableBytes();
         }
 
-        // Grow if still insufficient.
+        // Grow if still insufficient.  Double the ring (at minimum) until the
+        // request fits.
         if (alignedSize > available)
         {
-            uint64_t needed = m_Size;
+            uint64_t needed = m_Size ? m_Size : alignedSize;
             while (needed < alignedSize)
                 needed *= 2;
-            GrowTo(needed * 2);
+            GrowTo(needed);
         }
 
         // Handle wrap-around.
