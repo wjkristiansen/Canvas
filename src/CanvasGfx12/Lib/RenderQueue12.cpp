@@ -176,6 +176,11 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pCommandQueue.Attach(pCQ.Detach());
     m_pFence.Attach(pFence.Detach());
 
+    m_CbvSrvUavIncrement = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_SamplerIncrement   = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+    m_RtvIncrement       = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    m_DsvIncrement       = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+
     // Per-queue upload ring (1 MB initial, grows on demand).
     m_UploadRing.Initialize(pDevice, 1 * 1024 * 1024);
 
@@ -211,12 +216,9 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
 //------------------------------------------------------------------------------------------------
 D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
 {
-    ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     UINT slot = m_NextRTVSlot;
     m_NextRTVSlot = (m_NextRTVSlot + 1) % NumRTVDescriptors;
-    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
-    cpuHandle.ptr= m_pRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_pRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_RtvIncrement);
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
     rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
     rtvDesc.Texture2DArray.ArraySize = 1;
@@ -629,12 +631,10 @@ void CRenderQueue12::EnsureGBuffers(UINT width, UINT height)
 D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateDepthStencilView(CSurface12 *pSurface)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
     UINT slot = m_NextDSVSlot;
     m_NextDSVSlot = (m_NextDSVSlot + 1) % NumDSVDescriptors;
     
-    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
-    cpuHandle.ptr = m_pDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_pDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_DsvIncrement);
     
     D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
     dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
@@ -654,17 +654,14 @@ D3D12_GPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateShaderResourceView(
     ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     UINT slot = m_NextSRVSlot;
     m_NextSRVSlot = (m_NextSRVSlot + 1) % NumShaderResourceDescriptors;
     
-    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
-    cpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_CbvSrvUavIncrement);
     
     pD3DDevice->CreateShaderResourceView(pResource, &srvDesc, cpuHandle);
     
-    D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle;
-    gpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), slot, m_CbvSrvUavIncrement);
     return gpuHandle;
 }
 
@@ -1234,12 +1231,6 @@ Gem::Result CRenderQueue12::DrawMesh(
         
         memcpy(hw.pMapped, &objectConstants, sizeof(HlslTypes::HlslPerObjectConstants));
         
-        // Create CBV for per-object constants in descriptor table
-        // Descriptor table (slot 3) layout: CBV[2] at b1, SRV[4] at t1, UAV[2] at u1
-        // We need to create a contiguous block of descriptors for the table
-        ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-        UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        
         // Allocate a contiguous block of 8 descriptors (2 CBV + 4 SRV + 2 UAV).
         // Wrap to slot 0 if the block would straddle the ring boundary to avoid
         // writing past the end of the heap.
@@ -1248,11 +1239,10 @@ Gem::Result CRenderQueue12::DrawMesh(
         UINT baseSlot = m_NextSRVSlot;
         m_NextSRVSlot += 8;
         
-        D3D12_CPU_DESCRIPTOR_HANDLE baseCpuHandle;
-        baseCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
-        
-        D3D12_GPU_DESCRIPTOR_HANDLE baseGpuHandle;
-        baseGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
+        const UINT incSize = m_CbvSrvUavIncrement;
+        ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
+        CD3DX12_CPU_DESCRIPTOR_HANDLE baseCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), baseSlot, incSize);
+        CD3DX12_GPU_DESCRIPTOR_HANDLE baseGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), baseSlot, incSize);
         
         // Slot 0 of table: CBV for per-object constants (b1)
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
@@ -1261,7 +1251,7 @@ Gem::Result CRenderQueue12::DrawMesh(
         pD3DDevice->CreateConstantBufferView(&cbvDesc, baseCpuHandle);
         
         // Slot 1 of table: CBV[1] placeholder (b2) - null
-        D3D12_CPU_DESCRIPTOR_HANDLE cbv1Handle = { baseCpuHandle.ptr + incSize };
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cbv1Handle(baseCpuHandle, 1, incSize);
         D3D12_CONSTANT_BUFFER_VIEW_DESC nullCbvDesc = {};
         pD3DDevice->CreateConstantBufferView(&nullCbvDesc, cbv1Handle);
         
@@ -1275,7 +1265,7 @@ Gem::Result CRenderQueue12::DrawMesh(
         
         if (pNormBuf)
         {
-            D3D12_CPU_DESCRIPTOR_HANDLE normSrvHandle = { baseCpuHandle.ptr + 2 * incSize };
+            CD3DX12_CPU_DESCRIPTOR_HANDLE normSrvHandle(baseCpuHandle, 2, incSize);
             D3D12_RESOURCE_DESC normDesc = pNormBuf->GetD3DResource()->GetDesc();
             UINT numNormals = static_cast<UINT>(normDesc.Width / sizeof(Canvas::Math::FloatVector4));
             
@@ -1290,19 +1280,19 @@ Gem::Result CRenderQueue12::DrawMesh(
         }
         else
         {
-            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, { baseCpuHandle.ptr + 2 * incSize });
+            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, 2, incSize));
         }
         
         // Null SRVs for t2-t4 (slots 3-5)
         for (UINT i = 3; i <= 5; ++i)
-            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, { baseCpuHandle.ptr + i * incSize });
+            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, i, incSize));
         
         // Null UAVs for u1-u2 (slots 6-7)
         D3D12_UNORDERED_ACCESS_VIEW_DESC nullUavDesc = {};
         nullUavDesc.Format = DXGI_FORMAT_R32_FLOAT;
         nullUavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
         for (UINT i = 6; i <= 7; ++i)
-            pD3DDevice->CreateUnorderedAccessView(nullptr, nullptr, &nullUavDesc, { baseCpuHandle.ptr + i * incSize });
+            pD3DDevice->CreateUnorderedAccessView(nullptr, nullptr, &nullUavDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, i, incSize));
         
         // Set root SRV (slot 1) for positions (t0)
         D3D12_GPU_VIRTUAL_ADDRESS posGpuAddr = pPosBuf->GetD3DResource()->GetGPUVirtualAddress();
@@ -1399,15 +1389,13 @@ Gem::Result CRenderQueue12::DrawUIText(
         memcpy(hw.pMapped, screenConsts, sizeof(screenConsts));
 
         ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
-        UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        const UINT incSize = m_CbvSrvUavIncrement;
         if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
             m_NextSRVSlot = 0;
         UINT srvSlot = m_NextSRVSlot++;
 
-        D3D12_CPU_DESCRIPTOR_HANDLE srvCpuHandle;
-        srvCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
-        D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle;
-        srvGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
+        CD3DX12_CPU_DESCRIPTOR_HANDLE srvCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), srvSlot, incSize);
+        CD3DX12_GPU_DESCRIPTOR_HANDLE srvGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), srvSlot, incSize);
         pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
 
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
@@ -1825,22 +1813,20 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
             // CPU work: allocate SRV descriptors and create SRVs
             ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
-            UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            const UINT incSize = m_CbvSrvUavIncrement;
 
             if (m_NextSRVSlot + 3 > NumShaderResourceDescriptors)
                 m_NextSRVSlot = 0;
             UINT baseSlot = m_NextSRVSlot;
             m_NextSRVSlot += 3;
 
-            D3D12_CPU_DESCRIPTOR_HANDLE baseCpuHandle;
-            baseCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
-            D3D12_GPU_DESCRIPTOR_HANDLE baseGpuHandle;
-            baseGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
+            CD3DX12_CPU_DESCRIPTOR_HANDLE baseCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), baseSlot, incSize);
+            CD3DX12_GPU_DESCRIPTOR_HANDLE baseGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), baseSlot, incSize);
 
             pD3DDevice->CreateShaderResourceView(m_pGBufferNormals->GetD3DResource(), nullptr, baseCpuHandle);
-            D3D12_CPU_DESCRIPTOR_HANDLE diffuseSrvHandle = { baseCpuHandle.ptr + incSize };
+            CD3DX12_CPU_DESCRIPTOR_HANDLE diffuseSrvHandle(baseCpuHandle, 1, incSize);
             pD3DDevice->CreateShaderResourceView(m_pGBufferDiffuseColor->GetD3DResource(), nullptr, diffuseSrvHandle);
-            D3D12_CPU_DESCRIPTOR_HANDLE worldPosSrvHandle = { baseCpuHandle.ptr + 2 * incSize };
+            CD3DX12_CPU_DESCRIPTOR_HANDLE worldPosSrvHandle(baseCpuHandle, 2, incSize);
             pD3DDevice->CreateShaderResourceView(m_pGBufferWorldPos->GetD3DResource(), nullptr, worldPosSrvHandle);
 
             // Composite task: transition G-buffers to SR, back buffer to RT, then draw

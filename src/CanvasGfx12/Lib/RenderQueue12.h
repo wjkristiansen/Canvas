@@ -524,6 +524,11 @@ public:
 
     UINT m_NextRTVSlot = 0;
 
+    UINT m_CbvSrvUavIncrement = 0;
+    UINT m_SamplerIncrement   = 0;
+    UINT m_RtvIncrement       = 0;
+    UINT m_DsvIncrement       = 0;
+
     // GPU sync point tracking (fence-value based)
     std::unordered_map<UINT64, GpuSyncPoint> m_GpuSyncPoints;
     
