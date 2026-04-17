@@ -77,7 +77,6 @@ Gem::Result CDevice12::Initialize()
         return ResultFromHRESULT(e.Error());
     }
 
-    m_ResourceAllocator.Initialize(this);
     m_ResourceManager.Initialize(this);
 
     return Gem::Result::Success;
@@ -359,11 +358,11 @@ GEMMETHODIMP CDevice12::CreateMeshData(
 
         bufDesc.Width = posSize;
         ResourceAllocation posAlloc;
-        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, posAlloc, posName.c_str()));
+        Gem::ThrowGemError(m_ResourceManager.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, posAlloc, posName.c_str()));
 
         bufDesc.Width = normSize;
         ResourceAllocation normAlloc;
-        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, normAlloc, normName.c_str()));
+        Gem::ThrowGemError(m_ResourceManager.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, normAlloc, normName.c_str()));
 
         // Wrap placed resources in CBuffer12
         Gem::TGemPtr<CBuffer12> pPosBuffer;
@@ -499,7 +498,7 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
         bufferDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
         ResourceAllocation alloc;
-        Gem::ThrowGemError(m_ResourceAllocator.Alloc(bufferDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, alloc));
+        Gem::ThrowGemError(m_ResourceManager.Alloc(bufferDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, alloc));
 
         // Wrap placed/committed resource in CBuffer12
         Gem::TGemPtr<CBuffer12> pBuffer;

@@ -325,16 +325,15 @@ void CRenderQueue12::Uninitialize()
     ProcessCompletedWork();
 
     // Unregister this queue's timeline from the device-level resource manager.
-    // Must happen BEFORE Shutdown so the manager drops any retired entries it owns.
+    // Drains and drops any retired buffers / deferred refs owned by this timeline.
+    // The shared bucketed pool stays alive — it is owned by the device and torn
+    // down when the device is destroyed (or by the last surviving queue's release
+    // chain via CDevice12::~CDevice12).
     if (m_TimelineId != FenceToken::kInvalidTimelineId)
     {
         m_pDevice->GetResourceManager().UnregisterTimeline(m_TimelineId);
         m_TimelineId = FenceToken::kInvalidTimelineId;
     }
-
-    // Break the CDevice12 → manager → CBuffer12 → CDevice12 reference cycle.
-    // The GPU is idle so every retired buffer is safe to release.
-    m_pDevice->ReleaseBufferPool();
 
     // Release the per-queue upload ring now that the GPU is idle.
     m_UploadRing.Shutdown();

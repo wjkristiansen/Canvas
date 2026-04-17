@@ -78,21 +78,15 @@ public:
         return pCanvas ? pCanvas->GetLogger() : nullptr;
     }
 
-    // Resource allocator (placed + committed)
-    CResourceAllocator m_ResourceAllocator;
-
-    // Device-level resource manager (queue-agnostic): owns the buffer pool,
-    // per-timeline retired/deferred queues, and (in Phase 5) the resource allocator.
+    // Device-level resource manager (queue-agnostic): owns the resource allocator
+    // (placed + committed), the bucketed buffer pool, and per-timeline retired/
+    // deferred queues.
     CResourceManager m_ResourceManager;
 
     CResourceManager& GetResourceManager() { return m_ResourceManager; }
 
     // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
     GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
-
-    // Buffer pool: reclaim completed and release all (called by RenderQueue)
-    void ReclaimBufferPool() { m_ResourceManager.Reclaim(); }
-    void ReleaseBufferPool() { m_ResourceManager.Shutdown(); }
 
     // Texture upload (XGfxDevice interface — delegates to RQ for GPU copy)
     GEMMETHOD(UploadTextureRegion)(

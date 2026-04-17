@@ -2,7 +2,7 @@
 // CResourceManager - Device-level, queue-agnostic GPU resource lifecycle manager.
 //
 // Owns:
-//   - CResourceAllocator (placed + committed allocations)   [absorbed in Phase 5]
+//   - CResourceAllocator (placed + committed allocations)
 //   - Power-of-2 bucketed buffer pool
 //   - Per-timeline deferred release and retired-buffer queues
 //
@@ -119,6 +119,18 @@ public:
     // the timeline is invalid (caller responsibility to drain before unregister).
     void DeferRelease(Gem::TGemPtr<Gem::XGeneric>&& pResource, FenceToken token);
 
+    //--------------------------------------------------------------------------------------------
+    // Placed / committed resource allocation (thin forwarder over CResourceAllocator).
+    //--------------------------------------------------------------------------------------------
+
+    Gem::Result Alloc(
+        const D3D12_RESOURCE_DESC& desc,
+        D3D12_BARRIER_LAYOUT initialLayout,
+        ResourceAllocation& out,
+        const char* name = nullptr);
+
+    void Free(ResourceAllocation& allocation);
+
     // True when the (rounded-up) size falls within the poolable bucket range.
     static bool IsPoolableSize(uint64_t sizeInBytes);
 
@@ -130,10 +142,6 @@ public:
     static constexpr uint32_t kMaxBucketLog2 = 16;                             // 64 KB
     static constexpr uint32_t kNumBuckets    = kMaxBucketLog2 - kMinBucketLog2 + 1;
 
-    // Placed/committed resource alloc (delegates to CResourceAllocator).
-    // Wired up in Phase 5; currently the device still owns the allocator.
-    // Alloc / Free come later.
-
 private:
     static constexpr uint32_t kMaxPerBucket = 8;
 
@@ -141,9 +149,9 @@ private:
     // kNumBuckets when out of range.
     static uint32_t BucketIndex(uint64_t capacity);
 
-    friend class CDevice12;  // transitional: CDevice12 still owns some state in early phases
-
     CDevice12* m_pDevice = nullptr;
+
+    CResourceAllocator m_Allocator;
 
     std::vector<std::unique_ptr<FenceTimeline>> m_Timelines;  // indexed by TimelineId; entries may be null after Unregister
 

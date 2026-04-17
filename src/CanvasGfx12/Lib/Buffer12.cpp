@@ -14,6 +14,6 @@ CBuffer12::~CBuffer12()
         alloc.AllocationKey = m_AllocationKey;
         alloc.SizeInUnits   = m_SizeInUnits;
         alloc.AllocatorTier = m_AllocatorTier;
-        m_pDevice->m_ResourceAllocator.Free(alloc);
+        m_pDevice->m_ResourceManager.Free(alloc);
     }
 }
