@@ -14,7 +14,8 @@
 #include "CanvasGfx12.h"
 #include "BuddySuballocator.h"
 #include "ResourceAllocator.h"
-#include "BufferPool.h"
+#include "ResourceManager.h"
+#include "UploadRing.h"
 
 inline constexpr D3D12_HEAP_TYPE GfxMemoryUsageToD3D12HeapType(Canvas::GfxMemoryUsage usage)
 {
@@ -32,48 +33,10 @@ inline constexpr D3D12_HEAP_TYPE GfxMemoryUsageToD3D12HeapType(Canvas::GfxMemory
 }
 
 //------------------------------------------------------------------------------------------------
-// Lightweight ring buffer suballocation — no ref counting.
-// The ring buffer owns the ID3D12Resource; suballocations are transient (one frame).
-struct HostWriteAllocation
-{
-    D3D12_GPU_VIRTUAL_ADDRESS GpuAddress = 0;
-    void* pMapped = nullptr;
-    uint64_t Size = 0;
-    ID3D12Resource* pResource = nullptr;  // Raw ptr to ring buffer's D3D12 resource (for CopyBufferRegion source)
-    uint64_t ResourceOffset = 0;          // Offset within the D3D12 resource
-};
-
-//------------------------------------------------------------------------------------------------
 class CDevice12 : public TGfxElement<Canvas::XGfxDevice>
 {
 public:
     CComPtr<ID3D12Device10> m_pD3DDevice;
-
-    // Upload ring buffer for host-write staging.
-    // A single committed UPLOAD buffer, persistently mapped, with a write pointer
-    // that advances linearly. Space reclaimed in bulk per frame via fence markers.
-    CComPtr<ID3D12Resource> m_pUploadRingResource;
-    D3D12_GPU_VIRTUAL_ADDRESS m_UploadRingGpuBase = 0;
-    uint8_t* m_pUploadRingMapped = nullptr;
-    uint64_t m_UploadRingSize = 1 * 1024 * 1024;           // 1 MB
-    uint64_t m_UploadRingWriteOffset = 0;                   // Next write position
-    uint64_t m_UploadRingReadOffset = 0;                    // Oldest unreclaimable position
-    UINT64 m_LastCompletedFenceValue = 0;                   // Cached for mid-frame reclaim
-
-    struct UploadRingFrameMarker
-    {
-        UINT64 FenceValue;
-        uint64_t WriteOffset;   // Write offset at the time this frame was submitted
-    };
-    std::deque<UploadRingFrameMarker> m_UploadRingFrameMarkers;
-
-    void EnsureUploadRingBuffer();
-    void MarkUploadRingFrameEnd(UINT64 fenceValue);
-    void ReclaimUploadRingSpace(UINT64 completedFenceValue);
-    void GrowUploadRingBuffer(uint64_t newSize);
-
-    // Ring buffer suballocation — internal, no ref counting
-    Gem::Result AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocation& out);
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxDevice)
@@ -118,12 +81,18 @@ public:
     // Resource allocator (placed + committed)
     CResourceAllocator m_ResourceAllocator;
 
+    // Device-level resource manager (queue-agnostic): owns the buffer pool,
+    // per-timeline retired/deferred queues, and (in Phase 5) the resource allocator.
+    CResourceManager m_ResourceManager;
+
+    CResourceManager& GetResourceManager() { return m_ResourceManager; }
+
     // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
     GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
 
     // Buffer pool: reclaim completed and release all (called by RenderQueue)
-    void ReclaimBufferPool(UINT64 completedFenceValue) { m_BufferPool.Reclaim(completedFenceValue); }
-    void ReleaseBufferPool() { m_BufferPool.ReleaseAll(); }
+    void ReclaimBufferPool() { m_ResourceManager.Reclaim(); }
+    void ReleaseBufferPool() { m_ResourceManager.Shutdown(); }
 
     // Texture upload (XGfxDevice interface — delegates to RQ for GPU copy)
     GEMMETHOD(UploadTextureRegion)(
@@ -141,7 +110,4 @@ public:
 
 private:
     Gem::TGemPtr<Canvas::XGfxSurface> m_pGlyphAtlasSurface;
-
-    // Buffer pool for frequently-changing allocations (UI elements, etc.)
-    CBufferPool m_BufferPool;
 };

@@ -21,9 +21,9 @@ CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
 //------------------------------------------------------------------------------------------------
 CDevice12::~CDevice12()
 {
-    // Drain the pool before members are destroyed, breaking the
-    // CDevice12 -> pool -> CBuffer12 -> CDevice12 reference cycle.
-    m_BufferPool.ReleaseAll();
+    // Drain the resource manager before members are destroyed, breaking the
+    // CDevice12 -> manager -> CBuffer12 -> CDevice12 reference cycle.
+    m_ResourceManager.Shutdown();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -78,6 +78,7 @@ Gem::Result CDevice12::Initialize()
     }
 
     m_ResourceAllocator.Initialize(this);
+    m_ResourceManager.Initialize(this);
 
     return Gem::Result::Success;
 }
@@ -318,140 +319,6 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
 }
 
 //------------------------------------------------------------------------------------------------
-void CDevice12::EnsureUploadRingBuffer()
-{
-    if (m_pUploadRingResource)
-        return;
-
-    D3D12_RESOURCE_DESC1 bufDesc = {};
-    bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
-    bufDesc.Width            = m_UploadRingSize;
-    bufDesc.Height           = 1;
-    bufDesc.DepthOrArraySize = 1;
-    bufDesc.MipLevels        = 1;
-    bufDesc.SampleDesc.Count = 1;
-    bufDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-
-    D3D12_HEAP_PROPERTIES heapProps = {};
-    heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
-    heapProps.CreationNodeMask = 1;
-    heapProps.VisibleNodeMask = 1;
-
-    ThrowFailedHResult(m_pD3DDevice->CreateCommittedResource3(
-        &heapProps, D3D12_HEAP_FLAG_NONE, &bufDesc,
-        D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr, nullptr, 0, nullptr,
-        IID_PPV_ARGS(&m_pUploadRingResource)));
-    m_pUploadRingResource->SetName(L"CanvasGfx_UploadRing");
-
-    // Persistently map — UPLOAD heap stays mapped for the lifetime of the resource
-    void* pMapped = nullptr;
-    ThrowFailedHResult(m_pUploadRingResource->Map(0, nullptr, &pMapped));
-    m_pUploadRingMapped = static_cast<uint8_t*>(pMapped);
-    m_UploadRingGpuBase = m_pUploadRingResource->GetGPUVirtualAddress();
-}
-
-//------------------------------------------------------------------------------------------------
-Gem::Result CDevice12::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocation& out)
-{
-    if (sizeInBytes == 0)
-        return Gem::Result::InvalidArg;
-
-    try
-    {
-        constexpr uint64_t kAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        uint64_t alignedSize = (sizeInBytes + kAlignment - 1) & ~(kAlignment - 1);
-
-        EnsureUploadRingBuffer();
-
-        // Check available space
-        uint64_t available;
-        if (m_UploadRingWriteOffset >= m_UploadRingReadOffset)
-            available = m_UploadRingSize - m_UploadRingWriteOffset + m_UploadRingReadOffset;
-        else
-            available = m_UploadRingReadOffset - m_UploadRingWriteOffset;
-
-        // Try reclaiming completed frames
-        if (alignedSize > available)
-        {
-            ReclaimUploadRingSpace(m_LastCompletedFenceValue);
-            if (m_UploadRingWriteOffset >= m_UploadRingReadOffset)
-                available = m_UploadRingSize - m_UploadRingWriteOffset + m_UploadRingReadOffset;
-            else
-                available = m_UploadRingReadOffset - m_UploadRingWriteOffset;
-        }
-
-        // Grow if needed
-        if (alignedSize > available)
-        {
-            uint64_t needed = m_UploadRingSize;
-            while (needed < alignedSize)
-                needed *= 2;
-            GrowUploadRingBuffer(needed * 2);
-        }
-
-        // Handle wrap-around
-        if (m_UploadRingWriteOffset + alignedSize > m_UploadRingSize)
-        {
-            if (alignedSize > m_UploadRingReadOffset)
-                GrowUploadRingBuffer(m_UploadRingSize * 2);
-            else
-                m_UploadRingWriteOffset = 0;
-        }
-
-        out.GpuAddress      = m_UploadRingGpuBase + m_UploadRingWriteOffset;
-        out.pMapped         = m_pUploadRingMapped + m_UploadRingWriteOffset;
-        out.Size            = sizeInBytes;
-        out.pResource       = m_pUploadRingResource;
-        out.ResourceOffset  = m_UploadRingWriteOffset;
-
-        m_UploadRingWriteOffset += alignedSize;
-        return Gem::Result::Success;
-    }
-    catch (const Gem::GemError &e) { return e.Result(); }
-    catch (const _com_error &e) { return ResultFromHRESULT(e.Error()); }
-}
-
-//------------------------------------------------------------------------------------------------
-void CDevice12::MarkUploadRingFrameEnd(UINT64 fenceValue)
-{
-    m_UploadRingFrameMarkers.push_back({ fenceValue, m_UploadRingWriteOffset });
-}
-
-//------------------------------------------------------------------------------------------------
-void CDevice12::ReclaimUploadRingSpace(UINT64 completedFenceValue)
-{
-    m_LastCompletedFenceValue = completedFenceValue;
-    while (!m_UploadRingFrameMarkers.empty())
-    {
-        auto& oldest = m_UploadRingFrameMarkers.front();
-        if (oldest.FenceValue > completedFenceValue)
-            break;
-        m_UploadRingReadOffset = oldest.WriteOffset;
-        m_UploadRingFrameMarkers.pop_front();
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CDevice12::GrowUploadRingBuffer(uint64_t newSize)
-{
-    // Unmap and release old ring buffer
-    if (m_pUploadRingResource)
-    {
-        m_pUploadRingResource->Unmap(0, nullptr);
-        m_pUploadRingResource.Release();
-        m_pUploadRingMapped = nullptr;
-        m_UploadRingGpuBase = 0;
-    }
-
-    // Create new larger buffer
-    m_UploadRingSize = newSize;
-    m_UploadRingWriteOffset = 0;
-    m_UploadRingReadOffset = 0;
-    m_UploadRingFrameMarkers.clear();
-    EnsureUploadRingBuffer();
-}
-
-//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateMeshData(
     [[maybe_unused]] uint32_t vertexCount,
     [[maybe_unused]] const Canvas::Math::FloatVector4 *positions,
@@ -469,6 +336,11 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         return Gem::Result::BadPointer;
 
     *ppMesh = nullptr;
+
+    if (!pRenderQueue)
+        return Gem::Result::InvalidArg;
+
+    CRenderQueue12* pRQ = static_cast<CRenderQueue12*>(pRenderQueue);
 
     try
     {
@@ -504,9 +376,9 @@ GEMMETHODIMP CDevice12::CreateMeshData(
             &pNormBuffer, GetCanvas(), normAlloc.pResource, normName.c_str()));
         pNormBuffer->SetAllocationTracking(this, normAlloc.AllocationKey, normAlloc.SizeInUnits, normAlloc.AllocatorTier);
 
-        // Allocate staging space from upload ring buffer
+        // Allocate staging space from the render queue's upload ring buffer
         HostWriteAllocation staging;
-        Gem::ThrowGemError(AllocateFromRing(allocationSize, staging));
+        Gem::ThrowGemError(pRQ->GetUploadRing().AllocateFromRing(allocationSize, staging));
 
         // Copy data into the upload buffer immediately on CPU timeline
         {
@@ -518,10 +390,7 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         }
 
         // Schedule copy operations from upload heap to device-local heap
-        if (pRenderQueue)
         {
-            CRenderQueue12* pRQ = static_cast<CRenderQueue12*>(pRenderQueue);
-
             // Declare resource usage: destination buffers need barriers for copy
             ResourceUsageBuilder usages;
             usages.SetBufferUsage(
@@ -600,13 +469,13 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
         auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
 
         // Retire the previous buffer to the pool (if any).
-        // The buffer was last drawn under the current fence value;
-        // it will become available once that fence completes.
+        // The buffer was last drawn under the queue's current fence value;
+        // it will become available once that fence completes on this timeline.
         if (inOut.pBuffer)
-            m_BufferPool.Retire(std::move(inOut), pRQ12->GetFenceValue());
+            m_ResourceManager.RetireBuffer(std::move(inOut), pRQ12->MakeFenceToken());
 
         // Try to reuse a pooled buffer.
-        if (m_BufferPool.Acquire(dataSize, inOut))
+        if (m_ResourceManager.AcquireBuffer(dataSize, inOut))
         {
             inOut.Offset = 0;
             inOut.Size   = dataSize;
@@ -617,8 +486,8 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
         // Use power-of-2 capacity for poolable sizes so the buffer fits a
         // bucket exactly when it is later retired.
         uint64_t capacity = dataSize;
-        if (CBufferPool::IsPoolable(dataSize))
-            capacity = CBufferPool::RoundUpPow2(dataSize);
+        if (CResourceManager::IsPoolableSize(dataSize))
+            capacity = CResourceManager::RoundUpPow2(dataSize);
 
         D3D12_RESOURCE_DESC bufferDesc = {};
         bufferDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;

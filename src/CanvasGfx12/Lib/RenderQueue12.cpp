@@ -176,6 +176,13 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pCommandQueue.Attach(pCQ.Detach());
     m_pFence.Attach(pFence.Detach());
 
+    // Per-queue upload ring (1 MB initial, grows on demand).
+    m_UploadRing.Initialize(pDevice, 1 * 1024 * 1024);
+
+    // Register this queue's fence with the device-level resource manager so
+    // pooled buffers and deferred releases can be tracked queue-agnostically.
+    m_TimelineId = pDevice->GetResourceManager().RegisterTimeline(m_pFence);
+
     // Pre-allocate per-frame queues to avoid repeated heap reallocations
     m_PendingBufferUploads.reserve(64);
     m_RenderableQueue.reserve(128);
@@ -238,15 +245,7 @@ void CRenderQueue12::Flush()
     m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
 
     // Record ring buffer usage for this frame
-    m_pDevice->MarkUploadRingFrameEnd(m_FenceValue);
-
-    // Move current frame's GPU resource refs to the deferred release queue
-    if (!m_CurrentFrameRefs.Resources.empty())
-    {
-        m_CurrentFrameRefs.FenceValue = m_FenceValue;
-        m_DeferredReleases.push_back(std::move(m_CurrentFrameRefs));
-        m_CurrentFrameRefs = {};
-    }
+    m_UploadRing.MarkSubmissionEnd(m_FenceValue);
 
     // Reset scene and UI graphs for next frame
     UINT64 completedFenceValue = m_pFence->GetCompletedValue();
@@ -325,9 +324,20 @@ void CRenderQueue12::Uninitialize()
     // GPU is idle — drain any remaining deferred resources.
     ProcessCompletedWork();
 
-    // Break the CDevice12 → pool → CBuffer12 → CDevice12 reference cycle.
+    // Unregister this queue's timeline from the device-level resource manager.
+    // Must happen BEFORE Shutdown so the manager drops any retired entries it owns.
+    if (m_TimelineId != FenceToken::kInvalidTimelineId)
+    {
+        m_pDevice->GetResourceManager().UnregisterTimeline(m_TimelineId);
+        m_TimelineId = FenceToken::kInvalidTimelineId;
+    }
+
+    // Break the CDevice12 → manager → CBuffer12 → CDevice12 reference cycle.
     // The GPU is idle so every retired buffer is safe to release.
     m_pDevice->ReleaseBufferPool();
+
+    // Release the per-queue upload ring now that the GPU is idle.
+    m_UploadRing.Shutdown();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -433,10 +443,10 @@ void CRenderQueue12::ProcessCompletedWork()
     UINT64 completedValue = m_pFence->GetCompletedValue();
     
     // Reclaim upload ring buffer space in bulk
-    m_pDevice->ReclaimUploadRingSpace(completedValue);
+    m_UploadRing.Reclaim(completedValue);
 
-    // Reclaim vertex buffers whose GPU work has completed
-    m_pDevice->ReclaimBufferPool(completedValue);
+    // Reclaim pooled buffers and (later) deferred releases across all timelines.
+    m_pDevice->GetResourceManager().Reclaim();
 
     // Clean up completed sync points
     for (auto it = m_GpuSyncPoints.begin(); it != m_GpuSyncPoints.end();)
@@ -450,10 +460,6 @@ void CRenderQueue12::ProcessCompletedWork()
             ++it;
         }
     }
-
-    // Release old persistent buffers (from growth) whose fence has completed
-    while (!m_DeferredReleases.empty() && m_DeferredReleases.front().FenceValue <= completedValue)
-        m_DeferredReleases.pop_front();
 }
 
 //================================================================================================
@@ -1001,7 +1007,7 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
         uint64_t stagingSize = static_cast<uint64_t>(alignedRowPitch) * height;
 
         HostWriteAllocation hw;
-        Gem::ThrowGemError(m_pDevice->AllocateFromRing(stagingSize, hw));
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(stagingSize, hw));
 
         if (srcRowPitch == alignedRowPitch)
         {
@@ -1225,7 +1231,7 @@ Gem::Result CRenderQueue12::DrawMesh(
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         const uint64_t cbSize = (sizeof(HlslTypes::HlslPerObjectConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
         HostWriteAllocation hw;
-        Gem::ThrowGemError(m_pDevice->AllocateFromRing(cbSize, hw));
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(cbSize, hw));
         
         memcpy(hw.pMapped, &objectConstants, sizeof(HlslTypes::HlslPerObjectConstants));
         
@@ -1355,7 +1361,7 @@ Gem::Result CRenderQueue12::StageBufferUpload(
     try
     {
         HostWriteAllocation hw;
-        Gem::ThrowGemError(m_pDevice->AllocateFromRing(dataSize, hw));
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(dataSize, hw));
         memcpy(hw.pMapped, pData, dataSize);
 
         m_PendingBufferUploads.push_back({ hw.pResource, hw.ResourceOffset, dataSize, destination });
@@ -1388,7 +1394,7 @@ Gem::Result CRenderQueue12::DrawUIText(
         // Allocate all CPU-side resources before creating the GPU task
         constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         HostWriteAllocation hw;
-        Gem::ThrowGemError(m_pDevice->AllocateFromRing(kCBVSize, hw));
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(kCBVSize, hw));
 
         float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
         memcpy(hw.pMapped, screenConsts, sizeof(screenConsts));
@@ -1527,12 +1533,20 @@ void CRenderQueue12::FlushPendingGlyphUploads()
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::DeferRelease(Gem::XGeneric* pResource)
 {
-    if (pResource)
-    {
-        Gem::TGemPtr<Gem::XGeneric> ref;
-        pResource->QueryInterface(&ref);
-        m_CurrentFrameRefs.Resources.push_back(std::move(ref));
-    }
+    if (!pResource)
+        return;
+
+    Gem::TGemPtr<Gem::XGeneric> ref;
+    pResource->QueryInterface(&ref);
+    if (!ref)
+        return;
+
+    // Stamp with m_FenceValue + 1: the value that the NEXT Flush will signal.
+    // Resources passed to DeferRelease are by definition still in use by commands
+    // currently being recorded, so they must outlive the upcoming submission.
+    m_pDevice->GetResourceManager().DeferRelease(
+        std::move(ref),
+        FenceToken{ m_TimelineId, m_FenceValue + 1 });
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1555,7 +1569,7 @@ Gem::Result CRenderQueue12::DrawUIRect(
         // Allocate all CPU-side resources before creating the GPU task
         constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         HostWriteAllocation hw;
-        Gem::ThrowGemError(m_pDevice->AllocateFromRing(kCBVSize, hw));
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(kCBVSize, hw));
 
         float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
         memcpy(hw.pMapped, screenConsts, sizeof(screenConsts));
@@ -1767,7 +1781,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         const uint64_t cbSize = (sizeof(HlslTypes::HlslPerFrameConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
         HostWriteAllocation hw;
-        Gem::ThrowGemError(m_pDevice->AllocateFromRing(cbSize, hw));
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(cbSize, hw));
         
         memcpy(hw.pMapped, &frameConstants, sizeof(HlslTypes::HlslPerFrameConstants));
         

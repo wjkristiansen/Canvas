@@ -8,6 +8,8 @@
 #include "GpuTask.h"
 #include "HlslTypes.h"
 #include "CommandAllocatorPool.h"
+#include "ResourceManager.h"
+#include "UploadRing.h"
 
 // Forward declarations
 class CSurface12;
@@ -460,6 +462,21 @@ public:
     CComPtr<ID3D12Fence> m_pFence;
     Gem::TGemPtr<CDevice12> m_pDevice;  // ref-counted; device outlives render queue
 
+    // Stable id assigned by CDevice12::GetResourceManager().RegisterTimeline().
+    // Combined with m_FenceValue this forms a FenceToken usable for queue-agnostic
+    // deferred operations (RetireBuffer, DeferRelease).
+    uint32_t m_TimelineId = FenceToken::kInvalidTimelineId;
+
+    uint32_t GetTimelineId() const { return m_TimelineId; }
+    FenceToken MakeFenceToken() const { return FenceToken{ m_TimelineId, m_FenceValue }; }
+
+    // Per-queue upload ring for host-write staging (UPLOAD heap).
+    // Private to this queue — only touched by this queue's thread — so its
+    // fence-value markers are unambiguous bare UINT64s on this fence.
+    CUploadRing m_UploadRing;
+
+    CUploadRing& GetUploadRing() { return m_UploadRing; }
+
     // Depth buffer for rendering
     Gem::TGemPtr<CSurface12> m_pDepthBuffer;
     UINT m_DepthBufferWidth = 0;
@@ -519,15 +536,6 @@ public:
         Canvas::GfxResourceAllocation Destination; // Dest: target buffer region
     };
     std::vector<PendingBufferUpload> m_PendingBufferUploads;
-
-    // Per-frame deferred release: resources AddRef'd while in use by GPU, released after fence
-    struct DeferredReleaseFrame
-    {
-        UINT64 FenceValue;
-        std::vector<Gem::TGemPtr<Gem::XGeneric>> Resources;
-    };
-    std::deque<DeferredReleaseFrame> m_DeferredReleases;
-    DeferredReleaseFrame m_CurrentFrameRefs;  // Accumulates refs for the current frame
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
