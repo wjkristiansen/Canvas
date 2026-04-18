@@ -1461,15 +1461,13 @@ void CRenderQueue12::FlushPendingBufferUploads()
         }
     }
 
-    // Extract only the raw D3D12 data the lambda needs.
-    // RecordFunc is invoked synchronously by InsertTask, so the PendingBufferUploads
-    // are still alive on the stack when the lambda runs.
-    struct CopyOp { ID3D12Resource* pSrc; uint64_t SrcOffset; ID3D12Resource* pDst; uint64_t DstOffset; uint64_t Size; };
-    std::vector<CopyOp> ops;
-    ops.reserve(m_PendingBufferUploads.size());
+    // Lambda captures m_BufferCopyOpScratch by reference; RecordFunc runs
+    // synchronously inside InsertTask so the scratch is still valid.
+    m_BufferCopyOpScratch.clear();
+    m_BufferCopyOpScratch.reserve(m_PendingBufferUploads.size());
     for (const auto& u : m_PendingBufferUploads)
     {
-        ops.push_back({
+        m_BufferCopyOpScratch.push_back({
             u.pStagingResource,
             u.StagingOffset,
             static_cast<CBuffer12*>(u.Destination.pBuffer.Get())->GetD3DResource(),
@@ -1478,7 +1476,7 @@ void CRenderQueue12::FlushPendingBufferUploads()
         });
     }
 
-    copyTask.RecordFunc = [ops = std::move(ops)](ID3D12GraphicsCommandList* pCL)
+    copyTask.RecordFunc = [&ops = m_BufferCopyOpScratch](ID3D12GraphicsCommandList* pCL)
     {
         for (const auto& op : ops)
             pCL->CopyBufferRegion(op.pDst, op.DstOffset, op.pSrc, op.SrcOffset, op.Size);

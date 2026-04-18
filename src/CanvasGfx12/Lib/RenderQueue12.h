@@ -545,6 +545,11 @@ public:
     };
     std::vector<PendingBufferUpload> m_PendingBufferUploads;
 
+    // Scratch for FlushPendingBufferUploads. Captured by reference into the
+    // RecordFunc lambda; valid because InsertTask invokes RecordFunc synchronously.
+    struct BufferCopyOp { ID3D12Resource* pSrc; uint64_t SrcOffset; ID3D12Resource* pDst; uint64_t DstOffset; uint64_t Size; };
+    std::vector<BufferCopyOp> m_BufferCopyOpScratch;
+
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
         GEM_INTERFACE_ENTRY(Canvas::XCanvasElement)
