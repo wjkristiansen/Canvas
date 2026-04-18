@@ -30,9 +30,10 @@ void CCanvas::Uninitialize()
     // Iterate still active XCanvasElement objects and report them as leaks
     for(XCanvasElement *pElement : m_ActiveCanvasElements)
     {
-        if(pElement->GetName())
+        PCSTR pszName = pElement->GetName();
+        if(pszName)
         {
-            Canvas::LogError(GetLogger(), "%s leaked, Name: %s", pElement->GetTypeName(), pElement->GetName());
+            Canvas::LogError(GetLogger(), "%s leaked, Name: %s", pElement->GetTypeName(), pszName);
         }
         else
         {
@@ -54,15 +55,16 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
-    // Check if element is already registered
+    PCSTR pszName = pElement->GetName();
+
     if (m_ActiveCanvasElements.find(pElement) != m_ActiveCanvasElements.end())
     {
         if (GetLogger())
         {
-            if (pElement->GetName())
+            if (pszName)
             {
-                Canvas::LogWarn(GetLogger(), "Element already registered: %s (Name: %s)", 
-                               pElement->GetTypeName(), pElement->GetName());
+                Canvas::LogWarn(GetLogger(), "Element already registered: %s (Name: %s)",
+                               pElement->GetTypeName(), pszName);
             }
             else
             {
@@ -76,10 +78,10 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 
     if(GetLogger())
     {
-        if (pElement->GetName())
+        if (pszName)
         {
-            Canvas::LogInfo(GetLogger(), "Registered element: %s (Name: %s)", 
-                           pElement->GetTypeName(), pElement->GetName());
+            Canvas::LogInfo(GetLogger(), "Registered element: %s (Name: %s)",
+                           pElement->GetTypeName(), pszName);
         }
         else
         {
@@ -98,19 +100,21 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
+    PCSTR pszName = pElement->GetName();
+
     auto it = m_ActiveCanvasElements.find(pElement);
     if (it == m_ActiveCanvasElements.end())
     {
         if (GetLogger())
         {
-            if (pElement->GetName())
+            if (pszName)
             {
-                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s (Name: %s)", 
-                               pElement->GetTypeName(), pElement->GetName());
+                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s (Name: %s)",
+                               pElement->GetTypeName(), pszName);
             }
             else
             {
-                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s", 
+                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s",
                                pElement->GetTypeName());
             }
         }
@@ -119,10 +123,10 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 
     if(GetLogger())
     {
-        if (pElement->GetName())
+        if (pszName)
         {
-            Canvas::LogInfo(GetLogger(), "Unregistering element: %s (Name: %s)", 
-                           pElement->GetTypeName(), pElement->GetName());
+            Canvas::LogInfo(GetLogger(), "Unregistering element: %s (Name: %s)",
+                           pElement->GetTypeName(), pszName);
         }
         else
         {
