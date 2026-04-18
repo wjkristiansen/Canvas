@@ -47,19 +47,71 @@ struct ImportDiag
 };
 
 //------------------------------------------------------------------------------------------------
-// Imported mesh geometry (expanded, non-indexed vertex streams)
+// Reference to a texture image. The importer always populates AbsoluteFilePath
+// (used as the cache key downstream). When the FBX file embeds the texture
+// payload, EmbeddedBytes also carries the raw image bytes (eg. PNG/JPG); the
+// caller can decode them in-memory rather than re-reading from disk.
+//------------------------------------------------------------------------------------------------
+struct ImportedTextureRef
+{
+    std::string             AbsoluteFilePath;   // resolved filesystem path
+    bool                    Embedded = false;   // true when payload is in EmbeddedBytes
+    std::vector<uint8_t>    EmbeddedBytes;      // raw image bytes (only when Embedded)
+};
+
+//------------------------------------------------------------------------------------------------
+// Imported material. Texture indices reference ImportedScene::Textures; -1 means
+// no texture is bound for that role and the *Factor field carries a constant
+// fallback value (which is also a tint when a texture *is* bound).
+//------------------------------------------------------------------------------------------------
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatVector4 is alignas(16))
+struct ImportedMaterial
+{
+    std::string             Name;
+    Math::FloatVector4      BaseColorFactor = { 1.0f, 1.0f, 1.0f, 1.0f }; // linear RGBA
+    Math::FloatVector4      EmissiveFactor  = { 0.0f, 0.0f, 0.0f, 0.0f }; // linear RGB, A unused
+
+    int32_t                 AlbedoTextureIndex   = -1; // -> ImportedScene::Textures
+    int32_t                 NormalTextureIndex   = -1;
+    int32_t                 EmissiveTextureIndex = -1;
+};
+#pragma warning(pop)
+
+//------------------------------------------------------------------------------------------------
+// One material partition of an imported mesh. Each part holds its own
+// expanded, non-indexed vertex streams (triangle-list topology) so it can be
+// uploaded as a self-contained vertex range. UV0 and Tangents are empty when
+// the source mesh did not provide them.
 //
-// Positions and Normals arrays have identical length (one entry per vertex).
-// Triangle list topology — every 3 consecutive vertices form a triangle.
+// Tangents are stored as float4: xyz = tangent vector, w = bitangent sign
+// (+1 / -1) so the pixel shader can reconstruct B = sign * cross(N, T).
+//------------------------------------------------------------------------------------------------
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatVector4 is alignas(16))
+struct ImportedMeshPart
+{
+    int32_t                             MaterialIndex = -1; // -> ImportedScene::Materials, -1 when none
+    std::vector<Math::FloatVector4>     Positions;          // W = 1
+    std::vector<Math::FloatVector4>     Normals;            // W = 0, unit length
+    std::vector<Math::FloatVector2>     UV0;                // empty when missing
+    std::vector<Math::FloatVector4>     Tangents;           // xyz = T, w = bitangent sign; empty when missing
+
+    uint32_t GetVertexCount() const { return static_cast<uint32_t>(Positions.size()); }
+};
+#pragma warning(pop)
+
+//------------------------------------------------------------------------------------------------
+// Imported mesh geometry. A mesh always has at least one ImportedMeshPart.
+// Multi-material source meshes produce one part per material partition; the
+// runtime is expected to render them as N XMeshInstance instances sharing one
+// XGfxMeshData with N material groups.
 //------------------------------------------------------------------------------------------------
 struct ImportedMesh
 {
     std::string                         Name;
-    std::vector<Math::FloatVector4>     Positions;  // W = 1
-    std::vector<Math::FloatVector4>     Normals;    // W = 0, unit length
-    Math::AABB                          Bounds;     // AABB of positions (Canvas space)
-
-    uint32_t GetVertexCount() const { return static_cast<uint32_t>(Positions.size()); }
+    std::vector<ImportedMeshPart>       Parts;      // always >= 1 entry on success
+    Math::AABB                          Bounds;     // AABB across all parts (Canvas space)
 };
 
 //------------------------------------------------------------------------------------------------
@@ -127,18 +179,21 @@ struct ImportedNode
 //------------------------------------------------------------------------------------------------
 struct ImportedScene
 {
-    std::vector<ImportedMesh>   Meshes;
-    std::vector<ImportedLight>  Lights;
-  std::vector<ImportedCamera> Cameras;
-    std::vector<ImportedNode>   Nodes;
-    std::vector<ImportDiag>     Diagnostics;
-    Math::AABB                  SceneBounds;    // union of all mesh bounds (Canvas space)
-  int32_t                     ActiveCameraNodeIndex = -1;
+    std::vector<ImportedMesh>           Meshes;
+    std::vector<ImportedLight>          Lights;
+    std::vector<ImportedCamera>         Cameras;
+    std::vector<ImportedMaterial>       Materials;
+    std::vector<ImportedTextureRef>     Textures;
+    std::vector<ImportedNode>           Nodes;
+    std::vector<ImportDiag>             Diagnostics;
+    Math::AABB                          SceneBounds;    // union of all mesh bounds (Canvas space)
+    int32_t                             ActiveCameraNodeIndex = -1;
 
-    bool HasMeshes()  const { return !Meshes.empty(); }
-    bool HasLights()  const { return !Lights.empty(); }
-  bool HasCameras() const { return !Cameras.empty(); }
-    bool HasErrors()  const;
+    bool HasMeshes()    const { return !Meshes.empty(); }
+    bool HasLights()    const { return !Lights.empty(); }
+    bool HasCameras()   const { return !Cameras.empty(); }
+    bool HasMaterials() const { return !Materials.empty(); }
+    bool HasErrors()    const;
 };
 
 //------------------------------------------------------------------------------------------------

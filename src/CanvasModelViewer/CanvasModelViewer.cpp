@@ -357,17 +357,34 @@ class CApp
         for (size_t meshIndex = 0; meshIndex < imported.Meshes.size(); ++meshIndex)
         {
             const Canvas::Fbx::ImportedMesh &srcMesh = imported.Meshes[meshIndex];
-            if (srcMesh.Positions.empty() || srcMesh.Positions.size() != srcMesh.Normals.size())
+            if (srcMesh.Parts.empty())
             {
-                Canvas::LogWarn(m_pLogger.Get(), "Skipping imported mesh '%s': invalid vertex streams", srcMesh.Name.c_str());
+                Canvas::LogWarn(m_pLogger.Get(), "Skipping imported mesh '%s': no parts", srcMesh.Name.c_str());
+                continue;
+            }
+
+            // Phase 1 (textures/materials WIP): the runtime XGfxMeshData/Material plumbing for
+            // multi-group draws lands in later phases. Until then, render the first part only;
+            // log when additional material parts are silently dropped so it's visible.
+            if (srcMesh.Parts.size() > 1)
+            {
+                Canvas::LogWarn(m_pLogger.Get(),
+                    "Imported mesh '%s' has %zu material parts; only the first part is rendered (multi-material support pending)",
+                    srcMesh.Name.c_str(), srcMesh.Parts.size());
+            }
+
+            const Canvas::Fbx::ImportedMeshPart &part = srcMesh.Parts[0];
+            if (part.Positions.empty() || part.Positions.size() != part.Normals.size())
+            {
+                Canvas::LogWarn(m_pLogger.Get(), "Skipping imported mesh '%s': invalid vertex streams in part 0", srcMesh.Name.c_str());
                 continue;
             }
 
             Gem::TGemPtr<Canvas::XGfxMeshData> pMeshData;
             Gem::ThrowGemError(pDevice->CreateMeshData(
-                static_cast<uint32_t>(srcMesh.Positions.size()),
-                srcMesh.Positions.data(),
-                srcMesh.Normals.data(),
+                static_cast<uint32_t>(part.Positions.size()),
+                part.Positions.data(),
+                part.Normals.data(),
                 &pMeshData,
                 srcMesh.Name.c_str()));
 

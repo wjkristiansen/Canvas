@@ -163,6 +163,71 @@ Math::FloatVector4 ComputeFaceNormal(_In_ const Math::FloatVector4 &p0, _In_ con
 }
 
 //------------------------------------------------------------------------------------------------
+Math::FloatVector2 ToCanvasUV(ufbx_vec2 v)
+{
+    return Math::FloatVector2(static_cast<float>(v.x), static_cast<float>(v.y));
+}
+
+//------------------------------------------------------------------------------------------------
+// Build the bitangent sign for a tangent vector by comparing the supplied
+// bitangent against the right-handed reconstruction (cross(N, T)). Returns +1
+// when the bitangent matches the right-handed convention, -1 otherwise.
+float ComputeBitangentSign(_In_ const Math::FloatVector4 &n, _In_ const Math::FloatVector4 &t, _In_ const Math::FloatVector4 &b)
+{
+    const Math::FloatVector4 reconstructed = Math::CrossProduct(n, t);
+    const float dot = Math::DotProduct(reconstructed, b);
+    return (dot < 0.0f) ? -1.0f : 1.0f;
+}
+
+//------------------------------------------------------------------------------------------------
+// Compute one tangent per triangle from positions + UVs (returns identity-X
+// when degenerate). The result is suitable for assigning to all three corners
+// of the triangle when no per-vertex tangent is available from ufbx.
+Math::FloatVector4 ComputeTriangleTangent(
+    _In_ const Math::FloatVector4 &p0, _In_ const Math::FloatVector4 &p1, _In_ const Math::FloatVector4 &p2,
+    _In_ const Math::FloatVector2 &uv0, _In_ const Math::FloatVector2 &uv1, _In_ const Math::FloatVector2 &uv2,
+    _In_ const Math::FloatVector4 &faceNormal)
+{
+    const Math::FloatVector4 dp1 = p1 - p0;
+    const Math::FloatVector4 dp2 = p2 - p0;
+    const float du1 = uv1.X - uv0.X;
+    const float dv1 = uv1.Y - uv0.Y;
+    const float du2 = uv2.X - uv0.X;
+    const float dv2 = uv2.Y - uv0.Y;
+
+    const float det = du1 * dv2 - du2 * dv1;
+    if (std::abs(det) <= 1e-20f)
+    {
+        // Degenerate UV mapping: fall back to a deterministic axis perpendicular to the normal.
+        const Math::FloatVector4 axis = (std::abs(faceNormal.X) > 0.9f)
+            ? Math::FloatVector4(0.0f, 1.0f, 0.0f, 0.0f)
+            : Math::FloatVector4(1.0f, 0.0f, 0.0f, 0.0f);
+        Math::FloatVector4 t = axis - faceNormal * Math::DotProduct(faceNormal, axis);
+        const float lenSq = Math::DotProduct(t, t);
+        if (lenSq > 1e-20f)
+            t = t * (1.0f / std::sqrt(lenSq));
+        t.W = 1.0f;
+        return t;
+    }
+
+    const float invDet = 1.0f / det;
+    Math::FloatVector4 t = (dp1 * dv2 - dp2 * dv1) * invDet;
+
+    // Orthonormalize against the face normal.
+    t = t - faceNormal * Math::DotProduct(faceNormal, t);
+    const float lenSq = Math::DotProduct(t, t);
+    if (lenSq > 1e-20f)
+        t = t * (1.0f / std::sqrt(lenSq));
+    else
+        t = Math::FloatVector4(1.0f, 0.0f, 0.0f, 0.0f);
+
+    // Bitangent sign: compare cross(N, T) against (dp1*du2 - dp2*du1) * invDet (the source bitangent).
+    const Math::FloatVector4 bitangent = (dp2 * du1 - dp1 * du2) * invDet;
+    t.W = ComputeBitangentSign(faceNormal, t, bitangent);
+    return t;
+}
+
+//------------------------------------------------------------------------------------------------
 bool ImportMesh(
     _In_ const ufbx_mesh *pMesh,
     _In_ bool triangulate,
@@ -170,8 +235,7 @@ bool ImportMesh(
     _Inout_ ImportedScene *pScene)
 {
     pOut->Name = ToStdString(pMesh->name);
-    pOut->Positions.clear();
-    pOut->Normals.clear();
+    pOut->Parts.clear();
     pOut->Bounds.Reset();
 
     if (!pMesh->vertex_position.exists)
@@ -180,111 +244,185 @@ bool ImportMesh(
         return false;
     }
 
-    const bool hasNormals = pMesh->vertex_normal.exists;
+    const bool hasNormals   = pMesh->vertex_normal.exists;
+    const bool hasUVs       = pMesh->vertex_uv.exists;
+    const bool hasTangents  = pMesh->vertex_tangent.exists && pMesh->vertex_bitangent.exists && hasUVs;
     bool warnedInvalidNormal = false;
     std::vector<uint32_t> triIndices(pMesh->max_face_triangles * 3);
 
-    // Pre-reserve vertex vectors to avoid per-triangle reallocation
-    const size_t estimatedVertexCount = pMesh->faces.count * 3;
-    pOut->Positions.reserve(estimatedVertexCount);
-    pOut->Normals.reserve(estimatedVertexCount);
-
-    for (size_t fi = 0; fi < pMesh->faces.count; ++fi)
+    // ufbx always produces material_parts (one entry per material partition; a
+    // single dummy entry covering all faces when the mesh has no materials).
+    const ufbx_mesh_part_list &partList = pMesh->material_parts;
+    if (partList.count == 0)
     {
-        const ufbx_face face = pMesh->faces[fi];
-        if (face.num_indices < 3)
-        {
-            AddDiag(pScene, DiagLevel::Warning, "Mesh '" + pOut->Name + "' has degenerate face with < 3 indices");
+        AddDiag(pScene, DiagLevel::Error, "Mesh '" + pOut->Name + "' has no material parts");
+        return false;
+    }
+
+    pOut->Parts.reserve(partList.count);
+
+    for (size_t pi = 0; pi < partList.count; ++pi)
+    {
+        const ufbx_mesh_part &part = partList.data[pi];
+        if (part.num_faces == 0)
             continue;
+
+        ImportedMeshPart outPart;
+
+        // Map ufbx mesh-part -> Canvas material index. The mesh's materials list
+        // mirrors the partition order via face_material indices; for a no-
+        // material mesh, partList.count == 1 and pMesh->materials.count == 0.
+        if (pi < pMesh->materials.count && pMesh->materials.data[pi] != nullptr)
+        {
+            // Resolved later by the per-scene material map (ImportMaterials).
+            outPart.MaterialIndex = static_cast<int32_t>(pi);  // placeholder (mesh-local)
         }
 
-        uint32_t numTris = 0;
-        if (triangulate)
+        const size_t estimatedVertexCount = part.num_faces * 3;
+        outPart.Positions.reserve(estimatedVertexCount);
+        outPart.Normals.reserve(estimatedVertexCount);
+        if (hasUVs)
+            outPart.UV0.reserve(estimatedVertexCount);
+        if (hasUVs)  // tangent stream needs UVs to be meaningful
+            outPart.Tangents.reserve(estimatedVertexCount);
+
+        for (size_t fii = 0; fii < part.num_faces; ++fii)
         {
-            numTris = ufbx_triangulate_face(triIndices.data(), triIndices.size(), pMesh, face);
-        }
-        else
-        {
-            if (face.num_indices != 3)
+            const uint32_t faceIdx = part.face_indices.data[fii];
+            const ufbx_face face = pMesh->faces[faceIdx];
+            if (face.num_indices < 3)
             {
-                AddDiag(pScene, DiagLevel::Warning, "Mesh '" + pOut->Name + "' has non-triangle face while triangulation disabled");
+                AddDiag(pScene, DiagLevel::Warning, "Mesh '" + pOut->Name + "' has degenerate face with < 3 indices");
                 continue;
             }
 
-            triIndices[0] = face.index_begin;
-            triIndices[1] = face.index_begin + 1;
-            triIndices[2] = face.index_begin + 2;
-            numTris = 1;
-        }
-
-        for (uint32_t ti = 0; ti < numTris; ++ti)
-        {
-            const uint32_t i0 = triIndices[ti * 3 + 0];
-            const uint32_t i1 = triIndices[ti * 3 + 1];
-            const uint32_t i2 = triIndices[ti * 3 + 2];
-
-            const Math::FloatVector4 p0 = ToCanvasPosition(ufbx_get_vertex_vec3(&pMesh->vertex_position, i0));
-            const Math::FloatVector4 p1 = ToCanvasPosition(ufbx_get_vertex_vec3(&pMesh->vertex_position, i1));
-            const Math::FloatVector4 p2 = ToCanvasPosition(ufbx_get_vertex_vec3(&pMesh->vertex_position, i2));
-
-            Math::FloatVector4 n0;
-            Math::FloatVector4 n1;
-            Math::FloatVector4 n2;
-            if (hasNormals)
+            uint32_t numTris = 0;
+            if (triangulate)
             {
-                n0 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_normal, i0));
-                n1 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_normal, i1));
-                n2 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_normal, i2));
+                numTris = ufbx_triangulate_face(triIndices.data(), triIndices.size(), pMesh, face);
             }
             else
             {
-                const Math::FloatVector4 fn = ComputeFaceNormal(p0, p1, p2);
-                n0 = fn;
-                n1 = fn;
-                n2 = fn;
-            }
-
-            auto SanitizeNormal = [&](Math::FloatVector4 &n)
-            {
-                n.W = 0.0f;
-                const float lenSq = Math::DotProduct(n, n);
-                if (lenSq <= 1e-20f)
+                if (face.num_indices != 3)
                 {
-                    n = Math::FloatVector4(0.0f, 0.0f, 1.0f, 0.0f);
-                    if (!warnedInvalidNormal)
-                    {
-                        AddDiag(pScene, DiagLevel::Warning,
-                            "Mesh '" + pOut->Name + "' contains degenerate normals; replaced with +Z fallback");
-                        warnedInvalidNormal = true;
-                    }
-                    return;
+                    AddDiag(pScene, DiagLevel::Warning, "Mesh '" + pOut->Name + "' has non-triangle face while triangulation disabled");
+                    continue;
                 }
 
-                const float invLen = 1.0f / std::sqrt(lenSq);
-                n.X *= invLen;
-                n.Y *= invLen;
-                n.Z *= invLen;
-            };
+                triIndices[0] = face.index_begin;
+                triIndices[1] = face.index_begin + 1;
+                triIndices[2] = face.index_begin + 2;
+                numTris = 1;
+            }
 
-            SanitizeNormal(n0);
-            SanitizeNormal(n1);
-            SanitizeNormal(n2);
+            for (uint32_t ti = 0; ti < numTris; ++ti)
+            {
+                const uint32_t i0 = triIndices[ti * 3 + 0];
+                const uint32_t i1 = triIndices[ti * 3 + 1];
+                const uint32_t i2 = triIndices[ti * 3 + 2];
 
-            pOut->Positions.push_back(p0);
-            pOut->Positions.push_back(p1);
-            pOut->Positions.push_back(p2);
+                const Math::FloatVector4 p0 = ToCanvasPosition(ufbx_get_vertex_vec3(&pMesh->vertex_position, i0));
+                const Math::FloatVector4 p1 = ToCanvasPosition(ufbx_get_vertex_vec3(&pMesh->vertex_position, i1));
+                const Math::FloatVector4 p2 = ToCanvasPosition(ufbx_get_vertex_vec3(&pMesh->vertex_position, i2));
 
-            pOut->Normals.push_back(n0);
-            pOut->Normals.push_back(n1);
-            pOut->Normals.push_back(n2);
+                Math::FloatVector4 n0;
+                Math::FloatVector4 n1;
+                Math::FloatVector4 n2;
+                if (hasNormals)
+                {
+                    n0 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_normal, i0));
+                    n1 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_normal, i1));
+                    n2 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_normal, i2));
+                }
+                else
+                {
+                    const Math::FloatVector4 fn = ComputeFaceNormal(p0, p1, p2);
+                    n0 = fn;
+                    n1 = fn;
+                    n2 = fn;
+                }
 
-            pOut->Bounds.ExpandToInclude(p0);
-            pOut->Bounds.ExpandToInclude(p1);
-            pOut->Bounds.ExpandToInclude(p2);
+                auto SanitizeNormal = [&](Math::FloatVector4 &n)
+                {
+                    n.W = 0.0f;
+                    const float lenSq = Math::DotProduct(n, n);
+                    if (lenSq <= 1e-20f)
+                    {
+                        n = Math::FloatVector4(0.0f, 0.0f, 1.0f, 0.0f);
+                        if (!warnedInvalidNormal)
+                        {
+                            AddDiag(pScene, DiagLevel::Warning,
+                                "Mesh '" + pOut->Name + "' contains degenerate normals; replaced with +Z fallback");
+                            warnedInvalidNormal = true;
+                        }
+                        return;
+                    }
+
+                    const float invLen = 1.0f / std::sqrt(lenSq);
+                    n.X *= invLen;
+                    n.Y *= invLen;
+                    n.Z *= invLen;
+                };
+
+                SanitizeNormal(n0);
+                SanitizeNormal(n1);
+                SanitizeNormal(n2);
+
+                outPart.Positions.push_back(p0);
+                outPart.Positions.push_back(p1);
+                outPart.Positions.push_back(p2);
+
+                outPart.Normals.push_back(n0);
+                outPart.Normals.push_back(n1);
+                outPart.Normals.push_back(n2);
+
+                if (hasUVs)
+                {
+                    const Math::FloatVector2 uv0 = ToCanvasUV(ufbx_get_vertex_vec2(&pMesh->vertex_uv, i0));
+                    const Math::FloatVector2 uv1 = ToCanvasUV(ufbx_get_vertex_vec2(&pMesh->vertex_uv, i1));
+                    const Math::FloatVector2 uv2 = ToCanvasUV(ufbx_get_vertex_vec2(&pMesh->vertex_uv, i2));
+                    outPart.UV0.push_back(uv0);
+                    outPart.UV0.push_back(uv1);
+                    outPart.UV0.push_back(uv2);
+
+                    if (hasTangents)
+                    {
+                        const Math::FloatVector4 t0 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_tangent, i0));
+                        const Math::FloatVector4 t1 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_tangent, i1));
+                        const Math::FloatVector4 t2 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_tangent, i2));
+                        const Math::FloatVector4 b0 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_bitangent, i0));
+                        const Math::FloatVector4 b1 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_bitangent, i1));
+                        const Math::FloatVector4 b2 = ToCanvasNormal(ufbx_get_vertex_vec3(&pMesh->vertex_bitangent, i2));
+
+                        Math::FloatVector4 tt0 = t0; tt0.W = ComputeBitangentSign(n0, t0, b0);
+                        Math::FloatVector4 tt1 = t1; tt1.W = ComputeBitangentSign(n1, t1, b1);
+                        Math::FloatVector4 tt2 = t2; tt2.W = ComputeBitangentSign(n2, t2, b2);
+                        outPart.Tangents.push_back(tt0);
+                        outPart.Tangents.push_back(tt1);
+                        outPart.Tangents.push_back(tt2);
+                    }
+                    else
+                    {
+                        // Generate one tangent per triangle and replicate to all three corners.
+                        const Math::FloatVector4 fn = ComputeFaceNormal(p0, p1, p2);
+                        const Math::FloatVector4 t = ComputeTriangleTangent(p0, p1, p2, uv0, uv1, uv2, fn);
+                        outPart.Tangents.push_back(t);
+                        outPart.Tangents.push_back(t);
+                        outPart.Tangents.push_back(t);
+                    }
+                }
+
+                pOut->Bounds.ExpandToInclude(p0);
+                pOut->Bounds.ExpandToInclude(p1);
+                pOut->Bounds.ExpandToInclude(p2);
+            }
         }
+
+        if (!outPart.Positions.empty())
+            pOut->Parts.push_back(std::move(outPart));
     }
 
-    if (pOut->Positions.empty())
+    if (pOut->Parts.empty())
     {
         AddDiag(pScene, DiagLevel::Warning, "Mesh '" + pOut->Name + "' produced no triangles");
         return false;
@@ -461,6 +599,151 @@ bool ImportedScene::HasErrors() const
 //------------------------------------------------------------------------------------------------
 #if CANVASFBX_HAS_UFBX
 
+namespace
+{
+
+//------------------------------------------------------------------------------------------------
+// Resolve (or create) the scene-wide texture index for a ufbx texture. Returns
+// -1 when the texture is absent or has no usable file/embedded payload. Dedupes
+// by absolute filename when present, falling back to the ufbx pointer identity
+// for embedded-only textures.
+int32_t AcquireTextureIndex(
+    _In_opt_ const ufbx_texture *pTexture,
+    _Inout_ ImportedScene *pScene,
+    _Inout_ std::unordered_map<std::string, int32_t> &textureByPath,
+    _Inout_ std::unordered_map<const ufbx_texture *, int32_t> &textureByPtr)
+{
+    if (!pTexture)
+        return -1;
+
+    auto itPtr = textureByPtr.find(pTexture);
+    if (itPtr != textureByPtr.end())
+        return itPtr->second;
+
+    std::string absPath = ToStdString(pTexture->absolute_filename);
+    if (absPath.empty())
+        absPath = ToStdString(pTexture->filename);
+
+    if (!absPath.empty())
+    {
+        auto itPath = textureByPath.find(absPath);
+        if (itPath != textureByPath.end())
+        {
+            textureByPtr[pTexture] = itPath->second;
+            return itPath->second;
+        }
+    }
+
+    const bool hasEmbedded = pTexture->content.size > 0 && pTexture->content.data != nullptr;
+    if (absPath.empty() && !hasEmbedded)
+        return -1;
+
+    ImportedTextureRef ref;
+    ref.AbsoluteFilePath = absPath;
+    ref.Embedded = hasEmbedded;
+    if (hasEmbedded)
+    {
+        const uint8_t *pBytes = static_cast<const uint8_t *>(pTexture->content.data);
+        ref.EmbeddedBytes.assign(pBytes, pBytes + pTexture->content.size);
+    }
+
+    pScene->Textures.push_back(std::move(ref));
+    const int32_t index = static_cast<int32_t>(pScene->Textures.size() - 1);
+    if (!absPath.empty())
+        textureByPath[absPath] = index;
+    textureByPtr[pTexture] = index;
+    return index;
+}
+
+//------------------------------------------------------------------------------------------------
+// Pick the texture pointer for a material role: prefer the PBR map, fall back
+// to the FBX classic map when the PBR slot has no texture / value.
+const ufbx_texture *PickRoleTexture(_In_ const ufbx_material_map &pbrMap, _In_ const ufbx_material_map &fbxMap)
+{
+    if (pbrMap.texture_enabled && pbrMap.texture)
+        return pbrMap.texture;
+    if (fbxMap.texture_enabled && fbxMap.texture)
+        return fbxMap.texture;
+    if (pbrMap.texture)
+        return pbrMap.texture;
+    if (fbxMap.texture)
+        return fbxMap.texture;
+    return nullptr;
+}
+
+//------------------------------------------------------------------------------------------------
+Math::FloatVector4 PickRoleFactor(
+    _In_ const ufbx_material_map &pbrMap,
+    _In_ const ufbx_material_map &fbxMap,
+    _In_ const Math::FloatVector4 &fallback)
+{
+    const ufbx_material_map *pSrc = nullptr;
+    if (pbrMap.has_value)
+        pSrc = &pbrMap;
+    else if (fbxMap.has_value)
+        pSrc = &fbxMap;
+
+    if (!pSrc)
+        return fallback;
+
+    return Math::FloatVector4(
+        static_cast<float>(pSrc->value_vec4.x),
+        static_cast<float>(pSrc->value_vec4.y),
+        static_cast<float>(pSrc->value_vec4.z),
+        static_cast<float>(pSrc->value_vec4.w));
+}
+
+//------------------------------------------------------------------------------------------------
+// Walk pLoaded->materials, populate pScene->Materials and pScene->Textures.
+// Returns a map from the ufbx material pointer to the scene-wide index, used
+// downstream to translate mesh-local material indices.
+std::unordered_map<const ufbx_material *, int32_t> ImportMaterials(
+    _In_ const ufbx_scene *pLoaded,
+    _Inout_ ImportedScene *pScene)
+{
+    std::unordered_map<const ufbx_material *, int32_t> materialMap;
+    materialMap.reserve(pLoaded->materials.count);
+
+    std::unordered_map<std::string, int32_t> textureByPath;
+    std::unordered_map<const ufbx_texture *, int32_t> textureByPtr;
+
+    pScene->Materials.reserve(pLoaded->materials.count);
+
+    for (size_t mi = 0; mi < pLoaded->materials.count; ++mi)
+    {
+        const ufbx_material *pMat = pLoaded->materials.data[mi];
+        if (!pMat)
+            continue;
+
+        ImportedMaterial outMat;
+        outMat.Name = ToStdString(pMat->name);
+        if (outMat.Name.empty())
+            outMat.Name = "Material_" + std::to_string(mi);
+
+        outMat.BaseColorFactor = PickRoleFactor(
+            pMat->pbr.base_color, pMat->fbx.diffuse_color,
+            Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f));
+        outMat.EmissiveFactor = PickRoleFactor(
+            pMat->pbr.emission_color, pMat->fbx.emission_color,
+            Math::FloatVector4(0.0f, 0.0f, 0.0f, 0.0f));
+
+        const ufbx_texture *pAlbedoTex   = PickRoleTexture(pMat->pbr.base_color,     pMat->fbx.diffuse_color);
+        const ufbx_texture *pNormalTex   = PickRoleTexture(pMat->pbr.normal_map,     pMat->fbx.normal_map);
+        const ufbx_texture *pEmissiveTex = PickRoleTexture(pMat->pbr.emission_color, pMat->fbx.emission_color);
+
+        outMat.AlbedoTextureIndex   = AcquireTextureIndex(pAlbedoTex,   pScene, textureByPath, textureByPtr);
+        outMat.NormalTextureIndex   = AcquireTextureIndex(pNormalTex,   pScene, textureByPath, textureByPtr);
+        outMat.EmissiveTextureIndex = AcquireTextureIndex(pEmissiveTex, pScene, textureByPath, textureByPtr);
+
+        pScene->Materials.push_back(std::move(outMat));
+        materialMap[pMat] = static_cast<int32_t>(pScene->Materials.size() - 1);
+    }
+
+    return materialMap;
+}
+
+} // anonymous namespace
+
 HRESULT ImportScene(
     _In_z_  const wchar_t  *pFilePath,
     _In_    const ImportOptions &options,
@@ -554,6 +837,9 @@ HRESULT ImportScene(
     std::unordered_map<const ufbx_node*, int32_t> nodeMap;
     nodeMap.reserve(pLoaded->nodes.count);
 
+    // Import materials first so meshes can reference scene-wide indices.
+    const std::unordered_map<const ufbx_material *, int32_t> materialMap = ImportMaterials(pLoaded, pScene);
+
     // Build Canvas node list first so parent indices are stable.
     for (size_t ni = 0; ni < pLoaded->nodes.count; ++ni)
     {
@@ -612,6 +898,27 @@ HRESULT ImportScene(
                 ImportedMesh importedMesh;
                 if (ImportMesh(pMesh, options.Triangulate, &importedMesh, pScene))
                 {
+                    // Remap mesh-local material indices (= mesh part index) into
+                    // scene-wide indices via materialMap. ImportMesh stored the
+                    // mesh-local index as a placeholder.
+                    for (ImportedMeshPart &part : importedMesh.Parts)
+                    {
+                        if (part.MaterialIndex < 0)
+                            continue;
+
+                        const size_t localIdx = static_cast<size_t>(part.MaterialIndex);
+                        if (localIdx < pMesh->materials.count)
+                        {
+                            const ufbx_material *pMat = pMesh->materials.data[localIdx];
+                            const auto itMat = materialMap.find(pMat);
+                            part.MaterialIndex = (itMat != materialMap.end()) ? itMat->second : -1;
+                        }
+                        else
+                        {
+                            part.MaterialIndex = -1;
+                        }
+                    }
+
                     pScene->SceneBounds.ExpandToInclude(importedMesh.Bounds);
                     pScene->Meshes.push_back(std::move(importedMesh));
                     const int32_t meshIndex = static_cast<int32_t>(pScene->Meshes.size() - 1);
