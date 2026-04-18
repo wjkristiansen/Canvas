@@ -529,6 +529,9 @@ public:
     UINT m_RtvIncrement       = 0;
     UINT m_DsvIncrement       = 0;
 
+    // { shader-resource heap, sampler heap } cache for SetDescriptorHeaps.
+    ID3D12DescriptorHeap* m_DescriptorHeapsArray[2] = {};
+
     // GPU sync point tracking (fence-value based)
     std::unordered_map<UINT64, GpuSyncPoint> m_GpuSyncPoints;
     

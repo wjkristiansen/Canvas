@@ -181,6 +181,9 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_RtvIncrement       = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     m_DsvIncrement       = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
+    m_DescriptorHeapsArray[0] = m_pShaderResourceDescriptorHeap;
+    m_DescriptorHeapsArray[1] = m_pSamplerDescriptorHeap;
+
     // Per-queue upload ring (1 MB initial, grows on demand).
     m_UploadRing.Initialize(pDevice, 1 * 1024 * 1024);
 
@@ -1143,8 +1146,7 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
             pCL->RSSetScissorRects(1, &scissor);
             pCL->SetPipelineState(m_pDefaultPSO);
             pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         };
         m_GpuTaskGraph.InsertTask(task);
@@ -1168,8 +1170,7 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
             pCL->RSSetViewports(1, &viewport);
             pCL->RSSetScissorRects(1, &scissor);
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         };
         m_UIGpuTaskGraph.InsertTask(uiBeginTask);
@@ -1318,8 +1319,7 @@ Gem::Result CRenderQueue12::DrawMesh(
             pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
             pCL->OMSetRenderTargets(3, m_GBufferRTVs, FALSE, &m_CurrentDSV);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->SetGraphicsRootShaderResourceView(1, posGpuAddr);
             pCL->SetGraphicsRootDescriptorTable(3, baseGpuHandle);
             pCL->DrawInstanced(vertexCount, 1, 0, 0);
@@ -1418,8 +1418,7 @@ Gem::Result CRenderQueue12::DrawUIText(
         drawTask.RecordFunc = [cbvAddr, vertexAddr, srvGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->SetGraphicsRootSignature(m_pTextRootSig);
             pCL->SetPipelineState(m_pTextPSO);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1855,8 +1854,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
                 pCL->SetGraphicsRootSignature(m_pCompositeRootSig);
                 pCL->SetPipelineState(m_pCompositePSO);
-                ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-                pCL->SetDescriptorHeaps(2, heaps);
+                pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
                 pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
                 pCL->SetGraphicsRootDescriptorTable(1, baseGpuHandle);
                 pCL->DrawInstanced(3, 1, 0, 0);
