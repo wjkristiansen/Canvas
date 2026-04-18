@@ -192,7 +192,6 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_TimelineId = pDevice->GetResourceManager().RegisterTimeline(m_pFence);
 
     // Pre-allocate per-frame queues to avoid repeated heap reallocations
-    m_PendingBufferUploads.reserve(64);
     m_RenderableQueue.reserve(128);
 }
 
@@ -1348,29 +1347,6 @@ Gem::Result CRenderQueue12::DrawMesh(
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CRenderQueue12::StageBufferUpload(
-    const Canvas::GfxResourceAllocation& destination,
-    const void* pData,
-    uint64_t dataSize)
-{
-    if (!pData || dataSize == 0 || !destination.pBuffer)
-        return Gem::Result::InvalidArg;
-
-    try
-    {
-        HostWriteAllocation hw;
-        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(dataSize, hw));
-        memcpy(hw.pMapped, pData, dataSize);
-
-        m_PendingBufferUploads.push_back({ hw.pResource, hw.ResourceOffset, dataSize, destination });
-    }
-    catch (Gem::GemError& e) { return e.Result(); }
-    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
-
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::DrawUIText(
     const Canvas::GfxResourceAllocation& vertexBuffer,
     Canvas::XGfxSurface* pGlyphAtlas,
@@ -1448,51 +1424,6 @@ Gem::Result CRenderQueue12::DrawUIText(
     }
 
     return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::FlushPendingBufferUploads()
-{
-    if (m_PendingBufferUploads.empty())
-        return;
-
-    auto& copyTask = m_UIGpuTaskGraph.CreateTask("FlushBufferUploads");
-
-    std::unordered_set<CBuffer12*> declaredBuffers;
-    for (const auto& u : m_PendingBufferUploads)
-    {
-        auto pBuf = static_cast<CBuffer12*>(u.Destination.pBuffer.Get());
-        if (declaredBuffers.insert(pBuf).second)
-        {
-            m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pBuf,
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_DEST);
-        }
-    }
-
-    // Lambda captures m_BufferCopyOpScratch by reference; RecordFunc runs
-    // synchronously inside InsertTask so the scratch is still valid.
-    m_BufferCopyOpScratch.clear();
-    m_BufferCopyOpScratch.reserve(m_PendingBufferUploads.size());
-    for (const auto& u : m_PendingBufferUploads)
-    {
-        m_BufferCopyOpScratch.push_back({
-            u.pStagingResource,
-            u.StagingOffset,
-            static_cast<CBuffer12*>(u.Destination.pBuffer.Get())->GetD3DResource(),
-            u.Destination.Offset,
-            u.CopySize
-        });
-    }
-
-    copyTask.RecordFunc = [&ops = m_BufferCopyOpScratch](ID3D12GraphicsCommandList* pCL)
-    {
-        for (const auto& op : ops)
-            pCL->CopyBufferRegion(op.pDst, op.DstOffset, op.pSrc, op.SrcOffset, op.Size);
-    };
-    m_UIGpuTaskGraph.InsertTask(copyTask);
-
-    m_PendingBufferUploads.clear();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1871,9 +1802,6 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
         // Flush pending glyph atlas uploads (SDF bitmaps → GPU texture)
         FlushPendingGlyphUploads();
-
-        // Flush pending vertex uploads staged during SubmitRenderables
-        FlushPendingBufferUploads();
 
         // Draw UI elements (pure draw — uploads already staged by SubmitRenderables)
         for (auto* pNode : m_UIRenderableQueue)

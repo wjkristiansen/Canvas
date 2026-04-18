@@ -534,21 +534,6 @@ public:
 
     // GPU sync point tracking (fence-value based)
     std::unordered_map<UINT64, GpuSyncPoint> m_GpuSyncPoints;
-    
-    // Staged buffer uploads: CPU data staged in UPLOAD heap, flushed as GPU copy tasks
-    struct PendingBufferUpload
-    {
-        ID3D12Resource* pStagingResource;          // Source: ring buffer D3D12 resource
-        uint64_t StagingOffset;                    // Offset within ring buffer resource
-        uint64_t CopySize;                         // Number of bytes to copy
-        Canvas::GfxResourceAllocation Destination; // Dest: target buffer region
-    };
-    std::vector<PendingBufferUpload> m_PendingBufferUploads;
-
-    // Scratch for FlushPendingBufferUploads. Captured by reference into the
-    // RecordFunc lambda; valid because InsertTask invokes RecordFunc synchronously.
-    struct BufferCopyOp { ID3D12Resource* pSrc; uint64_t SrcOffset; ID3D12Resource* pDst; uint64_t DstOffset; uint64_t Size; };
-    std::vector<BufferCopyOp> m_BufferCopyOpScratch;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
@@ -603,8 +588,6 @@ public:
     // Create the rect PSO and root signature (lazily, on first use)
     void EnsureRectPSO(DXGI_FORMAT rtvFormat);
 
-    Gem::Result StageBufferUpload(const Canvas::GfxResourceAllocation& destination, const void* pData, uint64_t dataSize);
-    void FlushPendingBufferUploads();
     void FlushPendingGlyphUploads();
 
     // Add a GPU resource ref for the current frame (released after fence completes)
