@@ -283,11 +283,11 @@ class CApp
     bool TryLoadImportedScene(
         Canvas::XCanvas *pCanvas,
         Canvas::XSceneGraph *pScene,
-        Canvas::XGfxDevice *pDevice,
         Canvas::XGfxRenderQueue *pGfxRenderQueue,
         Canvas::XCamera *pDefaultCamera,
         Canvas::XSceneGraphNode *pDefaultCameraNode)
     {
+        Canvas::XGfxDevice *pDevice = pScene->GetDevice();
         try
         {
         if (m_ModelPath.empty())
@@ -641,10 +641,6 @@ public:
             Gem::TGemPtr<Canvas::XCanvas> pCanvas;
             Gem::ThrowGemError(Canvas::CreateCanvas(m_pLogger.Get(), &pCanvas));
 
-            initStep = "create_scene";
-            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraph(&pScene, "MainScene"));
-
             bool Windowed = true;
             UINT WidthIfWindowed = 1280;
             UINT HeightIfWindowed = 768;
@@ -671,6 +667,10 @@ public:
                 "MainDevice",
                 Canvas::XGfxDevice::IId,
                 (void**)&pDevice));
+
+            initStep = "create_scene";
+            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+            Gem::ThrowGemError(pCanvas->CreateSceneGraph(pDevice, &pScene, "MainScene"));
 
             initStep = "create_render_queue";
             // Create the render queue
@@ -724,7 +724,7 @@ public:
             pScene->SetActiveCamera(pCamera);
 
             initStep = "load_or_build_scene";
-            if (!TryLoadImportedScene(pCanvas, pScene, pDevice, pGfxRenderQueue, pCamera, pCameraNode))
+            if (!TryLoadImportedScene(pCanvas, pScene, pGfxRenderQueue, pCamera, pCameraNode))
             {
                 Canvas::LogError(m_pLogger.Get(), "Failed to load model scene; initialization aborted");
                 return false;
@@ -766,7 +766,7 @@ public:
             initStep = "create_ui_graph";
             // Create UI graph for text rendering
             Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
-            Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, pGfxRenderQueue, &pUIGraph));
+            Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, &pUIGraph));
 
             // Create UI graph nodes for positioning
             Gem::TGemPtr<Canvas::XUIGraphNode> pHudNode;

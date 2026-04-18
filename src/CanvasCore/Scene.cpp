@@ -10,8 +10,9 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CSceneGraph::CSceneGraph(XCanvas *pCanvas) :
-    TCanvasElement(pCanvas)
+CSceneGraph::CSceneGraph(XCanvas *pCanvas, XGfxDevice *pDevice) :
+    TCanvasElement(pCanvas),
+    m_pDevice(pDevice)
 {
 }
 

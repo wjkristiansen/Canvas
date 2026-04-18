@@ -136,13 +136,11 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateSceneGraph(XSceneGraph **ppScene, PCSTR name)
+GEMMETHODIMP CCanvas::CreateSceneGraph(XGfxDevice *pDevice, XSceneGraph **ppScene, PCSTR name)
 {
     CFunctionSentinel sentinel("XCanvas::CreateSceneGraph", m_pLogger);
 
-    return CreateElement<CSceneGraph>(ppScene, name);
-
-    return Gem::Result::Success;
+    return CreateElement<CSceneGraph>(ppScene, name, pDevice);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -202,11 +200,11 @@ GEMMETHODIMP CCanvas::CreateFont(const uint8_t* pTTFData, size_t dataSize, PCSTR
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph)
+GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XUIGraph** ppGraph)
 {
     CFunctionSentinel sentinel("XCanvas::CreateUIGraph", m_pLogger);
 
-    if (!pDevice || !pRenderQueue || !ppGraph)
+    if (!pDevice || !ppGraph)
         return Gem::Result::BadPointer;
 
     Gem::TGemPtr<CUIGraph> pGraph = new Gem::TGenericImpl<CUIGraph>();

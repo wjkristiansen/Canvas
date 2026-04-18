@@ -11,7 +11,7 @@ namespace Canvas
 class CUIGraph : public TCanvasElement<XUIGraph>
 {
     Gem::TGemPtr<CUIGraphNodeImpl> m_pRootNode;
-    XGfxDevice* m_pDevice = nullptr;
+    Gem::TGemPtr<XGfxDevice> m_pDevice;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -28,6 +28,7 @@ public:
 
     void SetDevice(XGfxDevice* pDevice) { m_pDevice = pDevice; }
 
+    GEMMETHOD_(XGfxDevice*, GetDevice)() override { return m_pDevice.Get(); }
     GEMMETHOD(RemoveElement)(XUIElement* pElement) override;
     GEMMETHOD(CreateNode)(XUIGraphNode* pParent, XUIGraphNode** ppNode) override;
     GEMMETHOD_(XUIGraphNode*, GetRootNode)() override;

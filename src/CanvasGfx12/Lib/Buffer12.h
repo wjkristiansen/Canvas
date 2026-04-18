@@ -14,7 +14,9 @@ class CBuffer12 :
     public TGfxElement<Canvas::XGfxBuffer>,
     public CResource
 {
-    Gem::TGemPtr<CDevice12> m_pDevice;  // Ref-counted; keeps device (and its allocator) alive
+    // Raw, non-owning: the CResourceManager that owns this buffer's allocation is a
+    // member of CDevice12, so the device outlives every buffer it issued.
+    CDevice12* m_pDevice = nullptr;
     uint64_t m_AllocationKey = 0;
     uint32_t m_SizeInUnits   = 0;
     uint32_t m_AllocatorTier = 0;
@@ -39,7 +41,7 @@ public:
     void SetAllocationTracking(CDevice12* pDevice,
                                uint64_t allocationKey, uint32_t sizeInUnits, uint32_t allocatorTier)
     {
-        m_pDevice       = pDevice;  // AddRef — keeps device alive
+        m_pDevice       = pDevice;
         m_AllocationKey = allocationKey;
         m_SizeInUnits   = sizeInUnits;
         m_AllocatorTier = allocatorTier;

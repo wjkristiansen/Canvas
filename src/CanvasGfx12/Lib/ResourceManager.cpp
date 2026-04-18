@@ -93,13 +93,11 @@ void CResourceManager::UnregisterTimeline(uint32_t timelineId)
 //------------------------------------------------------------------------------------------------
 void CResourceManager::Reclaim()
 {
-    // Per-frame hot path: keep scratch storage thread_local so capacity is amortized
-    // across calls.  We populate under the lock then destruct contents outside the
-    // lock — CBuffer12 dtors call back into Free() which would otherwise deadlock.
+    // Scratch storage is thread_local so capacity amortizes across calls.  Contents
+    // are populated under the lock and destructed outside it: CBuffer12 dtors reenter
+    // Free() on the manager mutex.
     thread_local std::vector<Canvas::GfxResourceAllocation> s_RecycleOverflow;
     thread_local std::vector<Gem::TGemPtr<Gem::XGeneric>> s_DeferredToDrop;
-    s_RecycleOverflow.clear();
-    s_DeferredToDrop.clear();
 
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
@@ -133,8 +131,9 @@ void CResourceManager::Reclaim()
             }
         }
     }
-    // s_RecycleOverflow / s_DeferredToDrop contents destruct here (capacity retained
-    // across calls via thread_local).  Free() reentrancy is safe without the lock.
+
+    s_RecycleOverflow.clear();
+    s_DeferredToDrop.clear();
 }
 
 //------------------------------------------------------------------------------------------------

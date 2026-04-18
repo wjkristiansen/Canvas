@@ -175,7 +175,7 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(LoadPlugin)(PCSTR path, struct XCanvasPlugin **ppPlugin) = 0;
 
-    GEMMETHOD(CreateSceneGraph)(XSceneGraph **ppScene, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateSceneGraph)(XGfxDevice *pDevice, XSceneGraph **ppScene, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
@@ -183,7 +183,7 @@ XCanvas : public Gem::XGeneric
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
-    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph) = 0;
+    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XUIGraph** ppGraph) = 0;
     GEMMETHOD(CreateTextElement)(XGfxSurface* pAtlasSurface, XUITextElement** ppElement) = 0;
     GEMMETHOD(CreateRectElement)(XUIRectElement** ppElement) = 0;
     
@@ -415,6 +415,7 @@ XSceneGraph : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XSceneGraph, 0x0A470E86351AF96A);
 
+    GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
 
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
@@ -546,6 +547,7 @@ struct XUIGraph : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XUIGraph, 0xD4E5F60718293041);
 
+    GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
     GEMMETHOD(RemoveElement)(XUIElement* pElement) = 0;
     GEMMETHOD(CreateNode)(XUIGraphNode* pParent, XUIGraphNode** ppNode) = 0;
     GEMMETHOD_(XUIGraphNode*, GetRootNode)() = 0;
