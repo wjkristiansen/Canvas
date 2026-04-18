@@ -331,6 +331,13 @@ namespace Canvas
         // pool for future reuse; the caller receives a (possibly pooled) replacement.
         GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxResourceAllocation& inOut) = 0;
 
+        // Force any pending uploads (mesh data, vertex buffers) staged via this
+        // device to be submitted to the GPU now.  Uploads run asynchronously on a
+        // dedicated copy queue and are normally consumed when the next render
+        // submit gates on them; this entry point lets callers publish them
+        // eagerly (e.g., at scene-load time, before the first frame).
+        GEMMETHOD(FlushUploads)() = 0;
+
         // Upload CPU data into a sub-region of a GPU surface via a staging copy.
         GEMMETHOD(UploadTextureRegion)(
             XGfxSurface *pDstSurface,

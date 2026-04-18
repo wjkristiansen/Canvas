@@ -100,6 +100,8 @@ public:
     // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
     GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
 
+    GEMMETHOD(FlushUploads)() final;
+
     // Texture upload (XGfxDevice interface — delegates to RQ for GPU copy)
     GEMMETHOD(UploadTextureRegion)(
         Canvas::XGfxSurface *pDstSurface,

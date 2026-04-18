@@ -436,6 +436,13 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::FlushUploads()
+{
+    m_CopyQueue.FlushIfPending();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut)
 {
     if (vertexCount == 0 || vertexStride == 0 || !pVertexData || !pRQ)
