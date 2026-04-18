@@ -34,6 +34,7 @@ CUIGraphNodeImpl::~CUIGraphNodeImpl()
         pChild = pNext;
     }
     m_pFirstChild = nullptr;
+    m_pLastChild = nullptr;
 }
 
 CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XUIGraphNode* pChild)
@@ -67,14 +68,13 @@ GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XUIGraphNode* pChild)
     if (!m_pFirstChild)
     {
         m_pFirstChild = pEntry;
+        m_pLastChild = pEntry;
     }
     else
     {
-        ChildNode* pLast = m_pFirstChild;
-        while (pLast->pNext)
-            pLast = pLast->pNext;
-        pLast->pNext = pEntry;
-        pEntry->pPrev = pLast;
+        pEntry->pPrev = m_pLastChild;
+        m_pLastChild->pNext = pEntry;
+        m_pLastChild = pEntry;
     }
 
     return Gem::Result::Success;
@@ -103,6 +103,8 @@ GEMMETHODIMP CUIGraphNodeImpl::RemoveChild(_In_ XUIGraphNode* pChild)
 
     if (pEntry->pNext)
         pEntry->pNext->pPrev = pEntry->pPrev;
+    else
+        m_pLastChild = pEntry->pPrev;
 
     delete pEntry;
     return Gem::Result::Success;

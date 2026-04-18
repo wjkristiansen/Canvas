@@ -40,6 +40,7 @@ public:
 protected:
     CUIGraphNodeImpl* m_pParent = nullptr;
     ChildNode* m_pFirstChild = nullptr;
+    ChildNode* m_pLastChild = nullptr;  // Tail pointer for O(1) AddChild
     ChildNode* m_pMyEntry = nullptr;    // This node's entry in parent's child list
 
     Math::FloatVector2 m_LocalPosition = {};
