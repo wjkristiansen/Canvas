@@ -134,6 +134,9 @@ struct GpuBufferUsage
 // Inherited resource state entry — tracks the last known sync/access/layout for a
 // specific subresource through a task's dependency chain. Keyed by (pResource, Subresource).
 // Subresource 0xFFFFFFFF means "all subresources not otherwise specified" (uniform default).
+// Table invariant: entries are kept sorted by (pResource, Subresource) ascending.
+// Because 0xFFFFFFFF is the maximum UINT, the uniform fallback entry for a resource
+// always sorts after that resource's per-subresource entries.
 struct ResourceStateEntry
 {
     ID3D12Resource* pResource = nullptr;
@@ -392,6 +395,19 @@ private:
 
     // Whether Dispatch() was called this frame (Reset clears this)
     bool m_Dispatched = false;
+
+    // Lookup key for the sorted ResourceStateEntry table.
+    using ResourceStateKey = std::pair<ID3D12Resource*, UINT>;
+
+    // Order entries by (pResource, Subresource). 0xFFFFFFFF (uniform) sorts last per resource.
+    struct ResourceStateKeyLess
+    {
+        bool operator()(const ResourceStateEntry& e, const ResourceStateKey& k) const
+        {
+            if (e.pResource != k.first) return e.pResource < k.first;
+            return e.Subresource < k.second;
+        }
+    };
 
     // Look up a resource+subresource in a task's inherited resource state table.
     // Tries exact (pResource, subresource) match first, falls back to uniform entry (0xFFFFFFFF).

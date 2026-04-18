@@ -373,61 +373,58 @@ const TaskBarriers& CGpuTaskGraph::PrepareTask(CGpuTask& taskData)
 const ResourceStateEntry* CGpuTaskGraph::FindResourceState(
     const std::vector<ResourceStateEntry>& table, ID3D12Resource* pResource, UINT subresource)
 {
-    const ResourceStateEntry* pUniform = nullptr;
-    for (const auto& entry : table)
+    auto it = std::lower_bound(table.begin(), table.end(), ResourceStateKey{pResource, subresource}, ResourceStateKeyLess{});
+    if (it != table.end() && it->pResource == pResource && it->Subresource == subresource)
+        return &*it;
+
+    if (subresource != 0xFFFFFFFF)
     {
-        if (entry.pResource == pResource)
-        {
-            if (entry.Subresource == subresource)
-                return &entry;
-            if (entry.Subresource == 0xFFFFFFFF)
-                pUniform = &entry;
-        }
+        auto uniformIt = std::lower_bound(table.begin(), table.end(), ResourceStateKey{pResource, 0xFFFFFFFF}, ResourceStateKeyLess{});
+        if (uniformIt != table.end() && uniformIt->pResource == pResource && uniformIt->Subresource == 0xFFFFFFFF)
+            return &*uniformIt;
     }
-    return pUniform;
+
+    return nullptr;
 }
 
 void CGpuTaskGraph::MergeResourceState(
     std::vector<ResourceStateEntry>& table, const ResourceStateEntry& entry)
 {
-    for (auto& existing : table)
+    auto it = std::lower_bound(table.begin(), table.end(), ResourceStateKey{entry.pResource, entry.Subresource}, ResourceStateKeyLess{});
+    if (it != table.end() && it->pResource == entry.pResource && it->Subresource == entry.Subresource)
     {
-        if (existing.pResource == entry.pResource && existing.Subresource == entry.Subresource)
-        {
-            existing.Sync = entry.Sync;
-            existing.Access = entry.Access;
-            existing.Layout = entry.Layout;
-            existing.Inherited = entry.Inherited;
-            return;
-        }
+        it->Sync = entry.Sync;
+        it->Access = entry.Access;
+        it->Layout = entry.Layout;
+        it->Inherited = entry.Inherited;
+        return;
     }
-    table.push_back(entry);
+    table.insert(it, entry);
 }
 
 void CGpuTaskGraph::UnionResourceState(
     std::vector<ResourceStateEntry>& table, const ResourceStateEntry& entry)
 {
-    for (auto& existing : table)
+    auto it = std::lower_bound(table.begin(), table.end(), ResourceStateKey{entry.pResource, entry.Subresource}, ResourceStateKeyLess{});
+    if (it != table.end() && it->pResource == entry.pResource && it->Subresource == entry.Subresource)
     {
-        if (existing.pResource == entry.pResource && existing.Subresource == entry.Subresource)
+        auto& existing = *it;
+        if (!entry.Inherited && existing.Inherited)
         {
-            if (!entry.Inherited && existing.Inherited)
-            {
-                existing = entry;
-                return;
-            }
-            if (entry.Inherited && !existing.Inherited)
-                return;
-            existing.Sync |= entry.Sync;
-            if (existing.Access == D3D12_BARRIER_ACCESS_NO_ACCESS)
-                existing.Access = entry.Access;
-            else if (entry.Access != D3D12_BARRIER_ACCESS_NO_ACCESS)
-                existing.Access |= entry.Access;
-            existing.Layout = entry.Layout;
+            existing = entry;
             return;
         }
+        if (entry.Inherited && !existing.Inherited)
+            return;
+        existing.Sync |= entry.Sync;
+        if (existing.Access == D3D12_BARRIER_ACCESS_NO_ACCESS)
+            existing.Access = entry.Access;
+        else if (entry.Access != D3D12_BARRIER_ACCESS_NO_ACCESS)
+            existing.Access |= entry.Access;
+        existing.Layout = entry.Layout;
+        return;
     }
-    table.push_back(entry);
+    table.insert(it, entry);
 }
 
 //------------------------------------------------------------------------------------------------
