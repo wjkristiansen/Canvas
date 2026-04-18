@@ -325,14 +325,12 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateMeshData(
-    [[maybe_unused]] uint32_t vertexCount,
-    [[maybe_unused]] const Canvas::Math::FloatVector4 *positions,
-    [[maybe_unused]] const Canvas::Math::FloatVector4 *normals,
-    [[maybe_unused]] Canvas::XGfxRenderQueue *pRenderQueue,
-    [[maybe_unused]] Canvas::XGfxMeshData **ppMesh,
-    [[maybe_unused]] const char* name)
+    uint32_t vertexCount,
+    const Canvas::Math::FloatVector4 *positions,
+    const Canvas::Math::FloatVector4 *normals,
+    Canvas::XGfxMeshData **ppMesh,
+    const char* name)
 {
-    // Two FloatVector4 arrays: positions and normals
     uint64_t posSize = static_cast<uint64_t>(vertexCount) * sizeof(Canvas::Math::FloatVector4);
     uint64_t normSize = posSize;
     uint64_t allocationSize = posSize + normSize;
@@ -342,14 +340,8 @@ GEMMETHODIMP CDevice12::CreateMeshData(
 
     *ppMesh = nullptr;
 
-    if (!pRenderQueue)
-        return Gem::Result::InvalidArg;
-
-    CRenderQueue12* pRQ = static_cast<CRenderQueue12*>(pRenderQueue);
-
     try
     {
-        // Allocate device-local buffers via resource allocator (placed in shared heaps)
         D3D12_RESOURCE_DESC bufDesc = {};
         bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
         bufDesc.Height           = 1;
@@ -358,7 +350,6 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         bufDesc.SampleDesc.Count = 1;
         bufDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-        // Build debug names from mesh name
         std::string posName = name ? (std::string(name) + "_Positions") : "MeshPositions";
         std::string normName = name ? (std::string(name) + "_Normals") : "MeshNormals";
 
@@ -370,7 +361,6 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         ResourceAllocation normAlloc;
         Gem::ThrowGemError(m_ResourceManager.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, normAlloc, normName.c_str()));
 
-        // Wrap placed resources in CBuffer12
         Gem::TGemPtr<CBuffer12> pPosBuffer;
         Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
             &pPosBuffer, GetCanvas(), posAlloc.pResource, posName.c_str()));
@@ -381,11 +371,10 @@ GEMMETHODIMP CDevice12::CreateMeshData(
             &pNormBuffer, GetCanvas(), normAlloc.pResource, normName.c_str()));
         pNormBuffer->SetAllocationTracking(this, normAlloc.AllocationKey, normAlloc.SizeInUnits, normAlloc.AllocatorTier);
 
-        // Allocate staging space from the render queue's upload ring buffer
+        // Stage and enqueue the upload on the device's copy queue.  The
+        // consuming render queue gates on the copy fence at submit time.
         HostWriteAllocation staging;
-        Gem::ThrowGemError(pRQ->GetUploadRing().AllocateFromRing(allocationSize, staging));
-
-        // Copy data into the upload buffer immediately on CPU timeline
+        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(allocationSize, staging));
         {
             uint8_t* dst = static_cast<uint8_t*>(staging.pMapped);
             if (positions && posSize > 0)
@@ -394,40 +383,25 @@ GEMMETHODIMP CDevice12::CreateMeshData(
                 memcpy(dst + posSize, normals, static_cast<size_t>(normSize));
         }
 
-        // Schedule copy operations from upload heap to device-local heap
-        {
-            // Declare resource usage: destination buffers need barriers for copy
-            ResourceUsageBuilder usages;
-            usages.SetBufferUsage(
-                static_cast<CBuffer12*>(pPosBuffer.Get()),
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_DEST);
+        Gem::TGemPtr<Gem::XGeneric> pPosKeepAlive;
+        pPosBuffer->QueryInterface(&pPosKeepAlive);
+        m_CopyQueue.EnqueueBufferCopy(
+            staging.pResource, staging.ResourceOffset,
+            pPosBuffer->GetD3DResource(), 0,
+            posSize,
+            std::move(pPosKeepAlive));
 
-            usages.SetBufferUsage(
-                static_cast<CBuffer12*>(pNormBuffer.Get()),
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_DEST);
+        Gem::TGemPtr<Gem::XGeneric> pNormKeepAlive;
+        pNormBuffer->QueryInterface(&pNormKeepAlive);
+        m_CopyQueue.EnqueueBufferCopy(
+            staging.pResource, staging.ResourceOffset + posSize,
+            pNormBuffer->GetD3DResource(), 0,
+            normSize,
+            std::move(pNormKeepAlive));
 
-            ID3D12Resource* pSrcRes  = staging.pResource;
-            ID3D12Resource* pDstPos  = pPosBuffer->GetD3DResource();
-            ID3D12Resource* pDstNorm = pNormBuffer->GetD3DResource();
-            uint64_t srcOffset = staging.ResourceOffset;
-
-            pRQ->RecordCommandBlock(
-                usages.Build(),
-                [pSrcRes, pDstPos, pDstNorm, srcOffset, posSize, normSize](ID3D12GraphicsCommandList* cmdList)
-                {
-                    cmdList->CopyBufferRegion(pDstPos, 0, pSrcRes, srcOffset, posSize);
-                    cmdList->CopyBufferRegion(pDstNorm, 0, pSrcRes, srcOffset + posSize, normSize);
-                },
-                "Upload Mesh Data");
-        }
-
-        // Create and register the CMeshData12 object that holds the buffers
         Gem::TGemPtr<CMeshData12> pMeshData;
         Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas(), name));
-        
-        // Build GfxResourceAllocations for the mesh (CBuffer12 handles cleanup via allocator tracking)
+
         Canvas::GfxResourceAllocation posVB;
         posVB.pBuffer       = pPosBuffer;
         posVB.Offset        = 0;
@@ -440,7 +414,7 @@ GEMMETHODIMP CDevice12::CreateMeshData(
 
         pMeshData->SetPositionBuffer(posVB);
         pMeshData->SetNormalBuffer(normVB);
-        
+
         *ppMesh = pMeshData.Detach();
         return Gem::Result::Success;
     }
@@ -455,11 +429,10 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
     uint32_t vertexCount,
     const Canvas::Math::FloatVector4 *positions,
     const Canvas::Math::FloatVector4 *normals,
-    Canvas::XGfxRenderQueue *pRenderQueue,
     Canvas::XGfxMeshData **ppMesh,
     const char* name)
 {
-    return CreateMeshData(vertexCount, positions, normals, pRenderQueue, ppMesh, name);
+    return CreateMeshData(vertexCount, positions, normals, ppMesh, name);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -473,51 +446,56 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
         uint64_t dataSize = static_cast<uint64_t>(vertexCount) * vertexStride;
         auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
 
-        // Retire the previous buffer to the pool (if any).
-        // The buffer was last drawn under the queue's current fence value;
-        // it will become available once that fence completes on this timeline.
+        // Caller is swapping in a fresh buffer; retire the old one to the pool.
         if (inOut.pBuffer)
             m_ResourceManager.RetireBuffer(std::move(inOut), pRQ12->MakeFenceToken());
 
         // Try to reuse a pooled buffer.
-        if (m_ResourceManager.AcquireBuffer(dataSize, inOut))
+        if (!m_ResourceManager.AcquireBuffer(dataSize, inOut))
         {
-            inOut.Offset = 0;
-            inOut.Size   = dataSize;
-            return pRQ12->StageBufferUpload(inOut, pVertexData, dataSize);
+            // Pool miss — allocate a new buffer.  Use power-of-2 capacity for
+            // poolable sizes so the buffer fits a bucket exactly when retired.
+            uint64_t capacity = dataSize;
+            if (CResourceManager::IsPoolableSize(dataSize))
+                capacity = CResourceManager::RoundUpPow2(dataSize);
+
+            D3D12_RESOURCE_DESC bufferDesc = {};
+            bufferDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+            bufferDesc.Width            = capacity;
+            bufferDesc.Height           = 1;
+            bufferDesc.DepthOrArraySize = 1;
+            bufferDesc.MipLevels        = 1;
+            bufferDesc.SampleDesc.Count = 1;
+            bufferDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+            ResourceAllocation alloc;
+            Gem::ThrowGemError(m_ResourceManager.Alloc(bufferDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, alloc));
+
+            Gem::TGemPtr<CBuffer12> pBuffer;
+            Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
+                &pBuffer, GetCanvas(), alloc.pResource, "VertexBuffer"));
+            pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
+
+            inOut.pBuffer       = pBuffer;
         }
 
-        // Pool miss — allocate a new buffer.
-        // Use power-of-2 capacity for poolable sizes so the buffer fits a
-        // bucket exactly when it is later retired.
-        uint64_t capacity = dataSize;
-        if (CResourceManager::IsPoolableSize(dataSize))
-            capacity = CResourceManager::RoundUpPow2(dataSize);
+        inOut.Offset = 0;
+        inOut.Size   = dataSize;
 
-        D3D12_RESOURCE_DESC bufferDesc = {};
-        bufferDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
-        bufferDesc.Width            = capacity;
-        bufferDesc.Height           = 1;
-        bufferDesc.DepthOrArraySize = 1;
-        bufferDesc.MipLevels        = 1;
-        bufferDesc.SampleDesc.Count = 1;
-        bufferDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        // Stage and enqueue the upload on the device's copy queue.  The
+        // consuming render queue gates on the copy fence at submit time.
+        auto* pDstBuffer = static_cast<CBuffer12*>(inOut.pBuffer.Get());
+        HostWriteAllocation staging;
+        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(dataSize, staging));
+        memcpy(staging.pMapped, pVertexData, static_cast<size_t>(dataSize));
 
-        ResourceAllocation alloc;
-        Gem::ThrowGemError(m_ResourceManager.Alloc(bufferDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, alloc));
-
-        // Wrap placed/committed resource in CBuffer12
-        Gem::TGemPtr<CBuffer12> pBuffer;
-        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
-            &pBuffer, GetCanvas(), alloc.pResource, "VertexBuffer"));
-        pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
-
-        inOut.pBuffer       = pBuffer;
-        inOut.Offset        = 0;
-        inOut.Size          = dataSize;
-
-        // Stage the upload via the render queue
-        Gem::ThrowGemError(pRQ12->StageBufferUpload(inOut, pVertexData, dataSize));
+        Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive;
+        pDstBuffer->QueryInterface(&pDstKeepAlive);
+        m_CopyQueue.EnqueueBufferCopy(
+            staging.pResource, staging.ResourceOffset,
+            pDstBuffer->GetD3DResource(), 0,
+            dataSize,
+            std::move(pDstKeepAlive));
 
         return Gem::Result::Success;
     }

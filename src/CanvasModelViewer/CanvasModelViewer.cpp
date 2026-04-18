@@ -283,7 +283,6 @@ class CApp
     bool TryLoadImportedScene(
         Canvas::XCanvas *pCanvas,
         Canvas::XSceneGraph *pScene,
-        Canvas::XGfxRenderQueue *pGfxRenderQueue,
         Canvas::XCamera *pDefaultCamera,
         Canvas::XSceneGraphNode *pDefaultCameraNode)
     {
@@ -369,7 +368,6 @@ class CApp
                 static_cast<uint32_t>(srcMesh.Positions.size()),
                 srcMesh.Positions.data(),
                 srcMesh.Normals.data(),
-                pGfxRenderQueue,
                 &pMeshData,
                 srcMesh.Name.c_str()));
 
@@ -724,7 +722,7 @@ public:
             pScene->SetActiveCamera(pCamera);
 
             initStep = "load_or_build_scene";
-            if (!TryLoadImportedScene(pCanvas, pScene, pGfxRenderQueue, pCamera, pCameraNode))
+            if (!TryLoadImportedScene(pCanvas, pScene, pCamera, pCameraNode))
             {
                 Canvas::LogError(m_pLogger.Get(), "Failed to load model scene; initialization aborted");
                 return false;

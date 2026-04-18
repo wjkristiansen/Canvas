@@ -317,14 +317,12 @@ namespace Canvas
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
             const Canvas::Math::FloatVector4 *normals,
-            XGfxRenderQueue *pRenderQueue,
             XGfxMeshData **ppMesh,
             const char* name = nullptr) = 0;
         GEMMETHOD(CreateDebugMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
             const Canvas::Math::FloatVector4 *normals,
-            XGfxRenderQueue *pRenderQueue,
             XGfxMeshData **ppMesh,
             const char* name = nullptr) = 0;
 

@@ -60,14 +60,12 @@ public:
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,
         const Canvas::Math::FloatVector4 *normals,
-        Canvas::XGfxRenderQueue *pRenderQueue,
         Canvas::XGfxMeshData **ppMesh,
         const char* name = nullptr) final;
     GEMMETHOD(CreateDebugMeshData)(
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,
         const Canvas::Math::FloatVector4 *normals,
-        Canvas::XGfxRenderQueue *pRenderQueue,
         Canvas::XGfxMeshData **ppMesh,
         const char* name = nullptr) final;
 
