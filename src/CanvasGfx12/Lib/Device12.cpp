@@ -21,6 +21,11 @@ CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
 //------------------------------------------------------------------------------------------------
 CDevice12::~CDevice12()
 {
+    // Drain the copy queue and unregister its timeline before tearing down the
+    // resource manager — the copy queue defers releases through the manager's
+    // per-timeline queues which Shutdown() will then drain.
+    m_CopyQueue.Shutdown();
+
     // Drain the resource manager before members are destroyed, breaking the
     // CDevice12 -> manager -> CBuffer12 -> CDevice12 reference cycle.
     m_ResourceManager.Shutdown();
@@ -78,6 +83,7 @@ Gem::Result CDevice12::Initialize()
     }
 
     m_ResourceManager.Initialize(this);
+    m_CopyQueue.Initialize(this);
 
     return Gem::Result::Success;
 }

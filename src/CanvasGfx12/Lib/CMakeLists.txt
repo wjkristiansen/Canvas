@@ -5,6 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 add_library(CanvasGfx12 SHARED
     CanvasGfx12.cpp
     CommandAllocatorPool.cpp
+    CopyQueue.cpp
     Device12.cpp
     GpuTask.cpp
     RenderQueue12.cpp

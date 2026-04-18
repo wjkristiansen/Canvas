@@ -16,6 +16,7 @@
 #include "ResourceAllocator.h"
 #include "ResourceManager.h"
 #include "UploadRing.h"
+#include "CopyQueue.h"
 
 inline constexpr D3D12_HEAP_TYPE GfxMemoryUsageToD3D12HeapType(Canvas::GfxMemoryUsage usage)
 {
@@ -84,6 +85,13 @@ public:
     CResourceManager m_ResourceManager;
 
     CResourceManager& GetResourceManager() { return m_ResourceManager; }
+
+    // Device-owned COPY queue used for host->device buffer uploads (mesh data,
+    // vertex buffers, ...).  Render queues query EnsureUploadsRetired() at submit
+    // time to obtain a fence token to Wait() on before consuming the destinations.
+    CCopyQueue m_CopyQueue;
+
+    CCopyQueue& GetCopyQueue() { return m_CopyQueue; }
 
     // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
     GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
