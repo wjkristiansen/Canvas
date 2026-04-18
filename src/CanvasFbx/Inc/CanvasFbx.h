@@ -19,15 +19,8 @@
 #include <string>
 #include <cstdint>
 
-#if defined(_WIN32)
-  #if defined(CANVASFBX_EXPORTS)
-    #define CANVASFBX_API __declspec(dllexport)
-  #else
-    #define CANVASFBX_API __declspec(dllimport)
-  #endif
-#else
-  #define CANVASFBX_API
-#endif
+// CanvasFbx is a static library; no dllexport/dllimport plumbing needed.
+#define CANVASFBX_API
 
 namespace Canvas
 {

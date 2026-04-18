@@ -29,10 +29,14 @@ endif()
 
 #---------------------------------------------------------------------------
 # Target
+#
+# CanvasFbx is built as a STATIC library: its public API exposes STL types
+# (std::string, std::vector) on struct boundaries, which is unsafe across DLL
+# boundaries (allocator/CRT mismatch). Static linkage keeps consumer and
+# importer in the same module so STL types may flow freely.
 #---------------------------------------------------------------------------
-add_library(CanvasFbx SHARED
+add_library(CanvasFbx STATIC
     CanvasFbx.cpp
-    dllmain.cpp
     pch.h
     targetver.h
 )
@@ -54,13 +58,8 @@ target_include_directories(CanvasFbx
 target_compile_definitions(CanvasFbx PRIVATE
     $<$<CONFIG:Debug>:_DEBUG>
     $<$<CONFIG:Release>:NDEBUG>
-    CANVASFBX_EXPORTS
     NOMINMAX
 )
-
-if(WIN32)
-    target_compile_definitions(CanvasFbx PRIVATE _WINDOWS _USRDLL)
-endif()
 
 #---------------------------------------------------------------------------
 # ufbx linkage (when available)
@@ -87,9 +86,11 @@ target_link_libraries(CanvasFbx PRIVATE
 target_precompile_headers(CanvasFbx PRIVATE pch.h)
 
 #---------------------------------------------------------------------------
-# Install (matches project convention – co-located in bin/)
+# Install
+#
+# Static archive only; nothing to ship at runtime since CanvasFbx is linked
+# directly into its consumers.
 #---------------------------------------------------------------------------
 install(TARGETS CanvasFbx
-    RUNTIME DESTINATION ${CANVAS_INSTALL_DEST}/bin
-    LIBRARY DESTINATION ${CANVAS_INSTALL_DEST}/lib
+    ARCHIVE DESTINATION ${CANVAS_INSTALL_DEST}/lib
 )
