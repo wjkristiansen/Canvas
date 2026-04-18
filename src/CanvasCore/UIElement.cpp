@@ -255,8 +255,7 @@ Gem::Result CUITextElement::RegenerateVertices()
     float lineHeightUnits = (metrics.Ascender - metrics.Descender + metrics.LineGap);
     float lineHeightPixels = lineHeightUnits * (m_Config.FontSize / pFontData->GetUnitsPerEm());
 
-    std::vector<GlyphAtlasEntry> glyphEntries;
-    glyphEntries.reserve(codepoints.size());
+    m_CachedVertices.reserve(codepoints.size() * 6);
     Math::FloatVector3 cursorPos = screenPos;
 
     for (uint32_t codepoint : codepoints)
@@ -270,15 +269,11 @@ Gem::Result CUITextElement::RegenerateVertices()
 
         if (codepoint == '\t')
         {
-            uint32_t spaceCP = ' ';
-            for (int i = 0; i < 4; i++)
-            {
-                GlyphAtlasEntry entry = {};
-                result = m_pGlyphCache->CacheGlyphForFont(spaceCP, m_pFont, entry);
-                if (Gem::Failed(result))
-                    return result;
-                cursorPos.X += entry.AdvanceWidth * m_Config.FontSize;
-            }
+            GlyphAtlasEntry spaceEntry = {};
+            result = m_pGlyphCache->CacheGlyphForFont(' ', m_pFont, spaceEntry);
+            if (Gem::Failed(result))
+                return result;
+            cursorPos.X += spaceEntry.AdvanceWidth * m_Config.FontSize * 4.0f;
             continue;
         }
 
@@ -290,43 +285,16 @@ Gem::Result CUITextElement::RegenerateVertices()
         if (Gem::Failed(result))
             return result;
 
-        glyphEntries.push_back(entry);
-    }
-
-    m_CachedVertices.reserve(glyphEntries.size() * 6);
-    cursorPos = screenPos;
-
-    size_t glyphIdx = 0;
-    for (uint32_t codepoint : codepoints)
-    {
-        if (codepoint == '\n')
-        {
-            cursorPos.X = screenPos.X;
-            cursorPos.Y += lineHeightPixels * m_Config.LineHeight;
-            continue;
-        }
-
-        if (codepoint < 32)
-        {
-            if (codepoint == '\t')
-                glyphIdx += 4;
-            continue;
-        }
-
-        if (glyphIdx >= glyphEntries.size())
-            break;
-
         float advance = CTextLayout::LayoutGlyph(
             codepoint,
             *pFontData,
-            glyphEntries[glyphIdx],
+            entry,
             cursorPos,
             m_Config.Color,
             m_Config.FontSize,
             m_CachedVertices);
 
         cursorPos.X += advance * m_Config.FontSize;
-        glyphIdx++;
     }
 
     return Gem::Result::Success;
