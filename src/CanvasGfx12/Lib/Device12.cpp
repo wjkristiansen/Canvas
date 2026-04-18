@@ -108,11 +108,16 @@ GEMMETHODIMP CDevice12::CreateRenderQueue(Canvas::XGfxRenderQueue **ppRenderQueu
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateMaterial()
+GEMMETHODIMP CDevice12::CreateMaterial(Canvas::XGfxMaterial **ppMaterial)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateMaterial", GetLogger());
-    
-   return Gem::Result::NotImplemented;
+
+    if (!ppMaterial)
+        return Gem::Result::BadPointer;
+
+    *ppMaterial = nullptr;
+    // Material implementation lands in Phase 3 (CMaterial12).
+    return Gem::Result::NotImplemented;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -325,20 +330,35 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateMeshData(
-    uint32_t vertexCount,
-    const Canvas::Math::FloatVector4 *positions,
-    const Canvas::Math::FloatVector4 *normals,
-    Canvas::XGfxMeshData **ppMesh,
-    const char* name)
+    const Canvas::MeshDataDesc &desc,
+    Canvas::XGfxMeshData **ppMesh)
 {
-    uint64_t posSize = static_cast<uint64_t>(vertexCount) * sizeof(Canvas::Math::FloatVector4);
-    uint64_t normSize = posSize;
-    uint64_t allocationSize = posSize + normSize;
-
     if (!ppMesh)
         return Gem::Result::BadPointer;
 
     *ppMesh = nullptr;
+
+    if (desc.GroupCount == 0 || desc.pGroups == nullptr)
+        return Gem::Result::InvalidArg;
+
+    // Phase 2 backstop: the multi-group / extra-stream / per-group material
+    // backend lands in Phase 3. Until then, accept only the legacy single-group
+    // position+normal layout and route through the existing upload path.
+    if (desc.GroupCount != 1)
+        return Gem::Result::NotImplemented;
+
+    const Canvas::MeshDataGroupDesc &group = desc.pGroups[0];
+    if (group.pUV0 != nullptr || group.pTangents != nullptr || group.pMaterial != nullptr)
+        return Gem::Result::NotImplemented;
+
+    const uint32_t vertexCount = group.VertexCount;
+    const Canvas::Math::FloatVector4 *positions = group.pPositions;
+    const Canvas::Math::FloatVector4 *normals   = group.pNormals;
+    const char *name = desc.pName;
+
+    uint64_t posSize = static_cast<uint64_t>(vertexCount) * sizeof(Canvas::Math::FloatVector4);
+    uint64_t normSize = posSize;
+    uint64_t allocationSize = posSize + normSize;
 
     try
     {

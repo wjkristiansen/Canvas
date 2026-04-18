@@ -434,6 +434,7 @@ XMeshInstance : public XSceneGraphElement
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() = 0;
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;
     GEMMETHOD_(uint32_t, GetMaterialGroupIndex)() = 0;
+    GEMMETHOD_(void, SetMaterialGroupIndex)(uint32_t index) = 0;
 };
 
 //================================================================================================

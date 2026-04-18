@@ -57,6 +57,11 @@ public:
     { 
         return m_MaterialGroupIndex; 
     }
+
+    GEMMETHOD_(void, SetMaterialGroupIndex)(uint32_t index) final
+    {
+        m_MaterialGroupIndex = index;
+    }
 };
 
 }

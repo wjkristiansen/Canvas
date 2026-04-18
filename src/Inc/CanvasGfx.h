@@ -133,6 +133,20 @@ namespace Canvas
     XGfxMaterial : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxMaterial, 0xD6E17B2CB8454154);
+
+        // Bind a texture to a specific material role. Pass nullptr to clear.
+        // Implementations may reject roles they don't support (e.g. unused
+        // roles in a fixed PBR layer set); see backend documentation.
+        GEMMETHOD(SetTexture)(MaterialLayerRole role, XGfxSurface *pSurface) = 0;
+        GEMMETHOD_(XGfxSurface *, GetTexture)(MaterialLayerRole role) = 0;
+
+        // Constant factors used when no texture is bound (and as a tint when a
+        // texture is bound). Linear-space colors. Default = identity (white,1).
+        GEMMETHOD_(void, SetBaseColorFactor)(const Math::FloatVector4 &factor) = 0;
+        GEMMETHOD_(Math::FloatVector4, GetBaseColorFactor)() = 0;
+
+        GEMMETHOD_(void, SetEmissiveFactor)(const Math::FloatVector4 &factor) = 0;
+        GEMMETHOD_(Math::FloatVector4, GetEmissiveFactor)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -174,6 +188,31 @@ namespace Canvas
         GEMMETHOD_(uint32_t, GetNumMaterialGroups)() = 0;
         GEMMETHOD_(GfxResourceAllocation *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
         GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t materialIndex) = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    // One material partition of a mesh. Positions/Normals are required;
+    // UV0/Tangents are optional and may be null. pMaterial is optional; when
+    // null the backend renders the group with a default/untextured material.
+    //
+    // All vertex arrays must be VertexCount entries long. Topology is an
+    // implicit triangle list; no index buffer in this layout.
+    struct MeshDataGroupDesc
+    {
+        uint32_t                        VertexCount   = 0;
+        const Canvas::Math::FloatVector4 *pPositions  = nullptr;   // required, W=1
+        const Canvas::Math::FloatVector4 *pNormals    = nullptr;   // required, W=0
+        const Canvas::Math::FloatVector2 *pUV0        = nullptr;   // optional
+        const Canvas::Math::FloatVector4 *pTangents   = nullptr;   // optional, xyz=T, w=bitangent sign
+        XGfxMaterial                    *pMaterial    = nullptr;   // optional
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct MeshDataDesc
+    {
+        const MeshDataGroupDesc        *pGroups       = nullptr;
+        uint32_t                        GroupCount    = 0;
+        const char                     *pName         = nullptr;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -310,21 +349,42 @@ namespace Canvas
         GEM_INTERFACE_DECLARE(XGfxDevice, 0x86D4ABCCCD5FB6EE);
 
         GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) = 0;
-        GEMMETHOD(CreateMaterial)() = 0;
+        GEMMETHOD(CreateMaterial)(XGfxMaterial **ppMaterial) = 0;
         GEMMETHOD(CreateSurface)(const GfxSurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
         GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, GfxMemoryUsage memoryUsage, XGfxBuffer **ppBuffer) = 0;
-        GEMMETHOD(CreateMeshData)(
-            uint32_t vertexCount,
-            const Canvas::Math::FloatVector4 *positions,
-            const Canvas::Math::FloatVector4 *normals,
-            XGfxMeshData **ppMesh,
-            const char* name = nullptr) = 0;
+
+        // Primary mesh-data factory: multi-group, supports UV0 / tangents /
+        // per-group materials. Group count >= 1.
+        GEMMETHOD(CreateMeshData)(const MeshDataDesc &desc, XGfxMeshData **ppMesh) = 0;
+
         GEMMETHOD(CreateDebugMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
             const Canvas::Math::FloatVector4 *normals,
             XGfxMeshData **ppMesh,
             const char* name = nullptr) = 0;
+
+        // Convenience wrapper around the descriptor-form CreateMeshData for the
+        // common single-group, position+normal-only case. Non-virtual; calls
+        // through to the primary virtual.
+        Gem::Result CreateMeshData(
+            uint32_t vertexCount,
+            const Canvas::Math::FloatVector4 *positions,
+            const Canvas::Math::FloatVector4 *normals,
+            XGfxMeshData **ppMesh,
+            const char *name = nullptr)
+        {
+            MeshDataGroupDesc group;
+            group.VertexCount = vertexCount;
+            group.pPositions  = positions;
+            group.pNormals    = normals;
+
+            MeshDataDesc desc;
+            desc.pGroups    = &group;
+            desc.GroupCount = 1;
+            desc.pName      = name;
+            return CreateMeshData(desc, ppMesh);
+        }
 
         // Vertex buffer suballocation (alloc + upload in one call).
         // If `inOut` already holds a buffer, it is retired to the vertex buffer

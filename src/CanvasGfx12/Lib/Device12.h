@@ -53,21 +53,21 @@ public:
 
     // XGfxDevice methods
     GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) final;
-    GEMMETHOD(CreateMaterial)() final;
+    GEMMETHOD(CreateMaterial)(Canvas::XGfxMaterial **ppMaterial) final;
     GEMMETHOD(CreateSurface)(const Canvas::GfxSurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
     GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, Canvas::GfxMemoryUsage memoryUsage, Canvas::XGfxBuffer **ppBuffer) final;
-    GEMMETHOD(CreateMeshData)(
-        uint32_t vertexCount,
-        const Canvas::Math::FloatVector4 *positions,
-        const Canvas::Math::FloatVector4 *normals,
-        Canvas::XGfxMeshData **ppMesh,
-        const char* name = nullptr) final;
+    GEMMETHOD(CreateMeshData)(const Canvas::MeshDataDesc &desc, Canvas::XGfxMeshData **ppMesh) final;
     GEMMETHOD(CreateDebugMeshData)(
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,
         const Canvas::Math::FloatVector4 *normals,
         Canvas::XGfxMeshData **ppMesh,
         const char* name = nullptr) final;
+
+    // Bring the inherited non-virtual single-stream wrapper into scope so
+    // overload resolution finds it on a CDevice12* (the descriptor-form
+    // override above would otherwise hide it).
+    using Canvas::XGfxDevice::CreateMeshData;
 
     ID3D12Device10 *GetD3DDevice() const { return m_pD3DDevice; }
 
