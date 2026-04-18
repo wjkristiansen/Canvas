@@ -162,15 +162,15 @@ const std::string& CGpuTaskGraph::GetLastError() const
 // D3D12 Barrier Emission Helper
 //------------------------------------------------------------------------------------------------
 
-static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL, const TaskBarriers& barriers)
+void CGpuTaskGraph::EmitBarriersToCommandList(const TaskBarriers& barriers)
 {
-    if (!pCL)
+    if (!m_pWorkCL7)
         return;
 
     if (!barriers.TextureBarriers.empty())
     {
-        std::vector<D3D12_TEXTURE_BARRIER> d3dBarriers;
-        d3dBarriers.reserve(barriers.TextureBarriers.size());
+        m_ScratchD3DTextureBarriers.clear();
+        m_ScratchD3DTextureBarriers.reserve(barriers.TextureBarriers.size());
         for (const auto& tb : barriers.TextureBarriers)
         {
             D3D12_TEXTURE_BARRIER d3d = {};
@@ -183,19 +183,19 @@ static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL, const Tas
             d3d.pResource = tb.pSurface->GetD3DResource();
             d3d.Subresources.IndexOrFirstMipLevel = tb.Subresources;
             d3d.Flags = tb.Flags;
-            d3dBarriers.push_back(d3d);
+            m_ScratchD3DTextureBarriers.push_back(d3d);
         }
         D3D12_BARRIER_GROUP group = {};
         group.Type = D3D12_BARRIER_TYPE_TEXTURE;
-        group.NumBarriers = static_cast<UINT>(d3dBarriers.size());
-        group.pTextureBarriers = d3dBarriers.data();
-        pCL->Barrier(1, &group);
+        group.NumBarriers = static_cast<UINT>(m_ScratchD3DTextureBarriers.size());
+        group.pTextureBarriers = m_ScratchD3DTextureBarriers.data();
+        m_pWorkCL7->Barrier(1, &group);
     }
 
     if (!barriers.BufferBarriers.empty())
     {
-        std::vector<D3D12_BUFFER_BARRIER> d3dBarriers;
-        d3dBarriers.reserve(barriers.BufferBarriers.size());
+        m_ScratchD3DBufferBarriers.clear();
+        m_ScratchD3DBufferBarriers.reserve(barriers.BufferBarriers.size());
         for (const auto& bb : barriers.BufferBarriers)
         {
             D3D12_BUFFER_BARRIER d3d = {};
@@ -206,13 +206,13 @@ static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL, const Tas
             d3d.pResource = bb.pBuffer->GetD3DResource();
             d3d.Offset = bb.Offset;
             d3d.Size = bb.Size;
-            d3dBarriers.push_back(d3d);
+            m_ScratchD3DBufferBarriers.push_back(d3d);
         }
         D3D12_BARRIER_GROUP group = {};
         group.Type = D3D12_BARRIER_TYPE_BUFFER;
-        group.NumBarriers = static_cast<UINT>(d3dBarriers.size());
-        group.pBufferBarriers = d3dBarriers.data();
-        pCL->Barrier(1, &group);
+        group.NumBarriers = static_cast<UINT>(m_ScratchD3DBufferBarriers.size());
+        group.pBufferBarriers = m_ScratchD3DBufferBarriers.data();
+        m_pWorkCL7->Barrier(1, &group);
     }
 }
 
@@ -223,7 +223,7 @@ static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL, const Tas
 void CGpuTaskGraph::InsertTask(CGpuTask& task)
 {
     const TaskBarriers& barriers = PrepareTask(task);
-    Canvas::EmitBarriersToCommandList(m_pWorkCL7, barriers);
+    EmitBarriersToCommandList(barriers);
     if (task.RecordFunc && m_pWorkCL)
         task.RecordFunc(m_pWorkCL);
 }

@@ -382,6 +382,11 @@ private:
     // Scratch buffer for PrepareTask results (avoids per-call allocation)
     TaskBarriers m_ScratchBarriers;
 
+    // Per-emit scratch translated to raw D3D12 barrier structs.  Members so the
+    // backing storage is reused across InsertTask calls.
+    std::vector<D3D12_TEXTURE_BARRIER> m_ScratchD3DTextureBarriers;
+    std::vector<D3D12_BUFFER_BARRIER>  m_ScratchD3DBufferBarriers;
+
     // Last error from validation
     std::string m_LastError;
 
@@ -405,6 +410,10 @@ private:
     // Validate that direct dependencies don't leave any resource in conflicting states.
     // Allocates a temporary map. Sets m_LastError if conflicts detected.
     void ValidateDependencyConflicts(const CGpuTask& task);
+
+    // Translate the resolved TaskBarriers into D3D12_*_BARRIER structs (using
+    // scratch members) and emit them on the work command list.
+    void EmitBarriersToCommandList(const TaskBarriers& barriers);
 };
 
 //------------------------------------------------------------------------------------------------
