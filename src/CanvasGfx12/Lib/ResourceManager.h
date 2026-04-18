@@ -96,6 +96,12 @@ public:
     // the highest value ever submitted through this timeline before calling.
     void UnregisterTimeline(uint32_t timelineId);
 
+    // Look up the fence registered for a timeline.  Returns nullptr when the
+    // id is invalid or the timeline has been unregistered.  Used by consumer
+    // queues to issue ID3D12CommandQueue::Wait against a FenceToken from
+    // another queue.
+    ID3D12Fence* GetTimelineFence(uint32_t timelineId);
+
     // Scan every timeline, refresh completed values, drain retired buffers and
     // deferred resources whose fence value has been reached.
     void Reclaim();

@@ -93,6 +93,12 @@ public:
 
     CCopyQueue& GetCopyQueue() { return m_CopyQueue; }
 
+    // Flush any pending upload work on the device's copy queue and return the
+    // FenceToken consumers must Wait() on before reading the destinations.
+    // Returns nullopt when no upload work is pending — the fast path on every
+    // frame after the first.
+    std::optional<FenceToken> EnsureUploadsRetired() { return m_CopyQueue.FlushIfPending(); }
+
     // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
     GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
 

@@ -75,6 +75,15 @@ uint32_t CResourceManager::RegisterTimeline(ID3D12Fence* pFence)
 }
 
 //------------------------------------------------------------------------------------------------
+ID3D12Fence* CResourceManager::GetTimelineFence(uint32_t timelineId)
+{
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    if (timelineId >= m_Timelines.size() || !m_Timelines[timelineId])
+        return nullptr;
+    return m_Timelines[timelineId]->pFence;
+}
+
+//------------------------------------------------------------------------------------------------
 void CResourceManager::UnregisterTimeline(uint32_t timelineId)
 {
     std::unique_ptr<FenceTimeline> dead;

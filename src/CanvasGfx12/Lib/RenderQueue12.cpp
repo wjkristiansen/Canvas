@@ -236,6 +236,15 @@ D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurfac
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::Flush()
 {
+    // Gate this frame's work on any pending device-level upload work (e.g.
+    // CCopyQueue buffer copies for newly-created mesh data).  The token is
+    // queue-agnostic so the same primitive will serve a future ECL graph.
+    if (auto token = m_pDevice->EnsureUploadsRetired())
+    {
+        if (auto* pFence = m_pDevice->GetResourceManager().GetTimelineFence(token->TimelineId))
+            m_pCommandQueue->Wait(pFence, token->Value);
+    }
+
     // Dispatch order: scene → UI
     if (m_TaskGraphActive)
         m_GpuTaskGraph.Dispatch();
