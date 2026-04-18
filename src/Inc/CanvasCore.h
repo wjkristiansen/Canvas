@@ -419,7 +419,7 @@ XSceneGraph : public XCanvasElement
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
 
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
-    GEMMETHOD_(XCamera *, GetActiveCamera)() = 0;
+    GEMMETHOD_(XCamera *, GetActiveCamera)() const = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;

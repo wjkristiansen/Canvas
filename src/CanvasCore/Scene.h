@@ -45,7 +45,7 @@ public: // XSceneGraph methods
         m_pActiveCamera = pCamera;
     }
 
-    GEMMETHOD_(XCamera *, GetActiveCamera)() final
+    GEMMETHOD_(XCamera *, GetActiveCamera)() const final
     {
         return m_pActiveCamera.Get();
     }
