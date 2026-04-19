@@ -46,21 +46,32 @@ public:
         return m_EmissiveFactor;
     }
 
+    GEMMETHOD_(void, SetRoughMetalAOFactor)(const Canvas::Math::FloatVector4 &factor) final
+    {
+        m_RoughMetalAOFactor = factor;
+    }
+    GEMMETHOD_(Canvas::Math::FloatVector4, GetRoughMetalAOFactor)() final
+    {
+        return m_RoughMetalAOFactor;
+    }
+
 private:
-    // Maps MaterialLayerRole values onto the Phase 1 PBR layer set we care
-    // about. Roles outside this set are accepted by SetTexture but not
-    // currently consumed by the backend.
+    // Maps MaterialLayerRole values onto our PBR layer set.
     enum SupportedRole : uint32_t
     {
-        Role_Albedo   = 0,
-        Role_Normal   = 1,
-        Role_Emissive = 2,
-        Role_Count    = 3,
+        Role_Albedo           = 0,
+        Role_Normal           = 1,
+        Role_Roughness        = 2,
+        Role_Metallic         = 3,
+        Role_AmbientOcclusion = 4,
+        Role_Emissive         = 5,
+        Role_Count            = 6,
     };
 
     static bool MapRole(Canvas::MaterialLayerRole role, SupportedRole &out);
 
     Gem::TGemPtr<Canvas::XGfxSurface> m_Textures[Role_Count];
-    Canvas::Math::FloatVector4 m_BaseColorFactor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    Canvas::Math::FloatVector4 m_EmissiveFactor  = { 0.0f, 0.0f, 0.0f, 0.0f };
+    Canvas::Math::FloatVector4 m_BaseColorFactor    = { 1.0f, 1.0f, 1.0f, 1.0f };
+    Canvas::Math::FloatVector4 m_EmissiveFactor     = { 0.0f, 0.0f, 0.0f, 0.0f };
+    Canvas::Math::FloatVector4 m_RoughMetalAOFactor = { 1.0f, 0.0f, 1.0f, 0.0f };
 };

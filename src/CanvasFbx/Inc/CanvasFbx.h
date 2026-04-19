@@ -69,12 +69,18 @@ struct ImportedTextureRef
 struct ImportedMaterial
 {
     std::string             Name;
-    Math::FloatVector4      BaseColorFactor = { 1.0f, 1.0f, 1.0f, 1.0f }; // linear RGBA
-    Math::FloatVector4      EmissiveFactor  = { 0.0f, 0.0f, 0.0f, 0.0f }; // linear RGB, A unused
+    Math::FloatVector4      BaseColorFactor    = { 1.0f, 1.0f, 1.0f, 1.0f }; // linear RGBA
+    Math::FloatVector4      EmissiveFactor     = { 0.0f, 0.0f, 0.0f, 0.0f }; // linear RGB, A unused
+    // R=Roughness, G=Metallic, B=AmbientOcclusion, A=spare. Defaults match a
+    // fully-rough, non-metallic, fully-lit surface.
+    Math::FloatVector4      RoughMetalAOFactor = { 1.0f, 0.0f, 1.0f, 0.0f };
 
-    int32_t                 AlbedoTextureIndex   = -1; // -> ImportedScene::Textures
-    int32_t                 NormalTextureIndex   = -1;
-    int32_t                 EmissiveTextureIndex = -1;
+    int32_t                 AlbedoTextureIndex           = -1; // -> ImportedScene::Textures
+    int32_t                 NormalTextureIndex           = -1;
+    int32_t                 EmissiveTextureIndex         = -1;
+    int32_t                 RoughnessTextureIndex        = -1;
+    int32_t                 MetallicTextureIndex         = -1;
+    int32_t                 AmbientOcclusionTextureIndex = -1;
 };
 #pragma warning(pop)
 

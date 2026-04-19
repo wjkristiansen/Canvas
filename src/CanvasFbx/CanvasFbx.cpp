@@ -727,13 +727,33 @@ std::unordered_map<const ufbx_material *, int32_t> ImportMaterials(
             pMat->pbr.emission_color, pMat->fbx.emission_color,
             Math::FloatVector4(0.0f, 0.0f, 0.0f, 0.0f));
 
-        const ufbx_texture *pAlbedoTex   = PickRoleTexture(pMat->pbr.base_color,     pMat->fbx.diffuse_color);
-        const ufbx_texture *pNormalTex   = PickRoleTexture(pMat->pbr.normal_map,     pMat->fbx.normal_map);
-        const ufbx_texture *pEmissiveTex = PickRoleTexture(pMat->pbr.emission_color, pMat->fbx.emission_color);
+        // Roughness, metallic and AO are scalar PBR maps in ufbx. The classic
+        // FBX side has no real equivalent, so use the same map for both
+        // arguments to PickRoleFactor and rely on the fallback when absent.
+        const Math::FloatVector4 roughness = PickRoleFactor(
+            pMat->pbr.roughness, pMat->pbr.roughness,
+            Math::FloatVector4(1.0f, 0.0f, 0.0f, 0.0f));
+        const Math::FloatVector4 metallic = PickRoleFactor(
+            pMat->pbr.metalness, pMat->pbr.metalness,
+            Math::FloatVector4(0.0f, 0.0f, 0.0f, 0.0f));
+        const Math::FloatVector4 ao = PickRoleFactor(
+            pMat->pbr.ambient_occlusion, pMat->pbr.ambient_occlusion,
+            Math::FloatVector4(1.0f, 0.0f, 0.0f, 0.0f));
+        outMat.RoughMetalAOFactor = Math::FloatVector4(roughness.X, metallic.X, ao.X, 0.0f);
 
-        outMat.AlbedoTextureIndex   = AcquireTextureIndex(pAlbedoTex,   pScene, textureByPath, textureByPtr);
-        outMat.NormalTextureIndex   = AcquireTextureIndex(pNormalTex,   pScene, textureByPath, textureByPtr);
-        outMat.EmissiveTextureIndex = AcquireTextureIndex(pEmissiveTex, pScene, textureByPath, textureByPtr);
+        const ufbx_texture *pAlbedoTex    = PickRoleTexture(pMat->pbr.base_color,     pMat->fbx.diffuse_color);
+        const ufbx_texture *pNormalTex    = PickRoleTexture(pMat->pbr.normal_map,     pMat->fbx.normal_map);
+        const ufbx_texture *pEmissiveTex  = PickRoleTexture(pMat->pbr.emission_color, pMat->fbx.emission_color);
+        const ufbx_texture *pRoughnessTex = PickRoleTexture(pMat->pbr.roughness,         pMat->pbr.roughness);
+        const ufbx_texture *pMetallicTex  = PickRoleTexture(pMat->pbr.metalness,         pMat->pbr.metalness);
+        const ufbx_texture *pAOTex        = PickRoleTexture(pMat->pbr.ambient_occlusion, pMat->pbr.ambient_occlusion);
+
+        outMat.AlbedoTextureIndex           = AcquireTextureIndex(pAlbedoTex,    pScene, textureByPath, textureByPtr);
+        outMat.NormalTextureIndex           = AcquireTextureIndex(pNormalTex,    pScene, textureByPath, textureByPtr);
+        outMat.EmissiveTextureIndex         = AcquireTextureIndex(pEmissiveTex,  pScene, textureByPath, textureByPtr);
+        outMat.RoughnessTextureIndex        = AcquireTextureIndex(pRoughnessTex, pScene, textureByPath, textureByPtr);
+        outMat.MetallicTextureIndex         = AcquireTextureIndex(pMetallicTex,  pScene, textureByPath, textureByPtr);
+        outMat.AmbientOcclusionTextureIndex = AcquireTextureIndex(pAOTex,        pScene, textureByPath, textureByPtr);
 
         pScene->Materials.push_back(std::move(outMat));
         materialMap[pMat] = static_cast<int32_t>(pScene->Materials.size() - 1);

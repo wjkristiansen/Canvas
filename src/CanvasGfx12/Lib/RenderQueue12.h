@@ -487,9 +487,13 @@ public:
     Gem::TGemPtr<CSurface12> m_pGBufferNormals;
     Gem::TGemPtr<CSurface12> m_pGBufferDiffuseColor;
     Gem::TGemPtr<CSurface12> m_pGBufferWorldPos;
-    Canvas::GfxFormat m_GBufferNormalsFormat = Canvas::GfxFormat::R10G10B10A2_UNorm;
-    Canvas::GfxFormat m_GBufferDiffuseFormat = Canvas::GfxFormat::R10G10B10A2_UNorm;
+    Gem::TGemPtr<CSurface12> m_pGBufferPBR;       // R=Roughness, G=Metallic, B=AO, A=spare
+    Gem::TGemPtr<CSurface12> m_pGBufferEmissive;  // RGB linear emissive
+    Canvas::GfxFormat m_GBufferNormalsFormat  = Canvas::GfxFormat::R10G10B10A2_UNorm;
+    Canvas::GfxFormat m_GBufferDiffuseFormat  = Canvas::GfxFormat::R10G10B10A2_UNorm;
     Canvas::GfxFormat m_GBufferWorldPosFormat = Canvas::GfxFormat::R16G16B16A16_Float;
+    Canvas::GfxFormat m_GBufferPBRFormat      = Canvas::GfxFormat::R8G8B8A8_UNorm;
+    Canvas::GfxFormat m_GBufferEmissiveFormat = Canvas::GfxFormat::R11G11B10_Float;
     UINT m_GBufferWidth = 0;
     UINT m_GBufferHeight = 0;
 
@@ -506,7 +510,7 @@ public:
     uint32_t m_LightCount = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentDSV = {};
-    D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[3] = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[5] = {};
 
     // Renderable nodes enqueued during scene graph update, dispatched during EndFrame
     std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;

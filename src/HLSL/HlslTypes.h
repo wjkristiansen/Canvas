@@ -53,7 +53,26 @@ struct ALIGN16 HlslPerObjectConstants
 {
     ROW_MAJOR float4x4 World;
     ROW_MAJOR float4x4 WorldInvTranspose;
+    float4 BaseColorFactor;       // RGBA, multiplied with sampled albedo
+    float4 EmissiveFactor;        // RGB, multiplied with sampled emissive (A unused)
+    float4 RoughMetalAOFactor;    // R=roughness, G=metallic, B=AO, A unused
+    uint   MaterialFlags;         // see MATERIAL_FLAG_* bits below
+    uint   _Pad0;
+    uint   _Pad1;
+    uint   _Pad2;
 };
+
+// Per-draw material flags. Bits are uniform per-draw and used to enable
+// optional sample/multiply paths in the uber-shader. When a flag is clear the
+// corresponding sampled value is ignored and only the *Factor is used.
+#define MATERIAL_FLAG_HAS_UV          (1u << 0)
+#define MATERIAL_FLAG_HAS_TANGENT     (1u << 1)
+#define MATERIAL_FLAG_HAS_ALBEDO_TEX  (1u << 2)
+#define MATERIAL_FLAG_HAS_NORMAL_TEX  (1u << 3)
+#define MATERIAL_FLAG_HAS_EMISSIVE_TEX (1u << 4)
+#define MATERIAL_FLAG_HAS_ROUGH_TEX   (1u << 5)
+#define MATERIAL_FLAG_HAS_METAL_TEX   (1u << 6)
+#define MATERIAL_FLAG_HAS_AO_TEX      (1u << 7)
 
 #ifdef __cplusplus
 } // namespace HlslTypes

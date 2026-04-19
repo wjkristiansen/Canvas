@@ -144,15 +144,20 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     //  Root UAV (descriptor static)
     //  Root descriptor table
 
-    // The default root descriptor table is layed out as follows:
-    //  CBV[2] (data static)
-    //  SRV[4] (data static)
-    //  UAV[2] (descriptor static)
+    // The default root descriptor table is laid out as follows:
+    //  CBV[2]  @ b1, b2  (data static)
+    //  SRV[9]  @ t1..t9  (data static) — t1=normals, t2=UV0, t3=tangents,
+    //                    t4=albedo, t5=normalMap, t6=emissive,
+    //                    t7=roughness, t8=metallic, t9=ambient occlusion
+    //  UAV[2]  @ u1, u2  (descriptor static)
+    //
+    // A single static sampler s0 (LinearWrap, anisotropic mip filter) covers
+    // all material texture sampling.
 
     std::vector<CD3DX12_DESCRIPTOR_RANGE1> DefaultDescriptorRanges(3);
     DefaultDescriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
-    DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
-    DefaultDescriptorRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 6);
+    DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
+    DefaultDescriptorRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 11);
 
     std::vector<CD3DX12_ROOT_PARAMETER1> DefaultRootParams(4);
     DefaultRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
@@ -160,7 +165,18 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     DefaultRootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
     DefaultRootParams[3].InitAsDescriptorTable(static_cast<UINT>(DefaultDescriptorRanges.size()), DefaultDescriptorRanges.data(), D3D12_SHADER_VISIBILITY_ALL);
 
-    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc(4U, DefaultRootParams.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CD3DX12_STATIC_SAMPLER_DESC DefaultStaticSamplers[1] = {};
+    DefaultStaticSamplers[0].Init(
+        0,                                          // s0
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc(
+        4U, DefaultRootParams.data(),
+        _countof(DefaultStaticSamplers), DefaultStaticSamplers,
+        D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     CComPtr<ID3DBlob> pRSBlob;
     ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&DefaultRootSigDesc, &pRSBlob, nullptr));
@@ -628,6 +644,32 @@ void CRenderQueue12::EnsureGBuffers(UINT width, UINT height)
         pSurface->QueryInterface(&pGBuffer);
         m_pGBufferWorldPos = pGBuffer;
     }
+
+    // PBR G-buffer (R=Roughness, G=Metallic, B=AO, A=spare)
+    {
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            m_GBufferPBRFormat, width, height, flags);
+
+        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+        Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
+
+        Gem::TGemPtr<CSurface12> pGBuffer;
+        pSurface->QueryInterface(&pGBuffer);
+        m_pGBufferPBR = pGBuffer;
+    }
+
+    // Emissive G-buffer (RGB linear, R11G11B10_FLOAT)
+    {
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            m_GBufferEmissiveFormat, width, height, flags);
+
+        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+        Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
+
+        Gem::TGemPtr<CSurface12> pGBuffer;
+        pSurface->QueryInterface(&pGBuffer);
+        m_pGBufferEmissive = pGBuffer;
+    }
     
     m_GBufferWidth = width;
     m_GBufferHeight = height;
@@ -722,18 +764,20 @@ void CRenderQueue12::EnsureDefaultPSO()
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     
-    // MRT: three G-buffer render targets (normals + diffuse color + world position)
-    psoDesc.NumRenderTargets = 3;
+    // MRT: five G-buffer render targets — Normals, Diffuse, WorldPos, PBR, Emissive
+    psoDesc.NumRenderTargets = 5;
     psoDesc.RTVFormats[0] = CanvasFormatToDXGIFormat(m_GBufferNormalsFormat);
     psoDesc.RTVFormats[1] = CanvasFormatToDXGIFormat(m_GBufferDiffuseFormat);
     psoDesc.RTVFormats[2] = CanvasFormatToDXGIFormat(m_GBufferWorldPosFormat);
+    psoDesc.RTVFormats[3] = CanvasFormatToDXGIFormat(m_GBufferPBRFormat);
+    psoDesc.RTVFormats[4] = CanvasFormatToDXGIFormat(m_GBufferEmissiveFormat);
     psoDesc.SampleDesc.Count = 1;
     psoDesc.SampleDesc.Quality = 0;
     
     ThrowFailedHResult(m_pDevice->GetD3DDevice()->CreateGraphicsPipelineState(
         &psoDesc, IID_PPV_ARGS(&m_pDefaultPSO)));
     
-    Canvas::LogInfo(m_pDevice->GetLogger(), "Geometry pass PSO created (3 MRT G-buffers)");
+    Canvas::LogInfo(m_pDevice->GetLogger(), "Geometry pass PSO created (5 MRT G-buffers)");
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1107,6 +1151,8 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
         m_GBufferRTVs[0] = CreateRenderTargetView(m_pGBufferNormals, 0, 0, 0);
         m_GBufferRTVs[1] = CreateRenderTargetView(m_pGBufferDiffuseColor, 0, 0, 0);
         m_GBufferRTVs[2] = CreateRenderTargetView(m_pGBufferWorldPos, 0, 0, 0);
+        m_GBufferRTVs[3] = CreateRenderTargetView(m_pGBufferPBR, 0, 0, 0);
+        m_GBufferRTVs[4] = CreateRenderTargetView(m_pGBufferEmissive, 0, 0, 0);
         m_CurrentDSV = CreateDepthStencilView(m_pDepthBuffer);
         m_CurrentRTV = CreateRenderTargetView(pBackBuffer, 0, 0, 0);
 
@@ -1138,6 +1184,14 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
             D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        DeclareGpuTextureUsage(task, m_pGBufferPBR,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        DeclareGpuTextureUsage(task, m_pGBufferEmissive,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
         DeclareGpuTextureUsage(task, m_pDepthBuffer,
             D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
             D3D12_BARRIER_SYNC_DEPTH_STENCIL,
@@ -1148,8 +1202,10 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
             pCL->ClearRenderTargetView(m_GBufferRTVs[0], clearColor, 0, nullptr);
             pCL->ClearRenderTargetView(m_GBufferRTVs[1], clearColor, 0, nullptr);
             pCL->ClearRenderTargetView(m_GBufferRTVs[2], clearColor, 0, nullptr);
+            pCL->ClearRenderTargetView(m_GBufferRTVs[3], clearColor, 0, nullptr);
+            pCL->ClearRenderTargetView(m_GBufferRTVs[4], clearColor, 0, nullptr);
             pCL->ClearDepthStencilView(m_CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
-            pCL->OMSetRenderTargets(3, m_GBufferRTVs, FALSE, &m_CurrentDSV);
+            pCL->OMSetRenderTargets(5, m_GBufferRTVs, FALSE, &m_CurrentDSV);
             pCL->RSSetViewports(1, &viewport);
             pCL->RSSetScissorRects(1, &scissor);
             pCL->SetPipelineState(m_pDefaultPSO);
@@ -1211,106 +1267,190 @@ Gem::Result CRenderQueue12::DrawMesh(
         if (materialGroupIndex >= pMesh->GetNumMaterialGroups())
             return Gem::Result::InvalidArg;
 
-        // Get position and normal vertex buffer entries for the selected group
-        auto pPosEntry = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Position);
+        // Fetch all per-group vertex streams. Position is required; the rest
+        // are optional and gated by MATERIAL_FLAG_HAS_* bits in the per-object CB.
+        auto pPosEntry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Position);
         auto pNormEntry = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Normal);
-        
+        auto pUV0Entry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::UV0);
+        auto pTanEntry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Tangent);
+
         if (!pPosEntry || !pPosEntry->pBuffer)
             return Gem::Result::InvalidArg;
         
-        auto pPosBuf = static_cast<CBuffer12*>(pPosEntry->pBuffer.Get());
+        auto pPosBuf  = static_cast<CBuffer12*>(pPosEntry->pBuffer.Get());
         CBuffer12* pNormBuf = (pNormEntry && pNormEntry->pBuffer)
-            ? static_cast<CBuffer12*>(pNormEntry->pBuffer.Get())
-            : nullptr;
+            ? static_cast<CBuffer12*>(pNormEntry->pBuffer.Get()) : nullptr;
+        CBuffer12* pUV0Buf  = (pUV0Entry && pUV0Entry->pBuffer)
+            ? static_cast<CBuffer12*>(pUV0Entry->pBuffer.Get()) : nullptr;
+        CBuffer12* pTanBuf  = (pTanEntry && pTanEntry->pBuffer)
+            ? static_cast<CBuffer12*>(pTanEntry->pBuffer.Get()) : nullptr;
 
-        // Pack per-object constants from the world transform
+        // Resolve material (may be null) and gather texture surfaces by role.
+        Canvas::XGfxMaterial *pMaterial = pMesh->GetMaterial(materialGroupIndex);
+        Canvas::Math::FloatVector4 baseColorFactor    = { 0.8f, 0.8f, 0.8f, 1.0f };
+        Canvas::Math::FloatVector4 emissiveFactor     = { 0.0f, 0.0f, 0.0f, 0.0f };
+        Canvas::Math::FloatVector4 roughMetalAOFactor = { 1.0f, 0.0f, 1.0f, 0.0f };
+        CSurface12 *pTextures[6] = {}; // [Albedo, Normal, Emissive, Roughness, Metallic, AO]
+        if (pMaterial)
+        {
+            baseColorFactor    = pMaterial->GetBaseColorFactor();
+            emissiveFactor     = pMaterial->GetEmissiveFactor();
+            roughMetalAOFactor = pMaterial->GetRoughMetalAOFactor();
+            const Canvas::MaterialLayerRole roles[6] = {
+                Canvas::MaterialLayerRole::Albedo,
+                Canvas::MaterialLayerRole::Normal,
+                Canvas::MaterialLayerRole::Emissive,
+                Canvas::MaterialLayerRole::Roughness,
+                Canvas::MaterialLayerRole::Metallic,
+                Canvas::MaterialLayerRole::AmbientOcclusion,
+            };
+            for (UINT i = 0; i < 6; ++i)
+            {
+                Canvas::XGfxSurface *pSurface = pMaterial->GetTexture(roles[i]);
+                if (pSurface)
+                {
+                    Gem::TGemPtr<CSurface12> pSurf12;
+                    pSurface->QueryInterface(&pSurf12);
+                    pTextures[i] = pSurf12.Get();
+                }
+            }
+        }
+
+        // Build MaterialFlags. Texture flags are gated by mesh capability
+        // (no UV → no albedo/normal/emissive/PBR sampling; no tangent → no normal map).
+        const bool hasUV      = (pUV0Buf != nullptr);
+        const bool hasTangent = (pTanBuf != nullptr);
+        uint32_t materialFlags = 0;
+        if (hasUV)      materialFlags |= MATERIAL_FLAG_HAS_UV;
+        if (hasTangent) materialFlags |= MATERIAL_FLAG_HAS_TANGENT;
+        if (hasUV && pTextures[0])              materialFlags |= MATERIAL_FLAG_HAS_ALBEDO_TEX;
+        if (hasUV && hasTangent && pTextures[1]) materialFlags |= MATERIAL_FLAG_HAS_NORMAL_TEX;
+        if (hasUV && pTextures[2])              materialFlags |= MATERIAL_FLAG_HAS_EMISSIVE_TEX;
+        if (hasUV && pTextures[3])              materialFlags |= MATERIAL_FLAG_HAS_ROUGH_TEX;
+        if (hasUV && pTextures[4])              materialFlags |= MATERIAL_FLAG_HAS_METAL_TEX;
+        if (hasUV && pTextures[5])              materialFlags |= MATERIAL_FLAG_HAS_AO_TEX;
+
+        // Pack per-object constants
         HlslTypes::HlslPerObjectConstants objectConstants = {};
         static_assert(sizeof(objectConstants.World) == sizeof(worldTransform),
                       "HlslTypes::float4x4 and Math::FloatMatrix4x4 must be layout-compatible");
         memcpy(&objectConstants.World, &worldTransform, sizeof(objectConstants.World));
         memcpy(&objectConstants.WorldInvTranspose, &worldTransform, sizeof(objectConstants.WorldInvTranspose));
-        // Zero translation row for normal transform (inverse transpose of upper 3x3)
         objectConstants.WorldInvTranspose.m[3][0] = 0.0f;
         objectConstants.WorldInvTranspose.m[3][1] = 0.0f;
         objectConstants.WorldInvTranspose.m[3][2] = 0.0f;
         objectConstants.WorldInvTranspose.m[3][3] = 1.0f;
+        memcpy(&objectConstants.BaseColorFactor,    &baseColorFactor,    sizeof(objectConstants.BaseColorFactor));
+        memcpy(&objectConstants.EmissiveFactor,     &emissiveFactor,     sizeof(objectConstants.EmissiveFactor));
+        memcpy(&objectConstants.RoughMetalAOFactor, &roughMetalAOFactor, sizeof(objectConstants.RoughMetalAOFactor));
+        objectConstants.MaterialFlags = materialFlags;
         
         // Upload per-object constants to upload heap
-        // CBVs require 256-byte aligned BufferLocation (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         const uint64_t cbSize = (sizeof(HlslTypes::HlslPerObjectConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
         HostWriteAllocation hw;
         Gem::ThrowGemError(m_UploadRing.AllocateFromRing(cbSize, hw));
-        
         memcpy(hw.pMapped, &objectConstants, sizeof(HlslTypes::HlslPerObjectConstants));
         
-        // Allocate a contiguous block of 8 descriptors (2 CBV + 4 SRV + 2 UAV).
-        // Wrap to slot 0 if the block would straddle the ring boundary to avoid
-        // writing past the end of the heap.
-        if (m_NextSRVSlot + 8 > NumShaderResourceDescriptors)
+        // Allocate a contiguous block of 13 descriptors:
+        //   slots 0-1 : CBV[2] @ b1, b2
+        //   slots 2-10: SRV[9] @ t1..t9 (normals, UV0, tangents, albedo, normalMap,
+        //                                emissive, roughness, metallic, AO)
+        //   slots 11-12: UAV[2] @ u1, u2 (currently null)
+        constexpr UINT kDescCount = 13;
+        if (m_NextSRVSlot + kDescCount > NumShaderResourceDescriptors)
             m_NextSRVSlot = 0;
         UINT baseSlot = m_NextSRVSlot;
-        m_NextSRVSlot += 8;
+        m_NextSRVSlot += kDescCount;
         
         const UINT incSize = m_CbvSrvUavIncrement;
         ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
         CD3DX12_CPU_DESCRIPTOR_HANDLE baseCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), baseSlot, incSize);
         CD3DX12_GPU_DESCRIPTOR_HANDLE baseGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), baseSlot, incSize);
         
-        // Slot 0 of table: CBV for per-object constants (b1)
+        // CBV b1: per-object constants
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
         cbvDesc.BufferLocation = hw.GpuAddress;
-        cbvDesc.SizeInBytes = static_cast<UINT>((sizeof(HlslTypes::HlslPerObjectConstants) + 255) & ~255); // 256-byte aligned
+        cbvDesc.SizeInBytes = static_cast<UINT>(cbSize);
         pD3DDevice->CreateConstantBufferView(&cbvDesc, baseCpuHandle);
         
-        // Slot 1 of table: CBV[1] placeholder (b2) - null
-        CD3DX12_CPU_DESCRIPTOR_HANDLE cbv1Handle(baseCpuHandle, 1, incSize);
+        // CBV b2: null placeholder
         D3D12_CONSTANT_BUFFER_VIEW_DESC nullCbvDesc = {};
-        pD3DDevice->CreateConstantBufferView(&nullCbvDesc, cbv1Handle);
+        pD3DDevice->CreateConstantBufferView(&nullCbvDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, 1, incSize));
         
-        // Slots 2-5 of table: SRV[4] at t1-t4
-        // Slot 2: normals (t1), slots 3-5: null SRVs (t2-t4)
-        // All must be initialized since the descriptor range is STATIC
-        D3D12_SHADER_RESOURCE_VIEW_DESC nullSrvDesc = {};
-        nullSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
-        nullSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-        nullSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        // Helper lambdas for null fallbacks
+        D3D12_SHADER_RESOURCE_VIEW_DESC nullBufSrvDesc = {};
+        nullBufSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+        nullBufSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        nullBufSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         
-        if (pNormBuf)
+        D3D12_SHADER_RESOURCE_VIEW_DESC nullTex2DSrvDesc = {};
+        nullTex2DSrvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        nullTex2DSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        nullTex2DSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        nullTex2DSrvDesc.Texture2D.MipLevels = 1;
+        
+        auto WriteStructuredBufSRV = [&](UINT tableSlot, CBuffer12* pBuf, UINT stride)
         {
-            CD3DX12_CPU_DESCRIPTOR_HANDLE normSrvHandle(baseCpuHandle, 2, incSize);
-            D3D12_RESOURCE_DESC normDesc = pNormBuf->GetD3DResource()->GetDesc();
-            UINT numNormals = static_cast<UINT>(normDesc.Width / sizeof(Canvas::Math::FloatVector4));
-            
-            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-            srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            srvDesc.Buffer.NumElements = numNormals;
-            srvDesc.Buffer.StructureByteStride = sizeof(Canvas::Math::FloatVector4);
-            
-            pD3DDevice->CreateShaderResourceView(pNormBuf->GetD3DResource(), &srvDesc, normSrvHandle);
-        }
-        else
+            CD3DX12_CPU_DESCRIPTOR_HANDLE h(baseCpuHandle, tableSlot, incSize);
+            if (pBuf)
+            {
+                D3D12_RESOURCE_DESC rd = pBuf->GetD3DResource()->GetDesc();
+                D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
+                d.Format = DXGI_FORMAT_UNKNOWN;
+                d.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+                d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                d.Buffer.NumElements = static_cast<UINT>(rd.Width / stride);
+                d.Buffer.StructureByteStride = stride;
+                pD3DDevice->CreateShaderResourceView(pBuf->GetD3DResource(), &d, h);
+            }
+            else
+            {
+                pD3DDevice->CreateShaderResourceView(nullptr, &nullBufSrvDesc, h);
+            }
+        };
+        auto WriteTexture2DSRV = [&](UINT tableSlot, CSurface12* pSurf)
         {
-            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, 2, incSize));
-        }
+            CD3DX12_CPU_DESCRIPTOR_HANDLE h(baseCpuHandle, tableSlot, incSize);
+            if (pSurf)
+            {
+                D3D12_RESOURCE_DESC rd = pSurf->GetD3DResource()->GetDesc();
+                D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
+                d.Format = rd.Format;
+                d.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                d.Texture2D.MipLevels = rd.MipLevels ? rd.MipLevels : 1;
+                pD3DDevice->CreateShaderResourceView(pSurf->GetD3DResource(), &d, h);
+            }
+            else
+            {
+                pD3DDevice->CreateShaderResourceView(nullptr, &nullTex2DSrvDesc, h);
+            }
+        };
         
-        // Null SRVs for t2-t4 (slots 3-5)
-        for (UINT i = 3; i <= 5; ++i)
-            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, i, incSize));
+        // SRV t1: normals (slot 2)
+        WriteStructuredBufSRV(2, pNormBuf, sizeof(Canvas::Math::FloatVector4));
+        // SRV t2: UV0 (slot 3) - FloatVector2
+        WriteStructuredBufSRV(3, pUV0Buf, sizeof(Canvas::Math::FloatVector2));
+        // SRV t3: tangents (slot 4) - FloatVector4 (xyz=T, w=bitangent sign)
+        WriteStructuredBufSRV(4, pTanBuf, sizeof(Canvas::Math::FloatVector4));
+        // SRV t4..t9: material textures (slots 5..10)
+        WriteTexture2DSRV(5,  pTextures[0]); // Albedo
+        WriteTexture2DSRV(6,  pTextures[1]); // Normal map
+        WriteTexture2DSRV(7,  pTextures[2]); // Emissive
+        WriteTexture2DSRV(8,  pTextures[3]); // Roughness
+        WriteTexture2DSRV(9,  pTextures[4]); // Metallic
+        WriteTexture2DSRV(10, pTextures[5]); // AO
         
-        // Null UAVs for u1-u2 (slots 6-7)
+        // UAVs u1, u2: null (slots 11, 12)
         D3D12_UNORDERED_ACCESS_VIEW_DESC nullUavDesc = {};
         nullUavDesc.Format = DXGI_FORMAT_R32_FLOAT;
         nullUavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-        for (UINT i = 6; i <= 7; ++i)
+        for (UINT i = 11; i <= 12; ++i)
             pD3DDevice->CreateUnorderedAccessView(nullptr, nullptr, &nullUavDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, i, incSize));
         
-        // Set root SRV (slot 1) for positions (t0)
+        // Set root SRV (param 1) for positions (t0)
         D3D12_GPU_VIRTUAL_ADDRESS posGpuAddr = pPosBuf->GetD3DResource()->GetGPUVirtualAddress();
-        
-        // Determine vertex count from position buffer size
         D3D12_RESOURCE_DESC posDesc = pPosBuf->GetD3DResource()->GetDesc();
         UINT vertexCount = static_cast<UINT>(posDesc.Width / sizeof(Canvas::Math::FloatVector4));
         
@@ -1320,16 +1460,29 @@ Gem::Result CRenderQueue12::DrawMesh(
             D3D12_BARRIER_SYNC_VERTEX_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         if (pNormBuf)
-        {
             m_GpuTaskGraph.DeclareBufferUsage(drawTask, pNormBuf,
-                D3D12_BARRIER_SYNC_VERTEX_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if (pUV0Buf)
+            m_GpuTaskGraph.DeclareBufferUsage(drawTask, pUV0Buf,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if (pTanBuf)
+            m_GpuTaskGraph.DeclareBufferUsage(drawTask, pTanBuf,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        for (UINT i = 0; i < 6; ++i)
+        {
+            if (pTextures[i])
+            {
+                DeclareGpuTextureUsage(drawTask, pTextures[i],
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
         }
         drawTask.RecordFunc = [posGpuAddr, baseGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
             pCL->SetPipelineState(m_pDefaultPSO);
             pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
-            pCL->OMSetRenderTargets(3, m_GBufferRTVs, FALSE, &m_CurrentDSV);
+            pCL->OMSetRenderTargets(5, m_GBufferRTVs, FALSE, &m_CurrentDSV);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->SetGraphicsRootShaderResourceView(1, posGpuAddr);

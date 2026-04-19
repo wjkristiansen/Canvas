@@ -24,12 +24,19 @@ bool CMaterial12::MapRole(Canvas::MaterialLayerRole role, SupportedRole &out)
     case Canvas::MaterialLayerRole::Normal:
         out = Role_Normal;
         return true;
+    case Canvas::MaterialLayerRole::Roughness:
+        out = Role_Roughness;
+        return true;
+    case Canvas::MaterialLayerRole::Metallic:
+        out = Role_Metallic;
+        return true;
+    case Canvas::MaterialLayerRole::AmbientOcclusion:
+        out = Role_AmbientOcclusion;
+        return true;
     case Canvas::MaterialLayerRole::Emissive:
         out = Role_Emissive;
         return true;
     default:
-        // Roughness, Metallic etc. are accepted by the API but not yet wired
-        // through the backend; report unsupported so the caller can decide.
         return false;
     }
 }

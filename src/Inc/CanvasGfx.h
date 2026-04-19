@@ -53,6 +53,7 @@ namespace Canvas
         X24_S8_UInt,
         R10G10B10A2_UNorm,
         R10G10B10A2_UInt,
+        R11G11B10_Float,
         R8G8B8A8_UNorm,
         R8G8B8A8_UInt,
         R8G8B8A8_Norm,
@@ -94,6 +95,7 @@ namespace Canvas
         Normal,
         Roughness,
         Metallic,
+        AmbientOcclusion,
         Emissive,
     };
 
@@ -147,6 +149,11 @@ namespace Canvas
 
         GEMMETHOD_(void, SetEmissiveFactor)(const Math::FloatVector4 &factor) = 0;
         GEMMETHOD_(Math::FloatVector4, GetEmissiveFactor)() = 0;
+
+        // R=Roughness, G=Metallic, B=AmbientOcclusion, A=spare. All in [0,1].
+        // Default = (1,0,1,0): fully rough, non-metallic, no AO occlusion.
+        GEMMETHOD_(void, SetRoughMetalAOFactor)(const Math::FloatVector4 &factor) = 0;
+        GEMMETHOD_(Math::FloatVector4, GetRoughMetalAOFactor)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
