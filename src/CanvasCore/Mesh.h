@@ -14,7 +14,6 @@ class CMeshInstance :
     public TSceneGraphElement<XMeshInstance>
 {
     Gem::TGemPtr<XGfxMeshData> m_pMeshData;
-    uint32_t m_MaterialGroupIndex = 0;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -51,16 +50,6 @@ public:
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) final 
     { 
         m_pMeshData = pMesh; 
-    }
-
-    GEMMETHOD_(uint32_t, GetMaterialGroupIndex)() final 
-    { 
-        return m_MaterialGroupIndex; 
-    }
-
-    GEMMETHOD_(void, SetMaterialGroupIndex)(uint32_t index) final
-    {
-        m_MaterialGroupIndex = index;
     }
 };
 

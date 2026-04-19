@@ -1891,7 +1891,12 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     auto *pMeshData = pMeshInstance->GetMeshData();
                     if (pMeshData)
                     {
-                        Gem::ThrowGemError(DrawMesh(pMeshData, pMeshInstance->GetMaterialGroupIndex(), pNode->GetGlobalMatrix()));
+                        const uint32_t groupCount = pMeshData->GetNumMaterialGroups();
+                        const auto& worldMatrix = pNode->GetGlobalMatrix();
+                        for (uint32_t g = 0; g < groupCount; ++g)
+                        {
+                            Gem::ThrowGemError(DrawMesh(pMeshData, g, worldMatrix));
+                        }
                     }
                 }
                 // Lights were already accumulated during SubmitForRender — skip here
