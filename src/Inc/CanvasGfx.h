@@ -53,6 +53,7 @@ namespace Canvas
         X24_S8_UInt,
         R10G10B10A2_UNorm,
         R10G10B10A2_UInt,
+        R11G11B10_Float,
         R8G8B8A8_UNorm,
         R8G8B8A8_UInt,
         R8G8B8A8_Norm,
@@ -94,6 +95,7 @@ namespace Canvas
         Normal,
         Roughness,
         Metallic,
+        AmbientOcclusion,
         Emissive,
     };
 
@@ -133,6 +135,25 @@ namespace Canvas
     XGfxMaterial : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxMaterial, 0xD6E17B2CB8454154);
+
+        // Bind a texture to a specific material role. Pass nullptr to clear.
+        // Implementations may reject roles they don't support (e.g. unused
+        // roles in a fixed PBR layer set); see backend documentation.
+        GEMMETHOD(SetTexture)(MaterialLayerRole role, XGfxSurface *pSurface) = 0;
+        GEMMETHOD_(XGfxSurface *, GetTexture)(MaterialLayerRole role) = 0;
+
+        // Constant factors used when no texture is bound (and as a tint when a
+        // texture is bound). Linear-space colors. Default = identity (white,1).
+        GEMMETHOD_(void, SetBaseColorFactor)(const Math::FloatVector4 &factor) = 0;
+        GEMMETHOD_(Math::FloatVector4, GetBaseColorFactor)() = 0;
+
+        GEMMETHOD_(void, SetEmissiveFactor)(const Math::FloatVector4 &factor) = 0;
+        GEMMETHOD_(Math::FloatVector4, GetEmissiveFactor)() = 0;
+
+        // R=Roughness, G=Metallic, B=AmbientOcclusion, A=spare. All in [0,1].
+        // Default = (1,0,1,0): fully rough, non-metallic, no AO occlusion.
+        GEMMETHOD_(void, SetRoughMetalAOFactor)(const Math::FloatVector4 &factor) = 0;
+        GEMMETHOD_(Math::FloatVector4, GetRoughMetalAOFactor)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -157,10 +178,12 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    struct GfxVertexBuffer
+    struct GfxResourceAllocation
     {
         Gem::TGemPtr<XGfxBuffer> pBuffer;
-        uint64_t Offset;
+        uint64_t Offset = 0;
+        uint64_t Size = 0;
+        uint64_t AllocationKey = 0;     // Opaque key for suballocator deallocation
     };
 
     //------------------------------------------------------------------------------------------------
@@ -170,8 +193,33 @@ namespace Canvas
         GEM_INTERFACE_DECLARE(XGfxMeshData, 0x7EBC2A5A40CC96D3);
 
         GEMMETHOD_(uint32_t, GetNumMaterialGroups)() = 0;
-        GEMMETHOD_(GfxVertexBuffer *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
+        GEMMETHOD_(GfxResourceAllocation *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
         GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t materialIndex) = 0;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    // One material partition of a mesh. Positions/Normals are required;
+    // UV0/Tangents are optional and may be null. pMaterial is optional; when
+    // null the backend renders the group with a default/untextured material.
+    //
+    // All vertex arrays must be VertexCount entries long. Topology is an
+    // implicit triangle list; no index buffer in this layout.
+    struct MeshDataGroupDesc
+    {
+        uint32_t                        VertexCount   = 0;
+        const Canvas::Math::FloatVector4 *pPositions  = nullptr;   // required, W=1
+        const Canvas::Math::FloatVector4 *pNormals    = nullptr;   // required, W=0
+        const Canvas::Math::FloatVector2 *pUV0        = nullptr;   // optional
+        const Canvas::Math::FloatVector4 *pTangents   = nullptr;   // optional, xyz=T, w=bitangent sign
+        XGfxMaterial                    *pMaterial    = nullptr;   // optional
+    };
+
+    //------------------------------------------------------------------------------------------------
+    struct MeshDataDesc
+    {
+        const MeshDataGroupDesc        *pGroups       = nullptr;
+        uint32_t                        GroupCount    = 0;
+        const char                     *pName         = nullptr;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -191,8 +239,8 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    // Submits tasks to the graphics subsystem.
-    struct XGfxRenderQueue : public XRenderQueue
+    // Render queue — submits and executes rendering work.
+    struct XGfxRenderQueue : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
 
@@ -201,8 +249,12 @@ namespace Canvas
 
         // Frame rendering
         GEMMETHOD(BeginFrame)(XGfxSwapChain *pSwapChain) = 0;
-        GEMMETHOD(DrawMesh)(XGfxMeshData *pMeshData, const GfxPerObjectConstants &objectConstants) = 0;
         GEMMETHOD(EndFrame)() = 0;
+
+        // Scene/UI graph submission
+        GEMMETHOD(SubmitForRender)(XSceneGraphNode *pNode) = 0;
+        GEMMETHOD(SubmitForUIRender)(XUIGraphNode *pNode) = 0;
+        GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
     };
 
     enum GfxSurfaceFlags : uint32_t
@@ -298,31 +350,74 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    struct GfxSuballocation
-    {
-        uint64_t Offset;
-        uint64_t Size;
-        Gem::TGemPtr<XGfxBuffer> pBuffer;
-    };
-
-    //------------------------------------------------------------------------------------------------
     // Interface to a graphics device
     struct XGfxDevice : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxDevice, 0x86D4ABCCCD5FB6EE);
 
         GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) = 0;
-        GEMMETHOD(CreateMaterial)() = 0;
+        GEMMETHOD(CreateMaterial)(XGfxMaterial **ppMaterial) = 0;
         GEMMETHOD(CreateSurface)(const GfxSurfaceDesc &desc, XGfxSurface **ppSurface) = 0;
         GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, GfxMemoryUsage memoryUsage, XGfxBuffer **ppBuffer) = 0;
-        GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, GfxSuballocation &suballocationInfo) = 0;
-        GEMMETHOD_(void, FreeHostWriteRegion)(GfxSuballocation &suballocationInfo) = 0;
+
+        // Primary mesh-data factory: multi-group, supports UV0 / tangents /
+        // per-group materials. Group count >= 1.
+        GEMMETHOD(CreateMeshData)(const MeshDataDesc &desc, XGfxMeshData **ppMesh) = 0;
+
         GEMMETHOD(CreateDebugMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
             const Canvas::Math::FloatVector4 *normals,
-            XGfxRenderQueue *pRenderQueue,
-            XGfxMeshData **ppMesh) = 0;
+            XGfxMeshData **ppMesh,
+            const char* name = nullptr) = 0;
+
+        // Convenience wrapper around the descriptor-form CreateMeshData for the
+        // common single-group, position+normal-only case. Non-virtual; calls
+        // through to the primary virtual.
+        Gem::Result CreateMeshData(
+            uint32_t vertexCount,
+            const Canvas::Math::FloatVector4 *positions,
+            const Canvas::Math::FloatVector4 *normals,
+            XGfxMeshData **ppMesh,
+            const char *name = nullptr)
+        {
+            MeshDataGroupDesc group;
+            group.VertexCount = vertexCount;
+            group.pPositions  = positions;
+            group.pNormals    = normals;
+
+            MeshDataDesc desc;
+            desc.pGroups    = &group;
+            desc.GroupCount = 1;
+            desc.pName      = name;
+            return CreateMeshData(desc, ppMesh);
+        }
+
+        // Vertex buffer suballocation (alloc + upload in one call).
+        // If `inOut` already holds a buffer, it is retired to the vertex buffer
+        // pool for future reuse; the caller receives a (possibly pooled) replacement.
+        GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxResourceAllocation& inOut) = 0;
+
+        // Force any pending uploads (mesh data, vertex buffers) staged via this
+        // device to be submitted to the GPU now.  Uploads run asynchronously on a
+        // dedicated copy queue and are normally consumed when the next render
+        // submit gates on them; this entry point lets callers publish them
+        // eagerly (e.g., at scene-load time, before the first frame).
+        GEMMETHOD(FlushUploads)() = 0;
+
+        // Upload CPU data into a sub-region of a GPU surface via a staging copy
+        // on the device's copy queue.  Safe to call before the first BeginFrame;
+        // the next render submit gates on the copy fence.
+        GEMMETHOD(UploadTextureRegion)(
+            XGfxSurface *pDstSurface,
+            uint32_t dstX, uint32_t dstY,
+            uint32_t width, uint32_t height,
+            const void *pData,
+            uint32_t srcRowPitch) = 0;
+
+        // UI element creation (device wires GPU resources internally)
+        GEMMETHOD(CreateTextElement)(XUITextElement **ppElement) = 0;
+        GEMMETHOD(CreateRectElement)(XUIRectElement **ppElement) = 0;
     };
 }
 

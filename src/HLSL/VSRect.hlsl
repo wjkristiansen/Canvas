@@ -9,12 +9,12 @@
 cbuffer TextScreenConstants : register(b0)
 {
     float2 ScreenSize;   // Viewport width, height in pixels
-    float2 Padding;
+    float2 ElementOffset; // Element screen-space position (pixels)
 };
 
 struct TextVertex
 {
-    float3 Position;   // Screen-space pixel position (xy) + depth (z, ignored)
+    float3 Position;   // Element-local pixel position (xy) + depth (z, ignored)
     float2 TexCoord;   // Unused for rects (padding in StructuredBuffer layout)
     float4 Color;      // RGBA float color
 };
@@ -31,8 +31,8 @@ VSOutput main(uint vertexId : SV_VertexID)
 {
     TextVertex v = Vertices[vertexId];
 
-    float ndcX =  (v.Position.x / ScreenSize.x) * 2.0f - 1.0f;
-    float ndcY = -(v.Position.y / ScreenSize.y) * 2.0f + 1.0f;
+    float ndcX =  ((v.Position.x + ElementOffset.x) / ScreenSize.x) * 2.0f - 1.0f;
+    float ndcY = -((v.Position.y + ElementOffset.y) / ScreenSize.y) * 2.0f + 1.0f;
 
     VSOutput output;
     output.Position = float4(ndcX, ndcY, 0.0f, 1.0f);

@@ -162,15 +162,15 @@ const std::string& CGpuTaskGraph::GetLastError() const
 // D3D12 Barrier Emission Helper
 //------------------------------------------------------------------------------------------------
 
-static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL, const TaskBarriers& barriers)
+void CGpuTaskGraph::EmitBarriersToCommandList(const TaskBarriers& barriers)
 {
-    if (!pCL)
+    if (!m_pWorkCL7)
         return;
 
     if (!barriers.TextureBarriers.empty())
     {
-        std::vector<D3D12_TEXTURE_BARRIER> d3dBarriers;
-        d3dBarriers.reserve(barriers.TextureBarriers.size());
+        m_ScratchD3DTextureBarriers.clear();
+        m_ScratchD3DTextureBarriers.reserve(barriers.TextureBarriers.size());
         for (const auto& tb : barriers.TextureBarriers)
         {
             D3D12_TEXTURE_BARRIER d3d = {};
@@ -183,19 +183,19 @@ static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL, const Tas
             d3d.pResource = tb.pSurface->GetD3DResource();
             d3d.Subresources.IndexOrFirstMipLevel = tb.Subresources;
             d3d.Flags = tb.Flags;
-            d3dBarriers.push_back(d3d);
+            m_ScratchD3DTextureBarriers.push_back(d3d);
         }
         D3D12_BARRIER_GROUP group = {};
         group.Type = D3D12_BARRIER_TYPE_TEXTURE;
-        group.NumBarriers = static_cast<UINT>(d3dBarriers.size());
-        group.pTextureBarriers = d3dBarriers.data();
-        pCL->Barrier(1, &group);
+        group.NumBarriers = static_cast<UINT>(m_ScratchD3DTextureBarriers.size());
+        group.pTextureBarriers = m_ScratchD3DTextureBarriers.data();
+        m_pWorkCL7->Barrier(1, &group);
     }
 
     if (!barriers.BufferBarriers.empty())
     {
-        std::vector<D3D12_BUFFER_BARRIER> d3dBarriers;
-        d3dBarriers.reserve(barriers.BufferBarriers.size());
+        m_ScratchD3DBufferBarriers.clear();
+        m_ScratchD3DBufferBarriers.reserve(barriers.BufferBarriers.size());
         for (const auto& bb : barriers.BufferBarriers)
         {
             D3D12_BUFFER_BARRIER d3d = {};
@@ -206,13 +206,13 @@ static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL, const Tas
             d3d.pResource = bb.pBuffer->GetD3DResource();
             d3d.Offset = bb.Offset;
             d3d.Size = bb.Size;
-            d3dBarriers.push_back(d3d);
+            m_ScratchD3DBufferBarriers.push_back(d3d);
         }
         D3D12_BARRIER_GROUP group = {};
         group.Type = D3D12_BARRIER_TYPE_BUFFER;
-        group.NumBarriers = static_cast<UINT>(d3dBarriers.size());
-        group.pBufferBarriers = d3dBarriers.data();
-        pCL->Barrier(1, &group);
+        group.NumBarriers = static_cast<UINT>(m_ScratchD3DBufferBarriers.size());
+        group.pBufferBarriers = m_ScratchD3DBufferBarriers.data();
+        m_pWorkCL7->Barrier(1, &group);
     }
 }
 
@@ -223,7 +223,7 @@ static void EmitBarriersToCommandList(ID3D12GraphicsCommandList7* pCL, const Tas
 void CGpuTaskGraph::InsertTask(CGpuTask& task)
 {
     const TaskBarriers& barriers = PrepareTask(task);
-    Canvas::EmitBarriersToCommandList(m_pWorkCL7, barriers);
+    EmitBarriersToCommandList(barriers);
     if (task.RecordFunc && m_pWorkCL)
         task.RecordFunc(m_pWorkCL);
 }
@@ -373,61 +373,58 @@ const TaskBarriers& CGpuTaskGraph::PrepareTask(CGpuTask& taskData)
 const ResourceStateEntry* CGpuTaskGraph::FindResourceState(
     const std::vector<ResourceStateEntry>& table, ID3D12Resource* pResource, UINT subresource)
 {
-    const ResourceStateEntry* pUniform = nullptr;
-    for (const auto& entry : table)
+    auto it = std::lower_bound(table.begin(), table.end(), ResourceStateKey{pResource, subresource}, ResourceStateKeyLess{});
+    if (it != table.end() && it->pResource == pResource && it->Subresource == subresource)
+        return &*it;
+
+    if (subresource != 0xFFFFFFFF)
     {
-        if (entry.pResource == pResource)
-        {
-            if (entry.Subresource == subresource)
-                return &entry;
-            if (entry.Subresource == 0xFFFFFFFF)
-                pUniform = &entry;
-        }
+        auto uniformIt = std::lower_bound(table.begin(), table.end(), ResourceStateKey{pResource, 0xFFFFFFFF}, ResourceStateKeyLess{});
+        if (uniformIt != table.end() && uniformIt->pResource == pResource && uniformIt->Subresource == 0xFFFFFFFF)
+            return &*uniformIt;
     }
-    return pUniform;
+
+    return nullptr;
 }
 
 void CGpuTaskGraph::MergeResourceState(
     std::vector<ResourceStateEntry>& table, const ResourceStateEntry& entry)
 {
-    for (auto& existing : table)
+    auto it = std::lower_bound(table.begin(), table.end(), ResourceStateKey{entry.pResource, entry.Subresource}, ResourceStateKeyLess{});
+    if (it != table.end() && it->pResource == entry.pResource && it->Subresource == entry.Subresource)
     {
-        if (existing.pResource == entry.pResource && existing.Subresource == entry.Subresource)
-        {
-            existing.Sync = entry.Sync;
-            existing.Access = entry.Access;
-            existing.Layout = entry.Layout;
-            existing.Inherited = entry.Inherited;
-            return;
-        }
+        it->Sync = entry.Sync;
+        it->Access = entry.Access;
+        it->Layout = entry.Layout;
+        it->Inherited = entry.Inherited;
+        return;
     }
-    table.push_back(entry);
+    table.insert(it, entry);
 }
 
 void CGpuTaskGraph::UnionResourceState(
     std::vector<ResourceStateEntry>& table, const ResourceStateEntry& entry)
 {
-    for (auto& existing : table)
+    auto it = std::lower_bound(table.begin(), table.end(), ResourceStateKey{entry.pResource, entry.Subresource}, ResourceStateKeyLess{});
+    if (it != table.end() && it->pResource == entry.pResource && it->Subresource == entry.Subresource)
     {
-        if (existing.pResource == entry.pResource && existing.Subresource == entry.Subresource)
+        auto& existing = *it;
+        if (!entry.Inherited && existing.Inherited)
         {
-            if (!entry.Inherited && existing.Inherited)
-            {
-                existing = entry;
-                return;
-            }
-            if (entry.Inherited && !existing.Inherited)
-                return;
-            existing.Sync |= entry.Sync;
-            if (existing.Access == D3D12_BARRIER_ACCESS_NO_ACCESS)
-                existing.Access = entry.Access;
-            else if (entry.Access != D3D12_BARRIER_ACCESS_NO_ACCESS)
-                existing.Access |= entry.Access;
-            existing.Layout = entry.Layout;
+            existing = entry;
             return;
         }
+        if (entry.Inherited && !existing.Inherited)
+            return;
+        existing.Sync |= entry.Sync;
+        if (existing.Access == D3D12_BARRIER_ACCESS_NO_ACCESS)
+            existing.Access = entry.Access;
+        else if (entry.Access != D3D12_BARRIER_ACCESS_NO_ACCESS)
+            existing.Access |= entry.Access;
+        existing.Layout = entry.Layout;
+        return;
     }
-    table.push_back(entry);
+    table.insert(it, entry);
 }
 
 //------------------------------------------------------------------------------------------------

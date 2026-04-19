@@ -1,5 +1,5 @@
 //================================================================================================
-// CUIGraph - UI element graph with dirty-tracked update and render submission
+// CUIGraph - UI graph with dirty-tracked update and render submission
 //================================================================================================
 
 #pragma once
@@ -8,50 +8,35 @@
 namespace Canvas
 {
 
-class CUIGraph : public Gem::TGeneric<XUIGraph>
+class CUIGraph : public TCanvasElement<XUIGraph>
 {
-    CUIElementCore m_Root;
-    std::unique_ptr<CGlyphAtlasImpl> m_pAtlas;
-
-    // Scratch buffers for Submit (reused across frames to avoid per-frame allocations)
-    std::vector<CUITextElement*> m_VisibleTextElements;
-    std::vector<UITextDrawCommand> m_DrawCommands;
-    std::vector<CUIRectElement*> m_VisibleRectElements;
-    std::vector<UIRectDrawCommand> m_RectDrawCommands;
-
-    // Vertex slots freed by RemoveElement, processed in next Submit
-    struct PendingVertexSlotFree
-    {
-        uint32_t StartVertex;
-        uint32_t MaxVertexCount;
-        UIElementType Type;
-    };
-    std::vector<PendingVertexSlotFree> m_PendingVertexSlotFrees;
+    Gem::TGemPtr<CUIGraphNodeImpl> m_pRootNode;
+    Gem::TGemPtr<XGfxDevice> m_pDevice;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XUIGraph)
+        GEM_INTERFACE_ENTRY(XCanvasElement)
+        GEM_INTERFACE_ENTRY(XNamedElement)
     END_GEM_INTERFACE_MAP()
 
     CUIGraph() = default;
+    CUIGraph(XCanvas* pCanvas) : TCanvasElement(pCanvas) {}
 
     void Initialize() {}
     void Uninitialize() {}
 
-    void SetAtlas(std::unique_ptr<CGlyphAtlasImpl> pAtlas) { m_pAtlas = std::move(pAtlas); }
+    void SetDevice(XGfxDevice* pDevice) { m_pDevice = pDevice; }
 
-    GEMMETHOD_(XUIElement*, GetRoot)() override { return nullptr; }
-    GEMMETHOD(CreateTextElement)(XUIElement* pParent, XUITextElement** ppElement) override;
-    GEMMETHOD(CreateRectElement)(XUIElement* pParent, XUIRectElement** ppElement) override;
+    GEMMETHOD_(XGfxDevice*, GetDevice)() override { return m_pDevice.Get(); }
     GEMMETHOD(RemoveElement)(XUIElement* pElement) override;
+    GEMMETHOD(CreateNode)(XUIGraphNode* pParent, XUIGraphNode** ppNode) override;
+    GEMMETHOD_(XUIGraphNode*, GetRootNode)() override;
     GEMMETHOD(Update)() override;
-    GEMMETHOD(Submit)(XRenderQueue* pRenderQueue) override;
+    GEMMETHOD(SubmitRenderables)(XGfxRenderQueue* pRenderQueue) override;
 
 private:
-    void UpdateElement(CUIElementCore* pElement);
-    void CollectVisibleTextElements(CUIElementCore* pElement);
-    void CollectVisibleRectElements(CUIElementCore* pElement);
-    static CUIElementCore* GetCore(XUIElement* pElement);
+    Gem::Result UpdateNode(CUIGraphNodeImpl* pNode);
 };
 
 } // namespace Canvas

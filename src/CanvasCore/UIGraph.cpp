@@ -9,46 +9,31 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CUIElementCore* CUIGraph::GetCore(XUIElement* pElement)
+GEMMETHODIMP_(XUIGraphNode*) CUIGraph::GetRootNode()
 {
-    return CUIElementCore::GetCore(pElement);
+    if (!m_pRootNode)
+    {
+        m_pRootNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
+        m_pRootNode->SetName("UIRoot");
+        if (m_pCanvas) m_pRootNode->Register(m_pCanvas);
+    }
+    return m_pRootNode.Get();
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::CreateTextElement(XUIElement* pParent, XUITextElement** ppElement)
+Gem::Result CUIGraph::CreateNode(XUIGraphNode* pParent, XUIGraphNode** ppNode)
 {
-    if (!ppElement)
+    if (!ppNode)
         return Gem::Result::BadPointer;
 
-    CUIElementCore* pParentCore = pParent ? GetCore(pParent) : &m_Root;
-    if (!pParentCore)
-        return Gem::Result::InvalidArg;
+    XUIGraphNode* pParentNode = pParent ? pParent : GetRootNode();
 
-    // TGenericImpl provides ref counting; element starts with refcount=1 (caller's ref)
-    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>();
-    pElement->SetGlyphAtlasInternal(m_pAtlas.get());
+    Gem::TGemPtr<CUIGraphNodeImpl> pNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
+    pNode->SetName("UINode");
+    if (m_pCanvas) pNode->Register(m_pCanvas);
+    pParentNode->AddChild(pNode);
 
-    // AddChild AddRefs the element (parent holds a ref via TGemPtr in ChildNode)
-    pParentCore->AddChild(pElement);
-
-    *ppElement = pElement.Detach();  // Transfer caller's ref
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::CreateRectElement(XUIElement* pParent, XUIRectElement** ppElement)
-{
-    if (!ppElement)
-        return Gem::Result::BadPointer;
-
-    CUIElementCore* pParentCore = pParent ? GetCore(pParent) : &m_Root;
-    if (!pParentCore)
-        return Gem::Result::InvalidArg;
-
-    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>();
-    pParentCore->AddChild(pElement);
-
-    *ppElement = pElement.Detach();
+    *ppNode = pNode.Detach();
     return Gem::Result::Success;
 }
 
@@ -58,21 +43,13 @@ Gem::Result CUIGraph::RemoveElement(XUIElement* pElement)
     if (!pElement)
         return Gem::Result::BadPointer;
 
-    CUIElementCore* pCore = GetCore(pElement);
-    if (!pCore)
-        return Gem::Result::InvalidArg;
-
-    // Defer vertex slot free to next Submit (we don't have XRenderQueue here)
-    auto& slot = pCore->GetBufferSlot();
-    if (slot.MaxVertexCount > 0)
+    // Unbind from node — vertex allocation stays with the element
+    XUIGraphNode* pNode = pElement->GetAttachedNode();
+    if (pNode)
     {
-        m_PendingVertexSlotFrees.push_back({ slot.StartVertex, slot.MaxVertexCount, pCore->GetType() });
-        slot.StartVertex = 0;
-        slot.MaxVertexCount = 0;
+        CUIGraphNodeImpl* pImpl = static_cast<CUIGraphNodeImpl*>(pNode);
+        pImpl->UnbindElement(pElement);
     }
-
-    // RemoveFromParent drops the parent's ref
-    pCore->RemoveFromParent();
 
     return Gem::Result::Success;
 }
@@ -80,217 +57,124 @@ Gem::Result CUIGraph::RemoveElement(XUIElement* pElement)
 //------------------------------------------------------------------------------------------------
 Gem::Result CUIGraph::Update()
 {
-    UpdateElement(&m_Root);
+    if (m_pRootNode)
+        return UpdateNode(m_pRootNode.Get());
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIGraph::UpdateElement(CUIElementCore* pElement)
+Gem::Result CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
 {
-    if (!pElement->IsEffectivelyVisible())
-        return;
-
-    uint32_t dirty = pElement->GetDirtyFlags();
-    if (dirty & (CUIElementCore::DirtyContent | CUIElementCore::DirtyPosition))
+    for (UINT i = 0; i < pNode->GetBoundElementCount(); ++i)
     {
-        pElement->RegenerateVertices();
-        pElement->GetBufferSlot().GpuDirty = true;
-        pElement->ClearDirtyFlags(CUIElementCore::DirtyContent | CUIElementCore::DirtyPosition);
+        XUIElement* pElem = pNode->GetBoundElement(i);
+        if (!pElem->IsVisible())
+            continue;
+
+        if (pElem->GetType() == UIElementType::Text)
+        {
+            auto* pText = AsText(pElem);
+            if (pText->IsDirty())
+            {
+                Gem::Result result = pText->RegenerateVertices();
+                if (Gem::Failed(result))
+                    return result;
+            }
+        }
+        else if (pElem->GetType() == UIElementType::Rect)
+        {
+            auto* pRect = AsRect(pElem);
+            if (pRect->IsDirty())
+            {
+                Gem::Result result = pRect->RegenerateVertices();
+                if (Gem::Failed(result))
+                    return result;
+            }
+        }
     }
 
-    if (dirty & CUIElementCore::DirtyVisibility)
-        pElement->ClearDirtyFlags(CUIElementCore::DirtyVisibility);
-
-    CUIElementCore* pChild = pElement->GetFirstChildCore();
+    // Recurse to child nodes
+    XUIGraphNode* pChild = pNode->GetFirstChild();
     while (pChild)
     {
-        UpdateElement(pChild);
-        pChild = pChild->GetNextSiblingCore();
+        Gem::Result result = UpdateNode(static_cast<CUIGraphNodeImpl*>(pChild));
+        if (Gem::Failed(result))
+            return result;
+        pChild = pChild->GetNextSibling();
     }
+
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUIGraph::Submit(XRenderQueue* pRenderQueue)
+Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
 {
+    if (!m_pDevice || !m_pRootNode)
+        return Gem::Result::Success;
     if (!pRenderQueue)
         return Gem::Result::BadPointer;
 
-    // Free vertex slots from removed elements
-    for (auto& free : m_PendingVertexSlotFrees)
+    Gem::TGemPtr<XGfxRenderQueue> pGfxRQ;
+    Gem::ThrowGemError(pRenderQueue->QueryInterface(&pGfxRQ));
+
+    // Walk node tree: alloc+upload for dirty elements, submit nodes with visible content
+    std::vector<XUIGraphNode*> stack;
+    stack.push_back(m_pRootNode.Get());
+    while (!stack.empty())
     {
-        if (free.Type == UIElementType::Rect)
-            pRenderQueue->FreeUIRectVertices(free.StartVertex, free.MaxVertexCount);
-        else
-            pRenderQueue->FreeUITextVertices(free.StartVertex, free.MaxVertexCount);
-    }
-    m_PendingVertexSlotFrees.clear();
+        XUIGraphNode* pNode = stack.back();
+        stack.pop_back();
 
-    // --- Rect batch (drawn first, behind text) ---
-    m_VisibleRectElements.clear();
-    CollectVisibleRectElements(&m_Root);
-
-    for (CUIRectElement* pRect : m_VisibleRectElements)
-    {
-        auto& slot = pRect->GetBufferSlot();
-        uint32_t vertexCount = pRect->GetCachedVertexCount();
-
-        if (vertexCount > slot.MaxVertexCount)
+        bool hasVisibleElements = false;
+        UINT elemCount = pNode->GetBoundElementCount();
+        for (UINT i = 0; i < elemCount; ++i)
         {
-            if (slot.MaxVertexCount > 0)
-                pRenderQueue->FreeUIRectVertices(slot.StartVertex, slot.MaxVertexCount);
+            XUIElement* pElem = pNode->GetBoundElement(i);
+            if (!pElem->IsVisible())
+                continue;
 
-            uint32_t startVertex = 0;
-            Gem::Result r = pRenderQueue->AllocUIRectVertices(vertexCount, &startVertex);
-            if (Failed(r))
-                return r;
+            if (pElem->GetType() == UIElementType::Text)
+            {
+                auto* pText = AsText(pElem);
+                if (!pText->HasContent() || pText->GetVertexCount() == 0)
+                    continue;
+                hasVisibleElements = true;
 
-            slot.StartVertex = startVertex;
-            slot.MaxVertexCount = vertexCount;
-            slot.GpuDirty = true;
+                if (pText->IsDirty())
+                {
+                    GfxResourceAllocation vb = pText->GetVertexBuffer();
+                    Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
+                        pText->GetVertexCount(), sizeof(TextVertex), pText->GetVertexData(), pGfxRQ, vb));
+                    pText->SetVertexBuffer(vb);
+                    pText->ClearDirty();
+                }
+            }
+            else if (pElem->GetType() == UIElementType::Rect)
+            {
+                auto* pRect = AsRect(pElem);
+                if (!pRect->HasContent() || pRect->GetVertexCount() == 0)
+                    continue;
+                hasVisibleElements = true;
+
+                if (pRect->IsDirty())
+                {
+                    GfxResourceAllocation vb = pRect->GetVertexBuffer();
+                    Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
+                        pRect->GetVertexCount(), sizeof(TextVertex), pRect->GetVertexData(), pGfxRQ, vb));
+                    pRect->SetVertexBuffer(vb);
+                    pRect->ClearDirty();
+                }
+            }
         }
 
-        if (slot.GpuDirty && vertexCount > 0)
-        {
-            Gem::Result r = pRenderQueue->UploadUIRectVertices(
-                slot.StartVertex, pRect->GetCachedVertexData(), vertexCount);
-            if (Failed(r))
-                return r;
-            slot.GpuDirty = false;
-        }
+        if (hasVisibleElements)
+            Gem::ThrowGemError(pRenderQueue->SubmitForUIRender(pNode));
+
+        for (XUIGraphNode* pChild = pNode->GetFirstChild(); pChild; pChild = pChild->GetNextSibling())
+            stack.push_back(pChild);
     }
 
-    m_RectDrawCommands.clear();
-    for (CUIRectElement* pRect : m_VisibleRectElements)
-    {
-        uint32_t vertexCount = pRect->GetCachedVertexCount();
-        if (vertexCount > 0)
-        {
-            auto& slot = pRect->GetBufferSlot();
-            m_RectDrawCommands.push_back({ slot.StartVertex, vertexCount });
-        }
-    }
-
-    if (!m_RectDrawCommands.empty())
-    {
-        Gem::Result r = pRenderQueue->DrawUIRectBatch(
-            m_RectDrawCommands.data(),
-            static_cast<uint32_t>(m_RectDrawCommands.size()));
-        if (Failed(r))
-            return r;
-    }
-
-    // --- Text batch (drawn after rects) ---
-    m_VisibleTextElements.clear();
-    if (!m_pAtlas)
-        return Gem::Result::Success;
-    CollectVisibleTextElements(&m_Root);
-
-    if (m_VisibleTextElements.empty())
-        return Gem::Result::Success;
-
-    // Alloc/realloc vertex slots and upload dirty data
-    XGfxSurface* pAtlasTexture = nullptr;
-
-    for (CUITextElement* pText : m_VisibleTextElements)
-    {
-        auto& slot = pText->GetBufferSlot();
-        uint32_t vertexCount = pText->GetCachedVertexCount();
-
-        // Allocate or grow the slot if vertex count exceeds capacity
-        if (vertexCount > slot.MaxVertexCount)
-        {
-            if (slot.MaxVertexCount > 0)
-                pRenderQueue->FreeUITextVertices(slot.StartVertex, slot.MaxVertexCount);
-
-            uint32_t startVertex = 0;
-            Gem::Result r = pRenderQueue->AllocUITextVertices(vertexCount, &startVertex);
-            if (Failed(r))
-                return r;
-
-            slot.StartVertex = startVertex;
-            slot.MaxVertexCount = vertexCount;
-            slot.GpuDirty = true;
-        }
-
-        // Upload dirty vertex data
-        if (slot.GpuDirty && vertexCount > 0)
-        {
-            Gem::Result r = pRenderQueue->UploadUITextVertices(
-                slot.StartVertex, pText->GetCachedVertexData(), vertexCount);
-            if (Failed(r))
-                return r;
-            slot.GpuDirty = false;
-        }
-
-        // Track atlas texture (graph owns the atlas)
-        if (!pAtlasTexture)
-            pAtlasTexture = m_pAtlas->GetAtlasTexture();
-    }
-
-    if (!pAtlasTexture)
-        return Gem::Result::Success;
-
-    // Build draw command array
-    m_DrawCommands.clear();
-    for (CUITextElement* pText : m_VisibleTextElements)
-    {
-        uint32_t vertexCount = pText->GetCachedVertexCount();
-        if (vertexCount > 0)
-        {
-            auto& slot = pText->GetBufferSlot();
-            m_DrawCommands.push_back({ slot.StartVertex, vertexCount });
-        }
-    }
-
-    if (m_DrawCommands.empty())
-        return Gem::Result::Success;
-
-    return pRenderQueue->DrawUITextBatch(
-        m_DrawCommands.data(),
-        static_cast<uint32_t>(m_DrawCommands.size()),
-        pAtlasTexture);
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIGraph::CollectVisibleTextElements(CUIElementCore* pElement)
-{
-    if (!pElement->IsEffectivelyVisible())
-        return;
-
-    if (pElement->GetType() == UIElementType::Text)
-    {
-        auto pText = static_cast<CUITextElement*>(pElement);
-        if (pText->GetCachedVertexCount() > 0)
-            m_VisibleTextElements.push_back(pText);
-    }
-
-    CUIElementCore* pChild = pElement->GetFirstChildCore();
-    while (pChild)
-    {
-        CollectVisibleTextElements(pChild);
-        pChild = pChild->GetNextSiblingCore();
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIGraph::CollectVisibleRectElements(CUIElementCore* pElement)
-{
-    if (!pElement->IsEffectivelyVisible())
-        return;
-
-    if (pElement->GetType() == UIElementType::Rect)
-    {
-        auto pRect = static_cast<CUIRectElement*>(pElement);
-        if (pRect->GetCachedVertexCount() > 0)
-            m_VisibleRectElements.push_back(pRect);
-    }
-
-    CUIElementCore* pChild = pElement->GetFirstChildCore();
-    while (pChild)
-    {
-        CollectVisibleRectElements(pChild);
-        pChild = pChild->GetNextSiblingCore();
-    }
+    return Gem::Result::Success;
 }
 
 } // namespace Canvas

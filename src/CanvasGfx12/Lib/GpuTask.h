@@ -134,6 +134,9 @@ struct GpuBufferUsage
 // Inherited resource state entry — tracks the last known sync/access/layout for a
 // specific subresource through a task's dependency chain. Keyed by (pResource, Subresource).
 // Subresource 0xFFFFFFFF means "all subresources not otherwise specified" (uniform default).
+// Table invariant: entries are kept sorted by (pResource, Subresource) ascending.
+// Because 0xFFFFFFFF is the maximum UINT, the uniform fallback entry for a resource
+// always sorts after that resource's per-subresource entries.
 struct ResourceStateEntry
 {
     ID3D12Resource* pResource = nullptr;
@@ -158,8 +161,14 @@ struct CGpuTask
     std::vector<GpuBufferUsage> BufferUsages;
 
     // Recording function — invoked synchronously by InsertTask after barriers are emitted.
-    // Receives the graph's work CL for command recording. Capturing stack locals by reference
-    // is safe because InsertTask never defers invocation.
+    // Receives the graph's work CL for command recording.
+    //
+    // IMPORTANT: Capture only raw pointers and plain-old-data (GPU addresses, offsets, counts).
+    // Do NOT capture ref-counting smart pointers (TGemPtr, GfxResourceAllocation, etc.).
+    // The lambda is invoked inline by InsertTask — the caller's stack keeps objects alive.
+    // Captured TGemPtrs create hidden refs that survive in the task deque after Reset(),
+    // causing resource leaks.
+    //
     // May be null for transition-only tasks (e.g. PresentTransition).
     std::function<void(ID3D12GraphicsCommandList*)> RecordFunc;
 
@@ -376,11 +385,29 @@ private:
     // Scratch buffer for PrepareTask results (avoids per-call allocation)
     TaskBarriers m_ScratchBarriers;
 
+    // Per-emit scratch translated to raw D3D12 barrier structs.  Members so the
+    // backing storage is reused across InsertTask calls.
+    std::vector<D3D12_TEXTURE_BARRIER> m_ScratchD3DTextureBarriers;
+    std::vector<D3D12_BUFFER_BARRIER>  m_ScratchD3DBufferBarriers;
+
     // Last error from validation
     std::string m_LastError;
 
     // Whether Dispatch() was called this frame (Reset clears this)
     bool m_Dispatched = false;
+
+    // Lookup key for the sorted ResourceStateEntry table.
+    using ResourceStateKey = std::pair<ID3D12Resource*, UINT>;
+
+    // Order entries by (pResource, Subresource). 0xFFFFFFFF (uniform) sorts last per resource.
+    struct ResourceStateKeyLess
+    {
+        bool operator()(const ResourceStateEntry& e, const ResourceStateKey& k) const
+        {
+            if (e.pResource != k.first) return e.pResource < k.first;
+            return e.Subresource < k.second;
+        }
+    };
 
     // Look up a resource+subresource in a task's inherited resource state table.
     // Tries exact (pResource, subresource) match first, falls back to uniform entry (0xFFFFFFFF).
@@ -399,6 +426,10 @@ private:
     // Validate that direct dependencies don't leave any resource in conflicting states.
     // Allocates a temporary map. Sets m_LastError if conflicts detected.
     void ValidateDependencyConflicts(const CGpuTask& task);
+
+    // Translate the resolved TaskBarriers into D3D12_*_BARRIER structs (using
+    // scratch members) and emit them on the work command list.
+    void EmitBarriersToCommandList(const TaskBarriers& barriers);
 };
 
 //------------------------------------------------------------------------------------------------

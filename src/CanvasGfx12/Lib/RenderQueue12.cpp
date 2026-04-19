@@ -14,9 +14,74 @@
 #include "Surface12.h"
 #include "SwapChain12.h"
 #include "MeshData12.h"
+#include "GlyphAtlas.h"
 
 #include <filesystem>
 #include <fstream>
+#include <cmath>
+#include <algorithm>
+
+namespace
+{
+    // Global light culling threshold.
+    // 0 disables intensity-based culling until an explicit tuned value is provided.
+    constexpr float kDefaultLightCullThreshold = 0.0f;
+
+    // Computes the maximum distance at which a light contributes above the cull threshold,
+    // given its attenuation coefficients and authored range.  The result is stored in
+    // HlslLight::AttenuationAndRange.w so the shader can early-out without recomputing it.
+    float ComputeLightCutoffDistance(
+        float peakIntensity,
+        float c, float l, float q,
+        float range,
+        float threshold)
+    {
+        if (threshold <= 0.0f)
+            return range > 0.0f ? range : 1e20f;
+
+        if (peakIntensity <= threshold)
+            return 0.0f;
+
+        c = (std::max)(c, 0.0f);
+        l = (std::max)(l, 0.0f);
+        q = (std::max)(q, 0.0f);
+
+        float targetDenom = peakIntensity / threshold;
+
+        float cutoff = 1e20f;
+        if (q > 1e-8f)
+        {
+            float disc = l * l - 4.0f * q * (c - targetDenom);
+            if (disc < 0.0f)
+                return 0.0f;
+            cutoff = (std::max)(0.0f, (-l + std::sqrt(disc)) / (2.0f * q));
+        }
+        else if (l > 1e-8f)
+        {
+            cutoff = (std::max)(0.0f, (targetDenom - c) / l);
+        }
+        else if (c > 1e-8f)
+        {
+            cutoff = (peakIntensity / c > threshold) ? 1e20f : 0.0f;
+        }
+        else
+        {
+            cutoff = 0.0f;
+        }
+
+        if (range > 0.0f)
+            cutoff = (std::min)(cutoff, range);
+
+        return cutoff;
+    }
+}
+
+// Verify Canvas::LightType enum values match the HLSL LIGHT_* defines (HlslTypes.h).
+static_assert(static_cast<uint32_t>(Canvas::LightType::Ambient)     == LIGHT_AMBIENT,     "LightType::Ambient mismatch");
+static_assert(static_cast<uint32_t>(Canvas::LightType::Point)       == LIGHT_POINT,       "LightType::Point mismatch");
+static_assert(static_cast<uint32_t>(Canvas::LightType::Directional) == LIGHT_DIRECTIONAL, "LightType::Directional mismatch");
+static_assert(static_cast<uint32_t>(Canvas::LightType::Spot)        == LIGHT_SPOT,        "LightType::Spot mismatch");
+static_assert(static_cast<uint32_t>(Canvas::LightType::Area)        == LIGHT_AREA,        "LightType::Area mismatch");
 
 //------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------
@@ -79,15 +144,20 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     //  Root UAV (descriptor static)
     //  Root descriptor table
 
-    // The default root descriptor table is layed out as follows:
-    //  CBV[2] (data static)
-    //  SRV[4] (data static)
-    //  UAV[2] (descriptor static)
+    // The default root descriptor table is laid out as follows:
+    //  CBV[2]  @ b1, b2  (data static)
+    //  SRV[9]  @ t1..t9  (data static) — t1=normals, t2=UV0, t3=tangents,
+    //                    t4=albedo, t5=normalMap, t6=emissive,
+    //                    t7=roughness, t8=metallic, t9=ambient occlusion
+    //  UAV[2]  @ u1, u2  (descriptor static)
+    //
+    // A single static sampler s0 (LinearWrap, anisotropic mip filter) covers
+    // all material texture sampling.
 
     std::vector<CD3DX12_DESCRIPTOR_RANGE1> DefaultDescriptorRanges(3);
     DefaultDescriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
-    DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
-    DefaultDescriptorRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 6);
+    DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
+    DefaultDescriptorRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 11);
 
     std::vector<CD3DX12_ROOT_PARAMETER1> DefaultRootParams(4);
     DefaultRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
@@ -95,7 +165,18 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     DefaultRootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
     DefaultRootParams[3].InitAsDescriptorTable(static_cast<UINT>(DefaultDescriptorRanges.size()), DefaultDescriptorRanges.data(), D3D12_SHADER_VISIBILITY_ALL);
 
-    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc(4U, DefaultRootParams.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+    CD3DX12_STATIC_SAMPLER_DESC DefaultStaticSamplers[1] = {};
+    DefaultStaticSamplers[0].Init(
+        0,                                          // s0
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+
+    CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc(
+        4U, DefaultRootParams.data(),
+        _countof(DefaultStaticSamplers), DefaultStaticSamplers,
+        D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
     CComPtr<ID3DBlob> pRSBlob;
     ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&DefaultRootSigDesc, &pRSBlob, nullptr));
@@ -110,6 +191,24 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pDSVDescriptorHeap.Attach(pDSVDH.Detach());
     m_pCommandQueue.Attach(pCQ.Detach());
     m_pFence.Attach(pFence.Detach());
+
+    m_CbvSrvUavIncrement = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_SamplerIncrement   = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+    m_RtvIncrement       = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    m_DsvIncrement       = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+
+    m_DescriptorHeapsArray[0] = m_pShaderResourceDescriptorHeap;
+    m_DescriptorHeapsArray[1] = m_pSamplerDescriptorHeap;
+
+    // Per-queue upload ring (1 MB initial, grows on demand).
+    m_UploadRing.Initialize(pDevice, 1 * 1024 * 1024);
+
+    // Register this queue's fence with the device-level resource manager so
+    // pooled buffers and deferred releases can be tracked queue-agnostically.
+    m_TimelineId = pDevice->GetResourceManager().RegisterTimeline(m_pFence);
+
+    // Pre-allocate per-frame queues to avoid repeated heap reallocations
+    m_RenderableQueue.reserve(128);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -121,7 +220,7 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
         // Create and register the swapchain
         DXGI_FORMAT dxgiFormat = CanvasFormatToDXGIFormat(Format);
         Gem::TGemPtr<CSwapChain12> pSwapChain;
-        Gem::ThrowGemError(TGfxElement<CSwapChain12>::CreateAndRegister<CSwapChain12>(&pSwapChain, GetCanvas(), hWnd, Windowed, this, dxgiFormat, NumBuffers, nullptr));
+        Gem::ThrowGemError(TGfxElement<CSwapChain12>::CreateAndRegister<CSwapChain12>(&pSwapChain, GetCanvas(), hWnd, Windowed, this, dxgiFormat, NumBuffers, "SwapChain"));
         
         return pSwapChain->QueryInterface(ppSwapChain);
     }
@@ -135,12 +234,9 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
 //------------------------------------------------------------------------------------------------
 D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
 {
-    ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     UINT slot = m_NextRTVSlot;
     m_NextRTVSlot = (m_NextRTVSlot + 1) % NumRTVDescriptors;
-    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
-    cpuHandle.ptr= m_pRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_pRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_RtvIncrement);
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
     rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
     rtvDesc.Texture2DArray.ArraySize = 1;
@@ -155,6 +251,15 @@ D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurfac
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::Flush()
 {
+    // Gate this frame's work on any pending device-level upload work (e.g.
+    // CCopyQueue buffer copies for newly-created mesh data).  The token is
+    // queue-agnostic so the same primitive will serve a future ECL graph.
+    if (auto token = m_pDevice->EnsureUploadsRetired())
+    {
+        if (auto* pFence = m_pDevice->GetResourceManager().GetTimelineFence(token->TimelineId))
+            m_pCommandQueue->Wait(pFence, token->Value);
+    }
+
     // Dispatch order: scene → UI
     if (m_TaskGraphActive)
         m_GpuTaskGraph.Dispatch();
@@ -167,6 +272,9 @@ void CRenderQueue12::Flush()
     
     // Signal fence for scene + UI work (allocator rotation depends on this)
     m_pCommandQueue->Signal(m_pFence, ++m_FenceValue);
+
+    // Record ring buffer usage for this frame
+    m_UploadRing.MarkSubmissionEnd(m_FenceValue);
 
     // Reset scene and UI graphs for next frame
     UINT64 completedFenceValue = m_pFence->GetCompletedValue();
@@ -241,6 +349,23 @@ void CRenderQueue12::Uninitialize()
             CloseHandle(hEvent);
         }
     }
+
+    // GPU is idle — drain any remaining deferred resources.
+    ProcessCompletedWork();
+
+    // Unregister this queue's timeline from the device-level resource manager.
+    // Drains and drops any retired buffers / deferred refs owned by this timeline.
+    // The shared bucketed pool stays alive — it is owned by the device and torn
+    // down when the device is destroyed (or by the last surviving queue's release
+    // chain via CDevice12::~CDevice12).
+    if (m_TimelineId != FenceToken::kInvalidTimelineId)
+    {
+        m_pDevice->GetResourceManager().UnregisterTimeline(m_TimelineId);
+        m_TimelineId = FenceToken::kInvalidTimelineId;
+    }
+
+    // Release the per-queue upload ring now that the GPU is idle.
+    m_UploadRing.Shutdown();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -270,14 +395,6 @@ void CRenderQueue12::WaitForGpuFence(UINT64 fenceValue)
         WaitForSingleObject(hEvent, INFINITE);
         CloseHandle(hEvent);
     }
-}
-
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::RetireUploadAllocation(const Canvas::GfxSuballocation& suballocation)
-{
-    // Defer release until the GPU completes the next submit (current fence value + 1).
-    // ProcessCompletedWork will free the suballocation once the fence advances past this value.
-    m_PendingUploadRetirements.push_back({ suballocation, m_FenceValue + 1 });
 }
 
 //------------------------------------------------------------------------------------------------
@@ -353,42 +470,18 @@ void CRenderQueue12::ProcessCompletedWork()
 {
     UINT64 completedValue = m_pFence->GetCompletedValue();
     
-    // Release deferred host-write suballocations whose fence has completed
-    for (auto it = m_PendingUploadRetirements.begin(); it != m_PendingUploadRetirements.end();)
-    {
-        if (it->FenceValue <= completedValue)
-        {
-            if (m_pDevice)
-            {
-                m_pDevice->FreeHostWriteRegion(const_cast<Canvas::GfxSuballocation&>(it->Suballocation));
-            }
-            it = m_PendingUploadRetirements.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
-    
+    // Reclaim upload ring buffer space in bulk
+    m_UploadRing.Reclaim(completedValue);
+
+    // Reclaim pooled buffers and (later) deferred releases across all timelines.
+    m_pDevice->GetResourceManager().Reclaim();
+
     // Clean up completed sync points
     for (auto it = m_GpuSyncPoints.begin(); it != m_GpuSyncPoints.end();)
     {
         if (it->second.FenceValue <= completedValue)
         {
             it = m_GpuSyncPoints.erase(it);
-        }
-        else
-        {
-            ++it;
-        }
-    }
-
-    // Release old persistent buffers (from growth) whose fence has completed
-    for (auto it = m_PendingBufferRetirements.begin(); it != m_PendingBufferRetirements.end();)
-    {
-        if (it->FenceValue <= completedValue)
-        {
-            it = m_PendingBufferRetirements.erase(it);
         }
         else
         {
@@ -538,6 +631,45 @@ void CRenderQueue12::EnsureGBuffers(UINT width, UINT height)
         pSurface->QueryInterface(&pGBuffer);
         m_pGBufferDiffuseColor = pGBuffer;
     }
+
+    // World position G-buffer
+    {
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            m_GBufferWorldPosFormat, width, height, flags);
+
+        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+        Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
+
+        Gem::TGemPtr<CSurface12> pGBuffer;
+        pSurface->QueryInterface(&pGBuffer);
+        m_pGBufferWorldPos = pGBuffer;
+    }
+
+    // PBR G-buffer (R=Roughness, G=Metallic, B=AO, A=spare)
+    {
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            m_GBufferPBRFormat, width, height, flags);
+
+        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+        Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
+
+        Gem::TGemPtr<CSurface12> pGBuffer;
+        pSurface->QueryInterface(&pGBuffer);
+        m_pGBufferPBR = pGBuffer;
+    }
+
+    // Emissive G-buffer (RGB linear, R11G11B10_FLOAT)
+    {
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            m_GBufferEmissiveFormat, width, height, flags);
+
+        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+        Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
+
+        Gem::TGemPtr<CSurface12> pGBuffer;
+        pSurface->QueryInterface(&pGBuffer);
+        m_pGBufferEmissive = pGBuffer;
+    }
     
     m_GBufferWidth = width;
     m_GBufferHeight = height;
@@ -552,12 +684,10 @@ void CRenderQueue12::EnsureGBuffers(UINT width, UINT height)
 D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateDepthStencilView(CSurface12 *pSurface)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
     UINT slot = m_NextDSVSlot;
     m_NextDSVSlot = (m_NextDSVSlot + 1) % NumDSVDescriptors;
     
-    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
-    cpuHandle.ptr = m_pDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_pDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_DsvIncrement);
     
     D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
     dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
@@ -577,17 +707,14 @@ D3D12_GPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateShaderResourceView(
     ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-    UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     UINT slot = m_NextSRVSlot;
     m_NextSRVSlot = (m_NextSRVSlot + 1) % NumShaderResourceDescriptors;
     
-    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
-    cpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_CbvSrvUavIncrement);
     
     pD3DDevice->CreateShaderResourceView(pResource, &srvDesc, cpuHandle);
     
-    D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle;
-    gpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * slot);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), slot, m_CbvSrvUavIncrement);
     return gpuHandle;
 }
 
@@ -613,7 +740,7 @@ void CRenderQueue12::EnsureDefaultPSO()
         Gem::ThrowGemError(Gem::Result::Fail);
     }
     
-    // Create PSO - geometry pass writes to G-buffer MRTs (normals + diffuse)
+    // Create PSO - geometry pass writes to G-buffer MRTs (normals + diffuse + world pos)
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
     psoDesc.pRootSignature = m_pDefaultRootSig;
     psoDesc.VS = { vsBytecode.data(), vsBytecode.size() };
@@ -637,17 +764,20 @@ void CRenderQueue12::EnsureDefaultPSO()
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     
-    // MRT: two G-buffer render targets (normals + diffuse color)
-    psoDesc.NumRenderTargets = 2;
+    // MRT: five G-buffer render targets — Normals, Diffuse, WorldPos, PBR, Emissive
+    psoDesc.NumRenderTargets = 5;
     psoDesc.RTVFormats[0] = CanvasFormatToDXGIFormat(m_GBufferNormalsFormat);
     psoDesc.RTVFormats[1] = CanvasFormatToDXGIFormat(m_GBufferDiffuseFormat);
+    psoDesc.RTVFormats[2] = CanvasFormatToDXGIFormat(m_GBufferWorldPosFormat);
+    psoDesc.RTVFormats[3] = CanvasFormatToDXGIFormat(m_GBufferPBRFormat);
+    psoDesc.RTVFormats[4] = CanvasFormatToDXGIFormat(m_GBufferEmissiveFormat);
     psoDesc.SampleDesc.Count = 1;
     psoDesc.SampleDesc.Quality = 0;
     
     ThrowFailedHResult(m_pDevice->GetD3DDevice()->CreateGraphicsPipelineState(
         &psoDesc, IID_PPV_ARGS(&m_pDefaultPSO)));
     
-    Canvas::LogInfo(m_pDevice->GetLogger(), "Geometry pass PSO created (2 MRT G-buffers)");
+    Canvas::LogInfo(m_pDevice->GetLogger(), "Geometry pass PSO created (5 MRT G-buffers)");
 }
 
 //------------------------------------------------------------------------------------------------
@@ -846,7 +976,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
 
     // Composite root signature:
     //   Slot 0: Root CBV (b0) — lighting / per-frame constants
-    //   Slot 1: Descriptor table with SRV[2] at t0-t1 — G-buffer textures
+    //   Slot 1: Descriptor table with SRV[3] at t0-t2 — G-buffer textures
     //   Static sampler s0: point, clamp (exact texel fetch)
     CD3DX12_STATIC_SAMPLER_DESC pointSampler(
         0,                                      // shader register s0
@@ -856,7 +986,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
         D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
     CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0,  // SRV[2] at t0-t1, space0
+    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0,  // SRV[3] at t0-t2, space0
                   D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 
     std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(2);
@@ -908,13 +1038,12 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
 //================================================================================================
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
+Gem::Result CRenderQueue12::UploadTextureRegion(
     Canvas::XGfxSurface *pDstSurface,
     uint32_t dstX, uint32_t dstY,
     uint32_t width, uint32_t height,
     const void *pData,
-    uint32_t srcRowPitch,
-    Canvas::GfxRenderContext context)
+    uint32_t srcRowPitch)
 {
     if (!pDstSurface || !pData || width == 0 || height == 0)
         return Gem::Result::BadPointer;
@@ -924,36 +1053,32 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
         auto pDst = static_cast<CSurface12*>(pDstSurface);
         ID3D12Resource* pDstResource = pDst->GetD3DResource();
 
-        // Compute aligned row pitch for the staging buffer
-        // D3D12_TEXTURE_DATA_PITCH_ALIGNMENT = 256 bytes
         constexpr uint32_t kPitchAlign = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT;
         uint32_t alignedRowPitch = (srcRowPitch + kPitchAlign - 1) & ~(kPitchAlign - 1);
         uint64_t stagingSize = static_cast<uint64_t>(alignedRowPitch) * height;
 
-        // Allocate staging buffer (power-of-2 size satisfies D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT=512)
-        Canvas::GfxSuballocation stagingAlloc;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(stagingSize, stagingAlloc));
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(stagingSize, hw));
 
-        // Copy rows from source into staging buffer (may need re-striding)
-        auto pStagingBuf = static_cast<CBuffer12*>(stagingAlloc.pBuffer.Get());
-        ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
-
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pStagingResource->Map(0, nullptr, &pMapped));
-        for (uint32_t row = 0; row < height; ++row)
+        if (srcRowPitch == alignedRowPitch)
         {
-            const uint8_t* pSrcRow = static_cast<const uint8_t*>(pData) + row * srcRowPitch;
-            uint8_t* pDstRow = static_cast<uint8_t*>(pMapped) + stagingAlloc.Offset + row * alignedRowPitch;
-            memcpy(pDstRow, pSrcRow, srcRowPitch);
+            memcpy(hw.pMapped, pData, srcRowPitch * height);
         }
-        pStagingResource->Unmap(0, nullptr);
+        else
+        {
+            for (uint32_t row = 0; row < height; ++row)
+            {
+                const uint8_t* pSrcRow = static_cast<const uint8_t*>(pData) + row * srcRowPitch;
+                uint8_t* pDstRow = static_cast<uint8_t*>(hw.pMapped) + row * alignedRowPitch;
+                memcpy(pDstRow, pSrcRow, srcRowPitch);
+            }
+        }
 
-        // Prepare copy location descriptors
         D3D12_TEXTURE_COPY_LOCATION src = {};
-        src.pResource                          = pStagingResource;
+        src.pResource                          = hw.pResource;
         src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-        src.PlacedFootprint.Offset             = stagingAlloc.Offset;
-        src.PlacedFootprint.Footprint.Format   = DXGI_FORMAT_R8_UNORM;
+        src.PlacedFootprint.Offset             = hw.ResourceOffset;
+        src.PlacedFootprint.Footprint.Format   = pDst->m_Desc.Format;
         src.PlacedFootprint.Footprint.Width    = width;
         src.PlacedFootprint.Footprint.Height   = height;
         src.PlacedFootprint.Footprint.Depth    = 1;
@@ -966,37 +1091,19 @@ GEMMETHODIMP CRenderQueue12::UploadTextureRegion(
 
         D3D12_BOX srcBox = { 0, 0, 0, width, height, 1 };
 
-        if (context == Canvas::GfxRenderContext::UI && m_UICommandListOpen)
+        // Route to whichever task graph is currently active
+        auto& taskGraph = m_UICommandListOpen ? m_UIGpuTaskGraph : m_GpuTaskGraph;
+        auto& copyTask = taskGraph.CreateTask("UploadTextureRegion");
+        taskGraph.DeclareTextureUsage(copyTask, pDst,
+            D3D12_BARRIER_LAYOUT_COMMON,
+            D3D12_BARRIER_SYNC_COPY,
+            D3D12_BARRIER_ACCESS_COPY_DEST);
+        copyTask.RecordFunc = [dst, src, srcBox, dstX, dstY](ID3D12GraphicsCommandList* pCL)
         {
-            // UI context: declare copy via UI task graph
-            auto& copyTask = m_UIGpuTaskGraph.CreateTask("UploadTextureRegion_UI");
-            m_UIGpuTaskGraph.DeclareTextureUsage(copyTask, pDst,
-                D3D12_BARRIER_LAYOUT_COMMON,
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_DEST);
-            copyTask.RecordFunc = [&dst, &src, &srcBox, dstX, dstY](ID3D12GraphicsCommandList* pCL)
-            {
-                pCL->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
-            };
-            m_UIGpuTaskGraph.InsertTask(copyTask);
-        }
-        else
-        {
-            // Scene context: use scene command list via task graph
-            ResourceUsageBuilder usages;
-            usages.TextureAsCopyDest(pDst);
+            pCL->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
+        };
+        taskGraph.InsertTask(copyTask);
 
-            RecordCommandBlock(
-                usages.Build(),
-                [&src, &dst, &srcBox, dstX, dstY]
-                (ID3D12GraphicsCommandList* cmdList)
-                {
-                    cmdList->CopyTextureRegion(&dst, dstX, dstY, 0, &src, &srcBox);
-                },
-                "UploadTextureRegion");
-        }
-
-        RetireUploadAllocation(stagingAlloc);
         return Gem::Result::Success;
     }
     catch (Gem::GemError& e)
@@ -1043,6 +1150,9 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
         // CPU work: create descriptors and compute viewport/scissor
         m_GBufferRTVs[0] = CreateRenderTargetView(m_pGBufferNormals, 0, 0, 0);
         m_GBufferRTVs[1] = CreateRenderTargetView(m_pGBufferDiffuseColor, 0, 0, 0);
+        m_GBufferRTVs[2] = CreateRenderTargetView(m_pGBufferWorldPos, 0, 0, 0);
+        m_GBufferRTVs[3] = CreateRenderTargetView(m_pGBufferPBR, 0, 0, 0);
+        m_GBufferRTVs[4] = CreateRenderTargetView(m_pGBufferEmissive, 0, 0, 0);
         m_CurrentDSV = CreateDepthStencilView(m_pDepthBuffer);
         m_CurrentRTV = CreateRenderTargetView(pBackBuffer, 0, 0, 0);
 
@@ -1070,6 +1180,18 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
             D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        DeclareGpuTextureUsage(task, m_pGBufferWorldPos,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        DeclareGpuTextureUsage(task, m_pGBufferPBR,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
+        DeclareGpuTextureUsage(task, m_pGBufferEmissive,
+            D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+            D3D12_BARRIER_SYNC_RENDER_TARGET,
+            D3D12_BARRIER_ACCESS_RENDER_TARGET);
         DeclareGpuTextureUsage(task, m_pDepthBuffer,
             D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
             D3D12_BARRIER_SYNC_DEPTH_STENCIL,
@@ -1079,14 +1201,16 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
             const float clearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
             pCL->ClearRenderTargetView(m_GBufferRTVs[0], clearColor, 0, nullptr);
             pCL->ClearRenderTargetView(m_GBufferRTVs[1], clearColor, 0, nullptr);
+            pCL->ClearRenderTargetView(m_GBufferRTVs[2], clearColor, 0, nullptr);
+            pCL->ClearRenderTargetView(m_GBufferRTVs[3], clearColor, 0, nullptr);
+            pCL->ClearRenderTargetView(m_GBufferRTVs[4], clearColor, 0, nullptr);
             pCL->ClearDepthStencilView(m_CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
-            pCL->OMSetRenderTargets(2, m_GBufferRTVs, FALSE, &m_CurrentDSV);
+            pCL->OMSetRenderTargets(5, m_GBufferRTVs, FALSE, &m_CurrentDSV);
             pCL->RSSetViewports(1, &viewport);
             pCL->RSSetScissorRects(1, &scissor);
             pCL->SetPipelineState(m_pDefaultPSO);
             pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         };
         m_GpuTaskGraph.InsertTask(task);
@@ -1110,8 +1234,7 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
             pCL->RSSetViewports(1, &viewport);
             pCL->RSSetScissorRects(1, &scissor);
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         };
         m_UIGpuTaskGraph.InsertTask(uiBeginTask);
@@ -1129,9 +1252,10 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::DrawMesh(
+Gem::Result CRenderQueue12::DrawMesh(
     Canvas::XGfxMeshData *pMeshData,
-    const Canvas::GfxPerObjectConstants &objectConstants)
+    uint32_t materialGroupIndex,
+    const Canvas::Math::FloatMatrix4x4 &worldTransform)
 {
     try
     {
@@ -1139,124 +1263,228 @@ GEMMETHODIMP CRenderQueue12::DrawMesh(
             return Gem::Result::InvalidArg;
         
         auto pMesh = static_cast<CMeshData12*>(pMeshData);
-        
-        // Get position and normal vertex buffer entries
-        auto pPosEntry = pMesh->GetVertexBuffer(0, Canvas::GfxVertexBufferType::Position);
-        auto pNormEntry = pMesh->GetVertexBuffer(0, Canvas::GfxVertexBufferType::Normal);
-        
+
+        if (materialGroupIndex >= pMesh->GetNumMaterialGroups())
+            return Gem::Result::InvalidArg;
+
+        // Fetch all per-group vertex streams. Position is required; the rest
+        // are optional and gated by MATERIAL_FLAG_HAS_* bits in the per-object CB.
+        auto pPosEntry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Position);
+        auto pNormEntry = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Normal);
+        auto pUV0Entry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::UV0);
+        auto pTanEntry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Tangent);
+
         if (!pPosEntry || !pPosEntry->pBuffer)
             return Gem::Result::InvalidArg;
         
-        auto pPosBuf = static_cast<CBuffer12*>(pPosEntry->pBuffer.Get());
+        auto pPosBuf  = static_cast<CBuffer12*>(pPosEntry->pBuffer.Get());
         CBuffer12* pNormBuf = (pNormEntry && pNormEntry->pBuffer)
-            ? static_cast<CBuffer12*>(pNormEntry->pBuffer.Get())
-            : nullptr;
+            ? static_cast<CBuffer12*>(pNormEntry->pBuffer.Get()) : nullptr;
+        CBuffer12* pUV0Buf  = (pUV0Entry && pUV0Entry->pBuffer)
+            ? static_cast<CBuffer12*>(pUV0Entry->pBuffer.Get()) : nullptr;
+        CBuffer12* pTanBuf  = (pTanEntry && pTanEntry->pBuffer)
+            ? static_cast<CBuffer12*>(pTanEntry->pBuffer.Get()) : nullptr;
+
+        // Resolve material (may be null) and gather texture surfaces by role.
+        Canvas::XGfxMaterial *pMaterial = pMesh->GetMaterial(materialGroupIndex);
+        Canvas::Math::FloatVector4 baseColorFactor    = { 0.8f, 0.8f, 0.8f, 1.0f };
+        Canvas::Math::FloatVector4 emissiveFactor     = { 0.0f, 0.0f, 0.0f, 0.0f };
+        Canvas::Math::FloatVector4 roughMetalAOFactor = { 1.0f, 0.0f, 1.0f, 0.0f };
+        CSurface12 *pTextures[6] = {}; // [Albedo, Normal, Emissive, Roughness, Metallic, AO]
+        if (pMaterial)
+        {
+            baseColorFactor    = pMaterial->GetBaseColorFactor();
+            emissiveFactor     = pMaterial->GetEmissiveFactor();
+            roughMetalAOFactor = pMaterial->GetRoughMetalAOFactor();
+            const Canvas::MaterialLayerRole roles[6] = {
+                Canvas::MaterialLayerRole::Albedo,
+                Canvas::MaterialLayerRole::Normal,
+                Canvas::MaterialLayerRole::Emissive,
+                Canvas::MaterialLayerRole::Roughness,
+                Canvas::MaterialLayerRole::Metallic,
+                Canvas::MaterialLayerRole::AmbientOcclusion,
+            };
+            for (UINT i = 0; i < 6; ++i)
+            {
+                Canvas::XGfxSurface *pSurface = pMaterial->GetTexture(roles[i]);
+                if (pSurface)
+                {
+                    Gem::TGemPtr<CSurface12> pSurf12;
+                    pSurface->QueryInterface(&pSurf12);
+                    pTextures[i] = pSurf12.Get();
+                }
+            }
+        }
+
+        // Build MaterialFlags. Texture flags are gated by mesh capability
+        // (no UV → no albedo/normal/emissive/PBR sampling; no tangent → no normal map).
+        const bool hasUV      = (pUV0Buf != nullptr);
+        const bool hasTangent = (pTanBuf != nullptr);
+        uint32_t materialFlags = 0;
+        if (hasUV)      materialFlags |= MATERIAL_FLAG_HAS_UV;
+        if (hasTangent) materialFlags |= MATERIAL_FLAG_HAS_TANGENT;
+        if (hasUV && pTextures[0])              materialFlags |= MATERIAL_FLAG_HAS_ALBEDO_TEX;
+        if (hasUV && hasTangent && pTextures[1]) materialFlags |= MATERIAL_FLAG_HAS_NORMAL_TEX;
+        if (hasUV && pTextures[2])              materialFlags |= MATERIAL_FLAG_HAS_EMISSIVE_TEX;
+        if (hasUV && pTextures[3])              materialFlags |= MATERIAL_FLAG_HAS_ROUGH_TEX;
+        if (hasUV && pTextures[4])              materialFlags |= MATERIAL_FLAG_HAS_METAL_TEX;
+        if (hasUV && pTextures[5])              materialFlags |= MATERIAL_FLAG_HAS_AO_TEX;
+
+        // Pack per-object constants
+        HlslTypes::HlslPerObjectConstants objectConstants = {};
+        static_assert(sizeof(objectConstants.World) == sizeof(worldTransform),
+                      "HlslTypes::float4x4 and Math::FloatMatrix4x4 must be layout-compatible");
+        memcpy(&objectConstants.World, &worldTransform, sizeof(objectConstants.World));
+        memcpy(&objectConstants.WorldInvTranspose, &worldTransform, sizeof(objectConstants.WorldInvTranspose));
+        objectConstants.WorldInvTranspose.m[3][0] = 0.0f;
+        objectConstants.WorldInvTranspose.m[3][1] = 0.0f;
+        objectConstants.WorldInvTranspose.m[3][2] = 0.0f;
+        objectConstants.WorldInvTranspose.m[3][3] = 1.0f;
+        memcpy(&objectConstants.BaseColorFactor,    &baseColorFactor,    sizeof(objectConstants.BaseColorFactor));
+        memcpy(&objectConstants.EmissiveFactor,     &emissiveFactor,     sizeof(objectConstants.EmissiveFactor));
+        memcpy(&objectConstants.RoughMetalAOFactor, &roughMetalAOFactor, sizeof(objectConstants.RoughMetalAOFactor));
+        objectConstants.MaterialFlags = materialFlags;
         
         // Upload per-object constants to upload heap
-        // CBVs require 256-byte aligned BufferLocation (D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Canvas::GfxSuballocation cbAlloc;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(
-            (sizeof(Canvas::GfxPerObjectConstants) + cbAlignment - 1) & ~(cbAlignment - 1), cbAlloc));
+        const uint64_t cbSize = (sizeof(HlslTypes::HlslPerObjectConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(cbSize, hw));
+        memcpy(hw.pMapped, &objectConstants, sizeof(HlslTypes::HlslPerObjectConstants));
         
-        auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pHostResource = pHostBuf->GetD3DResource();
-        
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pHostResource->Map(0, nullptr, &pMapped));
-        memcpy(static_cast<uint8_t*>(pMapped) + cbAlloc.Offset,
-               &objectConstants, sizeof(Canvas::GfxPerObjectConstants));
-        pHostResource->Unmap(0, nullptr);
-        
-        // Create CBV for per-object constants in descriptor table
-        // Descriptor table (slot 3) layout: CBV[2] at b1, SRV[4] at t1, UAV[2] at u1
-        // We need to create a contiguous block of descriptors for the table
-        ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-        UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        
-        // Allocate a contiguous block of 8 descriptors (2 CBV + 4 SRV + 2 UAV).
-        // Wrap to slot 0 if the block would straddle the ring boundary to avoid
-        // writing past the end of the heap.
-        if (m_NextSRVSlot + 8 > NumShaderResourceDescriptors)
+        // Allocate a contiguous block of 13 descriptors:
+        //   slots 0-1 : CBV[2] @ b1, b2
+        //   slots 2-10: SRV[9] @ t1..t9 (normals, UV0, tangents, albedo, normalMap,
+        //                                emissive, roughness, metallic, AO)
+        //   slots 11-12: UAV[2] @ u1, u2 (currently null)
+        constexpr UINT kDescCount = 13;
+        if (m_NextSRVSlot + kDescCount > NumShaderResourceDescriptors)
             m_NextSRVSlot = 0;
         UINT baseSlot = m_NextSRVSlot;
-        m_NextSRVSlot += 8;
+        m_NextSRVSlot += kDescCount;
         
-        D3D12_CPU_DESCRIPTOR_HANDLE baseCpuHandle;
-        baseCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
+        const UINT incSize = m_CbvSrvUavIncrement;
+        ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
+        CD3DX12_CPU_DESCRIPTOR_HANDLE baseCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), baseSlot, incSize);
+        CD3DX12_GPU_DESCRIPTOR_HANDLE baseGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), baseSlot, incSize);
         
-        D3D12_GPU_DESCRIPTOR_HANDLE baseGpuHandle;
-        baseGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
-        
-        // Slot 0 of table: CBV for per-object constants (b1)
+        // CBV b1: per-object constants
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset;
-        cbvDesc.SizeInBytes = static_cast<UINT>((sizeof(Canvas::GfxPerObjectConstants) + 255) & ~255); // 256-byte aligned
+        cbvDesc.BufferLocation = hw.GpuAddress;
+        cbvDesc.SizeInBytes = static_cast<UINT>(cbSize);
         pD3DDevice->CreateConstantBufferView(&cbvDesc, baseCpuHandle);
         
-        // Slot 1 of table: CBV[1] placeholder (b2) - null
-        D3D12_CPU_DESCRIPTOR_HANDLE cbv1Handle = { baseCpuHandle.ptr + incSize };
+        // CBV b2: null placeholder
         D3D12_CONSTANT_BUFFER_VIEW_DESC nullCbvDesc = {};
-        pD3DDevice->CreateConstantBufferView(&nullCbvDesc, cbv1Handle);
+        pD3DDevice->CreateConstantBufferView(&nullCbvDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, 1, incSize));
         
-        // Slots 2-5 of table: SRV[4] at t1-t4
-        // Slot 2: normals (t1), slots 3-5: null SRVs (t2-t4)
-        // All must be initialized since the descriptor range is STATIC
-        D3D12_SHADER_RESOURCE_VIEW_DESC nullSrvDesc = {};
-        nullSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
-        nullSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-        nullSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        // Helper lambdas for null fallbacks
+        D3D12_SHADER_RESOURCE_VIEW_DESC nullBufSrvDesc = {};
+        nullBufSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+        nullBufSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        nullBufSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         
-        if (pNormBuf)
+        D3D12_SHADER_RESOURCE_VIEW_DESC nullTex2DSrvDesc = {};
+        nullTex2DSrvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        nullTex2DSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        nullTex2DSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        nullTex2DSrvDesc.Texture2D.MipLevels = 1;
+        
+        auto WriteStructuredBufSRV = [&](UINT tableSlot, CBuffer12* pBuf, UINT stride)
         {
-            D3D12_CPU_DESCRIPTOR_HANDLE normSrvHandle = { baseCpuHandle.ptr + 2 * incSize };
-            D3D12_RESOURCE_DESC normDesc = pNormBuf->GetD3DResource()->GetDesc();
-            UINT numNormals = static_cast<UINT>(normDesc.Width / sizeof(Canvas::Math::FloatVector4));
-            
-            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-            srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            srvDesc.Buffer.NumElements = numNormals;
-            srvDesc.Buffer.StructureByteStride = sizeof(Canvas::Math::FloatVector4);
-            
-            pD3DDevice->CreateShaderResourceView(pNormBuf->GetD3DResource(), &srvDesc, normSrvHandle);
-        }
-        else
+            CD3DX12_CPU_DESCRIPTOR_HANDLE h(baseCpuHandle, tableSlot, incSize);
+            if (pBuf)
+            {
+                D3D12_RESOURCE_DESC rd = pBuf->GetD3DResource()->GetDesc();
+                D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
+                d.Format = DXGI_FORMAT_UNKNOWN;
+                d.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+                d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                d.Buffer.NumElements = static_cast<UINT>(rd.Width / stride);
+                d.Buffer.StructureByteStride = stride;
+                pD3DDevice->CreateShaderResourceView(pBuf->GetD3DResource(), &d, h);
+            }
+            else
+            {
+                pD3DDevice->CreateShaderResourceView(nullptr, &nullBufSrvDesc, h);
+            }
+        };
+        auto WriteTexture2DSRV = [&](UINT tableSlot, CSurface12* pSurf)
         {
-            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, { baseCpuHandle.ptr + 2 * incSize });
-        }
+            CD3DX12_CPU_DESCRIPTOR_HANDLE h(baseCpuHandle, tableSlot, incSize);
+            if (pSurf)
+            {
+                D3D12_RESOURCE_DESC rd = pSurf->GetD3DResource()->GetDesc();
+                D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
+                d.Format = rd.Format;
+                d.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                d.Texture2D.MipLevels = rd.MipLevels ? rd.MipLevels : 1;
+                pD3DDevice->CreateShaderResourceView(pSurf->GetD3DResource(), &d, h);
+            }
+            else
+            {
+                pD3DDevice->CreateShaderResourceView(nullptr, &nullTex2DSrvDesc, h);
+            }
+        };
         
-        // Null SRVs for t2-t4 (slots 3-5)
-        for (UINT i = 3; i <= 5; ++i)
-            pD3DDevice->CreateShaderResourceView(nullptr, &nullSrvDesc, { baseCpuHandle.ptr + i * incSize });
+        // SRV t1: normals (slot 2)
+        WriteStructuredBufSRV(2, pNormBuf, sizeof(Canvas::Math::FloatVector4));
+        // SRV t2: UV0 (slot 3) - FloatVector2
+        WriteStructuredBufSRV(3, pUV0Buf, sizeof(Canvas::Math::FloatVector2));
+        // SRV t3: tangents (slot 4) - FloatVector4 (xyz=T, w=bitangent sign)
+        WriteStructuredBufSRV(4, pTanBuf, sizeof(Canvas::Math::FloatVector4));
+        // SRV t4..t9: material textures (slots 5..10)
+        WriteTexture2DSRV(5,  pTextures[0]); // Albedo
+        WriteTexture2DSRV(6,  pTextures[1]); // Normal map
+        WriteTexture2DSRV(7,  pTextures[2]); // Emissive
+        WriteTexture2DSRV(8,  pTextures[3]); // Roughness
+        WriteTexture2DSRV(9,  pTextures[4]); // Metallic
+        WriteTexture2DSRV(10, pTextures[5]); // AO
         
-        // Null UAVs for u1-u2 (slots 6-7)
+        // UAVs u1, u2: null (slots 11, 12)
         D3D12_UNORDERED_ACCESS_VIEW_DESC nullUavDesc = {};
         nullUavDesc.Format = DXGI_FORMAT_R32_FLOAT;
         nullUavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-        for (UINT i = 6; i <= 7; ++i)
-            pD3DDevice->CreateUnorderedAccessView(nullptr, nullptr, &nullUavDesc, { baseCpuHandle.ptr + i * incSize });
+        for (UINT i = 11; i <= 12; ++i)
+            pD3DDevice->CreateUnorderedAccessView(nullptr, nullptr, &nullUavDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, i, incSize));
         
-        // Set root SRV (slot 1) for positions (t0)
+        // Set root SRV (param 1) for positions (t0)
         D3D12_GPU_VIRTUAL_ADDRESS posGpuAddr = pPosBuf->GetD3DResource()->GetGPUVirtualAddress();
-
-        RetireUploadAllocation(cbAlloc);
-        
-        // Determine vertex count from position buffer size
         D3D12_RESOURCE_DESC posDesc = pPosBuf->GetD3DResource()->GetDesc();
         UINT vertexCount = static_cast<UINT>(posDesc.Width / sizeof(Canvas::Math::FloatVector4));
         
         // Create a task for the draw call
         auto& drawTask = CreateGpuTask("DrawMesh");
+        m_GpuTaskGraph.DeclareBufferUsage(drawTask, pPosBuf,
+            D3D12_BARRIER_SYNC_VERTEX_SHADING,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if (pNormBuf)
+            m_GpuTaskGraph.DeclareBufferUsage(drawTask, pNormBuf,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if (pUV0Buf)
+            m_GpuTaskGraph.DeclareBufferUsage(drawTask, pUV0Buf,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if (pTanBuf)
+            m_GpuTaskGraph.DeclareBufferUsage(drawTask, pTanBuf,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        for (UINT i = 0; i < 6; ++i)
+        {
+            if (pTextures[i])
+            {
+                DeclareGpuTextureUsage(drawTask, pTextures[i],
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+        }
         drawTask.RecordFunc = [posGpuAddr, baseGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
             pCL->SetPipelineState(m_pDefaultPSO);
             pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
-            pCL->OMSetRenderTargets(2, m_GBufferRTVs, FALSE, &m_CurrentDSV);
+            pCL->OMSetRenderTargets(5, m_GBufferRTVs, FALSE, &m_CurrentDSV);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->SetGraphicsRootShaderResourceView(1, posGpuAddr);
             pCL->SetGraphicsRootDescriptorTable(3, baseGpuHandle);
             pCL->DrawInstanced(vertexCount, 1, 0, 0);
@@ -1276,149 +1504,13 @@ GEMMETHODIMP CRenderQueue12::DrawMesh(
 }
 
 //------------------------------------------------------------------------------------------------
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::EnsureUITextVertexBuffer()
+Gem::Result CRenderQueue12::DrawUIText(
+    const Canvas::GfxResourceAllocation& vertexBuffer,
+    Canvas::XGfxSurface* pGlyphAtlas,
+    const Canvas::Math::FloatVector2& elementOffset)
 {
-    if (m_pUITextVertexBuffer)
-        return;
-
-    constexpr uint64_t kTextVertexSize = sizeof(Canvas::TextVertex);
-    uint64_t bufferSize = kInitialUITextVertexCapacity * kTextVertexSize;
-
-    Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
-    Gem::ThrowGemError(m_pDevice->CreateBuffer(bufferSize, Canvas::GfxMemoryUsage::DeviceLocal, &pBuffer));
-    m_pUITextVertexBuffer = std::move(pBuffer);
-    m_pUITextVertexAllocator = std::make_unique<TBuddySuballocator<uint32_t>>(kInitialUITextVertexCapacity);
-}
-
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::GrowUITextVertexBuffer(uint32_t newCapacity)
-{
-    constexpr uint64_t kTextVertexSize = sizeof(Canvas::TextVertex);
-    uint64_t oldSize = m_pUITextVertexAllocator->GetCapacity() * kTextVertexSize;
-    uint64_t newSize = newCapacity * kTextVertexSize;
-
-    Gem::TGemPtr<Canvas::XGfxBuffer> pNewBuffer;
-    Gem::ThrowGemError(m_pDevice->CreateBuffer(newSize, Canvas::GfxMemoryUsage::DeviceLocal, &pNewBuffer));
-
-    // GPU copy old buffer contents → new buffer (existing allocations keep their offsets)
-    auto pOldBuf = static_cast<CBuffer12*>(m_pUITextVertexBuffer.Get());
-    auto pNewBuf = static_cast<CBuffer12*>(pNewBuffer.Get());
-
-    auto& copyTask = m_UIGpuTaskGraph.CreateTask("GrowUITextBuffer");
-    m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pOldBuf,
-        D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE);
-    m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pNewBuf,
-        D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_DEST);
-
-    ID3D12Resource* pOldResource = pOldBuf->GetD3DResource();
-    ID3D12Resource* pNewResource = pNewBuf->GetD3DResource();
-    copyTask.RecordFunc = [pOldResource, pNewResource, oldSize](ID3D12GraphicsCommandList* pCL)
-    {
-        pCL->CopyBufferRegion(pNewResource, 0, pOldResource, 0, oldSize);
-    };
-    m_UIGpuTaskGraph.InsertTask(copyTask);
-
-    // Retarget pending staged uploads to the new buffer (offsets unchanged)
-    // The staged copies haven't been flushed yet — they'll target the new buffer
-    // when DrawUITextBatch flushes them.
-
-    // Retire old buffer after GPU completes
-    m_PendingBufferRetirements.push_back({ std::move(m_pUITextVertexBuffer), m_FenceValue + 1 });
-
-    m_pUITextVertexBuffer = std::move(pNewBuffer);
-    m_pUITextVertexAllocator->Grow();
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::AllocUITextVertices(uint32_t maxVertexCount, uint32_t* pStartVertex)
-{
-    if (!pStartVertex || maxVertexCount == 0)
+    if (!pGlyphAtlas || !m_pCurrentSwapChain || !vertexBuffer.pBuffer)
         return Gem::Result::InvalidArg;
-
-    try
-    {
-        EnsureUITextVertexBuffer();
-
-        TBuddyBlock<uint32_t> block;
-        if (m_pUITextVertexAllocator->TryAllocate(maxVertexCount, block))
-        {
-            *pStartVertex = block.Start();
-            return Gem::Result::Success;
-        }
-
-        // Buddy allocator full — grow and retry
-        GrowUITextVertexBuffer(
-            static_cast<uint32_t>(m_pUITextVertexAllocator->GetCapacity()) * 2);
-
-        if (m_pUITextVertexAllocator->TryAllocate(maxVertexCount, block))
-        {
-            *pStartVertex = block.Start();
-            return Gem::Result::Success;
-        }
-
-        return Gem::Result::OutOfMemory;
-    }
-    catch (Gem::GemError& e) { return e.Result(); }
-    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CRenderQueue12::FreeUITextVertices(uint32_t startVertex, uint32_t maxVertexCount)
-{
-    if (m_pUITextVertexAllocator && maxVertexCount > 0)
-    {
-        auto block = TBuddySuballocator<uint32_t>::ReconstructBlock(startVertex, maxVertexCount);
-        m_pUITextVertexAllocator->TryFree(block);
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::UploadUITextVertices(
-    uint32_t startVertex,
-    const void* pVertexData,
-    uint32_t vertexCount)
-{
-    if (!pVertexData || vertexCount == 0)
-        return Gem::Result::InvalidArg;
-
-    try
-    {
-        EnsureUITextVertexBuffer();
-
-        constexpr uint64_t kTextVertexSize = sizeof(Canvas::TextVertex);
-        uint64_t copySize = vertexCount * kTextVertexSize;
-        uint64_t dstOffset = startVertex * kTextVertexSize;
-
-        // Stage vertex data in UPLOAD heap — no GPU task yet
-        Canvas::GfxSuballocation staging{};
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(copySize, staging));
-
-        auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
-        ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pStagingResource->Map(0, nullptr, &pMapped));
-        memcpy(static_cast<uint8_t*>(pMapped) + staging.Offset, pVertexData, copySize);
-        pStagingResource->Unmap(0, nullptr);
-
-        m_PendingUITextUploads.push_back({ staging, dstOffset, copySize });
-    }
-    catch (Gem::GemError& e) { return e.Result(); }
-    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
-
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
-    const Canvas::UITextDrawCommand* pCommands,
-    uint32_t commandCount,
-    Canvas::XGfxSurface* pGlyphAtlas)
-{
-    if (!pCommands || commandCount == 0 || !pGlyphAtlas || !m_pCurrentSwapChain || !m_pUITextVertexBuffer)
-        return Gem::Result::InvalidArg;
-
-    Canvas::GfxSuballocation cbAlloc{};
 
     try
     {
@@ -1427,37 +1519,32 @@ GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
 
         auto pAtlas = static_cast<CSurface12*>(pGlyphAtlas);
         CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
-        auto pVertexBuf = static_cast<CBuffer12*>(m_pUITextVertexBuffer.Get());
+        auto pVertexBuf = static_cast<CBuffer12*>(vertexBuffer.pBuffer.Get());
+        uint32_t vertexCount = static_cast<uint32_t>(vertexBuffer.Size / sizeof(Canvas::TextVertex));
 
-        // Flush all pending uploads as a single GPU copy task
-        if (!m_PendingUITextUploads.empty())
-        {
-            auto& copyTask = m_UIGpuTaskGraph.CreateTask("FlushUITextUploads");
-            m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pVertexBuf,
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_DEST);
+        // Allocate all CPU-side resources before creating the GPU task
+        constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(kCBVSize, hw));
 
-            auto uploads = std::move(m_PendingUITextUploads);
-            m_PendingUITextUploads.clear();
+        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
+        memcpy(hw.pMapped, screenConsts, sizeof(screenConsts));
 
-            ID3D12Resource* pDstResource = pVertexBuf->GetD3DResource();
-            copyTask.RecordFunc = [pDstResource, uploads](ID3D12GraphicsCommandList* pCL)
-            {
-                for (const auto& u : uploads)
-                {
-                    auto pSrcBuf = static_cast<CBuffer12*>(u.Staging.pBuffer.Get());
-                    pCL->CopyBufferRegion(pDstResource, u.DstOffset,
-                        pSrcBuf->GetD3DResource(), u.Staging.Offset, u.CopySize);
-                }
-            };
-            m_UIGpuTaskGraph.InsertTask(copyTask);
+        ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+        const UINT incSize = m_CbvSrvUavIncrement;
+        if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
+            m_NextSRVSlot = 0;
+        UINT srvSlot = m_NextSRVSlot++;
 
-            for (auto& u : uploads)
-                RetireUploadAllocation(u.Staging);
-        }
+        CD3DX12_CPU_DESCRIPTOR_HANDLE srvCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), srvSlot, incSize);
+        CD3DX12_GPU_DESCRIPTOR_HANDLE srvGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), srvSlot, incSize);
+        pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
 
-        // Draw task — reads persistent buffer after copies complete
-        auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUITextBatch");
+        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
+        D3D12_GPU_VIRTUAL_ADDRESS vertexAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress() + vertexBuffer.Offset;
+
+        // All resources ready — now create the GPU task
+        auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIText");
         m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pAtlas,
             D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -1470,71 +1557,26 @@ GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-        // Shared screen constants CBV (one allocation for entire batch)
-        constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
-
-        auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
-        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), 0.0f, 0.0f };
-        void* pCBMapped = nullptr;
-        ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
-        memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
-        pCBResource->Unmap(0, nullptr);
-
-        // Atlas SRV descriptor
-        ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
-        UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
-            m_NextSRVSlot = 0;
-        UINT srvSlot = m_NextSRVSlot++;
-
-        D3D12_CPU_DESCRIPTOR_HANDLE srvCpuHandle;
-        srvCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
-        D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle;
-        srvGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + incSize * srvSlot;
-        pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
-
-        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
-        D3D12_GPU_VIRTUAL_ADDRESS vertexBaseAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress();
-
-        // Copy draw commands for lambda capture
-        std::vector<Canvas::UITextDrawCommand> commands(pCommands, pCommands + commandCount);
-
-        // SV_VertexID is not offset by StartVertexLocation when no IA vertex buffer is bound.
-        // Instead, offset the root SRV address per draw command so the shader reads from the
-        // correct region of the persistent buffer, and always use StartVertex=0.
-
-        drawTask.RecordFunc = [cbvAddr, vertexBaseAddr, srvGpuHandle, cmds = std::move(commands), this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [cbvAddr, vertexAddr, srvGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
-            constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
-            ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-            pCL->SetDescriptorHeaps(2, heaps);
+            pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->SetGraphicsRootSignature(m_pTextRootSig);
             pCL->SetPipelineState(m_pTextPSO);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
             pCL->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
-
-            for (const auto& cmd : cmds)
-            {
-                pCL->SetGraphicsRootShaderResourceView(1, vertexBaseAddr + cmd.StartVertex * kVertexStride);
-                pCL->DrawInstanced(cmd.VertexCount, 1, 0, 0);
-            }
+            pCL->SetGraphicsRootShaderResourceView(1, vertexAddr);
+            pCL->DrawInstanced(vertexCount, 1, 0, 0);
         };
         m_UIGpuTaskGraph.InsertTask(drawTask);
-
-        RetireUploadAllocation(cbAlloc);
     }
     catch (Gem::GemError& e)
     {
-        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
         return e.Result();
     }
     catch (_com_error& e)
     {
-        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
         return ResultFromHRESULT(e.Error());
     }
 
@@ -1542,139 +1584,59 @@ GEMMETHODIMP CRenderQueue12::DrawUITextBatch(
 }
 
 //------------------------------------------------------------------------------------------------
-void CRenderQueue12::EnsureUIRectVertexBuffer()
+void CRenderQueue12::FlushPendingGlyphUploads()
 {
-    if (m_pUIRectVertexBuffer)
+    auto* pCanvas = m_pDevice->GetCanvas();
+    if (!pCanvas)
         return;
 
-    constexpr uint64_t kVertexSize = sizeof(Canvas::TextVertex);
-    uint64_t bufferSize = kInitialUIRectVertexCapacity * kVertexSize;
+    auto* pCache = pCanvas->GetGlyphCache();
+    if (!pCache || !pCache->HasPendingUploads())
+        return;
 
-    Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
-    Gem::ThrowGemError(m_pDevice->CreateBuffer(bufferSize, Canvas::GfxMemoryUsage::DeviceLocal, &pBuffer));
-    m_pUIRectVertexBuffer = std::move(pBuffer);
-    m_pUIRectVertexAllocator = std::make_unique<TBuddySuballocator<uint32_t>>(kInitialUIRectVertexCapacity);
-}
+    auto* pAtlas = m_pDevice->GetGlyphAtlasSurface();
+    if (!pAtlas)
+        return;
 
-//------------------------------------------------------------------------------------------------
-void CRenderQueue12::GrowUIRectVertexBuffer(uint32_t newCapacity)
-{
-    constexpr uint64_t kVertexSize = sizeof(Canvas::TextVertex);
-    uint64_t oldSize = m_pUIRectVertexAllocator->GetCapacity() * kVertexSize;
-    uint64_t newSize = newCapacity * kVertexSize;
-
-    Gem::TGemPtr<Canvas::XGfxBuffer> pNewBuffer;
-    Gem::ThrowGemError(m_pDevice->CreateBuffer(newSize, Canvas::GfxMemoryUsage::DeviceLocal, &pNewBuffer));
-
-    auto pOldBuf = static_cast<CBuffer12*>(m_pUIRectVertexBuffer.Get());
-    auto pNewBuf = static_cast<CBuffer12*>(pNewBuffer.Get());
-
-    auto& copyTask = m_UIGpuTaskGraph.CreateTask("GrowUIRectBuffer");
-    m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pOldBuf,
-        D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_SOURCE);
-    m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pNewBuf,
-        D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_COPY_DEST);
-
-    ID3D12Resource* pOldResource = pOldBuf->GetD3DResource();
-    ID3D12Resource* pNewResource = pNewBuf->GetD3DResource();
-    copyTask.RecordFunc = [pOldResource, pNewResource, oldSize](ID3D12GraphicsCommandList* pCL)
+    const uint8_t* pStagingData = pCache->GetStagingData();
+    auto uploads = pCache->TakePendingUploads();
+    for (auto& upload : uploads)
     {
-        pCL->CopyBufferRegion(pNewResource, 0, pOldResource, 0, oldSize);
-    };
-    m_UIGpuTaskGraph.InsertTask(copyTask);
-
-    m_PendingBufferRetirements.push_back({ std::move(m_pUIRectVertexBuffer), m_FenceValue + 1 });
-
-    m_pUIRectVertexBuffer = std::move(pNewBuffer);
-    m_pUIRectVertexAllocator->Grow();
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::AllocUIRectVertices(uint32_t maxVertexCount, uint32_t* pStartVertex)
-{
-    if (!pStartVertex || maxVertexCount == 0)
-        return Gem::Result::InvalidArg;
-
-    try
-    {
-        EnsureUIRectVertexBuffer();
-
-        TBuddyBlock<uint32_t> block;
-        if (m_pUIRectVertexAllocator->TryAllocate(maxVertexCount, block))
-        {
-            *pStartVertex = block.Start();
-            return Gem::Result::Success;
-        }
-
-        GrowUIRectVertexBuffer(
-            static_cast<uint32_t>(m_pUIRectVertexAllocator->GetCapacity()) * 2);
-
-        if (m_pUIRectVertexAllocator->TryAllocate(maxVertexCount, block))
-        {
-            *pStartVertex = block.Start();
-            return Gem::Result::Success;
-        }
-
-        return Gem::Result::OutOfMemory;
+        Gem::ThrowGemError(UploadTextureRegion(
+            pAtlas, upload.AtlasX, upload.AtlasY,
+            upload.Width, upload.Height,
+            pStagingData + upload.PixelOffset,
+            upload.Width * upload.BytesPerPixel));
     }
-    catch (Gem::GemError& e) { return e.Result(); }
-    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
+    pCache->ClearStagingBuffer();
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CRenderQueue12::FreeUIRectVertices(uint32_t startVertex, uint32_t maxVertexCount)
+void CRenderQueue12::DeferRelease(Gem::XGeneric* pResource)
 {
-    if (m_pUIRectVertexAllocator && maxVertexCount > 0)
-    {
-        auto block = TBuddySuballocator<uint32_t>::ReconstructBlock(startVertex, maxVertexCount);
-        m_pUIRectVertexAllocator->TryFree(block);
-    }
+    if (!pResource)
+        return;
+
+    Gem::TGemPtr<Gem::XGeneric> ref;
+    pResource->QueryInterface(&ref);
+    if (!ref)
+        return;
+
+    // Stamp with m_FenceValue + 1: the value that the NEXT Flush will signal.
+    // Resources passed to DeferRelease are by definition still in use by commands
+    // currently being recorded, so they must outlive the upcoming submission.
+    m_pDevice->GetResourceManager().DeferRelease(
+        std::move(ref),
+        FenceToken{ m_TimelineId, m_FenceValue + 1 });
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::UploadUIRectVertices(
-    uint32_t startVertex,
-    const void* pVertexData,
-    uint32_t vertexCount)
+Gem::Result CRenderQueue12::DrawUIRect(
+    const Canvas::GfxResourceAllocation& vertexBuffer,
+    const Canvas::Math::FloatVector2& elementOffset)
 {
-    if (!pVertexData || vertexCount == 0)
+    if (!m_pCurrentSwapChain || !vertexBuffer.pBuffer)
         return Gem::Result::InvalidArg;
-
-    try
-    {
-        EnsureUIRectVertexBuffer();
-
-        constexpr uint64_t kVertexSize = sizeof(Canvas::TextVertex);
-        uint64_t copySize = vertexCount * kVertexSize;
-        uint64_t dstOffset = startVertex * kVertexSize;
-
-        Canvas::GfxSuballocation staging{};
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(copySize, staging));
-
-        auto pStagingBuf = static_cast<CBuffer12*>(staging.pBuffer.Get());
-        ID3D12Resource* pStagingResource = pStagingBuf->GetD3DResource();
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pStagingResource->Map(0, nullptr, &pMapped));
-        memcpy(static_cast<uint8_t*>(pMapped) + staging.Offset, pVertexData, copySize);
-        pStagingResource->Unmap(0, nullptr);
-
-        m_PendingUIRectUploads.push_back({ staging, dstOffset, copySize });
-    }
-    catch (Gem::GemError& e) { return e.Result(); }
-    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
-
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::DrawUIRectBatch(
-    const Canvas::UIRectDrawCommand* pCommands,
-    uint32_t commandCount)
-{
-    if (!pCommands || commandCount == 0 || !m_pCurrentSwapChain || !m_pUIRectVertexBuffer)
-        return Gem::Result::InvalidArg;
-
-    Canvas::GfxSuballocation cbAlloc{};
 
     try
     {
@@ -1682,37 +1644,22 @@ GEMMETHODIMP CRenderQueue12::DrawUIRectBatch(
         EnsureRectPSO(rtvFormat);
 
         CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
-        auto pVertexBuf = static_cast<CBuffer12*>(m_pUIRectVertexBuffer.Get());
+        auto pVertexBuf = static_cast<CBuffer12*>(vertexBuffer.pBuffer.Get());
+        uint32_t vertexCount = static_cast<uint32_t>(vertexBuffer.Size / sizeof(Canvas::TextVertex));
 
-        // Flush all pending rect uploads as a single GPU copy task
-        if (!m_PendingUIRectUploads.empty())
-        {
-            auto& copyTask = m_UIGpuTaskGraph.CreateTask("FlushUIRectUploads");
-            m_UIGpuTaskGraph.DeclareBufferUsage(copyTask, pVertexBuf,
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_DEST);
+        // Allocate all CPU-side resources before creating the GPU task
+        constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(kCBVSize, hw));
 
-            auto uploads = std::move(m_PendingUIRectUploads);
-            m_PendingUIRectUploads.clear();
+        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
+        memcpy(hw.pMapped, screenConsts, sizeof(screenConsts));
 
-            ID3D12Resource* pDstResource = pVertexBuf->GetD3DResource();
-            copyTask.RecordFunc = [pDstResource, uploads](ID3D12GraphicsCommandList* pCL)
-            {
-                for (const auto& u : uploads)
-                {
-                    auto pSrcBuf = static_cast<CBuffer12*>(u.Staging.pBuffer.Get());
-                    pCL->CopyBufferRegion(pDstResource, u.DstOffset,
-                        pSrcBuf->GetD3DResource(), u.Staging.Offset, u.CopySize);
-                }
-            };
-            m_UIGpuTaskGraph.InsertTask(copyTask);
+        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
+        D3D12_GPU_VIRTUAL_ADDRESS vertexAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress() + vertexBuffer.Offset;
 
-            for (auto& u : uploads)
-                RetireUploadAllocation(u.Staging);
-        }
-
-        // Draw task — reads persistent buffer after copies complete
-        auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIRectBatch");
+        // All resources ready — now create the GPU task
+        auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIRect");
         m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pBackBuffer,
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
@@ -1721,50 +1668,24 @@ GEMMETHODIMP CRenderQueue12::DrawUIRectBatch(
             D3D12_BARRIER_SYNC_PIXEL_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-        // Shared screen constants CBV
-        constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(kCBVSize, cbAlloc));
-
-        auto pCBBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pCBResource = pCBBuf->GetD3DResource();
-        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), 0.0f, 0.0f };
-        void* pCBMapped = nullptr;
-        ThrowFailedHResult(pCBResource->Map(0, nullptr, &pCBMapped));
-        memcpy(static_cast<uint8_t*>(pCBMapped) + cbAlloc.Offset, screenConsts, sizeof(screenConsts));
-        pCBResource->Unmap(0, nullptr);
-
-        D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = pCBResource->GetGPUVirtualAddress() + cbAlloc.Offset;
-        D3D12_GPU_VIRTUAL_ADDRESS vertexBaseAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress();
-
-        std::vector<Canvas::UIRectDrawCommand> commands(pCommands, pCommands + commandCount);
-
-        drawTask.RecordFunc = [cbvAddr, vertexBaseAddr, cmds = std::move(commands), this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [cbvAddr, vertexAddr, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
-            constexpr uint64_t kVertexStride = sizeof(Canvas::TextVertex);
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
             pCL->SetGraphicsRootSignature(m_pRectRootSig);
             pCL->SetPipelineState(m_pRectPSO);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
-
-            for (const auto& cmd : cmds)
-            {
-                pCL->SetGraphicsRootShaderResourceView(1, vertexBaseAddr + cmd.StartVertex * kVertexStride);
-                pCL->DrawInstanced(cmd.VertexCount, 1, 0, 0);
-            }
+            pCL->SetGraphicsRootShaderResourceView(1, vertexAddr);
+            pCL->DrawInstanced(vertexCount, 1, 0, 0);
         };
         m_UIGpuTaskGraph.InsertTask(drawTask);
-
-        RetireUploadAllocation(cbAlloc);
     }
     catch (Gem::GemError& e)
     {
-        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
         return e.Result();
     }
     catch (_com_error& e)
     {
-        if (cbAlloc.pBuffer) RetireUploadAllocation(cbAlloc);
         return ResultFromHRESULT(e.Error());
     }
 
@@ -1772,17 +1693,31 @@ GEMMETHODIMP CRenderQueue12::DrawUIRectBatch(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphElement *pElement)
+GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphNode *pNode)
 {
-    if (!pElement)
+    if (!pNode)
         return Gem::Result::InvalidArg;
 
     // Route lights directly to SubmitLight — they don't go in the renderable queue
-    Gem::TGemPtr<Canvas::XLight> pLight;
-    if (SUCCEEDED(pElement->QueryInterface(&pLight)))
-        return SubmitLight(pLight);
+    UINT elementCount = pNode->GetBoundElementCount();
+    for (UINT i = 0; i < elementCount; ++i)
+    {
+        Gem::TGemPtr<Canvas::XLight> pLight;
+        if (SUCCEEDED(pNode->GetBoundElement(i)->QueryInterface(&pLight)))
+            Gem::ThrowGemError(SubmitLight(pLight));
+    }
 
-    m_RenderableQueue.push_back(pElement);
+    m_RenderableQueue.push_back(pNode);
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::SubmitForUIRender(Canvas::XUIGraphNode *pNode)
+{
+    if (!pNode)
+        return Gem::Result::InvalidArg;
+
+    m_UIRenderableQueue.push_back(pNode);
     return Gem::Result::Success;
 }
 
@@ -1805,7 +1740,22 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
     HlslTypes::HlslLight& gpu = m_Lights[m_LightCount++];
     gpu = {};
     gpu.Type = static_cast<uint32_t>(pLight->GetType());
-    gpu.Range = pLight->GetRange();
+
+    float attenConstant = 1.0f;
+    float attenLinear = 0.0f;
+    float attenQuadratic = 0.0f;
+    pLight->GetAttenuation(&attenConstant, &attenLinear, &attenQuadratic);
+
+    float range = pLight->GetRange();
+    if (range < 0.0f)
+        range = 0.0f;
+
+    // Preserve imported attenuation coefficients exactly for physically faithful falloff.
+    // Only guard against an invalid all-zero denominator.
+    if (attenConstant == 0.0f && attenLinear == 0.0f && attenQuadratic == 0.0f)
+        attenConstant = 1.0f;
+
+    gpu.AttenuationAndRange = { attenConstant, attenLinear, attenQuadratic, range };
 
     // Pre-multiply color by intensity
     auto color = pLight->GetColor();
@@ -1817,21 +1767,70 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
     if (pNode)
     {
         auto world = pNode->GetGlobalMatrix();
-        if (pLight->GetType() == Canvas::LightType::Directional)
+        if (pLight->GetType() == Canvas::LightType::Directional || pLight->GetType() == Canvas::LightType::Spot)
         {
             Canvas::Math::FloatVector4 dir(world[0][0], world[0][1], world[0][2], 0.0f);
             dir = dir.Normalize();
             gpu.DirectionOrPosition = { dir[0], dir[1], dir[2], 0.0f };
+
+            if (pLight->GetType() == Canvas::LightType::Spot)
+            {
+                float innerAngle = 0.785398f;
+                float outerAngle = 1.047198f;
+                pLight->GetSpotAngles(&innerAngle, &outerAngle);
+                if (innerAngle > outerAngle)
+                    std::swap(innerAngle, outerAngle);
+
+                gpu.DirectionAndSpot = {
+                    dir[0],
+                    dir[1],
+                    dir[2],
+                    std::cos(outerAngle * 0.5f)
+                };
+                gpu.Color.w = std::cos(innerAngle * 0.5f);
+            }
         }
         else
         {
             gpu.DirectionOrPosition = { world[3][0], world[3][1], world[3][2], 1.0f };
         }
     }
+    else
+    {
+        if (pLight->GetType() == Canvas::LightType::Directional || pLight->GetType() == Canvas::LightType::Spot)
+            gpu.DirectionOrPosition = { 0.0f, 1.0f, 0.0f, 0.0f };
+    }
+
+    if (pLight->GetType() == Canvas::LightType::Directional)
+    {
+        gpu.DirectionAndSpot = { gpu.DirectionOrPosition.x, gpu.DirectionOrPosition.y, gpu.DirectionOrPosition.z, -1.0f };
+        gpu.AttenuationAndRange = { 1.0f, 0.0f, 0.0f, 0.0f };
+    }
+    else if (pLight->GetType() == Canvas::LightType::Point)
+    {
+        gpu.DirectionAndSpot = { 0.0f, 0.0f, 0.0f, -1.0f };
+    }
+    else if (pLight->GetType() == Canvas::LightType::Ambient)
+    {
+        gpu.DirectionAndSpot = { 0.0f, 0.0f, 0.0f, -1.0f };
+        gpu.AttenuationAndRange = { 1.0f, 0.0f, 0.0f, 0.0f };
+    }
+
+    // Precompute cutoff distance on CPU for point/spot lights so the shader can
+    // skip the per-pixel quadratic solve.  Stored in AttenuationAndRange.w,
+    // replacing the raw authored range (which was only used to clamp this value).
+    if (pLight->GetType() == Canvas::LightType::Point || pLight->GetType() == Canvas::LightType::Spot)
+    {
+        float peakIntensity = (std::max)(gpu.Color.x, (std::max)(gpu.Color.y, gpu.Color.z));
+        gpu.AttenuationAndRange.w = ComputeLightCutoffDistance(
+            peakIntensity, attenConstant, attenLinear, attenQuadratic,
+            range, kDefaultLightCullThreshold);
+    }
 
     return Gem::Result::Success;
 }
 
+//------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::EndFrame()
 {
@@ -1840,7 +1839,9 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         // Build per-frame constants from the active camera + accumulated lights
         // (lights were accumulated during SubmitForRender via SubmitLight)
         HlslTypes::HlslPerFrameConstants frameConstants = {};
-        
+        // Default exposure of 1.0x (0 stops) when no camera is active.
+        frameConstants.Exposure = 1.0f;
+
         if (m_pActiveCamera)
         {
             auto viewProj = m_pActiveCamera->GetViewProjectionMatrix();
@@ -1852,28 +1853,24 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 auto camPos = pCameraNode->GetGlobalTranslation();
                 memcpy(&frameConstants.CameraWorldPos, &camPos, sizeof(frameConstants.CameraWorldPos));
             }
+
+            frameConstants.Exposure = std::exp2(m_pActiveCamera->GetExposureStops());
         }
 
         frameConstants.LightCount = m_LightCount;
+        frameConstants.LightCullThreshold = kDefaultLightCullThreshold;
         if (m_LightCount > 0)
             memcpy(frameConstants.Lights, m_Lights, m_LightCount * sizeof(HlslTypes::HlslLight));
 
         // Upload per-frame constants and bind to root CBV (slot 0, register b0)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        Canvas::GfxSuballocation cbAlloc;
-        Gem::ThrowGemError(m_pDevice->AllocateHostWriteRegion(
-            (sizeof(HlslTypes::HlslPerFrameConstants) + cbAlignment - 1) & ~(cbAlignment - 1), cbAlloc));
+        const uint64_t cbSize = (sizeof(HlslTypes::HlslPerFrameConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(cbSize, hw));
         
-        auto pHostBuf = static_cast<CBuffer12*>(cbAlloc.pBuffer.Get());
-        ID3D12Resource* pHostResource = pHostBuf->GetD3DResource();
+        memcpy(hw.pMapped, &frameConstants, sizeof(HlslTypes::HlslPerFrameConstants));
         
-        void* pMapped = nullptr;
-        ThrowFailedHResult(pHostResource->Map(0, nullptr, &pMapped));
-        memcpy(static_cast<uint8_t*>(pMapped) + cbAlloc.Offset,
-               &frameConstants, sizeof(HlslTypes::HlslPerFrameConstants));
-        pHostResource->Unmap(0, nullptr);
-        
-        D3D12_GPU_VIRTUAL_ADDRESS frameCBVAddress = pHostResource->GetGPUVirtualAddress() + cbAlloc.Offset;
+        D3D12_GPU_VIRTUAL_ADDRESS frameCBVAddress = hw.GpuAddress;
 
         // Bind per-frame constants for the geometry pass
         auto& frameConstTask = CreateGpuTask("FrameConstants");
@@ -1883,10 +1880,31 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         };
         m_GpuTaskGraph.InsertTask(frameConstTask);
 
-        // Drain the renderable queue (meshes only — lights already accumulated)
-        for (auto *pElement : m_RenderableQueue)
+        // Drain the renderable queue — process nodes inline
+        for (auto *pNode : m_RenderableQueue)
         {
-            Gem::ThrowGemError(pElement->DispatchForRender(this));
+            UINT elementCount = pNode->GetBoundElementCount();
+            for (UINT i = 0; i < elementCount; ++i)
+            {
+                auto *pElement = pNode->GetBoundElement(i);
+
+                // Mesh instances: build per-object constants from node transform, draw internally
+                Gem::TGemPtr<Canvas::XMeshInstance> pMeshInstance;
+                if (SUCCEEDED(pElement->QueryInterface(&pMeshInstance)))
+                {
+                    auto *pMeshData = pMeshInstance->GetMeshData();
+                    if (pMeshData)
+                    {
+                        const uint32_t groupCount = pMeshData->GetNumMaterialGroups();
+                        const auto& worldMatrix = pNode->GetGlobalMatrix();
+                        for (uint32_t g = 0; g < groupCount; ++g)
+                        {
+                            Gem::ThrowGemError(DrawMesh(pMeshData, g, worldMatrix));
+                        }
+                    }
+                }
+                // Lights were already accumulated during SubmitForRender — skip here
+            }
         }
         m_RenderableQueue.clear();
 
@@ -1898,21 +1916,21 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
             // CPU work: allocate SRV descriptors and create SRVs
             ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
-            UINT incSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            const UINT incSize = m_CbvSrvUavIncrement;
 
-            if (m_NextSRVSlot + 2 > NumShaderResourceDescriptors)
+            if (m_NextSRVSlot + 3 > NumShaderResourceDescriptors)
                 m_NextSRVSlot = 0;
             UINT baseSlot = m_NextSRVSlot;
-            m_NextSRVSlot += 2;
+            m_NextSRVSlot += 3;
 
-            D3D12_CPU_DESCRIPTOR_HANDLE baseCpuHandle;
-            baseCpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
-            D3D12_GPU_DESCRIPTOR_HANDLE baseGpuHandle;
-            baseGpuHandle.ptr = m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart().ptr + (incSize * baseSlot);
+            CD3DX12_CPU_DESCRIPTOR_HANDLE baseCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), baseSlot, incSize);
+            CD3DX12_GPU_DESCRIPTOR_HANDLE baseGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), baseSlot, incSize);
 
             pD3DDevice->CreateShaderResourceView(m_pGBufferNormals->GetD3DResource(), nullptr, baseCpuHandle);
-            D3D12_CPU_DESCRIPTOR_HANDLE diffuseSrvHandle = { baseCpuHandle.ptr + incSize };
+            CD3DX12_CPU_DESCRIPTOR_HANDLE diffuseSrvHandle(baseCpuHandle, 1, incSize);
             pD3DDevice->CreateShaderResourceView(m_pGBufferDiffuseColor->GetD3DResource(), nullptr, diffuseSrvHandle);
+            CD3DX12_CPU_DESCRIPTOR_HANDLE worldPosSrvHandle(baseCpuHandle, 2, incSize);
+            pD3DDevice->CreateShaderResourceView(m_pGBufferWorldPos->GetD3DResource(), nullptr, worldPosSrvHandle);
 
             // Composite task: transition G-buffers to SR, back buffer to RT, then draw
             auto& compositeTask = CreateGpuTask("CompositePass");
@@ -1924,19 +1942,23 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            DeclareGpuTextureUsage(compositeTask, m_pGBufferWorldPos,
+                D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             DeclareGpuTextureUsage(compositeTask, pBackBuffer,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
                 D3D12_BARRIER_ACCESS_RENDER_TARGET);
             compositeTask.RecordFunc = [frameCBVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
             {
-                const float clearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+                // BUGBUG: TODO: Make clearColor selectable by client application
+                const float clearColor[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
                 pCL->ClearRenderTargetView(m_CurrentRTV, clearColor, 0, nullptr);
                 pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
                 pCL->SetGraphicsRootSignature(m_pCompositeRootSig);
                 pCL->SetPipelineState(m_pCompositePSO);
-                ID3D12DescriptorHeap* heaps[] = { m_pShaderResourceDescriptorHeap, m_pSamplerDescriptorHeap };
-                pCL->SetDescriptorHeaps(2, heaps);
+                pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
                 pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
                 pCL->SetGraphicsRootDescriptorTable(1, baseGpuHandle);
                 pCL->DrawInstanced(3, 1, 0, 0);
@@ -1944,11 +1966,52 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             m_GpuTaskGraph.InsertTask(compositeTask);
         }
 
-        RetireUploadAllocation(cbAlloc);
+        // Flush pending glyph atlas uploads (SDF bitmaps → GPU texture)
+        FlushPendingGlyphUploads();
+
+        // Draw UI elements (pure draw — uploads already staged by SubmitRenderables)
+        for (auto* pNode : m_UIRenderableQueue)
+        {
+            UINT elemCount = pNode->GetBoundElementCount();
+            for (UINT i = 0; i < elemCount; ++i)
+            {
+                auto* pElem = pNode->GetBoundElement(i);
+                if (!pElem->IsVisible())
+                    continue;
+                auto& vb = pElem->GetVertexBuffer();
+                if (vb.Size == 0)
+                    continue;
+
+                // Keep GPU resources alive until this frame's fence completes
+                DeferRelease(vb.pBuffer.Get());
+
+                Canvas::Math::FloatVector2 elementOffset = pNode->GetGlobalPosition();
+
+                if (pElem->GetType() == Canvas::UIElementType::Rect)
+                {
+                    Gem::ThrowGemError(DrawUIRect(vb, elementOffset));
+                }
+                else if (pElem->GetType() == Canvas::UIElementType::Text)
+                {
+                    Gem::TGemPtr<Canvas::XUITextElement> pText;
+                    if (SUCCEEDED(pElem->QueryInterface(&pText)))
+                    {
+                        auto* pAtlas = pText->GetAtlasSurface();
+                        if (pAtlas)
+                        {
+                            DeferRelease(pAtlas);
+                            Gem::ThrowGemError(DrawUIText(vb, pAtlas, elementOffset));
+                        }
+                    }
+                }
+            }
+        }
+        m_UIRenderableQueue.clear();
     }
     catch (Gem::GemError &e)
     {
         m_RenderableQueue.clear();
+        m_UIRenderableQueue.clear();
         m_pCurrentSwapChain = nullptr;
         m_pActiveCamera = nullptr;
         return e.Result();

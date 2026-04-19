@@ -10,19 +10,20 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CScene::CScene(XCanvas *pCanvas) :
-    TCanvasElement(pCanvas)
+CSceneGraph::CSceneGraph(XCanvas *pCanvas, XGfxDevice *pDevice) :
+    TCanvasElement(pCanvas),
+    m_pDevice(pDevice)
 {
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CScene::Initialize()
+GEMMETHODIMP CSceneGraph::Initialize()
 {
     try
     {
         
         Gem::TGemPtr<XSceneGraphNode> pRoot;
-        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pRoot));
+        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pRoot, "SceneRoot"));
         m_pRoot = pRoot;
     }
     catch(const Gem::GemError &e)
@@ -34,13 +35,13 @@ GEMMETHODIMP CScene::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CScene::GetRootSceneGraphNode()
+GEMMETHODIMP_(XSceneGraphNode *) CSceneGraph::GetRootSceneGraphNode()
 {
     return m_pRoot.Get();
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CScene::SubmitRenderables(XRenderQueue *pRenderQueue)
+GEMMETHODIMP CSceneGraph::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
 {
     try
     {
@@ -56,12 +57,9 @@ GEMMETHODIMP CScene::SubmitRenderables(XRenderQueue *pRenderQueue)
             XSceneGraphNode *pNode = m_TraversalStack.back();
             m_TraversalStack.pop_back();
 
-            // Submit all bound elements on this node
-            UINT elementCount = pNode->GetBoundElementCount();
-            for (UINT i = 0; i < elementCount; ++i)
-            {
-                Gem::ThrowGemError(pRenderQueue->SubmitForRender(pNode->GetBoundElement(i)));
-            }
+            // Submit this node for rendering (render queue handles its elements)
+            if (pNode->GetBoundElementCount() > 0)
+                Gem::ThrowGemError(pRenderQueue->SubmitForRender(pNode));
 
             // Push children onto stack for traversal
             for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))

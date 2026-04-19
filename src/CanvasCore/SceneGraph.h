@@ -34,7 +34,6 @@ public:
         m_pNode = pNode;
         return Gem::Result::Success;
     }
-    GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) override;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -53,6 +52,7 @@ CSceneGraphNode :
 protected:
     CSceneGraphNode *m_pParent = nullptr; // Weak pointer
     ChildNode* m_pFirstChild = nullptr;   // Intrusive doubly-linked list for O(1) insertion anywhere
+    ChildNode* m_pLastChild = nullptr;    // Tail pointer for O(1) AddChild
     std::unordered_map<XSceneGraphNode*, ChildNode*> m_ChildMap;  // For O(1) lookup of wrapper given child pointer
     Math::FloatQuaternion m_LocalRotation;
     Math::FloatVector4 m_LocalScale; // W is ignored
@@ -249,13 +249,6 @@ template<class _Base>
 GEMMETHODIMP_(XSceneGraphNode *) TSceneGraphElement<_Base>::GetAttachedNode()
 {
     return m_pNode;
-}
-
-template<class _Base>
-GEMMETHODIMP TSceneGraphElement<_Base>::DispatchForRender(XRenderQueue */*pRenderQueue*/)
-{
-    // TODO: Implement render dispatch logic
-    return Gem::Result::Success;
 }
 
 }

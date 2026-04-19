@@ -14,7 +14,7 @@
 //================================================================================================
 
 #pragma once
-#include "CanvasRender.h"
+#include "CanvasMath.hpp"
 #include <cstdarg>
 
 namespace Canvas
@@ -33,7 +33,7 @@ namespace Canvas
 #endif
 
 // Forward declarations
-struct XScene;
+struct XSceneGraph;
 struct XCamera;
 struct XLight;
 struct XGfxBuffer;
@@ -41,9 +41,17 @@ struct XGfxMeshData;
 struct XMeshInstance;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
-struct XRenderQueue;
+struct XGfxRenderQueue;
+struct XGfxDevice;
 struct XFont;
 struct XUIGraph;
+struct XUIGraphNode;
+struct XUIElement;
+struct XUITextElement;
+struct XUIRectElement;
+struct GfxResourceAllocation;
+struct XGfxSurface;
+class CGlyphCache;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -167,7 +175,7 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(LoadPlugin)(PCSTR path, struct XCanvasPlugin **ppPlugin) = 0;
 
-    GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateSceneGraph)(XGfxDevice *pDevice, XSceneGraph **ppScene, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
@@ -175,7 +183,9 @@ XCanvas : public Gem::XGeneric
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
-    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph) = 0;
+    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XUIGraph** ppGraph) = 0;
+    GEMMETHOD(CreateTextElement)(XGfxSurface* pAtlasSurface, XUITextElement** ppElement) = 0;
+    GEMMETHOD(CreateRectElement)(XUIRectElement** ppElement) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
@@ -183,6 +193,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(UnregisterElement)(struct XCanvasElement *) = 0;
 
     GEMMETHOD_(XLogger *, GetLogger)() = 0;
+    GEMMETHOD_(CGlyphCache*, GetGlyphCache)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -246,6 +257,7 @@ enum class AnimationAttribute
     FarClip,
     FovAngle,
     AspectRatio,
+    ExposureStops,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -293,15 +305,6 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD(Update)(float dtime) = 0;
 };
 
-//------------------------------------------------------------------------------------------------
-//------------------------------------------------------------------------------------------------
-// Per-object constant buffer data (matches HLSL PerObjectConstants)
-struct alignas(16) GfxPerObjectConstants
-{
-    Math::FloatMatrix4x4 World;            // Object-to-world transform
-    Math::FloatMatrix4x4 WorldInvTranspose; // For transforming normals
-};
-
 // Text vertex structure — shared between CanvasCore (vertex generation) and CanvasGfx (rendering)
 // Layout must match HLSL StructuredBuffer<TextVertex> in VSText.hlsl
 struct TextVertex
@@ -330,61 +333,6 @@ struct UIRectDrawCommand
     uint32_t VertexCount;   // Number of vertices to draw
 };
 
-struct
-XRenderQueue : public XCanvasElement
-{
-    GEM_INTERFACE_DECLARE(XRenderQueue, 0x3B35719161878DCC);
-
-    GEMMETHOD(DrawMesh)(XGfxMeshData *pMeshData, const GfxPerObjectConstants &objectConstants) = 0;
-
-    // Persistent UI text vertex buffer management
-    // Allocates a contiguous region in the persistent GPU vertex buffer.
-    // Returns the start vertex index via pStartVertex.
-    GEMMETHOD(AllocUITextVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) = 0;
-
-    // Frees a previously allocated region in the persistent GPU vertex buffer.
-    GEMMETHOD_(void, FreeUITextVertices)(uint32_t startVertex, uint32_t maxVertexCount) = 0;
-
-    // Uploads CPU vertex data into an allocated region of the persistent GPU vertex buffer.
-    // Stages data in UPLOAD heap and issues a CopyBufferRegion to the DEFAULT heap buffer.
-    GEMMETHOD(UploadUITextVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) = 0;
-
-    // Batch draw UI text from the persistent vertex buffer.
-    // Issues a single PSO bind and one DrawInstanced per command.
-    GEMMETHOD(DrawUITextBatch)(const UITextDrawCommand* pCommands, uint32_t commandCount, XGfxSurface* pGlyphAtlas) = 0;
-
-    // Persistent UI rect vertex buffer management (same pattern as text, separate buffer)
-    GEMMETHOD(AllocUIRectVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) = 0;
-    GEMMETHOD_(void, FreeUIRectVertices)(uint32_t startVertex, uint32_t maxVertexCount) = 0;
-    GEMMETHOD(UploadUIRectVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) = 0;
-
-    // Batch draw UI rects from the persistent rect vertex buffer.
-    // Issues a single PSO bind (no atlas) and one DrawInstanced per command.
-    GEMMETHOD(DrawUIRectBatch)(const UIRectDrawCommand* pCommands, uint32_t commandCount) = 0;
-
-    // Upload CPU data into a sub-region of a GPU surface via a staging copy.
-    // Intended for populating persistently-resident textures (e.g., glyph atlas).
-    // The copy is recorded into the command list identified by 'context'.
-    // dstX/dstY: top-left destination texel in pixel coordinates
-    // width/height: extent of the copied region in texels
-    // pData: pointer to row-major source data
-    // srcRowPitch: byte stride between source rows (>= width * bytes-per-texel)
-    GEMMETHOD(UploadTextureRegion)(
-        XGfxSurface *pDstSurface,
-        uint32_t dstX, uint32_t dstY,
-        uint32_t width, uint32_t height,
-        const void *pData,
-        uint32_t srcRowPitch,
-        GfxRenderContext context = GfxRenderContext::Scene) = 0;
-
-    // Private contract with the scene graph: enqueues an element for rendering.
-    // Elements are dispatched later when the queue is drained (EndFrame).
-    GEMMETHOD(SubmitForRender)(XSceneGraphElement *pElement) = 0;
-
-    // Private contract with the scene: sets the active camera for frame constant generation.
-    GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
-};
-
 //------------------------------------------------------------------------------------------------
 struct
 XSceneGraphElement : public XCanvasElement
@@ -402,9 +350,6 @@ XSceneGraphElement : public XCanvasElement
     // This is called both when binding and when transforms invalidate
     // Elements can query node transforms via GetAttachedNode() when needed
     GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode) = 0;
-
-    // Dispatches the element for rendering
-    GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
 };
@@ -424,10 +369,16 @@ XCamera : public XSceneGraphElement
     GEMMETHOD_(void, SetFovAngle)(float fovAngle) = 0;
     GEMMETHOD_(void, SetAspectRatio)(float aspectRatio) = 0;
 
+    // Exposure compensation in photographic stops. 0.0 = 1x (neutral),
+    // +1 doubles scene brightness, -1 halves it. Applied as a uniform
+    // multiplier (exp2(stops)) in the composition / tone-map pass.
+    GEMMETHOD_(void, SetExposureStops)(float stops) = 0;
+
     GEMMETHOD_(float, GetNearClip)() = 0;
     GEMMETHOD_(float, GetFarClip)() = 0;
     GEMMETHOD_(float, GetFovAngle)() = 0;
     GEMMETHOD_(float, GetAspectRatio)() = 0;
+    GEMMETHOD_(float, GetExposureStops)() = 0;
 
     GEMMETHOD_(Math::FloatMatrix4x4, GetViewMatrix)() = 0;
     GEMMETHOD_(Math::FloatMatrix4x4, GetProjectionMatrix)() = 0;
@@ -467,17 +418,18 @@ XLight : public XSceneGraphElement
 
 //------------------------------------------------------------------------------------------------
 struct
-XScene : public XCanvasElement
+XSceneGraph : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(XScene, 0x0A470E86351AF96A);
+    GEM_INTERFACE_DECLARE(XSceneGraph, 0x0A470E86351AF96A);
 
+    GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
 
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
-    GEMMETHOD_(XCamera *, GetActiveCamera)() = 0;
+    GEMMETHOD_(XCamera *, GetActiveCamera)() const = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
-    GEMMETHOD(SubmitRenderables)(XRenderQueue *pRenderQueue) = 0;
+    GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -488,7 +440,6 @@ XMeshInstance : public XSceneGraphElement
     
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() = 0;
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;
-    GEMMETHOD_(uint32_t, GetMaterialGroupIndex)() = 0;
 };
 
 //================================================================================================
@@ -533,22 +484,23 @@ enum class UIElementType : uint32_t
     Rect,
 };
 
+//================================================================================================
+// UI Graph - Hierarchical UI/HUD elements with dirty tracking
+//================================================================================================
+
 //------------------------------------------------------------------------------------------------
-struct XUIElement : public Gem::XGeneric
+struct XUIElement : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XUIElement, 0xA1B2C3D4E5F60718);
 
     GEMMETHOD_(UIElementType, GetType)() const = 0;
-
-    GEMMETHOD_(const Math::FloatVector2&, GetPosition)() const = 0;
-    GEMMETHOD_(void, SetPosition)(const Math::FloatVector2& position) = 0;
-
     GEMMETHOD_(bool, IsVisible)() const = 0;
     GEMMETHOD_(void, SetVisible)(bool visible) = 0;
+    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() = 0;
 
-    GEMMETHOD_(XUIElement*, GetParent)() = 0;
-    GEMMETHOD_(XUIElement*, GetFirstChild)() = 0;
-    GEMMETHOD_(XUIElement*, GetNextSibling)() = 0;
+    // GPU vertex buffer (ready to draw, managed by graph + device)
+    GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const = 0;
+    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -561,6 +513,8 @@ struct XUITextElement : public XUIElement
     GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
     GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
+
+    GEMMETHOD_(XGfxSurface*, GetAtlasSurface)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -575,18 +529,38 @@ struct XUIRectElement : public XUIElement
 };
 
 //------------------------------------------------------------------------------------------------
-struct XUIGraph : public Gem::XGeneric
+struct XUIGraphNode : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XUIGraphNode, 0xE5F6071829304152);
+
+    GEMMETHOD(AddChild)(_In_ XUIGraphNode* pChild) = 0;
+    GEMMETHOD(RemoveChild)(_In_ XUIGraphNode* pChild) = 0;
+    GEMMETHOD_(XUIGraphNode*, GetParent)() = 0;
+    GEMMETHOD_(XUIGraphNode*, GetFirstChild)() = 0;
+    GEMMETHOD_(XUIGraphNode*, GetNextSibling)() = 0;
+
+    GEMMETHOD_(const Math::FloatVector2&, GetLocalPosition)() const = 0;
+    GEMMETHOD_(void, SetLocalPosition)(const Math::FloatVector2& position) = 0;
+    GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() = 0;
+
+    GEMMETHOD(BindElement)(_In_ XUIElement* pElement) = 0;
+    GEMMETHOD_(UINT, GetBoundElementCount)() = 0;
+    GEMMETHOD_(XUIElement*, GetBoundElement)(UINT index) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+struct XUIGraph : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XUIGraph, 0xD4E5F60718293041);
 
-    GEMMETHOD_(XUIElement*, GetRoot)() = 0;
-    GEMMETHOD(CreateTextElement)(XUIElement* pParent, XUITextElement** ppElement) = 0;
-    GEMMETHOD(CreateRectElement)(XUIElement* pParent, XUIRectElement** ppElement) = 0;
+    GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
     GEMMETHOD(RemoveElement)(XUIElement* pElement) = 0;
-
+    GEMMETHOD(CreateNode)(XUIGraphNode* pParent, XUIGraphNode** ppNode) = 0;
+    GEMMETHOD_(XUIGraphNode*, GetRootNode)() = 0;
     GEMMETHOD(Update)() = 0;
-    GEMMETHOD(Submit)(XRenderQueue* pRenderQueue) = 0;
+    GEMMETHOD(SubmitRenderables)(XGfxRenderQueue* pRenderQueue) = 0;
 };
+
 
 //------------------------------------------------------------------------------------------------
 enum TypeId : uint64_t

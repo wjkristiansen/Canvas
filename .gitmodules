@@ -20,3 +20,9 @@
 [submodule "deps/InCommand"]
 	path = deps/InCommand
 	url = https://github.com/wjkristiansen/InCommand.git
+[submodule "deps/FbxAssets"]
+	path = deps/FbxAssets
+	url = https://github.com/wjkristiansen/FbxAssets.git
+[submodule "deps/ufbx"]
+	path = deps/ufbx
+	url = https://github.com/ufbx/ufbx.git

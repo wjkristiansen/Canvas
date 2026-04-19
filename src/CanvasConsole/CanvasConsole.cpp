@@ -33,8 +33,16 @@ int main()
     Gem::TGemPtr<Canvas::XCanvas> pCanvas;
     Gem::Result result = Canvas::CreateCanvas(nullptr, &pCanvas);
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    result = pCanvas->CreateScene(&pScene);
+    Gem::TGemPtr<Canvas::XCanvasPlugin> pPlugin;
+    result = pCanvas->LoadPlugin("CanvasGfx12.dll", &pPlugin);
+
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    result = pPlugin->CreateCanvasElement(
+        pCanvas, Canvas::TypeId::TypeId_GfxDevice, "ConsoleDevice",
+        Canvas::XGfxDevice::IId, reinterpret_cast<void**>(&pDevice));
+
+    Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+    result = pCanvas->CreateSceneGraph(pDevice, &pScene);
 
     Gem::TGemPtr<Canvas::XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);

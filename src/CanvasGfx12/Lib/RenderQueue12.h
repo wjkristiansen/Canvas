@@ -8,7 +8,8 @@
 #include "GpuTask.h"
 #include "HlslTypes.h"
 #include "CommandAllocatorPool.h"
-#include "BuddySuballocator.h"
+#include "ResourceManager.h"
+#include "UploadRing.h"
 
 // Forward declarations
 class CSurface12;
@@ -459,7 +460,22 @@ public:
     DXGI_FORMAT m_RectPSOFormat = DXGI_FORMAT_UNKNOWN;
     UINT64 m_FenceValue = 0;
     CComPtr<ID3D12Fence> m_pFence;
-    CDevice12 *m_pDevice = nullptr; // weak pointer
+    Gem::TGemPtr<CDevice12> m_pDevice;  // ref-counted; device outlives render queue
+
+    // Stable id assigned by CDevice12::GetResourceManager().RegisterTimeline().
+    // Combined with m_FenceValue this forms a FenceToken usable for queue-agnostic
+    // deferred operations (RetireBuffer, DeferRelease).
+    uint32_t m_TimelineId = FenceToken::kInvalidTimelineId;
+
+    uint32_t GetTimelineId() const { return m_TimelineId; }
+    FenceToken MakeFenceToken() const { return FenceToken{ m_TimelineId, m_FenceValue }; }
+
+    // Per-queue upload ring for host-write staging (UPLOAD heap).
+    // Private to this queue — only touched by this queue's thread — so its
+    // fence-value markers are unambiguous bare UINT64s on this fence.
+    CUploadRing m_UploadRing;
+
+    CUploadRing& GetUploadRing() { return m_UploadRing; }
 
     // Depth buffer for rendering
     Gem::TGemPtr<CSurface12> m_pDepthBuffer;
@@ -470,8 +486,14 @@ public:
     // G-buffer render targets for deferred shading
     Gem::TGemPtr<CSurface12> m_pGBufferNormals;
     Gem::TGemPtr<CSurface12> m_pGBufferDiffuseColor;
-    Canvas::GfxFormat m_GBufferNormalsFormat = Canvas::GfxFormat::R10G10B10A2_UNorm;
-    Canvas::GfxFormat m_GBufferDiffuseFormat = Canvas::GfxFormat::R10G10B10A2_UNorm;
+    Gem::TGemPtr<CSurface12> m_pGBufferWorldPos;
+    Gem::TGemPtr<CSurface12> m_pGBufferPBR;       // R=Roughness, G=Metallic, B=AO, A=spare
+    Gem::TGemPtr<CSurface12> m_pGBufferEmissive;  // RGB linear emissive
+    Canvas::GfxFormat m_GBufferNormalsFormat  = Canvas::GfxFormat::R10G10B10A2_UNorm;
+    Canvas::GfxFormat m_GBufferDiffuseFormat  = Canvas::GfxFormat::R10G10B10A2_UNorm;
+    Canvas::GfxFormat m_GBufferWorldPosFormat = Canvas::GfxFormat::R16G16B16A16_Float;
+    Canvas::GfxFormat m_GBufferPBRFormat      = Canvas::GfxFormat::R8G8B8A8_UNorm;
+    Canvas::GfxFormat m_GBufferEmissiveFormat = Canvas::GfxFormat::R11G11B10_Float;
     UINT m_GBufferWidth = 0;
     UINT m_GBufferHeight = 0;
 
@@ -488,10 +510,13 @@ public:
     uint32_t m_LightCount = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentDSV = {};
-    D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[2] = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[5] = {};
 
-    // Renderable elements enqueued during scene graph update, dispatched during EndFrame
-    std::vector<Canvas::XSceneGraphElement*> m_RenderableQueue;
+    // Renderable nodes enqueued during scene graph update, dispatched during EndFrame
+    std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
+
+    // UI graph nodes enqueued during UI graph submission, dispatched during EndFrame
+    std::vector<Canvas::XUIGraphNode*> m_UIRenderableQueue;
 
     // SRV descriptor allocation for per-draw structured buffers
     UINT m_NextSRVSlot = 0;
@@ -503,56 +528,19 @@ public:
 
     UINT m_NextRTVSlot = 0;
 
+    UINT m_CbvSrvUavIncrement = 0;
+    UINT m_SamplerIncrement   = 0;
+    UINT m_RtvIncrement       = 0;
+    UINT m_DsvIncrement       = 0;
+
+    // { shader-resource heap, sampler heap } cache for SetDescriptorHeaps.
+    ID3D12DescriptorHeap* m_DescriptorHeapsArray[2] = {};
+
     // GPU sync point tracking (fence-value based)
     std::unordered_map<UINT64, GpuSyncPoint> m_GpuSyncPoints;
-    
-    // Pending upload allocation retirements: freed once GPU advances past the fence value
-    struct PendingUploadRetirement
-    {
-        Canvas::GfxSuballocation Suballocation;
-        UINT64 FenceValue;  // Release once GPU completes past this fence value
-    };
-    std::vector<PendingUploadRetirement> m_PendingUploadRetirements;
-
-    // Persistent UI text vertex buffer (DEFAULT heap)
-    static const uint32_t kInitialUITextVertexCapacity = 4096;  // Must be power of 2
-    Gem::TGemPtr<Canvas::XGfxBuffer> m_pUITextVertexBuffer;
-    std::unique_ptr<TBuddySuballocator<uint32_t>> m_pUITextVertexAllocator;
-
-    // Staged uploads: CPU data staged in UPLOAD heap, flushed by DrawUITextBatch
-    // as a single GPU copy task before the draw task (one write, then one read).
-    struct PendingUITextUpload
-    {
-        Canvas::GfxSuballocation Staging;
-        uint64_t DstOffset;     // Byte offset into persistent buffer
-        uint64_t CopySize;      // Bytes to copy
-    };
-    std::vector<PendingUITextUpload> m_PendingUITextUploads;
-
-    // Persistent UI rect vertex buffer (DEFAULT heap, same pattern as text)
-    static const uint32_t kInitialUIRectVertexCapacity = 1024;  // Must be power of 2
-    Gem::TGemPtr<Canvas::XGfxBuffer> m_pUIRectVertexBuffer;
-    std::unique_ptr<TBuddySuballocator<uint32_t>> m_pUIRectVertexAllocator;
-
-    struct PendingUIRectUpload
-    {
-        Canvas::GfxSuballocation Staging;
-        uint64_t DstOffset;
-        uint64_t CopySize;
-    };
-    std::vector<PendingUIRectUpload> m_PendingUIRectUploads;
-
-    // Pending buffer retirements: old persistent buffers kept alive until GPU fence completes
-    struct PendingBufferRetirement
-    {
-        Gem::TGemPtr<Canvas::XGfxBuffer> pBuffer;
-        UINT64 FenceValue;
-    };
-    std::vector<PendingBufferRetirement> m_PendingBufferRetirements;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxRenderQueue)
-        GEM_INTERFACE_ENTRY(Canvas::XRenderQueue)
         GEM_INTERFACE_ENTRY(Canvas::XCanvasElement)
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
@@ -567,23 +555,18 @@ public:
     GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers) final;
     GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
-    GEMMETHOD(DrawMesh)(Canvas::XGfxMeshData *pMeshData, const Canvas::GfxPerObjectConstants &objectConstants) final;
-    GEMMETHOD(AllocUITextVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) final;
-    GEMMETHOD_(void, FreeUITextVertices)(uint32_t startVertex, uint32_t maxVertexCount) final;
-    GEMMETHOD(UploadUITextVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) final;
-    GEMMETHOD(DrawUITextBatch)(const Canvas::UITextDrawCommand* pCommands, uint32_t commandCount, Canvas::XGfxSurface* pGlyphAtlas) final;
-    GEMMETHOD(AllocUIRectVertices)(uint32_t maxVertexCount, uint32_t* pStartVertex) final;
-    GEMMETHOD_(void, FreeUIRectVertices)(uint32_t startVertex, uint32_t maxVertexCount) final;
-    GEMMETHOD(UploadUIRectVertices)(uint32_t startVertex, const void* pVertexData, uint32_t vertexCount) final;
-    GEMMETHOD(DrawUIRectBatch)(const Canvas::UIRectDrawCommand* pCommands, uint32_t commandCount) final;
-    GEMMETHOD(UploadTextureRegion)(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch, Canvas::GfxRenderContext context) final;
-    GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphElement *pElement) final;
+    GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
+    GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
     GEMMETHOD(EndFrame)() final;
 
     // Internal functions
     CDevice12 *GetDevice() const { return m_pDevice; }
     ID3D12CommandQueue *GetD3DCommandQueue() { return m_pCommandQueue; }
+    UINT64 GetFenceValue() const { return m_FenceValue; }
+
+    // Internal mesh drawing (called from EndFrame, not on any public interface)
+    Gem::Result DrawMesh(Canvas::XGfxMeshData *pMeshData, uint32_t materialGroupIndex, const Canvas::Math::FloatMatrix4x4 &worldTransform);
 
     // Flush: compute final layouts, update committed state, close/submit CL
     void Flush();
@@ -609,17 +592,14 @@ public:
     // Create the rect PSO and root signature (lazily, on first use)
     void EnsureRectPSO(DXGI_FORMAT rtvFormat);
 
-    // Create the persistent UI text vertex buffer (lazily, on first use)
-    void EnsureUITextVertexBuffer();
+    void FlushPendingGlyphUploads();
 
-    // Create the persistent UI rect vertex buffer (lazily, on first use)
-    void EnsureUIRectVertexBuffer();
-
-    // Grow the persistent UI rect vertex buffer to at least newCapacity vertices
-    void GrowUIRectVertexBuffer(uint32_t newCapacity);
-
-    // Grow the persistent UI text vertex buffer to at least newCapacity vertices
-    void GrowUITextVertexBuffer(uint32_t newCapacity);
+    // Add a GPU resource ref for the current frame (released after fence completes)
+    void DeferRelease(Gem::XGeneric* pResource);
+    Gem::Result UploadTextureRegion(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch);
+    // Internal UI element drawing (mirrors DrawMesh pattern)
+    Gem::Result DrawUIText(const Canvas::GfxResourceAllocation& vertexBuffer, Canvas::XGfxSurface* pGlyphAtlas, const Canvas::Math::FloatVector2& elementOffset);
+    Gem::Result DrawUIRect(const Canvas::GfxResourceAllocation& vertexBuffer, const Canvas::Math::FloatVector2& elementOffset);
     
     // Allocate a shader-visible SRV descriptor slot and return GPU handle
     D3D12_GPU_DESCRIPTOR_HANDLE CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc);
@@ -633,10 +613,6 @@ public:
     // Present the swap chain
     void PresentSwapChain(Canvas::XGfxSwapChain* pSwapChain);
 
-    // Schedule release of a host-write suballocation after the current GPU work completes.
-    // The release is deferred until the GPU fence advances past the current value.
-    void RetireUploadAllocation(const Canvas::GfxSuballocation& suballocation);
-    
     //---------------------------------------------------------------------------------------------
     // GPU Task Graph API
     //

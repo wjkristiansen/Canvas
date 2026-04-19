@@ -13,6 +13,10 @@
 #include "D3D12ResourceUtils.h"
 #include "CanvasGfx12.h"
 #include "BuddySuballocator.h"
+#include "ResourceAllocator.h"
+#include "ResourceManager.h"
+#include "UploadRing.h"
+#include "CopyQueue.h"
 
 inline constexpr D3D12_HEAP_TYPE GfxMemoryUsageToD3D12HeapType(Canvas::GfxMemoryUsage usage)
 {
@@ -34,9 +38,6 @@ class CDevice12 : public TGfxElement<Canvas::XGfxDevice>
 {
 public:
     CComPtr<ID3D12Device10> m_pD3DDevice;
-    uint64_t m_HostWriteSize = 4 * 1024 * 1024; // 4 MB default
-    TBuddySuballocator<uint64_t> m_HostWriteSuballocator;
-    Gem::TGemPtr<Canvas::XGfxBuffer> m_pHostWriteBuffer;
 
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(Canvas::XGfxDevice)
@@ -45,24 +46,28 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CDevice12(Canvas::XCanvas* pCanvas, PCSTR name = nullptr);
-    ~CDevice12() = default;  // TGfxElement destructor handles Unregister
+    ~CDevice12();
 
     Gem::Result Initialize();
     void Uninitialize() {}
 
     // XGfxDevice methods
     GEMMETHOD(CreateRenderQueue)(Canvas::XGfxRenderQueue **ppRenderQueue) final;
-    GEMMETHOD(CreateMaterial)() final;
+    GEMMETHOD(CreateMaterial)(Canvas::XGfxMaterial **ppMaterial) final;
     GEMMETHOD(CreateSurface)(const Canvas::GfxSurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
     GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, Canvas::GfxMemoryUsage memoryUsage, Canvas::XGfxBuffer **ppBuffer) final;
-    GEMMETHOD(AllocateHostWriteRegion)(uint64_t sizeInBytes, Canvas::GfxSuballocation &suballocationInfo) final;
-    GEMMETHOD_(void, FreeHostWriteRegion)(Canvas::GfxSuballocation &suballocationInfo) final;
+    GEMMETHOD(CreateMeshData)(const Canvas::MeshDataDesc &desc, Canvas::XGfxMeshData **ppMesh) final;
     GEMMETHOD(CreateDebugMeshData)(
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,
         const Canvas::Math::FloatVector4 *normals,
-        Canvas::XGfxRenderQueue *pRenderQueue,
-        Canvas::XGfxMeshData **ppMesh) final;
+        Canvas::XGfxMeshData **ppMesh,
+        const char* name = nullptr) final;
+
+    // Bring the inherited non-virtual single-stream wrapper into scope so
+    // overload resolution finds it on a CDevice12* (the descriptor-form
+    // override above would otherwise hide it).
+    using Canvas::XGfxDevice::CreateMeshData;
 
     ID3D12Device10 *GetD3DDevice() const { return m_pD3DDevice; }
 
@@ -71,4 +76,45 @@ public:
         auto pCanvas = GetCanvas();
         return pCanvas ? pCanvas->GetLogger() : nullptr;
     }
+
+    // Device-level resource manager (queue-agnostic): owns the resource allocator
+    // (placed + committed), the bucketed buffer pool, and per-timeline retired/
+    // deferred queues.
+    CResourceManager m_ResourceManager;
+
+    CResourceManager& GetResourceManager() { return m_ResourceManager; }
+
+    // Device-owned COPY queue used for host->device buffer uploads (mesh data,
+    // vertex buffers, ...).  Render queues query EnsureUploadsRetired() at submit
+    // time to obtain a fence token to Wait() on before consuming the destinations.
+    CCopyQueue m_CopyQueue;
+
+    CCopyQueue& GetCopyQueue() { return m_CopyQueue; }
+
+    // Flush any pending upload work on the device's copy queue and return the
+    // FenceToken consumers must Wait() on before reading the destinations.
+    // Returns nullopt when no upload work is pending — the fast path on every
+    // frame after the first.
+    std::optional<FenceToken> EnsureUploadsRetired() { return m_CopyQueue.FlushIfPending(); }
+
+    // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
+    GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
+
+    GEMMETHOD(FlushUploads)() final;
+
+    // Texture upload (XGfxDevice interface — copy queue staging)
+    GEMMETHOD(UploadTextureRegion)(
+        Canvas::XGfxSurface *pDstSurface,
+        uint32_t dstX, uint32_t dstY,
+        uint32_t width, uint32_t height,
+        const void *pData,
+        uint32_t srcRowPitch) final;
+
+    GEMMETHOD(CreateTextElement)(Canvas::XUITextElement **ppElement) final;
+    GEMMETHOD(CreateRectElement)(Canvas::XUIRectElement **ppElement) final;
+
+    Canvas::XGfxSurface* GetGlyphAtlasSurface();
+
+private:
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pGlyphAtlasSurface;
 };

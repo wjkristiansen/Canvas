@@ -30,9 +30,10 @@ void CCanvas::Uninitialize()
     // Iterate still active XCanvasElement objects and report them as leaks
     for(XCanvasElement *pElement : m_ActiveCanvasElements)
     {
-        if(pElement->GetName())
+        PCSTR pszName = pElement->GetName();
+        if(pszName)
         {
-            Canvas::LogError(GetLogger(), "%s leaked, Name: %s", pElement->GetTypeName(), pElement->GetName());
+            Canvas::LogError(GetLogger(), "%s leaked, Name: %s", pElement->GetTypeName(), pszName);
         }
         else
         {
@@ -54,15 +55,16 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
-    // Check if element is already registered
+    PCSTR pszName = pElement->GetName();
+
     if (m_ActiveCanvasElements.find(pElement) != m_ActiveCanvasElements.end())
     {
         if (GetLogger())
         {
-            if (pElement->GetName())
+            if (pszName)
             {
-                Canvas::LogWarn(GetLogger(), "Element already registered: %s (Name: %s)", 
-                               pElement->GetTypeName(), pElement->GetName());
+                Canvas::LogWarn(GetLogger(), "Element already registered: %s (Name: %s)",
+                               pElement->GetTypeName(), pszName);
             }
             else
             {
@@ -76,14 +78,14 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 
     if(GetLogger())
     {
-        if (pElement->GetName())
+        if (pszName)
         {
-            Canvas::LogInfo(GetLogger(), "Registered element: %s (Name: %s)", 
-                           pElement->GetTypeName(), pElement->GetName());
+            Canvas::LogInfo(GetLogger(), "Registered element: %s (Name: %s)",
+                           pElement->GetTypeName(), pszName);
         }
         else
         {
-            Canvas::LogInfo(GetLogger(), "Registered element type: %s", pElement->GetTypeName());
+            Canvas::LogWarn(GetLogger(), "Registered unnamed element: %s", pElement->GetTypeName());
         }
     }
     
@@ -98,19 +100,21 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
+    PCSTR pszName = pElement->GetName();
+
     auto it = m_ActiveCanvasElements.find(pElement);
     if (it == m_ActiveCanvasElements.end())
     {
         if (GetLogger())
         {
-            if (pElement->GetName())
+            if (pszName)
             {
-                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s (Name: %s)", 
-                               pElement->GetTypeName(), pElement->GetName());
+                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s (Name: %s)",
+                               pElement->GetTypeName(), pszName);
             }
             else
             {
-                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s", 
+                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s",
                                pElement->GetTypeName());
             }
         }
@@ -119,10 +123,10 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 
     if(GetLogger())
     {
-        if (pElement->GetName())
+        if (pszName)
         {
-            Canvas::LogInfo(GetLogger(), "Unregistering element: %s (Name: %s)", 
-                           pElement->GetTypeName(), pElement->GetName());
+            Canvas::LogInfo(GetLogger(), "Unregistering element: %s (Name: %s)",
+                           pElement->GetTypeName(), pszName);
         }
         else
         {
@@ -136,13 +140,11 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateScene(XScene **ppScene, PCSTR name)
+GEMMETHODIMP CCanvas::CreateSceneGraph(XGfxDevice *pDevice, XSceneGraph **ppScene, PCSTR name)
 {
-    CFunctionSentinel sentinel("XCanvas::CreateScene", m_pLogger);
+    CFunctionSentinel sentinel("XCanvas::CreateSceneGraph", m_pLogger);
 
-    return CreateElement<CScene>(ppScene, name);
-
-    return Gem::Result::Success;
+    return CreateElement<CSceneGraph>(ppScene, name, pDevice);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -202,34 +204,44 @@ GEMMETHODIMP CCanvas::CreateFont(const uint8_t* pTTFData, size_t dataSize, PCSTR
 }
 
 //------------------------------------------------------------------------------------------------
-std::unique_ptr<CGlyphAtlasImpl> CCanvas::CreateGlyphAtlas(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size)
-{
-    CFunctionSentinel sentinel("CCanvas::CreateGlyphAtlas", m_pLogger);
-
-    auto pAtlas = std::make_unique<CGlyphAtlasImpl>(size);
-
-    Gem::Result result = pAtlas->InitializeGPU(pDevice, pRenderQueue);
-    if (Gem::Failed(result))
-        return nullptr;
-
-    return pAtlas;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph)
+GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XUIGraph** ppGraph)
 {
     CFunctionSentinel sentinel("XCanvas::CreateUIGraph", m_pLogger);
 
-    if (!pDevice || !pRenderQueue || !ppGraph)
+    if (!pDevice || !ppGraph)
         return Gem::Result::BadPointer;
 
-    auto pAtlas = CreateGlyphAtlas(pDevice, pRenderQueue, 512);
-    if (!pAtlas)
-        return Gem::Result::Fail;
-
     Gem::TGemPtr<CUIGraph> pGraph = new Gem::TGenericImpl<CUIGraph>();
-    pGraph->SetAtlas(std::move(pAtlas));
+    pGraph->SetName("UIGraph");
+    pGraph->Register(this);
+    pGraph->SetDevice(pDevice);
     *ppGraph = pGraph.Detach();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateTextElement(XGfxSurface* pAtlasSurface, XUITextElement** ppElement)
+{
+    if (!ppElement)
+        return Gem::Result::BadPointer;
+
+    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>(this, m_GlyphCache.get(), pAtlasSurface);
+    pElement->SetName("UITextElement");
+    pElement->Register(this);
+    *ppElement = pElement.Detach();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateRectElement(XUIRectElement** ppElement)
+{
+    if (!ppElement)
+        return Gem::Result::BadPointer;
+
+    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>(this);
+    pElement->SetName("UIRectElement");
+    pElement->Register(this);
+    *ppElement = pElement.Detach();
     return Gem::Result::Success;
 }
 

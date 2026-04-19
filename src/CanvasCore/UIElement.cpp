@@ -10,226 +10,179 @@ namespace Canvas
 {
 
 //================================================================================================
-// CUIElementCore
+// CUIGraphNodeImpl
 //================================================================================================
 
-CUIElementCore::CUIElementCore()
+CUIGraphNodeImpl* CUIGraphNodeImpl::GetImpl(XUIGraphNode* pNode)
 {
+    return static_cast<CUIGraphNodeImpl*>(pNode);
 }
 
-CUIElementCore::~CUIElementCore()
+CUIGraphNodeImpl::~CUIGraphNodeImpl()
 {
-    // Free all child wrapper nodes (drops refs on children)
     ChildNode* pChild = m_pFirstChild;
     while (pChild)
     {
-        CUIElementCore* pChildCore = GetCore(pChild->pElement);
-        if (pChildCore)
-            pChildCore->m_pParent = nullptr;
+        CUIGraphNodeImpl* pImpl = GetImpl(pChild->pNode);
+        if (pImpl)
+        {
+            pImpl->m_pParent = nullptr;
+            pImpl->m_pMyEntry = nullptr;
+        }
         ChildNode* pNext = pChild->pNext;
         delete pChild;
         pChild = pNext;
     }
     m_pFirstChild = nullptr;
-
-    RemoveFromParent();
+    m_pLastChild = nullptr;
 }
 
-//------------------------------------------------------------------------------------------------
-CUIElementCore* CUIElementCore::GetCore(XUIElement* pElement)
-{
-    if (!pElement)
-        return nullptr;
-
-    switch (pElement->GetType())
-    {
-    case UIElementType::Text:
-        return static_cast<CUITextElement*>(static_cast<XUITextElement*>(pElement));
-    case UIElementType::Rect:
-        return static_cast<CUIRectElement*>(static_cast<XUIRectElement*>(pElement));
-    default:
-        return nullptr;
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-CUIElementCore::ChildNode* CUIElementCore::FindChildNode(XUIElement* pChild)
+CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XUIGraphNode* pChild)
 {
     for (ChildNode* pNode = m_pFirstChild; pNode; pNode = pNode->pNext)
     {
-        if (pNode->pElement.Get() == pChild)
+        if (pNode->pNode.Get() == pChild)
             return pNode;
     }
     return nullptr;
 }
 
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::AddChild(XUIElement* pChild)
+GEMMETHODIMP CUIGraphNodeImpl::AddChild(_In_ XUIGraphNode* pChild)
 {
     if (!pChild)
-        return;
+        return Gem::Result::BadPointer;
 
-    CUIElementCore* pChildCore = GetCore(pChild);
-    if (!pChildCore || pChildCore->m_pParent == this)
-        return;
+    CUIGraphNodeImpl* pImpl = GetImpl(pChild);
+    if (!pImpl || pImpl->m_pParent == this)
+        return Gem::Result::Success;
 
-    // Remove from old parent if any
-    pChildCore->RemoveFromParent();
-    pChildCore->m_pParent = this;
+    if (pImpl->m_pParent)
+        pImpl->m_pParent->RemoveChild(pChild);
 
-    // Create wrapper node (AddRefs via TGemPtr)
-    ChildNode* pNode = new ChildNode();
-    pNode->pElement = pChild;
+    pImpl->m_pParent = this;
+
+    ChildNode* pEntry = new ChildNode();
+    pEntry->pNode = pChild;
+    pImpl->m_pMyEntry = pEntry;
 
     if (!m_pFirstChild)
     {
-        m_pFirstChild = pNode;
+        m_pFirstChild = pEntry;
+        m_pLastChild = pEntry;
     }
     else
     {
-        ChildNode* pLast = m_pFirstChild;
-        while (pLast->pNext)
-            pLast = pLast->pNext;
-        pLast->pNext = pNode;
-        pNode->pPrev = pLast;
+        pEntry->pPrev = m_pLastChild;
+        m_pLastChild->pNext = pEntry;
+        m_pLastChild = pEntry;
     }
 
-    pChildCore->InvalidatePosition();
+    return Gem::Result::Success;
 }
 
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::RemoveChild(XUIElement* pChild)
+GEMMETHODIMP CUIGraphNodeImpl::RemoveChild(_In_ XUIGraphNode* pChild)
 {
     if (!pChild)
-        return;
+        return Gem::Result::BadPointer;
 
-    ChildNode* pNode = FindChildNode(pChild);
-    if (!pNode)
-        return;
+    ChildNode* pEntry = FindChildNode(pChild);
+    if (!pEntry)
+        return Gem::Result::Success;
 
-    CUIElementCore* pChildCore = GetCore(pChild);
-    if (pChildCore)
-        pChildCore->m_pParent = nullptr;
+    CUIGraphNodeImpl* pImpl = GetImpl(pChild);
+    if (pImpl)
+    {
+        pImpl->m_pParent = nullptr;
+        pImpl->m_pMyEntry = nullptr;
+    }
 
-    if (pNode->pPrev)
-        pNode->pPrev->pNext = pNode->pNext;
+    if (pEntry->pPrev)
+        pEntry->pPrev->pNext = pEntry->pNext;
     else
-        m_pFirstChild = pNode->pNext;
+        m_pFirstChild = pEntry->pNext;
 
-    if (pNode->pNext)
-        pNode->pNext->pPrev = pNode->pPrev;
+    if (pEntry->pNext)
+        pEntry->pNext->pPrev = pEntry->pPrev;
+    else
+        m_pLastChild = pEntry->pPrev;
 
-    delete pNode;  // drops TGemPtr ref
+    delete pEntry;
+    return Gem::Result::Success;
 }
 
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::RemoveFromParent()
+GEMMETHODIMP_(XUIGraphNode*) CUIGraphNodeImpl::GetFirstChild()
 {
-    if (m_pParent)
-        m_pParent->RemoveChild(GetInterface());
+    return m_pFirstChild ? m_pFirstChild->pNode.Get() : nullptr;
 }
 
-//------------------------------------------------------------------------------------------------
-CUIElementCore* CUIElementCore::GetFirstChildCore()
+GEMMETHODIMP_(XUIGraphNode*) CUIGraphNodeImpl::GetNextSibling()
 {
-    return m_pFirstChild ? GetCore(m_pFirstChild->pElement) : nullptr;
-}
-
-//------------------------------------------------------------------------------------------------
-CUIElementCore* CUIElementCore::GetNextSiblingCore()
-{
-    if (!m_pParent)
+    if (!m_pMyEntry || !m_pMyEntry->pNext)
         return nullptr;
-
-    // Find our wrapper node in parent's child list, then return the next
-    ChildNode* pNode = m_pParent->FindChildNode(GetInterface());
-    if (pNode && pNode->pNext)
-        return GetCore(pNode->pNext->pElement);
-    return nullptr;
+    return m_pMyEntry->pNext->pNode.Get();
 }
 
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::SetPosition(const Math::FloatVector2& position)
+void CUIGraphNodeImpl::SetLocalPosition(const Math::FloatVector2& position)
 {
-    if (m_Position.X == position.X && m_Position.Y == position.Y)
+    if (m_LocalPosition.X == position.X && m_LocalPosition.Y == position.Y)
         return;
 
-    m_Position = position;
-    InvalidatePosition();
+    m_LocalPosition = position;
 }
 
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::SetVisible(bool visible)
-{
-    if (m_Visible == visible)
-        return;
-
-    m_Visible = visible;
-    InvalidateVisibility();
-}
-
-//------------------------------------------------------------------------------------------------
-bool CUIElementCore::IsEffectivelyVisible() const
-{
-    if (!m_Visible)
-        return false;
-    if (m_pParent)
-        return m_pParent->IsEffectivelyVisible();
-    return true;
-}
-
-//------------------------------------------------------------------------------------------------
-const Math::FloatVector2& CUIElementCore::GetAbsolutePosition()
-{
-    if (m_DirtyFlags & DirtyPosition)
-        RecomputeAbsolutePosition();
-    return m_AbsolutePosition;
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::InvalidatePosition()
-{
-    if (m_DirtyFlags & DirtyPosition)
-        return;
-
-    m_DirtyFlags |= DirtyPosition;
-
-    for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->pNext)
-    {
-        CUIElementCore* pCore = GetCore(pChild->pElement);
-        if (pCore)
-            pCore->InvalidatePosition();
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::InvalidateVisibility()
-{
-    m_DirtyFlags |= DirtyVisibility;
-
-    for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->pNext)
-    {
-        CUIElementCore* pCore = GetCore(pChild->pElement);
-        if (pCore)
-            pCore->InvalidateVisibility();
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-void CUIElementCore::RecomputeAbsolutePosition()
+GEMMETHODIMP_(Math::FloatVector2) CUIGraphNodeImpl::GetGlobalPosition()
 {
     if (m_pParent)
     {
-        const auto& parentAbs = m_pParent->GetAbsolutePosition();
-        m_AbsolutePosition.X = parentAbs.X + m_Position.X;
-        m_AbsolutePosition.Y = parentAbs.Y + m_Position.Y;
+        Math::FloatVector2 parentGlobal = m_pParent->GetGlobalPosition();
+        return Math::FloatVector2(parentGlobal.X + m_LocalPosition.X,
+                                  parentGlobal.Y + m_LocalPosition.Y);
     }
-    else
+    return m_LocalPosition;
+}
+
+GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XUIElement* pElement)
+{
+    if (!pElement)
+        return Gem::Result::BadPointer;
+
+    XUIGraphNode* pCurrentNode = pElement->GetAttachedNode();
+    if (pCurrentNode == this)
     {
-        m_AbsolutePosition = m_Position;
+        // Already bound to this node; nothing to do.
+        return Gem::Result::Success;
     }
 
-    m_DirtyFlags &= ~DirtyPosition;
+    if (pCurrentNode != nullptr)
+    {
+        // Detach from the previous owner so a single element is never present
+        // in two nodes' bound-element lists at once.
+        static_cast<CUIGraphNodeImpl*>(pCurrentNode)->UnbindElement(pElement);
+    }
+
+    if (pElement->GetType() == UIElementType::Text)
+        AsText(pElement)->SetAttachedNode(this);
+    else if (pElement->GetType() == UIElementType::Rect)
+        AsRect(pElement)->SetAttachedNode(this);
+
+    m_Elements.emplace_back(pElement);
+    return Gem::Result::Success;
+}
+
+void CUIGraphNodeImpl::UnbindElement(XUIElement* pElement)
+{
+    for (auto it = m_Elements.begin(); it != m_Elements.end(); ++it)
+    {
+        if (it->Get() == pElement)
+        {
+            if (pElement->GetType() == UIElementType::Text)
+                AsText(pElement)->SetAttachedNode(nullptr);
+            else if (pElement->GetType() == UIElementType::Rect)
+                AsRect(pElement)->SetAttachedNode(nullptr);
+            m_Elements.erase(it);
+            return;
+        }
+    }
 }
 
 //================================================================================================
@@ -245,7 +198,7 @@ void CUITextElement::SetText(PCSTR utf8Text)
         return;
 
     m_Text = utf8Text;
-    m_DirtyFlags |= DirtyContent;
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -255,17 +208,7 @@ void CUITextElement::SetFont(XFont* pFont)
         return;
 
     m_pFont = pFont;
-    m_DirtyFlags |= DirtyContent;
-}
-
-//------------------------------------------------------------------------------------------------
-void CUITextElement::SetGlyphAtlasInternal(CGlyphAtlasImpl* pAtlas)
-{
-    if (m_pAtlas == pAtlas)
-        return;
-
-    m_pAtlas = pAtlas;
-    m_DirtyFlags |= DirtyContent;
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -279,35 +222,40 @@ void CUITextElement::SetLayoutConfig(const TextLayoutConfig& config)
         return;
 
     m_Config = config;
-    m_DirtyFlags |= DirtyContent;
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
-void CUITextElement::RegenerateVertices()
+Gem::Result CUITextElement::RegenerateVertices()
 {
     m_CachedVertices.clear();
 
-    if (m_Text.empty() || !m_pFont || !m_pAtlas)
-        return;
+    if (m_Text.empty())
+        return Gem::Result::Success;
+
+    if (!m_pFont)
+        return Gem::Result::BadPointer;
+    if (!m_pGlyphCache)
+        return Gem::Result::BadPointer;
 
     CTrueTypeFont* pFontData = static_cast<CFont*>(m_pFont)->GetFontData();
     if (!pFontData)
-        return;
+        return Gem::Result::BadPointer;
 
     std::vector<uint32_t> codepoints;
     Gem::Result result = CTextLayout::DecodeUtf8(m_Text.c_str(), codepoints);
     if (Gem::Failed(result))
-        return;
+        return result;
 
-    const Math::FloatVector2& absPos = GetAbsolutePosition();
-    Math::FloatVector3 screenPos(absPos.X, absPos.Y, 0.0f);
+    // Generate vertices in element-local space (origin at 0,0).
+    // The node's screen-space position is applied as a per-draw constant by the shader.
+    Math::FloatVector3 screenPos(0.0f, 0.0f, 0.0f);
 
     const CTrueTypeFont::FontMetrics& metrics = pFontData->GetMetrics();
     float lineHeightUnits = (metrics.Ascender - metrics.Descender + metrics.LineGap);
     float lineHeightPixels = lineHeightUnits * (m_Config.FontSize / pFontData->GetUnitsPerEm());
 
-    std::vector<GlyphAtlasEntry> glyphEntries;
-    glyphEntries.reserve(codepoints.size());
+    m_CachedVertices.reserve(codepoints.size() * 6);
     Math::FloatVector3 cursorPos = screenPos;
 
     for (uint32_t codepoint : codepoints)
@@ -321,15 +269,11 @@ void CUITextElement::RegenerateVertices()
 
         if (codepoint == '\t')
         {
-            uint32_t spaceCP = ' ';
-            for (int i = 0; i < 4; i++)
-            {
-                GlyphAtlasEntry entry = {};
-                result = m_pAtlas->InternalCacheGlyph(spaceCP, m_pFont, entry);
-                if (Gem::Failed(result))
-                    return;
-                cursorPos.X += entry.AdvanceWidth * m_Config.FontSize;
-            }
+            GlyphAtlasEntry spaceEntry = {};
+            result = m_pGlyphCache->CacheGlyphForFont(' ', m_pFont, spaceEntry);
+            if (Gem::Failed(result))
+                return result;
+            cursorPos.X += spaceEntry.AdvanceWidth * m_Config.FontSize * 4.0f;
             continue;
         }
 
@@ -337,50 +281,23 @@ void CUITextElement::RegenerateVertices()
             continue;
 
         GlyphAtlasEntry entry = {};
-        result = m_pAtlas->InternalCacheGlyph(codepoint, m_pFont, entry);
+        result = m_pGlyphCache->CacheGlyphForFont(codepoint, m_pFont, entry);
         if (Gem::Failed(result))
-            return;
-
-        glyphEntries.push_back(entry);
-    }
-
-    m_CachedVertices.reserve(glyphEntries.size() * 6);
-    cursorPos = screenPos;
-
-    size_t glyphIdx = 0;
-    for (uint32_t codepoint : codepoints)
-    {
-        if (codepoint == '\n')
-        {
-            cursorPos.X = screenPos.X;
-            cursorPos.Y += lineHeightPixels * m_Config.LineHeight;
-            continue;
-        }
-
-        if (codepoint < 32)
-        {
-            if (codepoint == '\t')
-                glyphIdx += 4;
-            continue;
-        }
-
-        if (glyphIdx >= glyphEntries.size())
-            break;
+            return result;
 
         float advance = CTextLayout::LayoutGlyph(
             codepoint,
             *pFontData,
-            glyphEntries[glyphIdx],
+            entry,
             cursorPos,
             m_Config.Color,
             m_Config.FontSize,
             m_CachedVertices);
 
         cursorPos.X += advance * m_Config.FontSize;
-        glyphIdx++;
     }
 
-    m_BufferSlot.GpuDirty = true;
+    return Gem::Result::Success;
 }
 
 //================================================================================================
@@ -393,7 +310,7 @@ void CUIRectElement::SetSize(const Math::FloatVector2& size)
         return;
 
     m_Size = size;
-    m_DirtyFlags |= DirtyContent;
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -404,22 +321,23 @@ void CUIRectElement::SetFillColor(const Math::FloatVector4& color)
         return;
 
     m_FillColor = color;
-    m_DirtyFlags |= DirtyContent;
+    // TODO: Color is still baked into vertices (TextVertex::Color). Once color moves
+    // to a per-draw constant, this no longer needs to mark dirty.
+    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
-void CUIRectElement::RegenerateVertices()
+Gem::Result CUIRectElement::RegenerateVertices()
 {
     m_CachedVertices.clear();
 
     if (m_Size.X <= 0.0f || m_Size.Y <= 0.0f)
-        return;
+        return Gem::Result::Success;
 
-    const Math::FloatVector2& absPos = GetAbsolutePosition();
-    float x0 = absPos.X;
-    float y0 = absPos.Y;
-    float x1 = x0 + m_Size.X;
-    float y1 = y0 + m_Size.Y;
+    float x0 = 0.0f;
+    float y0 = 0.0f;
+    float x1 = m_Size.X;
+    float y1 = m_Size.Y;
 
     m_CachedVertices.resize(6);
 
@@ -439,7 +357,7 @@ void CUIRectElement::RegenerateVertices()
     m_CachedVertices[4] = makeVertex(x1, y1, m_FillColor);
     m_CachedVertices[5] = makeVertex(x1, y0, m_FillColor);
 
-    m_BufferSlot.GpuDirty = true;
+    return Gem::Result::Success;
 }
 
 } // namespace Canvas

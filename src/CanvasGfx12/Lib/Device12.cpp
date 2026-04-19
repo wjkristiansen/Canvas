@@ -8,14 +8,28 @@
 #include "Surface12.h"
 #include "Buffer12.h"
 #include "MeshData12.h"
+#include "Material12.h"
+#include "GlyphAtlas.h"
 
 //------------------------------------------------------------------------------------------------
 CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
-    TGfxElement(pCanvas),
-    m_HostWriteSuballocator(m_HostWriteSize)
+    TGfxElement(pCanvas)
 {
     if (name != nullptr)
         SetName(name);
+}
+
+//------------------------------------------------------------------------------------------------
+CDevice12::~CDevice12()
+{
+    // Drain the copy queue and unregister its timeline before tearing down the
+    // resource manager — the copy queue defers releases through the manager's
+    // per-timeline queues which Shutdown() will then drain.
+    m_CopyQueue.Shutdown();
+
+    // Drain the resource manager before members are destroyed, breaking the
+    // CDevice12 -> manager -> CBuffer12 -> CDevice12 reference cycle.
+    m_ResourceManager.Shutdown();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -62,17 +76,15 @@ Gem::Result CDevice12::Initialize()
             Canvas::LogInfo(GetLogger(), "D3D12 Device created: %s (VendorId: 0x%04X, DeviceId: 0x%04X)", 
                             deviceName, adapterDesc.VendorId, adapterDesc.DeviceId);
         }
-
-        // Create an upload heap scratch buffer for CPU write operations
-        Gem::TGemPtr<Canvas::XGfxBuffer> pScratchBuffer;
-        Gem::ThrowGemError(CreateBuffer(m_HostWriteSize, Canvas::GfxMemoryUsage::HostWrite, &pScratchBuffer));
-        m_pHostWriteBuffer = pScratchBuffer;
     }
     catch (_com_error &e)
     {
         Canvas::LogError(GetLogger(), "CDevice12::Initialize: HRESULT 0x%08x", e.Error());
         return ResultFromHRESULT(e.Error());
     }
+
+    m_ResourceManager.Initialize(this);
+    m_CopyQueue.Initialize(this);
 
     return Gem::Result::Success;
 }
@@ -85,7 +97,7 @@ GEMMETHODIMP CDevice12::CreateRenderQueue(Canvas::XGfxRenderQueue **ppRenderQueu
     {
         // Create and register the CRenderQueue12
         Gem::TGemPtr<CRenderQueue12> pRenderQueue;
-        Gem::ThrowGemError(TGfxElement<CRenderQueue12>::CreateAndRegister(&pRenderQueue, GetCanvas(), this, nullptr));
+        Gem::ThrowGemError(TGfxElement<CRenderQueue12>::CreateAndRegister(&pRenderQueue, GetCanvas(), this, "RenderQueue"));
         
         return pRenderQueue->QueryInterface(ppRenderQueue);
     }
@@ -97,11 +109,28 @@ GEMMETHODIMP CDevice12::CreateRenderQueue(Canvas::XGfxRenderQueue **ppRenderQueu
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateMaterial()
+GEMMETHODIMP CDevice12::CreateMaterial(Canvas::XGfxMaterial **ppMaterial)
 {
     Canvas::CFunctionSentinel sentinel("XGfxDevice::CreateMaterial", GetLogger());
-    
-   return Gem::Result::NotImplemented;
+
+    if (!ppMaterial)
+        return Gem::Result::BadPointer;
+
+    *ppMaterial = nullptr;
+
+    try
+    {
+        Gem::TGemPtr<CMaterial12> pMaterial;
+        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMaterial>::CreateAndRegister<CMaterial12>(
+            &pMaterial, GetCanvas(), nullptr));
+        *ppMaterial = pMaterial.Detach();
+        return Gem::Result::Success;
+    }
+    catch (const Gem::GemError &e)
+    {
+        sentinel.SetResultCode(e.Result());
+        return e.Result();
+    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -223,7 +252,7 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
         
         // Create and register the CSurface12 wrapper
         Gem::TGemPtr<CSurface12> pSurface;
-        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, initialLayout, nullptr));
+        Gem::ThrowGemError(TGfxElement<CSurface12>::CreateAndRegister<CSurface12>(&pSurface, GetCanvas(), pResource, initialLayout, "Surface"));
         
         return pSurface->QueryInterface(ppSurface);
     }
@@ -290,9 +319,12 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
             nullptr,
             IID_PPV_ARGS(&pResource)));
         
-        // Create and register the CBuffer12 wrapper (pass COMMON for legacy state tracking)
+        // Create and register the CBuffer12 wrapper
+        const char* bufferName = (memoryUsage == Canvas::GfxMemoryUsage::HostWrite) ? "CanvasGfx_UploadBuffer"
+                               : (memoryUsage == Canvas::GfxMemoryUsage::DeviceLocal) ? "CanvasGfx_DeviceBuffer"
+                               : "CanvasGfx_Buffer";
         Gem::TGemPtr<CBuffer12> pBuffer;
-        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(&pBuffer, GetCanvas(), pResource, nullptr));
+        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(&pBuffer, GetCanvas(), pResource, bufferName));
         
         return pBuffer->QueryInterface(ppBuffer);
     }
@@ -310,145 +342,155 @@ GEMMETHODIMP CDevice12::CreateBuffer(uint64_t sizeInBytes, Canvas::GfxMemoryUsag
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocateHostWriteRegion(uint64_t sizeInBytes, Canvas::GfxSuballocation &suballocation)
+GEMMETHODIMP CDevice12::CreateMeshData(
+    const Canvas::MeshDataDesc &desc,
+    Canvas::XGfxMeshData **ppMesh)
 {
-    Canvas::CFunctionSentinel sentinel("XGfxDevice::AllocateHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
-    
-    try
-    {
-        // Allocate a region from the scratch suballocator
-        auto block = m_HostWriteSuballocator.Allocate(sizeInBytes);
-        suballocation.Offset = block.Start();
-        suballocation.Size = sizeInBytes;
-        suballocation.pBuffer = m_pHostWriteBuffer;
-
-        return Gem::Result::Success;
-    }
-    catch (const BuddySuballocatorException &)
-    {
-        Canvas::LogError(GetLogger(), "CDevice12::AllocateHostWriteRegion: BuddySuballocatorException");
-        sentinel.SetResultCode(Gem::Result::OutOfMemory);
-        return Gem::Result::OutOfMemory;
-    }
-    catch (const Gem::GemError &e)
-    {
-        sentinel.SetResultCode(e.Result());
-        return e.Result();
-    }
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(void) CDevice12::FreeHostWriteRegion(Canvas::GfxSuballocation &suballocation)
-{
-    Canvas::CFunctionSentinel sentinel("XGfxDevice::FreeHostWriteRegion", GetLogger(), Canvas::LogLevel::Debug);
-    
-    // Free the region back to the scratch suballocator
-    auto block = TBuddySuballocator<uint64_t>::ReconstructBlock(suballocation.Offset, suballocation.Size);
-    m_HostWriteSuballocator.Free(block);
-    suballocation.pBuffer = nullptr;
-    suballocation.Offset = 0;
-    suballocation.Size = 0;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateDebugMeshData(
-    [[maybe_unused]] uint32_t vertexCount,
-    [[maybe_unused]] const Canvas::Math::FloatVector4 *positions,
-    [[maybe_unused]] const Canvas::Math::FloatVector4 *normals,
-    [[maybe_unused]] Canvas::XGfxRenderQueue *pRenderQueue,
-    [[maybe_unused]] Canvas::XGfxMeshData **ppMesh)
-{
-    // Two FloatVector4 arrays: positions and normals
-    uint64_t posSize = static_cast<uint64_t>(vertexCount) * sizeof(Canvas::Math::FloatVector4);
-    uint64_t normSize = posSize;
-    uint64_t allocationSize = posSize + normSize;
-
     if (!ppMesh)
         return Gem::Result::BadPointer;
 
     *ppMesh = nullptr;
 
+    if (desc.GroupCount == 0 || desc.pGroups == nullptr)
+        return Gem::Result::InvalidArg;
+
+    // Validate every group up front: positions and normals are required, and
+    // every present stream must have VertexCount entries (no count != 0 with
+    // null pointers).
+    for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
+    {
+        const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
+        if (g.VertexCount == 0)
+            return Gem::Result::InvalidArg;
+        if (g.pPositions == nullptr || g.pNormals == nullptr)
+            return Gem::Result::InvalidArg;
+    }
+
+    const char *baseName = desc.pName;
+
     try
     {
-        // Create device-local (default heap) buffers for positions and normals
-        Gem::TGemPtr<Canvas::XGfxBuffer> pPosBuffer;
-        Gem::TGemPtr<Canvas::XGfxBuffer> pNormBuffer;
-
-        Gem::ThrowGemError(CreateBuffer(posSize, Canvas::GfxMemoryUsage::DeviceLocal, &pPosBuffer));
-        Gem::ThrowGemError(CreateBuffer(normSize, Canvas::GfxMemoryUsage::DeviceLocal, &pNormBuffer));
-
-        // Allocate space in the host-write (upload) scratch buffer
-        Canvas::GfxSuballocation suballocation;
-        Gem::ThrowGemError(AllocateHostWriteRegion(allocationSize, suballocation));
-
-        // Copy data into the upload buffer immediately on CPU timeline
+        // Pre-compute a single staging allocation that holds every stream of
+        // every group concatenated, so the upload ring is amortized across the
+        // whole mesh.
+        struct StreamLayout
         {
-            auto pHostBufImpl = static_cast<CBuffer12*>(suballocation.pBuffer.Get());
-            ID3D12Resource* pHostResource = pHostBufImpl ? pHostBufImpl->GetD3DResource() : nullptr;
-            if (pHostResource)
+            uint32_t                                Group;
+            Canvas::GfxVertexBufferType             Type;
+            const void                             *pSrc;
+            uint64_t                                Size;
+            uint64_t                                StagingOffset;
+        };
+
+        std::vector<StreamLayout> streams;
+        streams.reserve(desc.GroupCount * 4);
+
+        uint64_t stagingTotal = 0;
+        for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
+        {
+            const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
+            const uint64_t v4Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector4);
+            const uint64_t v2Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector2);
+
+            streams.push_back({ gi, Canvas::GfxVertexBufferType::Position, g.pPositions, v4Size, stagingTotal });
+            stagingTotal += v4Size;
+            streams.push_back({ gi, Canvas::GfxVertexBufferType::Normal,   g.pNormals,   v4Size, stagingTotal });
+            stagingTotal += v4Size;
+
+            if (g.pUV0)
             {
-                void* pMapped = nullptr;
-                HRESULT hr = pHostResource->Map(0, nullptr, &pMapped);
-                if (SUCCEEDED(hr) && pMapped)
-                {
-                    uint64_t posBytes = posSize;
-                    uint64_t normBytes = normSize;
-
-                    uint8_t* dst = static_cast<uint8_t*>(pMapped) + suballocation.Offset;
-                    if (positions && posBytes > 0)
-                        memcpy(dst, positions, static_cast<size_t>(posBytes));
-                    if (normals && normBytes > 0)
-                        memcpy(dst + posBytes, normals, static_cast<size_t>(normBytes));
-
-                    pHostResource->Unmap(0, nullptr);
-                }
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::UV0, g.pUV0, v2Size, stagingTotal });
+                stagingTotal += v2Size;
+            }
+            if (g.pTangents)
+            {
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::Tangent, g.pTangents, v4Size, stagingTotal });
+                stagingTotal += v4Size;
             }
         }
 
-        // Schedule copy operations from upload heap to device-local heap
-        if (pRenderQueue)
+        HostWriteAllocation staging;
+        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(stagingTotal, staging));
         {
-            CRenderQueue12* pRQ = static_cast<CRenderQueue12*>(pRenderQueue);
-
-            // Declare resource usage: destination buffers need barriers for copy
-            ResourceUsageBuilder usages;
-            usages.SetBufferUsage(
-                static_cast<CBuffer12*>(pPosBuffer.Get()),
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_DEST);
-
-            usages.SetBufferUsage(
-                static_cast<CBuffer12*>(pNormBuffer.Get()),
-                D3D12_BARRIER_SYNC_COPY,
-                D3D12_BARRIER_ACCESS_COPY_DEST);
-
-            // Schedule GPU copy operations from upload buffer to device-local buffers
-            pRQ->RecordCommandBlock(
-                usages.Build(),
-                [pPosBuffer, pNormBuffer, suballocation, posSize, normSize](ID3D12GraphicsCommandList* cmdList)
-                {
-                    ID3D12Resource* pSrc = static_cast<CBuffer12*>(suballocation.pBuffer.Get())->GetD3DResource();
-                    ID3D12Resource* pDstPos = static_cast<CBuffer12*>(pPosBuffer.Get())->GetD3DResource();
-                    ID3D12Resource* pDstNorm = static_cast<CBuffer12*>(pNormBuffer.Get())->GetD3DResource();
-
-                    if (pSrc && pDstPos)
-                        cmdList->CopyBufferRegion(pDstPos, 0, pSrc, suballocation.Offset, posSize);
-                    if (pSrc && pDstNorm)
-                        cmdList->CopyBufferRegion(pDstNorm, 0, pSrc, suballocation.Offset + posSize, normSize);
-                },
-                "Upload Debug Mesh Data");
-
-            // Schedule release of the host-write region after the next submit completes
-            pRQ->RetireUploadAllocation(suballocation);
+            uint8_t *dst = static_cast<uint8_t *>(staging.pMapped);
+            for (const StreamLayout &s : streams)
+                memcpy(dst + s.StagingOffset, s.pSrc, static_cast<size_t>(s.Size));
         }
 
-        // Create and register the CMeshData12 object that holds the buffers
+        // Allocate one D3D12 buffer per stream and enqueue its copy.
+        std::vector<CMeshData12::GroupResources> groups(desc.GroupCount);
+
+        D3D12_RESOURCE_DESC bufDesc = {};
+        bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+        bufDesc.Height           = 1;
+        bufDesc.DepthOrArraySize = 1;
+        bufDesc.MipLevels        = 1;
+        bufDesc.SampleDesc.Count = 1;
+        bufDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+        auto streamSuffix = [](Canvas::GfxVertexBufferType t) -> const char *
+        {
+            switch (t)
+            {
+            case Canvas::GfxVertexBufferType::Position: return "_Positions";
+            case Canvas::GfxVertexBufferType::Normal:   return "_Normals";
+            case Canvas::GfxVertexBufferType::UV0:      return "_UV0";
+            case Canvas::GfxVertexBufferType::Tangent:  return "_Tangents";
+            default:                                    return "_Stream";
+            }
+        };
+
+        for (const StreamLayout &s : streams)
+        {
+            std::string streamName = baseName ? std::string(baseName) : std::string("Mesh");
+            streamName += streamSuffix(s.Type);
+            if (desc.GroupCount > 1)
+            {
+                streamName += "_g";
+                streamName += std::to_string(s.Group);
+            }
+
+            bufDesc.Width = s.Size;
+            ResourceAllocation alloc;
+            Gem::ThrowGemError(m_ResourceManager.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, alloc, streamName.c_str()));
+
+            Gem::TGemPtr<CBuffer12> pBuffer;
+            Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
+                &pBuffer, GetCanvas(), alloc.pResource, streamName.c_str()));
+            pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
+
+            Gem::TGemPtr<Gem::XGeneric> pKeepAlive;
+            pBuffer->QueryInterface(&pKeepAlive);
+            m_CopyQueue.EnqueueBufferCopy(
+                staging.pResource, staging.ResourceOffset + s.StagingOffset,
+                pBuffer->GetD3DResource(), 0,
+                s.Size,
+                std::move(pKeepAlive));
+
+            Canvas::GfxResourceAllocation vb;
+            vb.pBuffer = pBuffer;
+            vb.Offset  = 0;
+            vb.Size    = s.Size;
+
+            CMeshData12::GroupResources &group = groups[s.Group];
+            switch (s.Type)
+            {
+            case Canvas::GfxVertexBufferType::Position: group.PositionVB = vb; break;
+            case Canvas::GfxVertexBufferType::Normal:   group.NormalVB   = vb; break;
+            case Canvas::GfxVertexBufferType::UV0:      group.UV0VB      = vb; break;
+            case Canvas::GfxVertexBufferType::Tangent:  group.TangentVB  = vb; break;
+            default: break;
+            }
+        }
+
+        // Attach materials (if any) to their groups.
+        for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
+            groups[gi].pMaterial = desc.pGroups[gi].pMaterial;
+
         Gem::TGemPtr<CMeshData12> pMeshData;
-        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas()));
-        
-        pMeshData->SetPositionBuffer(pPosBuffer);
-        pMeshData->SetNormalBuffer(pNormBuffer);
-        
+        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas(), baseName));
+        pMeshData->SetGroups(std::move(groups));
+
         *ppMesh = pMeshData.Detach();
         return Gem::Result::Success;
     }
@@ -456,4 +498,201 @@ GEMMETHODIMP CDevice12::CreateDebugMeshData(
     {
         return e.Result();
     }
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::CreateDebugMeshData(
+    uint32_t vertexCount,
+    const Canvas::Math::FloatVector4 *positions,
+    const Canvas::Math::FloatVector4 *normals,
+    Canvas::XGfxMeshData **ppMesh,
+    const char* name)
+{
+    return CreateMeshData(vertexCount, positions, normals, ppMesh, name);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::FlushUploads()
+{
+    m_CopyQueue.FlushIfPending();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut)
+{
+    if (vertexCount == 0 || vertexStride == 0 || !pVertexData || !pRQ)
+        return Gem::Result::InvalidArg;
+
+    try
+    {
+        uint64_t dataSize = static_cast<uint64_t>(vertexCount) * vertexStride;
+        auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
+
+        // Caller is swapping in a fresh buffer; retire the old one to the pool.
+        if (inOut.pBuffer)
+            m_ResourceManager.RetireBuffer(std::move(inOut), pRQ12->MakeFenceToken());
+
+        // Try to reuse a pooled buffer.
+        if (!m_ResourceManager.AcquireBuffer(dataSize, inOut))
+        {
+            // Pool miss — allocate a new buffer.  Use power-of-2 capacity for
+            // poolable sizes so the buffer fits a bucket exactly when retired.
+            uint64_t capacity = dataSize;
+            if (CResourceManager::IsPoolableSize(dataSize))
+                capacity = CResourceManager::RoundUpPow2(dataSize);
+
+            D3D12_RESOURCE_DESC bufferDesc = {};
+            bufferDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+            bufferDesc.Width            = capacity;
+            bufferDesc.Height           = 1;
+            bufferDesc.DepthOrArraySize = 1;
+            bufferDesc.MipLevels        = 1;
+            bufferDesc.SampleDesc.Count = 1;
+            bufferDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+            ResourceAllocation alloc;
+            Gem::ThrowGemError(m_ResourceManager.Alloc(bufferDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, alloc));
+
+            Gem::TGemPtr<CBuffer12> pBuffer;
+            Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
+                &pBuffer, GetCanvas(), alloc.pResource, "VertexBuffer"));
+            pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
+
+            inOut.pBuffer       = pBuffer;
+        }
+
+        inOut.Offset = 0;
+        inOut.Size   = dataSize;
+
+        // Stage and enqueue the upload on the device's copy queue.  The
+        // consuming render queue gates on the copy fence at submit time.
+        auto* pDstBuffer = static_cast<CBuffer12*>(inOut.pBuffer.Get());
+        HostWriteAllocation staging;
+        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(dataSize, staging));
+        memcpy(staging.pMapped, pVertexData, static_cast<size_t>(dataSize));
+
+        Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive;
+        pDstBuffer->QueryInterface(&pDstKeepAlive);
+        m_CopyQueue.EnqueueBufferCopy(
+            staging.pResource, staging.ResourceOffset,
+            pDstBuffer->GetD3DResource(), 0,
+            dataSize,
+            std::move(pDstKeepAlive));
+
+        return Gem::Result::Success;
+    }
+    catch (Gem::GemError& e) { return e.Result(); }
+    catch (_com_error& e) { return ResultFromHRESULT(e.Error()); }
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::UploadTextureRegion(
+    Canvas::XGfxSurface *pDstSurface,
+    uint32_t dstX, uint32_t dstY,
+    uint32_t width, uint32_t height,
+    const void *pData,
+    uint32_t srcRowPitch)
+{
+    if (!pDstSurface || !pData || width == 0 || height == 0)
+        return Gem::Result::BadPointer;
+
+    try
+    {
+        auto* pDst = static_cast<CSurface12*>(pDstSurface);
+        ID3D12Resource* pDstResource = pDst->GetD3DResource();
+
+        constexpr uint32_t kPitchAlign = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT;
+        const uint32_t alignedRowPitch = (srcRowPitch + kPitchAlign - 1) & ~(kPitchAlign - 1);
+        const uint64_t imageSize       = static_cast<uint64_t>(alignedRowPitch) * height;
+
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(imageSize, hw));
+
+        uint8_t* pStagingBase = static_cast<uint8_t*>(hw.pMapped);
+
+        if (srcRowPitch == alignedRowPitch)
+        {
+            memcpy(pStagingBase, pData, static_cast<size_t>(srcRowPitch) * height);
+        }
+        else
+        {
+            for (uint32_t row = 0; row < height; ++row)
+            {
+                const uint8_t* pSrcRow = static_cast<const uint8_t*>(pData) + row * srcRowPitch;
+                uint8_t*       pDstRow = pStagingBase + row * alignedRowPitch;
+                memcpy(pDstRow, pSrcRow, srcRowPitch);
+            }
+        }
+
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
+        footprint.Offset             = hw.ResourceOffset;
+        footprint.Footprint.Format   = pDst->m_Desc.Format;
+        footprint.Footprint.Width    = width;
+        footprint.Footprint.Height   = height;
+        footprint.Footprint.Depth    = 1;
+        footprint.Footprint.RowPitch = alignedRowPitch;
+
+        Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive;
+        pDst->QueryInterface(&pDstKeepAlive);
+        m_CopyQueue.EnqueueTextureCopy(
+            hw.pResource, footprint,
+            pDstResource, /*dstSubresource*/ 0,
+            dstX, dstY,
+            width, height,
+            std::move(pDstKeepAlive));
+
+        return Gem::Result::Success;
+    }
+    catch (Gem::GemError& e) { return e.Result(); }
+    catch (_com_error& e)    { return ResultFromHRESULT(e.Error()); }
+}
+
+//------------------------------------------------------------------------------------------------
+Canvas::XGfxSurface* CDevice12::GetGlyphAtlasSurface()
+{
+    if (!m_pGlyphAtlasSurface)
+    {
+        auto* pCanvas = GetCanvas();
+        if (!pCanvas)
+            return nullptr;
+
+        auto* pCache = pCanvas->GetGlyphCache();
+        if (!pCache)
+            return nullptr;
+
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            Canvas::GfxFormat::R8_UNorm,
+            pCache->GetAtlasSize(), pCache->GetAtlasSize(),
+            Canvas::SurfaceFlag_ShaderResource, 1);
+        CreateSurface(desc, &m_pGlyphAtlasSurface);
+    }
+    return m_pGlyphAtlasSurface.Get();
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::CreateTextElement(Canvas::XUITextElement **ppElement)
+{
+    if (!ppElement)
+        return Gem::Result::BadPointer;
+
+    auto* pCanvas = GetCanvas();
+    if (!pCanvas)
+        return Gem::Result::NotFound;
+
+    auto* pAtlas = GetGlyphAtlasSurface();
+    return pCanvas->CreateTextElement(pAtlas, ppElement);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::CreateRectElement(Canvas::XUIRectElement **ppElement)
+{
+    if (!ppElement)
+        return Gem::Result::BadPointer;
+
+    auto* pCanvas = GetCanvas();
+    if (!pCanvas)
+        return Gem::Result::NotFound;
+
+    return pCanvas->CreateRectElement(ppElement);
 }

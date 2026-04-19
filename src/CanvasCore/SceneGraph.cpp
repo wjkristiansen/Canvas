@@ -46,6 +46,7 @@ void CSceneGraphNode::Uninitialize()
         pChild = pNext;
     }
     m_pFirstChild = nullptr;
+    m_pLastChild = nullptr;
     m_ChildMap.clear();
 }
 
@@ -105,16 +106,13 @@ GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode* pChild)
     if (!m_pFirstChild)
     {
         m_pFirstChild = pWrapper;
+        m_pLastChild = pWrapper;
     }
     else
     {
-        ChildNode* pLast = m_pFirstChild;
-        while (pLast->m_pNext)
-        {
-            pLast = pLast->m_pNext;
-        }
-        pLast->m_pNext = pWrapper;
-        pWrapper->m_pPrev = pLast;
+        pWrapper->m_pPrev = m_pLastChild;
+        m_pLastChild->m_pNext = pWrapper;
+        m_pLastChild = pWrapper;
     }
 
     m_ChildMap[pChild] = pWrapper;
@@ -150,6 +148,10 @@ GEMMETHODIMP CSceneGraphNode::RemoveChild(_In_ XSceneGraphNode* pChild)
     if (pWrapper->m_pNext)
     {
         pWrapper->m_pNext->m_pPrev = pWrapper->m_pPrev;
+    }
+    else
+    {
+        m_pLastChild = pWrapper->m_pPrev;
     }
 
     // For CSceneGraphNode children, clear internal parent pointer
@@ -264,6 +266,10 @@ GEMMETHODIMP CSceneGraphNode::InsertChildAfter(_In_ XSceneGraphNode* pChild, _In
     if (pSiblingWrapper->m_pNext)
     {
         pSiblingWrapper->m_pNext->m_pPrev = pWrapper;
+    }
+    else
+    {
+        m_pLastChild = pWrapper;
     }
 
     pSiblingWrapper->m_pNext = pWrapper;

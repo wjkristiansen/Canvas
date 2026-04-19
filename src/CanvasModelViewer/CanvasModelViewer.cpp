@@ -5,6 +5,7 @@
 #include "CanvasModelViewer.h"
 #include "CanvasCore.h"
 #include "CanvasGfx.h"
+#include "CanvasFbx.h"
 #include "QLogAdapter.h"
 #include "TokenParser.h"
 #include "InCommand.h"
@@ -15,6 +16,150 @@
 #include <algorithm>
 #include <cmath>
 #include <conio.h>
+
+namespace
+{
+
+//------------------------------------------------------------------------------------------------
+// WIC texture loader: decodes an FBX-imported texture (file path or embedded
+// bytes) into an XGfxSurface and uploads pixels via the device copy queue.
+// Returns false on any decode failure; caller logs a warning and proceeds
+// without the texture.
+//------------------------------------------------------------------------------------------------
+class CWicTextureLoader
+{
+    CComPtr<IWICImagingFactory> m_pFactory;
+
+    HRESULT EnsureFactory()
+    {
+        if (m_pFactory)
+            return S_OK;
+        return CoCreateInstance(
+            CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+            IID_PPV_ARGS(&m_pFactory));
+    }
+
+    HRESULT CreateMemoryStream(const std::vector<uint8_t>& bytes, IStream** ppStream)
+    {
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, bytes.size());
+        if (!hMem)
+            return E_OUTOFMEMORY;
+        void* pDst = GlobalLock(hMem);
+        if (!pDst)
+        {
+            GlobalFree(hMem);
+            return E_FAIL;
+        }
+        memcpy(pDst, bytes.data(), bytes.size());
+        GlobalUnlock(hMem);
+        // Stream owns the HGLOBAL after success; on failure we free it.
+        HRESULT hr = CreateStreamOnHGlobal(hMem, TRUE, ppStream);
+        if (FAILED(hr))
+            GlobalFree(hMem);
+        return hr;
+    }
+
+public:
+    bool Load(
+        Canvas::XGfxDevice* pDevice,
+        const Canvas::Fbx::ImportedTextureRef& ref,
+        Gem::TGemPtr<Canvas::XGfxSurface>& outSurface,
+        Canvas::XLogger* pLogger)
+    {
+        outSurface = nullptr;
+
+        HRESULT hr = EnsureFactory();
+        if (FAILED(hr))
+        {
+            Canvas::LogError(pLogger, "WIC: failed to create imaging factory hr=0x%08X",
+                static_cast<unsigned>(hr));
+            return false;
+        }
+
+        CComPtr<IWICBitmapDecoder> pDecoder;
+        if (ref.Embedded && !ref.EmbeddedBytes.empty())
+        {
+            CComPtr<IStream> pStream;
+            hr = CreateMemoryStream(ref.EmbeddedBytes, &pStream);
+            if (FAILED(hr))
+            {
+                Canvas::LogWarn(pLogger, "WIC: embedded stream failed hr=0x%08X for '%s'",
+                    static_cast<unsigned>(hr), ref.AbsoluteFilePath.c_str());
+                return false;
+            }
+            hr = m_pFactory->CreateDecoderFromStream(pStream, nullptr,
+                WICDecodeMetadataCacheOnDemand, &pDecoder);
+        }
+        else
+        {
+            std::wstring widePath(ref.AbsoluteFilePath.begin(), ref.AbsoluteFilePath.end());
+            hr = m_pFactory->CreateDecoderFromFilename(widePath.c_str(), nullptr,
+                GENERIC_READ, WICDecodeMetadataCacheOnDemand, &pDecoder);
+        }
+        if (FAILED(hr))
+        {
+            Canvas::LogWarn(pLogger, "WIC: decoder creation failed hr=0x%08X for '%s'",
+                static_cast<unsigned>(hr), ref.AbsoluteFilePath.c_str());
+            return false;
+        }
+
+        CComPtr<IWICBitmapFrameDecode> pFrame;
+        hr = pDecoder->GetFrame(0, &pFrame);
+        if (FAILED(hr))
+            return false;
+
+        CComPtr<IWICFormatConverter> pConverter;
+        hr = m_pFactory->CreateFormatConverter(&pConverter);
+        if (FAILED(hr))
+            return false;
+        hr = pConverter->Initialize(pFrame, GUID_WICPixelFormat32bppRGBA,
+            WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
+        if (FAILED(hr))
+        {
+            Canvas::LogWarn(pLogger, "WIC: format converter init failed hr=0x%08X for '%s'",
+                static_cast<unsigned>(hr), ref.AbsoluteFilePath.c_str());
+            return false;
+        }
+
+        UINT width = 0, height = 0;
+        hr = pConverter->GetSize(&width, &height);
+        if (FAILED(hr) || width == 0 || height == 0)
+            return false;
+
+        const UINT rowPitch = width * 4;
+        std::vector<uint8_t> pixels(static_cast<size_t>(rowPitch) * height);
+        hr = pConverter->CopyPixels(nullptr, rowPitch,
+            static_cast<UINT>(pixels.size()), pixels.data());
+        if (FAILED(hr))
+            return false;
+
+        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            Canvas::GfxFormat::R8G8B8A8_UNorm, width, height,
+            Canvas::SurfaceFlag_ShaderResource);
+        Gem::Result r = pDevice->CreateSurface(desc, &pSurface);
+        if (Gem::Failed(r))
+        {
+            Canvas::LogWarn(pLogger, "WIC: CreateSurface failed for '%s'",
+                ref.AbsoluteFilePath.c_str());
+            return false;
+        }
+
+        r = pDevice->UploadTextureRegion(pSurface.Get(), 0, 0, width, height,
+            pixels.data(), rowPitch);
+        if (Gem::Failed(r))
+        {
+            Canvas::LogWarn(pLogger, "WIC: UploadTextureRegion failed for '%s'",
+                ref.AbsoluteFilePath.c_str());
+            return false;
+        }
+
+        outSurface = std::move(pSurface);
+        return true;
+    }
+};
+
+} // anonymous namespace
 
 //------------------------------------------------------------------------------------------------
 // D3D12 Agility SDK version exports - required to activate newer D3D12 APIs
@@ -96,7 +241,7 @@ class CApp
     Gem::TGemPtr<Canvas::XLogger> m_pLogger;
     std::unique_ptr<ThinWin::CWindow> m_pWindow;
     Gem::TGemPtr<Canvas::XCanvas> m_pCanvas;
-    Gem::TGemPtr<Canvas::XScene> m_pScene;
+    Gem::TGemPtr<Canvas::XSceneGraph> m_pScene;
     Gem::TGemPtr<Canvas::XCamera> m_pCamera;
     Gem::TGemPtr<Canvas::XCanvasPlugin> m_pGfxPlugin;
     Gem::TGemPtr<Canvas::XGfxDevice> m_pGfxDevice;
@@ -117,6 +262,15 @@ class CApp
     bool m_logFps;
     float m_fps = 0.0f;
     std::string m_fpsString;
+    std::filesystem::path m_ModelPath;
+
+    std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> m_ImportedMeshData;
+    std::vector<Gem::TGemPtr<Canvas::XMeshInstance>> m_ImportedMeshInstances;
+    std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> m_ImportedNodes;
+    std::vector<Gem::TGemPtr<Canvas::XLight>> m_ImportedLights;
+    std::vector<Gem::TGemPtr<Canvas::XCamera>> m_ImportedCameras;
+    std::vector<Gem::TGemPtr<Canvas::XGfxSurface>> m_ImportedTextures;
+    std::vector<Gem::TGemPtr<Canvas::XGfxMaterial>> m_ImportedMaterials;
 
     // Camera controller state
     float m_CameraYaw = 0.0f;    // Radians, around world Z (up)
@@ -124,13 +278,589 @@ class CApp
     bool m_MouseCaptured = false;
     POINT m_LastCursorPos = {};
 
+    void FrameCameraToBounds(
+        Canvas::XCamera *pCamera,
+        Canvas::XSceneGraphNode *pCameraNode,
+        const Canvas::Math::AABB &bounds)
+    {
+        if (!pCameraNode || !bounds.IsValid())
+            return;
+
+        const Canvas::Math::FloatVector4 sceneCenter = bounds.GetCenter();
+        const Canvas::Math::FloatVector4 extents = bounds.GetExtents();
+        const float radius = std::max(0.5f, sqrtf(extents[0] * extents[0] + extents[1] * extents[1] + extents[2] * extents[2]));
+
+        float fov = static_cast<float>(Canvas::Math::Pi / 4.0);
+        if (pCamera)
+            fov = std::clamp(pCamera->GetFovAngle(), 0.2f, 2.8f);
+
+        const float distance = std::max(2.0f, (radius / tanf(fov * 0.5f)) * 1.35f);
+        const Canvas::Math::FloatVector4 viewDir = Canvas::Math::FloatVector4(0.55f, 0.55f, 0.35f, 0.0f).Normalize();
+        const Canvas::Math::FloatVector4 cameraPosition = sceneCenter - viewDir * distance;
+        const Canvas::Math::FloatVector4 basisForward = (sceneCenter - cameraPosition).Normalize();
+        const Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
+
+        Canvas::Math::FloatMatrix4x4 rotationMatrix = Canvas::Math::IdentityMatrix<float, 4, 4>();
+        rotationMatrix[0] = basisForward;
+        Canvas::Math::ComposePointToBasisVectors(worldUp, basisForward, rotationMatrix[1], rotationMatrix[2]);
+
+        pCameraNode->SetLocalTranslation(cameraPosition);
+        pCameraNode->SetLocalRotation(Canvas::Math::QuaternionFromRotationMatrix(rotationMatrix));
+
+        if (pCamera)
+        {
+            const float nearClip = std::max(0.05f, distance - radius * 2.0f);
+            const float farClip = std::max(nearClip + 100.0f, distance + radius * 4.0f);
+            pCamera->SetNearClip(nearClip);
+            pCamera->SetFarClip(farClip);
+        }
+
+        m_CameraYaw = atan2f(basisForward[1], basisForward[0]);
+        m_CameraPitch = asinf(std::clamp(basisForward[2], -1.0f, 1.0f));
+    }
+
+    void LogCameraTransform(const char *label, Canvas::XCamera *pCamera)
+    {
+        if (!pCamera)
+        {
+            Canvas::LogWarn(m_pLogger.Get(), "%s: camera is null", label);
+            return;
+        }
+
+        Canvas::XSceneGraphNode *pNode = pCamera->GetAttachedNode();
+        if (!pNode)
+        {
+            Canvas::LogWarn(m_pLogger.Get(), "%s: camera '%s' is not attached to a node", label, pCamera->GetName());
+            return;
+        }
+
+        const Canvas::Math::FloatMatrix4x4 world = pNode->GetGlobalMatrix();
+        const Canvas::Math::FloatVector4 position(world[3][0], world[3][1], world[3][2], 0.0f);
+        const Canvas::Math::FloatVector4 forward(world[0][0], world[0][1], world[0][2], 0.0f);
+        const Canvas::Math::FloatVector4 left(world[1][0], world[1][1], world[1][2], 0.0f);
+        const Canvas::Math::FloatVector4 up(world[2][0], world[2][1], world[2][2], 0.0f);
+        const float nearClip = pCamera->GetNearClip();
+        const float farClip = pCamera->GetFarClip();
+        const float fovAngle = pCamera->GetFovAngle();
+        const float aspectRatio = pCamera->GetAspectRatio();
+
+        Canvas::LogInfo(m_pLogger.Get(),
+            "%s: camera='%s' pos=(%.3f, %.3f, %.3f) forward=(%.3f, %.3f, %.3f) left=(%.3f, %.3f, %.3f) up=(%.3f, %.3f, %.3f) near=%.3f far=%.3f fov=%.3f aspect=%.3f",
+            label,
+            pCamera->GetName(),
+            position[0], position[1], position[2],
+            forward[0], forward[1], forward[2],
+            left[0], left[1], left[2],
+            up[0], up[1], up[2],
+            nearClip, farClip, fovAngle, aspectRatio);
+    }
+
+    void LogSceneBounds(const char *label, const Canvas::Math::AABB &bounds)
+    {
+        if (!bounds.IsValid())
+        {
+            Canvas::LogWarn(m_pLogger.Get(), "%s: scene bounds invalid", label);
+            return;
+        }
+
+        const Canvas::Math::FloatVector4 minPoint = bounds.Min;
+        const Canvas::Math::FloatVector4 maxPoint = bounds.Max;
+        const Canvas::Math::FloatVector4 center = bounds.GetCenter();
+        const Canvas::Math::FloatVector4 extents = bounds.GetExtents();
+        const float radius = sqrtf(extents[0] * extents[0] + extents[1] * extents[1] + extents[2] * extents[2]);
+
+        Canvas::LogInfo(m_pLogger.Get(),
+            "%s: min=(%.3f, %.3f, %.3f) max=(%.3f, %.3f, %.3f) center=(%.3f, %.3f, %.3f) extents=(%.3f, %.3f, %.3f) radius=%.3f",
+            label,
+            minPoint[0], minPoint[1], minPoint[2],
+            maxPoint[0], maxPoint[1], maxPoint[2],
+            center[0], center[1], center[2],
+            extents[0], extents[1], extents[2],
+            radius);
+    }
+
+    void LogNodeTransform(const char *label, Canvas::XSceneGraphNode *pNode)
+    {
+        if (!pNode)
+        {
+            Canvas::LogWarn(m_pLogger.Get(), "%s: node is null", label);
+            return;
+        }
+
+        const Canvas::Math::FloatVector4 localTranslation = pNode->GetLocalTranslation();
+        const Canvas::Math::FloatVector4 localScale = pNode->GetLocalScale();
+        const Canvas::Math::FloatMatrix4x4 world = pNode->GetGlobalMatrix();
+        const Canvas::Math::FloatVector4 worldPosition(world[3][0], world[3][1], world[3][2], 0.0f);
+        const float basisXLen = sqrtf(world[0][0] * world[0][0] + world[0][1] * world[0][1] + world[0][2] * world[0][2]);
+        const float basisYLen = sqrtf(world[1][0] * world[1][0] + world[1][1] * world[1][1] + world[1][2] * world[1][2]);
+        const float basisZLen = sqrtf(world[2][0] * world[2][0] + world[2][1] * world[2][1] + world[2][2] * world[2][2]);
+
+        Canvas::LogInfo(m_pLogger.Get(),
+            "%s: node='%s' localT=(%.3f, %.3f, %.3f) localS=(%.3f, %.3f, %.3f) worldPos=(%.3f, %.3f, %.3f) worldScale=(%.3f, %.3f, %.3f)",
+            label,
+            pNode->GetName(),
+            localTranslation[0], localTranslation[1], localTranslation[2],
+            localScale[0], localScale[1], localScale[2],
+            worldPosition[0], worldPosition[1], worldPosition[2],
+            basisXLen, basisYLen, basisZLen);
+    }
+
+    void LogCameraAffineMatrix(const char *label, Canvas::XCamera *pCamera)
+    {
+        if (!pCamera)
+            return;
+
+        Canvas::XSceneGraphNode *pNode = pCamera->GetAttachedNode();
+        if (!pNode)
+            return;
+
+        const Canvas::Math::FloatMatrix4x4 world = pNode->GetGlobalMatrix();
+        Canvas::LogInfo(m_pLogger.Get(),
+            "%s: [[%.6f %.6f %.6f][%.6f %.6f %.6f][%.6f %.6f %.6f][%.6f %.6f %.6f]]",
+            label,
+            world[0][0], world[0][1], world[0][2],
+            world[1][0], world[1][1], world[1][2],
+            world[2][0], world[2][1], world[2][2],
+            world[3][0], world[3][1], world[3][2]);
+    }
+
+
+
+    bool TryLoadImportedScene(
+        Canvas::XCanvas *pCanvas,
+        Canvas::XSceneGraph *pScene,
+        Canvas::XCamera *pDefaultCamera,
+        Canvas::XSceneGraphNode *pDefaultCameraNode)
+    {
+        Canvas::XGfxDevice *pDevice = pScene->GetDevice();
+        try
+        {
+        if (m_ModelPath.empty())
+        {
+            Canvas::LogError(m_pLogger.Get(), "No --fbx path provided; CanvasModelViewer requires a model path");
+            return false;
+        }
+
+        const std::filesystem::path requestedPath = m_ModelPath;
+        std::error_code pathEc;
+        const std::filesystem::path resolvedPath = std::filesystem::absolute(requestedPath, pathEc);
+        const std::filesystem::path importPath = pathEc ? requestedPath : resolvedPath;
+
+        std::error_code cwdEc;
+        const std::filesystem::path cwdPath = std::filesystem::current_path(cwdEc);
+        const std::string cwdString = cwdEc ? std::string("<unavailable>") : cwdPath.string();
+
+        Canvas::LogInfo(m_pLogger.Get(), "FBX request path: '%s'", requestedPath.string().c_str());
+        Canvas::LogInfo(m_pLogger.Get(), "FBX resolved path: '%s'", importPath.string().c_str());
+        Canvas::LogInfo(m_pLogger.Get(), "Process working directory: '%s'", cwdString.c_str());
+
+        std::error_code existsEc;
+        if (!std::filesystem::exists(importPath, existsEc))
+        {
+            Canvas::LogError(m_pLogger.Get(), "FBX file not found: '%s'", importPath.string().c_str());
+            return false;
+        }
+
+        Canvas::Fbx::ImportOptions options;
+        Canvas::Fbx::ImportedScene imported;
+
+        const std::wstring widePath = importPath.wstring();
+        Canvas::LogInfo(m_pLogger.Get(), "Calling FBX importer...");
+        const HRESULT hr = Canvas::Fbx::ImportScene(widePath.c_str(), options, &imported);
+        Canvas::LogInfo(m_pLogger.Get(), "FBX importer returned hr=0x%08X", static_cast<unsigned int>(hr));
+        Canvas::LogInfo(m_pLogger.Get(), "FBX import counts: meshes=%zu lights=%zu nodes=%zu diagnostics=%zu",
+            imported.Meshes.size(), imported.Lights.size(), imported.Nodes.size(), imported.Diagnostics.size());
+
+        for (const Canvas::Fbx::ImportDiag &diag : imported.Diagnostics)
+        {
+            if (diag.Level == Canvas::Fbx::DiagLevel::Error)
+                Canvas::LogError(m_pLogger.Get(), "FBX: %s", diag.Message.c_str());
+            else if (diag.Level == Canvas::Fbx::DiagLevel::Warning)
+                Canvas::LogWarn(m_pLogger.Get(), "FBX: %s", diag.Message.c_str());
+            else
+                Canvas::LogInfo(m_pLogger.Get(), "FBX: %s", diag.Message.c_str());
+        }
+
+        bool hasImportErrors = FAILED(hr);
+        for (const Canvas::Fbx::ImportDiag &diag : imported.Diagnostics)
+        {
+            if (diag.Level == Canvas::Fbx::DiagLevel::Error)
+            {
+                hasImportErrors = true;
+                break;
+            }
+        }
+
+        if (hasImportErrors || imported.Meshes.empty())
+        {
+            Canvas::LogError(m_pLogger.Get(), "FBX import failed or produced no meshes: %s", m_ModelPath.string().c_str());
+            return false;
+        }
+
+        LogSceneBounds("Imported scene bounds", imported.SceneBounds);
+
+        // -----------------------------------------------------------------
+        // Textures: WIC-decode each unique image referenced by the scene.
+        // Failed loads remain null; downstream code checks before binding.
+        // -----------------------------------------------------------------
+        CWicTextureLoader textureLoader;
+        std::vector<Gem::TGemPtr<Canvas::XGfxSurface>> textures(imported.Textures.size());
+        for (size_t i = 0; i < imported.Textures.size(); ++i)
+        {
+            const Canvas::Fbx::ImportedTextureRef &ref = imported.Textures[i];
+            if (!textureLoader.Load(pDevice, ref, textures[i], m_pLogger.Get()))
+            {
+                Canvas::LogWarn(m_pLogger.Get(),
+                    "Texture %zu failed to load (path='%s', embedded=%s); material slot will be unbound",
+                    i, ref.AbsoluteFilePath.c_str(), ref.Embedded ? "true" : "false");
+            }
+            else
+            {
+                Canvas::LogInfo(m_pLogger.Get(), "Loaded texture %zu '%s' (embedded=%s)",
+                    i, ref.AbsoluteFilePath.c_str(), ref.Embedded ? "true" : "false");
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Materials: one XGfxMaterial per ImportedMaterial. Bind textures
+        // when they loaded successfully; factors are always set.
+        // -----------------------------------------------------------------
+        auto BindRole = [&](Canvas::XGfxMaterial *pMaterial,
+                            Canvas::MaterialLayerRole role,
+                            int32_t textureIndex)
+        {
+            if (textureIndex < 0)
+                return;
+            if (static_cast<size_t>(textureIndex) >= textures.size())
+                return;
+            Canvas::XGfxSurface *pSurface = textures[static_cast<size_t>(textureIndex)].Get();
+            if (!pSurface)
+                return;
+            pMaterial->SetTexture(role, pSurface);
+        };
+
+        std::vector<Gem::TGemPtr<Canvas::XGfxMaterial>> materials(imported.Materials.size());
+        for (size_t i = 0; i < imported.Materials.size(); ++i)
+        {
+            const Canvas::Fbx::ImportedMaterial &srcMat = imported.Materials[i];
+            Gem::TGemPtr<Canvas::XGfxMaterial> pMaterial;
+            Gem::ThrowGemError(pDevice->CreateMaterial(&pMaterial));
+            pMaterial->SetBaseColorFactor(srcMat.BaseColorFactor);
+            pMaterial->SetEmissiveFactor(srcMat.EmissiveFactor);
+            pMaterial->SetRoughMetalAOFactor(srcMat.RoughMetalAOFactor);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Albedo,           srcMat.AlbedoTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Normal,           srcMat.NormalTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Emissive,         srcMat.EmissiveTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Roughness,        srcMat.RoughnessTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Metallic,         srcMat.MetallicTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::AmbientOcclusion, srcMat.AmbientOcclusionTextureIndex);
+            materials[i] = pMaterial;
+            Canvas::LogInfo(m_pLogger.Get(),
+                "Imported material %zu '%s': baseColor=(%.3f,%.3f,%.3f,%.3f) tex(A=%d N=%d E=%d R=%d M=%d O=%d)",
+                i, srcMat.Name.c_str(),
+                srcMat.BaseColorFactor[0], srcMat.BaseColorFactor[1],
+                srcMat.BaseColorFactor[2], srcMat.BaseColorFactor[3],
+                srcMat.AlbedoTextureIndex, srcMat.NormalTextureIndex, srcMat.EmissiveTextureIndex,
+                srcMat.RoughnessTextureIndex, srcMat.MetallicTextureIndex, srcMat.AmbientOcclusionTextureIndex);
+        }
+
+        // Persist textures + materials so they outlive load (mesh data and
+        // descriptor heap entries hold raw refs).
+        m_ImportedTextures = std::move(textures);
+        m_ImportedMaterials = std::move(materials);
+
+        std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> meshDataByIndex(imported.Meshes.size());
+        for (size_t meshIndex = 0; meshIndex < imported.Meshes.size(); ++meshIndex)
+        {
+            const Canvas::Fbx::ImportedMesh &srcMesh = imported.Meshes[meshIndex];
+            if (srcMesh.Parts.empty())
+            {
+                Canvas::LogWarn(m_pLogger.Get(), "Skipping imported mesh '%s': no parts", srcMesh.Name.c_str());
+                continue;
+            }
+
+            // Build one MeshDataGroupDesc per part. Skip parts with bad streams.
+            std::vector<Canvas::MeshDataGroupDesc> groups;
+            groups.reserve(srcMesh.Parts.size());
+            for (size_t partIndex = 0; partIndex < srcMesh.Parts.size(); ++partIndex)
+            {
+                const Canvas::Fbx::ImportedMeshPart &part = srcMesh.Parts[partIndex];
+                const uint32_t vertexCount = part.GetVertexCount();
+                if (vertexCount == 0 || part.Normals.size() != part.Positions.size())
+                {
+                    Canvas::LogWarn(m_pLogger.Get(),
+                        "Mesh '%s' part %zu: invalid vertex streams (positions=%zu normals=%zu); skipping part",
+                        srcMesh.Name.c_str(), partIndex, part.Positions.size(), part.Normals.size());
+                    continue;
+                }
+
+                Canvas::MeshDataGroupDesc group{};
+                group.VertexCount = vertexCount;
+                group.pPositions  = part.Positions.data();
+                group.pNormals    = part.Normals.data();
+                group.pUV0        = (part.UV0.size() == vertexCount) ? part.UV0.data() : nullptr;
+                group.pTangents   = (part.Tangents.size() == vertexCount) ? part.Tangents.data() : nullptr;
+                if (part.MaterialIndex >= 0 &&
+                    static_cast<size_t>(part.MaterialIndex) < m_ImportedMaterials.size())
+                {
+                    group.pMaterial = m_ImportedMaterials[static_cast<size_t>(part.MaterialIndex)].Get();
+                }
+                groups.push_back(group);
+            }
+
+            if (groups.empty())
+            {
+                Canvas::LogWarn(m_pLogger.Get(), "Mesh '%s': all parts skipped; no XGfxMeshData created", srcMesh.Name.c_str());
+                continue;
+            }
+
+            Canvas::MeshDataDesc desc{};
+            desc.pGroups    = groups.data();
+            desc.GroupCount = static_cast<uint32_t>(groups.size());
+            desc.pName      = srcMesh.Name.c_str();
+
+            Gem::TGemPtr<Canvas::XGfxMeshData> pMeshData;
+            Gem::ThrowGemError(pDevice->CreateMeshData(desc, &pMeshData));
+
+            meshDataByIndex[meshIndex] = pMeshData;
+            m_ImportedMeshData.push_back(pMeshData);
+        }
+
+        std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> nodes(imported.Nodes.size());
+        std::vector<Gem::TGemPtr<Canvas::XLight>> lightsByIndex(imported.Lights.size());
+        std::vector<Gem::TGemPtr<Canvas::XCamera>> camerasByIndex(imported.Cameras.size());
+
+        for (size_t lightIndex = 0; lightIndex < imported.Lights.size(); ++lightIndex)
+        {
+            const Canvas::Fbx::ImportedLight &srcLight = imported.Lights[lightIndex];
+            const std::string lightName = srcLight.Name.empty() ? ("ImportedLight_" + std::to_string(lightIndex)) : srcLight.Name;
+
+            const char* lightType = "Unknown";
+            switch (srcLight.Type)
+            {
+            case Canvas::LightType::Point: lightType = "Point"; break;
+            case Canvas::LightType::Directional: lightType = "Directional"; break;
+            case Canvas::LightType::Spot: lightType = "Spot"; break;
+            case Canvas::LightType::Ambient: lightType = "Ambient"; break;
+            case Canvas::LightType::Area: lightType = "Area"; break;
+            default: break;
+            }
+
+            Canvas::LogInfo(m_pLogger.Get(),
+                "Imported light values: name='%s' type=%s color=(%.6f, %.6f, %.6f) intensity=%.6f range=%.6f attenuation=(%.6f, %.6f, %.6f) spot=(inner=%.6f outer=%.6f)",
+                lightName.c_str(),
+                lightType,
+                srcLight.Color[0], srcLight.Color[1], srcLight.Color[2],
+                srcLight.Intensity,
+                srcLight.Range,
+                srcLight.AttenuationConst,
+                srcLight.AttenuationLinear,
+                srcLight.AttenuationQuad,
+                srcLight.SpotInnerAngle,
+                srcLight.SpotOuterAngle);
+
+            Gem::TGemPtr<Canvas::XLight> pLight;
+            Gem::ThrowGemError(pCanvas->CreateLight(srcLight.Type, &pLight, lightName.c_str()));
+            pLight->SetColor(srcLight.Color);
+            pLight->SetIntensity(srcLight.Intensity);
+            pLight->SetRange(srcLight.Range);
+            pLight->SetAttenuation(srcLight.AttenuationConst, srcLight.AttenuationLinear, srcLight.AttenuationQuad);
+            if (srcLight.Type == Canvas::LightType::Spot)
+                pLight->SetSpotAngles(srcLight.SpotInnerAngle, srcLight.SpotOuterAngle);
+
+            lightsByIndex[lightIndex].Attach(pLight.Detach());
+            m_ImportedLights.push_back(lightsByIndex[lightIndex]);
+        }
+
+        for (size_t cameraIndex = 0; cameraIndex < imported.Cameras.size(); ++cameraIndex)
+        {
+            const Canvas::Fbx::ImportedCamera &srcCamera = imported.Cameras[cameraIndex];
+            const std::string cameraName = srcCamera.Name.empty() ? ("ImportedCamera_" + std::to_string(cameraIndex)) : srcCamera.Name;
+
+            Gem::TGemPtr<Canvas::XCamera> pImportedCamera;
+            Gem::ThrowGemError(pCanvas->CreateCamera(&pImportedCamera, cameraName.c_str()));
+            pImportedCamera->SetNearClip(srcCamera.NearClip);
+            pImportedCamera->SetFarClip(srcCamera.FarClip);
+            pImportedCamera->SetFovAngle(srcCamera.FovAngle);
+            pImportedCamera->SetAspectRatio(srcCamera.AspectRatio);
+
+            camerasByIndex[cameraIndex].Attach(pImportedCamera.Detach());
+            m_ImportedCameras.push_back(camerasByIndex[cameraIndex]);
+        }
+
+        for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
+        {
+            const Canvas::Fbx::ImportedNode &srcNode = imported.Nodes[nodeIndex];
+            const std::string nodeName = srcNode.Name.empty() ? ("ImportedNode_" + std::to_string(nodeIndex)) : srcNode.Name;
+
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
+            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pNode, nodeName.c_str()));
+            pNode->SetName(nodeName.c_str());
+            pNode->SetLocalTranslation(srcNode.Translation);
+            pNode->SetLocalRotation(srcNode.Rotation);
+            pNode->SetLocalScale(srcNode.Scale);
+
+            if (srcNode.MeshIndex >= 0 && static_cast<size_t>(srcNode.MeshIndex) < meshDataByIndex.size())
+            {
+                Canvas::XGfxMeshData *pMeshData = meshDataByIndex[static_cast<size_t>(srcNode.MeshIndex)].Get();
+                if (pMeshData)
+                {
+                    const std::string meshInstanceName = nodeName + "_Mesh";
+                    Gem::TGemPtr<Canvas::XMeshInstance> pMeshInstance;
+                    Gem::ThrowGemError(pCanvas->CreateMeshInstance(&pMeshInstance, meshInstanceName.c_str()));
+                    pMeshInstance->SetMeshData(pMeshData);
+                    Gem::ThrowGemError(pNode->BindElement(pMeshInstance));
+                    m_ImportedMeshInstances.push_back(pMeshInstance);
+                    LogNodeTransform("Imported mesh node", pNode);
+                }
+            }
+
+            if (srcNode.LightIndex >= 0 && static_cast<size_t>(srcNode.LightIndex) < lightsByIndex.size())
+            {
+                Canvas::XLight *pLight = lightsByIndex[static_cast<size_t>(srcNode.LightIndex)].Get();
+                if (pLight)
+                {
+                    Gem::ThrowGemError(pNode->BindElement(pLight));
+                    LogNodeTransform("Imported light node", pNode);
+                }
+            }
+
+            if (srcNode.CameraIndex >= 0 && static_cast<size_t>(srcNode.CameraIndex) < camerasByIndex.size())
+            {
+                Canvas::XCamera *pImportedCamera = camerasByIndex[static_cast<size_t>(srcNode.CameraIndex)].Get();
+                if (pImportedCamera)
+                {
+                    Gem::ThrowGemError(pNode->BindElement(pImportedCamera));
+                }
+            }
+
+            nodes[nodeIndex].Attach(pNode.Detach());
+        }
+
+        for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
+        {
+            const int32_t parentIndex = imported.Nodes[nodeIndex].ParentIndex;
+            if (parentIndex >= 0 && static_cast<size_t>(parentIndex) < nodes.size())
+                nodes[static_cast<size_t>(parentIndex)]->AddChild(nodes[nodeIndex]);
+            else
+                pScene->GetRootSceneGraphNode()->AddChild(nodes[nodeIndex]);
+        }
+
+        m_ImportedNodes = std::move(nodes);
+
+        Canvas::XCamera *pSelectedCamera = nullptr;
+        Gem::TGemPtr<Canvas::XCamera> selectedCameraRef;
+
+        // Prefer the importer-selected active camera node when available.
+        if (imported.ActiveCameraNodeIndex >= 0 && static_cast<size_t>(imported.ActiveCameraNodeIndex) < imported.Nodes.size())
+        {
+            const Canvas::Fbx::ImportedNode &activeNode = imported.Nodes[static_cast<size_t>(imported.ActiveCameraNodeIndex)];
+            if (activeNode.CameraIndex >= 0 && static_cast<size_t>(activeNode.CameraIndex) < camerasByIndex.size())
+            {
+                pSelectedCamera = camerasByIndex[static_cast<size_t>(activeNode.CameraIndex)].Get();
+                selectedCameraRef = camerasByIndex[static_cast<size_t>(activeNode.CameraIndex)];
+            }
+        }
+
+        // Fall back to first imported camera if no explicit active camera was found.
+        if (!pSelectedCamera && !camerasByIndex.empty() && camerasByIndex[0].Get() != nullptr)
+        {
+            pSelectedCamera = camerasByIndex[0].Get();
+            selectedCameraRef = camerasByIndex[0];
+            Canvas::LogWarn(m_pLogger.Get(), "Imported scene has no explicit active camera; using first imported camera");
+        }
+
+        if (pSelectedCamera)
+        {
+            pScene->SetActiveCamera(pSelectedCamera);
+            m_pCamera = selectedCameraRef;
+            LogCameraTransform("Imported active camera", pSelectedCamera);
+            LogCameraAffineMatrix("Imported camera affine", pSelectedCamera);
+
+            // Keep mouse-look deltas aligned with imported camera orientation.
+            Canvas::XSceneGraphNode *pActiveNode = pSelectedCamera->GetAttachedNode();
+            if (pActiveNode)
+            {
+                const Canvas::Math::FloatMatrix4x4 world = pActiveNode->GetGlobalMatrix();
+                const Canvas::Math::FloatVector4 forward(world[0][0], world[0][1], world[0][2], 0.0f);
+                m_CameraYaw = atan2f(forward[1], forward[0]);
+                m_CameraPitch = asinf(std::clamp(forward[2], -1.0f, 1.0f));
+            }
+            else
+            {
+                Canvas::LogWarn(m_pLogger.Get(), "Selected imported camera is not attached to a node; using default viewer camera framing");
+                if (pDefaultCamera && pDefaultCameraNode)
+                {
+                    pScene->SetActiveCamera(pDefaultCamera);
+                    m_pCamera = pDefaultCamera;
+                    FrameCameraToBounds(pDefaultCamera, pDefaultCameraNode, imported.SceneBounds);
+                    LogCameraTransform("Fallback default camera", pDefaultCamera);
+                    LogCameraAffineMatrix("Fallback default camera affine", pDefaultCamera);
+                }
+                else
+                {
+                    Canvas::LogError(m_pLogger.Get(), "No usable attached camera available after import");
+                    return false;
+                }
+            }
+        }
+        else if (pDefaultCamera && pDefaultCameraNode)
+        {
+            pScene->SetActiveCamera(pDefaultCamera);
+            m_pCamera = pDefaultCamera;
+            FrameCameraToBounds(pDefaultCamera, pDefaultCameraNode, imported.SceneBounds);
+            LogCameraTransform("Fallback default camera", pDefaultCamera);
+            LogCameraAffineMatrix("Fallback default camera affine", pDefaultCamera);
+            Canvas::LogWarn(m_pLogger.Get(), "Imported scene has no cameras; using default viewer camera framing");
+        }
+        else
+        {
+            Canvas::LogError(m_pLogger.Get(), "No usable camera available after import");
+            return false;
+        }
+        Canvas::LogInfo(m_pLogger.Get(), "Loaded FBX scene '%s' (%zu meshes, %zu lights, %zu cameras, %zu nodes)",
+            m_ModelPath.string().c_str(),
+            imported.Meshes.size(),
+            imported.Lights.size(),
+            imported.Cameras.size(),
+            imported.Nodes.size());
+        return true;
+        }
+        catch (const std::bad_alloc&)
+        {
+            Canvas::LogError(m_pLogger.Get(), "Out of memory while importing/building FBX scene '%s'", m_ModelPath.string().c_str());
+            return false;
+        }
+        catch (const Gem::GemError& e)
+        {
+            Canvas::LogError(m_pLogger.Get(), "Gem error while importing/building FBX scene '%s': %s",
+                m_ModelPath.string().c_str(),
+                GemResultString(e.Result()));
+            return false;
+        }
+        catch (const std::exception& e)
+        {
+            Canvas::LogError(m_pLogger.Get(), "Exception while importing/building FBX scene '%s': %s",
+                m_ModelPath.string().c_str(),
+                e.what());
+            return false;
+        }
+    }
+
 public:
-    CApp(HINSTANCE hInstance, PCSTR szTitle, Gem::TGemPtr<Canvas::XLogger> pLogger, int exitFrameCount = -1, bool logFps = false) :
+    CApp(
+        HINSTANCE hInstance,
+        PCSTR szTitle,
+        Gem::TGemPtr<Canvas::XLogger> pLogger,
+        int exitFrameCount = -1,
+        bool logFps = false,
+        std::filesystem::path modelPath = {}) :
         m_pLogger(pLogger),
         m_Title(szTitle),
         m_hInstance(hInstance),
         m_exitFrameCount(exitFrameCount),
-        m_logFps(logFps)
+        m_logFps(logFps),
+        m_ModelPath(std::move(modelPath))
         {
         }
 
@@ -141,10 +871,12 @@ public:
     bool Initialize(int nCmdShow)
     {
         Canvas::CFunctionSentinel sentinel("CApp::Initialize", m_pLogger.Get());
+        const char* initStep = "startup";
 
         // Construct the CWindow
         try
         {
+            initStep = "create_window";
             std::unique_ptr<ThinWin::CWindow> pWindow = std::make_unique<ThinWin::CWindow>(m_Title.c_str(), m_hInstance, WS_OVERLAPPEDWINDOW);
             if (!pWindow.get())
             {
@@ -154,11 +886,9 @@ public:
             pWindow->ShowWindow(nCmdShow);
             pWindow->UpdateWindow();
 
+            initStep = "create_canvas";
             Gem::TGemPtr<Canvas::XCanvas> pCanvas;
             Gem::ThrowGemError(Canvas::CreateCanvas(m_pLogger.Get(), &pCanvas));
-
-            Gem::TGemPtr<Canvas::XScene> pScene;
-            Gem::ThrowGemError(pCanvas->CreateScene(&pScene, "MainScene"));
 
             bool Windowed = true;
             UINT WidthIfWindowed = 1280;
@@ -172,10 +902,12 @@ public:
                 SetWindowPos(pWindow->m_hWnd, NULL, rcWnd.left, rcWnd.top, WidthIfWindowed, HeightIfWindowed, SWP_NOZORDER);
             }
 
+            initStep = "load_graphics_plugin";
             // Load the graphics plugin
             Gem::TGemPtr<Canvas::XCanvasPlugin> pGfxPlugin;
             Gem::ThrowGemError(pCanvas->LoadPlugin("CanvasGfx12.dll", &pGfxPlugin));
 
+            initStep = "create_device";
             // Create the graphics device
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             Gem::ThrowGemError(pGfxPlugin->CreateCanvasElement(
@@ -185,14 +917,21 @@ public:
                 Canvas::XGfxDevice::IId,
                 (void**)&pDevice));
 
+            initStep = "create_scene";
+            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+            Gem::ThrowGemError(pCanvas->CreateSceneGraph(pDevice, &pScene, "MainScene"));
+
+            initStep = "create_render_queue";
             // Create the render queue
             Gem::TGemPtr<Canvas::XGfxRenderQueue> pGfxRenderQueue;
             Gem::ThrowGemError(pDevice->CreateRenderQueue(&pGfxRenderQueue));
 
+            initStep = "create_swap_chain";
             // Create the swapchain
             Gem::TGemPtr<Canvas::XGfxSwapChain> pSwapChain;
             Gem::ThrowGemError(pGfxRenderQueue->CreateSwapChain(pWindow->m_hWnd, true, &pSwapChain, Canvas::GfxFormat::R16G16B16A16_Float, 4));
 
+            initStep = "create_camera";
             Gem::TGemPtr<Canvas::XCamera> pCamera;
             Gem::ThrowGemError(pCanvas->CreateCamera(&pCamera, "MainCamera"));
             pCamera->SetName("MainCamera");
@@ -205,7 +944,7 @@ public:
             Gem::ThrowGemError(pCameraNode->BindElement(pCamera));
             
             // Position the camera
-            Canvas::Math::FloatVector4 cameraPosition(1.0f, -2.0f, 1.0f, 0.0f);
+            Canvas::Math::FloatVector4 cameraPosition(7.0f, -7.0f, 5.0f, 0.0f);
             pCameraNode->SetLocalTranslation(cameraPosition);
             
             // Create a look-at rotation to face the origin
@@ -224,117 +963,23 @@ public:
             // Convert rotation matrix to quaternion
             Canvas::Math::FloatQuaternion cameraRotation = Canvas::Math::QuaternionFromRotationMatrix(rotationMatrix);
             pCameraNode->SetLocalRotation(cameraRotation);
+            LogCameraAffineMatrix("Default camera created affine", pCamera);
 
             // Initialize camera yaw/pitch from the look direction
             m_CameraYaw = atan2f(basisForward[1], basisForward[0]);
             m_CameraPitch = asinf(std::clamp(basisForward[2], -1.0f, 1.0f));
             
             pScene->GetRootSceneGraphNode()->AddChild(pCameraNode);
-
-            // Create a unit cube mesh centered at the origin
-            // 6 faces × 2 triangles × 3 vertices = 36 vertices
-            // Each face has its own normal (face normal), so vertices are not shared between faces
-            const float h = 0.5f; // half-edge length for unit cube
-            
-            // Define the 8 corners of the cube
-            // In Z-up coordinate system: X=right, Y=forward, Z=up
-            Canvas::Math::FloatVector4 corners[8] = {
-                Canvas::Math::FloatVector4(-h, -h, -h, 1.0f), // 0: left-back-bottom
-                Canvas::Math::FloatVector4( h, -h, -h, 1.0f), // 1: right-back-bottom
-                Canvas::Math::FloatVector4( h,  h, -h, 1.0f), // 2: right-front-bottom
-                Canvas::Math::FloatVector4(-h,  h, -h, 1.0f), // 3: left-front-bottom
-                Canvas::Math::FloatVector4(-h, -h,  h, 1.0f), // 4: left-back-top
-                Canvas::Math::FloatVector4( h, -h,  h, 1.0f), // 5: right-back-top
-                Canvas::Math::FloatVector4( h,  h,  h, 1.0f), // 6: right-front-top
-                Canvas::Math::FloatVector4(-h,  h,  h, 1.0f), // 7: left-front-top
-            };
-            
-            // Define face normals
-            Canvas::Math::FloatVector4 normalPosX( 1.0f,  0.0f,  0.0f, 0.0f); // +X face (right)
-            Canvas::Math::FloatVector4 normalNegX(-1.0f,  0.0f,  0.0f, 0.0f); // -X face (left)
-            Canvas::Math::FloatVector4 normalPosY( 0.0f,  1.0f,  0.0f, 0.0f); // +Y face (front)
-            Canvas::Math::FloatVector4 normalNegY( 0.0f, -1.0f,  0.0f, 0.0f); // -Y face (back)
-            Canvas::Math::FloatVector4 normalPosZ( 0.0f,  0.0f,  1.0f, 0.0f); // +Z face (top)
-            Canvas::Math::FloatVector4 normalNegZ( 0.0f,  0.0f, -1.0f, 0.0f); // -Z face (bottom)
-            
-            // 36 vertices: 6 faces × 2 triangles × 3 vertices
-            Canvas::Math::FloatVector4 cubePositions[36];
-            Canvas::Math::FloatVector4 cubeNormals[36];
-            
-            int v = 0;
-            
-            // +X face (right): corners 1, 2, 6, 5 (CCW when viewed from +X)
-            cubePositions[v] = corners[1]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[1]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosX;
-            cubePositions[v] = corners[5]; cubeNormals[v++] = normalPosX;
-            
-            // -X face (left): corners 0, 4, 7, 3 (CCW when viewed from -X)
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[4]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalNegX;
-            cubePositions[v] = corners[3]; cubeNormals[v++] = normalNegX;
-            
-            // +Y face (front): corners 2, 3, 7, 6 (CCW when viewed from +Y)
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[3]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalPosY;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosY;
-            
-            // -Y face (back): corners 0, 1, 5, 4 (CCW when viewed from -Y)
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[1]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[5]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[5]; cubeNormals[v++] = normalNegY;
-            cubePositions[v] = corners[4]; cubeNormals[v++] = normalNegY;
-            
-            // +Z face (top): corners 4, 5, 6, 7 (CCW when viewed from +Z)
-            cubePositions[v] = corners[4]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[5]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[4]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[6]; cubeNormals[v++] = normalPosZ;
-            cubePositions[v] = corners[7]; cubeNormals[v++] = normalPosZ;
-            
-            // -Z face (bottom): corners 0, 3, 2, 1 (CCW when viewed from -Z)
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[1]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[0]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[3]; cubeNormals[v++] = normalNegZ;
-            cubePositions[v] = corners[2]; cubeNormals[v++] = normalNegZ;
-            
-            Gem::TGemPtr<Canvas::XGfxMeshData> pCubeMesh;
-            Gem::ThrowGemError(pDevice->CreateDebugMeshData(
-                36,
-                cubePositions,
-                cubeNormals,
-                pGfxRenderQueue,
-                &pCubeMesh));
-
-            // Create a mesh element and bind the cube mesh to it
-            Gem::TGemPtr<Canvas::XMeshInstance> pCube;
-            Gem::ThrowGemError(pCanvas->CreateMeshInstance(&pCube, "DebugCubeMeshInstance"));
-            pCube->SetMeshData(pCubeMesh);
-
-            // Create a scene graph node for the debug cube and bind the mesh element
-            Gem::TGemPtr<Canvas::XSceneGraphNode> pDebugCubeNode;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pDebugCubeNode, "DebugCubeNode"));
-            Gem::ThrowGemError(pDebugCubeNode->BindElement(pCube));
-
-            // Add the debug cube node to the scene
-            pScene->GetRootSceneGraphNode()->AddChild(pDebugCubeNode);
-
-            // Set the active camera for the scene
             pScene->SetActiveCamera(pCamera);
 
+            initStep = "load_or_build_scene";
+            if (!TryLoadImportedScene(pCanvas, pScene, pCamera, pCameraNode))
+            {
+                Canvas::LogError(m_pLogger.Get(), "Failed to load model scene; initialization aborted");
+                return false;
+            }
+
+            initStep = "load_fonts";
             // Initialize text rendering
             // Fonts are bundled at bin/fonts/ alongside the executable (fetched at CMake configure time).
             Gem::TGemPtr<Canvas::XFont> pFont;
@@ -367,20 +1012,31 @@ public:
             pFont     = LoadFont(fontsDir / "Inter-Regular.ttf",         "Inter");
             pFontMono = LoadFont(fontsDir / "JetBrainsMono-Regular.ttf", "JetBrainsMono");
 
+            initStep = "create_ui_graph";
             // Create UI graph for text rendering
             Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
-            Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, pGfxRenderQueue, &pUIGraph));
+            Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, &pUIGraph));
 
-            // HUD background panel — semi-transparent dark rect behind title + FPS
+            // Create UI graph nodes for positioning
+            Gem::TGemPtr<Canvas::XUIGraphNode> pHudNode;
+            Gem::ThrowGemError(pUIGraph->CreateNode(nullptr, &pHudNode));
+            pHudNode->SetLocalPosition(Canvas::Math::FloatVector2(6.0f, 6.0f));
+
+            // HUD background panel
             Gem::TGemPtr<Canvas::XUIRectElement> pHudPanel;
-            Gem::ThrowGemError(pUIGraph->CreateRectElement(nullptr, &pHudPanel));
-            pHudPanel->SetPosition(Canvas::Math::FloatVector2(6.0f, 6.0f));
+            Gem::ThrowGemError(pDevice->CreateRectElement(&pHudPanel));
+            pHudNode->BindElement(pHudPanel);
             pHudPanel->SetSize(Canvas::Math::FloatVector2(340.0f, 70.0f));
             pHudPanel->SetFillColor(Canvas::Math::FloatVector4(0.125f, 0.125f, 0.125f, 0.75f));
 
-            // Title text element — static, child of HUD panel
+            // Title text — child node of HUD
+            Gem::TGemPtr<Canvas::XUIGraphNode> pTitleNode;
+            Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pTitleNode));
+            pTitleNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 4.0f));
+
             Gem::TGemPtr<Canvas::XUITextElement> pTitleText;
-            Gem::ThrowGemError(pUIGraph->CreateTextElement(pHudPanel, &pTitleText));
+            Gem::ThrowGemError(pDevice->CreateTextElement(&pTitleText));
+            pTitleNode->BindElement(pTitleText);
             pTitleText->SetFont(pFont);
             {
                 Canvas::TextLayoutConfig titleConfig;
@@ -388,12 +1044,16 @@ public:
                 titleConfig.Color = Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f);
                 pTitleText->SetLayoutConfig(titleConfig);
             }
-            pTitleText->SetPosition(Canvas::Math::FloatVector2(4.0f, 4.0f));
             pTitleText->SetText("Canvas Model Viewer");
 
-            // FPS text element — dynamic, child of HUD panel
+            // FPS text — child node of HUD
+            Gem::TGemPtr<Canvas::XUIGraphNode> pFpsNode;
+            Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pFpsNode));
+            pFpsNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 40.0f));
+
             Gem::TGemPtr<Canvas::XUITextElement> pFpsText;
-            Gem::ThrowGemError(pUIGraph->CreateTextElement(pHudPanel, &pFpsText));
+            Gem::ThrowGemError(pDevice->CreateTextElement(&pFpsText));
+            pFpsNode->BindElement(pFpsText);
             pFpsText->SetFont(pFontMono);
             {
                 Canvas::TextLayoutConfig monoConfig;
@@ -401,57 +1061,19 @@ public:
                 monoConfig.Color = Canvas::Math::FloatVector4(0.8f, 0.8f, 0.8f, 1.0f);
                 pFpsText->SetLayoutConfig(monoConfig);
             }
-            pFpsText->SetPosition(Canvas::Math::FloatVector2(4.0f, 40.0f));
             pFpsText->SetText("FPS: --");
 
-            // Create lights
-            Gem::TGemPtr<Canvas::XLight> pSunLight;
-            Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &pSunLight, "SunLight"));
-            pSunLight->SetColor(Canvas::Math::FloatVector4(1.0f, 0.95f, 0.85f, 0.0f));
-            pSunLight->SetIntensity(1.0f);
-
-            Gem::TGemPtr<Canvas::XLight> pAmbientLight;
-            Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Ambient, &pAmbientLight, "AmbientLight"));
-            pAmbientLight->SetColor(Canvas::Math::FloatVector4(0.15f, 0.15f, 0.2f, 0.0f));
-            pAmbientLight->SetIntensity(1.0f);
-
-            // Attach sun light to a node for direction (node's forward row = light direction)
-            Gem::TGemPtr<Canvas::XSceneGraphNode> pSunNode;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pSunNode, "SunLightNode"));
-            Gem::ThrowGemError(pSunNode->BindElement(pSunLight));
-
-            // Set sun direction via node rotation: forward (row 0) = normalized (0.3, 0.5, 0.7)
-            {
-                Canvas::Math::FloatVector4 sunForward(0.3f, 0.5f, 0.7f, 0.0f);
-                sunForward = sunForward.Normalize();
-                Canvas::Math::FloatMatrix4x4 sunRotation = Canvas::Math::IdentityMatrix<float, 4, 4>();
-                sunRotation[0] = sunForward;
-                Canvas::Math::FloatVector4 up(0.0f, 0.0f, 1.0f, 0.0f);
-                Canvas::Math::ComposePointToBasisVectors(up, sunForward, sunRotation[1], sunRotation[2]);
-                pSunNode->SetLocalRotation(Canvas::Math::QuaternionFromRotationMatrix(sunRotation));
-            }
-            pScene->GetRootSceneGraphNode()->AddChild(pSunNode);
-
-            // Attach ambient light to a node (no direction needed, but must be in scene graph)
-            Gem::TGemPtr<Canvas::XSceneGraphNode> pAmbientNode;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pAmbientNode, "AmbientLightNode"));
-            Gem::ThrowGemError(pAmbientNode->BindElement(pAmbientLight));
-            pScene->GetRootSceneGraphNode()->AddChild(pAmbientNode);
-
+            initStep = "finalize_members";
             m_pGfxPlugin.Attach(pGfxPlugin.Detach());
             m_pGfxDevice.Attach(pDevice.Detach());
             m_pGfxRenderQueue.Attach(pGfxRenderQueue.Detach());
             m_pGfxSwapChain.Attach(pSwapChain.Detach());
-            m_pCamera.Attach(pCamera.Detach());
+            if (!m_pCamera.Get())
+                m_pCamera.Attach(pCamera.Detach());
             m_pCanvas.Attach(pCanvas.Detach());
             m_pScene.Attach(pScene.Detach());
-            m_pCubeMesh.Attach(pCubeMesh.Detach());
-            m_pCubeMeshInstance.Attach(pCube.Detach());
-            m_pDebugCubeNode.Attach(pDebugCubeNode.Detach());
             m_pFont.Attach(pFont.Detach());
             m_pFontMono.Attach(pFontMono.Detach());
-            m_pSunLight.Attach(pSunLight.Detach());
-            m_pAmbientLight.Attach(pAmbientLight.Detach());
             m_pUIGraph.Attach(pUIGraph.Detach());
             m_pHudPanel.Attach(pHudPanel.Detach());
             m_pTitleText.Attach(pTitleText.Detach());
@@ -463,11 +1085,15 @@ public:
         }
         catch (std::bad_alloc &)
         {
+            Canvas::LogError(m_pLogger.Get(), "Initialize failed at step '%s' with std::bad_alloc", initStep);
             sentinel.SetResultCode(Gem::Result::OutOfMemory);
             return false;
         }
         catch (Gem::GemError &e)
         {
+            Canvas::LogError(m_pLogger.Get(), "Initialize failed at step '%s' with Gem::Result=%s",
+                initStep,
+                GemResultString(e.Result()));
             sentinel.SetResultCode(e.Result());
             return false;
         }
@@ -557,7 +1183,11 @@ public:
             //==================================================================
             
             // Track focus changes — release/acquire cursor as needed
-            bool hasFocus = (GetForegroundWindow() == m_pWindow->m_hWnd);
+            HWND foreground = GetForegroundWindow();
+            HWND foregroundRoot = foreground ? GetAncestor(foreground, GA_ROOT) : nullptr;
+            bool hasFocus = (foreground == m_pWindow->m_hWnd) ||
+                            (foregroundRoot == m_pWindow->m_hWnd) ||
+                            (foreground && IsChild(m_pWindow->m_hWnd, foreground));
             if (hasFocus && !m_MouseCaptured)
             {
                 // Re-acquire cursor
@@ -580,6 +1210,9 @@ public:
                 m_MouseCaptured = false;
             }
 
+            float dx = 0.0f;
+            float dy = 0.0f;
+            bool rotated = false;
             if (m_MouseCaptured)
             {
                 // Mouse delta → yaw/pitch
@@ -590,52 +1223,65 @@ public:
 
                 POINT cursorPos;
                 GetCursorPos(&cursorPos);
-                float dx = static_cast<float>(cursorPos.x - center.x);
-                float dy = static_cast<float>(cursorPos.y - center.y);
+                dx = static_cast<float>(cursorPos.x - center.x);
+                dy = static_cast<float>(cursorPos.y - center.y);
                 SetCursorPos(center.x, center.y);
 
-                m_CameraYaw   -= dx * kMouseSensitivity;
-                m_CameraPitch -= dy * kMouseSensitivity;
-                m_CameraPitch = std::clamp(m_CameraPitch, -kPitchLimit, kPitchLimit);
+                if (fabsf(dx) > 0.0f || fabsf(dy) > 0.0f)
+                {
+                    m_CameraYaw   -= dx * kMouseSensitivity;
+                    m_CameraPitch -= dy * kMouseSensitivity;
+                    m_CameraPitch = std::clamp(m_CameraPitch, -kPitchLimit, kPitchLimit);
+                    rotated = true;
+                }
+            }
 
-                // Build camera orientation matrix from yaw/pitch (Z-up world)
-                // Canvas row-vector convention: row 0 = forward, row 1 = right, row 2 = up
-                float cy = cosf(m_CameraYaw),  sy = sinf(m_CameraYaw);
-                float cp = cosf(m_CameraPitch), sp = sinf(m_CameraPitch);
+            // Build camera orientation matrix from yaw/pitch (Z-up world)
+            // Canvas row-vector convention: row 0 = forward, row 1 = right, row 2 = up
+            float cy = cosf(m_CameraYaw), sy = sinf(m_CameraYaw);
+            float cp = cosf(m_CameraPitch), sp = sinf(m_CameraPitch);
 
-                Canvas::Math::FloatVector4 forward(cy * cp, sy * cp, sp, 0.0f);
-                Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
+            Canvas::Math::FloatVector4 forward(cy * cp, sy * cp, sp, 0.0f);
+            Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
 
-                Canvas::Math::FloatMatrix4x4 rotMat = Canvas::Math::IdentityMatrix<float, 4, 4>();
-                rotMat[0] = forward;
-                Canvas::Math::ComposePointToBasisVectors(worldUp, forward, rotMat[1], rotMat[2]);
-                Canvas::Math::FloatQuaternion cameraQuat = Canvas::Math::QuaternionFromRotationMatrix(rotMat);
+            Canvas::Math::FloatMatrix4x4 rotMat = Canvas::Math::IdentityMatrix<float, 4, 4>();
+            rotMat[0] = forward;
+            Canvas::Math::ComposePointToBasisVectors(worldUp, forward, rotMat[1], rotMat[2]);
+            Canvas::Math::FloatQuaternion cameraQuat = Canvas::Math::QuaternionFromRotationMatrix(rotMat);
 
-                // Right vector for WASD strafing (from the rotation matrix)
-                Canvas::Math::FloatVector4 right = rotMat[1];
+            // Right vector for WASD strafing (from the rotation matrix)
+            Canvas::Math::FloatVector4 right = rotMat[1];
 
-                // WASD movement in camera-local space
+            if (hasFocus)
+            {
+                // WASD movement in camera-local space (works regardless of mouse capture state).
                 Canvas::Math::FloatVector4 moveDir(0.0f, 0.0f, 0.0f, 0.0f);
                 if (GetAsyncKeyState('W') & 0x8000) moveDir = moveDir + forward;
                 if (GetAsyncKeyState('S') & 0x8000) moveDir = moveDir - forward;
                 if (GetAsyncKeyState('D') & 0x8000) moveDir = moveDir - right;
                 if (GetAsyncKeyState('A') & 0x8000) moveDir = moveDir + right;
-                if (GetAsyncKeyState(VK_SPACE) & 0x8000)  moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
-                if (GetAsyncKeyState(VK_SHIFT) & 0x8000)  moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
+                if (GetAsyncKeyState(VK_SPACE) & 0x8000) moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
+                if (GetAsyncKeyState(VK_SHIFT) & 0x8000) moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
                 if (GetAsyncKeyState(VK_CONTROL) & 0x8000) moveDir = moveDir - Canvas::Math::FloatVector4(0, 0, 1, 0);
                 if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) { running = false; break; }
 
                 float moveMag = sqrtf(Canvas::Math::DotProduct(moveDir, moveDir));
+                bool moved = false;
                 if (moveMag > 0.001f)
+                {
                     moveDir = moveDir * (1.0f / moveMag);
+                    moved = true;
+                }
 
                 auto *pCamNode = m_pCamera->GetAttachedNode();
-                if (pCamNode)
+                if (pCamNode && (rotated || moved))
                 {
                     auto pos = pCamNode->GetLocalTranslation();
-                    pos = pos + moveDir * (kMoveSpeed * dtime);
+                    if (moved)
+                        pos = pos + moveDir * (kMoveSpeed * dtime);
                     pCamNode->SetLocalTranslation(pos);
                     pCamNode->SetLocalRotation(cameraQuat);
+                    LogCameraAffineMatrix("Camera moved affine", m_pCamera);
                 }
             }
 
@@ -657,7 +1303,7 @@ public:
             }
 
             m_pUIGraph->Update();
-            m_pUIGraph->Submit(m_pGfxRenderQueue);
+            m_pUIGraph->SubmitRenderables(m_pGfxRenderQueue);
 
             m_pGfxRenderQueue->EndFrame();
             m_pGfxRenderQueue->FlushAndPresent(m_pGfxSwapChain);
@@ -702,6 +1348,19 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     {
     UNREFERENCED_PARAMETER(hPrevInstance);
 
+    // COM initialization for WIC (texture decode) and other shell APIs.
+    // STA on the UI thread is the conventional choice for Win32 GUI apps.
+    // Tolerate a pre-existing apartment selection to stay friendly to anything
+    // that might have CoInitialize'd ahead of us.
+    HRESULT comInitHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool comOwned = SUCCEEDED(comInitHr);
+
+    auto comCleanup = [comOwned]()
+    {
+        if (comOwned)
+            CoUninitialize();
+    };
+
     // Parse command line arguments using TokenParser and InCommand
     Canvas::CTokenParser tokenParser(lpCmdLine);
     
@@ -718,6 +1377,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     std::string logFile;
     bool logConsole = false;
     bool logFps = false;
+    std::string fbxPath;
     int exitFrameCount = -1;  // -1 means don't exit automatically
 
     try
@@ -730,6 +1390,10 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         rootCmd.AddOption(InCommand::OptionType::Variable, "exitframecount")
             .SetDescription("Exit application after N frames (useful for automated testing)")
             .BindTo(exitFrameCount);
+
+        rootCmd.AddOption(InCommand::OptionType::Variable, "fbx")
+            .SetDescription("Path to an FBX file to import at startup")
+            .BindTo(fbxPath);
 
         // "log" subcommand — all logging configuration lives here
         //   CanvasModelViewer.exe log --level debug --file mylog.txt --console --fps
@@ -847,6 +1511,13 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     pAdapter->QueryInterface(&pLogger);
 
     Canvas::LogInfo(pLogger.Get(), "Log file: %s", logFilePath.string().c_str());
+    Canvas::LogInfo(pLogger.Get(), "Startup options: --fbx='%s', --exitframecount=%d, log level='%s'",
+        fbxPath.c_str(), exitFrameCount, logLevel.c_str());
+
+    std::error_code cwdEc;
+    const std::filesystem::path cwdPath = std::filesystem::current_path(cwdEc);
+    Canvas::LogInfo(pLogger.Get(), "Startup working directory: %s",
+        cwdEc ? "<unavailable>" : cwdPath.string().c_str());
 
     // Register the application window class
     char szTitle[MAX_LOADSTRING];
@@ -854,13 +1525,22 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     ThinWin::CWindow::RegisterWindowClass(hInstance);
 
     // Create the application object
-    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps));
+    std::filesystem::path modelPath;
+    if (!fbxPath.empty())
+        modelPath = std::filesystem::u8path(fbxPath);
+
+    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps, modelPath));
 
     // Initialize the application
     if (!pApp->Initialize(nCmdShow))
     {
+        Canvas::LogError(pLogger.Get(), "Application initialization failed; exiting");
+        comCleanup();
         return FALSE;
     }
 
-    return pApp->Execute();
+    int rc = pApp->Execute();
+    pApp.reset();
+    comCleanup();
+    return rc;
 }

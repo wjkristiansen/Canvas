@@ -1,11 +1,19 @@
 cmake_minimum_required(VERSION 3.24)
 
+# Ensure MSVC runtime selection is controlled by CMAKE_MSVC_RUNTIME_LIBRARY.
+cmake_policy(SET CMP0091 NEW)
+
 # Set the project name and version
 project(Canvas 
     VERSION 1.0.0
     DESCRIPTION "Canvas 3D Graphics Engine"
     LANGUAGES CXX
 )
+
+if(MSVC)
+    # Root-level authoritative CRT mode: /MDd for Debug, /MD for all other configs.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL" CACHE STRING "MSVC runtime library" FORCE)
+endif()
 
 # Function to determine architecture name from CMake variables
 function(get_architecture_name OUT_VAR_NAME)
@@ -126,6 +134,7 @@ add_subdirectory(src/CanvasCore)
 add_subdirectory(src/RectanglePacker)
 add_subdirectory(src/CanvasText)
 add_subdirectory(src/CanvasGfx12)
+add_subdirectory(src/CanvasFbx)
 add_subdirectory(src/CanvasConsole)
 add_subdirectory(src/CanvasModelViewer)
 add_subdirectory(src/CanvasUnitTest)
@@ -138,4 +147,11 @@ if(ALLOCATORS_BUILD_TESTS)
     add_subdirectory(deps/Allocators/AllocatorsTest)
 endif()
 add_subdirectory(src/HLSL)
+
+# Install runtime test/demo assets next to installed binaries.
+if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
+    install(DIRECTORY "${CMAKE_SOURCE_DIR}/assets/"
+        DESTINATION "${CANVAS_INSTALL_DEST}/bin/assets"
+    )
+endif()
 

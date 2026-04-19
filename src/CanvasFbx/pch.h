@@ -10,8 +10,16 @@
 // Windows Header Files
 #include <windows.h>
 
-#include <fbxsdk.h>
+#if CANVASFBX_HAS_UFBX
+#include <ufbx.h>
+#endif
 
+// Canvas headers
+#include <Gem.hpp>
+#include "CanvasCore.h"
+#include "CanvasMath.hpp"
 
-
-// reference additional headers your program requires here
+#include <filesystem>
+#include <vector>
+#include <string>
+#include <cstdint>

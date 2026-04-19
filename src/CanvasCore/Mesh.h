@@ -14,7 +14,6 @@ class CMeshInstance :
     public TSceneGraphElement<XMeshInstance>
 {
     Gem::TGemPtr<XGfxMeshData> m_pMeshData;
-    uint32_t m_MaterialGroupIndex = 0;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -42,20 +41,6 @@ public:
         return TSceneGraphElement<XMeshInstance>::NotifyNodeContextChanged(pNode);
     }
 
-    GEMMETHOD(DispatchForRender)(XRenderQueue *pRenderQueue) final
-    {
-        auto *pNode = GetAttachedNode();
-        if (!pNode || !m_pMeshData)
-            return Gem::Result::Success;
-
-        GfxPerObjectConstants objConstants = {};
-        objConstants.World = pNode->GetGlobalMatrix();
-        objConstants.WorldInvTranspose = objConstants.World;
-        objConstants.WorldInvTranspose[3] = Math::FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
-
-        return pRenderQueue->DrawMesh(m_pMeshData, objConstants);
-    }
-
     // XMeshInstance methods
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() final 
     { 
@@ -65,11 +50,6 @@ public:
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) final 
     { 
         m_pMeshData = pMesh; 
-    }
-
-    GEMMETHOD_(uint32_t, GetMaterialGroupIndex)() final 
-    { 
-        return m_MaterialGroupIndex; 
     }
 };
 

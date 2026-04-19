@@ -22,6 +22,7 @@ class CCamera :
     float m_FarClip = 1000.f;
     float m_FovAngle = float(Math::Pi / 4);
     float m_AspectRatio = 16.f / 9.f;
+    float m_ExposureStops = 0.f;
 
     // Dirty bits and cached matrices
     bool m_ViewMatrixDirty = true;
@@ -92,10 +93,16 @@ public:
         m_ProjectionMatrixDirty = true;
     }
 
+    GEMMETHOD_(void, SetExposureStops)(float stops) final
+    {
+        m_ExposureStops = stops;
+    }
+
     GEMMETHOD_(float, GetNearClip)() final { return m_NearClip; }
     GEMMETHOD_(float, GetFarClip)() final { return m_FarClip; }
     GEMMETHOD_(float, GetFovAngle)() final { return m_FovAngle; }
     GEMMETHOD_(float, GetAspectRatio)() final { return m_AspectRatio; }
+    GEMMETHOD_(float, GetExposureStops)() final { return m_ExposureStops; }
 
     GEMMETHOD_(Math::FloatMatrix4x4, GetViewMatrix)() final;
     GEMMETHOD_(Math::FloatMatrix4x4, GetProjectionMatrix)() final;

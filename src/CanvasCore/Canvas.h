@@ -8,11 +8,10 @@
 #include "CanvasGfx.h"
 #include "Gem.hpp"
 #include "Timer.h"
+#include "GlyphAtlas.h"
 
 namespace Canvas
 {
-
-class CGlyphAtlasImpl;
 
 //------------------------------------------------------------------------------------------------
 class CCanvasPluginModule
@@ -107,6 +106,7 @@ class CCanvas :
     std::unordered_set<XCanvasElement *> m_ActiveCanvasElements;
 
     std::deque<CCanvasPluginModule> m_PluginModules;
+    std::unique_ptr<CGlyphCache> m_GlyphCache = std::make_unique<CGlyphCache>();
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -125,7 +125,7 @@ public:
     GEMMETHOD(UnregisterElement)(XCanvasElement *) final;
 
     GEMMETHOD(LoadPlugin)(PCSTR path, XCanvasPlugin **ppPlugin) final;
-    GEMMETHOD(CreateScene)(XScene **ppScene, PCSTR name = nullptr) final;
+    GEMMETHOD(CreateSceneGraph)(XGfxDevice *pDevice, XSceneGraph **ppScene, PCSTR name = nullptr) final;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;
@@ -133,12 +133,19 @@ public:
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) final;
-    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, XUIGraph** ppGraph) final;
+    GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XUIGraph** ppGraph) final;
+    GEMMETHOD(CreateTextElement)(XGfxSurface* pAtlasSurface, XUITextElement** ppElement) final;
+    GEMMETHOD(CreateRectElement)(XUIRectElement** ppElement) final;
 
     GEMMETHOD_(XLogger *, GetLogger)() final
     {
         return m_pLogger;
-    }   
+    }
+
+    GEMMETHOD_(CGlyphCache*, GetGlyphCache)() final
+    {
+        return m_GlyphCache.get();
+    }
 
 public:
     // CCanvas methods
@@ -148,6 +155,11 @@ public:
         if (!ppElement)
         {
             return Gem::Result::BadPointer;
+        }
+
+        if (!name || !name[0])
+        {
+            Canvas::LogWarn(GetLogger(), "CCanvas::CreateElement<%s>: unnamed object created", _Type::BaseType::XFaceName);
         }
 
         try
@@ -167,9 +179,6 @@ public:
 
     Gem::Result Initialize();
     virtual void Uninitialize() override;
-
-private:
-    std::unique_ptr<CGlyphAtlasImpl> CreateGlyphAtlas(XGfxDevice* pDevice, XGfxRenderQueue* pRenderQueue, uint32_t size);
 };
 
 }
