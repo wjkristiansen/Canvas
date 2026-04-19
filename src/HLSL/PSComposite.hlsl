@@ -130,7 +130,10 @@ float4 PSComposite(FSInput input) : SV_Target0
 
     // Lambertian diffuse BRDF term.
     float3 color = albedo * totalLight * INV_PI;
-    const float exposure = 6.0;
-    color = 1.0 - exp(-color * exposure);
+
+    // Apply camera exposure multiplier, then a simple Reinhard-style
+    // exponential roll-off so highlights don't clip immediately. A future
+    // tonemapping pass (ACES/AgX/Filmic) should replace the roll-off.
+    color = 1.0 - exp(-color * PerFrame.Exposure);
     return float4(color, 1.0);
 }

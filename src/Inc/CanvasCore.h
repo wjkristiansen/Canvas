@@ -257,6 +257,7 @@ enum class AnimationAttribute
     FarClip,
     FovAngle,
     AspectRatio,
+    ExposureStops,
 };
 
 //------------------------------------------------------------------------------------------------
@@ -368,10 +369,16 @@ XCamera : public XSceneGraphElement
     GEMMETHOD_(void, SetFovAngle)(float fovAngle) = 0;
     GEMMETHOD_(void, SetAspectRatio)(float aspectRatio) = 0;
 
+    // Exposure compensation in photographic stops. 0.0 = 1x (neutral),
+    // +1 doubles scene brightness, -1 halves it. Applied as a uniform
+    // multiplier (exp2(stops)) in the composition / tone-map pass.
+    GEMMETHOD_(void, SetExposureStops)(float stops) = 0;
+
     GEMMETHOD_(float, GetNearClip)() = 0;
     GEMMETHOD_(float, GetFarClip)() = 0;
     GEMMETHOD_(float, GetFovAngle)() = 0;
     GEMMETHOD_(float, GetAspectRatio)() = 0;
+    GEMMETHOD_(float, GetExposureStops)() = 0;
 
     GEMMETHOD_(Math::FloatMatrix4x4, GetViewMatrix)() = 0;
     GEMMETHOD_(Math::FloatMatrix4x4, GetProjectionMatrix)() = 0;

@@ -1839,7 +1839,9 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         // Build per-frame constants from the active camera + accumulated lights
         // (lights were accumulated during SubmitForRender via SubmitLight)
         HlslTypes::HlslPerFrameConstants frameConstants = {};
-        
+        // Default exposure of 1.0x (0 stops) when no camera is active.
+        frameConstants.Exposure = 1.0f;
+
         if (m_pActiveCamera)
         {
             auto viewProj = m_pActiveCamera->GetViewProjectionMatrix();
@@ -1851,6 +1853,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 auto camPos = pCameraNode->GetGlobalTranslation();
                 memcpy(&frameConstants.CameraWorldPos, &camPos, sizeof(frameConstants.CameraWorldPos));
             }
+
+            frameConstants.Exposure = std::exp2(m_pActiveCamera->GetExposureStops());
         }
 
         frameConstants.LightCount = m_LightCount;

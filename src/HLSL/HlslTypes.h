@@ -46,6 +46,8 @@ struct ALIGN16 HlslPerFrameConstants
     float4 CameraWorldPos;
     uint LightCount;
     float LightCullThreshold;
+    float Exposure;            // Linear scene-radiance multiplier (exp2(stops))
+    float _PerFramePad0;
     HlslLight Lights[MAX_LIGHTS_PER_REGION];
 };
 
