@@ -13,6 +13,7 @@ add_library(CanvasGfx12 SHARED
     Surface12.cpp
     SwapChain12.cpp
     MeshData12.cpp
+    Material12.cpp
     ResourceAllocator.cpp
     ResourceManager.cpp
     UploadRing.cpp

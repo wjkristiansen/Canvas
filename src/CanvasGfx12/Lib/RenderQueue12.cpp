@@ -1198,6 +1198,7 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
 //------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::DrawMesh(
     Canvas::XGfxMeshData *pMeshData,
+    uint32_t materialGroupIndex,
     const Canvas::Math::FloatMatrix4x4 &worldTransform)
 {
     try
@@ -1206,10 +1207,13 @@ Gem::Result CRenderQueue12::DrawMesh(
             return Gem::Result::InvalidArg;
         
         auto pMesh = static_cast<CMeshData12*>(pMeshData);
-        
-        // Get position and normal vertex buffer entries
-        auto pPosEntry = pMesh->GetVertexBuffer(0, Canvas::GfxVertexBufferType::Position);
-        auto pNormEntry = pMesh->GetVertexBuffer(0, Canvas::GfxVertexBufferType::Normal);
+
+        if (materialGroupIndex >= pMesh->GetNumMaterialGroups())
+            return Gem::Result::InvalidArg;
+
+        // Get position and normal vertex buffer entries for the selected group
+        auto pPosEntry = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Position);
+        auto pNormEntry = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Normal);
         
         if (!pPosEntry || !pPosEntry->pBuffer)
             return Gem::Result::InvalidArg;
@@ -1734,7 +1738,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     auto *pMeshData = pMeshInstance->GetMeshData();
                     if (pMeshData)
                     {
-                        Gem::ThrowGemError(DrawMesh(pMeshData, pNode->GetGlobalMatrix()));
+                        Gem::ThrowGemError(DrawMesh(pMeshData, pMeshInstance->GetMaterialGroupIndex(), pNode->GetGlobalMatrix()));
                     }
                 }
                 // Lights were already accumulated during SubmitForRender — skip here

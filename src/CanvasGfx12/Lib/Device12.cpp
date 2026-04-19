@@ -8,6 +8,7 @@
 #include "Surface12.h"
 #include "Buffer12.h"
 #include "MeshData12.h"
+#include "Material12.h"
 #include "GlyphAtlas.h"
 
 //------------------------------------------------------------------------------------------------
@@ -116,8 +117,20 @@ GEMMETHODIMP CDevice12::CreateMaterial(Canvas::XGfxMaterial **ppMaterial)
         return Gem::Result::BadPointer;
 
     *ppMaterial = nullptr;
-    // Material implementation lands in Phase 3 (CMaterial12).
-    return Gem::Result::NotImplemented;
+
+    try
+    {
+        Gem::TGemPtr<CMaterial12> pMaterial;
+        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMaterial>::CreateAndRegister<CMaterial12>(
+            &pMaterial, GetCanvas(), nullptr));
+        *ppMaterial = pMaterial.Detach();
+        return Gem::Result::Success;
+    }
+    catch (const Gem::GemError &e)
+    {
+        sentinel.SetResultCode(e.Result());
+        return e.Result();
+    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -341,27 +354,72 @@ GEMMETHODIMP CDevice12::CreateMeshData(
     if (desc.GroupCount == 0 || desc.pGroups == nullptr)
         return Gem::Result::InvalidArg;
 
-    // Phase 2 backstop: the multi-group / extra-stream / per-group material
-    // backend lands in Phase 3. Until then, accept only the legacy single-group
-    // position+normal layout and route through the existing upload path.
-    if (desc.GroupCount != 1)
-        return Gem::Result::NotImplemented;
+    // Validate every group up front: positions and normals are required, and
+    // every present stream must have VertexCount entries (no count != 0 with
+    // null pointers).
+    for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
+    {
+        const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
+        if (g.VertexCount == 0)
+            return Gem::Result::InvalidArg;
+        if (g.pPositions == nullptr || g.pNormals == nullptr)
+            return Gem::Result::InvalidArg;
+    }
 
-    const Canvas::MeshDataGroupDesc &group = desc.pGroups[0];
-    if (group.pUV0 != nullptr || group.pTangents != nullptr || group.pMaterial != nullptr)
-        return Gem::Result::NotImplemented;
-
-    const uint32_t vertexCount = group.VertexCount;
-    const Canvas::Math::FloatVector4 *positions = group.pPositions;
-    const Canvas::Math::FloatVector4 *normals   = group.pNormals;
-    const char *name = desc.pName;
-
-    uint64_t posSize = static_cast<uint64_t>(vertexCount) * sizeof(Canvas::Math::FloatVector4);
-    uint64_t normSize = posSize;
-    uint64_t allocationSize = posSize + normSize;
+    const char *baseName = desc.pName;
 
     try
     {
+        // Pre-compute a single staging allocation that holds every stream of
+        // every group concatenated, so the upload ring is amortized across the
+        // whole mesh.
+        struct StreamLayout
+        {
+            uint32_t                                Group;
+            Canvas::GfxVertexBufferType             Type;
+            const void                             *pSrc;
+            uint64_t                                Size;
+            uint64_t                                StagingOffset;
+        };
+
+        std::vector<StreamLayout> streams;
+        streams.reserve(desc.GroupCount * 4);
+
+        uint64_t stagingTotal = 0;
+        for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
+        {
+            const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
+            const uint64_t v4Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector4);
+            const uint64_t v2Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector2);
+
+            streams.push_back({ gi, Canvas::GfxVertexBufferType::Position, g.pPositions, v4Size, stagingTotal });
+            stagingTotal += v4Size;
+            streams.push_back({ gi, Canvas::GfxVertexBufferType::Normal,   g.pNormals,   v4Size, stagingTotal });
+            stagingTotal += v4Size;
+
+            if (g.pUV0)
+            {
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::UV0, g.pUV0, v2Size, stagingTotal });
+                stagingTotal += v2Size;
+            }
+            if (g.pTangents)
+            {
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::Tangent, g.pTangents, v4Size, stagingTotal });
+                stagingTotal += v4Size;
+            }
+        }
+
+        HostWriteAllocation staging;
+        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(stagingTotal, staging));
+        {
+            uint8_t *dst = static_cast<uint8_t *>(staging.pMapped);
+            for (const StreamLayout &s : streams)
+                memcpy(dst + s.StagingOffset, s.pSrc, static_cast<size_t>(s.Size));
+        }
+
+        // Allocate one D3D12 buffer per stream and enqueue its copy.
+        std::vector<CMeshData12::GroupResources> groups(desc.GroupCount);
+
         D3D12_RESOURCE_DESC bufDesc = {};
         bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
         bufDesc.Height           = 1;
@@ -370,70 +428,68 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         bufDesc.SampleDesc.Count = 1;
         bufDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-        std::string posName = name ? (std::string(name) + "_Positions") : "MeshPositions";
-        std::string normName = name ? (std::string(name) + "_Normals") : "MeshNormals";
-
-        bufDesc.Width = posSize;
-        ResourceAllocation posAlloc;
-        Gem::ThrowGemError(m_ResourceManager.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, posAlloc, posName.c_str()));
-
-        bufDesc.Width = normSize;
-        ResourceAllocation normAlloc;
-        Gem::ThrowGemError(m_ResourceManager.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, normAlloc, normName.c_str()));
-
-        Gem::TGemPtr<CBuffer12> pPosBuffer;
-        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
-            &pPosBuffer, GetCanvas(), posAlloc.pResource, posName.c_str()));
-        pPosBuffer->SetAllocationTracking(this, posAlloc.AllocationKey, posAlloc.SizeInUnits, posAlloc.AllocatorTier);
-
-        Gem::TGemPtr<CBuffer12> pNormBuffer;
-        Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
-            &pNormBuffer, GetCanvas(), normAlloc.pResource, normName.c_str()));
-        pNormBuffer->SetAllocationTracking(this, normAlloc.AllocationKey, normAlloc.SizeInUnits, normAlloc.AllocatorTier);
-
-        // Stage and enqueue the upload on the device's copy queue.  The
-        // consuming render queue gates on the copy fence at submit time.
-        HostWriteAllocation staging;
-        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(allocationSize, staging));
+        auto streamSuffix = [](Canvas::GfxVertexBufferType t) -> const char *
         {
-            uint8_t* dst = static_cast<uint8_t*>(staging.pMapped);
-            if (positions && posSize > 0)
-                memcpy(dst, positions, static_cast<size_t>(posSize));
-            if (normals && normSize > 0)
-                memcpy(dst + posSize, normals, static_cast<size_t>(normSize));
+            switch (t)
+            {
+            case Canvas::GfxVertexBufferType::Position: return "_Positions";
+            case Canvas::GfxVertexBufferType::Normal:   return "_Normals";
+            case Canvas::GfxVertexBufferType::UV0:      return "_UV0";
+            case Canvas::GfxVertexBufferType::Tangent:  return "_Tangents";
+            default:                                    return "_Stream";
+            }
+        };
+
+        for (const StreamLayout &s : streams)
+        {
+            std::string streamName = baseName ? std::string(baseName) : std::string("Mesh");
+            streamName += streamSuffix(s.Type);
+            if (desc.GroupCount > 1)
+            {
+                streamName += "_g";
+                streamName += std::to_string(s.Group);
+            }
+
+            bufDesc.Width = s.Size;
+            ResourceAllocation alloc;
+            Gem::ThrowGemError(m_ResourceManager.Alloc(bufDesc, D3D12_BARRIER_LAYOUT_UNDEFINED, alloc, streamName.c_str()));
+
+            Gem::TGemPtr<CBuffer12> pBuffer;
+            Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
+                &pBuffer, GetCanvas(), alloc.pResource, streamName.c_str()));
+            pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
+
+            Gem::TGemPtr<Gem::XGeneric> pKeepAlive;
+            pBuffer->QueryInterface(&pKeepAlive);
+            m_CopyQueue.EnqueueBufferCopy(
+                staging.pResource, staging.ResourceOffset + s.StagingOffset,
+                pBuffer->GetD3DResource(), 0,
+                s.Size,
+                std::move(pKeepAlive));
+
+            Canvas::GfxResourceAllocation vb;
+            vb.pBuffer = pBuffer;
+            vb.Offset  = 0;
+            vb.Size    = s.Size;
+
+            CMeshData12::GroupResources &group = groups[s.Group];
+            switch (s.Type)
+            {
+            case Canvas::GfxVertexBufferType::Position: group.PositionVB = vb; break;
+            case Canvas::GfxVertexBufferType::Normal:   group.NormalVB   = vb; break;
+            case Canvas::GfxVertexBufferType::UV0:      group.UV0VB      = vb; break;
+            case Canvas::GfxVertexBufferType::Tangent:  group.TangentVB  = vb; break;
+            default: break;
+            }
         }
 
-        Gem::TGemPtr<Gem::XGeneric> pPosKeepAlive;
-        pPosBuffer->QueryInterface(&pPosKeepAlive);
-        m_CopyQueue.EnqueueBufferCopy(
-            staging.pResource, staging.ResourceOffset,
-            pPosBuffer->GetD3DResource(), 0,
-            posSize,
-            std::move(pPosKeepAlive));
-
-        Gem::TGemPtr<Gem::XGeneric> pNormKeepAlive;
-        pNormBuffer->QueryInterface(&pNormKeepAlive);
-        m_CopyQueue.EnqueueBufferCopy(
-            staging.pResource, staging.ResourceOffset + posSize,
-            pNormBuffer->GetD3DResource(), 0,
-            normSize,
-            std::move(pNormKeepAlive));
+        // Attach materials (if any) to their groups.
+        for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
+            groups[gi].pMaterial = desc.pGroups[gi].pMaterial;
 
         Gem::TGemPtr<CMeshData12> pMeshData;
-        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas(), name));
-
-        Canvas::GfxResourceAllocation posVB;
-        posVB.pBuffer       = pPosBuffer;
-        posVB.Offset        = 0;
-        posVB.Size          = posSize;
-
-        Canvas::GfxResourceAllocation normVB;
-        normVB.pBuffer       = pNormBuffer;
-        normVB.Offset        = 0;
-        normVB.Size          = normSize;
-
-        pMeshData->SetPositionBuffer(posVB);
-        pMeshData->SetNormalBuffer(normVB);
+        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas(), baseName));
+        pMeshData->SetGroups(std::move(groups));
 
         *ppMesh = pMeshData.Detach();
         return Gem::Result::Success;

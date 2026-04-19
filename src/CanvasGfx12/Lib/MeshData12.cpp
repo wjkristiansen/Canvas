@@ -16,41 +16,37 @@ CMeshData12::CMeshData12(Canvas::XCanvas* pCanvas, PCSTR name) :
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(uint32_t) CMeshData12::GetNumMaterialGroups()
 {
-    return 1;
+    return static_cast<uint32_t>(m_Groups.size());
 }
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(Canvas::GfxResourceAllocation*) CMeshData12::GetVertexBuffer(uint32_t materialIndex, Canvas::GfxVertexBufferType type)
 {
-    if (materialIndex != 0)
+    if (materialIndex >= m_Groups.size())
         return nullptr;
+
+    GroupResources &group = m_Groups[materialIndex];
+    auto pickIfPresent = [](Canvas::GfxResourceAllocation &alloc) -> Canvas::GfxResourceAllocation *
+    {
+        return alloc.pBuffer ? &alloc : nullptr;
+    };
 
     switch (type)
     {
-    case Canvas::GfxVertexBufferType::Position:
-        return m_PositionVB.pBuffer ? &m_PositionVB : nullptr;
-    case Canvas::GfxVertexBufferType::Normal:
-        return m_NormalVB.pBuffer ? &m_NormalVB : nullptr;
-    default:
-        return nullptr;
+    case Canvas::GfxVertexBufferType::Position: return pickIfPresent(group.PositionVB);
+    case Canvas::GfxVertexBufferType::Normal:   return pickIfPresent(group.NormalVB);
+    case Canvas::GfxVertexBufferType::UV0:      return pickIfPresent(group.UV0VB);
+    case Canvas::GfxVertexBufferType::Tangent:  return pickIfPresent(group.TangentVB);
+    default:                                    return nullptr;
     }
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(Canvas::XGfxMaterial*) CMeshData12::GetMaterial([[maybe_unused]] uint32_t materialIndex)
+GEMMETHODIMP_(Canvas::XGfxMaterial*) CMeshData12::GetMaterial(uint32_t materialIndex)
 {
-    // Material binding is not implemented yet for mesh data.
-    return nullptr;
+    if (materialIndex >= m_Groups.size())
+        return nullptr;
+
+    return m_Groups[materialIndex].pMaterial.Get();
 }
 
-//------------------------------------------------------------------------------------------------
-void CMeshData12::SetPositionBuffer(const Canvas::GfxResourceAllocation& vb)
-{
-    m_PositionVB = vb;
-}
-
-//------------------------------------------------------------------------------------------------
-void CMeshData12::SetNormalBuffer(const Canvas::GfxResourceAllocation& vb)
-{
-    m_NormalVB = vb;
-}
