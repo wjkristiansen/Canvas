@@ -32,7 +32,8 @@ void CCopyQueue::Initialize(CDevice12* pDevice)
 
     m_TimelineId = pDevice->GetResourceManager().RegisterTimeline(m_pFence);
 
-    m_Pending.reserve(64);
+    m_PendingBuffers.reserve(64);
+    m_PendingTextures.reserve(16);
     m_PendingKeepAlives.reserve(64);
 }
 
@@ -86,7 +87,40 @@ void CCopyQueue::EnqueueBufferCopy(
         return;
 
     std::lock_guard<std::mutex> lock(m_Mutex);
-    m_Pending.push_back({ pSrc, srcOffset, pDst, dstOffset, size });
+    PendingBufferCopy op;
+    op.pSrc      = pSrc;          // CComPtr AddRefs; keeps staging alive past ring grow
+    op.SrcOffset = srcOffset;
+    op.pDst      = pDst;
+    op.DstOffset = dstOffset;
+    op.Size      = size;
+    m_PendingBuffers.push_back(std::move(op));
+    if (pDstKeepAlive)
+        m_PendingKeepAlives.push_back(std::move(pDstKeepAlive));
+}
+
+//------------------------------------------------------------------------------------------------
+void CCopyQueue::EnqueueTextureCopy(
+    ID3D12Resource* pSrc, const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& srcFootprint,
+    ID3D12Resource* pDst, uint32_t dstSubresource,
+    uint32_t dstX, uint32_t dstY,
+    uint32_t width, uint32_t height,
+    Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive)
+{
+    if (!pSrc || !pDst || width == 0 || height == 0)
+        return;
+
+    PendingTextureCopy op;
+    op.pSrc           = pSrc;     // CComPtr AddRefs; keeps staging alive past ring grow
+    op.SrcFootprint   = srcFootprint;
+    op.pDst           = pDst;
+    op.DstSubresource = dstSubresource;
+    op.DstX           = dstX;
+    op.DstY           = dstY;
+    op.Width          = width;
+    op.Height         = height;
+
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    m_PendingTextures.push_back(std::move(op));
     if (pDstKeepAlive)
         m_PendingKeepAlives.push_back(std::move(pDstKeepAlive));
 }
@@ -94,15 +128,18 @@ void CCopyQueue::EnqueueBufferCopy(
 //------------------------------------------------------------------------------------------------
 std::optional<FenceToken> CCopyQueue::FlushIfPending()
 {
-    std::vector<PendingCopy>                 pending;
+    std::vector<PendingBufferCopy>           bufferOps;
+    std::vector<PendingTextureCopy>          textureOps;
     std::vector<Gem::TGemPtr<Gem::XGeneric>> keepAlives;
     {
         std::lock_guard<std::mutex> lock(m_Mutex);
-        if (m_Pending.empty())
+        if (m_PendingBuffers.empty() && m_PendingTextures.empty())
             return std::nullopt;
-        pending    = std::move(m_Pending);
+        bufferOps  = std::move(m_PendingBuffers);
+        textureOps = std::move(m_PendingTextures);
         keepAlives = std::move(m_PendingKeepAlives);
-        m_Pending.clear();
+        m_PendingBuffers.clear();
+        m_PendingTextures.clear();
         m_PendingKeepAlives.clear();
     }
 
@@ -112,8 +149,24 @@ std::optional<FenceToken> CCopyQueue::FlushIfPending()
     Gem::ThrowGemError(ResultFromHRESULT(m_pDevice->GetD3DDevice()->CreateCommandList(
         0, D3D12_COMMAND_LIST_TYPE_COPY, m_pAllocator, nullptr, IID_PPV_ARGS(&pCL))));
 
-    for (const auto& op : pending)
+    for (const auto& op : bufferOps)
         pCL->CopyBufferRegion(op.pDst, op.DstOffset, op.pSrc, op.SrcOffset, op.Size);
+
+    for (const auto& op : textureOps)
+    {
+        D3D12_TEXTURE_COPY_LOCATION src = {};
+        src.pResource       = op.pSrc;
+        src.Type            = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        src.PlacedFootprint = op.SrcFootprint;
+
+        D3D12_TEXTURE_COPY_LOCATION dst = {};
+        dst.pResource        = op.pDst;
+        dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        dst.SubresourceIndex = op.DstSubresource;
+
+        D3D12_BOX srcBox = { 0, 0, 0, op.Width, op.Height, 1 };
+        pCL->CopyTextureRegion(&dst, op.DstX, op.DstY, 0, &src, &srcBox);
+    }
 
     Gem::ThrowGemError(ResultFromHRESULT(pCL->Close()));
 
@@ -125,6 +178,41 @@ std::optional<FenceToken> CCopyQueue::FlushIfPending()
 
     m_UploadRing.MarkSubmissionEnd(signalValue);
     m_UploadRing.Reclaim(completedValue);
+
+    // Defer-release the unique staging source resources until the copy fence
+    // reaches signalValue.  The upload ring may release/replace its backing
+    // resource between flushes (CUploadRing::GrowTo), so we cannot rely on
+    // the ring to keep the source alive for the GPU.
+    {
+        StagingRetention retention;
+        retention.FenceValue = signalValue;
+        retention.Resources.reserve(bufferOps.size() + textureOps.size());
+        ID3D12Resource* pPrev = nullptr;
+        for (auto& op : bufferOps)
+        {
+            if (op.pSrc.p != pPrev)
+            {
+                retention.Resources.push_back(op.pSrc);
+                pPrev = op.pSrc.p;
+            }
+        }
+        for (auto& op : textureOps)
+        {
+            if (op.pSrc.p != pPrev)
+            {
+                retention.Resources.push_back(op.pSrc);
+                pPrev = op.pSrc.p;
+            }
+        }
+        m_StagingRetention.push_back(std::move(retention));
+
+        // Reap any retentions whose fence has already completed.
+        while (!m_StagingRetention.empty() &&
+               m_StagingRetention.front().FenceValue <= completedValue)
+        {
+            m_StagingRetention.pop_front();
+        }
+    }
 
     // Recycle the allocator: put the just-used one back keyed to signalValue,
     // pick up the next one (or a freshly created one) and reset it for next flush.

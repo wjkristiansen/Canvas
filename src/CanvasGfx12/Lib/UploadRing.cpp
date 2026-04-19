@@ -68,15 +68,17 @@ void CUploadRing::EnsureResource()
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocation& out)
+Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocation& out, uint64_t alignment)
 {
     if (sizeInBytes == 0)
+        return Gem::Result::InvalidArg;
+    if (alignment == 0 || (alignment & (alignment - 1)) != 0)
         return Gem::Result::InvalidArg;
 
     try
     {
-        constexpr uint64_t kAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-        uint64_t alignedSize = (sizeInBytes + kAlignment - 1) & ~(kAlignment - 1);
+        const uint64_t alignMask = alignment - 1;
+        const uint64_t alignedSize = (sizeInBytes + alignMask) & ~alignMask;
 
         EnsureResource();
 
@@ -86,41 +88,57 @@ Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocat
             return m_ReadOffset - m_WriteOffset;
         };
 
-        uint64_t available = availableBytes();
+        // Pad m_WriteOffset up to the requested alignment before measuring fit.
+        auto alignedWrite = [&]() -> uint64_t {
+            return (m_WriteOffset + alignMask) & ~alignMask;
+        };
+
+        uint64_t writeOffset = alignedWrite();
+        uint64_t padHead     = writeOffset - m_WriteOffset;
+        uint64_t needed      = padHead + alignedSize;
+        uint64_t available   = availableBytes();
 
         // Try reclaiming completed submissions first.
-        if (alignedSize > available)
+        if (needed > available)
         {
             Reclaim(m_LastCompletedFenceValue);
             available = availableBytes();
         }
 
-        // Grow if still insufficient.  Double the ring (at minimum) until the
-        // request fits.
-        if (alignedSize > available)
+        // Grow if still insufficient.
+        if (needed > available)
         {
-            uint64_t needed = m_Size ? m_Size : alignedSize;
-            while (needed < alignedSize)
-                needed *= 2;
-            GrowTo(needed);
+            uint64_t target = m_Size ? m_Size : (alignedSize + alignment);
+            while (target < alignedSize + alignment)
+                target *= 2;
+            GrowTo(target);
+            writeOffset = alignedWrite();
+            padHead     = writeOffset - m_WriteOffset;
         }
 
-        // Handle wrap-around.
-        if (m_WriteOffset + alignedSize > m_Size)
+        // Handle wrap-around (the aligned start + payload doesn't fit before m_Size).
+        if (writeOffset + alignedSize > m_Size)
         {
-            if (alignedSize > m_ReadOffset)
+            if (alignedSize + alignment > m_ReadOffset)
+            {
                 GrowTo(m_Size * 2);
+                writeOffset = alignedWrite();
+            }
             else
+            {
                 m_WriteOffset = 0;
+                writeOffset = 0;  // already a multiple of alignment
+            }
+            padHead = writeOffset - m_WriteOffset;
         }
 
-        out.GpuAddress     = m_GpuBase + m_WriteOffset;
-        out.pMapped        = m_pMapped + m_WriteOffset;
+        out.GpuAddress     = m_GpuBase + writeOffset;
+        out.pMapped        = m_pMapped + writeOffset;
         out.Size           = sizeInBytes;
         out.pResource      = m_pResource;
-        out.ResourceOffset = m_WriteOffset;
+        out.ResourceOffset = writeOffset;
 
-        m_WriteOffset += alignedSize;
+        m_WriteOffset = writeOffset + alignedSize;
         return Gem::Result::Success;
     }
     catch (const Gem::GemError& e) { return e.Result(); }

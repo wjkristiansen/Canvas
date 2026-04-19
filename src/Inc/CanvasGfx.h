@@ -405,14 +405,15 @@ namespace Canvas
         // eagerly (e.g., at scene-load time, before the first frame).
         GEMMETHOD(FlushUploads)() = 0;
 
-        // Upload CPU data into a sub-region of a GPU surface via a staging copy.
+        // Upload CPU data into a sub-region of a GPU surface via a staging copy
+        // on the device's copy queue.  Safe to call before the first BeginFrame;
+        // the next render submit gates on the copy fence.
         GEMMETHOD(UploadTextureRegion)(
             XGfxSurface *pDstSurface,
             uint32_t dstX, uint32_t dstY,
             uint32_t width, uint32_t height,
             const void *pData,
-            uint32_t srcRowPitch,
-            XGfxRenderQueue *pRenderQueue) = 0;
+            uint32_t srcRowPitch) = 0;
 
         // UI element creation (device wires GPU resources internally)
         GEMMETHOD(CreateTextElement)(XUITextElement **ppElement) = 0;

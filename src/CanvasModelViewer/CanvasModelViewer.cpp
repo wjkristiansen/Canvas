@@ -17,6 +17,150 @@
 #include <cmath>
 #include <conio.h>
 
+namespace
+{
+
+//------------------------------------------------------------------------------------------------
+// WIC texture loader: decodes an FBX-imported texture (file path or embedded
+// bytes) into an XGfxSurface and uploads pixels via the device copy queue.
+// Returns false on any decode failure; caller logs a warning and proceeds
+// without the texture.
+//------------------------------------------------------------------------------------------------
+class CWicTextureLoader
+{
+    CComPtr<IWICImagingFactory> m_pFactory;
+
+    HRESULT EnsureFactory()
+    {
+        if (m_pFactory)
+            return S_OK;
+        return CoCreateInstance(
+            CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+            IID_PPV_ARGS(&m_pFactory));
+    }
+
+    HRESULT CreateMemoryStream(const std::vector<uint8_t>& bytes, IStream** ppStream)
+    {
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, bytes.size());
+        if (!hMem)
+            return E_OUTOFMEMORY;
+        void* pDst = GlobalLock(hMem);
+        if (!pDst)
+        {
+            GlobalFree(hMem);
+            return E_FAIL;
+        }
+        memcpy(pDst, bytes.data(), bytes.size());
+        GlobalUnlock(hMem);
+        // Stream owns the HGLOBAL after success; on failure we free it.
+        HRESULT hr = CreateStreamOnHGlobal(hMem, TRUE, ppStream);
+        if (FAILED(hr))
+            GlobalFree(hMem);
+        return hr;
+    }
+
+public:
+    bool Load(
+        Canvas::XGfxDevice* pDevice,
+        const Canvas::Fbx::ImportedTextureRef& ref,
+        Gem::TGemPtr<Canvas::XGfxSurface>& outSurface,
+        Canvas::XLogger* pLogger)
+    {
+        outSurface = nullptr;
+
+        HRESULT hr = EnsureFactory();
+        if (FAILED(hr))
+        {
+            Canvas::LogError(pLogger, "WIC: failed to create imaging factory hr=0x%08X",
+                static_cast<unsigned>(hr));
+            return false;
+        }
+
+        CComPtr<IWICBitmapDecoder> pDecoder;
+        if (ref.Embedded && !ref.EmbeddedBytes.empty())
+        {
+            CComPtr<IStream> pStream;
+            hr = CreateMemoryStream(ref.EmbeddedBytes, &pStream);
+            if (FAILED(hr))
+            {
+                Canvas::LogWarn(pLogger, "WIC: embedded stream failed hr=0x%08X for '%s'",
+                    static_cast<unsigned>(hr), ref.AbsoluteFilePath.c_str());
+                return false;
+            }
+            hr = m_pFactory->CreateDecoderFromStream(pStream, nullptr,
+                WICDecodeMetadataCacheOnDemand, &pDecoder);
+        }
+        else
+        {
+            std::wstring widePath(ref.AbsoluteFilePath.begin(), ref.AbsoluteFilePath.end());
+            hr = m_pFactory->CreateDecoderFromFilename(widePath.c_str(), nullptr,
+                GENERIC_READ, WICDecodeMetadataCacheOnDemand, &pDecoder);
+        }
+        if (FAILED(hr))
+        {
+            Canvas::LogWarn(pLogger, "WIC: decoder creation failed hr=0x%08X for '%s'",
+                static_cast<unsigned>(hr), ref.AbsoluteFilePath.c_str());
+            return false;
+        }
+
+        CComPtr<IWICBitmapFrameDecode> pFrame;
+        hr = pDecoder->GetFrame(0, &pFrame);
+        if (FAILED(hr))
+            return false;
+
+        CComPtr<IWICFormatConverter> pConverter;
+        hr = m_pFactory->CreateFormatConverter(&pConverter);
+        if (FAILED(hr))
+            return false;
+        hr = pConverter->Initialize(pFrame, GUID_WICPixelFormat32bppRGBA,
+            WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
+        if (FAILED(hr))
+        {
+            Canvas::LogWarn(pLogger, "WIC: format converter init failed hr=0x%08X for '%s'",
+                static_cast<unsigned>(hr), ref.AbsoluteFilePath.c_str());
+            return false;
+        }
+
+        UINT width = 0, height = 0;
+        hr = pConverter->GetSize(&width, &height);
+        if (FAILED(hr) || width == 0 || height == 0)
+            return false;
+
+        const UINT rowPitch = width * 4;
+        std::vector<uint8_t> pixels(static_cast<size_t>(rowPitch) * height);
+        hr = pConverter->CopyPixels(nullptr, rowPitch,
+            static_cast<UINT>(pixels.size()), pixels.data());
+        if (FAILED(hr))
+            return false;
+
+        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+            Canvas::GfxFormat::R8G8B8A8_UNorm, width, height,
+            Canvas::SurfaceFlag_ShaderResource);
+        Gem::Result r = pDevice->CreateSurface(desc, &pSurface);
+        if (Gem::Failed(r))
+        {
+            Canvas::LogWarn(pLogger, "WIC: CreateSurface failed for '%s'",
+                ref.AbsoluteFilePath.c_str());
+            return false;
+        }
+
+        r = pDevice->UploadTextureRegion(pSurface.Get(), 0, 0, width, height,
+            pixels.data(), rowPitch);
+        if (Gem::Failed(r))
+        {
+            Canvas::LogWarn(pLogger, "WIC: UploadTextureRegion failed for '%s'",
+                ref.AbsoluteFilePath.c_str());
+            return false;
+        }
+
+        outSurface = std::move(pSurface);
+        return true;
+    }
+};
+
+} // anonymous namespace
+
 //------------------------------------------------------------------------------------------------
 // D3D12 Agility SDK version exports - required to activate newer D3D12 APIs
 // These should be exported from the main executable for best compatibility
@@ -125,6 +269,8 @@ class CApp
     std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> m_ImportedNodes;
     std::vector<Gem::TGemPtr<Canvas::XLight>> m_ImportedLights;
     std::vector<Gem::TGemPtr<Canvas::XCamera>> m_ImportedCameras;
+    std::vector<Gem::TGemPtr<Canvas::XGfxSurface>> m_ImportedTextures;
+    std::vector<Gem::TGemPtr<Canvas::XGfxMaterial>> m_ImportedMaterials;
 
     // Camera controller state
     float m_CameraYaw = 0.0f;    // Radians, around world Z (up)
@@ -353,6 +499,76 @@ class CApp
 
         LogSceneBounds("Imported scene bounds", imported.SceneBounds);
 
+        // -----------------------------------------------------------------
+        // Textures: WIC-decode each unique image referenced by the scene.
+        // Failed loads remain null; downstream code checks before binding.
+        // -----------------------------------------------------------------
+        CWicTextureLoader textureLoader;
+        std::vector<Gem::TGemPtr<Canvas::XGfxSurface>> textures(imported.Textures.size());
+        for (size_t i = 0; i < imported.Textures.size(); ++i)
+        {
+            const Canvas::Fbx::ImportedTextureRef &ref = imported.Textures[i];
+            if (!textureLoader.Load(pDevice, ref, textures[i], m_pLogger.Get()))
+            {
+                Canvas::LogWarn(m_pLogger.Get(),
+                    "Texture %zu failed to load (path='%s', embedded=%s); material slot will be unbound",
+                    i, ref.AbsoluteFilePath.c_str(), ref.Embedded ? "true" : "false");
+            }
+            else
+            {
+                Canvas::LogInfo(m_pLogger.Get(), "Loaded texture %zu '%s' (embedded=%s)",
+                    i, ref.AbsoluteFilePath.c_str(), ref.Embedded ? "true" : "false");
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Materials: one XGfxMaterial per ImportedMaterial. Bind textures
+        // when they loaded successfully; factors are always set.
+        // -----------------------------------------------------------------
+        auto BindRole = [&](Canvas::XGfxMaterial *pMaterial,
+                            Canvas::MaterialLayerRole role,
+                            int32_t textureIndex)
+        {
+            if (textureIndex < 0)
+                return;
+            if (static_cast<size_t>(textureIndex) >= textures.size())
+                return;
+            Canvas::XGfxSurface *pSurface = textures[static_cast<size_t>(textureIndex)].Get();
+            if (!pSurface)
+                return;
+            pMaterial->SetTexture(role, pSurface);
+        };
+
+        std::vector<Gem::TGemPtr<Canvas::XGfxMaterial>> materials(imported.Materials.size());
+        for (size_t i = 0; i < imported.Materials.size(); ++i)
+        {
+            const Canvas::Fbx::ImportedMaterial &srcMat = imported.Materials[i];
+            Gem::TGemPtr<Canvas::XGfxMaterial> pMaterial;
+            Gem::ThrowGemError(pDevice->CreateMaterial(&pMaterial));
+            pMaterial->SetBaseColorFactor(srcMat.BaseColorFactor);
+            pMaterial->SetEmissiveFactor(srcMat.EmissiveFactor);
+            pMaterial->SetRoughMetalAOFactor(srcMat.RoughMetalAOFactor);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Albedo,           srcMat.AlbedoTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Normal,           srcMat.NormalTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Emissive,         srcMat.EmissiveTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Roughness,        srcMat.RoughnessTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Metallic,         srcMat.MetallicTextureIndex);
+            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::AmbientOcclusion, srcMat.AmbientOcclusionTextureIndex);
+            materials[i] = pMaterial;
+            Canvas::LogInfo(m_pLogger.Get(),
+                "Imported material %zu '%s': baseColor=(%.3f,%.3f,%.3f,%.3f) tex(A=%d N=%d E=%d R=%d M=%d O=%d)",
+                i, srcMat.Name.c_str(),
+                srcMat.BaseColorFactor[0], srcMat.BaseColorFactor[1],
+                srcMat.BaseColorFactor[2], srcMat.BaseColorFactor[3],
+                srcMat.AlbedoTextureIndex, srcMat.NormalTextureIndex, srcMat.EmissiveTextureIndex,
+                srcMat.RoughnessTextureIndex, srcMat.MetallicTextureIndex, srcMat.AmbientOcclusionTextureIndex);
+        }
+
+        // Persist textures + materials so they outlive load (mesh data and
+        // descriptor heap entries hold raw refs).
+        m_ImportedTextures = std::move(textures);
+        m_ImportedMaterials = std::move(materials);
+
         std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> meshDataByIndex(imported.Meshes.size());
         for (size_t meshIndex = 0; meshIndex < imported.Meshes.size(); ++meshIndex)
         {
@@ -363,33 +579,51 @@ class CApp
                 continue;
             }
 
-            // Phase 1 (textures/materials WIP): the runtime XGfxMeshData/Material plumbing for
-            // multi-group draws lands in later phases. Until then, render the first part only;
-            // log when additional material parts are silently dropped so it's visible.
-            if (srcMesh.Parts.size() > 1)
+            // Build one MeshDataGroupDesc per part. Skip parts with bad streams.
+            std::vector<Canvas::MeshDataGroupDesc> groups;
+            groups.reserve(srcMesh.Parts.size());
+            for (size_t partIndex = 0; partIndex < srcMesh.Parts.size(); ++partIndex)
             {
-                Canvas::LogWarn(m_pLogger.Get(),
-                    "Imported mesh '%s' has %zu material parts; only the first part is rendered (multi-material support pending)",
-                    srcMesh.Name.c_str(), srcMesh.Parts.size());
+                const Canvas::Fbx::ImportedMeshPart &part = srcMesh.Parts[partIndex];
+                const uint32_t vertexCount = part.GetVertexCount();
+                if (vertexCount == 0 || part.Normals.size() != part.Positions.size())
+                {
+                    Canvas::LogWarn(m_pLogger.Get(),
+                        "Mesh '%s' part %zu: invalid vertex streams (positions=%zu normals=%zu); skipping part",
+                        srcMesh.Name.c_str(), partIndex, part.Positions.size(), part.Normals.size());
+                    continue;
+                }
+
+                Canvas::MeshDataGroupDesc group{};
+                group.VertexCount = vertexCount;
+                group.pPositions  = part.Positions.data();
+                group.pNormals    = part.Normals.data();
+                group.pUV0        = (part.UV0.size() == vertexCount) ? part.UV0.data() : nullptr;
+                group.pTangents   = (part.Tangents.size() == vertexCount) ? part.Tangents.data() : nullptr;
+                if (part.MaterialIndex >= 0 &&
+                    static_cast<size_t>(part.MaterialIndex) < m_ImportedMaterials.size())
+                {
+                    group.pMaterial = m_ImportedMaterials[static_cast<size_t>(part.MaterialIndex)].Get();
+                }
+                groups.push_back(group);
             }
 
-            const Canvas::Fbx::ImportedMeshPart &part = srcMesh.Parts[0];
-            if (part.Positions.empty() || part.Positions.size() != part.Normals.size())
+            if (groups.empty())
             {
-                Canvas::LogWarn(m_pLogger.Get(), "Skipping imported mesh '%s': invalid vertex streams in part 0", srcMesh.Name.c_str());
+                Canvas::LogWarn(m_pLogger.Get(), "Mesh '%s': all parts skipped; no XGfxMeshData created", srcMesh.Name.c_str());
                 continue;
             }
 
-            Gem::TGemPtr<Canvas::XGfxMeshData> pMeshData;
-            Gem::ThrowGemError(pDevice->CreateMeshData(
-                static_cast<uint32_t>(part.Positions.size()),
-                part.Positions.data(),
-                part.Normals.data(),
-                &pMeshData,
-                srcMesh.Name.c_str()));
+            Canvas::MeshDataDesc desc{};
+            desc.pGroups    = groups.data();
+            desc.GroupCount = static_cast<uint32_t>(groups.size());
+            desc.pName      = srcMesh.Name.c_str();
 
-            meshDataByIndex[meshIndex].Attach(pMeshData.Detach());
-            m_ImportedMeshData.push_back(meshDataByIndex[meshIndex]);
+            Gem::TGemPtr<Canvas::XGfxMeshData> pMeshData;
+            Gem::ThrowGemError(pDevice->CreateMeshData(desc, &pMeshData));
+
+            meshDataByIndex[meshIndex] = pMeshData;
+            m_ImportedMeshData.push_back(pMeshData);
         }
 
         std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> nodes(imported.Nodes.size());
@@ -1114,6 +1348,19 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     {
     UNREFERENCED_PARAMETER(hPrevInstance);
 
+    // COM initialization for WIC (texture decode) and other shell APIs.
+    // STA on the UI thread is the conventional choice for Win32 GUI apps.
+    // Tolerate a pre-existing apartment selection to stay friendly to anything
+    // that might have CoInitialize'd ahead of us.
+    HRESULT comInitHr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const bool comOwned = SUCCEEDED(comInitHr);
+
+    auto comCleanup = [comOwned]()
+    {
+        if (comOwned)
+            CoUninitialize();
+    };
+
     // Parse command line arguments using TokenParser and InCommand
     Canvas::CTokenParser tokenParser(lpCmdLine);
     
@@ -1288,8 +1535,12 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     if (!pApp->Initialize(nCmdShow))
     {
         Canvas::LogError(pLogger.Get(), "Application initialization failed; exiting");
+        comCleanup();
         return FALSE;
     }
 
-    return pApp->Execute();
+    int rc = pApp->Execute();
+    pApp.reset();
+    comCleanup();
+    return rc;
 }

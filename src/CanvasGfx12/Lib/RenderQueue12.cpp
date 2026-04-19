@@ -1078,7 +1078,7 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
         src.pResource                          = hw.pResource;
         src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
         src.PlacedFootprint.Offset             = hw.ResourceOffset;
-        src.PlacedFootprint.Footprint.Format   = DXGI_FORMAT_R8_UNORM;
+        src.PlacedFootprint.Footprint.Format   = pDst->m_Desc.Format;
         src.PlacedFootprint.Footprint.Width    = width;
         src.PlacedFootprint.Footprint.Height   = height;
         src.PlacedFootprint.Footprint.Depth    = 1;

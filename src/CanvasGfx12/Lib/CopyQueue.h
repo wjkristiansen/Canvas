@@ -8,8 +8,8 @@
 //
 // Buffers have no D3D12 layout, so no barriers are required inside the copy CL: cross-queue
 // fence synchronization on a COPY-queue signal is sufficient to make the writes visible to
-// the consuming queue's first access.  Texture upload is out of scope until the COMMON-only
-// constraint is wired through.
+// the consuming queue's first access.  Texture uploads are also supported; the destination
+// texture must be in COMMON layout (which CSurface12 default-heap surfaces are at creation).
 //================================================================================================
 
 #pragma once
@@ -21,6 +21,7 @@
 #include <atlbase.h>
 #include <d3d12.h>
 #include <cstdint>
+#include <deque>
 #include <mutex>
 #include <optional>
 #include <vector>
@@ -63,18 +64,42 @@ public:
         uint64_t size,
         Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive);
 
+    // Append a texture copy (placed footprint -> 2D subresource region) to the
+    // pending list. Destination texture must be in COMMON layout (D3D12 copy
+    // queues only operate on COMMON).  Source memory is expected to live in
+    // this queue's upload ring with the supplied placed footprint already
+    // describing it (Format/Width/Height/Depth/RowPitch).
+    void EnqueueTextureCopy(
+        ID3D12Resource* pSrc, const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& srcFootprint,
+        ID3D12Resource* pDst, uint32_t dstSubresource,
+        uint32_t dstX, uint32_t dstY,
+        uint32_t width, uint32_t height,
+        Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive);
+
     // If there are pending copies, record + ECL + signal and return the fence token
     // that covers all of them.  Returns nullopt when there is nothing to flush.
     std::optional<FenceToken> FlushIfPending();
 
 private:
-    struct PendingCopy
+    struct PendingBufferCopy
     {
-        ID3D12Resource* pSrc;
+        CComPtr<ID3D12Resource> pSrc;       // keep staging resource alive across ring growth
         uint64_t SrcOffset;
         ID3D12Resource* pDst;
         uint64_t DstOffset;
         uint64_t Size;
+    };
+
+    struct PendingTextureCopy
+    {
+        CComPtr<ID3D12Resource>            pSrc;   // keep staging resource alive across ring growth
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT SrcFootprint;
+        ID3D12Resource*                    pDst;
+        uint32_t                           DstSubresource;
+        uint32_t                           DstX;
+        uint32_t                           DstY;
+        uint32_t                           Width;
+        uint32_t                           Height;
     };
 
     void DrainGpu();
@@ -91,6 +116,20 @@ private:
     UINT64   m_LastSignaledValue = 0;
 
     std::mutex m_Mutex;
-    std::vector<PendingCopy>                  m_Pending;
+    std::vector<PendingBufferCopy>            m_PendingBuffers;
+    std::vector<PendingTextureCopy>           m_PendingTextures;
     std::vector<Gem::TGemPtr<Gem::XGeneric>>  m_PendingKeepAlives;
+
+    // Source-staging retention: each flush pushes the set of staging resources
+    // referenced by that submission keyed to the signaled fence value.  Entries
+    // are reclaimed (CComPtrs released) once the copy fence reaches the value.
+    // This is required because the upload ring may release/replace its
+    // backing resource via GrowTo, so the source resource cannot rely on the
+    // ring keeping it alive long enough for the GPU to finish the copy.
+    struct StagingRetention
+    {
+        UINT64                               FenceValue;
+        std::vector<CComPtr<ID3D12Resource>> Resources;
+    };
+    std::deque<StagingRetention> m_StagingRetention;
 };

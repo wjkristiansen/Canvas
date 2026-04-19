@@ -592,14 +592,60 @@ GEMMETHODIMP CDevice12::UploadTextureRegion(
     uint32_t dstX, uint32_t dstY,
     uint32_t width, uint32_t height,
     const void *pData,
-    uint32_t srcRowPitch,
-    Canvas::XGfxRenderQueue *pRenderQueue)
+    uint32_t srcRowPitch)
 {
-    if (!pDstSurface || !pData || !pRenderQueue || width == 0 || height == 0)
+    if (!pDstSurface || !pData || width == 0 || height == 0)
         return Gem::Result::BadPointer;
 
-    auto* pRQ = static_cast<CRenderQueue12*>(pRenderQueue);
-    return pRQ->UploadTextureRegion(pDstSurface, dstX, dstY, width, height, pData, srcRowPitch);
+    try
+    {
+        auto* pDst = static_cast<CSurface12*>(pDstSurface);
+        ID3D12Resource* pDstResource = pDst->GetD3DResource();
+
+        constexpr uint32_t kPitchAlign = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT;
+        const uint32_t alignedRowPitch = (srcRowPitch + kPitchAlign - 1) & ~(kPitchAlign - 1);
+        const uint64_t imageSize       = static_cast<uint64_t>(alignedRowPitch) * height;
+
+        HostWriteAllocation hw;
+        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(imageSize, hw));
+
+        uint8_t* pStagingBase = static_cast<uint8_t*>(hw.pMapped);
+
+        if (srcRowPitch == alignedRowPitch)
+        {
+            memcpy(pStagingBase, pData, static_cast<size_t>(srcRowPitch) * height);
+        }
+        else
+        {
+            for (uint32_t row = 0; row < height; ++row)
+            {
+                const uint8_t* pSrcRow = static_cast<const uint8_t*>(pData) + row * srcRowPitch;
+                uint8_t*       pDstRow = pStagingBase + row * alignedRowPitch;
+                memcpy(pDstRow, pSrcRow, srcRowPitch);
+            }
+        }
+
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
+        footprint.Offset             = hw.ResourceOffset;
+        footprint.Footprint.Format   = pDst->m_Desc.Format;
+        footprint.Footprint.Width    = width;
+        footprint.Footprint.Height   = height;
+        footprint.Footprint.Depth    = 1;
+        footprint.Footprint.RowPitch = alignedRowPitch;
+
+        Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive;
+        pDst->QueryInterface(&pDstKeepAlive);
+        m_CopyQueue.EnqueueTextureCopy(
+            hw.pResource, footprint,
+            pDstResource, /*dstSubresource*/ 0,
+            dstX, dstY,
+            width, height,
+            std::move(pDstKeepAlive));
+
+        return Gem::Result::Success;
+    }
+    catch (Gem::GemError& e) { return e.Result(); }
+    catch (_com_error& e)    { return ResultFromHRESULT(e.Error()); }
 }
 
 //------------------------------------------------------------------------------------------------

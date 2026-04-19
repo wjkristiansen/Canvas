@@ -102,14 +102,13 @@ public:
 
     GEMMETHOD(FlushUploads)() final;
 
-    // Texture upload (XGfxDevice interface — delegates to RQ for GPU copy)
+    // Texture upload (XGfxDevice interface — copy queue staging)
     GEMMETHOD(UploadTextureRegion)(
         Canvas::XGfxSurface *pDstSurface,
         uint32_t dstX, uint32_t dstY,
         uint32_t width, uint32_t height,
         const void *pData,
-        uint32_t srcRowPitch,
-        Canvas::XGfxRenderQueue *pRenderQueue) final;
+        uint32_t srcRowPitch) final;
 
     GEMMETHOD(CreateTextElement)(Canvas::XUITextElement **ppElement) final;
     GEMMETHOD(CreateRectElement)(Canvas::XUIRectElement **ppElement) final;

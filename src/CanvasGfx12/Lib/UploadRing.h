@@ -48,9 +48,17 @@ public:
     // Release the backing resource and reset all offsets.
     void Shutdown();
 
-    // Carve sizeInBytes (aligned) out of the ring.  Grows the ring if there is not
-    // enough free space even after applying the latest completed fence value.
-    Gem::Result AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocation& out);
+    // Carve sizeInBytes out of the ring.  Both size and the returned offset are
+    // padded up to `alignment` bytes (must be a power of two).  Default alignment
+    // is D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT (512) which is a strict superset
+    // of D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT (256), so the returned
+    // ResourceOffset is valid for either CBVs or D3D12_PLACED_SUBRESOURCE_FOOTPRINT::Offset.
+    // Grows the ring if there is not enough free space even after reclaiming
+    // completed submissions.
+    Gem::Result AllocateFromRing(
+        uint64_t sizeInBytes,
+        HostWriteAllocation& out,
+        uint64_t alignment = D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
 
     // Record the write offset at the point the owning queue signalled fenceValue.
     // Space consumed prior to this marker becomes reclaimable once that fence completes.

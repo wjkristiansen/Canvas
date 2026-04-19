@@ -163,9 +163,12 @@ Math::FloatVector4 ComputeFaceNormal(_In_ const Math::FloatVector4 &p0, _In_ con
 }
 
 //------------------------------------------------------------------------------------------------
+// FBX stores UVs with the OpenGL convention (origin at bottom-left).  D3D
+// samples textures with the origin at top-left, so flip V on import to keep
+// imported textures right-side-up.
 Math::FloatVector2 ToCanvasUV(ufbx_vec2 v)
 {
-    return Math::FloatVector2(static_cast<float>(v.x), static_cast<float>(v.y));
+    return Math::FloatVector2(static_cast<float>(v.x), 1.0f - static_cast<float>(v.y));
 }
 
 //------------------------------------------------------------------------------------------------
