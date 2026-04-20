@@ -1373,7 +1373,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     }
     int argc = static_cast<int>(argv.size());
 
-    std::string logLevel = "info";
+    std::string logLevel = "warn";
     std::string logFile;
     bool logConsole = false;
     bool logFps = false;
@@ -1460,7 +1460,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     }
 
     // Map log level string to QLog::Level
-    QLog::Level qlogLevel = QLog::Level::Info; // default
+    QLog::Level qlogLevel = QLog::Level::Warn; // default
     if (logLevel == "trace")
         qlogLevel = QLog::Level::Trace;
     else if (logLevel == "debug")
