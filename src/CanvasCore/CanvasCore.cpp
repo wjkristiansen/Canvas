@@ -85,7 +85,7 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
         }
         else
         {
-            Canvas::LogWarn(GetLogger(), "Registered unnamed element: %s", pElement->GetTypeName());
+            Canvas::LogError(GetLogger(), "Registered unnamed element: %s", pElement->GetTypeName());
         }
     }
     

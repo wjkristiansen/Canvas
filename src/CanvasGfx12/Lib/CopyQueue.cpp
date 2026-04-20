@@ -24,6 +24,9 @@ void CCopyQueue::Initialize(CDevice12* pDevice)
     Gem::ThrowGemError(ResultFromHRESULT(
         pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_pFence))));
 
+    SetD3D12DebugName(m_pCommandQueue, "CopyQueue_CommandQueue");
+    SetD3D12DebugName(m_pFence, "CopyQueue_Fence");
+
     m_AllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_COPY);
     m_AllocatorPool.SwapAllocator(m_pAllocator, 0, 0);
 
@@ -148,6 +151,7 @@ std::optional<FenceToken> CCopyQueue::FlushIfPending()
     CComPtr<ID3D12GraphicsCommandList> pCL;
     Gem::ThrowGemError(ResultFromHRESULT(m_pDevice->GetD3DDevice()->CreateCommandList(
         0, D3D12_COMMAND_LIST_TYPE_COPY, m_pAllocator, nullptr, IID_PPV_ARGS(&pCL))));
+    SetD3D12DebugName(pCL, "CopyQueue_CommandList");
 
     for (const auto& op : bufferOps)
         pCL->CopyBufferRegion(op.pDst, op.DstOffset, op.pSrc, op.SrcOffset, op.Size);

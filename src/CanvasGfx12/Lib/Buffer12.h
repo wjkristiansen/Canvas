@@ -33,7 +33,10 @@ public:
           CResource(pResource)
     {
         if (name != nullptr)
+        {
             SetName(name);
+            SetD3D12DebugName(pResource, name);
+        }
     }
 
     ~CBuffer12();

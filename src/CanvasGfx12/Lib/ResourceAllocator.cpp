@@ -276,10 +276,10 @@ void CResourceAllocator::EnsureHeap(HeapPool& pool, uint32_t heapIndex)
             &heapDesc, IID_PPV_ARGS(&pHeap)));
 
         // Name the heap for debug tools
-        const wchar_t* poolName = (&pool == &m_SmallPool) ? L"CanvasGfx_SmallHeap" : L"CanvasGfx_LargeHeap";
-        wchar_t heapName[64];
-        swprintf_s(heapName, L"%s_%u", poolName, heapIndex);
-        pHeap->SetName(heapName);
+        const char* poolTag = (&pool == &m_SmallPool) ? "SmallHeap" : "LargeHeap";
+        char heapName[64];
+        snprintf(heapName, sizeof(heapName), "CanvasGfx_%s_%u", poolTag, heapIndex);
+        SetD3D12DebugName(pHeap, heapName);
     }
     pool.Heaps[heapIndex] = pHeap;
 }
@@ -305,14 +305,5 @@ void CResourceAllocator::TryRecycleHeap(HeapPool& pool, uint32_t heapIndex)
 //------------------------------------------------------------------------------------------------
 void CResourceAllocator::SetResourceName(ID3D12Resource* pResource, const char* name)
 {
-    if (!name || !pResource)
-        return;
-
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, name, -1, nullptr, 0);
-    if (wlen > 0)
-    {
-        std::wstring wname(wlen - 1, L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, name, -1, wname.data(), wlen);
-        pResource->SetName(wname.c_str());
-    }
+    SetD3D12DebugName(pResource, name);
 }

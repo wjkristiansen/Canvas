@@ -95,6 +95,9 @@ Gem::Result CDevice12::Initialize()
         ThrowFailedHResult(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice)));
         m_pD3DDevice.Attach(pDevice.Detach());
 
+        if (GetName())
+            SetD3D12DebugName(m_pD3DDevice, GetName());
+
         // Log the GPU device name and adapter information
         LUID adapterLuid = m_pD3DDevice->GetAdapterLuid();
         CComPtr<IDXGIFactory4> pFactory;
@@ -201,7 +204,7 @@ GEMMETHODIMP CDevice12::CreateMaterial(Canvas::XGfxMaterial **ppMaterial)
     {
         Gem::TGemPtr<CMaterial12> pMaterial;
         Gem::ThrowGemError(TGfxElement<Canvas::XGfxMaterial>::CreateAndRegister<CMaterial12>(
-            &pMaterial, GetCanvas(), nullptr));
+            &pMaterial, GetCanvas(), "Material"));
         *ppMaterial = pMaterial.Detach();
         return Gem::Result::Success;
     }

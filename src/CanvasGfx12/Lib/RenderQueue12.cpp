@@ -110,6 +110,17 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_UIGpuTaskGraph.Init(pD3DDevice, pCQ, &m_AllocatorPool);
     m_PresentGpuTaskGraph.Init(pD3DDevice, pCQ, &m_AllocatorPool);
 
+    // Name the task graph command lists for D3D12 debug tools
+    if (name)
+    {
+        SetD3D12DebugName(m_GpuTaskGraph.GetWorkCommandList(),        name, "Scene_WorkCL");
+        SetD3D12DebugName(m_GpuTaskGraph.GetFixupCommandList(),       name, "Scene_FixupCL");
+        SetD3D12DebugName(m_UIGpuTaskGraph.GetWorkCommandList(),      name, "UI_WorkCL");
+        SetD3D12DebugName(m_UIGpuTaskGraph.GetFixupCommandList(),     name, "UI_FixupCL");
+        SetD3D12DebugName(m_PresentGpuTaskGraph.GetWorkCommandList(), name, "Present_WorkCL");
+        SetD3D12DebugName(m_PresentGpuTaskGraph.GetFixupCommandList(),name, "Present_FixupCL");
+    }
+
     CComPtr<ID3D12DescriptorHeap> pResDH;
     D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
@@ -191,6 +202,18 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     m_pDSVDescriptorHeap.Attach(pDSVDH.Detach());
     m_pCommandQueue.Attach(pCQ.Detach());
     m_pFence.Attach(pFence.Detach());
+
+    // Propagate Canvas element name to D3D12 objects for debug tools
+    if (name)
+    {
+        SetD3D12DebugName(m_pCommandQueue,                name, "CommandQueue");
+        SetD3D12DebugName(m_pFence,                       name, "Fence");
+        SetD3D12DebugName(m_pShaderResourceDescriptorHeap,name, "SRV_DescHeap");
+        SetD3D12DebugName(m_pSamplerDescriptorHeap,       name, "Sampler_DescHeap");
+        SetD3D12DebugName(m_pRTVDescriptorHeap,           name, "RTV_DescHeap");
+        SetD3D12DebugName(m_pDSVDescriptorHeap,           name, "DSV_DescHeap");
+        SetD3D12DebugName(m_pDefaultRootSig,              name, "DefaultRootSig");
+    }
 
     m_CbvSrvUavIncrement = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     m_SamplerIncrement   = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
@@ -776,6 +799,7 @@ void CRenderQueue12::EnsureDefaultPSO()
     
     ThrowFailedHResult(m_pDevice->GetD3DDevice()->CreateGraphicsPipelineState(
         &psoDesc, IID_PPV_ARGS(&m_pDefaultPSO)));
+    SetD3D12DebugName(m_pDefaultPSO, GetName(), "DefaultPSO");
     
     Canvas::LogInfo(m_pDevice->GetLogger(), "Geometry pass PSO created (5 MRT G-buffers)");
 }
@@ -871,6 +895,9 @@ void CRenderQueue12::EnsureTextPSO(DXGI_FORMAT rtvFormat)
     m_pTextPSO.Attach(pTextPSO.Detach());
     m_TextPSOFormat = rtvFormat;
 
+    SetD3D12DebugName(m_pTextRootSig, GetName(), "TextRootSig");
+    SetD3D12DebugName(m_pTextPSO, GetName(), "TextPSO");
+
     Canvas::LogInfo(m_pDevice->GetLogger(), "Text PSO created successfully");
 }
 
@@ -951,6 +978,9 @@ void CRenderQueue12::EnsureRectPSO(DXGI_FORMAT rtvFormat)
     m_pRectPSO.Attach(pRectPSO.Detach());
     m_RectPSOFormat = rtvFormat;
 
+    SetD3D12DebugName(m_pRectRootSig, GetName(), "RectRootSig");
+    SetD3D12DebugName(m_pRectPSO, GetName(), "RectPSO");
+
     Canvas::LogInfo(m_pDevice->GetLogger(), "Rect PSO created successfully");
 }
 
@@ -1029,6 +1059,9 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
 
     m_pCompositeRootSig.Attach(pCompositeRootSig.Detach());
     m_pCompositePSO.Attach(pCompositePSO.Detach());
+
+    SetD3D12DebugName(m_pCompositeRootSig, GetName(), "CompositeRootSig");
+    SetD3D12DebugName(m_pCompositePSO, GetName(), "CompositePSO");
 
     Canvas::LogInfo(m_pDevice->GetLogger(), "Composite PSO created successfully");
 }

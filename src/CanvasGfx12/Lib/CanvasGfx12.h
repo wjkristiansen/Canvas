@@ -37,6 +37,26 @@ inline Gem::Result ResultFromHRESULT(HRESULT hr)
 }
 
 //================================================================================================
+// D3D12 debug naming — UTF-8 via SetPrivateData(WKPDID_D3DDebugObjectName)
+//================================================================================================
+
+inline void SetD3D12DebugName(ID3D12Object* pObject, const char* name)
+{
+    if (pObject && name)
+        pObject->SetPrivateData(WKPDID_D3DDebugObjectName,
+                                static_cast<UINT>(strlen(name)), name);
+}
+
+inline void SetD3D12DebugName(ID3D12Object* pObject, const char* prefix, const char* suffix)
+{
+    if (!pObject || !prefix) return;
+    std::string name = prefix;
+    if (suffix) { name += '_'; name += suffix; }
+    pObject->SetPrivateData(WKPDID_D3DDebugObjectName,
+                            static_cast<UINT>(name.size()), name.c_str());
+}
+
+//================================================================================================
 // GfxElement - Template helper for graphics Canvas elements
 //================================================================================================
 

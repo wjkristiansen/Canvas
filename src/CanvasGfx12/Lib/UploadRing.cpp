@@ -59,7 +59,7 @@ void CUploadRing::EnsureResource()
         &heapProps, D3D12_HEAP_FLAG_NONE, &bufDesc,
         D3D12_BARRIER_LAYOUT_UNDEFINED, nullptr, nullptr, 0, nullptr,
         IID_PPV_ARGS(&m_pResource)));
-    m_pResource->SetName(L"CanvasGfx_UploadRing");
+    SetD3D12DebugName(m_pResource, "CanvasGfx_UploadRing");
 
     void* pMapped = nullptr;
     ThrowFailedHResult(m_pResource->Map(0, nullptr, &pMapped));

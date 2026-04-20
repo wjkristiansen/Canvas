@@ -25,13 +25,23 @@ public:
         m_pOwnerSwapChain(nullptr)
     {
         if (name != nullptr)
+        {
             SetName(name);
+            SetD3D12DebugName(pResource, name);
+        }
     }
 
     Gem::Result Initialize() { return Gem::Result::Success; }
     void Uninitialize() {}
 
-    void Rename(ID3D12Resource *pResource) { m_pD3DResource = pResource; }
+    void Rename(ID3D12Resource *pResource)
+    {
+        m_pD3DResource = pResource;
+        // Propagate the Canvas element name to the new D3D12 resource
+        PCSTR name = GetName();
+        if (name)
+            SetD3D12DebugName(pResource, name);
+    }
     
     // Weak pointer to owner swap chain (if this surface is a swap chain back buffer)
     class CSwapChain12* m_pOwnerSwapChain;
