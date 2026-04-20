@@ -12,6 +12,46 @@
 #include "GlyphAtlas.h"
 
 //------------------------------------------------------------------------------------------------
+#if defined(_DEBUG)
+static void __stdcall D3D12DebugMessageCallback(
+    D3D12_MESSAGE_CATEGORY /*Category*/,
+    D3D12_MESSAGE_SEVERITY Severity,
+    D3D12_MESSAGE_ID ID,
+    LPCSTR pDescription,
+    void* pContext)
+{
+    try
+    {
+        auto* pLogger = static_cast<Canvas::XLogger*>(pContext);
+
+        switch (Severity)
+        {
+        case D3D12_MESSAGE_SEVERITY_CORRUPTION:
+            Canvas::LogCritical(pLogger, "[D3D12 %u] %s", static_cast<unsigned>(ID), pDescription);
+            break;
+        case D3D12_MESSAGE_SEVERITY_ERROR:
+            Canvas::LogError(pLogger, "[D3D12 %u] %s", static_cast<unsigned>(ID), pDescription);
+            break;
+        case D3D12_MESSAGE_SEVERITY_WARNING:
+            Canvas::LogWarn(pLogger, "[D3D12 %u] %s", static_cast<unsigned>(ID), pDescription);
+            break;
+        case D3D12_MESSAGE_SEVERITY_INFO:
+            Canvas::LogInfo(pLogger, "[D3D12 %u] %s", static_cast<unsigned>(ID), pDescription);
+            break;
+        case D3D12_MESSAGE_SEVERITY_MESSAGE:
+        default:
+            Canvas::LogDebug(pLogger, "[D3D12 %u] %s", static_cast<unsigned>(ID), pDescription);
+            break;
+        }
+    }
+    catch (...)
+    {
+        // Never let exceptions escape across the D3D runtime boundary.
+    }
+}
+#endif
+
+//------------------------------------------------------------------------------------------------
 CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
     TGfxElement(pCanvas)
 {
@@ -22,6 +62,19 @@ CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
 //------------------------------------------------------------------------------------------------
 CDevice12::~CDevice12()
 {
+#if defined(_DEBUG)
+    // Unregister the debug callback first — the spec guarantees this will not
+    // return until any outstanding callbacks have completed, so it is safe to
+    // release the cached logger immediately afterwards.
+    if (m_pInfoQueue1 && m_debugCallbackCookie != 0)
+    {
+        m_pInfoQueue1->UnregisterMessageCallback(m_debugCallbackCookie);
+        m_debugCallbackCookie = 0;
+    }
+    m_pInfoQueue1.Release();
+    m_pDebugLogger = nullptr;
+#endif
+
     // Drain the copy queue and unregister its timeline before tearing down the
     // resource manager — the copy queue defers releases through the manager's
     // per-timeline queues which Shutdown() will then drain.
@@ -76,6 +129,32 @@ Gem::Result CDevice12::Initialize()
             Canvas::LogInfo(GetLogger(), "D3D12 Device created: %s (VendorId: 0x%04X, DeviceId: 0x%04X)", 
                             deviceName, adapterDesc.VendorId, adapterDesc.DeviceId);
         }
+
+#if defined(_DEBUG)
+        // Register a debug layer message callback so D3D12 validation messages
+        // are routed through the Canvas logger. This is best-effort — older
+        // runtimes that lack ID3D12InfoQueue1 will simply skip registration.
+        CComPtr<ID3D12InfoQueue1> pInfoQueue1;
+        if (SUCCEEDED(m_pD3DDevice->QueryInterface(IID_PPV_ARGS(&pInfoQueue1))))
+        {
+            m_pDebugLogger = GetLogger();
+            DWORD cookie = 0;
+            if (m_pDebugLogger && SUCCEEDED(pInfoQueue1->RegisterMessageCallback(
+                D3D12DebugMessageCallback,
+                D3D12_MESSAGE_CALLBACK_IGNORE_FILTERS,
+                static_cast<Canvas::XLogger*>(m_pDebugLogger),
+                &cookie)))
+            {
+                m_pInfoQueue1 = pInfoQueue1;
+                m_debugCallbackCookie = cookie;
+                Canvas::LogInfo(GetLogger(), "D3D12 debug message callback registered");
+            }
+            else
+            {
+                m_pDebugLogger = nullptr;
+            }
+        }
+#endif
     }
     catch (_com_error &e)
     {

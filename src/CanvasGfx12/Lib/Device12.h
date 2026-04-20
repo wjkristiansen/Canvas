@@ -77,6 +77,15 @@ public:
         return pCanvas ? pCanvas->GetLogger() : nullptr;
     }
 
+#if defined(_DEBUG)
+    // Cached ref-counted logger for the debug layer callback. The callback
+    // may fire from internal D3D12 threads, so we avoid reaching through
+    // m_pCanvas (which can be cleared without synchronisation).
+    Gem::TGemPtr<Canvas::XLogger> m_pDebugLogger;
+    CComPtr<ID3D12InfoQueue1> m_pInfoQueue1;
+    DWORD m_debugCallbackCookie = 0;
+#endif
+
     // Device-level resource manager (queue-agnostic): owns the resource allocator
     // (placed + committed), the bucketed buffer pool, and per-timeline retired/
     // deferred queues.
