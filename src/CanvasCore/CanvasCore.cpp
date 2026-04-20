@@ -109,13 +109,13 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
         {
             if (pszName)
             {
-                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s (Name: %s)",
-                               pElement->GetTypeName(), pszName);
+                Canvas::LogError(GetLogger(), "Attempted to unregister element that was not registered: %s (Name: %s)",
+                                pElement->GetTypeName(), pszName);
             }
             else
             {
-                Canvas::LogWarn(GetLogger(), "Attempted to unregister element that was not registered: %s",
-                               pElement->GetTypeName());
+                Canvas::LogError(GetLogger(), "Attempted to unregister element that was not registered: %s",
+                                pElement->GetTypeName());
             }
         }
         return Gem::Result::NotFound;
