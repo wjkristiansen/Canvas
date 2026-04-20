@@ -227,7 +227,11 @@ GEMMETHODIMP CCanvas::CreateTextElement(XGfxSurface* pAtlasSurface, XUITextEleme
 
     Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>(this, m_GlyphCache.get(), pAtlasSurface);
     pElement->SetName("UITextElement");
-    pElement->Register(this);
+    // m_pCanvas is already set by the constructor; call RegisterElement directly
+    // to avoid a spurious Unregister() on a not-yet-registered element.
+    Gem::Result result = RegisterElement(pElement.Get());
+    if (Gem::Failed(result))
+        return result;
     *ppElement = pElement.Detach();
     return Gem::Result::Success;
 }
@@ -240,7 +244,11 @@ GEMMETHODIMP CCanvas::CreateRectElement(XUIRectElement** ppElement)
 
     Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>(this);
     pElement->SetName("UIRectElement");
-    pElement->Register(this);
+    // m_pCanvas is already set by the constructor; call RegisterElement directly
+    // to avoid a spurious Unregister() on a not-yet-registered element.
+    Gem::Result result = RegisterElement(pElement.Get());
+    if (Gem::Failed(result))
+        return result;
     *ppElement = pElement.Detach();
     return Gem::Result::Success;
 }
