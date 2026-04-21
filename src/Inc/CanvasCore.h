@@ -38,7 +38,9 @@ struct XCamera;
 struct XLight;
 struct XGfxBuffer;
 struct XGfxMeshData;
+struct XGfxMaterial;
 struct XMeshInstance;
+struct XModel;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
 struct XGfxRenderQueue;
@@ -180,6 +182,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateModel)(XGfxDevice *pDevice, XModel **ppModel, PCSTR name = nullptr) = 0;
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
@@ -440,6 +443,58 @@ XMeshInstance : public XSceneGraphElement
     
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() = 0;
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+// Result of model instantiation — returned by XModel::Instantiate()
+struct ModelInstantiateResult
+{
+    XSceneGraphNode *pInstanceRoot = nullptr;   // Synthetic root of the cloned subtree
+    XCamera *pActiveCamera = nullptr;           // Cloned active camera (null if model has none)
+};
+
+//------------------------------------------------------------------------------------------------
+struct
+XModel : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XModel, 0x428769D2B64F8D29);
+
+    // Device that owns this model's GPU resources
+    GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
+
+    // Node hierarchy authoring — the model's internal root node.
+    // Build the model by creating nodes/elements via XCanvas and
+    // adding them as children of this root.
+    GEMMETHOD_(XSceneGraphNode *, GetRootNode)() = 0;
+
+    // Shared GPU resource library — resources added here are kept
+    // alive by the model and shared across all instances.
+    GEMMETHOD_(uint32_t, GetMeshDataCount)() = 0;
+    GEMMETHOD_(XGfxMeshData *, GetMeshData)(uint32_t index) = 0;
+    GEMMETHOD(AddMeshData)(XGfxMeshData *pMeshData) = 0;
+
+    GEMMETHOD_(uint32_t, GetMaterialCount)() = 0;
+    GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t index) = 0;
+    GEMMETHOD(AddMaterial)(XGfxMaterial *pMaterial) = 0;
+
+    GEMMETHOD_(uint32_t, GetTextureCount)() = 0;
+    GEMMETHOD_(XGfxSurface *, GetTexture)(uint32_t index) = 0;
+    GEMMETHOD(AddTexture)(XGfxSurface *pTexture) = 0;
+
+    // Active camera designation — set to the node in the model's
+    // hierarchy that carries the "default" camera.  Instantiate()
+    // will map it to the cloned counterpart in the result.
+    GEMMETHOD_(void, SetActiveCameraNode)(XSceneGraphNode *pNode) = 0;
+    GEMMETHOD_(XSceneGraphNode *, GetActiveCameraNode)() = 0;
+
+    // Instantiate: deep-clone the model's node hierarchy into the
+    // target scene graph.  A synthetic instance root is always
+    // created under pTargetParent.  If pResult is non-null, it
+    // receives the instance root and the cloned active camera.
+    GEMMETHOD(Instantiate)(XSceneGraphNode *pTargetParent, ModelInstantiateResult *pResult = nullptr) = 0;
+
+    // Axis-aligned bounding box of the model template
+    GEMMETHOD_(Math::AABB, GetBounds)() = 0;
 };
 
 //================================================================================================

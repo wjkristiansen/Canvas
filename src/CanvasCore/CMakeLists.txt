@@ -7,6 +7,7 @@ add_library(CanvasCore SHARED
     Camera.cpp
     CanvasCore.cpp
     dllmain.cpp
+    Model.cpp
     Scene.cpp
     Timer.cpp
     SceneGraph.cpp
@@ -30,6 +31,7 @@ add_library(CanvasCore SHARED
     DataSource.h
     Light.h
     Mesh.h
+    Model.h
     Scene.h
     SceneGraph.h
     ScopedUtils.h

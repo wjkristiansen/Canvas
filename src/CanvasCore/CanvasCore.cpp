@@ -9,6 +9,7 @@
 #include "Camera.h"
 #include "Light.h"
 #include "Mesh.h"
+#include "Model.h"
 #include "Scene.h"
 #include "CanvasGfx.h"
 #include "FontImpl.h"
@@ -180,6 +181,17 @@ GEMMETHODIMP CCanvas::CreateMeshInstance(XMeshInstance **ppMeshInstance, PCSTR n
     CFunctionSentinel sentinel("XCanvas::CreateMeshInstance", m_pLogger);
 
     return CreateElement<CMeshInstance>(ppMeshInstance, name);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateModel(XGfxDevice *pDevice, XModel **ppModel, PCSTR name)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateModel", m_pLogger);
+
+    if (!pDevice)
+        return Gem::Result::BadPointer;
+
+    return CreateElement<CModel>(ppModel, name, pDevice);
 }
 
 //------------------------------------------------------------------------------------------------

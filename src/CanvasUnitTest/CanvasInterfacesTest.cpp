@@ -865,6 +865,347 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(pAmbientLight->GetColor(), ambientColor));
             Assert::AreEqual(0.5f, pAmbientLight->GetIntensity());
         }
+
+        // ============================================================
+        // XModel Tests
+        // ============================================================
+
+        TEST_METHOD(ModelCreation)
+        {
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+            CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+            // Create a model
+            Gem::TGemPtr<Canvas::XModel> pModel;
+            Assert::IsTrue(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
+            Assert::IsNotNull(pModel.Get());
+
+            // Model should have a root node
+            Canvas::XSceneGraphNode *pRoot = pModel->GetRootNode();
+            Assert::IsNotNull(pRoot);
+
+            // Device should be accessible
+            Assert::IsTrue(pModel->GetDevice() == pDevice.Get());
+
+            // Empty model should have no resources
+            Assert::AreEqual(0u, pModel->GetMeshDataCount());
+            Assert::AreEqual(0u, pModel->GetMaterialCount());
+            Assert::AreEqual(0u, pModel->GetTextureCount());
+
+            // Active camera node should be null initially
+            Assert::IsNull(pModel->GetActiveCameraNode());
+        }
+
+        TEST_METHOD(ModelResourceLibrary)
+        {
+            using namespace Canvas::Math;
+
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+            CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+            Gem::TGemPtr<Canvas::XModel> pModel;
+            Assert::IsTrue(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "ResourceModel")));
+
+            // Create a debug mesh and add it to the model
+            FloatVector4 positions[] = {
+                {0, 0, 0, 1}, {1, 0, 0, 1}, {0, 1, 0, 1}
+            };
+            FloatVector4 normals[] = {
+                {0, 0, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 0}
+            };
+            Gem::TGemPtr<Canvas::XGfxMeshData> pMesh;
+            Assert::IsTrue(Succeeded(pDevice->CreateDebugMeshData(3, positions, normals, &pMesh, "TriMesh")));
+
+            Assert::IsTrue(Succeeded(pModel->AddMeshData(pMesh)));
+            Assert::AreEqual(1u, pModel->GetMeshDataCount());
+            Assert::IsTrue(pModel->GetMeshData(0) == pMesh.Get());
+            Assert::IsNull(pModel->GetMeshData(1)); // out of range
+
+            // Create and add a material
+            Gem::TGemPtr<Canvas::XGfxMaterial> pMaterial;
+            Assert::IsTrue(Succeeded(pDevice->CreateMaterial(&pMaterial)));
+            Assert::IsTrue(Succeeded(pModel->AddMaterial(pMaterial)));
+            Assert::AreEqual(1u, pModel->GetMaterialCount());
+            Assert::IsTrue(pModel->GetMaterial(0) == pMaterial.Get());
+
+            // Null arguments should fail
+            Assert::IsTrue(Gem::Failed(pModel->AddMeshData(nullptr)));
+            Assert::IsTrue(Gem::Failed(pModel->AddMaterial(nullptr)));
+            Assert::IsTrue(Gem::Failed(pModel->AddTexture(nullptr)));
+        }
+
+        TEST_METHOD(ModelAuthoringAndInstantiation)
+        {
+            using namespace Canvas::Math;
+
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+            CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+            // Build a model with a simple hierarchy:
+            // ModelRoot
+            //   - NodeA (mesh)
+            //   - NodeB
+            //       - NodeC (mesh)
+            Gem::TGemPtr<Canvas::XModel> pModel;
+            Assert::IsTrue(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
+
+            FloatVector4 positions[] = {
+                {0, 0, 0, 1}, {1, 0, 0, 1}, {0, 1, 0, 1}
+            };
+            FloatVector4 normals[] = {
+                {0, 0, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 0}
+            };
+            Gem::TGemPtr<Canvas::XGfxMeshData> pMesh;
+            Assert::IsTrue(Succeeded(pDevice->CreateDebugMeshData(3, positions, normals, &pMesh, "SharedMesh")));
+            pModel->AddMeshData(pMesh);
+
+            Canvas::XSceneGraphNode *pModelRoot = pModel->GetRootNode();
+
+            // NodeA with mesh
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pNodeA;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pNodeA, "NodeA")));
+            pNodeA->SetLocalTranslation(FloatVector4(1.0f, 0.0f, 0.0f, 1.0f));
+            Gem::TGemPtr<Canvas::XMeshInstance> pMeshA;
+            Assert::IsTrue(Succeeded(pCanvas->CreateMeshInstance(&pMeshA, "MeshA")));
+            pMeshA->SetMeshData(pMesh);
+            Assert::IsTrue(Succeeded(pNodeA->BindElement(pMeshA)));
+            Assert::IsTrue(Succeeded(pModelRoot->AddChild(pNodeA)));
+
+            // NodeB
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pNodeB;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pNodeB, "NodeB")));
+            pNodeB->SetLocalTranslation(FloatVector4(0.0f, 2.0f, 0.0f, 1.0f));
+            Assert::IsTrue(Succeeded(pModelRoot->AddChild(pNodeB)));
+
+            // NodeC under NodeB with mesh
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pNodeC;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pNodeC, "NodeC")));
+            pNodeC->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 3.0f, 1.0f));
+            Gem::TGemPtr<Canvas::XMeshInstance> pMeshC;
+            Assert::IsTrue(Succeeded(pCanvas->CreateMeshInstance(&pMeshC, "MeshC")));
+            pMeshC->SetMeshData(pMesh);
+            Assert::IsTrue(Succeeded(pNodeC->BindElement(pMeshC)));
+            Assert::IsTrue(Succeeded(pNodeB->AddChild(pNodeC)));
+
+            // Instantiate into a scene
+            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+
+            Canvas::ModelInstantiateResult result{};
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result)));
+
+            // Verify instance root was created
+            Assert::IsNotNull(result.pInstanceRoot);
+            Assert::IsNull(result.pActiveCamera); // no camera in model
+
+            // Instance root should be a child of scene root
+            Canvas::XSceneGraphNode *pSceneRoot = pScene->GetRootSceneGraphNode();
+            Assert::IsTrue(pSceneRoot->GetFirstChild() == result.pInstanceRoot);
+
+            // Instance root should have 2 children (cloned NodeA and NodeB)
+            Canvas::XSceneGraphNode *pClonedA = result.pInstanceRoot->GetFirstChild();
+            Assert::IsNotNull(pClonedA);
+            Canvas::XSceneGraphNode *pClonedB = result.pInstanceRoot->GetNextChild(pClonedA);
+            Assert::IsNotNull(pClonedB);
+            Assert::IsNull(result.pInstanceRoot->GetNextChild(pClonedB)); // no more children
+
+            // Verify transforms were copied
+            Assert::IsTrue(AlmostEqual(pClonedA->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 1.0f)));
+            Assert::IsTrue(AlmostEqual(pClonedB->GetLocalTranslation(), FloatVector4(0.0f, 2.0f, 0.0f, 1.0f)));
+
+            // ClonedB should have one child (cloned NodeC)
+            Canvas::XSceneGraphNode *pClonedC = pClonedB->GetFirstChild();
+            Assert::IsNotNull(pClonedC);
+            Assert::IsTrue(AlmostEqual(pClonedC->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 3.0f, 1.0f)));
+
+            // Verify mesh instances share the same GPU mesh data
+            Assert::AreEqual(1u, pClonedA->GetBoundElementCount());
+            Canvas::XSceneGraphElement *pClonedElemA = pClonedA->GetBoundElement(0);
+            Gem::TGemPtr<Canvas::XMeshInstance> pClonedMeshA;
+            Assert::IsTrue(Succeeded(pClonedElemA->QueryInterface(&pClonedMeshA)));
+            Assert::IsTrue(pClonedMeshA->GetMeshData() == pMesh.Get()); // shared GPU data
+
+            Assert::AreEqual(1u, pClonedC->GetBoundElementCount());
+            Canvas::XSceneGraphElement *pClonedElemC = pClonedC->GetBoundElement(0);
+            Gem::TGemPtr<Canvas::XMeshInstance> pClonedMeshC;
+            Assert::IsTrue(Succeeded(pClonedElemC->QueryInterface(&pClonedMeshC)));
+            Assert::IsTrue(pClonedMeshC->GetMeshData() == pMesh.Get()); // shared GPU data
+        }
+
+        TEST_METHOD(ModelInstantiateTransformIndependence)
+        {
+            using namespace Canvas::Math;
+
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+            CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+            Gem::TGemPtr<Canvas::XModel> pModel;
+            Assert::IsTrue(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
+
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pNodeA;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pNodeA, "NodeA")));
+            pNodeA->SetLocalTranslation(FloatVector4(1.0f, 0.0f, 0.0f, 1.0f));
+            Assert::IsTrue(Succeeded(pModel->GetRootNode()->AddChild(pNodeA)));
+
+            // Create scene and instantiate twice
+            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+
+            Canvas::ModelInstantiateResult result1{}, result2{};
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result1)));
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result2)));
+
+            // Both instances should exist independently
+            Assert::IsNotNull(result1.pInstanceRoot);
+            Assert::IsNotNull(result2.pInstanceRoot);
+            Assert::IsTrue(result1.pInstanceRoot != result2.pInstanceRoot);
+
+            // Modify instance 1's child transform
+            Canvas::XSceneGraphNode *pCloned1A = result1.pInstanceRoot->GetFirstChild();
+            Canvas::XSceneGraphNode *pCloned2A = result2.pInstanceRoot->GetFirstChild();
+            Assert::IsNotNull(pCloned1A);
+            Assert::IsNotNull(pCloned2A);
+
+            pCloned1A->SetLocalTranslation(FloatVector4(99.0f, 0.0f, 0.0f, 1.0f));
+
+            // Instance 2 should be unaffected
+            Assert::IsTrue(AlmostEqual(pCloned2A->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 1.0f)));
+        }
+
+        TEST_METHOD(ModelActiveCameraInstantiation)
+        {
+            using namespace Canvas::Math;
+
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+            CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+            Gem::TGemPtr<Canvas::XModel> pModel;
+            Assert::IsTrue(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "CameraModel")));
+
+            // Add a camera node to the model
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pCamNode;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pCamNode, "CamNode")));
+            pCamNode->SetLocalTranslation(FloatVector4(0.0f, -5.0f, 2.0f, 1.0f));
+
+            Gem::TGemPtr<Canvas::XCamera> pCamera;
+            Assert::IsTrue(Succeeded(pCanvas->CreateCamera(&pCamera, "ModelCamera")));
+            pCamera->SetFovAngle(1.2f);
+            pCamera->SetNearClip(0.5f);
+            pCamera->SetFarClip(500.0f);
+            Assert::IsTrue(Succeeded(pCamNode->BindElement(pCamera)));
+            Assert::IsTrue(Succeeded(pModel->GetRootNode()->AddChild(pCamNode)));
+
+            // Set as active camera node
+            pModel->SetActiveCameraNode(pCamNode);
+            Assert::IsTrue(pModel->GetActiveCameraNode() == pCamNode.Get());
+
+            // Instantiate
+            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+
+            Canvas::ModelInstantiateResult result{};
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result)));
+
+            // Active camera should be mapped in result
+            Assert::IsNotNull(result.pActiveCamera);
+
+            // Camera properties should be cloned
+            Assert::AreEqual(1.2f, result.pActiveCamera->GetFovAngle());
+            Assert::AreEqual(0.5f, result.pActiveCamera->GetNearClip());
+            Assert::AreEqual(500.0f, result.pActiveCamera->GetFarClip());
+
+            // Camera should be attached to the cloned node, not the model's node
+            Canvas::XSceneGraphNode *pClonedCamNode = result.pActiveCamera->GetAttachedNode();
+            Assert::IsNotNull(pClonedCamNode);
+            Assert::IsTrue(pClonedCamNode != pCamNode.Get()); // different node instance
+            Assert::IsTrue(AlmostEqual(pClonedCamNode->GetLocalTranslation(), FloatVector4(0.0f, -5.0f, 2.0f, 1.0f)));
+        }
+
+        TEST_METHOD(ModelLightCloning)
+        {
+            using namespace Canvas::Math;
+
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+            CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+            Gem::TGemPtr<Canvas::XModel> pModel;
+            Assert::IsTrue(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "LightModel")));
+
+            // Add a light node
+            Gem::TGemPtr<Canvas::XSceneGraphNode> pLightNode;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode, "LightNode")));
+
+            Gem::TGemPtr<Canvas::XLight> pLight;
+            Assert::IsTrue(Succeeded(pCanvas->CreateLight(Canvas::LightType::Point, &pLight, "PointLight")));
+            pLight->SetColor(FloatVector4(1.0f, 0.5f, 0.0f, 1.0f));
+            pLight->SetIntensity(3.0f);
+            pLight->SetRange(50.0f);
+            Assert::IsTrue(Succeeded(pLightNode->BindElement(pLight)));
+            Assert::IsTrue(Succeeded(pModel->GetRootNode()->AddChild(pLightNode)));
+
+            // Instantiate
+            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+
+            Canvas::ModelInstantiateResult result{};
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result)));
+
+            // Find cloned light
+            Canvas::XSceneGraphNode *pClonedLightNode = result.pInstanceRoot->GetFirstChild();
+            Assert::IsNotNull(pClonedLightNode);
+            Assert::AreEqual(1u, pClonedLightNode->GetBoundElementCount());
+
+            Gem::TGemPtr<Canvas::XLight> pClonedLight;
+            Assert::IsTrue(Succeeded(pClonedLightNode->GetBoundElement(0)->QueryInterface(&pClonedLight)));
+
+            Assert::IsTrue(pClonedLight->GetType() == Canvas::LightType::Point);
+            Assert::IsTrue(AlmostEqual(pClonedLight->GetColor(), FloatVector4(1.0f, 0.5f, 0.0f, 1.0f)));
+            Assert::AreEqual(3.0f, pClonedLight->GetIntensity());
+            Assert::AreEqual(50.0f, pClonedLight->GetRange());
+        }
+
+        TEST_METHOD(ModelEmptyInstantiation)
+        {
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+            CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+            // Create empty model (no child nodes)
+            Gem::TGemPtr<Canvas::XModel> pModel;
+            Assert::IsTrue(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "EmptyModel")));
+
+            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+
+            Canvas::ModelInstantiateResult result{};
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result)));
+
+            // Should still create a synthetic instance root
+            Assert::IsNotNull(result.pInstanceRoot);
+            Assert::IsNull(result.pActiveCamera);
+
+            // Instance root should have no children
+            Assert::IsNull(result.pInstanceRoot->GetFirstChild());
+        }
+
+        TEST_METHOD(ModelInstantiateNullTargetFails)
+        {
+            Gem::TGemPtr<XCanvas> pCanvas;
+            Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+            CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+            Gem::TGemPtr<Canvas::XModel> pModel;
+            Assert::IsTrue(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
+
+            // Null target should fail
+            Assert::IsTrue(Gem::Failed(pModel->Instantiate(nullptr)));
+        }
     };
 }
 

@@ -264,13 +264,8 @@ class CApp
     std::string m_fpsString;
     std::filesystem::path m_ModelPath;
 
-    std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> m_ImportedMeshData;
-    std::vector<Gem::TGemPtr<Canvas::XMeshInstance>> m_ImportedMeshInstances;
-    std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> m_ImportedNodes;
-    std::vector<Gem::TGemPtr<Canvas::XLight>> m_ImportedLights;
-    std::vector<Gem::TGemPtr<Canvas::XCamera>> m_ImportedCameras;
-    std::vector<Gem::TGemPtr<Canvas::XGfxSurface>> m_ImportedTextures;
-    std::vector<Gem::TGemPtr<Canvas::XGfxMaterial>> m_ImportedMaterials;
+    Gem::TGemPtr<Canvas::XModel> m_pModel;
+    Gem::TGemPtr<Canvas::XSceneGraphNode> m_pInstanceRoot;
 
     // Camera controller state
     float m_CameraYaw = 0.0f;    // Radians, around world Z (up)
@@ -500,6 +495,12 @@ class CApp
         LogSceneBounds("Imported scene bounds", imported.SceneBounds);
 
         // -----------------------------------------------------------------
+        // Build XModel from imported FBX data
+        // -----------------------------------------------------------------
+        Gem::TGemPtr<Canvas::XModel> pModel;
+        Gem::ThrowGemError(pCanvas->CreateModel(pDevice, &pModel, importPath.filename().string().c_str()));
+
+        // -----------------------------------------------------------------
         // Textures: WIC-decode each unique image referenced by the scene.
         // Failed loads remain null; downstream code checks before binding.
         // -----------------------------------------------------------------
@@ -518,6 +519,7 @@ class CApp
             {
                 Canvas::LogInfo(m_pLogger.Get(), "Loaded texture %zu '%s' (embedded=%s)",
                     i, ref.AbsoluteFilePath.c_str(), ref.Embedded ? "true" : "false");
+                pModel->AddTexture(textures[i]);
             }
         }
 
@@ -555,6 +557,7 @@ class CApp
             BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Metallic,         srcMat.MetallicTextureIndex);
             BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::AmbientOcclusion, srcMat.AmbientOcclusionTextureIndex);
             materials[i] = pMaterial;
+            pModel->AddMaterial(pMaterial);
             Canvas::LogInfo(m_pLogger.Get(),
                 "Imported material %zu '%s': baseColor=(%.3f,%.3f,%.3f,%.3f) tex(A=%d N=%d E=%d R=%d M=%d O=%d)",
                 i, srcMat.Name.c_str(),
@@ -564,11 +567,9 @@ class CApp
                 srcMat.RoughnessTextureIndex, srcMat.MetallicTextureIndex, srcMat.AmbientOcclusionTextureIndex);
         }
 
-        // Persist textures + materials so they outlive load (mesh data and
-        // descriptor heap entries hold raw refs).
-        m_ImportedTextures = std::move(textures);
-        m_ImportedMaterials = std::move(materials);
-
+        // -----------------------------------------------------------------
+        // Mesh data: create GPU mesh data and add to model resource library
+        // -----------------------------------------------------------------
         std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> meshDataByIndex(imported.Meshes.size());
         for (size_t meshIndex = 0; meshIndex < imported.Meshes.size(); ++meshIndex)
         {
@@ -579,7 +580,6 @@ class CApp
                 continue;
             }
 
-            // Build one MeshDataGroupDesc per part. Skip parts with bad streams.
             std::vector<Canvas::MeshDataGroupDesc> groups;
             groups.reserve(srcMesh.Parts.size());
             for (size_t partIndex = 0; partIndex < srcMesh.Parts.size(); ++partIndex)
@@ -601,9 +601,9 @@ class CApp
                 group.pUV0        = (part.UV0.size() == vertexCount) ? part.UV0.data() : nullptr;
                 group.pTangents   = (part.Tangents.size() == vertexCount) ? part.Tangents.data() : nullptr;
                 if (part.MaterialIndex >= 0 &&
-                    static_cast<size_t>(part.MaterialIndex) < m_ImportedMaterials.size())
+                    static_cast<size_t>(part.MaterialIndex) < materials.size())
                 {
-                    group.pMaterial = m_ImportedMaterials[static_cast<size_t>(part.MaterialIndex)].Get();
+                    group.pMaterial = materials[static_cast<size_t>(part.MaterialIndex)].Get();
                 }
                 groups.push_back(group);
             }
@@ -623,10 +623,12 @@ class CApp
             Gem::ThrowGemError(pDevice->CreateMeshData(desc, &pMeshData));
 
             meshDataByIndex[meshIndex] = pMeshData;
-            m_ImportedMeshData.push_back(pMeshData);
+            pModel->AddMeshData(pMeshData);
         }
 
-        std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> nodes(imported.Nodes.size());
+        // -----------------------------------------------------------------
+        // Build model node hierarchy: lights, cameras, nodes
+        // -----------------------------------------------------------------
         std::vector<Gem::TGemPtr<Canvas::XLight>> lightsByIndex(imported.Lights.size());
         std::vector<Gem::TGemPtr<Canvas::XCamera>> camerasByIndex(imported.Cameras.size());
 
@@ -669,7 +671,6 @@ class CApp
                 pLight->SetSpotAngles(srcLight.SpotInnerAngle, srcLight.SpotOuterAngle);
 
             lightsByIndex[lightIndex].Attach(pLight.Detach());
-            m_ImportedLights.push_back(lightsByIndex[lightIndex]);
         }
 
         for (size_t cameraIndex = 0; cameraIndex < imported.Cameras.size(); ++cameraIndex)
@@ -685,8 +686,11 @@ class CApp
             pImportedCamera->SetAspectRatio(srcCamera.AspectRatio);
 
             camerasByIndex[cameraIndex].Attach(pImportedCamera.Detach());
-            m_ImportedCameras.push_back(camerasByIndex[cameraIndex]);
         }
+
+        // Build model's node tree
+        Canvas::XSceneGraphNode *pModelRoot = pModel->GetRootNode();
+        std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> nodes(imported.Nodes.size());
 
         for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
         {
@@ -710,7 +714,6 @@ class CApp
                     Gem::ThrowGemError(pCanvas->CreateMeshInstance(&pMeshInstance, meshInstanceName.c_str()));
                     pMeshInstance->SetMeshData(pMeshData);
                     Gem::ThrowGemError(pNode->BindElement(pMeshInstance));
-                    m_ImportedMeshInstances.push_back(pMeshInstance);
                     LogNodeTransform("Imported mesh node", pNode);
                 }
             }
@@ -737,43 +740,57 @@ class CApp
             nodes[nodeIndex].Attach(pNode.Detach());
         }
 
+        // Wire parent-child relationships into the model's hierarchy
         for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
         {
             const int32_t parentIndex = imported.Nodes[nodeIndex].ParentIndex;
             if (parentIndex >= 0 && static_cast<size_t>(parentIndex) < nodes.size())
                 nodes[static_cast<size_t>(parentIndex)]->AddChild(nodes[nodeIndex]);
             else
-                pScene->GetRootSceneGraphNode()->AddChild(nodes[nodeIndex]);
+                pModelRoot->AddChild(nodes[nodeIndex]);
         }
 
-        m_ImportedNodes = std::move(nodes);
-
-        Canvas::XCamera *pSelectedCamera = nullptr;
-        Gem::TGemPtr<Canvas::XCamera> selectedCameraRef;
-
-        // Prefer the importer-selected active camera node when available.
-        if (imported.ActiveCameraNodeIndex >= 0 && static_cast<size_t>(imported.ActiveCameraNodeIndex) < imported.Nodes.size())
+        // Set active camera node on the model
+        if (imported.ActiveCameraNodeIndex >= 0 && static_cast<size_t>(imported.ActiveCameraNodeIndex) < nodes.size())
         {
-            const Canvas::Fbx::ImportedNode &activeNode = imported.Nodes[static_cast<size_t>(imported.ActiveCameraNodeIndex)];
-            if (activeNode.CameraIndex >= 0 && static_cast<size_t>(activeNode.CameraIndex) < camerasByIndex.size())
+            pModel->SetActiveCameraNode(nodes[static_cast<size_t>(imported.ActiveCameraNodeIndex)].Get());
+        }
+        else if (!camerasByIndex.empty())
+        {
+            // Fall back: find first node that has a camera
+            for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
             {
-                pSelectedCamera = camerasByIndex[static_cast<size_t>(activeNode.CameraIndex)].Get();
-                selectedCameraRef = camerasByIndex[static_cast<size_t>(activeNode.CameraIndex)];
+                if (imported.Nodes[nodeIndex].CameraIndex >= 0)
+                {
+                    pModel->SetActiveCameraNode(nodes[nodeIndex].Get());
+                    Canvas::LogWarn(m_pLogger.Get(), "Imported scene has no explicit active camera; using first camera node");
+                    break;
+                }
             }
         }
 
-        // Fall back to first imported camera if no explicit active camera was found.
-        if (!pSelectedCamera && !camerasByIndex.empty() && camerasByIndex[0].Get() != nullptr)
-        {
-            pSelectedCamera = camerasByIndex[0].Get();
-            selectedCameraRef = camerasByIndex[0];
-            Canvas::LogWarn(m_pLogger.Get(), "Imported scene has no explicit active camera; using first imported camera");
-        }
+        // Store model bounds
+        // (SetBounds is on CModel, not the interface — we set it here since
+        // the model doesn't compute bounds automatically yet)
+
+        // -----------------------------------------------------------------
+        // Instantiate model into the scene
+        // -----------------------------------------------------------------
+        Canvas::ModelInstantiateResult result{};
+        Gem::ThrowGemError(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result));
+
+        m_pModel = pModel;
+        m_pInstanceRoot = result.pInstanceRoot;
+
+        // -----------------------------------------------------------------
+        // Camera selection from instantiate result
+        // -----------------------------------------------------------------
+        Canvas::XCamera *pSelectedCamera = result.pActiveCamera;
 
         if (pSelectedCamera)
         {
             pScene->SetActiveCamera(pSelectedCamera);
-            m_pCamera = selectedCameraRef;
+            m_pCamera = pSelectedCamera;
             LogCameraTransform("Imported active camera", pSelectedCamera);
             LogCameraAffineMatrix("Imported camera affine", pSelectedCamera);
 
