@@ -85,7 +85,6 @@ set(INSTALL_GTEST OFF CACHE BOOL "Disable GoogleTest installation")
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
 # Test options
-option(LINKEDLIST_BUILD_TESTS "Build LinkedList unit tests" OFF)
 option(ALLOCATORS_BUILD_TESTS "Build Allocators unit tests" OFF)
 
 # If WIL has its own CMakeLists.txt, include it first
@@ -101,13 +100,6 @@ else()
     # Create alias for compatibility
     add_library(WIL ALIAS Canvas_WIL)
 endif()
-
-# Create interface library for header-only LinkedList submodule
-add_library(LinkedList INTERFACE)
-target_include_directories(LinkedList INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/LinkedList/Inc>
-    $<INSTALL_INTERFACE:include/LinkedList>
-)
 
 # Create interface library for header-only GEM submodule
 add_library(GEM INTERFACE)
@@ -138,10 +130,6 @@ add_subdirectory(src/CanvasFbx)
 add_subdirectory(src/CanvasConsole)
 add_subdirectory(src/CanvasModelViewer)
 add_subdirectory(src/CanvasUnitTest)
-# LinkedList tests - conditionally include based on option
-if(LINKEDLIST_BUILD_TESTS)
-    add_subdirectory(deps/LinkedList/LinkedListTest)
-endif()
 # Allocators tests - conditionally include based on option
 if(ALLOCATORS_BUILD_TESTS)
     add_subdirectory(deps/Allocators/AllocatorsTest)

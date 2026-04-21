@@ -11,9 +11,6 @@
 [submodule "deps/wil"]
 	path = deps/wil
 	url = https://github.com/microsoft/wil.git
-[submodule "deps/LinkedList"]
-	path = deps/LinkedList
-	url = https://github.com/wjkristiansen/LinkedList
 [submodule "deps/Allocators"]
 	path = deps/Allocators
 	url = https://github.com/wjkristiansen/Allocators

@@ -193,7 +193,6 @@ Canvas pulls in the following libraries as Git submodules or via CMake `FetchCon
 | [ThinWin](https://github.com/wjkristiansen/ThinWin)       | Minimal Win32 window wrapper.                              |
 | [InCommand](https://github.com/wjkristiansen/InCommand)   | Command-line argument parsing.                             |
 | [WIL](https://github.com/microsoft/wil)                   | Windows Implementation Libraries (error handling helpers). |
-| [LinkedList](https://github.com/wjkristiansen/LinkedList) | Header-only intrusive linked-list.                         |
 | [Allocators](https://github.com/wjkristiansen/Allocators) | Header-only allocators (buddy sub-allocator, etc.).        |
 | [ufbx](https://github.com/ufbx/ufbx)                      | Single-file FBX parser.                                    |
 | [FbxAssets](https://github.com/wjkristiansen/FbxAssets)   | Sample FBX models for testing.                             |

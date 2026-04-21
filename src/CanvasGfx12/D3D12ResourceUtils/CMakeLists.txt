@@ -33,11 +33,6 @@ target_compile_definitions(D3D12ResourceUtils PRIVATE
     NOMINMAX
 )
 
-# Link with LinkedList header-only library
-target_link_libraries(D3D12ResourceUtils PUBLIC
-    LinkedList
-)
-
 # Windows-specific settings
 if(WIN32)
     target_compile_definitions(D3D12ResourceUtils PRIVATE
