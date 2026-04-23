@@ -672,7 +672,6 @@ void CGpuTaskGraph::Reset(UINT64 fenceValue, UINT64 completedFenceValue)
     if (m_pAllocatorPool)
     {
         m_pAllocatorPool->SwapAllocator(m_pWorkAllocator, fenceValue, completedFenceValue);
-        m_pWorkAllocator->Reset();
     }
     if (m_pAllocatorPool)
     {
