@@ -5,14 +5,9 @@
 // No vertex buffer is bound.
 //================================================================================================
 
-cbuffer RectConstants : register(b0)
-{
-    float2 ScreenSize;       // Viewport width, height in pixels
-    float2 ElementOffset;    // Element screen-space position (pixels)
-    float2 RectSize;         // Rectangle width, height in pixels
-    float2 _Pad0;            // Padding to align FillColor to 16-byte boundary
-    float4 FillColor;        // RGBA fill color
-};
+#include "HlslTypes.h"
+
+ConstantBuffer<HlslRectConstants> RectCB : register(b0);
 
 static const float2 kQuadUV[6] =
 {
@@ -28,14 +23,14 @@ struct VSOutput
 
 VSOutput main(uint vertexId : SV_VertexID)
 {
-    float2 pos = kQuadUV[vertexId] * RectSize + ElementOffset;
+    float2 pos = kQuadUV[vertexId] * RectCB.RectSize + RectCB.ElementOffset;
 
-    float ndcX =  (pos.x / ScreenSize.x) * 2.0f - 1.0f;
-    float ndcY = -(pos.y / ScreenSize.y) * 2.0f + 1.0f;
+    float ndcX =  (pos.x / RectCB.ScreenSize.x) * 2.0f - 1.0f;
+    float ndcY = -(pos.y / RectCB.ScreenSize.y) * 2.0f + 1.0f;
 
     VSOutput output;
     output.Position = float4(ndcX, ndcY, 0.0f, 1.0f);
-    output.Color = FillColor;
+    output.Color = RectCB.FillColor;
 
     return output;
 }

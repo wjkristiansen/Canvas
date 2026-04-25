@@ -6,6 +6,7 @@
 #include <cstdint>
 #define ALIGN16 alignas(16)
 #define ROW_MAJOR
+struct float2 { float x, y; };
 struct float4 { float x, y, z, w; };
 struct float4x4 { float m[4][4]; };
 typedef uint32_t uint;
@@ -78,4 +79,53 @@ struct ALIGN16 HlslPerObjectConstants
 
 #ifdef __cplusplus
 } // namespace HlslTypes
+#endif
+
+//------------------------------------------------------------------------------------------------
+// UI rendering types — shared between UI shaders and the graphics backend.
+// These live outside the HlslTypes namespace in HLSL but inside it in C++.
+//------------------------------------------------------------------------------------------------
+
+#ifdef __cplusplus
+namespace HlslTypes {
+#endif
+
+// Per-glyph instance for GPU-driven text rendering (StructuredBuffer element).
+// The vertex shader expands each instance to a 6-vertex quad via SV_VertexID.
+struct HlslGlyphInstance
+{
+    float2 Offset;           // Element-local pixel position of quad top-left
+    float2 Size;             // Quad width, height in pixels
+    float4 AtlasUV;          // (u0, v0, u1, v1)
+};
+
+// Per-draw constants for text rendering (root CBV).
+struct ALIGN16 HlslTextConstants
+{
+    float2 ScreenSize;       // Viewport width, height in pixels
+    float2 ElementOffset;    // Element screen-space position (pixels)
+    float4 TextColor;        // RGBA text color (uniform per draw)
+};
+
+// Per-draw constants for rectangle rendering (root CBV).
+struct ALIGN16 HlslRectConstants
+{
+    float2 ScreenSize;       // Viewport width, height in pixels
+    float2 ElementOffset;    // Element screen-space position (pixels)
+    float2 RectSize;         // Rectangle width, height in pixels
+    float2 _Pad0;            // Padding to align FillColor to 16-byte boundary
+    float4 FillColor;        // RGBA fill color
+};
+
+#ifdef __cplusplus
+} // namespace HlslTypes
+#endif
+
+#ifdef __cplusplus
+static_assert(sizeof(HlslTypes::HlslGlyphInstance) == 32, "HlslGlyphInstance must be 32 bytes");
+static_assert(sizeof(HlslTypes::HlslTextConstants) == 32, "HlslTextConstants must be 32 bytes");
+static_assert(sizeof(HlslTypes::HlslRectConstants) == 48, "HlslRectConstants must be 48 bytes");
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 #endif

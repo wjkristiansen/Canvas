@@ -15,6 +15,7 @@
 
 #pragma once
 #include "CanvasMath.hpp"
+#include "../HLSL/HlslTypes.h"
 #include <cstdarg>
 
 namespace Canvas
@@ -324,16 +325,8 @@ struct TextVertex
 
 // Compact per-glyph instance data for GPU-driven text rendering.
 // One instance per visible glyph; the vertex shader expands each to a quad
-// using SV_VertexID.  Layout must match HLSL StructuredBuffer<GlyphInstance>
-// in VSText.hlsl.
-struct GlyphInstance
-{
-    Math::FloatVector2 Offset;  // Element-local pixel position of quad top-left
-    Math::FloatVector2 Size;    // Quad width, height in pixels
-    float AtlasUV[4];          // u0, v0, u1, v1 — atlas texture coordinates
-};
-
-static_assert(sizeof(GlyphInstance) == 32, "GlyphInstance must be 32 bytes to match HLSL StructuredBuffer layout");
+// using SV_VertexID.  Defined in HlslTypes.h (shared C++/HLSL).
+using GlyphInstance = HlslTypes::HlslGlyphInstance;
 
 // Draw command for batched UI text rendering from a persistent vertex buffer
 struct UITextDrawCommand

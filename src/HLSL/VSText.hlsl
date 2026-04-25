@@ -6,21 +6,10 @@
 // vertexId % 6 selects the corner within the quad.
 //================================================================================================
 
-cbuffer TextConstants : register(b0)
-{
-    float2 ScreenSize;       // Viewport width, height in pixels
-    float2 ElementOffset;    // Element screen-space position (pixels)
-    float4 TextColor;        // RGBA text color (uniform per draw)
-};
+#include "HlslTypes.h"
 
-struct GlyphInstance
-{
-    float2 Offset;           // Element-local pixel position of quad top-left
-    float2 Size;             // Quad width, height in pixels
-    float4 AtlasUV;          // (u0, v0, u1, v1)
-};
-
-StructuredBuffer<GlyphInstance> Glyphs : register(t0);
+ConstantBuffer<HlslTextConstants> TextCB : register(b0);
+StructuredBuffer<HlslGlyphInstance> Glyphs : register(t0);
 
 static const float2 kCorner[6] =
 {
@@ -40,14 +29,14 @@ VSOutput main(uint vertexId : SV_VertexID)
     uint glyphIdx = vertexId / 6;
     uint cornerIdx = vertexId % 6;
 
-    GlyphInstance g = Glyphs[glyphIdx];
+    HlslGlyphInstance g = Glyphs[glyphIdx];
     float2 t = kCorner[cornerIdx];
 
     // Quad position in element-local pixels, then offset to screen space
-    float2 pos = g.Offset + t * g.Size + ElementOffset;
+    float2 pos = g.Offset + t * g.Size + TextCB.ElementOffset;
 
-    float ndcX =  (pos.x / ScreenSize.x) * 2.0f - 1.0f;
-    float ndcY = -(pos.y / ScreenSize.y) * 2.0f + 1.0f;
+    float ndcX =  (pos.x / TextCB.ScreenSize.x) * 2.0f - 1.0f;
+    float ndcY = -(pos.y / TextCB.ScreenSize.y) * 2.0f + 1.0f;
 
     // Interpolate atlas UVs across the quad
     float2 uv = lerp(g.AtlasUV.xy, g.AtlasUV.zw, t);
@@ -55,7 +44,7 @@ VSOutput main(uint vertexId : SV_VertexID)
     VSOutput output;
     output.Position = float4(ndcX, ndcY, 0.0f, 1.0f);
     output.TexCoord = uv;
-    output.Color = TextColor;
+    output.Color = TextCB.TextColor;
 
     return output;
 }

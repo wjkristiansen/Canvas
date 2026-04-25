@@ -293,14 +293,14 @@ Gem::Result CUITextElement::RegenerateGlyphs()
         if (glyphWidth > 0.0f && glyphHeight > 0.0f)
         {
             GlyphInstance gi;
-            gi.Offset.X = cursorX + entry.LeftBearing * m_Config.FontSize;
-            gi.Offset.Y = cursorY + entry.TopBearing  * m_Config.FontSize;
-            gi.Size.X = glyphWidth;
-            gi.Size.Y = glyphHeight;
-            gi.AtlasUV[0] = entry.AtlasU0;
-            gi.AtlasUV[1] = entry.AtlasV0;
-            gi.AtlasUV[2] = entry.AtlasU1;
-            gi.AtlasUV[3] = entry.AtlasV1;
+            gi.Offset.x = cursorX + entry.LeftBearing * m_Config.FontSize;
+            gi.Offset.y = cursorY + entry.TopBearing  * m_Config.FontSize;
+            gi.Size.x = glyphWidth;
+            gi.Size.y = glyphHeight;
+            gi.AtlasUV.x = entry.AtlasU0;
+            gi.AtlasUV.y = entry.AtlasV0;
+            gi.AtlasUV.z = entry.AtlasU1;
+            gi.AtlasUV.w = entry.AtlasV1;
             m_CachedGlyphs.push_back(gi);
         }
 
