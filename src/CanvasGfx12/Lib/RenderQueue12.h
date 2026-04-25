@@ -599,7 +599,7 @@ public:
     Gem::Result UploadTextureRegion(Canvas::XGfxSurface *pDstSurface, uint32_t dstX, uint32_t dstY, uint32_t width, uint32_t height, const void *pData, uint32_t srcRowPitch);
     // Internal UI element drawing (mirrors DrawMesh pattern)
     Gem::Result DrawUIText(const Canvas::GfxResourceAllocation& vertexBuffer, Canvas::XGfxSurface* pGlyphAtlas, const Canvas::Math::FloatVector2& elementOffset);
-    Gem::Result DrawUIRect(const Canvas::GfxResourceAllocation& vertexBuffer, const Canvas::Math::FloatVector2& elementOffset);
+    Gem::Result DrawUIRect(const Canvas::Math::FloatVector2& rectSize, const Canvas::Math::FloatVector4& fillColor, const Canvas::Math::FloatVector2& elementOffset);
     
     // Allocate a shader-visible SRV descriptor slot and return GPU handle
     D3D12_GPU_DESCRIPTOR_HANDLE CreateShaderResourceView(ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc);

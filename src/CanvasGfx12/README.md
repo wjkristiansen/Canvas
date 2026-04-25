@@ -390,8 +390,8 @@ All PSOs are created lazily on first use and cached for the lifetime of the rend
 - Alpha blending: `SRC_ALPHA / INV_SRC_ALPHA`.
 
 **Rect pass**:
-- Slot 0: root CBV at b0 for screen-space constants.
-- Slot 1: root SRV at t0 for the vertex buffer.
+- Slot 0: root CBV at b0 for `RectConstants` (screen size, element offset, rect size, fill color).
+- No vertex buffer — the vertex shader derives the quad from `SV_VertexID` and the constants.
 - Alpha blending: `SRC_ALPHA / INV_SRC_ALPHA`.
 
 ### G-Buffer
@@ -441,7 +441,7 @@ The composition task binds the composition PSO, sets the back buffer as the sing
 
 ### UI Drawing
 
-After the scene graph, the render queue processes the UI renderable queue. Text elements are drawn with the text PSO using the SDF glyph atlas. Rectangle elements use the rect PSO with per-vertex color. Both use alpha blending onto the back buffer.
+After the scene graph, the render queue processes the UI renderable queue. Text elements are drawn with the text PSO using the SDF glyph atlas. Rectangle elements use the rect PSO with geometry derived entirely from `SV_VertexID` and per-draw constants (rect size and fill color); no vertex buffer is bound. Both use alpha blending onto the back buffer.
 
 ### Frame Submission
 
@@ -614,7 +614,7 @@ The SDF atlas stores distance values in R8_UNorm format where 0 means far outsid
 
 ### Rect Shaders
 
-**VSRect** reads a rect vertex buffer and emits screen-space quads. **PSRect** outputs the per-vertex color directly with alpha blending.
+**VSRect** derives a screen-aligned quad entirely from `SV_VertexID` and per-draw constants (`RectSize`, `FillColor`). No vertex buffer is bound. **PSRect** outputs the interpolated fill color directly with alpha blending.
 
 ## Text Rendering Pipeline
 
@@ -642,7 +642,7 @@ During `Update`, the scene graph marks dirty transforms and propagates them down
 
 ### UI Graph
 
-`XUIGraph` is a 2D overlay graph with position inheritance and dirty-tracked update. Nodes carry `XUITextElement` or `XUIRectElement` instances that generate their own vertex buffers when marked dirty. The render queue processes UI nodes after the composition pass, drawing them with alpha blending over the final back buffer.
+`XUIGraph` is a 2D overlay graph with position inheritance and dirty-tracked update. Nodes carry `XUITextElement` or `XUIRectElement` instances. Text elements generate their own vertex buffers when marked dirty. Rect elements carry size and color properties that are passed directly to the GPU as per-draw constants, requiring no vertex buffer. The render queue processes UI nodes after the composition pass, drawing them with alpha blending over the final back buffer.
 
 ## Source Layout
 

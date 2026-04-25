@@ -306,58 +306,13 @@ Gem::Result CUITextElement::RegenerateVertices()
 
 void CUIRectElement::SetSize(const Math::FloatVector2& size)
 {
-    if (m_Size.X == size.X && m_Size.Y == size.Y)
-        return;
-
     m_Size = size;
-    m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
 void CUIRectElement::SetFillColor(const Math::FloatVector4& color)
 {
-    if (m_FillColor.X == color.X && m_FillColor.Y == color.Y &&
-        m_FillColor.Z == color.Z && m_FillColor.W == color.W)
-        return;
-
     m_FillColor = color;
-    // TODO: Color is still baked into vertices (TextVertex::Color). Once color moves
-    // to a per-draw constant, this no longer needs to mark dirty.
-    m_Dirty = true;
-}
-
-//------------------------------------------------------------------------------------------------
-Gem::Result CUIRectElement::RegenerateVertices()
-{
-    m_CachedVertices.clear();
-
-    if (m_Size.X <= 0.0f || m_Size.Y <= 0.0f)
-        return Gem::Result::Success;
-
-    float x0 = 0.0f;
-    float y0 = 0.0f;
-    float x1 = m_Size.X;
-    float y1 = m_Size.Y;
-
-    m_CachedVertices.resize(6);
-
-    auto makeVertex = [](float x, float y, const Math::FloatVector4& color) -> TextVertex
-    {
-        TextVertex v;
-        v.Position = { x, y, 0.0f };
-        v.TexCoord = {};
-        v.SetColor(color);
-        return v;
-    };
-
-    m_CachedVertices[0] = makeVertex(x0, y0, m_FillColor);
-    m_CachedVertices[1] = makeVertex(x0, y1, m_FillColor);
-    m_CachedVertices[2] = makeVertex(x1, y0, m_FillColor);
-    m_CachedVertices[3] = makeVertex(x0, y1, m_FillColor);
-    m_CachedVertices[4] = makeVertex(x1, y1, m_FillColor);
-    m_CachedVertices[5] = makeVertex(x1, y0, m_FillColor);
-
-    return Gem::Result::Success;
 }
 
 } // namespace Canvas

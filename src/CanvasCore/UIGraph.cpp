@@ -81,16 +81,7 @@ Gem::Result CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
                     return result;
             }
         }
-        else if (pElem->GetType() == UIElementType::Rect)
-        {
-            auto* pRect = AsRect(pElem);
-            if (pRect->IsDirty())
-            {
-                Gem::Result result = pRect->RegenerateVertices();
-                if (Gem::Failed(result))
-                    return result;
-            }
-        }
+        // Rect elements derive geometry on the GPU — no CPU-side regeneration needed.
     }
 
     // Recurse to child nodes
@@ -152,18 +143,8 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
             else if (pElem->GetType() == UIElementType::Rect)
             {
                 auto* pRect = AsRect(pElem);
-                if (!pRect->HasContent() || pRect->GetVertexCount() == 0)
-                    continue;
-                hasVisibleElements = true;
-
-                if (pRect->IsDirty())
-                {
-                    GfxResourceAllocation vb = pRect->GetVertexBuffer();
-                    Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
-                        pRect->GetVertexCount(), sizeof(TextVertex), pRect->GetVertexData(), pGfxRQ, vb));
-                    pRect->SetVertexBuffer(vb);
-                    pRect->ClearDirty();
-                }
+                if (pRect->HasContent())
+                    hasVisibleElements = true;
             }
         }
 

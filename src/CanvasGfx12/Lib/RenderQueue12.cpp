@@ -922,12 +922,10 @@ void CRenderQueue12::EnsureRectPSO(DXGI_FORMAT rtvFormat)
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // Rect root signature:
-    //   Slot 0: Root CBV(b0) – TextScreenConstants (screen width/height)
-    //   Slot 1: Root SRV(t0) – StructuredBuffer<TextVertex> (no atlas needed)
-    std::vector<CD3DX12_ROOT_PARAMETER1> rectRootParams(2);
+    //   Slot 0: Root CBV(b0) – RectConstants (screen size, element offset, rect size, fill color)
+    // No vertex buffer — the vertex shader derives the quad from SV_VertexID + constants.
+    std::vector<CD3DX12_ROOT_PARAMETER1> rectRootParams(1);
     rectRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
-                                               D3D12_SHADER_VISIBILITY_VERTEX);
-    rectRootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                D3D12_SHADER_VISIBILITY_VERTEX);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rectRootSigDesc(
@@ -1665,10 +1663,11 @@ void CRenderQueue12::DeferRelease(Gem::XGeneric* pResource)
 
 //------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::DrawUIRect(
-    const Canvas::GfxResourceAllocation& vertexBuffer,
+    const Canvas::Math::FloatVector2& rectSize,
+    const Canvas::Math::FloatVector4& fillColor,
     const Canvas::Math::FloatVector2& elementOffset)
 {
-    if (!m_pCurrentSwapChain || !vertexBuffer.pBuffer)
+    if (!m_pCurrentSwapChain)
         return Gem::Result::InvalidArg;
 
     try
@@ -1677,19 +1676,25 @@ Gem::Result CRenderQueue12::DrawUIRect(
         EnsureRectPSO(rtvFormat);
 
         CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
-        auto pVertexBuf = static_cast<CBuffer12*>(vertexBuffer.pBuffer.Get());
-        uint32_t vertexCount = static_cast<uint32_t>(vertexBuffer.Size / sizeof(Canvas::TextVertex));
 
         // Allocate all CPU-side resources before creating the GPU task
         constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         HostWriteAllocation hw;
         Gem::ThrowGemError(m_UploadRing.AllocateFromRing(kCBVSize, hw));
 
-        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
-        memcpy(hw.pMapped, screenConsts, sizeof(screenConsts));
+        // Layout matches HLSL RectConstants: 3 × float4 = 48 bytes
+        //   [0..1] ScreenSize, [2..3] ElementOffset,
+        //   [4..5] RectSize,   [6..7] padding,
+        //   [8..11] FillColor
+        float consts[12] = {
+            static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight),
+            elementOffset.X, elementOffset.Y,
+            rectSize.X, rectSize.Y, 0.0f, 0.0f,
+            fillColor.X, fillColor.Y, fillColor.Z, fillColor.W
+        };
+        memcpy(hw.pMapped, consts, sizeof(consts));
 
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
-        D3D12_GPU_VIRTUAL_ADDRESS vertexAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress() + vertexBuffer.Offset;
 
         // All resources ready — now create the GPU task
         auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIRect");
@@ -1697,19 +1702,15 @@ Gem::Result CRenderQueue12::DrawUIRect(
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
             D3D12_BARRIER_ACCESS_RENDER_TARGET);
-        m_UIGpuTaskGraph.DeclareBufferUsage(drawTask, pVertexBuf,
-            D3D12_BARRIER_SYNC_PIXEL_SHADING,
-            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-        drawTask.RecordFunc = [cbvAddr, vertexAddr, vertexCount, this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [cbvAddr, this](ID3D12GraphicsCommandList* pCL)
         {
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
             pCL->SetGraphicsRootSignature(m_pRectRootSig);
             pCL->SetPipelineState(m_pRectPSO);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
-            pCL->SetGraphicsRootShaderResourceView(1, vertexAddr);
-            pCL->DrawInstanced(vertexCount, 1, 0, 0);
+            pCL->DrawInstanced(6, 1, 0, 0);
         };
         m_UIGpuTaskGraph.InsertTask(drawTask);
     }
@@ -2011,21 +2012,27 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 auto* pElem = pNode->GetBoundElement(i);
                 if (!pElem->IsVisible())
                     continue;
-                auto& vb = pElem->GetVertexBuffer();
-                if (vb.Size == 0)
-                    continue;
-
-                // Keep GPU resources alive until this frame's fence completes
-                DeferRelease(vb.pBuffer.Get());
 
                 Canvas::Math::FloatVector2 elementOffset = pNode->GetGlobalPosition();
 
                 if (pElem->GetType() == Canvas::UIElementType::Rect)
                 {
-                    Gem::ThrowGemError(DrawUIRect(vb, elementOffset));
+                    Gem::TGemPtr<Canvas::XUIRectElement> pRect;
+                    if (SUCCEEDED(pElem->QueryInterface(&pRect)))
+                    {
+                        auto& size = pRect->GetSize();
+                        if (size.X > 0.0f && size.Y > 0.0f)
+                            Gem::ThrowGemError(DrawUIRect(size, pRect->GetFillColor(), elementOffset));
+                    }
                 }
                 else if (pElem->GetType() == Canvas::UIElementType::Text)
                 {
+                    auto& vb = pElem->GetVertexBuffer();
+                    if (vb.Size == 0)
+                        continue;
+
+                    DeferRelease(vb.pBuffer.Get());
+
                     Gem::TGemPtr<Canvas::XUITextElement> pText;
                     if (SUCCEEDED(pElem->QueryInterface(&pText)))
                     {
