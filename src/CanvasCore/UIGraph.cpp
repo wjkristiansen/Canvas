@@ -76,7 +76,7 @@ Gem::Result CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
             auto* pText = AsText(pElem);
             if (pText->IsDirty())
             {
-                Gem::Result result = pText->RegenerateVertices();
+                Gem::Result result = pText->RegenerateGlyphs();
                 if (Gem::Failed(result))
                     return result;
             }
@@ -127,7 +127,7 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
             if (pElem->GetType() == UIElementType::Text)
             {
                 auto* pText = AsText(pElem);
-                if (!pText->HasContent() || pText->GetVertexCount() == 0)
+                if (!pText->HasContent() || pText->GetGlyphCount() == 0)
                     continue;
                 hasVisibleElements = true;
 
@@ -135,7 +135,7 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
                 {
                     GfxResourceAllocation vb = pText->GetVertexBuffer();
                     Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
-                        pText->GetVertexCount(), sizeof(TextVertex), pText->GetVertexData(), pGfxRQ, vb));
+                        pText->GetGlyphCount(), sizeof(GlyphInstance), pText->GetGlyphData(), pGfxRQ, vb));
                     pText->SetVertexBuffer(vb);
                     pText->ClearDirty();
                 }

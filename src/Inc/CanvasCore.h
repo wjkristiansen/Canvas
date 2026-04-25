@@ -308,8 +308,8 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD(Update)(float dtime) = 0;
 };
 
-// Text vertex structure — shared between CanvasCore (vertex generation) and CanvasGfx (rendering)
-// Layout must match HLSL StructuredBuffer<TextVertex> in VSText.hlsl
+// Text vertex structure — used by CTextLayout standalone API and unit tests.
+// Layout must match HLSL StructuredBuffer<TextVertex> in VSText.hlsl (standalone path).
 struct TextVertex
 {
     Math::FloatVector3 Position;    // Screen-space pixel position (12 bytes)
@@ -321,6 +321,19 @@ struct TextVertex
     void SetColor(const Math::FloatVector4& c) { Color[0] = c.X; Color[1] = c.Y; Color[2] = c.Z; Color[3] = c.W; }
     void SetColor(float r, float g, float b, float a) { Color[0] = r; Color[1] = g; Color[2] = b; Color[3] = a; }
 };
+
+// Compact per-glyph instance data for GPU-driven text rendering.
+// One instance per visible glyph; the vertex shader expands each to a quad
+// using SV_VertexID.  Layout must match HLSL StructuredBuffer<GlyphInstance>
+// in VSText.hlsl.
+struct GlyphInstance
+{
+    Math::FloatVector2 Offset;  // Element-local pixel position of quad top-left
+    Math::FloatVector2 Size;    // Quad width, height in pixels
+    float AtlasUV[4];          // u0, v0, u1, v1 — atlas texture coordinates
+};
+
+static_assert(sizeof(GlyphInstance) == 32, "GlyphInstance must be 32 bytes to match HLSL StructuredBuffer layout");
 
 // Draw command for batched UI text rendering from a persistent vertex buffer
 struct UITextDrawCommand
