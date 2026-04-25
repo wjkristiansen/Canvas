@@ -148,19 +148,17 @@ public:
 };
 
 //================================================================================================
-// CUIRectElement - Rectangle element with cached vertex generation
+// CUIRectElement - Rectangle element (vertex-buffer-free; geometry derived on GPU)
 //================================================================================================
 
 class CUIRectElement : public TCanvasElement<XUIRectElement>
 {
     Math::FloatVector4 m_FillColor = { 1.0f, 1.0f, 1.0f, 1.0f };
     Math::FloatVector2 m_Size = {};
-    std::vector<TextVertex> m_CachedVertices;
 
     XUIGraphNode* m_pAttachedNode = nullptr;
-    GfxResourceAllocation m_VertexBuffer;
+    GfxResourceAllocation m_VertexBuffer;   // Stub — required by XUIElement interface
     bool m_Visible = true;
-    bool m_Dirty = true;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -181,7 +179,7 @@ public:
     GEMMETHOD_(void, SetVisible)(bool visible) override { m_Visible = visible; }
     GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
     GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
-    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) override { m_VertexBuffer = buffer; }
+    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation&) override {}
 
     // XUIRectElement
     GEMMETHOD_(void, SetSize)(const Math::FloatVector2& size) override;
@@ -191,11 +189,6 @@ public:
 
     // Internal
     void SetAttachedNode(XUIGraphNode* pNode) { m_pAttachedNode = pNode; }
-    bool IsDirty() const { return m_Dirty; }
-    void ClearDirty() { m_Dirty = false; }
-    Gem::Result RegenerateVertices();
-    uint32_t GetVertexCount() const { return static_cast<uint32_t>(m_CachedVertices.size()); }
-    const void* GetVertexData() const { return m_CachedVertices.data(); }
     bool HasContent() const { return m_Size.X > 0.0f && m_Size.Y > 0.0f; }
 };
 
