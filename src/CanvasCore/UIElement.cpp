@@ -214,21 +214,22 @@ void CUITextElement::SetFont(XFont* pFont)
 //------------------------------------------------------------------------------------------------
 void CUITextElement::SetLayoutConfig(const TextLayoutConfig& config)
 {
-    if (m_Config.FontSize == config.FontSize &&
-        m_Config.Color.X == config.Color.X && m_Config.Color.Y == config.Color.Y &&
-        m_Config.Color.Z == config.Color.Z && m_Config.Color.W == config.Color.W &&
-        m_Config.LineHeight == config.LineHeight &&
-        m_Config.DisableKerning == config.DisableKerning)
-        return;
+    // Glyph instances depend on font size, line height, and kerning.
+    // Color is a per-draw constant, so color-only changes skip regeneration.
+    bool geometryChanged = m_Config.FontSize != config.FontSize ||
+                           m_Config.LineHeight != config.LineHeight ||
+                           m_Config.DisableKerning != config.DisableKerning;
 
     m_Config = config;
-    m_Dirty = true;
+
+    if (geometryChanged)
+        m_Dirty = true;
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CUITextElement::RegenerateVertices()
+Gem::Result CUITextElement::RegenerateGlyphs()
 {
-    m_CachedVertices.clear();
+    m_CachedGlyphs.clear();
 
     if (m_Text.empty())
         return Gem::Result::Success;
@@ -247,23 +248,22 @@ Gem::Result CUITextElement::RegenerateVertices()
     if (Gem::Failed(result))
         return result;
 
-    // Generate vertices in element-local space (origin at 0,0).
+    // Generate glyph instances in element-local space (origin at 0,0).
     // The node's screen-space position is applied as a per-draw constant by the shader.
-    Math::FloatVector3 screenPos(0.0f, 0.0f, 0.0f);
-
     const CTrueTypeFont::FontMetrics& metrics = pFontData->GetMetrics();
     float lineHeightUnits = (metrics.Ascender - metrics.Descender + metrics.LineGap);
     float lineHeightPixels = lineHeightUnits * (m_Config.FontSize / pFontData->GetUnitsPerEm());
 
-    m_CachedVertices.reserve(codepoints.size() * 6);
-    Math::FloatVector3 cursorPos = screenPos;
+    m_CachedGlyphs.reserve(codepoints.size());
+    float cursorX = 0.0f;
+    float cursorY = 0.0f;
 
     for (uint32_t codepoint : codepoints)
     {
         if (codepoint == '\n')
         {
-            cursorPos.X = screenPos.X;
-            cursorPos.Y += lineHeightPixels * m_Config.LineHeight;
+            cursorX = 0.0f;
+            cursorY += lineHeightPixels * m_Config.LineHeight;
             continue;
         }
 
@@ -273,7 +273,7 @@ Gem::Result CUITextElement::RegenerateVertices()
             result = m_pGlyphCache->CacheGlyphForFont(' ', m_pFont, spaceEntry);
             if (Gem::Failed(result))
                 return result;
-            cursorPos.X += spaceEntry.AdvanceWidth * m_Config.FontSize * 4.0f;
+            cursorX += spaceEntry.AdvanceWidth * m_Config.FontSize * 4.0f;
             continue;
         }
 
@@ -285,16 +285,26 @@ Gem::Result CUITextElement::RegenerateVertices()
         if (Gem::Failed(result))
             return result;
 
-        float advance = CTextLayout::LayoutGlyph(
-            codepoint,
-            *pFontData,
-            entry,
-            cursorPos,
-            m_Config.Color,
-            m_Config.FontSize,
-            m_CachedVertices);
+        float glyphWidth  = entry.BitmapWidth  * m_Config.FontSize;
+        float glyphHeight = entry.BitmapHeight * m_Config.FontSize;
 
-        cursorPos.X += advance * m_Config.FontSize;
+        // Only emit an instance for glyphs with visible bitmap data.
+        // Spaces have AdvanceWidth but no bitmap, so they just advance the cursor.
+        if (glyphWidth > 0.0f && glyphHeight > 0.0f)
+        {
+            GlyphInstance gi;
+            gi.Offset.X = cursorX + entry.LeftBearing * m_Config.FontSize;
+            gi.Offset.Y = cursorY + entry.TopBearing  * m_Config.FontSize;
+            gi.Size.X = glyphWidth;
+            gi.Size.Y = glyphHeight;
+            gi.AtlasUV[0] = entry.AtlasU0;
+            gi.AtlasUV[1] = entry.AtlasV0;
+            gi.AtlasUV[2] = entry.AtlasU1;
+            gi.AtlasUV[3] = entry.AtlasV1;
+            m_CachedGlyphs.push_back(gi);
+        }
+
+        cursorX += entry.AdvanceWidth * m_Config.FontSize;
     }
 
     return Gem::Result::Success;

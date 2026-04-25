@@ -85,7 +85,7 @@ private:
 };
 
 //================================================================================================
-// CUITextElement - Text element with cached vertex generation
+// CUITextElement - Text element with per-glyph instance generation
 //================================================================================================
 
 class CUITextElement : public TCanvasElement<XUITextElement>
@@ -96,11 +96,11 @@ class CUITextElement : public TCanvasElement<XUITextElement>
     CGlyphCache* m_pGlyphCache = nullptr;
     XGfxSurface* m_pAtlasSurface = nullptr;
     TextLayoutConfig m_Config;
-    std::vector<TextVertex> m_CachedVertices;
+    std::vector<GlyphInstance> m_CachedGlyphs;
 
     // State
     XUIGraphNode* m_pAttachedNode = nullptr;
-    GfxResourceAllocation m_VertexBuffer;
+    GfxResourceAllocation m_GlyphBuffer;
     bool m_Visible = true;
     bool m_Dirty = true;
 
@@ -126,8 +126,8 @@ public:
     GEMMETHOD_(bool, IsVisible)() const override { return m_Visible; }
     GEMMETHOD_(void, SetVisible)(bool visible) override { m_Visible = visible; }
     GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
-    GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const override { return m_VertexBuffer; }
-    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) override { m_VertexBuffer = buffer; }
+    GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const override { return m_GlyphBuffer; }
+    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) override { m_GlyphBuffer = buffer; }
 
     // XUITextElement
     GEMMETHOD_(void, SetText)(PCSTR utf8Text) override;
@@ -141,9 +141,9 @@ public:
     void SetAttachedNode(XUIGraphNode* pNode) { m_pAttachedNode = pNode; }
     bool IsDirty() const { return m_Dirty; }
     void ClearDirty() { m_Dirty = false; }
-    Gem::Result RegenerateVertices();
-    uint32_t GetVertexCount() const { return static_cast<uint32_t>(m_CachedVertices.size()); }
-    const void* GetVertexData() const { return m_CachedVertices.data(); }
+    Gem::Result RegenerateGlyphs();
+    uint32_t GetGlyphCount() const { return static_cast<uint32_t>(m_CachedGlyphs.size()); }
+    const void* GetGlyphData() const { return m_CachedGlyphs.data(); }
     bool HasContent() const { return !m_Text.empty(); }
 };
 

@@ -383,11 +383,12 @@ All PSOs are created lazily on first use and cached for the lifetime of the rend
 - Single render target at back-buffer format. No depth.
 
 **Text pass**:
-- Slot 0: root CBV at b0 for screen-space constants.
-- Slot 1: root SRV at t0 for the text vertex buffer.
+- Slot 0: root CBV at b0 for `TextConstants` (screen size, element offset, text color).
+- Slot 1: root SRV at t0 for `StructuredBuffer<GlyphInstance>` (one entry per visible glyph).
 - Slot 2: descriptor table with SRV[1] at t1 for the SDF glyph atlas.
 - Static sampler s0: linear clamp.
 - Alpha blending: `SRC_ALPHA / INV_SRC_ALPHA`.
+- The vertex shader expands each glyph instance to a 6-vertex quad using `SV_VertexID`.
 
 **Rect pass**:
 - Slot 0: root CBV at b0 for `RectConstants` (screen size, element offset, rect size, fill color).
@@ -608,7 +609,7 @@ Shaders are compiled offline from HLSL source to CSO files using DXC. CMake cust
 
 ### Text Shaders
 
-**VSText** reads a text vertex buffer as a structured buffer and emits screen-space quads. **PSText** samples the SDF glyph atlas and uses a smoothstep threshold to produce anti-aliased glyph coverage with alpha blending.
+**VSText** expands per-glyph instance data (`GlyphInstance`: offset, size, atlas UVs) into screen-aligned quads using `SV_VertexID`. Each glyph is 6 vertices; `vertexId / 6` selects the glyph and `vertexId % 6` selects the quad corner. Text color is a per-draw constant from the CBV, not per-vertex data. **PSText** samples the SDF glyph atlas and uses a smoothstep threshold to produce anti-aliased glyph coverage with alpha blending.
 
 The SDF atlas stores distance values in R8_UNorm format where 0 means far outside the glyph, 0.5 is the edge, and 1 is far inside. The pixel shader maps this to a signed distance in [-1, +1], then computes a 1-pixel-wide anti-aliased edge using `fwidth(signedDist)` as the smoothstep range. Because `fwidth` measures the screen-space rate of change, the transition width adapts automatically to the glyph's rendered size, keeping edges sharp at any scale without manual tuning.
 
@@ -624,7 +625,7 @@ Text rendering spans CanvasText, CanvasCore, and CanvasGfx12.
 
 **GlyphAtlas** in CanvasCore uses `RectanglePacker` to bin-pack SDF glyphs into a texture atlas. When a text element references glyphs not yet in the atlas, they are rasterized, packed, and the atlas region is uploaded to the GPU through the device's `UploadTextureRegion` method.
 
-**TextLayout** in CanvasCore performs line breaking, glyph placement using font metrics, and generates the vertex buffer that the text shader consumes. The vertex buffer is allocated and uploaded by the graphics device, keeping GPU resource management out of the core layer.
+**TextLayout** in CanvasCore performs line breaking and glyph placement using font metrics. For rendering, `CUITextElement` generates a compact `GlyphInstance` array (32 bytes per glyph) instead of expanded vertices, which the vertex shader expands to quads on the GPU. The glyph buffer is allocated and uploaded by the graphics device, keeping GPU resource management out of the core layer.
 
 **FontImpl** wraps the CanvasText `Font` class behind the `XFont` GEM interface, providing metric access for ascender, descender, and units-per-em.
 

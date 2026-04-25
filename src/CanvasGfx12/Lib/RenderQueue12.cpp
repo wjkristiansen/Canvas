@@ -825,8 +825,8 @@ void CRenderQueue12::EnsureTextPSO(DXGI_FORMAT rtvFormat)
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // Text root signature:
-    //   Slot 0: Root CBV(b0) – TextScreenConstants (screen width/height)
-    //   Slot 1: Root SRV(t0) – StructuredBuffer<TextVertex>
+    //   Slot 0: Root CBV(b0) – TextConstants (screen size, offset, text color)
+    //   Slot 1: Root SRV(t0) – StructuredBuffer<GlyphInstance>
     //   Slot 2: Descriptor table with SRV[1] at t1 – SDFAtlas texture
     //   Static sampler at s0 – linear, clamp
     CD3DX12_STATIC_SAMPLER_DESC linearSampler(
@@ -1536,11 +1536,12 @@ Gem::Result CRenderQueue12::DrawMesh(
 
 //------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::DrawUIText(
-    const Canvas::GfxResourceAllocation& vertexBuffer,
+    const Canvas::GfxResourceAllocation& glyphBuffer,
     Canvas::XGfxSurface* pGlyphAtlas,
+    const Canvas::Math::FloatVector4& textColor,
     const Canvas::Math::FloatVector2& elementOffset)
 {
-    if (!pGlyphAtlas || !m_pCurrentSwapChain || !vertexBuffer.pBuffer)
+    if (!pGlyphAtlas || !m_pCurrentSwapChain || !glyphBuffer.pBuffer)
         return Gem::Result::InvalidArg;
 
     try
@@ -1550,16 +1551,26 @@ Gem::Result CRenderQueue12::DrawUIText(
 
         auto pAtlas = static_cast<CSurface12*>(pGlyphAtlas);
         CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
-        auto pVertexBuf = static_cast<CBuffer12*>(vertexBuffer.pBuffer.Get());
-        uint32_t vertexCount = static_cast<uint32_t>(vertexBuffer.Size / sizeof(Canvas::TextVertex));
+        auto pGlyphBuf = static_cast<CBuffer12*>(glyphBuffer.pBuffer.Get());
+
+        assert(glyphBuffer.Size % sizeof(Canvas::GlyphInstance) == 0);
+        uint32_t glyphCount = static_cast<uint32_t>(glyphBuffer.Size / sizeof(Canvas::GlyphInstance));
+        uint32_t vertexCount = glyphCount * 6;
 
         // Allocate all CPU-side resources before creating the GPU task
         constexpr uint64_t kCBVSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
         HostWriteAllocation hw;
         Gem::ThrowGemError(m_UploadRing.AllocateFromRing(kCBVSize, hw));
 
-        float screenConsts[4] = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight), elementOffset.X, elementOffset.Y };
-        memcpy(hw.pMapped, screenConsts, sizeof(screenConsts));
+        // Layout matches HLSL TextConstants: float2 + float2 + float4 = 32 bytes
+        //   [0..1] ScreenSize, [2..3] ElementOffset,
+        //   [4..7] TextColor
+        float consts[8] = {
+            static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight),
+            elementOffset.X, elementOffset.Y,
+            textColor.X, textColor.Y, textColor.Z, textColor.W
+        };
+        memcpy(hw.pMapped, consts, sizeof(consts));
 
         ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
         const UINT incSize = m_CbvSrvUavIncrement;
@@ -1572,7 +1583,7 @@ Gem::Result CRenderQueue12::DrawUIText(
         pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
 
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
-        D3D12_GPU_VIRTUAL_ADDRESS vertexAddr = pVertexBuf->GetD3DResource()->GetGPUVirtualAddress() + vertexBuffer.Offset;
+        D3D12_GPU_VIRTUAL_ADDRESS glyphAddr = pGlyphBuf->GetD3DResource()->GetGPUVirtualAddress() + glyphBuffer.Offset;
 
         // All resources ready — now create the GPU task
         auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIText");
@@ -1584,11 +1595,11 @@ Gem::Result CRenderQueue12::DrawUIText(
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
             D3D12_BARRIER_SYNC_RENDER_TARGET,
             D3D12_BARRIER_ACCESS_RENDER_TARGET);
-        m_UIGpuTaskGraph.DeclareBufferUsage(drawTask, pVertexBuf,
-            D3D12_BARRIER_SYNC_PIXEL_SHADING,
+        m_UIGpuTaskGraph.DeclareBufferUsage(drawTask, pGlyphBuf,
+            D3D12_BARRIER_SYNC_VERTEX_SHADING,
             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-        drawTask.RecordFunc = [cbvAddr, vertexAddr, srvGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [cbvAddr, glyphAddr, srvGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
             pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
             pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
@@ -1597,7 +1608,7 @@ Gem::Result CRenderQueue12::DrawUIText(
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetGraphicsRootConstantBufferView(0, cbvAddr);
             pCL->SetGraphicsRootDescriptorTable(2, srvGpuHandle);
-            pCL->SetGraphicsRootShaderResourceView(1, vertexAddr);
+            pCL->SetGraphicsRootShaderResourceView(1, glyphAddr);
             pCL->DrawInstanced(vertexCount, 1, 0, 0);
         };
         m_UIGpuTaskGraph.InsertTask(drawTask);
@@ -2040,7 +2051,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         if (pAtlas)
                         {
                             DeferRelease(pAtlas);
-                            Gem::ThrowGemError(DrawUIText(vb, pAtlas, elementOffset));
+                            Gem::ThrowGemError(DrawUIText(vb, pAtlas, pText->GetLayoutConfig().Color, elementOffset));
                         }
                     }
                 }
