@@ -825,8 +825,8 @@ void CRenderQueue12::EnsureTextPSO(DXGI_FORMAT rtvFormat)
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // Text root signature:
-    //   Slot 0: Root CBV(b0) – TextConstants (screen size, offset, text color)
-    //   Slot 1: Root SRV(t0) – StructuredBuffer<GlyphInstance>
+    //   Slot 0: Root CBV(b0) – HlslTextConstants (screen size, offset, text color)
+    //   Slot 1: Root SRV(t0) – StructuredBuffer<HlslGlyphInstance>
     //   Slot 2: Descriptor table with SRV[1] at t1 – SDFAtlas texture
     //   Static sampler at s0 – linear, clamp
     CD3DX12_STATIC_SAMPLER_DESC linearSampler(
@@ -922,7 +922,7 @@ void CRenderQueue12::EnsureRectPSO(DXGI_FORMAT rtvFormat)
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // Rect root signature:
-    //   Slot 0: Root CBV(b0) – RectConstants (screen size, element offset, rect size, fill color)
+    //   Slot 0: Root CBV(b0) – HlslRectConstants (screen size, element offset, rect size, fill color)
     // No vertex buffer — the vertex shader derives the quad from SV_VertexID + constants.
     std::vector<CD3DX12_ROOT_PARAMETER1> rectRootParams(1);
     rectRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
@@ -1562,15 +1562,11 @@ Gem::Result CRenderQueue12::DrawUIText(
         HostWriteAllocation hw;
         Gem::ThrowGemError(m_UploadRing.AllocateFromRing(kCBVSize, hw));
 
-        // Layout matches HLSL TextConstants: float2 + float2 + float4 = 32 bytes
-        //   [0..1] ScreenSize, [2..3] ElementOffset,
-        //   [4..7] TextColor
-        float consts[8] = {
-            static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight),
-            elementOffset.X, elementOffset.Y,
-            textColor.X, textColor.Y, textColor.Z, textColor.W
-        };
-        memcpy(hw.pMapped, consts, sizeof(consts));
+        HlslTypes::HlslTextConstants tc = {};
+        tc.ScreenSize = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight) };
+        tc.ElementOffset = { elementOffset.X, elementOffset.Y };
+        tc.TextColor = { textColor.X, textColor.Y, textColor.Z, textColor.W };
+        memcpy(hw.pMapped, &tc, sizeof(tc));
 
         ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
         const UINT incSize = m_CbvSrvUavIncrement;
@@ -1693,17 +1689,12 @@ Gem::Result CRenderQueue12::DrawUIRect(
         HostWriteAllocation hw;
         Gem::ThrowGemError(m_UploadRing.AllocateFromRing(kCBVSize, hw));
 
-        // Layout matches HLSL RectConstants: 3 × float4 = 48 bytes
-        //   [0..1] ScreenSize, [2..3] ElementOffset,
-        //   [4..5] RectSize,   [6..7] padding,
-        //   [8..11] FillColor
-        float consts[12] = {
-            static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight),
-            elementOffset.X, elementOffset.Y,
-            rectSize.X, rectSize.Y, 0.0f, 0.0f,
-            fillColor.X, fillColor.Y, fillColor.Z, fillColor.W
-        };
-        memcpy(hw.pMapped, consts, sizeof(consts));
+        HlslTypes::HlslRectConstants rc = {};
+        rc.ScreenSize = { static_cast<float>(m_DepthBufferWidth), static_cast<float>(m_DepthBufferHeight) };
+        rc.ElementOffset = { elementOffset.X, elementOffset.Y };
+        rc.RectSize = { rectSize.X, rectSize.Y };
+        rc.FillColor = { fillColor.X, fillColor.Y, fillColor.Z, fillColor.W };
+        memcpy(hw.pMapped, &rc, sizeof(rc));
 
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
 
