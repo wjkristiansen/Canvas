@@ -383,7 +383,7 @@ All PSOs are created lazily on first use and cached for the lifetime of the rend
 - Single render target at back-buffer format. No depth.
 
 **Text pass**:
-- Slot 0: root CBV at b0 for `TextConstants` (screen size, element offset, text color).
+- Slot 0: root CBV at b0 for `HlslTextConstants` (screen size, element offset, text color).
 - Slot 1: root SRV at t0 for `StructuredBuffer<GlyphInstance>` (one entry per visible glyph).
 - Slot 2: descriptor table with SRV[1] at t1 for the SDF glyph atlas.
 - Static sampler s0: linear clamp.
@@ -391,7 +391,7 @@ All PSOs are created lazily on first use and cached for the lifetime of the rend
 - The vertex shader expands each glyph instance to a 6-vertex quad using `SV_VertexID`.
 
 **Rect pass**:
-- Slot 0: root CBV at b0 for `RectConstants` (screen size, element offset, rect size, fill color).
+- Slot 0: root CBV at b0 for `HlslRectConstants` (screen size, element offset, rect size, fill color).
 - No vertex buffer — the vertex shader derives the quad from `SV_VertexID` and the constants.
 - Alpha blending: `SRC_ALPHA / INV_SRC_ALPHA`.
 
@@ -643,7 +643,7 @@ During `Update`, the scene graph marks dirty transforms and propagates them down
 
 ### UI Graph
 
-`XUIGraph` is a 2D overlay graph with position inheritance and dirty-tracked update. Nodes carry `XUITextElement` or `XUIRectElement` instances. Text elements generate their own vertex buffers when marked dirty. Rect elements carry size and color properties that are passed directly to the GPU as per-draw constants, requiring no vertex buffer. The render queue processes UI nodes after the composition pass, drawing them with alpha blending over the final back buffer.
+`XUIGraph` is a 2D overlay graph with position inheritance and dirty-tracked update. Nodes carry `XUITextElement` or `XUIRectElement` instances. Text elements generate glyph instance buffers when marked dirty. Rect elements carry size and color properties that are passed directly to the GPU as per-draw constants, requiring no vertex buffer. The render queue processes UI nodes after the composition pass, drawing them with alpha blending over the final back buffer.
 
 ## Source Layout
 

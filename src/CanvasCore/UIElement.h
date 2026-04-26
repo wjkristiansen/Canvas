@@ -2,8 +2,8 @@
 // UIElement - UI graph nodes and element types
 //
 // CUIGraphNodeImpl: XUIGraphNode implementation — tree structure and screen-space position
-// CUITextElement: text element with cached vertex generation
-// CUIRectElement: rectangle element with cached vertex generation
+// CUITextElement: text element with per-glyph instance generation
+// CUIRectElement: rectangle element (vertex-buffer-free; geometry derived on GPU)
 //================================================================================================
 
 #pragma once

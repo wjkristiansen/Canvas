@@ -309,8 +309,8 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD(Update)(float dtime) = 0;
 };
 
-// Text vertex structure — used by CTextLayout standalone API and unit tests.
-// Layout must match HLSL StructuredBuffer<TextVertex> in VSText.hlsl (standalone path).
+// Text vertex structure — used by CTextLayout standalone layout/measurement API and unit tests.
+// Not used for GPU rendering (which uses GlyphInstance instead).
 struct TextVertex
 {
     Math::FloatVector3 Position;    // Screen-space pixel position (12 bytes)
