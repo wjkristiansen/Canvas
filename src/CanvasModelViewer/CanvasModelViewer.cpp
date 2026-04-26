@@ -234,12 +234,114 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
+// Window subclass providing message-driven mouse input for the viewer.
+// Accumulates WM_MOUSEMOVE deltas and hides the cursor via WM_SETCURSOR
+// while captured, avoiding GetCursorPos/SetCursorPos polling which breaks
+// over Remote Desktop due to cursor-warp latency.
+//------------------------------------------------------------------------------------------------
+class CViewerWindow : public ThinWin::CWindow
+{
+public:
+    using CWindow::CWindow;
+
+    bool IsMouseCaptured() const { return m_Captured; }
+
+    void SetMouseCaptured(bool captured)
+    {
+        if (captured && !m_Captured)
+        {
+            ::SetCapture(m_hWnd);
+            ::SetCursor(NULL);
+
+            // Constrain the hidden cursor to the client area so it can't
+            // wander to another window/monitor and trigger a capture release.
+            RECT rc;
+            ::GetClientRect(m_hWnd, &rc);
+            ::MapWindowPoints(m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
+            ::ClipCursor(&rc);
+
+            m_Captured = true;
+            m_HasLastPos = false;
+            m_MouseDX = 0.0f;
+            m_MouseDY = 0.0f;
+        }
+        else if (!captured && m_Captured)
+        {
+            ::ClipCursor(nullptr);
+            ::ReleaseCapture();
+            ::SetCursor(LoadCursor(NULL, IDC_ARROW));
+            m_Captured = false;
+        }
+    }
+
+    void ConsumeMouseDelta(float& dx, float& dy)
+    {
+        dx = m_MouseDX;
+        dy = m_MouseDY;
+        m_MouseDX = 0.0f;
+        m_MouseDY = 0.0f;
+    }
+
+    LRESULT WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam) override
+    {
+        switch (uMsg)
+        {
+        case WM_MOUSEMOVE:
+            if (m_Captured)
+            {
+                // WM_SETCURSOR is suppressed during capture, so maintain
+                // the hidden cursor here in case the system resets it.
+                ::SetCursor(NULL);
+
+                int x = static_cast<int>(static_cast<short>(LOWORD(lParam)));
+                int y = static_cast<int>(static_cast<short>(HIWORD(lParam)));
+                if (m_HasLastPos)
+                {
+                    m_MouseDX += static_cast<float>(x - m_LastX);
+                    m_MouseDY += static_cast<float>(y - m_LastY);
+                }
+                m_LastX = x;
+                m_LastY = y;
+                m_HasLastPos = true;
+                return 0;
+            }
+            break;
+
+        case WM_SETCURSOR:
+            if (LOWORD(lParam) == HTCLIENT)
+            {
+                // Hide cursor while captured; restore arrow otherwise
+                // (the window class has no default cursor).
+                ::SetCursor(m_Captured ? NULL : LoadCursor(NULL, IDC_ARROW));
+                return TRUE;
+            }
+            break;
+
+        case WM_CAPTURECHANGED:
+            if (reinterpret_cast<HWND>(lParam) != m_hWnd)
+                m_Captured = false;
+            return 0;
+        }
+
+        return CWindow::WindowProc(uMsg, wParam, lParam);
+    }
+
+private:
+    float m_MouseDX = 0.0f;
+    float m_MouseDY = 0.0f;
+    int m_LastX = 0;
+    int m_LastY = 0;
+    bool m_HasLastPos = false;
+    bool m_Captured = false;
+};
+
+//------------------------------------------------------------------------------------------------
 class CApp
 {
     std::string m_Title;
     HINSTANCE m_hInstance;
     Gem::TGemPtr<Canvas::XLogger> m_pLogger;
-    std::unique_ptr<ThinWin::CWindow> m_pWindow;
+    std::unique_ptr<CViewerWindow> m_pWindow;
     Gem::TGemPtr<Canvas::XCanvas> m_pCanvas;
     Gem::TGemPtr<Canvas::XSceneGraph> m_pScene;
     Gem::TGemPtr<Canvas::XCamera> m_pCamera;
@@ -270,8 +372,6 @@ class CApp
     // Camera controller state
     float m_CameraYaw = 0.0f;    // Radians, around world Z (up)
     float m_CameraPitch = 0.0f;  // Radians, around camera right
-    bool m_MouseCaptured = false;
-    POINT m_LastCursorPos = {};
 
     void FrameCameraToBounds(
         Canvas::XCamera *pCamera,
@@ -894,7 +994,7 @@ public:
         try
         {
             initStep = "create_window";
-            std::unique_ptr<ThinWin::CWindow> pWindow = std::make_unique<ThinWin::CWindow>(m_Title.c_str(), m_hInstance, WS_OVERLAPPEDWINDOW);
+            auto pWindow = std::make_unique<CViewerWindow>(m_Title.c_str(), m_hInstance, WS_OVERLAPPEDWINDOW);
             if (!pWindow.get())
             {
                 Gem::ThrowGemError(Gem::Result::OutOfMemory);
@@ -1140,40 +1240,16 @@ public:
         constexpr float kMouseSensitivity = 0.003f;  // radians per pixel (~360° over ~2094 px ≈ 8 inches at 96 DPI)
         constexpr float kPitchLimit = static_cast<float>(Canvas::Math::Pi / 2.0) - 0.01f;
 
-        // RAII guard to ensure cursor is always unclipped/shown on exit, even if we
-        // terminate abnormally.  Leaving the cursor clipped or hidden is a system-wide
-        // side-effect that survives the process.
+        // RAII guard to release mouse capture on exit (normal or exceptional).
         struct CursorGuard
         {
-            bool* pCaptured;
-            CursorGuard(bool* p) : pCaptured(p) {}
-            ~CursorGuard()
-            {
-                if (*pCaptured)
-                {
-                    ClipCursor(nullptr);
-                    while (ShowCursor(TRUE) < 0) {}
-                    *pCaptured = false;
-                }
-            }
-        } cursorGuard(&m_MouseCaptured);
+            CViewerWindow* pWindow;
+            CursorGuard(CViewerWindow* w) : pWindow(w) {}
+            ~CursorGuard() { pWindow->SetMouseCaptured(false); }
+        } cursorGuard(m_pWindow.get());
 
-        // Capture cursor on startup
-        {
-            RECT rc;
-            GetClientRect(m_pWindow->m_hWnd, &rc);
-            POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
-            ClientToScreen(m_pWindow->m_hWnd, &center);
-            SetCursorPos(center.x, center.y);
-            m_LastCursorPos = center;
-
-            // Clip cursor to window and hide it
-            GetClientRect(m_pWindow->m_hWnd, &rc);
-            MapWindowPoints(m_pWindow->m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
-            ClipCursor(&rc);
-            while (ShowCursor(FALSE) >= 0) {} // hide until count < 0
-            m_MouseCaptured = true;
-        }
+        // Capture mouse on startup
+        m_pWindow->SetMouseCaptured(true);
 
         for (; running;)
         {
@@ -1199,50 +1275,27 @@ public:
             // Camera controller: mouse look + WASD movement
             //==================================================================
             
-            // Track focus changes — release/acquire cursor as needed
+            // Track focus changes — release/acquire mouse capture as needed
             HWND foreground = GetForegroundWindow();
             HWND foregroundRoot = foreground ? GetAncestor(foreground, GA_ROOT) : nullptr;
             bool hasFocus = (foreground == m_pWindow->m_hWnd) ||
                             (foregroundRoot == m_pWindow->m_hWnd) ||
                             (foreground && IsChild(m_pWindow->m_hWnd, foreground));
-            if (hasFocus && !m_MouseCaptured)
+            if (hasFocus && !m_pWindow->IsMouseCaptured())
             {
-                // Re-acquire cursor
-                RECT rc;
-                GetClientRect(m_pWindow->m_hWnd, &rc);
-                POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
-                ClientToScreen(m_pWindow->m_hWnd, &center);
-                SetCursorPos(center.x, center.y);
-
-                MapWindowPoints(m_pWindow->m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
-                ClipCursor(&rc);
-                while (ShowCursor(FALSE) >= 0) {}
-                m_MouseCaptured = true;
+                m_pWindow->SetMouseCaptured(true);
             }
-            else if (!hasFocus && m_MouseCaptured)
+            else if (!hasFocus && m_pWindow->IsMouseCaptured())
             {
-                // Release cursor
-                ClipCursor(nullptr);
-                while (ShowCursor(TRUE) < 0) {}
-                m_MouseCaptured = false;
+                m_pWindow->SetMouseCaptured(false);
             }
 
             float dx = 0.0f;
             float dy = 0.0f;
             bool rotated = false;
-            if (m_MouseCaptured)
+            if (m_pWindow->IsMouseCaptured())
             {
-                // Mouse delta → yaw/pitch
-                RECT rc;
-                GetClientRect(m_pWindow->m_hWnd, &rc);
-                POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
-                ClientToScreen(m_pWindow->m_hWnd, &center);
-
-                POINT cursorPos;
-                GetCursorPos(&cursorPos);
-                dx = static_cast<float>(cursorPos.x - center.x);
-                dy = static_cast<float>(cursorPos.y - center.y);
-                SetCursorPos(center.x, center.y);
+                m_pWindow->ConsumeMouseDelta(dx, dy);
 
                 if (fabsf(dx) > 0.0f || fabsf(dy) > 0.0f)
                 {
