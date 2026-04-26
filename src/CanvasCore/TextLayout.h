@@ -14,15 +14,16 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-// Text Vertex - vertex format for text rendering
+// Text Vertex - vertex format for standalone text layout
 //
 // Six vertices form one glyph quad (two triangles).
-// TextVertex is defined in CanvasCore.h (shared with CanvasGfx12)
+// TextVertex is defined in CanvasCore.h. Used by the standalone CTextLayout API
+// and unit tests. GPU rendering uses GlyphInstance (HlslTypes.h) instead.
 
 //------------------------------------------------------------------------------------------------
 // Text Layout Engine
 //
-// Generates vertex data for text strings.
+// Generates TextVertex data for text strings (standalone layout/measurement).
 // One quad (6 vertices) per glyph.
 //------------------------------------------------------------------------------------------------
 
