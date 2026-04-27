@@ -15,7 +15,6 @@
 
 #pragma once
 #include "CanvasMath.hpp"
-#include "../HLSL/HlslTypes.h"
 #include <cstdarg>
 
 namespace Canvas
@@ -54,7 +53,6 @@ struct XUITextElement;
 struct XUIRectElement;
 struct GfxResourceAllocation;
 struct XGfxSurface;
-class CGlyphCache;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -197,7 +195,6 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(UnregisterElement)(struct XCanvasElement *) = 0;
 
     GEMMETHOD_(XLogger *, GetLogger)() = 0;
-    GEMMETHOD_(CGlyphCache*, GetGlyphCache)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -307,39 +304,6 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(UINT index) = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
-};
-
-// Text vertex structure — used by CTextLayout standalone layout/measurement API and unit tests.
-// Not used for GPU rendering (which uses GlyphInstance instead).
-struct TextVertex
-{
-    Math::FloatVector3 Position;    // Screen-space pixel position (12 bytes)
-    Math::FloatVector2 TexCoord;    // Atlas UV coordinates (8 bytes)
-    float Color[4];                 // RGBA float color (16 bytes)
-
-    TextVertex() : Color{1.0f, 1.0f, 1.0f, 1.0f} {}
-
-    void SetColor(const Math::FloatVector4& c) { Color[0] = c.X; Color[1] = c.Y; Color[2] = c.Z; Color[3] = c.W; }
-    void SetColor(float r, float g, float b, float a) { Color[0] = r; Color[1] = g; Color[2] = b; Color[3] = a; }
-};
-
-// Compact per-glyph instance data for GPU-driven text rendering.
-// One instance per visible glyph; the vertex shader expands each to a quad
-// using SV_VertexID.  Defined in HlslTypes.h (shared C++/HLSL).
-using GlyphInstance = HlslTypes::HlslGlyphInstance;
-
-// Draw command for batched UI text rendering from a persistent vertex buffer
-struct UITextDrawCommand
-{
-    uint32_t StartVertex;   // Offset into persistent vertex buffer
-    uint32_t VertexCount;   // Number of vertices to draw
-};
-
-// Draw command for batched UI rect rendering from a persistent vertex buffer
-struct UIRectDrawCommand
-{
-    uint32_t StartVertex;   // Offset into persistent rect vertex buffer
-    uint32_t VertexCount;   // Number of vertices to draw
 };
 
 //------------------------------------------------------------------------------------------------
@@ -574,8 +538,6 @@ struct XUITextElement : public XUIElement
     GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
     GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
-
-    GEMMETHOD_(XGfxSurface*, GetAtlasSurface)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

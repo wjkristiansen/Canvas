@@ -8,7 +8,6 @@
 #include "CanvasGfx.h"
 #include "Gem.hpp"
 #include "Timer.h"
-#include "GlyphAtlas.h"
 
 namespace Canvas
 {
@@ -106,7 +105,6 @@ class CCanvas :
     std::unordered_set<XCanvasElement *> m_ActiveCanvasElements;
 
     std::deque<CCanvasPluginModule> m_PluginModules;
-    std::unique_ptr<CGlyphCache> m_GlyphCache = std::make_unique<CGlyphCache>();
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -141,11 +139,6 @@ public:
     GEMMETHOD_(XLogger *, GetLogger)() final
     {
         return m_pLogger;
-    }
-
-    GEMMETHOD_(CGlyphCache*, GetGlyphCache)() final
-    {
-        return m_GlyphCache.get();
     }
 
 public:

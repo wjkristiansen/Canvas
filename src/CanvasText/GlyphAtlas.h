@@ -7,8 +7,7 @@
 // CGlyphCache: CPU-side SDF generation, rectangle packing, glyph entry cache
 //================================================================================================
 
-#include "CanvasCore.h"
-#include "Gem.hpp"
+#include "Font.h"
 #include <unordered_map>
 #include <memory>
 #include <vector>
@@ -48,8 +47,8 @@ struct GlyphAtlasEntry
 //------------------------------------------------------------------------------------------------
 // PendingGlyphUpload - raw pixel data queued for GPU upload
 //
-// Produced by CGlyphCache (CanvasCore), consumed by the graphics subsystem (CanvasGfx12).
-// Intentionally free of CanvasText/GPU types.
+// Produced by CGlyphCache, consumed by the graphics subsystem (e.g. CanvasGfx12).
+// Intentionally free of GPU types.
 //------------------------------------------------------------------------------------------------
 
 struct PendingGlyphUpload
@@ -67,12 +66,7 @@ struct PendingGlyphUpload
 // CGlyphCache - CPU-side glyph caching (no GPU dependency)
 //------------------------------------------------------------------------------------------------
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4251) // STL types in dllexport class
-#endif
-
-class CANVAS_API CGlyphCache
+class CGlyphCache
 {
 public:
     CGlyphCache(uint32_t atlasSize = 512);
@@ -88,7 +82,7 @@ public:
     const uint8_t* GetStagingData() const { return m_StagingBuffer.data(); }
     void ClearStagingBuffer() { m_StagingBuffer.clear(); }
 
-    Gem::Result CacheGlyphForFont(uint32_t codepoint, XFont *pFont, GlyphAtlasEntry &outEntry);
+    bool CacheGlyphForFont(uint32_t codepoint, CTrueTypeFont &font, GlyphAtlasEntry &outEntry);
 
 private:
     struct Impl;
@@ -98,9 +92,5 @@ private:
     std::vector<PendingGlyphUpload> m_PendingUploads;
     std::vector<uint8_t> m_StagingBuffer;
 };
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 } // namespace Canvas

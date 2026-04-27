@@ -4,7 +4,6 @@
 
 #include "pch.h"
 #include "GlyphAtlas.h"
-#include "FontImpl.h"
 #include "SDFGenerator.h"
 #include "RectanglePacker.h"
 
@@ -48,32 +47,24 @@ bool CGlyphCache::GetCachedGlyph(uint32_t codepoint, GlyphAtlasEntry &outEntry) 
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CGlyphCache::CacheGlyphForFont(uint32_t codepoint, XFont *pFont, GlyphAtlasEntry &outEntry)
+bool CGlyphCache::CacheGlyphForFont(uint32_t codepoint, CTrueTypeFont &font, GlyphAtlasEntry &outEntry)
 {
-    if (!pFont)
-        return Gem::Result::BadPointer;
-
     if (GetCachedGlyph(codepoint, outEntry))
-        return Gem::Result::Success;
+        return true;
 
-    CFont *pFontImpl = static_cast<CFont*>(pFont);
-    CTrueTypeFont *pFontData = pFontImpl->GetFontData();
-    if (!pFontData)
-        return Gem::Result::BadPointer;
-
-    uint16_t glyphIndex = pFontData->GetGlyphIndex(codepoint);
+    uint16_t glyphIndex = font.GetGlyphIndex(codepoint);
 
     GlyphOutline outline;
-    if (!pFontData->GetGlyphOutline(glyphIndex, outline))
-        return Gem::Result::NotFound;
+    if (!font.GetGlyphOutline(glyphIndex, outline))
+        return false;
 
     SDFBitmap& sdfBitmap = m_pImpl->StagingBitmap;
     CSDFGenerator generator;
-    if (!generator.Generate(outline, *pFontData, m_pImpl->SDFConfig, sdfBitmap))
+    if (!generator.Generate(outline, font, m_pImpl->SDFConfig, sdfBitmap))
     {
         outEntry.Codepoint   = codepoint;
         outEntry.GlyphIndex  = glyphIndex;
-        outEntry.AdvanceWidth = pFontData->NormalizeX(outline.AdvanceWidth);
+        outEntry.AdvanceWidth = font.NormalizeX(outline.AdvanceWidth);
         outEntry.LeftBearing  = 0.0f;
         outEntry.TopBearing   = 0.0f;
         outEntry.BitmapWidth  = 0.0f;
@@ -81,7 +72,7 @@ Gem::Result CGlyphCache::CacheGlyphForFont(uint32_t codepoint, XFont *pFont, Gly
         outEntry.AtlasU0 = outEntry.AtlasV0 = 0.0f;
         outEntry.AtlasU1 = outEntry.AtlasV1 = 0.0f;
         m_CachedGlyphs[codepoint] = outEntry;
-        return Gem::Result::Success;
+        return true;
     }
 
     uint32_t bitmapWidth = m_pImpl->SDFConfig.TextureSize;
@@ -89,13 +80,13 @@ Gem::Result CGlyphCache::CacheGlyphForFont(uint32_t codepoint, XFont *pFont, Gly
 
     CRectanglePacker::Rect atlasRect;
     if (!m_pImpl->pPacker->Allocate(bitmapWidth, bitmapHeight, atlasRect))
-        return Gem::Result::OutOfMemory;
+        return false;
 
     outEntry.Codepoint = codepoint;
     outEntry.GlyphIndex = glyphIndex;
     outEntry.AdvanceWidth = sdfBitmap.AdvanceWidth;
     outEntry.LeftBearing = sdfBitmap.MinX;
-    float ascender = pFontData->NormalizeY(pFontData->GetMetrics().Ascender);
+    float ascender = font.NormalizeY(font.GetMetrics().Ascender);
     outEntry.TopBearing  = ascender - sdfBitmap.MaxY;
     outEntry.BitmapWidth  = sdfBitmap.MaxX - sdfBitmap.MinX;
     outEntry.BitmapHeight = sdfBitmap.MaxY - sdfBitmap.MinY;
@@ -117,7 +108,7 @@ Gem::Result CGlyphCache::CacheGlyphForFont(uint32_t codepoint, XFont *pFont, Gly
     m_PendingUploads.push_back(upload);
 
     m_CachedGlyphs[codepoint] = outEntry;
-    return Gem::Result::Success;
+    return true;
 }
 
 } // namespace Canvas

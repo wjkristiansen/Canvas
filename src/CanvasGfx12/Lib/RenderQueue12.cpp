@@ -14,7 +14,7 @@
 #include "Surface12.h"
 #include "SwapChain12.h"
 #include "MeshData12.h"
-#include "GlyphAtlas.h"
+#include "UIElement.h"
 
 #include <filesystem>
 #include <fstream>
@@ -1624,20 +1624,16 @@ Gem::Result CRenderQueue12::DrawUIText(
 //------------------------------------------------------------------------------------------------
 void CRenderQueue12::FlushPendingGlyphUploads()
 {
-    auto* pCanvas = m_pDevice->GetCanvas();
-    if (!pCanvas)
-        return;
-
-    auto* pCache = pCanvas->GetGlyphCache();
-    if (!pCache || !pCache->HasPendingUploads())
+    auto& cache = m_pDevice->GetGlyphCache();
+    if (!cache.HasPendingUploads())
         return;
 
     auto* pAtlas = m_pDevice->GetGlyphAtlasSurface();
     if (!pAtlas)
         return;
 
-    const uint8_t* pStagingData = pCache->GetStagingData();
-    auto uploads = pCache->TakePendingUploads();
+    const uint8_t* pStagingData = cache.GetStagingData();
+    auto uploads = cache.TakePendingUploads();
     for (auto& upload : uploads)
     {
         Gem::ThrowGemError(UploadTextureRegion(
@@ -1646,7 +1642,7 @@ void CRenderQueue12::FlushPendingGlyphUploads()
             pStagingData + upload.PixelOffset,
             upload.Width * upload.BytesPerPixel));
     }
-    pCache->ClearStagingBuffer();
+    cache.ClearStagingBuffer();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -2038,7 +2034,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     Gem::TGemPtr<Canvas::XUITextElement> pText;
                     if (SUCCEEDED(pElem->QueryInterface(&pText)))
                     {
-                        auto* pAtlas = pText->GetAtlasSurface();
+                        auto* pAtlas = m_pDevice->GetGlyphAtlasSurface();
                         if (pAtlas)
                         {
                             DeferRelease(pAtlas);

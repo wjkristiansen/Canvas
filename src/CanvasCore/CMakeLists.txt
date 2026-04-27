@@ -13,7 +13,6 @@ add_library(CanvasCore SHARED
     SceneGraph.cpp
     UIElement.cpp
     FontImpl.cpp
-    GlyphAtlas.cpp
     TextLayout.cpp
     UIGraph.cpp
     
@@ -25,7 +24,6 @@ add_library(CanvasCore SHARED
     Canvas.h
     UIElement.h
     FontImpl.h
-    GlyphAtlas.h
     TextLayout.h
     UIGraph.h
     DataSource.h
@@ -74,10 +72,9 @@ target_link_libraries(CanvasCore PUBLIC
     QLog
 )
 
-# Link CanvasText static lib (Font, SDFGenerator)
+# Link CanvasText static lib (Font, SDFGenerator, GlyphAtlas)
 target_link_libraries(CanvasCore PRIVATE
     CanvasText
-    RectanglePacker
 )
 
 # Windows-specific settings
