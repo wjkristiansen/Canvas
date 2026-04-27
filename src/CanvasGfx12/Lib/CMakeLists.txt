@@ -72,6 +72,7 @@ endif()
 # Link with other Canvas libraries
 target_link_libraries(CanvasGfx12 PRIVATE
     CanvasCore
+    CanvasText
     D3D12ResourceUtils
     GEM
     Allocators

@@ -9,7 +9,7 @@
 #include "Buffer12.h"
 #include "MeshData12.h"
 #include "Material12.h"
-#include "GlyphAtlas.h"
+#include "UIElement.h"
 
 //------------------------------------------------------------------------------------------------
 #if defined(_DEBUG)
@@ -735,17 +735,9 @@ Canvas::XGfxSurface* CDevice12::GetGlyphAtlasSurface()
 {
     if (!m_pGlyphAtlasSurface)
     {
-        auto* pCanvas = GetCanvas();
-        if (!pCanvas)
-            return nullptr;
-
-        auto* pCache = pCanvas->GetGlyphCache();
-        if (!pCache)
-            return nullptr;
-
         Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
             Canvas::GfxFormat::R8_UNorm,
-            pCache->GetAtlasSize(), pCache->GetAtlasSize(),
+            m_GlyphCache.GetAtlasSize(), m_GlyphCache.GetAtlasSize(),
             Canvas::SurfaceFlag_ShaderResource, 1);
         CreateSurface(desc, &m_pGlyphAtlasSurface);
     }
@@ -763,7 +755,12 @@ GEMMETHODIMP CDevice12::CreateTextElement(Canvas::XUITextElement **ppElement)
         return Gem::Result::NotFound;
 
     auto* pAtlas = GetGlyphAtlasSurface();
-    return pCanvas->CreateTextElement(pAtlas, ppElement);
+    Gem::Result result = pCanvas->CreateTextElement(pAtlas, ppElement);
+    if (Gem::Failed(result))
+        return result;
+
+    static_cast<Canvas::CUITextElement*>(*ppElement)->SetGlyphCache(&m_GlyphCache);
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------

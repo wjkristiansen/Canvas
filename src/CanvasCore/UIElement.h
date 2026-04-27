@@ -11,6 +11,7 @@
 #include "CanvasElement.h"
 #include "TextLayout.h"
 #include "GlyphAtlas.h"
+#include "../HLSL/HlslTypes.h"
 
 // FloatVector4 has alignas(16) for SIMD. Classes containing it as a member
 // (e.g. CUIRectElement::m_FillColor) trigger C4324. Suppress until a
@@ -22,6 +23,11 @@
 
 namespace Canvas
 {
+
+// Compact per-glyph instance data for GPU-driven text rendering.
+// One instance per visible glyph; the vertex shader expands each to a quad
+// using SV_VertexID.  Defined in HlslTypes.h (shared C++/HLSL).
+using GlyphInstance = HlslTypes::HlslGlyphInstance;
 
 //================================================================================================
 // CUIGraphNodeImpl - XUIGraphNode implementation (repurposed from CUIElementCore)
@@ -94,7 +100,6 @@ class CUITextElement : public TCanvasElement<XUITextElement>
     std::string m_Text;
     XFont* m_pFont = nullptr;
     CGlyphCache* m_pGlyphCache = nullptr;
-    XGfxSurface* m_pAtlasSurface = nullptr;
     TextLayoutConfig m_Config;
     std::vector<GlyphInstance> m_CachedGlyphs;
 
@@ -113,13 +118,14 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CUITextElement() = default;
-    CUITextElement(XCanvas* pCanvas, CGlyphCache* pGlyphCache, XGfxSurface* pAtlasSurface)
+    CUITextElement(XCanvas* pCanvas, CGlyphCache* pGlyphCache, XGfxSurface* /*pAtlasSurface*/)
         : TCanvasElement(pCanvas)
         , m_pGlyphCache(pGlyphCache)
-        , m_pAtlasSurface(pAtlasSurface)
     {}
     void Initialize() {}
     void Uninitialize() {}
+
+    void SetGlyphCache(CGlyphCache* pCache) { m_pGlyphCache = pCache; }
 
     // XUIElement
     GEMMETHOD_(UIElementType, GetType)() const override { return UIElementType::Text; }
@@ -135,7 +141,6 @@ public:
     GEMMETHOD_(void, SetFont)(XFont* pFont) override;
     GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) override;
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const override { return m_Config; }
-    GEMMETHOD_(XGfxSurface*, GetAtlasSurface)() override { return m_pAtlasSurface; }
 
     // Internal
     void SetAttachedNode(XUIGraphNode* pNode) { m_pAttachedNode = pNode; }

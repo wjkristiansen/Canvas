@@ -270,9 +270,8 @@ Gem::Result CUITextElement::RegenerateGlyphs()
         if (codepoint == '\t')
         {
             GlyphAtlasEntry spaceEntry = {};
-            result = m_pGlyphCache->CacheGlyphForFont(' ', m_pFont, spaceEntry);
-            if (Gem::Failed(result))
-                return result;
+            if (!m_pGlyphCache->CacheGlyphForFont(' ', *pFontData, spaceEntry))
+                return Gem::Result::NotFound;
             cursorX += spaceEntry.AdvanceWidth * m_Config.FontSize * 4.0f;
             continue;
         }
@@ -281,9 +280,8 @@ Gem::Result CUITextElement::RegenerateGlyphs()
             continue;
 
         GlyphAtlasEntry entry = {};
-        result = m_pGlyphCache->CacheGlyphForFont(codepoint, m_pFont, entry);
-        if (Gem::Failed(result))
-            return result;
+        if (!m_pGlyphCache->CacheGlyphForFont(codepoint, *pFontData, entry))
+            return Gem::Result::NotFound;
 
         float glyphWidth  = entry.BitmapWidth  * m_Config.FontSize;
         float glyphHeight = entry.BitmapHeight * m_Config.FontSize;
