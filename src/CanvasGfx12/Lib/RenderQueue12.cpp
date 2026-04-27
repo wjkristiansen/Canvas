@@ -1536,12 +1536,12 @@ Gem::Result CRenderQueue12::DrawMesh(
 
 //------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::DrawUIText(
-    const Canvas::GfxResourceAllocation& glyphBuffer,
+    const Canvas::GfxResourceAllocation& glyphSRV,
     Canvas::XGfxSurface* pGlyphAtlas,
     const Canvas::Math::FloatVector4& textColor,
     const Canvas::Math::FloatVector2& elementOffset)
 {
-    if (!pGlyphAtlas || !m_pCurrentSwapChain || !glyphBuffer.pBuffer)
+    if (!pGlyphAtlas || !m_pCurrentSwapChain || !glyphSRV.pBuffer)
         return Gem::Result::InvalidArg;
 
     try
@@ -1551,10 +1551,10 @@ Gem::Result CRenderQueue12::DrawUIText(
 
         auto pAtlas = static_cast<CSurface12*>(pGlyphAtlas);
         CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
-        auto pGlyphBuf = static_cast<CBuffer12*>(glyphBuffer.pBuffer.Get());
+        auto pGlyphBuf = static_cast<CBuffer12*>(glyphSRV.pBuffer.Get());
 
-        assert(glyphBuffer.Size % sizeof(HlslTypes::HlslGlyphInstance) == 0);
-        uint32_t glyphCount = static_cast<uint32_t>(glyphBuffer.Size / sizeof(HlslTypes::HlslGlyphInstance));
+        assert(glyphSRV.Size % sizeof(HlslTypes::HlslGlyphInstance) == 0);
+        uint32_t glyphCount = static_cast<uint32_t>(glyphSRV.Size / sizeof(HlslTypes::HlslGlyphInstance));
         uint32_t vertexCount = glyphCount * 6;
 
         // Allocate all CPU-side resources before creating the GPU task
@@ -1579,7 +1579,7 @@ Gem::Result CRenderQueue12::DrawUIText(
         pD3DDevice->CreateShaderResourceView(pAtlas->GetD3DResource(), nullptr, srvCpuHandle);
 
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
-        D3D12_GPU_VIRTUAL_ADDRESS glyphAddr = pGlyphBuf->GetD3DResource()->GetGPUVirtualAddress() + glyphBuffer.Offset;
+        D3D12_GPU_VIRTUAL_ADDRESS glyphAddr = pGlyphBuf->GetD3DResource()->GetGPUVirtualAddress() + glyphSRV.Offset;
 
         // All resources ready — now create the GPU task
         auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIText");
@@ -2034,19 +2034,19 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     auto* pTextImpl = static_cast<CUITextElement12*>(static_cast<Canvas::XUITextElement*>(pElem));
                     if (pTextImpl->GetGlyphCount() > 0)
                     {
-                        Canvas::GfxResourceAllocation vb = pTextImpl->GetGlyphBuffer();
-                        Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
+                        Canvas::GfxResourceAllocation glyphSRV = pTextImpl->GetGlyphBuffer();
+                        Gem::ThrowGemError(m_pDevice->AllocateStructuredBuffer(
                             pTextImpl->GetGlyphCount(), sizeof(HlslTypes::HlslGlyphInstance),
-                            pTextImpl->GetGlyphData(), this, vb));
-                        pTextImpl->SetGlyphBuffer(vb);
+                            pTextImpl->GetGlyphData(), this, glyphSRV));
+                        pTextImpl->SetGlyphBuffer(glyphSRV);
 
-                        DeferRelease(vb.pBuffer.Get());
+                        DeferRelease(glyphSRV.pBuffer.Get());
 
                         auto* pAtlas = m_pDevice->GetGlyphAtlasSurface();
                         if (pAtlas)
                         {
                             DeferRelease(pAtlas);
-                            Gem::ThrowGemError(DrawUIText(vb, pAtlas, pTextImpl->GetLayoutConfig().Color, elementOffset));
+                            Gem::ThrowGemError(DrawUIText(glyphSRV, pAtlas, pTextImpl->GetLayoutConfig().Color, elementOffset));
                         }
                     }
                 }

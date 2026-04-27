@@ -29,7 +29,7 @@ class CUITextElement12 : public TGfxElement<Canvas::XUITextElement>
     // State
     Canvas::XUIGraphNode* m_pAttachedNode = nullptr;
     Canvas::Math::FloatVector2 m_LocalOffset = {};
-    Canvas::GfxResourceAllocation m_GlyphBuffer;
+    Canvas::GfxResourceAllocation m_GlyphSRV;
     bool m_Visible = true;
     bool m_Dirty = true;
 
@@ -73,8 +73,8 @@ public:
     void SetAttachedNode(Canvas::XUIGraphNode* pNode) { m_pAttachedNode = pNode; }
     uint32_t GetGlyphCount() const { return static_cast<uint32_t>(m_CachedGlyphs.size()); }
     const void* GetGlyphData() const { return m_CachedGlyphs.data(); }
-    const Canvas::GfxResourceAllocation& GetGlyphBuffer() const { return m_GlyphBuffer; }
-    void SetGlyphBuffer(const Canvas::GfxResourceAllocation& buffer) { m_GlyphBuffer = buffer; }
+    const Canvas::GfxResourceAllocation& GetGlyphBuffer() const { return m_GlyphSRV; }
+    void SetGlyphBuffer(const Canvas::GfxResourceAllocation& buffer) { m_GlyphSRV = buffer; }
 
 private:
     Gem::Result RegenerateGlyphs();

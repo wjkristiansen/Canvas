@@ -602,14 +602,14 @@ GEMMETHODIMP CDevice12::FlushUploads()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut)
+GEMMETHODIMP CDevice12::AllocateStructuredBuffer(uint32_t elementCount, uint32_t elementStride, const void* pInitialData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut)
 {
-    if (vertexCount == 0 || vertexStride == 0 || !pVertexData || !pRQ)
+    if (elementCount == 0 || elementStride == 0 || !pRQ)
         return Gem::Result::InvalidArg;
 
     try
     {
-        uint64_t dataSize = static_cast<uint64_t>(vertexCount) * vertexStride;
+        uint64_t dataSize = static_cast<uint64_t>(elementCount) * elementStride;
         auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
 
         // Caller is swapping in a fresh buffer; retire the old one to the pool.
@@ -639,7 +639,7 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
 
             Gem::TGemPtr<CBuffer12> pBuffer;
             Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
-                &pBuffer, GetCanvas(), alloc.pResource, "VertexBuffer"));
+                &pBuffer, GetCanvas(), alloc.pResource, "StructuredBuffer"));
             pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
 
             inOut.pBuffer       = pBuffer;
@@ -648,20 +648,22 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
         inOut.Offset = 0;
         inOut.Size   = dataSize;
 
-        // Stage and enqueue the upload on the device's copy queue.  The
-        // consuming render queue gates on the copy fence at submit time.
-        auto* pDstBuffer = static_cast<CBuffer12*>(inOut.pBuffer.Get());
-        HostWriteAllocation staging;
-        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(dataSize, staging));
-        memcpy(staging.pMapped, pVertexData, static_cast<size_t>(dataSize));
+        // Upload initial data if provided
+        if (pInitialData)
+        {
+            auto* pDstBuffer = static_cast<CBuffer12*>(inOut.pBuffer.Get());
+            HostWriteAllocation staging;
+            Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(dataSize, staging));
+            memcpy(staging.pMapped, pInitialData, static_cast<size_t>(dataSize));
 
-        Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive;
-        pDstBuffer->QueryInterface(&pDstKeepAlive);
-        m_CopyQueue.EnqueueBufferCopy(
-            staging.pResource, staging.ResourceOffset,
-            pDstBuffer->GetD3DResource(), 0,
-            dataSize,
-            std::move(pDstKeepAlive));
+            Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive;
+            pDstBuffer->QueryInterface(&pDstKeepAlive);
+            m_CopyQueue.EnqueueBufferCopy(
+                staging.pResource, staging.ResourceOffset,
+                pDstBuffer->GetD3DResource(), 0,
+                dataSize,
+                std::move(pDstKeepAlive));
+        }
 
         return Gem::Result::Success;
     }
