@@ -9,7 +9,8 @@
 #include "Buffer12.h"
 #include "MeshData12.h"
 #include "Material12.h"
-#include "UIElement.h"
+#include "UITextElement12.h"
+#include "UIRectElement12.h"
 
 //------------------------------------------------------------------------------------------------
 #if defined(_DEBUG)
@@ -754,12 +755,13 @@ GEMMETHODIMP CDevice12::CreateTextElement(Canvas::XUITextElement **ppElement)
     if (!pCanvas)
         return Gem::Result::NotFound;
 
-    auto* pAtlas = GetGlyphAtlasSurface();
-    Gem::Result result = pCanvas->CreateTextElement(pAtlas, ppElement);
+    Gem::TGemPtr<CUITextElement12> pElement =
+        new Gem::TGenericImpl<CUITextElement12>(pCanvas, &m_GlyphCache);
+    pElement->SetName("UITextElement");
+    Gem::Result result = pCanvas->RegisterElement(pElement.Get());
     if (Gem::Failed(result))
         return result;
-
-    static_cast<Canvas::CUITextElement*>(*ppElement)->SetGlyphCache(&m_GlyphCache);
+    *ppElement = pElement.Detach();
     return Gem::Result::Success;
 }
 
@@ -773,5 +775,12 @@ GEMMETHODIMP CDevice12::CreateRectElement(Canvas::XUIRectElement **ppElement)
     if (!pCanvas)
         return Gem::Result::NotFound;
 
-    return pCanvas->CreateRectElement(ppElement);
+    Gem::TGemPtr<CUIRectElement12> pElement =
+        new Gem::TGenericImpl<CUIRectElement12>(pCanvas);
+    pElement->SetName("UIRectElement");
+    Gem::Result result = pCanvas->RegisterElement(pElement.Get());
+    if (Gem::Failed(result))
+        return result;
+    *ppElement = pElement.Detach();
+    return Gem::Result::Success;
 }
