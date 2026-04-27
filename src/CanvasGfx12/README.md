@@ -107,7 +107,7 @@ Key factory methods:
 | `CreateBuffer` | `CBuffer12` |
 | `CreateMeshData` | `CMeshData12` |
 | `CreateMaterial` | `CMaterial12` |
-| `AllocVertexBuffer` | Pooled buffer via resource manager, staged through copy queue |
+| `AllocateStructuredBuffer` | Pooled buffer via resource manager, staged through copy queue |
 | `UploadTextureRegion` | Texture upload via copy queue staging |
 
 Memory usage types map directly to D3D12 heap types:
@@ -384,7 +384,7 @@ All PSOs are created lazily on first use and cached for the lifetime of the rend
 
 **Text pass**:
 - Slot 0: root CBV at b0 for `HlslTextConstants` (screen size, element offset, text color).
-- Slot 1: root SRV at t0 for `StructuredBuffer<GlyphInstance>` (one entry per visible glyph).
+- Slot 1: root SRV at t0 for `StructuredBuffer<HlslGlyphInstance>` (one entry per visible glyph).
 - Slot 2: descriptor table with SRV[1] at t1 for the SDF glyph atlas.
 - Static sampler s0: linear clamp.
 - Alpha blending: `SRC_ALPHA / INV_SRC_ALPHA`.
@@ -469,7 +469,7 @@ After the scene graph, the render queue processes the UI renderable queue. Text 
 
 Two upload rings exist: one on the copy queue and one on the render queue. The routing is:
 
-- **Mesh vertex data and texture regions** are staged through the **copy queue's** upload ring and transferred with `CopyBufferRegion` / `CopyTextureRegion` on the COPY command queue. This path is used by `CDevice12::AllocVertexBuffer`, `CDevice12::CreateMeshData`, and `CDevice12::UploadTextureRegion`.
+- **Mesh vertex data and texture regions** are staged through the **copy queue's** upload ring and transferred with `CopyBufferRegion` / `CopyTextureRegion` on the COPY command queue. This path is used by `CDevice12::AllocateStructuredBuffer`, `CDevice12::CreateMeshData`, and `CDevice12::UploadTextureRegion`.
 - **Per-frame and per-object constant buffers** are written into the **render queue's** upload ring, which is on the UPLOAD heap and directly GPU-readable. The GPU virtual address is bound as a root CBV with no copy step.
 
 The distinction matters because copy-queue uploads require a cross-queue fence wait before the render queue can consume them, while render-queue upload ring data is available immediately on the same queue.
@@ -609,7 +609,7 @@ Shaders are compiled offline from HLSL source to CSO files using DXC. CMake cust
 
 ### Text Shaders
 
-**VSText** expands per-glyph instance data (`GlyphInstance`: offset, size, atlas UVs) into screen-aligned quads using `SV_VertexID`. Each glyph is 6 vertices; `vertexId / 6` selects the glyph and `vertexId % 6` selects the quad corner. Text color is a per-draw constant from the CBV, not per-vertex data. **PSText** samples the SDF glyph atlas and uses a smoothstep threshold to produce anti-aliased glyph coverage with alpha blending.
+**VSText** expands per-glyph instance data (`HlslGlyphInstance`: offset, size, atlas UVs) into screen-aligned quads using `SV_VertexID`. Each glyph is 6 vertices; `vertexId / 6` selects the glyph and `vertexId % 6` selects the quad corner. Text color is a per-draw constant from the CBV, not per-vertex data. **PSText** samples the SDF glyph atlas and uses a smoothstep threshold to produce anti-aliased glyph coverage with alpha blending.
 
 The SDF atlas stores distance values in R8_UNorm format where 0 means far outside the glyph, 0.5 is the edge, and 1 is far inside. The pixel shader maps this to a signed distance in [-1, +1], then computes a 1-pixel-wide anti-aliased edge using `fwidth(signedDist)` as the smoothstep range. Because `fwidth` measures the screen-space rate of change, the transition width adapts automatically to the glyph's rendered size, keeping edges sharp at any scale without manual tuning.
 
@@ -621,15 +621,13 @@ The SDF atlas stores distance values in R8_UNorm format where 0 means far outsid
 
 Text rendering spans CanvasText, CanvasCore, and CanvasGfx12.
 
-**CanvasText** parses TrueType font files and rasterizes signed-distance-field glyphs via `SDFGenerator`. Each glyph is rendered at a fixed SDF resolution and stored as a single-channel distance field.
+**CanvasText** parses TrueType font files, rasterizes signed-distance-field glyphs via `SDFGenerator`, and manages the glyph atlas via `CGlyphCache`. The glyph cache uses `RectanglePacker` to bin-pack SDF glyphs into a texture atlas. When a text element references glyphs not yet in the atlas, they are rasterized, packed, and queued for GPU upload.
 
-**GlyphAtlas** in CanvasCore uses `RectanglePacker` to bin-pack SDF glyphs into a texture atlas. When a text element references glyphs not yet in the atlas, they are rasterized, packed, and the atlas region is uploaded to the GPU through the device's `UploadTextureRegion` method.
+**CanvasCore** provides `CTextLayout` for standalone text measurement and layout, and `CFont` which wraps the CanvasText `CTrueTypeFont` behind the `XFont` GEM interface.
 
-**TextLayout** in CanvasCore performs line breaking and glyph placement using font metrics. For rendering, `CUITextElement` generates a compact `GlyphInstance` array (32 bytes per glyph) instead of expanded vertices, which the vertex shader expands to quads on the GPU. The glyph buffer is allocated and uploaded by the graphics device, keeping GPU resource management out of the core layer.
+**CanvasGfx12** owns the glyph cache instance (`CGlyphCache` is a member of `CDevice12`) and the concrete UI element implementations. `CUITextElement12` generates a compact `HlslGlyphInstance` array (32 bytes per glyph) during `Update()`, which the render queue uploads to a structured buffer and the vertex shader expands to quads on the GPU. `CUIRectElement12` carries only size and color — geometry is derived entirely on the GPU from per-draw constants.
 
-**FontImpl** wraps the CanvasText `Font` class behind the `XFont` GEM interface, providing metric access for ascender, descender, and units-per-em.
-
-The glyph atlas surface is lazily created by `CDevice12::GetGlyphAtlasSurface`. Pending glyph uploads are flushed during `EndFrame` before UI drawing begins.
+UI elements are created exclusively via `XGfxDevice::CreateTextElement` and `XGfxDevice::CreateRectElement`. Each element has a local 2D offset relative to its parent `XUIGraphNode`. The glyph atlas surface is lazily created by `CDevice12::GetGlyphAtlasSurface`. Pending glyph uploads are flushed during `EndFrame` before UI drawing begins.
 
 ## Scene and UI Integration
 
@@ -643,7 +641,11 @@ During `Update`, the scene graph marks dirty transforms and propagates them down
 
 ### UI Graph
 
-`XUIGraph` is a 2D overlay graph with position inheritance and dirty-tracked update. Nodes carry `XUITextElement` or `XUIRectElement` instances. Text elements generate glyph instance buffers when marked dirty. Rect elements carry size and color properties that are passed directly to the GPU as per-draw constants, requiring no vertex buffer. The render queue processes UI nodes after the composition pass, drawing them with alpha blending over the final back buffer.
+`XUIGraph` is a 2D overlay graph with position inheritance and dirty-tracked update. Each `XUIGraphNode` can have one or more bound `XUIElement` instances — text elements, rect elements, or a mix. Each element carries a signed 2D offset relative to its parent node.
+
+Text elements (`CUITextElement12`) regenerate glyph instance buffers via `Update()` when dirty. The render queue allocates a structured buffer and uploads the glyph data at draw time. Rect elements (`CUIRectElement12`) carry size and color properties that are passed directly to the GPU as per-draw constants, requiring no buffer. Both element types are created via `XGfxDevice::CreateTextElement` and `XGfxDevice::CreateRectElement`.
+
+The render queue processes UI nodes after the composition pass, drawing them with alpha blending over the final back buffer.
 
 ## Source Layout
 
@@ -662,6 +664,8 @@ During `Update`, the scene graph marks dirty transforms and propagates them down
 | `Lib/SwapChain12.*` | DXGI swap chain and frame pacing |
 | `Lib/Material12.*` | PBR material property bag |
 | `Lib/MeshData12.*` | Per-material-group vertex buffers |
+| `Lib/UITextElement12.*` | SDF text element (glyph caching + instance generation) |
+| `Lib/UIRectElement12.*` | Filled-rectangle element (GPU-derived geometry) |
 | `Lib/CanvasGfx12.*` | GEM interface helpers and plugin glue |
 | `D3D12ResourceUtils/` | Resource base classes and subresource layout tracking |
 
