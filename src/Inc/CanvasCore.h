@@ -186,8 +186,6 @@ XCanvas : public Gem::XGeneric
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
     GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XUIGraph** ppGraph) = 0;
-    GEMMETHOD(CreateTextElement)(XGfxSurface* pAtlasSurface, XUITextElement** ppElement) = 0;
-    GEMMETHOD(CreateRectElement)(XUIRectElement** ppElement) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
@@ -521,11 +519,19 @@ struct XUIElement : public XCanvasElement
     GEMMETHOD_(UIElementType, GetType)() const = 0;
     GEMMETHOD_(bool, IsVisible)() const = 0;
     GEMMETHOD_(void, SetVisible)(bool visible) = 0;
-    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() = 0;
 
-    // GPU vertex buffer (ready to draw, managed by graph + device)
-    GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const = 0;
-    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) = 0;
+    // Node attachment (managed by XUIGraphNode::BindElement)
+    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() = 0;
+    GEMMETHOD(Detach)() = 0;
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XUIGraphNode* pNode) = 0;
+
+    // Signed 2D offset relative to the parent UIGraphNode
+    GEMMETHOD_(const Math::FloatVector2&, GetLocalOffset)() const = 0;
+    GEMMETHOD_(void, SetLocalOffset)(const Math::FloatVector2& offset) = 0;
+
+    // CPU-side update (regenerate cached data if dirty)
+    GEMMETHOD(Update)() = 0;
+    GEMMETHOD_(bool, HasContent)() const = 0;
 };
 
 //------------------------------------------------------------------------------------------------

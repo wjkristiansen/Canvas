@@ -14,7 +14,7 @@
 #include "Surface12.h"
 #include "SwapChain12.h"
 #include "MeshData12.h"
-#include "UIElement.h"
+#include "UITextElement12.h"
 
 #include <filesystem>
 #include <fstream>
@@ -1553,8 +1553,8 @@ Gem::Result CRenderQueue12::DrawUIText(
         CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
         auto pGlyphBuf = static_cast<CBuffer12*>(glyphBuffer.pBuffer.Get());
 
-        assert(glyphBuffer.Size % sizeof(Canvas::GlyphInstance) == 0);
-        uint32_t glyphCount = static_cast<uint32_t>(glyphBuffer.Size / sizeof(Canvas::GlyphInstance));
+        assert(glyphBuffer.Size % sizeof(HlslTypes::HlslGlyphInstance) == 0);
+        uint32_t glyphCount = static_cast<uint32_t>(glyphBuffer.Size / sizeof(HlslTypes::HlslGlyphInstance));
         uint32_t vertexCount = glyphCount * 6;
 
         // Allocate all CPU-side resources before creating the GPU task
@@ -2012,6 +2012,9 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     continue;
 
                 Canvas::Math::FloatVector2 elementOffset = pNode->GetGlobalPosition();
+                auto& localOffset = pElem->GetLocalOffset();
+                elementOffset.X += localOffset.X;
+                elementOffset.Y += localOffset.Y;
 
                 if (pElem->GetType() == Canvas::UIElementType::Rect)
                 {
@@ -2025,20 +2028,25 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 }
                 else if (pElem->GetType() == Canvas::UIElementType::Text)
                 {
-                    auto& vb = pElem->GetVertexBuffer();
-                    if (vb.Size == 0)
+                    if (!pElem->HasContent())
                         continue;
 
-                    DeferRelease(vb.pBuffer.Get());
-
-                    Gem::TGemPtr<Canvas::XUITextElement> pText;
-                    if (SUCCEEDED(pElem->QueryInterface(&pText)))
+                    auto* pTextImpl = static_cast<CUITextElement12*>(static_cast<Canvas::XUITextElement*>(pElem));
+                    if (pTextImpl->GetGlyphCount() > 0)
                     {
+                        Canvas::GfxResourceAllocation vb = pTextImpl->GetGlyphBuffer();
+                        Gem::ThrowGemError(m_pDevice->AllocVertexBuffer(
+                            pTextImpl->GetGlyphCount(), sizeof(HlslTypes::HlslGlyphInstance),
+                            pTextImpl->GetGlyphData(), this, vb));
+                        pTextImpl->SetGlyphBuffer(vb);
+
+                        DeferRelease(vb.pBuffer.Get());
+
                         auto* pAtlas = m_pDevice->GetGlyphAtlasSurface();
                         if (pAtlas)
                         {
                             DeferRelease(pAtlas);
-                            Gem::ThrowGemError(DrawUIText(vb, pAtlas, pText->GetLayoutConfig().Color, elementOffset));
+                            Gem::ThrowGemError(DrawUIText(vb, pAtlas, pTextImpl->GetLayoutConfig().Color, elementOffset));
                         }
                     }
                 }

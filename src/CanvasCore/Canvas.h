@@ -133,8 +133,6 @@ public:
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) final;
     GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XUIGraph** ppGraph) final;
-    GEMMETHOD(CreateTextElement)(XGfxSurface* pAtlasSurface, XUITextElement** ppElement) final;
-    GEMMETHOD(CreateRectElement)(XUIRectElement** ppElement) final;
 
     GEMMETHOD_(XLogger *, GetLogger)() final
     {

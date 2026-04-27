@@ -1134,7 +1134,7 @@ public:
             Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
             Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, &pUIGraph));
 
-            // Create UI graph nodes for positioning
+            // Single HUD node for all UI elements
             Gem::TGemPtr<Canvas::XUIGraphNode> pHudNode;
             Gem::ThrowGemError(pUIGraph->CreateNode(nullptr, &pHudNode));
             pHudNode->SetLocalPosition(Canvas::Math::FloatVector2(6.0f, 6.0f));
@@ -1146,14 +1146,11 @@ public:
             pHudPanel->SetSize(Canvas::Math::FloatVector2(340.0f, 70.0f));
             pHudPanel->SetFillColor(Canvas::Math::FloatVector4(0.125f, 0.125f, 0.125f, 0.75f));
 
-            // Title text — child node of HUD
-            Gem::TGemPtr<Canvas::XUIGraphNode> pTitleNode;
-            Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pTitleNode));
-            pTitleNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 4.0f));
-
+            // Title text
             Gem::TGemPtr<Canvas::XUITextElement> pTitleText;
             Gem::ThrowGemError(pDevice->CreateTextElement(&pTitleText));
-            pTitleNode->BindElement(pTitleText);
+            pHudNode->BindElement(pTitleText);
+            pTitleText->SetLocalOffset(Canvas::Math::FloatVector2(4.0f, 4.0f));
             pTitleText->SetFont(pFont);
             {
                 Canvas::TextLayoutConfig titleConfig;
@@ -1163,14 +1160,11 @@ public:
             }
             pTitleText->SetText("Canvas Model Viewer");
 
-            // FPS text — child node of HUD
-            Gem::TGemPtr<Canvas::XUIGraphNode> pFpsNode;
-            Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pFpsNode));
-            pFpsNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 40.0f));
-
+            // FPS text
             Gem::TGemPtr<Canvas::XUITextElement> pFpsText;
             Gem::ThrowGemError(pDevice->CreateTextElement(&pFpsText));
-            pFpsNode->BindElement(pFpsText);
+            pHudNode->BindElement(pFpsText);
+            pFpsText->SetLocalOffset(Canvas::Math::FloatVector2(4.0f, 40.0f));
             pFpsText->SetFont(pFontMono);
             {
                 Canvas::TextLayoutConfig monoConfig;

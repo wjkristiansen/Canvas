@@ -16,6 +16,7 @@ add_library(CanvasGfx12 SHARED
     Material12.cpp
     ResourceAllocator.cpp
     ResourceManager.cpp
+    UITextElement12.cpp
     UploadRing.cpp
     dllmain.cpp
     pch.h
