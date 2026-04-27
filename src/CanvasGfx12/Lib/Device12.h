@@ -108,7 +108,7 @@ public:
     std::optional<FenceToken> EnsureUploadsRetired() { return m_CopyQueue.FlushIfPending(); }
 
     // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
-    GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
+    GEMMETHOD(AllocateStructuredBuffer)(uint32_t elementCount, uint32_t elementStride, const void* pInitialData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
 
     GEMMETHOD(FlushUploads)() final;
 
