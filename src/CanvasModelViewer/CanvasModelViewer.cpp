@@ -235,9 +235,11 @@ public:
 
 //------------------------------------------------------------------------------------------------
 // Window subclass providing message-driven mouse input for the viewer.
-// Accumulates WM_MOUSEMOVE deltas and hides the cursor via WM_SETCURSOR
-// while captured, avoiding GetCursorPos/SetCursorPos polling which breaks
-// over Remote Desktop due to cursor-warp latency.
+// Deltas are accumulated from WM_INPUT (raw input) so they are not
+// clamped by ClipCursor, giving unbounded rotation.  ClipCursor keeps
+// the hidden cursor inside the client area to maintain window focus.
+// SetCursorPos is intentionally avoided — cursor-warp latency over
+// Remote Desktop causes large spurious deltas.
 //------------------------------------------------------------------------------------------------
 class CViewerWindow : public ThinWin::CWindow
 {
@@ -253,20 +255,37 @@ public:
             ::SetCapture(m_hWnd);
             ::SetCursor(NULL);
 
-            // Constrain the hidden cursor to the client area so it can't
+            // Confine the hidden cursor to the client area so it can't
             // wander to another window/monitor and trigger a capture release.
             RECT rc;
             ::GetClientRect(m_hWnd, &rc);
             ::MapWindowPoints(m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
             ::ClipCursor(&rc);
 
+            // Register for raw mouse input.  Raw deltas bypass ClipCursor
+            // clamping, so rotation is unbounded.  Over RDP this also
+            // triggers the relative-mouse-mode channel (Win 10 1709+).
+            RAWINPUTDEVICE rid{};
+            rid.usUsagePage = 0x01; // HID_USAGE_PAGE_GENERIC
+            rid.usUsage     = 0x02; // HID_USAGE_GENERIC_MOUSE
+            rid.dwFlags     = 0;
+            rid.hwndTarget  = m_hWnd;
+            ::RegisterRawInputDevices(&rid, 1, sizeof(rid));
+
             m_Captured = true;
-            m_HasLastPos = false;
+            m_HasLastAbsPos = false;
             m_MouseDX = 0.0f;
             m_MouseDY = 0.0f;
         }
         else if (!captured && m_Captured)
         {
+            RAWINPUTDEVICE rid{};
+            rid.usUsagePage = 0x01;
+            rid.usUsage     = 0x02;
+            rid.dwFlags     = RIDEV_REMOVE;
+            rid.hwndTarget  = nullptr;
+            ::RegisterRawInputDevices(&rid, 1, sizeof(rid));
+
             ::ClipCursor(nullptr);
             ::ReleaseCapture();
             ::SetCursor(LoadCursor(NULL, IDC_ARROW));
@@ -286,23 +305,62 @@ public:
     {
         switch (uMsg)
         {
+        case WM_INPUT:
+            if (m_Captured)
+            {
+                UINT dwSize = sizeof(RAWINPUT);
+                alignas(RAWINPUT) BYTE buffer[sizeof(RAWINPUT)];
+                if (::GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam),
+                        RID_INPUT, buffer, &dwSize, sizeof(RAWINPUTHEADER)) != UINT(-1))
+                {
+                    const auto* raw = reinterpret_cast<const RAWINPUT*>(buffer);
+                    if (raw->header.dwType == RIM_TYPEMOUSE)
+                    {
+                        const RAWMOUSE& mouse = raw->data.mouse;
+                        if (mouse.usFlags & MOUSE_MOVE_ABSOLUTE)
+                        {
+                            // Absolute coordinates (RDP absolute mode, touch, etc.)
+                            // Map the 0-65535 range to virtual-desktop pixels.
+                            float absX, absY;
+                            if (mouse.usFlags & MOUSE_VIRTUAL_DESKTOP)
+                            {
+                                int vdW = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
+                                int vdH = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
+                                absX = (mouse.lLastX / 65535.0f) * vdW;
+                                absY = (mouse.lLastY / 65535.0f) * vdH;
+                            }
+                            else
+                            {
+                                absX = (mouse.lLastX / 65535.0f) * ::GetSystemMetrics(SM_CXSCREEN);
+                                absY = (mouse.lLastY / 65535.0f) * ::GetSystemMetrics(SM_CYSCREEN);
+                            }
+
+                            if (m_HasLastAbsPos)
+                            {
+                                m_MouseDX += absX - m_LastAbsX;
+                                m_MouseDY += absY - m_LastAbsY;
+                            }
+                            m_LastAbsX = absX;
+                            m_LastAbsY = absY;
+                            m_HasLastAbsPos = true;
+                        }
+                        else
+                        {
+                            // Relative movement (local mouse, RDP relative mode).
+                            m_MouseDX += static_cast<float>(mouse.lLastX);
+                            m_MouseDY += static_cast<float>(mouse.lLastY);
+                        }
+                    }
+                }
+                return 0;
+            }
+            break;
+
         case WM_MOUSEMOVE:
             if (m_Captured)
             {
-                // WM_SETCURSOR is suppressed during capture, so maintain
-                // the hidden cursor here in case the system resets it.
+                // Keep cursor hidden (WM_SETCURSOR is suppressed during capture).
                 ::SetCursor(NULL);
-
-                int x = static_cast<int>(static_cast<short>(LOWORD(lParam)));
-                int y = static_cast<int>(static_cast<short>(HIWORD(lParam)));
-                if (m_HasLastPos)
-                {
-                    m_MouseDX += static_cast<float>(x - m_LastX);
-                    m_MouseDY += static_cast<float>(y - m_LastY);
-                }
-                m_LastX = x;
-                m_LastY = y;
-                m_HasLastPos = true;
                 return 0;
             }
             break;
@@ -329,9 +387,9 @@ public:
 private:
     float m_MouseDX = 0.0f;
     float m_MouseDY = 0.0f;
-    int m_LastX = 0;
-    int m_LastY = 0;
-    bool m_HasLastPos = false;
+    float m_LastAbsX = 0.0f;
+    float m_LastAbsY = 0.0f;
+    bool m_HasLastAbsPos = false;
     bool m_Captured = false;
 };
 
