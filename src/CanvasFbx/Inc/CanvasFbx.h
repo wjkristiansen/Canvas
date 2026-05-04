@@ -14,10 +14,12 @@
 
 #include "CanvasCore.h"
 #include "CanvasMath.hpp"
+#include <Gem.hpp>
 
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <functional>
 
 // CanvasFbx is a static library; no dllexport/dllimport plumbing needed.
 #define CANVASFBX_API
@@ -221,6 +223,55 @@ CANVASFBX_API HRESULT ImportScene(
     _In_z_  const wchar_t  *pFilePath,
     _In_    const ImportOptions &options,
     _Out_   ImportedScene  *pScene
+);
+
+//================================================================================================
+// BuildModel — convert an ImportedScene into a fully populated XModel
+//
+// Creates an XModel containing GPU mesh data, materials, textures, lights,
+// cameras, and the full node hierarchy from the imported scene.  The caller
+// supplies a texture-loading callback because image decoding is
+// platform-specific (e.g. WIC on Windows, stb_image elsewhere).
+//
+// Behaviour on malformed data:
+//   - Out-of-range material / mesh / light / camera / parent indices are
+//     silently skipped (with a warning to pLogger when provided).
+//   - Empty mesh parts are skipped.
+//   - A scene with no meshes is valid; cameras, lights, and nodes are still
+//     built into the model.
+//
+// Returns S_OK on success.  The returned XModel is not yet instantiated;
+// call XModel::Instantiate() to place it in a scene graph.
+//================================================================================================
+
+//------------------------------------------------------------------------------------------------
+// Callback for application-specific texture decoding.
+//
+// Called once per entry in ImportedScene::Textures. Return true and write an
+// AddRef'd surface to *ppSurface on success. Return false (and leave
+// *ppSurface null) to leave the corresponding material slot unbound.
+//------------------------------------------------------------------------------------------------
+using TextureLoadFn = std::function<bool(
+    Canvas::XGfxDevice  *pDevice,
+    const ImportedTextureRef &ref,
+    Canvas::XGfxSurface **ppSurface)>;
+
+//------------------------------------------------------------------------------------------------
+// Options for BuildModel
+//------------------------------------------------------------------------------------------------
+struct BuildModelOptions
+{
+    TextureLoadFn       TextureLoader;              // optional; null → textures are not loaded
+    const char         *pModelName      = nullptr;  // optional; name given to the XModel (nullptr → "ImportedModel")
+    Canvas::XLogger    *pLogger         = nullptr;  // optional; receives warnings for skipped data
+};
+
+CANVASFBX_API Gem::Result BuildModel(
+    _In_    Canvas::XCanvas        *pCanvas,
+    _In_    Canvas::XGfxDevice     *pDevice,
+    _In_    const ImportedScene    &scene,
+    _In_    const BuildModelOptions &options,
+    _Out_   Canvas::XModel        **ppModel
 );
 
 } // namespace Fbx
