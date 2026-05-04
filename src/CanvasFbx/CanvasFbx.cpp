@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "CanvasFbx.h"
+#include "CanvasGfx.h"
 
 #include <unordered_map>
 
@@ -1036,6 +1037,326 @@ HRESULT ImportScene(
 }
 
 #endif
+
+//================================================================================================
+// BuildModel — convert an ImportedScene into a fully populated XModel
+//================================================================================================
+
+Gem::Result BuildModel(
+    _In_    Canvas::XCanvas        *pCanvas,
+    _In_    Canvas::XGfxDevice     *pDevice,
+    _In_    const ImportedScene    &scene,
+    _In_    const BuildModelOptions &options,
+    _Out_   Canvas::XModel        **ppModel)
+{
+    if (!pCanvas || !pDevice || !ppModel)
+        return Gem::Result::InvalidArg;
+
+    *ppModel = nullptr;
+
+    Canvas::XLogger *pLogger = options.pLogger;
+    const char *modelName = (options.pModelName && options.pModelName[0])
+        ? options.pModelName
+        : "ImportedModel";
+
+    // Create the model shell
+    Gem::TGemPtr<Canvas::XModel> pModel;
+    Gem::Result gr = pCanvas->CreateModel(pDevice, &pModel, modelName);
+    if (Gem::Failed(gr))
+        return gr;
+
+    // -----------------------------------------------------------------
+    // Textures: invoke the caller's loader for each referenced image.
+    // Failed loads remain null; downstream material binding checks.
+    // -----------------------------------------------------------------
+    std::vector<Gem::TGemPtr<Canvas::XGfxSurface>> textures(scene.Textures.size());
+    if (options.TextureLoader)
+    {
+        for (size_t i = 0; i < scene.Textures.size(); ++i)
+        {
+            Canvas::XGfxSurface *pSurface = nullptr;
+            if (options.TextureLoader(pDevice, scene.Textures[i], &pSurface))
+            {
+                textures[i].Attach(pSurface);
+                pModel->AddTexture(textures[i]);
+            }
+            else
+            {
+                Canvas::LogWarn(pLogger,
+                    "BuildModel: texture %zu failed to load (path='%s', embedded=%s); slot will be unbound",
+                    i, scene.Textures[i].AbsoluteFilePath.c_str(),
+                    scene.Textures[i].Embedded ? "true" : "false");
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Helper: bind a texture to a material role when the index is valid
+    // -----------------------------------------------------------------
+    auto BindRole = [&](Canvas::XGfxMaterial *pMaterial,
+                        Canvas::MaterialLayerRole role,
+                        int32_t textureIndex)
+    {
+        if (textureIndex < 0)
+            return;
+        if (static_cast<size_t>(textureIndex) >= textures.size())
+            return;
+        Canvas::XGfxSurface *pSurface = textures[static_cast<size_t>(textureIndex)].Get();
+        if (!pSurface)
+            return;
+        pMaterial->SetTexture(role, pSurface);
+    };
+
+    // -----------------------------------------------------------------
+    // Materials: one XGfxMaterial per ImportedMaterial
+    // -----------------------------------------------------------------
+    std::vector<Gem::TGemPtr<Canvas::XGfxMaterial>> materials(scene.Materials.size());
+    for (size_t i = 0; i < scene.Materials.size(); ++i)
+    {
+        const ImportedMaterial &srcMat = scene.Materials[i];
+        Gem::TGemPtr<Canvas::XGfxMaterial> pMaterial;
+        gr = pDevice->CreateMaterial(&pMaterial);
+        if (Gem::Failed(gr))
+        {
+            Canvas::LogWarn(pLogger, "BuildModel: failed to create material %zu '%s'", i, srcMat.Name.c_str());
+            continue;
+        }
+
+        pMaterial->SetBaseColorFactor(srcMat.BaseColorFactor);
+        pMaterial->SetEmissiveFactor(srcMat.EmissiveFactor);
+        pMaterial->SetRoughMetalAOFactor(srcMat.RoughMetalAOFactor);
+        BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Albedo,           srcMat.AlbedoTextureIndex);
+        BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Normal,           srcMat.NormalTextureIndex);
+        BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Emissive,         srcMat.EmissiveTextureIndex);
+        BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Roughness,        srcMat.RoughnessTextureIndex);
+        BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Metallic,         srcMat.MetallicTextureIndex);
+        BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::AmbientOcclusion, srcMat.AmbientOcclusionTextureIndex);
+        materials[i] = pMaterial;
+        pModel->AddMaterial(pMaterial);
+    }
+
+    // -----------------------------------------------------------------
+    // Mesh data: create GPU mesh data per imported mesh
+    // -----------------------------------------------------------------
+    std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> meshDataByIndex(scene.Meshes.size());
+    for (size_t meshIndex = 0; meshIndex < scene.Meshes.size(); ++meshIndex)
+    {
+        const ImportedMesh &srcMesh = scene.Meshes[meshIndex];
+        if (srcMesh.Parts.empty())
+        {
+            Canvas::LogWarn(pLogger, "BuildModel: skipping mesh '%s': no parts", srcMesh.Name.c_str());
+            continue;
+        }
+
+        std::vector<Canvas::MeshDataGroupDesc> groups;
+        groups.reserve(srcMesh.Parts.size());
+        for (size_t partIndex = 0; partIndex < srcMesh.Parts.size(); ++partIndex)
+        {
+            const ImportedMeshPart &part = srcMesh.Parts[partIndex];
+            const uint32_t vertexCount = part.GetVertexCount();
+            if (vertexCount == 0 || part.Normals.size() != part.Positions.size())
+            {
+                Canvas::LogWarn(pLogger,
+                    "BuildModel: mesh '%s' part %zu: invalid vertex streams (positions=%zu normals=%zu); skipping",
+                    srcMesh.Name.c_str(), partIndex, part.Positions.size(), part.Normals.size());
+                continue;
+            }
+
+            Canvas::MeshDataGroupDesc group{};
+            group.VertexCount = vertexCount;
+            group.pPositions  = part.Positions.data();
+            group.pNormals    = part.Normals.data();
+            group.pUV0        = (part.UV0.size() == vertexCount)      ? part.UV0.data()      : nullptr;
+            group.pTangents   = (part.Tangents.size() == vertexCount) ? part.Tangents.data() : nullptr;
+            if (part.MaterialIndex >= 0 &&
+                static_cast<size_t>(part.MaterialIndex) < materials.size())
+            {
+                group.pMaterial = materials[static_cast<size_t>(part.MaterialIndex)].Get();
+            }
+            groups.push_back(group);
+        }
+
+        if (groups.empty())
+        {
+            Canvas::LogWarn(pLogger, "BuildModel: mesh '%s': all parts skipped", srcMesh.Name.c_str());
+            continue;
+        }
+
+        Canvas::MeshDataDesc desc{};
+        desc.pGroups    = groups.data();
+        desc.GroupCount = static_cast<uint32_t>(groups.size());
+        desc.pName      = srcMesh.Name.c_str();
+
+        Gem::TGemPtr<Canvas::XGfxMeshData> pMeshData;
+        gr = pDevice->CreateMeshData(desc, &pMeshData);
+        if (Gem::Failed(gr))
+        {
+            Canvas::LogWarn(pLogger, "BuildModel: failed to create mesh data for '%s'", srcMesh.Name.c_str());
+            continue;
+        }
+
+        meshDataByIndex[meshIndex] = pMeshData;
+        pModel->AddMeshData(pMeshData);
+    }
+
+    // -----------------------------------------------------------------
+    // Lights
+    // -----------------------------------------------------------------
+    std::vector<Gem::TGemPtr<Canvas::XLight>> lightsByIndex(scene.Lights.size());
+    for (size_t lightIndex = 0; lightIndex < scene.Lights.size(); ++lightIndex)
+    {
+        const ImportedLight &srcLight = scene.Lights[lightIndex];
+        const std::string lightName = srcLight.Name.empty()
+            ? ("ImportedLight_" + std::to_string(lightIndex))
+            : srcLight.Name;
+
+        Gem::TGemPtr<Canvas::XLight> pLight;
+        gr = pCanvas->CreateLight(srcLight.Type, &pLight, lightName.c_str());
+        if (Gem::Failed(gr))
+        {
+            Canvas::LogWarn(pLogger, "BuildModel: failed to create light '%s'", lightName.c_str());
+            continue;
+        }
+
+        pLight->SetColor(srcLight.Color);
+        pLight->SetIntensity(srcLight.Intensity);
+        pLight->SetRange(srcLight.Range);
+        pLight->SetAttenuation(srcLight.AttenuationConst, srcLight.AttenuationLinear, srcLight.AttenuationQuad);
+        if (srcLight.Type == Canvas::LightType::Spot)
+            pLight->SetSpotAngles(srcLight.SpotInnerAngle, srcLight.SpotOuterAngle);
+
+        lightsByIndex[lightIndex].Attach(pLight.Detach());
+    }
+
+    // -----------------------------------------------------------------
+    // Cameras
+    // -----------------------------------------------------------------
+    std::vector<Gem::TGemPtr<Canvas::XCamera>> camerasByIndex(scene.Cameras.size());
+    for (size_t cameraIndex = 0; cameraIndex < scene.Cameras.size(); ++cameraIndex)
+    {
+        const ImportedCamera &srcCamera = scene.Cameras[cameraIndex];
+        const std::string cameraName = srcCamera.Name.empty()
+            ? ("ImportedCamera_" + std::to_string(cameraIndex))
+            : srcCamera.Name;
+
+        Gem::TGemPtr<Canvas::XCamera> pCamera;
+        gr = pCanvas->CreateCamera(&pCamera, cameraName.c_str());
+        if (Gem::Failed(gr))
+        {
+            Canvas::LogWarn(pLogger, "BuildModel: failed to create camera '%s'", cameraName.c_str());
+            continue;
+        }
+
+        pCamera->SetNearClip(srcCamera.NearClip);
+        pCamera->SetFarClip(srcCamera.FarClip);
+        pCamera->SetFovAngle(srcCamera.FovAngle);
+        pCamera->SetAspectRatio(srcCamera.AspectRatio);
+
+        camerasByIndex[cameraIndex].Attach(pCamera.Detach());
+    }
+
+    // -----------------------------------------------------------------
+    // Scene-graph nodes: create, set TRS, bind mesh/light/camera elements
+    // -----------------------------------------------------------------
+    Canvas::XSceneGraphNode *pModelRoot = pModel->GetRootNode();
+    std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> nodes(scene.Nodes.size());
+
+    for (size_t nodeIndex = 0; nodeIndex < scene.Nodes.size(); ++nodeIndex)
+    {
+        const ImportedNode &srcNode = scene.Nodes[nodeIndex];
+        const std::string nodeName = srcNode.Name.empty()
+            ? ("ImportedNode_" + std::to_string(nodeIndex))
+            : srcNode.Name;
+
+        Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
+        gr = pCanvas->CreateSceneGraphNode(&pNode, nodeName.c_str());
+        if (Gem::Failed(gr))
+        {
+            Canvas::LogWarn(pLogger, "BuildModel: failed to create node '%s'", nodeName.c_str());
+            continue;
+        }
+
+        pNode->SetName(nodeName.c_str());
+        pNode->SetLocalTranslation(srcNode.Translation);
+        pNode->SetLocalRotation(srcNode.Rotation);
+        pNode->SetLocalScale(srcNode.Scale);
+
+        // Bind mesh instance
+        if (srcNode.MeshIndex >= 0 && static_cast<size_t>(srcNode.MeshIndex) < meshDataByIndex.size())
+        {
+            Canvas::XGfxMeshData *pMeshData = meshDataByIndex[static_cast<size_t>(srcNode.MeshIndex)].Get();
+            if (pMeshData)
+            {
+                const std::string meshInstanceName = nodeName + "_Mesh";
+                Gem::TGemPtr<Canvas::XMeshInstance> pMeshInstance;
+                gr = pCanvas->CreateMeshInstance(&pMeshInstance, meshInstanceName.c_str());
+                if (Gem::Succeeded(gr))
+                {
+                    pMeshInstance->SetMeshData(pMeshData);
+                    pNode->BindElement(pMeshInstance);
+                }
+            }
+        }
+
+        // Bind light
+        if (srcNode.LightIndex >= 0 && static_cast<size_t>(srcNode.LightIndex) < lightsByIndex.size())
+        {
+            Canvas::XLight *pLight = lightsByIndex[static_cast<size_t>(srcNode.LightIndex)].Get();
+            if (pLight)
+                pNode->BindElement(pLight);
+        }
+
+        // Bind camera
+        if (srcNode.CameraIndex >= 0 && static_cast<size_t>(srcNode.CameraIndex) < camerasByIndex.size())
+        {
+            Canvas::XCamera *pCamera = camerasByIndex[static_cast<size_t>(srcNode.CameraIndex)].Get();
+            if (pCamera)
+                pNode->BindElement(pCamera);
+        }
+
+        nodes[nodeIndex].Attach(pNode.Detach());
+    }
+
+    // -----------------------------------------------------------------
+    // Wire parent-child relationships
+    // -----------------------------------------------------------------
+    for (size_t nodeIndex = 0; nodeIndex < scene.Nodes.size(); ++nodeIndex)
+    {
+        if (!nodes[nodeIndex])
+            continue;
+        const int32_t parentIndex = scene.Nodes[nodeIndex].ParentIndex;
+        if (parentIndex >= 0 && static_cast<size_t>(parentIndex) < nodes.size() && nodes[static_cast<size_t>(parentIndex)])
+            nodes[static_cast<size_t>(parentIndex)]->AddChild(nodes[nodeIndex]);
+        else
+            pModelRoot->AddChild(nodes[nodeIndex]);
+    }
+
+    // -----------------------------------------------------------------
+    // Active camera designation
+    // -----------------------------------------------------------------
+    if (scene.ActiveCameraNodeIndex >= 0 &&
+        static_cast<size_t>(scene.ActiveCameraNodeIndex) < nodes.size() &&
+        nodes[static_cast<size_t>(scene.ActiveCameraNodeIndex)])
+    {
+        pModel->SetActiveCameraNode(nodes[static_cast<size_t>(scene.ActiveCameraNodeIndex)].Get());
+    }
+    else if (!camerasByIndex.empty())
+    {
+        // Fall back: use the first node that carries a camera
+        for (size_t nodeIndex = 0; nodeIndex < scene.Nodes.size(); ++nodeIndex)
+        {
+            if (scene.Nodes[nodeIndex].CameraIndex >= 0 && nodes[nodeIndex])
+            {
+                pModel->SetActiveCameraNode(nodes[nodeIndex].Get());
+                Canvas::LogWarn(pLogger, "BuildModel: no explicit active camera; using first camera node");
+                break;
+            }
+        }
+    }
+
+    *ppModel = pModel.Detach();
+    return Gem::Result::Success;
+}
 
 } // namespace Fbx
 } // namespace Canvas
