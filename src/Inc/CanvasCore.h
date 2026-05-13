@@ -53,7 +53,6 @@ struct XUITextElement;
 struct XUIRectElement;
 struct GfxResourceAllocation;
 struct XGfxSurface;
-class CGlyphCache;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -187,8 +186,6 @@ XCanvas : public Gem::XGeneric
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
     GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XUIGraph** ppGraph) = 0;
-    GEMMETHOD(CreateTextElement)(XGfxSurface* pAtlasSurface, XUITextElement** ppElement) = 0;
-    GEMMETHOD(CreateRectElement)(XUIRectElement** ppElement) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
     // External code should call element->Register(canvas), NOT canvas->RegisterElement(element)
@@ -196,7 +193,6 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(UnregisterElement)(struct XCanvasElement *) = 0;
 
     GEMMETHOD_(XLogger *, GetLogger)() = 0;
-    GEMMETHOD_(CGlyphCache*, GetGlyphCache)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -306,34 +302,6 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(UINT index) = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
-};
-
-// Text vertex structure — shared between CanvasCore (vertex generation) and CanvasGfx (rendering)
-// Layout must match HLSL StructuredBuffer<TextVertex> in VSText.hlsl
-struct TextVertex
-{
-    Math::FloatVector3 Position;    // Screen-space pixel position (12 bytes)
-    Math::FloatVector2 TexCoord;    // Atlas UV coordinates (8 bytes)
-    float Color[4];                 // RGBA float color (16 bytes)
-
-    TextVertex() : Color{1.0f, 1.0f, 1.0f, 1.0f} {}
-
-    void SetColor(const Math::FloatVector4& c) { Color[0] = c.X; Color[1] = c.Y; Color[2] = c.Z; Color[3] = c.W; }
-    void SetColor(float r, float g, float b, float a) { Color[0] = r; Color[1] = g; Color[2] = b; Color[3] = a; }
-};
-
-// Draw command for batched UI text rendering from a persistent vertex buffer
-struct UITextDrawCommand
-{
-    uint32_t StartVertex;   // Offset into persistent vertex buffer
-    uint32_t VertexCount;   // Number of vertices to draw
-};
-
-// Draw command for batched UI rect rendering from a persistent vertex buffer
-struct UIRectDrawCommand
-{
-    uint32_t StartVertex;   // Offset into persistent rect vertex buffer
-    uint32_t VertexCount;   // Number of vertices to draw
 };
 
 //------------------------------------------------------------------------------------------------
@@ -551,11 +519,19 @@ struct XUIElement : public XCanvasElement
     GEMMETHOD_(UIElementType, GetType)() const = 0;
     GEMMETHOD_(bool, IsVisible)() const = 0;
     GEMMETHOD_(void, SetVisible)(bool visible) = 0;
-    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() = 0;
 
-    // GPU vertex buffer (ready to draw, managed by graph + device)
-    GEMMETHOD_(const GfxResourceAllocation&, GetVertexBuffer)() const = 0;
-    GEMMETHOD_(void, SetVertexBuffer)(const GfxResourceAllocation& buffer) = 0;
+    // Node attachment (managed by XUIGraphNode::BindElement)
+    GEMMETHOD_(XUIGraphNode*, GetAttachedNode)() = 0;
+    GEMMETHOD(Detach)() = 0;
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XUIGraphNode* pNode) = 0;
+
+    // Signed 2D offset relative to the parent UIGraphNode
+    GEMMETHOD_(const Math::FloatVector2&, GetLocalOffset)() const = 0;
+    GEMMETHOD_(void, SetLocalOffset)(const Math::FloatVector2& offset) = 0;
+
+    // CPU-side update (regenerate cached data if dirty)
+    GEMMETHOD(Update)() = 0;
+    GEMMETHOD_(bool, HasContent)() const = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -568,8 +544,6 @@ struct XUITextElement : public XUIElement
     GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
     GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
-
-    GEMMETHOD_(XGfxSurface*, GetAtlasSurface)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

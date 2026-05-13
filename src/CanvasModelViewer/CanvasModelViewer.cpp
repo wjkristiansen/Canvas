@@ -234,12 +234,172 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
+// Window subclass providing message-driven mouse input for the viewer.
+// Deltas are accumulated from WM_INPUT (raw input) so they are not
+// clamped by ClipCursor, giving unbounded rotation.  ClipCursor keeps
+// the hidden cursor inside the client area to maintain window focus.
+// SetCursorPos is intentionally avoided — cursor-warp latency over
+// Remote Desktop causes large spurious deltas.
+//------------------------------------------------------------------------------------------------
+class CViewerWindow : public ThinWin::CWindow
+{
+public:
+    using CWindow::CWindow;
+
+    bool IsMouseCaptured() const { return m_Captured; }
+
+    void SetMouseCaptured(bool captured)
+    {
+        if (captured && !m_Captured)
+        {
+            ::SetCapture(m_hWnd);
+            ::SetCursor(NULL);
+
+            // Confine the hidden cursor to the client area so it can't
+            // wander to another window/monitor and trigger a capture release.
+            RECT rc;
+            ::GetClientRect(m_hWnd, &rc);
+            ::MapWindowPoints(m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
+            ::ClipCursor(&rc);
+
+            // Register for raw mouse input.  Raw deltas bypass ClipCursor
+            // clamping, so rotation is unbounded.  Over RDP this also
+            // triggers the relative-mouse-mode channel (Win 10 1709+).
+            RAWINPUTDEVICE rid{};
+            rid.usUsagePage = 0x01; // HID_USAGE_PAGE_GENERIC
+            rid.usUsage     = 0x02; // HID_USAGE_GENERIC_MOUSE
+            rid.dwFlags     = 0;
+            rid.hwndTarget  = m_hWnd;
+            ::RegisterRawInputDevices(&rid, 1, sizeof(rid));
+
+            m_Captured = true;
+            m_HasLastAbsPos = false;
+            m_MouseDX = 0.0f;
+            m_MouseDY = 0.0f;
+        }
+        else if (!captured && m_Captured)
+        {
+            RAWINPUTDEVICE rid{};
+            rid.usUsagePage = 0x01;
+            rid.usUsage     = 0x02;
+            rid.dwFlags     = RIDEV_REMOVE;
+            rid.hwndTarget  = nullptr;
+            ::RegisterRawInputDevices(&rid, 1, sizeof(rid));
+
+            ::ClipCursor(nullptr);
+            ::ReleaseCapture();
+            ::SetCursor(LoadCursor(NULL, IDC_ARROW));
+            m_Captured = false;
+        }
+    }
+
+    void ConsumeMouseDelta(float& dx, float& dy)
+    {
+        dx = m_MouseDX;
+        dy = m_MouseDY;
+        m_MouseDX = 0.0f;
+        m_MouseDY = 0.0f;
+    }
+
+    LRESULT WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam) override
+    {
+        switch (uMsg)
+        {
+        case WM_INPUT:
+            if (m_Captured)
+            {
+                UINT dwSize = sizeof(RAWINPUT);
+                alignas(RAWINPUT) BYTE buffer[sizeof(RAWINPUT)];
+                if (::GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam),
+                        RID_INPUT, buffer, &dwSize, sizeof(RAWINPUTHEADER)) != UINT(-1))
+                {
+                    const auto* raw = reinterpret_cast<const RAWINPUT*>(buffer);
+                    if (raw->header.dwType == RIM_TYPEMOUSE)
+                    {
+                        const RAWMOUSE& mouse = raw->data.mouse;
+                        if (mouse.usFlags & MOUSE_MOVE_ABSOLUTE)
+                        {
+                            // Absolute coordinates (RDP absolute mode, touch, etc.)
+                            // Map the 0-65535 range to virtual-desktop pixels.
+                            float absX, absY;
+                            if (mouse.usFlags & MOUSE_VIRTUAL_DESKTOP)
+                            {
+                                int vdW = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
+                                int vdH = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
+                                absX = (mouse.lLastX / 65535.0f) * vdW;
+                                absY = (mouse.lLastY / 65535.0f) * vdH;
+                            }
+                            else
+                            {
+                                absX = (mouse.lLastX / 65535.0f) * ::GetSystemMetrics(SM_CXSCREEN);
+                                absY = (mouse.lLastY / 65535.0f) * ::GetSystemMetrics(SM_CYSCREEN);
+                            }
+
+                            if (m_HasLastAbsPos)
+                            {
+                                m_MouseDX += absX - m_LastAbsX;
+                                m_MouseDY += absY - m_LastAbsY;
+                            }
+                            m_LastAbsX = absX;
+                            m_LastAbsY = absY;
+                            m_HasLastAbsPos = true;
+                        }
+                        else
+                        {
+                            // Relative movement (local mouse, RDP relative mode).
+                            m_MouseDX += static_cast<float>(mouse.lLastX);
+                            m_MouseDY += static_cast<float>(mouse.lLastY);
+                        }
+                    }
+                }
+                return 0;
+            }
+            break;
+
+        case WM_MOUSEMOVE:
+            if (m_Captured)
+            {
+                // Keep cursor hidden (WM_SETCURSOR is suppressed during capture).
+                ::SetCursor(NULL);
+                return 0;
+            }
+            break;
+
+        case WM_SETCURSOR:
+            if (LOWORD(lParam) == HTCLIENT)
+            {
+                // Hide cursor while captured; restore arrow otherwise
+                // (the window class has no default cursor).
+                ::SetCursor(m_Captured ? NULL : LoadCursor(NULL, IDC_ARROW));
+                return TRUE;
+            }
+            break;
+
+        case WM_CAPTURECHANGED:
+            if (reinterpret_cast<HWND>(lParam) != m_hWnd)
+                m_Captured = false;
+            return 0;
+        }
+
+        return CWindow::WindowProc(uMsg, wParam, lParam);
+    }
+
+private:
+    float m_MouseDX = 0.0f;
+    float m_MouseDY = 0.0f;
+    float m_LastAbsX = 0.0f;
+    float m_LastAbsY = 0.0f;
+    bool m_HasLastAbsPos = false;
+    bool m_Captured = false;
+};
+
+//------------------------------------------------------------------------------------------------
 class CApp
 {
     std::string m_Title;
     HINSTANCE m_hInstance;
     Gem::TGemPtr<Canvas::XLogger> m_pLogger;
-    std::unique_ptr<ThinWin::CWindow> m_pWindow;
+    std::unique_ptr<CViewerWindow> m_pWindow;
     Gem::TGemPtr<Canvas::XCanvas> m_pCanvas;
     Gem::TGemPtr<Canvas::XSceneGraph> m_pScene;
     Gem::TGemPtr<Canvas::XCamera> m_pCamera;
@@ -270,8 +430,6 @@ class CApp
     // Camera controller state
     float m_CameraYaw = 0.0f;    // Radians, around world Z (up)
     float m_CameraPitch = 0.0f;  // Radians, around camera right
-    bool m_MouseCaptured = false;
-    POINT m_LastCursorPos = {};
 
     void FrameCameraToBounds(
         Canvas::XCamera *pCamera,
@@ -497,277 +655,25 @@ class CApp
         // -----------------------------------------------------------------
         // Build XModel from imported FBX data
         // -----------------------------------------------------------------
-        Gem::TGemPtr<Canvas::XModel> pModel;
-        Gem::ThrowGemError(pCanvas->CreateModel(pDevice, &pModel, importPath.filename().string().c_str()));
-
-        // -----------------------------------------------------------------
-        // Textures: WIC-decode each unique image referenced by the scene.
-        // Failed loads remain null; downstream code checks before binding.
-        // -----------------------------------------------------------------
         CWicTextureLoader textureLoader;
-        std::vector<Gem::TGemPtr<Canvas::XGfxSurface>> textures(imported.Textures.size());
-        for (size_t i = 0; i < imported.Textures.size(); ++i)
+        Canvas::XLogger *pLocalLogger = m_pLogger.Get();
+        Canvas::Fbx::BuildModelOptions buildOpts;
+        buildOpts.pModelName = importPath.filename().string().c_str();
+        buildOpts.pLogger = pLocalLogger;
+        buildOpts.TextureLoader = [&textureLoader, pLocalLogger](
+            Canvas::XGfxDevice *pDev,
+            const Canvas::Fbx::ImportedTextureRef &ref,
+            Canvas::XGfxSurface **ppSurface) -> bool
         {
-            const Canvas::Fbx::ImportedTextureRef &ref = imported.Textures[i];
-            if (!textureLoader.Load(pDevice, ref, textures[i], m_pLogger.Get()))
-            {
-                Canvas::LogWarn(m_pLogger.Get(),
-                    "Texture %zu failed to load (path='%s', embedded=%s); material slot will be unbound",
-                    i, ref.AbsoluteFilePath.c_str(), ref.Embedded ? "true" : "false");
-            }
-            else
-            {
-                Canvas::LogInfo(m_pLogger.Get(), "Loaded texture %zu '%s' (embedded=%s)",
-                    i, ref.AbsoluteFilePath.c_str(), ref.Embedded ? "true" : "false");
-                pModel->AddTexture(textures[i]);
-            }
-        }
-
-        // -----------------------------------------------------------------
-        // Materials: one XGfxMaterial per ImportedMaterial. Bind textures
-        // when they loaded successfully; factors are always set.
-        // -----------------------------------------------------------------
-        auto BindRole = [&](Canvas::XGfxMaterial *pMaterial,
-                            Canvas::MaterialLayerRole role,
-                            int32_t textureIndex)
-        {
-            if (textureIndex < 0)
-                return;
-            if (static_cast<size_t>(textureIndex) >= textures.size())
-                return;
-            Canvas::XGfxSurface *pSurface = textures[static_cast<size_t>(textureIndex)].Get();
-            if (!pSurface)
-                return;
-            pMaterial->SetTexture(role, pSurface);
+            Gem::TGemPtr<Canvas::XGfxSurface> surface;
+            if (!textureLoader.Load(pDev, ref, surface, pLocalLogger))
+                return false;
+            *ppSurface = surface.Detach();
+            return true;
         };
 
-        std::vector<Gem::TGemPtr<Canvas::XGfxMaterial>> materials(imported.Materials.size());
-        for (size_t i = 0; i < imported.Materials.size(); ++i)
-        {
-            const Canvas::Fbx::ImportedMaterial &srcMat = imported.Materials[i];
-            Gem::TGemPtr<Canvas::XGfxMaterial> pMaterial;
-            Gem::ThrowGemError(pDevice->CreateMaterial(&pMaterial));
-            pMaterial->SetBaseColorFactor(srcMat.BaseColorFactor);
-            pMaterial->SetEmissiveFactor(srcMat.EmissiveFactor);
-            pMaterial->SetRoughMetalAOFactor(srcMat.RoughMetalAOFactor);
-            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Albedo,           srcMat.AlbedoTextureIndex);
-            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Normal,           srcMat.NormalTextureIndex);
-            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Emissive,         srcMat.EmissiveTextureIndex);
-            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Roughness,        srcMat.RoughnessTextureIndex);
-            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Metallic,         srcMat.MetallicTextureIndex);
-            BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::AmbientOcclusion, srcMat.AmbientOcclusionTextureIndex);
-            materials[i] = pMaterial;
-            pModel->AddMaterial(pMaterial);
-            Canvas::LogInfo(m_pLogger.Get(),
-                "Imported material %zu '%s': baseColor=(%.3f,%.3f,%.3f,%.3f) tex(A=%d N=%d E=%d R=%d M=%d O=%d)",
-                i, srcMat.Name.c_str(),
-                srcMat.BaseColorFactor[0], srcMat.BaseColorFactor[1],
-                srcMat.BaseColorFactor[2], srcMat.BaseColorFactor[3],
-                srcMat.AlbedoTextureIndex, srcMat.NormalTextureIndex, srcMat.EmissiveTextureIndex,
-                srcMat.RoughnessTextureIndex, srcMat.MetallicTextureIndex, srcMat.AmbientOcclusionTextureIndex);
-        }
-
-        // -----------------------------------------------------------------
-        // Mesh data: create GPU mesh data and add to model resource library
-        // -----------------------------------------------------------------
-        std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> meshDataByIndex(imported.Meshes.size());
-        for (size_t meshIndex = 0; meshIndex < imported.Meshes.size(); ++meshIndex)
-        {
-            const Canvas::Fbx::ImportedMesh &srcMesh = imported.Meshes[meshIndex];
-            if (srcMesh.Parts.empty())
-            {
-                Canvas::LogWarn(m_pLogger.Get(), "Skipping imported mesh '%s': no parts", srcMesh.Name.c_str());
-                continue;
-            }
-
-            std::vector<Canvas::MeshDataGroupDesc> groups;
-            groups.reserve(srcMesh.Parts.size());
-            for (size_t partIndex = 0; partIndex < srcMesh.Parts.size(); ++partIndex)
-            {
-                const Canvas::Fbx::ImportedMeshPart &part = srcMesh.Parts[partIndex];
-                const uint32_t vertexCount = part.GetVertexCount();
-                if (vertexCount == 0 || part.Normals.size() != part.Positions.size())
-                {
-                    Canvas::LogWarn(m_pLogger.Get(),
-                        "Mesh '%s' part %zu: invalid vertex streams (positions=%zu normals=%zu); skipping part",
-                        srcMesh.Name.c_str(), partIndex, part.Positions.size(), part.Normals.size());
-                    continue;
-                }
-
-                Canvas::MeshDataGroupDesc group{};
-                group.VertexCount = vertexCount;
-                group.pPositions  = part.Positions.data();
-                group.pNormals    = part.Normals.data();
-                group.pUV0        = (part.UV0.size() == vertexCount) ? part.UV0.data() : nullptr;
-                group.pTangents   = (part.Tangents.size() == vertexCount) ? part.Tangents.data() : nullptr;
-                if (part.MaterialIndex >= 0 &&
-                    static_cast<size_t>(part.MaterialIndex) < materials.size())
-                {
-                    group.pMaterial = materials[static_cast<size_t>(part.MaterialIndex)].Get();
-                }
-                groups.push_back(group);
-            }
-
-            if (groups.empty())
-            {
-                Canvas::LogWarn(m_pLogger.Get(), "Mesh '%s': all parts skipped; no XGfxMeshData created", srcMesh.Name.c_str());
-                continue;
-            }
-
-            Canvas::MeshDataDesc desc{};
-            desc.pGroups    = groups.data();
-            desc.GroupCount = static_cast<uint32_t>(groups.size());
-            desc.pName      = srcMesh.Name.c_str();
-
-            Gem::TGemPtr<Canvas::XGfxMeshData> pMeshData;
-            Gem::ThrowGemError(pDevice->CreateMeshData(desc, &pMeshData));
-
-            meshDataByIndex[meshIndex] = pMeshData;
-            pModel->AddMeshData(pMeshData);
-        }
-
-        // -----------------------------------------------------------------
-        // Build model node hierarchy: lights, cameras, nodes
-        // -----------------------------------------------------------------
-        std::vector<Gem::TGemPtr<Canvas::XLight>> lightsByIndex(imported.Lights.size());
-        std::vector<Gem::TGemPtr<Canvas::XCamera>> camerasByIndex(imported.Cameras.size());
-
-        for (size_t lightIndex = 0; lightIndex < imported.Lights.size(); ++lightIndex)
-        {
-            const Canvas::Fbx::ImportedLight &srcLight = imported.Lights[lightIndex];
-            const std::string lightName = srcLight.Name.empty() ? ("ImportedLight_" + std::to_string(lightIndex)) : srcLight.Name;
-
-            const char* lightType = "Unknown";
-            switch (srcLight.Type)
-            {
-            case Canvas::LightType::Point: lightType = "Point"; break;
-            case Canvas::LightType::Directional: lightType = "Directional"; break;
-            case Canvas::LightType::Spot: lightType = "Spot"; break;
-            case Canvas::LightType::Ambient: lightType = "Ambient"; break;
-            case Canvas::LightType::Area: lightType = "Area"; break;
-            default: break;
-            }
-
-            Canvas::LogInfo(m_pLogger.Get(),
-                "Imported light values: name='%s' type=%s color=(%.6f, %.6f, %.6f) intensity=%.6f range=%.6f attenuation=(%.6f, %.6f, %.6f) spot=(inner=%.6f outer=%.6f)",
-                lightName.c_str(),
-                lightType,
-                srcLight.Color[0], srcLight.Color[1], srcLight.Color[2],
-                srcLight.Intensity,
-                srcLight.Range,
-                srcLight.AttenuationConst,
-                srcLight.AttenuationLinear,
-                srcLight.AttenuationQuad,
-                srcLight.SpotInnerAngle,
-                srcLight.SpotOuterAngle);
-
-            Gem::TGemPtr<Canvas::XLight> pLight;
-            Gem::ThrowGemError(pCanvas->CreateLight(srcLight.Type, &pLight, lightName.c_str()));
-            pLight->SetColor(srcLight.Color);
-            pLight->SetIntensity(srcLight.Intensity);
-            pLight->SetRange(srcLight.Range);
-            pLight->SetAttenuation(srcLight.AttenuationConst, srcLight.AttenuationLinear, srcLight.AttenuationQuad);
-            if (srcLight.Type == Canvas::LightType::Spot)
-                pLight->SetSpotAngles(srcLight.SpotInnerAngle, srcLight.SpotOuterAngle);
-
-            lightsByIndex[lightIndex].Attach(pLight.Detach());
-        }
-
-        for (size_t cameraIndex = 0; cameraIndex < imported.Cameras.size(); ++cameraIndex)
-        {
-            const Canvas::Fbx::ImportedCamera &srcCamera = imported.Cameras[cameraIndex];
-            const std::string cameraName = srcCamera.Name.empty() ? ("ImportedCamera_" + std::to_string(cameraIndex)) : srcCamera.Name;
-
-            Gem::TGemPtr<Canvas::XCamera> pImportedCamera;
-            Gem::ThrowGemError(pCanvas->CreateCamera(&pImportedCamera, cameraName.c_str()));
-            pImportedCamera->SetNearClip(srcCamera.NearClip);
-            pImportedCamera->SetFarClip(srcCamera.FarClip);
-            pImportedCamera->SetFovAngle(srcCamera.FovAngle);
-            pImportedCamera->SetAspectRatio(srcCamera.AspectRatio);
-
-            camerasByIndex[cameraIndex].Attach(pImportedCamera.Detach());
-        }
-
-        // Build model's node tree
-        Canvas::XSceneGraphNode *pModelRoot = pModel->GetRootNode();
-        std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> nodes(imported.Nodes.size());
-
-        for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
-        {
-            const Canvas::Fbx::ImportedNode &srcNode = imported.Nodes[nodeIndex];
-            const std::string nodeName = srcNode.Name.empty() ? ("ImportedNode_" + std::to_string(nodeIndex)) : srcNode.Name;
-
-            Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pNode, nodeName.c_str()));
-            pNode->SetName(nodeName.c_str());
-            pNode->SetLocalTranslation(srcNode.Translation);
-            pNode->SetLocalRotation(srcNode.Rotation);
-            pNode->SetLocalScale(srcNode.Scale);
-
-            if (srcNode.MeshIndex >= 0 && static_cast<size_t>(srcNode.MeshIndex) < meshDataByIndex.size())
-            {
-                Canvas::XGfxMeshData *pMeshData = meshDataByIndex[static_cast<size_t>(srcNode.MeshIndex)].Get();
-                if (pMeshData)
-                {
-                    const std::string meshInstanceName = nodeName + "_Mesh";
-                    Gem::TGemPtr<Canvas::XMeshInstance> pMeshInstance;
-                    Gem::ThrowGemError(pCanvas->CreateMeshInstance(&pMeshInstance, meshInstanceName.c_str()));
-                    pMeshInstance->SetMeshData(pMeshData);
-                    Gem::ThrowGemError(pNode->BindElement(pMeshInstance));
-                    LogNodeTransform("Imported mesh node", pNode);
-                }
-            }
-
-            if (srcNode.LightIndex >= 0 && static_cast<size_t>(srcNode.LightIndex) < lightsByIndex.size())
-            {
-                Canvas::XLight *pLight = lightsByIndex[static_cast<size_t>(srcNode.LightIndex)].Get();
-                if (pLight)
-                {
-                    Gem::ThrowGemError(pNode->BindElement(pLight));
-                    LogNodeTransform("Imported light node", pNode);
-                }
-            }
-
-            if (srcNode.CameraIndex >= 0 && static_cast<size_t>(srcNode.CameraIndex) < camerasByIndex.size())
-            {
-                Canvas::XCamera *pImportedCamera = camerasByIndex[static_cast<size_t>(srcNode.CameraIndex)].Get();
-                if (pImportedCamera)
-                {
-                    Gem::ThrowGemError(pNode->BindElement(pImportedCamera));
-                }
-            }
-
-            nodes[nodeIndex].Attach(pNode.Detach());
-        }
-
-        // Wire parent-child relationships into the model's hierarchy
-        for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
-        {
-            const int32_t parentIndex = imported.Nodes[nodeIndex].ParentIndex;
-            if (parentIndex >= 0 && static_cast<size_t>(parentIndex) < nodes.size())
-                nodes[static_cast<size_t>(parentIndex)]->AddChild(nodes[nodeIndex]);
-            else
-                pModelRoot->AddChild(nodes[nodeIndex]);
-        }
-
-        // Set active camera node on the model
-        if (imported.ActiveCameraNodeIndex >= 0 && static_cast<size_t>(imported.ActiveCameraNodeIndex) < nodes.size())
-        {
-            pModel->SetActiveCameraNode(nodes[static_cast<size_t>(imported.ActiveCameraNodeIndex)].Get());
-        }
-        else if (!camerasByIndex.empty())
-        {
-            // Fall back: find first node that has a camera
-            for (size_t nodeIndex = 0; nodeIndex < imported.Nodes.size(); ++nodeIndex)
-            {
-                if (imported.Nodes[nodeIndex].CameraIndex >= 0)
-                {
-                    pModel->SetActiveCameraNode(nodes[nodeIndex].Get());
-                    Canvas::LogWarn(m_pLogger.Get(), "Imported scene has no explicit active camera; using first camera node");
-                    break;
-                }
-            }
-        }
+        Gem::TGemPtr<Canvas::XModel> pModel;
+        Gem::ThrowGemError(Canvas::Fbx::BuildModel(pCanvas, pDevice, imported, buildOpts, &pModel));
 
         // Store model bounds
         // (SetBounds is on CModel, not the interface — we set it here since
@@ -894,7 +800,7 @@ public:
         try
         {
             initStep = "create_window";
-            std::unique_ptr<ThinWin::CWindow> pWindow = std::make_unique<ThinWin::CWindow>(m_Title.c_str(), m_hInstance, WS_OVERLAPPEDWINDOW);
+            auto pWindow = std::make_unique<CViewerWindow>(m_Title.c_str(), m_hInstance, WS_OVERLAPPEDWINDOW);
             if (!pWindow.get())
             {
                 Gem::ThrowGemError(Gem::Result::OutOfMemory);
@@ -1034,7 +940,7 @@ public:
             Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
             Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, &pUIGraph));
 
-            // Create UI graph nodes for positioning
+            // Single HUD node for all UI elements
             Gem::TGemPtr<Canvas::XUIGraphNode> pHudNode;
             Gem::ThrowGemError(pUIGraph->CreateNode(nullptr, &pHudNode));
             pHudNode->SetLocalPosition(Canvas::Math::FloatVector2(6.0f, 6.0f));
@@ -1046,14 +952,11 @@ public:
             pHudPanel->SetSize(Canvas::Math::FloatVector2(340.0f, 70.0f));
             pHudPanel->SetFillColor(Canvas::Math::FloatVector4(0.125f, 0.125f, 0.125f, 0.75f));
 
-            // Title text — child node of HUD
-            Gem::TGemPtr<Canvas::XUIGraphNode> pTitleNode;
-            Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pTitleNode));
-            pTitleNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 4.0f));
-
+            // Title text
             Gem::TGemPtr<Canvas::XUITextElement> pTitleText;
             Gem::ThrowGemError(pDevice->CreateTextElement(&pTitleText));
-            pTitleNode->BindElement(pTitleText);
+            pHudNode->BindElement(pTitleText);
+            pTitleText->SetLocalOffset(Canvas::Math::FloatVector2(4.0f, 4.0f));
             pTitleText->SetFont(pFont);
             {
                 Canvas::TextLayoutConfig titleConfig;
@@ -1063,14 +966,11 @@ public:
             }
             pTitleText->SetText("Canvas Model Viewer");
 
-            // FPS text — child node of HUD
-            Gem::TGemPtr<Canvas::XUIGraphNode> pFpsNode;
-            Gem::ThrowGemError(pUIGraph->CreateNode(pHudNode, &pFpsNode));
-            pFpsNode->SetLocalPosition(Canvas::Math::FloatVector2(4.0f, 40.0f));
-
+            // FPS text
             Gem::TGemPtr<Canvas::XUITextElement> pFpsText;
             Gem::ThrowGemError(pDevice->CreateTextElement(&pFpsText));
-            pFpsNode->BindElement(pFpsText);
+            pHudNode->BindElement(pFpsText);
+            pFpsText->SetLocalOffset(Canvas::Math::FloatVector2(4.0f, 40.0f));
             pFpsText->SetFont(pFontMono);
             {
                 Canvas::TextLayoutConfig monoConfig;
@@ -1140,40 +1040,16 @@ public:
         constexpr float kMouseSensitivity = 0.003f;  // radians per pixel (~360° over ~2094 px ≈ 8 inches at 96 DPI)
         constexpr float kPitchLimit = static_cast<float>(Canvas::Math::Pi / 2.0) - 0.01f;
 
-        // RAII guard to ensure cursor is always unclipped/shown on exit, even if we
-        // terminate abnormally.  Leaving the cursor clipped or hidden is a system-wide
-        // side-effect that survives the process.
+        // RAII guard to release mouse capture on exit (normal or exceptional).
         struct CursorGuard
         {
-            bool* pCaptured;
-            CursorGuard(bool* p) : pCaptured(p) {}
-            ~CursorGuard()
-            {
-                if (*pCaptured)
-                {
-                    ClipCursor(nullptr);
-                    while (ShowCursor(TRUE) < 0) {}
-                    *pCaptured = false;
-                }
-            }
-        } cursorGuard(&m_MouseCaptured);
+            CViewerWindow* pWindow;
+            CursorGuard(CViewerWindow* w) : pWindow(w) {}
+            ~CursorGuard() { pWindow->SetMouseCaptured(false); }
+        } cursorGuard(m_pWindow.get());
 
-        // Capture cursor on startup
-        {
-            RECT rc;
-            GetClientRect(m_pWindow->m_hWnd, &rc);
-            POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
-            ClientToScreen(m_pWindow->m_hWnd, &center);
-            SetCursorPos(center.x, center.y);
-            m_LastCursorPos = center;
-
-            // Clip cursor to window and hide it
-            GetClientRect(m_pWindow->m_hWnd, &rc);
-            MapWindowPoints(m_pWindow->m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
-            ClipCursor(&rc);
-            while (ShowCursor(FALSE) >= 0) {} // hide until count < 0
-            m_MouseCaptured = true;
-        }
+        // Capture mouse on startup
+        m_pWindow->SetMouseCaptured(true);
 
         for (; running;)
         {
@@ -1199,50 +1075,27 @@ public:
             // Camera controller: mouse look + WASD movement
             //==================================================================
             
-            // Track focus changes — release/acquire cursor as needed
+            // Track focus changes — release/acquire mouse capture as needed
             HWND foreground = GetForegroundWindow();
             HWND foregroundRoot = foreground ? GetAncestor(foreground, GA_ROOT) : nullptr;
             bool hasFocus = (foreground == m_pWindow->m_hWnd) ||
                             (foregroundRoot == m_pWindow->m_hWnd) ||
                             (foreground && IsChild(m_pWindow->m_hWnd, foreground));
-            if (hasFocus && !m_MouseCaptured)
+            if (hasFocus && !m_pWindow->IsMouseCaptured())
             {
-                // Re-acquire cursor
-                RECT rc;
-                GetClientRect(m_pWindow->m_hWnd, &rc);
-                POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
-                ClientToScreen(m_pWindow->m_hWnd, &center);
-                SetCursorPos(center.x, center.y);
-
-                MapWindowPoints(m_pWindow->m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
-                ClipCursor(&rc);
-                while (ShowCursor(FALSE) >= 0) {}
-                m_MouseCaptured = true;
+                m_pWindow->SetMouseCaptured(true);
             }
-            else if (!hasFocus && m_MouseCaptured)
+            else if (!hasFocus && m_pWindow->IsMouseCaptured())
             {
-                // Release cursor
-                ClipCursor(nullptr);
-                while (ShowCursor(TRUE) < 0) {}
-                m_MouseCaptured = false;
+                m_pWindow->SetMouseCaptured(false);
             }
 
             float dx = 0.0f;
             float dy = 0.0f;
             bool rotated = false;
-            if (m_MouseCaptured)
+            if (m_pWindow->IsMouseCaptured())
             {
-                // Mouse delta → yaw/pitch
-                RECT rc;
-                GetClientRect(m_pWindow->m_hWnd, &rc);
-                POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
-                ClientToScreen(m_pWindow->m_hWnd, &center);
-
-                POINT cursorPos;
-                GetCursorPos(&cursorPos);
-                dx = static_cast<float>(cursorPos.x - center.x);
-                dy = static_cast<float>(cursorPos.y - center.y);
-                SetCursorPos(center.x, center.y);
+                m_pWindow->ConsumeMouseDelta(dx, dy);
 
                 if (fabsf(dx) > 0.0f || fabsf(dy) > 0.0f)
                 {

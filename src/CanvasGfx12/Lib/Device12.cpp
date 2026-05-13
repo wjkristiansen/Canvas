@@ -9,7 +9,8 @@
 #include "Buffer12.h"
 #include "MeshData12.h"
 #include "Material12.h"
-#include "GlyphAtlas.h"
+#include "UITextElement12.h"
+#include "UIRectElement12.h"
 
 //------------------------------------------------------------------------------------------------
 #if defined(_DEBUG)
@@ -601,14 +602,14 @@ GEMMETHODIMP CDevice12::FlushUploads()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut)
+GEMMETHODIMP CDevice12::AllocateStructuredBuffer(uint32_t elementCount, uint32_t elementStride, const void* pInitialData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut)
 {
-    if (vertexCount == 0 || vertexStride == 0 || !pVertexData || !pRQ)
+    if (elementCount == 0 || elementStride == 0 || !pRQ)
         return Gem::Result::InvalidArg;
 
     try
     {
-        uint64_t dataSize = static_cast<uint64_t>(vertexCount) * vertexStride;
+        uint64_t dataSize = static_cast<uint64_t>(elementCount) * elementStride;
         auto* pRQ12 = static_cast<CRenderQueue12*>(pRQ);
 
         // Caller is swapping in a fresh buffer; retire the old one to the pool.
@@ -638,7 +639,7 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
 
             Gem::TGemPtr<CBuffer12> pBuffer;
             Gem::ThrowGemError(TGfxElement<CBuffer12>::CreateAndRegister<CBuffer12>(
-                &pBuffer, GetCanvas(), alloc.pResource, "VertexBuffer"));
+                &pBuffer, GetCanvas(), alloc.pResource, "StructuredBuffer"));
             pBuffer->SetAllocationTracking(this, alloc.AllocationKey, alloc.SizeInUnits, alloc.AllocatorTier);
 
             inOut.pBuffer       = pBuffer;
@@ -647,20 +648,22 @@ GEMMETHODIMP CDevice12::AllocVertexBuffer(uint32_t vertexCount, uint32_t vertexS
         inOut.Offset = 0;
         inOut.Size   = dataSize;
 
-        // Stage and enqueue the upload on the device's copy queue.  The
-        // consuming render queue gates on the copy fence at submit time.
-        auto* pDstBuffer = static_cast<CBuffer12*>(inOut.pBuffer.Get());
-        HostWriteAllocation staging;
-        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(dataSize, staging));
-        memcpy(staging.pMapped, pVertexData, static_cast<size_t>(dataSize));
+        // Upload initial data if provided
+        if (pInitialData)
+        {
+            auto* pDstBuffer = static_cast<CBuffer12*>(inOut.pBuffer.Get());
+            HostWriteAllocation staging;
+            Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(dataSize, staging));
+            memcpy(staging.pMapped, pInitialData, static_cast<size_t>(dataSize));
 
-        Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive;
-        pDstBuffer->QueryInterface(&pDstKeepAlive);
-        m_CopyQueue.EnqueueBufferCopy(
-            staging.pResource, staging.ResourceOffset,
-            pDstBuffer->GetD3DResource(), 0,
-            dataSize,
-            std::move(pDstKeepAlive));
+            Gem::TGemPtr<Gem::XGeneric> pDstKeepAlive;
+            pDstBuffer->QueryInterface(&pDstKeepAlive);
+            m_CopyQueue.EnqueueBufferCopy(
+                staging.pResource, staging.ResourceOffset,
+                pDstBuffer->GetD3DResource(), 0,
+                dataSize,
+                std::move(pDstKeepAlive));
+        }
 
         return Gem::Result::Success;
     }
@@ -735,17 +738,9 @@ Canvas::XGfxSurface* CDevice12::GetGlyphAtlasSurface()
 {
     if (!m_pGlyphAtlasSurface)
     {
-        auto* pCanvas = GetCanvas();
-        if (!pCanvas)
-            return nullptr;
-
-        auto* pCache = pCanvas->GetGlyphCache();
-        if (!pCache)
-            return nullptr;
-
         Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
             Canvas::GfxFormat::R8_UNorm,
-            pCache->GetAtlasSize(), pCache->GetAtlasSize(),
+            m_GlyphCache.GetAtlasSize(), m_GlyphCache.GetAtlasSize(),
             Canvas::SurfaceFlag_ShaderResource, 1);
         CreateSurface(desc, &m_pGlyphAtlasSurface);
     }
@@ -762,8 +757,14 @@ GEMMETHODIMP CDevice12::CreateTextElement(Canvas::XUITextElement **ppElement)
     if (!pCanvas)
         return Gem::Result::NotFound;
 
-    auto* pAtlas = GetGlyphAtlasSurface();
-    return pCanvas->CreateTextElement(pAtlas, ppElement);
+    Gem::TGemPtr<CUITextElement12> pElement =
+        new Gem::TGenericImpl<CUITextElement12>(pCanvas, &m_GlyphCache);
+    pElement->SetName("UITextElement");
+    Gem::Result result = pCanvas->RegisterElement(pElement.Get());
+    if (Gem::Failed(result))
+        return result;
+    *ppElement = pElement.Detach();
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -776,5 +777,12 @@ GEMMETHODIMP CDevice12::CreateRectElement(Canvas::XUIRectElement **ppElement)
     if (!pCanvas)
         return Gem::Result::NotFound;
 
-    return pCanvas->CreateRectElement(ppElement);
+    Gem::TGemPtr<CUIRectElement12> pElement =
+        new Gem::TGenericImpl<CUIRectElement12>(pCanvas);
+    pElement->SetName("UIRectElement");
+    Gem::Result result = pCanvas->RegisterElement(pElement.Get());
+    if (Gem::Failed(result))
+        return result;
+    *ppElement = pElement.Detach();
+    return Gem::Result::Success;
 }

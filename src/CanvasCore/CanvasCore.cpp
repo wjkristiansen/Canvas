@@ -13,7 +13,6 @@
 #include "Scene.h"
 #include "CanvasGfx.h"
 #include "FontImpl.h"
-#include "GlyphAtlas.h"
 #include "UIGraph.h"
 
 namespace Canvas
@@ -228,40 +227,6 @@ GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XUIGraph** ppGraph)
     pGraph->Register(this);
     pGraph->SetDevice(pDevice);
     *ppGraph = pGraph.Detach();
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateTextElement(XGfxSurface* pAtlasSurface, XUITextElement** ppElement)
-{
-    if (!ppElement)
-        return Gem::Result::BadPointer;
-
-    Gem::TGemPtr<CUITextElement> pElement = new Gem::TGenericImpl<CUITextElement>(this, m_GlyphCache.get(), pAtlasSurface);
-    pElement->SetName("UITextElement");
-    // m_pCanvas is already set by the constructor; call RegisterElement directly
-    // to avoid a spurious Unregister() on a not-yet-registered element.
-    Gem::Result result = RegisterElement(pElement.Get());
-    if (Gem::Failed(result))
-        return result;
-    *ppElement = pElement.Detach();
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateRectElement(XUIRectElement** ppElement)
-{
-    if (!ppElement)
-        return Gem::Result::BadPointer;
-
-    Gem::TGemPtr<CUIRectElement> pElement = new Gem::TGenericImpl<CUIRectElement>(this);
-    pElement->SetName("UIRectElement");
-    // m_pCanvas is already set by the constructor; call RegisterElement directly
-    // to avoid a spurious Unregister() on a not-yet-registered element.
-    Gem::Result result = RegisterElement(pElement.Get());
-    if (Gem::Failed(result))
-        return result;
-    *ppElement = pElement.Detach();
     return Gem::Result::Success;
 }
 

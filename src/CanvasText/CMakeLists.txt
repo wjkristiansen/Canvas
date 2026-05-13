@@ -6,10 +6,12 @@ add_library(CanvasText STATIC
     # Source files
     Font.cpp
     SDFGenerator.cpp
+    GlyphAtlas.cpp
     
     # Header files (for IDE organization)
     Font.h
     SDFGenerator.h
+    GlyphAtlas.h
     pch.h
 )
 
@@ -45,6 +47,9 @@ endif()
 
 # Use precompiled headers
 target_precompile_headers(CanvasText PRIVATE pch.h)
+
+# Link RectanglePacker (used by GlyphAtlas for atlas bin-packing)
+target_link_libraries(CanvasText PUBLIC RectanglePacker)
 
 # Installation
 install(TARGETS CanvasText

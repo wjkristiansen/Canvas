@@ -16,6 +16,7 @@ add_library(CanvasGfx12 SHARED
     Material12.cpp
     ResourceAllocator.cpp
     ResourceManager.cpp
+    UITextElement12.cpp
     UploadRing.cpp
     dllmain.cpp
     pch.h
@@ -72,6 +73,7 @@ endif()
 # Link with other Canvas libraries
 target_link_libraries(CanvasGfx12 PRIVATE
     CanvasCore
+    CanvasText
     D3D12ResourceUtils
     GEM
     Allocators

@@ -30,13 +30,13 @@ Key concepts:
 
 | Concept                             | Description                                                                                                                                                        |
 |-------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **XCanvas**                         | Root object and factory.  Creates scenes, cameras, lights, meshes, fonts, and UI elements.                                                                         |
+| **XCanvas**                         | Root object and factory.  Creates scenes, cameras, lights, meshes, fonts, and UI graphs.                                                                           |
 | **XSceneGraph / XSceneGraphNode**   | Hierarchical transform graph.  Nodes carry local rotation (quaternion), translation, and scale; global transforms are lazily computed with dirty-flag propagation. |
 | **XCamera**                         | Perspective camera (FOV, near/far clip, aspect ratio, exposure compensation).  Attaches to a scene-graph node for positioning.                                     |
 | **XLight**                          | Point, directional, spot, ambient, and area light types with attenuation and spot-angle parameters.                                                                |
 | **XMeshInstance**                   | Binds GPU mesh data to a scene-graph node for rendering.                                                                                                           |
 | **XUIGraph / XUIGraphNode**         | 2-D UI overlay graph with position inheritance and dirty-tracked update.                                                                                           |
-| **XUITextElement / XUIRectElement** | Text (SDF-rendered) and filled-rectangle HUD primitives.                                                                                                           |
+| **XUITextElement / XUIRectElement** | Text (SDF-rendered) and filled-rectangle HUD primitives. Created via `XGfxDevice`.                                                                                 |
 | **XFont**                           | TrueType font resource providing metric access (ascender, descender, units-per-em).                                                                                |
 
 All interfaces use the **GEM** object model, a lightweight COM-style system with reference counting, `QueryInterface`, and 64-bit interface IDs. This gives Canvas a stable ABI boundary between core and backend without pulling in COM infrastructure.

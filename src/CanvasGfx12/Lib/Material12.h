@@ -10,6 +10,11 @@
 
 #include "CanvasGfx12.h"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure was padded due to alignment specifier
+#endif
+
 class CMaterial12 : public TGfxElement<Canvas::XGfxMaterial>
 {
 public:
@@ -75,3 +80,7 @@ private:
     Canvas::Math::FloatVector4 m_EmissiveFactor     = { 0.0f, 0.0f, 0.0f, 0.0f };
     Canvas::Math::FloatVector4 m_RoughMetalAOFactor = { 1.0f, 0.0f, 1.0f, 0.0f };
 };
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

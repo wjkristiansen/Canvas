@@ -393,10 +393,10 @@ namespace Canvas
             return CreateMeshData(desc, ppMesh);
         }
 
-        // Vertex buffer suballocation (alloc + upload in one call).
-        // If `inOut` already holds a buffer, it is retired to the vertex buffer
-        // pool for future reuse; the caller receives a (possibly pooled) replacement.
-        GEMMETHOD(AllocVertexBuffer)(uint32_t vertexCount, uint32_t vertexStride, const void* pVertexData, XGfxRenderQueue* pRQ, GfxResourceAllocation& inOut) = 0;
+        // Allocate a GPU buffer and optionally upload initial data.
+        // If `inOut` already holds a buffer, it is retired to the pool for future reuse.
+        // pInitialData may be null to allocate without uploading.
+        GEMMETHOD(AllocateStructuredBuffer)(uint32_t elementCount, uint32_t elementStride, const void* pInitialData, XGfxRenderQueue* pRQ, GfxResourceAllocation& inOut) = 0;
 
         // Force any pending uploads (mesh data, vertex buffers) staged via this
         // device to be submitted to the GPU now.  Uploads run asynchronously on a
