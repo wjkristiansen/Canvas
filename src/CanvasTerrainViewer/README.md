@@ -96,7 +96,7 @@ not throwaway.
 | LOD granularity       | Per chunk (geomipmap / CDLOD / quadtree)      | Per edge, continuous                                  |
 | Crack handling        | Skirts or stitch strips                       | Edge tess factors agree across patches                |
 | Authoring complexity  | More CPU code, simpler shaders                | Tess pipeline state, HS/DS authoring                  |
-| Compatibility         | Universal                                     | D3D12 baseline ?                                      |
+| Compatibility         | Universal                                     | D3D12 baseline (yes)                                  |
 
 **Both, in stages** (see Plan in stages above). v1 reuses the existing
 `CreateMeshData` path; v2 introduces the dedicated **terrain PSO
@@ -133,7 +133,7 @@ tessDist       = clamp(edgePixels / targetEdgePixels, 1, maxTess)
 #### Curvature term - 2nd derivative
 
 ```
-d2        ~ |h(p+d) ? 2*h(p) + h(p?d)| / d^2
+d2        ~ |h(p+d) - 2*h(p) + h(p-d)| / d^2
 curvBoost = 1 + curvatureGain * sqrt(d2_at_edge_mid)
 ```
 
@@ -192,14 +192,14 @@ matching does the wrong thing here (visible cliff). The clean
 formulation is **layered sampling**:
 
 ```
-H_world(x, y) = Sum? w?(x, y) * H?(x, y)
+H_world(x, y) = Sum_i w_i(x, y) * H_i(x, y)
 ```
 
-normalized by `max(Sum w?, ?)` so layers don't have to sum to 1.
+normalized by `max(Sum w_i, eps)` so layers don't have to sum to 1.
 
-- Each `H?` is a `XHeightField` layer with its own `dxy` /
+- Each `H_i` is a `XHeightField` layer with its own `dxy` /
   `heightScale` / `heightBias`.
-- Influence masks `w?(x, y)` in [0, 1] come in three flavors:
+- Influence masks `w_i(x, y)` in [0, 1] come in three flavors:
   - **Feathered rect** - inner rect at full weight, outer falloff over
     `blendWidth` (texels or meters). Curve enum:
     `linear` / `smoothstep` (cubic) / `smootherstep` (quintic).
@@ -222,7 +222,7 @@ A single-layer fast path keeps v1/v2 cost identical to today.
 
 #### Use cases the composition path enables
 
-- **Detail noise** added on top of a base heightfield (small `H?`,
+- **Detail noise** added on top of a base heightfield (small `H_i`,
   high frequency, weight 1).
 - **Erosion / hydraulic passes** baked as deltas over a base.
 - **Crater / impact overlays** dropped at runtime as small layers
@@ -269,19 +269,78 @@ G-buffer layout.
   - **Sun:** direction `(cos theta, 0, sin theta)`; warm yellow-white
     `~(1.00, 0.95, 0.80)`; intensity gated by `smoothstep` on
     `sin theta` so it falls to ~0 below the horizon.
-  - **Moon:** direction = `?sun`; cool blue
+  - **Moon:** direction = `-sun`; cool blue
     `~(0.55, 0.65, 0.95)`; peak intensity ~ **1/40** of the sun;
-    gated by `smoothstep` on `?sin theta`.
+    gated by `smoothstep` on `-sin theta`.
   - Both lights can be non-zero simultaneously near dawn/dusk for a
     smooth crossfade.
 - Ambient `XLight` modulated for warm horizon light and dim blue
-  night.
+  night. The ambient floor is deliberately non-trivial (not just
+  pitch-black at night, not just "absence of direct light" during the
+  day) so unlit / back-facing surfaces stay readable. Magnitude is
+  tuned against the deferred composite's exposure so a slope facing
+  away from the sun reads as "in shadow" without becoming a black
+  silhouette. Future improvement: drive ambient from a sample of the
+  low-mip sky cubemap.
 - HUD shows time-of-day (HH:MM on a virtual 24 h clock).
-- Hotkeys: `[` / `]` scrub ?15 min; `\` toggles pause.
+- Hotkeys: `[` / `]` scrub +/-15 min; `\` toggles pause.
 - Implemented as a small `DayNightCycle` helper in the viewer app -
   no engine-level changes; uses the existing directional + ambient
   `XLight` types.
-- Drives the sky tint and sun/moon sprite positions.
+- Drives the sky tint, sun/moon sprite positions, and the shadow
+  pass orientation (see *Shadow casting* below).
+
+### Shadow casting
+
+Each directional light (sun, moon) gets its own orthographic depth
+pass that renders the terrain (and, later, water and any opaque
+non-terrain geometry) from the light's point of view. The deferred
+composite samples both maps and uses the result as a per-light
+visibility multiplier on top of the NdotL term.
+
+Staging:
+
+- **v1** - render only the sun's shadow map; moon contribution
+  computed without shadows (very low intensity; negligible visual
+  cost to skip).
+- **v2** - add the moon shadow map. Same pipeline as the sun, just
+  with the polar-opposite light direction.
+- **v3 (future)** - cascaded shadow maps (CSM) for the sun, to
+  preserve fidelity across the full visible terrain range without a
+  single huge texture.
+
+Design notes:
+
+- **Projection:** orthographic, because directional lights are at
+  infinity. Bounds are computed each frame from the camera's view
+  frustum projected onto the light-space plane and snapped to the
+  shadow map texel grid to avoid edge-shimmer when the camera moves.
+- **Texture:** depth-only target, `D32_Float` (preferred for range
+  + precision) or `D16_UNorm` (smaller; revisit if memory tight).
+  Resolution `2048 x 2048` as the v1 default, tunable from the
+  HUD / command line.
+- **Render pass:** a new shadow-only PSO that re-uses the terrain
+  vertex stage (and the v2 HS/DS stages once they exist) but binds
+  no pixel shader. Two passes per frame in v2 (sun + moon).
+- **Filtering:** 3x3 PCF in the composite shader. Avoids hard
+  aliased shadow edges without large blur-kernel cost.
+- **Bias:** small constant depth bias plus a slope-scaled term
+  driven by `dot(N, L)` to suppress acne on lit slopes without
+  introducing peter-panning on flat ground.
+- **Culling:** the shadow pass uses front-face culling (instead of
+  the usual back-face) to keep depth comparisons stable on the lit
+  side. Doubles as a cheap mitigation for shadow acne.
+- **Quality vs perf knob:** `--shadowmap-size <N>` and
+  `--shadow-bias <f>` on the command line; HUD tweakable later.
+
+Day/night coupling:
+
+- Shadow contribution fades out with the light's own intensity gate
+  (`sunGate` / `moonGate` from the day/night cycle). Below-horizon
+  lights skip their shadow pass entirely.
+- Near the horizon, very long shadow ortho bounds make small far
+  features dominate. The shadow projection snaps to a maximum
+  reasonable extent so dawn/dusk doesn't blow the cascade budget.
 
 ### Sky
 
@@ -310,7 +369,7 @@ trivial while the eventual implementation has room to grow.
 - Sun and moon rendered as **screen-aligned sprites**, *not* baked
   into the cubemap.
 - Position: project the day/night sun direction `(cos theta, 0, sin theta)`
-  (and `?sun` for moon) into clip space, drop a quad of fixed
+  (and `-sun` for moon) into clip space, drop a quad of fixed
   angular size (e.g. ~0.5 deg for the moon, ~0.55 deg for the sun, both
   HUD-tunable).
 - Textured with a small RGBA sprite (soft-edged disc + optional
