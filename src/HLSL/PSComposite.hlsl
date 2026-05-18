@@ -1,4 +1,7 @@
-// Composition pixel shader — reads G-buffers and performs deferred lighting.
+// Composition pixel shader - reads G-buffers and performs deferred lighting.
+// On pixels with no geometry (empty G-buffer) emits an analytic sky color
+// reconstructed from the per-frame camera basis + lights, so the day/night
+// cycle drives the visible sky tint with zero extra binding cost.
 // Outputs final lit color to the back buffer (SV_Target0).
 
 // G-buffer textures bound via descriptor table
@@ -31,6 +34,84 @@ float ComputeAttenuation(float4 attenuationAndRange, float dist, float distSq)
     return (denom > 1e-6) ? rcp(denom) : 1.0;
 }
 
+//----------------------------------------------------------------------------
+// Reconstruct a world-space view ray for the current screen UV using the
+// per-frame camera basis + projection params (no matrix inverse required).
+//----------------------------------------------------------------------------
+float3 ScreenUVToWorldDir(float2 uv)
+{
+    float2 ndc = uv * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    float tanHalfFovY = PerFrame.CamForwardAndTanHalfFov.w;
+    float aspect      = PerFrame.CamRightAndAspect.w;
+    float3 fwd        = PerFrame.CamForwardAndTanHalfFov.xyz;
+    float3 right      = PerFrame.CamRightAndAspect.xyz;
+    float3 up         = PerFrame.CamUp.xyz;
+    // Row-vector convention: row 1 = "left", so the visible right of screen
+    // is -row[1]. Mirror the x ray accordingly.
+    float3 dir = fwd
+               + (-right) * (ndc.x * tanHalfFovY * aspect)
+               + up       * (ndc.y * tanHalfFovY);
+    return normalize(dir);
+}
+
+//----------------------------------------------------------------------------
+// Analytic sky for pixels with no geometry. Two contributions:
+//   (1) A vertical gradient zenith -> horizon -> ground (cosine-weighted by
+//       directional-light brightness so the sky goes dark at night).
+//   (2) A small sun/moon disc where the view ray aligns with the inverse
+//       direction of any directional light.
+//----------------------------------------------------------------------------
+float3 SampleSky(float3 viewDir)
+{
+    float verticalT = saturate(viewDir.z * 0.5 + 0.5);  // 0 nadir -> 0.5 horizon -> 1 zenith
+
+    // Base palette is fixed; day/night brightness comes from the directional
+    // lights summed below. The constants are chosen to read as "a sky" even
+    // when there's no light at all.
+    float3 zenithBase  = float3(0.05, 0.08, 0.18);
+    float3 horizonBase = float3(0.18, 0.20, 0.25);
+    float3 groundBase  = float3(0.02, 0.02, 0.03);
+
+    float3 sky;
+    if (viewDir.z >= 0.0)
+        sky = lerp(horizonBase, zenithBase, smoothstep(0.0, 1.0, viewDir.z));
+    else
+        sky = lerp(horizonBase, groundBase, smoothstep(0.0, 1.0, -viewDir.z));
+
+    // Per-light contribution: warm tint near each directional light's
+    // anti-direction, sun-disc highlight at the brightest end of the cone.
+    [loop]
+    for (uint i = 0; i < PerFrame.LightCount && i < MAX_LIGHTS_PER_REGION; ++i)
+    {
+        HlslLight light = PerFrame.Lights[i];
+        if (light.Type != LIGHT_DIRECTIONAL)
+            continue;
+
+        // DirectionOrPosition is the direction photons travel; the apparent
+        // position of the source is the opposite.
+        float3 sourceDir = normalize(-light.DirectionOrPosition.xyz);
+        float c = saturate(dot(viewDir, sourceDir));
+
+        // Atmospheric scattering proxy: smooth halo with a steep core.
+        float halo = pow(c, 8.0)  * 0.4;
+        float disc = pow(c, 512.0) * 4.0;
+        float3 srcColor = light.Color.rgb;
+        float srcMag = max(max(srcColor.r, srcColor.g), srcColor.b);
+
+        // Modulate base sky brightness by directional-light strength so the
+        // sky darkens at night naturally.
+        sky *= (1.0 + srcMag * 0.4);
+
+        // Add halo + disc, clipped to the upper hemisphere so the sun/moon
+        // don't punch through ground pixels in the analytic sky.
+        if (viewDir.z > -0.1)
+            sky += srcColor * (halo + disc);
+    }
+
+    return sky;
+}
+
 float4 PSComposite(FSInput input) : SV_Target0
 {
     // Sample G-buffers
@@ -38,11 +119,18 @@ float4 PSComposite(FSInput input) : SV_Target0
     float4 diffuseSample = GBufferDiffuseColor.Sample(PointSampler, input.TexCoord);
     float4 worldPosSample = GBufferWorldPos.Sample(PointSampler, input.TexCoord);
 
-    // Skip pixels with no geometry (alpha == 0 means nothing was written)
+    // No geometry at this pixel: emit analytic sky color, then run the
+    // composite's exposure curve on it so it tonemaps consistently with the
+    // lit terrain.
     if (normalSample.a == 0.0)
-        discard;
+    {
+        float3 viewDir = ScreenUVToWorldDir(input.TexCoord);
+        float3 skyColor = SampleSky(viewDir);
+        skyColor = 1.0 - exp(-skyColor * PerFrame.Exposure);
+        return float4(skyColor, 1.0);
+    }
 
-    // Decode world-space normal from [0,1] → [-1,1]
+    // Decode world-space normal from [0,1] -> [-1,1]
     float3 N = normalize(normalSample.rgb * 2.0 - 1.0);
     float3 albedo = diffuseSample.rgb;
     float3 P = worldPosSample.xyz;

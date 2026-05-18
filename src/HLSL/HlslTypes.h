@@ -45,6 +45,15 @@ struct ALIGN16 HlslPerFrameConstants
 {
     ROW_MAJOR float4x4 ViewProj;
     float4 CameraWorldPos;
+
+    // Per-frame camera basis + projection params for view-ray reconstruction
+    // in fullscreen passes (e.g. the analytic sky in PSComposite). Packs
+    // forward / right / up world-space basis vectors with the FOV-derived
+    // tangent and aspect ratio in the w channels.
+    float4 CamForwardAndTanHalfFov;   // xyz = forward, w = tan(fovY / 2)
+    float4 CamRightAndAspect;         // xyz = right,   w = aspect (W/H)
+    float4 CamUp;                     // xyz = up,      w = unused
+
     uint LightCount;
     float LightCullThreshold;
     float Exposure;            // Linear scene-radiance multiplier (exp2(stops))
