@@ -1,0 +1,36 @@
+{
+  // Default scene shipped with CanvasTerrainViewer.
+  // Paths are resolved relative to this file's directory.
+  // CLI flags (--heightmap, --heightscale, --atlas-albedo, --atlas-orm, etc.)
+  // override individual fields after this file is loaded.
+  "scene": {
+    "name": "default"
+  },
+  "tiles": [
+    {
+      "heightmap":   "default_heightmap.png",
+      "dxy":         1.0,
+      "heightScale": 64.0,
+      "originXY":    [0, 0]
+    }
+  ],
+  "material": {
+    "atlasAlbedo":       "terrain_atlas_albedo.png",
+    "atlasORM":          "terrain_atlas_orm.png",
+    "atlasRepeatMeters": 8.0,
+    "biome": {
+      "sandMaxMeters":  4,
+      "sandFadeMeters": 8,
+      "snowMinMeters":  42,
+      "snowFadeMeters": 52,
+      "slopeRockMin":   0.10,
+      "slopeRockMax":   0.30
+    }
+  },
+  "camera": {
+    // Start south of the tile, looking north toward center.
+    "startPositionXYZ": [0, -800, 100],
+    "startLookAtXYZ":   [0,    0,   0],
+    "fovDegrees":       60
+  }
+}

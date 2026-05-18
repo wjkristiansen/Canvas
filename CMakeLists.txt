@@ -108,6 +108,12 @@ target_include_directories(GEM INTERFACE
     $<INSTALL_INTERFACE:include/GEM>
 )
 
+# Header-only nlohmann/json (single-include build)
+add_library(NlohmannJson INTERFACE)
+target_include_directories(NlohmannJson INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/json/single_include>
+)
+
 # Add subdirectories for submodules first (they may be dependencies)
 add_subdirectory(deps/QLog)
 add_subdirectory(deps/ThinWin)

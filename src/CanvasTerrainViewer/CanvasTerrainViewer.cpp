@@ -10,6 +10,7 @@
 #include "pch.h"
 #include "HeightField.h"
 #include "ImageLoader.h"
+#include "SceneConfig.h"
 #include "TerrainMaterial.h"
 #include "QLogAdapter.h"
 #include "TokenParser.h"
@@ -431,11 +432,7 @@ class CTerrainApp
     bool              m_logFps;
     float             m_fps = 0.0f;
     std::string       m_statusString;
-    std::filesystem::path m_HeightmapPath;
-    std::filesystem::path m_AtlasAlbedoPath;
-    std::filesystem::path m_AtlasORMPath;
-    float             m_DxyMeters   = 1.0f;
-    float             m_HeightScale = 64.0f;
+    Canvas::TerrainViewer::SceneConfig m_SceneConfig;
     float             m_CycleSeconds = CDayNightCycle::kDefaultCycleSeconds;
 
     float m_CameraYaw   = 0.0f;
@@ -443,84 +440,73 @@ class CTerrainApp
 
     bool LoadTerrain()
     {
-        // If the user didn't pass --heightmap, fall back to the default
-        // sample asset shipped beside the executable (assets/default_heightmap.png).
-        if (m_HeightmapPath.empty())
+        if (m_SceneConfig.Tiles.empty())
         {
-            wchar_t exePath[MAX_PATH] = {};
-            GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-            std::filesystem::path candidate =
-                std::filesystem::path(exePath).parent_path() /
-                "assets" / "default_heightmap.png";
-            if (std::filesystem::exists(candidate))
-            {
-                Canvas::LogInfo(m_pLogger.Get(),
-                    "No --heightmap provided; using default sample '%s'",
-                    candidate.string().c_str());
-                m_HeightmapPath = std::move(candidate);
-            }
-            else
-            {
-                Canvas::LogError(m_pLogger.Get(),
-                    "No --heightmap provided and no default sample found at '%s'",
-                    candidate.string().c_str());
-                return false;
-            }
+            Canvas::LogError(m_pLogger.Get(), "Scene has no tiles");
+            return false;
         }
-        if (!std::filesystem::exists(m_HeightmapPath))
+        const Canvas::TerrainViewer::SceneTile& tile = m_SceneConfig.Tiles[0];
+
+        if (tile.Heightmap.empty())
+        {
+            Canvas::LogError(m_pLogger.Get(), "Scene tile has no heightmap path");
+            return false;
+        }
+        if (!std::filesystem::exists(tile.Heightmap))
         {
             Canvas::LogError(m_pLogger.Get(), "Heightmap file not found: '%s'",
-                m_HeightmapPath.string().c_str());
+                tile.Heightmap.string().c_str());
             return false;
         }
 
         Canvas::HeightField::LoadOptions loadOpts;
-        loadOpts.DxyMeters   = m_DxyMeters;
-        loadOpts.HeightScale = m_HeightScale;
+        loadOpts.DxyMeters   = tile.Dxy;
+        loadOpts.HeightScale = tile.HeightScale;
+        loadOpts.HeightBias  = tile.HeightBias;
 
         Canvas::HeightField::HeightField field;
-        const std::wstring widePath = m_HeightmapPath.wstring();
+        const std::wstring widePath = tile.Heightmap.wstring();
         if (!Canvas::HeightField::LoadHeightFieldWIC(
                 widePath.c_str(), loadOpts, &field, m_pLogger.Get()))
         {
             Canvas::LogError(m_pLogger.Get(), "Failed to load heightmap '%s'",
-                m_HeightmapPath.string().c_str());
+                tile.Heightmap.string().c_str());
             return false;
         }
 
-        // Build the terrain material. The atlas pair is either user-supplied
-        // via --atlas-albedo / --atlas-orm or falls back to the sample assets
-        // shipped beside the executable.
-        const auto exeDir = []{
-            wchar_t path[MAX_PATH] = {};
-            GetModuleFileNameW(nullptr, path, MAX_PATH);
-            return std::filesystem::path(path).parent_path();
-        }();
-        const std::filesystem::path defaultAlbedo = exeDir / "assets" / "terrain_atlas_albedo.png";
-        const std::filesystem::path defaultORM    = exeDir / "assets" / "terrain_atlas_orm.png";
-        const std::filesystem::path albedoPath = m_AtlasAlbedoPath.empty() ? defaultAlbedo : m_AtlasAlbedoPath;
-        const std::filesystem::path ormPath    = m_AtlasORMPath.empty()    ? defaultORM    : m_AtlasORMPath;
+        const Canvas::TerrainViewer::SceneMaterial& mat = m_SceneConfig.Material;
+        if (mat.AtlasAlbedo.empty() || mat.AtlasORM.empty())
+        {
+            Canvas::LogError(m_pLogger.Get(), "Scene material is missing atlas paths");
+            return false;
+        }
 
         Canvas::TerrainViewer::ImageRGBA8 albedoAtlas, ormAtlas;
-        if (!Canvas::TerrainViewer::LoadImageRGBA8(albedoPath.wstring().c_str(),
+        if (!Canvas::TerrainViewer::LoadImageRGBA8(mat.AtlasAlbedo.wstring().c_str(),
                 &albedoAtlas, m_pLogger.Get()))
         {
             Canvas::LogError(m_pLogger.Get(), "Failed to load atlas albedo '%s'",
-                albedoPath.string().c_str());
+                mat.AtlasAlbedo.string().c_str());
             return false;
         }
-        if (!Canvas::TerrainViewer::LoadImageRGBA8(ormPath.wstring().c_str(),
+        if (!Canvas::TerrainViewer::LoadImageRGBA8(mat.AtlasORM.wstring().c_str(),
                 &ormAtlas, m_pLogger.Get()))
         {
             Canvas::LogError(m_pLogger.Get(), "Failed to load atlas ORM '%s'",
-                ormPath.string().c_str());
+                mat.AtlasORM.string().c_str());
             return false;
         }
 
         Canvas::TerrainViewer::TerrainMaterialOptions matOpts;
-        matOpts.OriginX           = -0.5f * field.WorldWidth();
-        matOpts.OriginY           = -0.5f * field.WorldHeight();
-        matOpts.AtlasRepeatMeters = 8.0f;
+        matOpts.OriginX           = tile.OriginX - 0.5f * field.WorldWidth();
+        matOpts.OriginY           = tile.OriginY - 0.5f * field.WorldHeight();
+        matOpts.AtlasRepeatMeters = mat.AtlasRepeatMeters;
+        matOpts.SandMaxMeters     = mat.Biome.SandMaxMeters;
+        matOpts.SandFadeMeters    = mat.Biome.SandFadeMeters;
+        matOpts.SnowMinMeters     = mat.Biome.SnowMinMeters;
+        matOpts.SnowFadeMeters    = mat.Biome.SnowFadeMeters;
+        matOpts.SlopeRockMin      = mat.Biome.SlopeRockMin;
+        matOpts.SlopeRockMax      = mat.Biome.SlopeRockMax;
 
         Canvas::TerrainViewer::TerrainMaterialOutputs matOutputs;
         Gem::Result mr = Canvas::TerrainViewer::BuildTerrainMaterial(
@@ -533,7 +519,6 @@ class CTerrainApp
         }
 
         Gem::ThrowGemError(m_pGfxDevice->CreateMaterial(&m_pTerrainMaterial));
-        // Factors stay at identity (1) so the textures' values pass through unscaled.
         m_pTerrainMaterial->SetBaseColorFactor(
             Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f));
         m_pTerrainMaterial->SetRoughMetalAOFactor(
@@ -543,11 +528,10 @@ class CTerrainApp
         m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::Roughness,        matOutputs.pRoughness);
 
         Canvas::HeightField::TerrainMeshOptions meshOpts;
-        // Center the tile under the camera so default framing works.
-        meshOpts.OriginX = -0.5f * field.WorldWidth();
-        meshOpts.OriginY = -0.5f * field.WorldHeight();
+        meshOpts.OriginX   = matOpts.OriginX;
+        meshOpts.OriginY   = matOpts.OriginY;
         meshOpts.pMaterial = m_pTerrainMaterial;
-        meshOpts.Stride = 1;
+        meshOpts.Stride    = 1;
 
         Gem::Result r = Canvas::HeightField::BuildTerrainMesh(
             m_pGfxDevice, field, meshOpts, &m_pTerrainMesh, "TerrainMesh");
@@ -565,25 +549,26 @@ class CTerrainApp
         m_pTerrainNode->BindElement(m_pTerrainInstance);
         m_pScene->GetRootSceneGraphNode()->AddChild(m_pTerrainNode);
 
-        // Frame the camera above the centered tile.
-        const float halfWidthM  = 0.5f * field.WorldWidth();
-        const float halfHeightM = 0.5f * field.WorldHeight();
-        const float radius      = std::sqrt(halfWidthM * halfWidthM + halfHeightM * halfHeightM);
+        // Camera start pose from the scene config.
+        const Canvas::TerrainViewer::SceneCamera& sc = m_SceneConfig.Camera;
+        const float halfDiag = 0.5f * std::sqrt(
+            field.WorldWidth()  * field.WorldWidth() +
+            field.WorldHeight() * field.WorldHeight());
 
         if (m_pCamera)
         {
-            const float farClip = std::max(500.0f, radius * 6.0f);
+            m_pCamera->SetFovAngle(sc.FovDegrees * static_cast<float>(Canvas::Math::Pi / 180.0));
+            // Far clip large enough to see the whole tile from any reasonable
+            // start vantage.
+            const float farClip = std::max(1000.0f, halfDiag * 6.0f);
             m_pCamera->SetFarClip(farClip);
         }
 
         if (auto* pCamNode = m_pCamera ? m_pCamera->GetAttachedNode() : nullptr)
         {
-            // Place camera south of tile center, looking down at ~30 deg.
-            const float dist = radius * 1.4f;
-            Canvas::Math::FloatVector4 pos(0.0f, -dist, m_HeightScale * 0.6f + 50.0f, 0.0f);
-            pCamNode->SetLocalTranslation(pos);
+            pCamNode->SetLocalTranslation(sc.StartPosition);
 
-            Canvas::Math::FloatVector4 forward = (-pos).Normalize();
+            Canvas::Math::FloatVector4 forward = (sc.StartLookAt - sc.StartPosition).Normalize();
             Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
             Canvas::Math::FloatMatrix4x4 rot = Canvas::Math::IdentityMatrix<float, 4, 4>();
             rot[0] = forward;
@@ -595,7 +580,8 @@ class CTerrainApp
         }
 
         Canvas::LogInfo(m_pLogger.Get(),
-            "Terrain ready: %u x %u texels (%.1f x %.1f m), heightScale=%.1fm",
+            "Terrain ready: scene='%s' tile=%u x %u texels (%.1f x %.1f m), heightScale=%.1fm",
+            m_SceneConfig.Name.c_str(),
             field.Desc.Width, field.Desc.Height,
             field.WorldWidth(), field.WorldHeight(),
             field.Desc.HeightScale);
@@ -609,22 +595,14 @@ public:
         Gem::TGemPtr<Canvas::XLogger> pLogger,
         int       exitFrameCount,
         bool      logFps,
-        std::filesystem::path heightmapPath,
-        std::filesystem::path atlasAlbedoPath,
-        std::filesystem::path atlasORMPath,
-        float     dxy,
-        float     heightScale,
+        Canvas::TerrainViewer::SceneConfig scene,
         float     cycleSeconds)
         : m_Title(szTitle)
         , m_hInstance(hInstance)
         , m_pLogger(pLogger)
         , m_exitFrameCount(exitFrameCount)
         , m_logFps(logFps)
-        , m_HeightmapPath(std::move(heightmapPath))
-        , m_AtlasAlbedoPath(std::move(atlasAlbedoPath))
-        , m_AtlasORMPath(std::move(atlasORMPath))
-        , m_DxyMeters(dxy)
-        , m_HeightScale(heightScale)
+        , m_SceneConfig(std::move(scene))
         , m_CycleSeconds(cycleSeconds)
     {
     }
@@ -983,13 +961,17 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     std::string logFile;
     bool        logConsole = false;
     bool        logFps     = false;
+    std::string scenePath;
     std::string heightmapPath;
     std::string atlasAlbedoPath;
     std::string atlasORMPath;
     int         exitFrameCount = -1;
-    float       dxy = 1.0f;
-    float       heightScale = 64.0f;
-    float       cycleSeconds = CDayNightCycle::kDefaultCycleSeconds;
+    // Float sentinels: NaN means "user did not supply this flag" so we know
+    // whether to override the corresponding scene field.
+    constexpr float kFltUnset = std::numeric_limits<float>::quiet_NaN();
+    float       dxy = kFltUnset;
+    float       heightScale = kFltUnset;
+    float       cycleSeconds = CDayNightCycle::kDefaultCycleSeconds; // viewer pref, no override semantics
 
     try
     {
@@ -1001,24 +983,28 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
             .SetDescription("Exit application after N frames (useful for automated testing)")
             .BindTo(exitFrameCount);
 
+        rootCmd.AddOption(InCommand::OptionType::Variable, "scene")
+            .SetDescription("Path to a JSON scene file (default: assets/CanvasTerrainViewer/scene.json beside the exe)")
+            .BindTo(scenePath);
+
         rootCmd.AddOption(InCommand::OptionType::Variable, "heightmap")
-            .SetDescription("Path to a heightfield bitmap (any WIC-decodable format)")
+            .SetDescription("Heightfield bitmap path (overrides scene.tiles[0].heightmap)")
             .BindTo(heightmapPath);
 
         rootCmd.AddOption(InCommand::OptionType::Variable, "atlas-albedo")
-            .SetDescription("Path to a 2x2 RGBA material atlas (grass/rock/sand/snow albedo)")
+            .SetDescription("Material atlas albedo path (overrides scene.material.atlasAlbedo)")
             .BindTo(atlasAlbedoPath);
 
         rootCmd.AddOption(InCommand::OptionType::Variable, "atlas-orm")
-            .SetDescription("Path to a 2x2 RGBA material atlas (R=AO G=Roughness B=Metallic)")
+            .SetDescription("Material atlas ORM path (overrides scene.material.atlasORM)")
             .BindTo(atlasORMPath);
 
         rootCmd.AddOption(InCommand::OptionType::Variable, "dxy")
-            .SetDescription("World spacing per heightmap texel, in meters (default 1.0)")
+            .SetDescription("World spacing per heightmap texel, in meters (overrides scene.tiles[0].dxy)")
             .BindTo(dxy);
 
         rootCmd.AddOption(InCommand::OptionType::Variable, "heightscale")
-            .SetDescription("Maximum terrain height in meters (default 64)")
+            .SetDescription("Maximum terrain height in meters (overrides scene.tiles[0].heightScale)")
             .BindTo(heightScale);
 
         rootCmd.AddOption(InCommand::OptionType::Variable, "cycleseconds")
@@ -1116,9 +1102,11 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
 
     Canvas::LogInfo(pLogger.Get(), "Log file: %s", logFilePath.string().c_str());
     Canvas::LogInfo(pLogger.Get(),
-        "Startup: --heightmap='%s' --atlas-albedo='%s' --atlas-orm='%s' --dxy=%.3f --heightscale=%.1f --cycleseconds=%.1f log='%s'",
-        heightmapPath.c_str(), atlasAlbedoPath.c_str(), atlasORMPath.c_str(),
-        dxy, heightScale, cycleSeconds, logLevel.c_str());
+        "Startup: --scene='%s' --heightmap='%s' --atlas-albedo='%s' --atlas-orm='%s' "
+        "--dxy=%g --heightscale=%g --cycleseconds=%.1f log='%s'",
+        scenePath.c_str(), heightmapPath.c_str(), atlasAlbedoPath.c_str(), atlasORMPath.c_str(),
+        static_cast<double>(dxy), static_cast<double>(heightScale),
+        cycleSeconds, logLevel.c_str());
 
     ThinWin::CWindow::RegisterWindowClass(hInstance);
 
@@ -1126,13 +1114,59 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         return s.empty() ? std::filesystem::path{} : std::filesystem::u8path(s);
     };
 
+    // -------------------------------------------------------------------------
+    // Scene: load JSON (or fall back to built-in defaults), then apply CLI
+    // overrides on top.
+    // -------------------------------------------------------------------------
+    const std::filesystem::path exeDir = std::filesystem::path(exePathBuf).parent_path();
+
+    Canvas::TerrainViewer::SceneConfig scene;
+    Canvas::TerrainViewer::ApplyDefaults(scene);
+    // Resolve the built-in default paths against the exe directory, which is
+    // where the staged sample assets live.
+    {
+        auto resolveExe = [&](std::filesystem::path& p) {
+            if (!p.empty() && p.is_relative())
+                p = std::filesystem::weakly_canonical(exeDir / p);
+        };
+        for (auto& t : scene.Tiles) resolveExe(t.Heightmap);
+        resolveExe(scene.Material.AtlasAlbedo);
+        resolveExe(scene.Material.AtlasORM);
+    }
+
+    std::filesystem::path resolvedScenePath;
+    if (!scenePath.empty())
+        resolvedScenePath = pathFromUtf8(scenePath);
+    else if (std::filesystem::exists(exeDir / "assets" / "CanvasTerrainViewer" / "scene.json"))
+        resolvedScenePath = exeDir / "assets" / "CanvasTerrainViewer" / "scene.json";
+
+    if (!resolvedScenePath.empty())
+    {
+        if (!Canvas::TerrainViewer::LoadSceneConfig(resolvedScenePath, &scene, pLogger.Get()))
+        {
+            Canvas::LogError(pLogger.Get(), "Failed to load scene '%s'; aborting",
+                resolvedScenePath.string().c_str());
+            return FALSE;
+        }
+    }
+    else
+    {
+        Canvas::LogInfo(pLogger.Get(), "No --scene supplied and no assets/CanvasTerrainViewer/scene.json found; using built-in defaults");
+    }
+
+    // Apply CLI overrides on top of the loaded/default scene.
+    if (scene.Tiles.empty()) scene.Tiles.emplace_back();
+    Canvas::TerrainViewer::SceneTile& tile0 = scene.Tiles.front();
+    if (!heightmapPath.empty())   tile0.Heightmap = pathFromUtf8(heightmapPath);
+    if (std::isfinite(dxy))       tile0.Dxy = dxy;
+    if (std::isfinite(heightScale)) tile0.HeightScale = heightScale;
+    if (!atlasAlbedoPath.empty()) scene.Material.AtlasAlbedo = pathFromUtf8(atlasAlbedoPath);
+    if (!atlasORMPath.empty())    scene.Material.AtlasORM    = pathFromUtf8(atlasORMPath);
+
     auto pApp = std::make_unique<CTerrainApp>(
         hInstance, "CanvasTerrainViewer", pLogger,
         exitFrameCount, logFps,
-        pathFromUtf8(heightmapPath),
-        pathFromUtf8(atlasAlbedoPath),
-        pathFromUtf8(atlasORMPath),
-        dxy, heightScale, cycleSeconds);
+        std::move(scene), cycleSeconds);
 
     if (!pApp->Initialize(nCmdShow))
     {
