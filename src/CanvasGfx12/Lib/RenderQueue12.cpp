@@ -746,6 +746,58 @@ D3D12_GPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateShaderResourceView(
 //================================================================================================
 
 //------------------------------------------------------------------------------------------------
+void CRenderQueue12::EnsureDefaultPSOWireframe()
+{
+    if (m_pDefaultPSOWireframe)
+        return;
+    EnsureDefaultPSO();  // share root sig + shaders with the solid variant
+
+    auto shaderDir = GetShaderDirectory();
+    auto vsBytecode = LoadShaderBytecode(shaderDir / "VSPrimary.cso");
+    auto psBytecode = LoadShaderBytecode(shaderDir / "PSPrimary.cso");
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = m_pDefaultRootSig;
+    psoDesc.VS = { vsBytecode.data(), vsBytecode.size() };
+    psoDesc.PS = { psBytecode.data(), psBytecode.size() };
+    psoDesc.InputLayout = { nullptr, 0 };
+    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
+    psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+    psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;     // see both sides while debugging
+    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+    psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    psoDesc.SampleMask = UINT_MAX;
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.NumRenderTargets = 5;
+    psoDesc.RTVFormats[0] = CanvasFormatToDXGIFormat(m_GBufferNormalsFormat);
+    psoDesc.RTVFormats[1] = CanvasFormatToDXGIFormat(m_GBufferDiffuseFormat);
+    psoDesc.RTVFormats[2] = CanvasFormatToDXGIFormat(m_GBufferWorldPosFormat);
+    psoDesc.RTVFormats[3] = CanvasFormatToDXGIFormat(m_GBufferPBRFormat);
+    psoDesc.RTVFormats[4] = CanvasFormatToDXGIFormat(m_GBufferEmissiveFormat);
+    psoDesc.SampleDesc.Count = 1;
+    psoDesc.SampleDesc.Quality = 0;
+
+    ThrowFailedHResult(m_pDevice->GetD3DDevice()->CreateGraphicsPipelineState(
+        &psoDesc, IID_PPV_ARGS(&m_pDefaultPSOWireframe)));
+    SetD3D12DebugName(m_pDefaultPSOWireframe, GetName(), "DefaultPSO_Wireframe");
+
+    Canvas::LogInfo(m_pDevice->GetLogger(), "Geometry pass wireframe PSO created");
+}
+
+GEMMETHODIMP_(void) CRenderQueue12::SetGeometryWireframe(bool wireframe)
+{
+    m_GeometryWireframe = wireframe;
+}
+
+GEMMETHODIMP_(bool) CRenderQueue12::GetGeometryWireframe() const
+{
+    return m_GeometryWireframe;
+}
+
+//------------------------------------------------------------------------------------------------
 void CRenderQueue12::EnsureDefaultPSO()
 {
     if (m_pDefaultPSO)
@@ -1239,7 +1291,7 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
             pCL->OMSetRenderTargets(5, m_GBufferRTVs, FALSE, &m_CurrentDSV);
             pCL->RSSetViewports(1, &viewport);
             pCL->RSSetScissorRects(1, &scissor);
-            pCL->SetPipelineState(m_pDefaultPSO);
+            pCL->SetPipelineState(GetActiveDefaultPSO());
             pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
             pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -1511,7 +1563,7 @@ Gem::Result CRenderQueue12::DrawMesh(
         }
         drawTask.RecordFunc = [posGpuAddr, baseGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
-            pCL->SetPipelineState(m_pDefaultPSO);
+            pCL->SetPipelineState(GetActiveDefaultPSO());
             pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
             pCL->OMSetRenderTargets(5, m_GBufferRTVs, FALSE, &m_CurrentDSV);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

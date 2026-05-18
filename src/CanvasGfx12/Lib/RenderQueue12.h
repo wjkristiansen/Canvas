@@ -452,6 +452,8 @@ public:
     CComPtr<ID3D12DescriptorHeap> m_pDSVDescriptorHeap;
     CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
     CComPtr<ID3D12PipelineState> m_pDefaultPSO;
+    CComPtr<ID3D12PipelineState> m_pDefaultPSOWireframe;  // built lazily on first wireframe enable
+    bool                          m_GeometryWireframe = false;
     CComPtr<ID3D12RootSignature> m_pTextRootSig;
     CComPtr<ID3D12PipelineState> m_pTextPSO;
     DXGI_FORMAT m_TextPSOFormat = DXGI_FORMAT_UNKNOWN;
@@ -558,6 +560,8 @@ public:
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
     GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
+    GEMMETHOD_(void, SetGeometryWireframe)(bool wireframe) final;
+    GEMMETHOD_(bool, GetGeometryWireframe)() const final;
     GEMMETHOD(EndFrame)() final;
 
     // Internal functions
@@ -582,6 +586,21 @@ public:
     
     // Create the default (geometry pass) PSO (lazily, on first use)
     void EnsureDefaultPSO();
+
+    // Lazily create the wireframe variant of the geometry pass PSO.
+    void EnsureDefaultPSOWireframe();
+
+    // Pick the appropriate variant of the default geometry pass PSO based
+    // on the current wireframe debug flag.
+    ID3D12PipelineState* GetActiveDefaultPSO()
+    {
+        if (m_GeometryWireframe)
+        {
+            EnsureDefaultPSOWireframe();
+            return m_pDefaultPSOWireframe;
+        }
+        return m_pDefaultPSO;
+    }
 
     // Create the composition PSO and root signature (lazily, on first use)
     void EnsureCompositePSO(DXGI_FORMAT rtvFormat);

@@ -809,7 +809,7 @@ public:
         m_pWindow->SetMouseCaptured(true);
 
         // Edge-detect helpers for hotkeys.
-        bool prevPause = false, prevScrubBack = false, prevScrubFwd = false;
+        bool prevPause = false, prevScrubBack = false, prevScrubFwd = false, prevWire = false;
 
         for (; running;)
         {
@@ -901,10 +901,17 @@ public:
                 const bool kBack = (GetAsyncKeyState(VK_OEM_4) & 0x8000) != 0; // [
                 const bool kFwd  = (GetAsyncKeyState(VK_OEM_6) & 0x8000) != 0; // ]
                 const bool kPause= (GetAsyncKeyState(VK_OEM_5) & 0x8000) != 0; // backslash
+                const bool kWire = (GetAsyncKeyState(VK_TAB)   & 0x8000) != 0;
                 if (kBack && !prevScrubBack) m_DayNight.ScrubMinutes(-15.0f);
                 if (kFwd  && !prevScrubFwd ) m_DayNight.ScrubMinutes( 15.0f);
                 if (kPause&& !prevPause    ) m_DayNight.TogglePaused();
-                prevScrubBack = kBack; prevScrubFwd = kFwd; prevPause = kPause;
+                if (kWire && !prevWire     )
+                {
+                    const bool newState = !m_pGfxRenderQueue->GetGeometryWireframe();
+                    m_pGfxRenderQueue->SetGeometryWireframe(newState);
+                    Canvas::LogInfo(m_pLogger.Get(), "Wireframe %s", newState ? "ON" : "OFF");
+                }
+                prevScrubBack = kBack; prevScrubFwd = kFwd; prevPause = kPause; prevWire = kWire;
             }
 
             m_DayNight.Update(dtime);
