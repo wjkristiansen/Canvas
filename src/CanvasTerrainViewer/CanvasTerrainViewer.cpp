@@ -9,6 +9,8 @@
 
 #include "pch.h"
 #include "HeightField.h"
+#include "ImageLoader.h"
+#include "TerrainMaterial.h"
 #include "QLogAdapter.h"
 #include "TokenParser.h"
 #include "InCommand.h"
@@ -430,6 +432,8 @@ class CTerrainApp
     float             m_fps = 0.0f;
     std::string       m_statusString;
     std::filesystem::path m_HeightmapPath;
+    std::filesystem::path m_AtlasAlbedoPath;
+    std::filesystem::path m_AtlasORMPath;
     float             m_DxyMeters   = 1.0f;
     float             m_HeightScale = 64.0f;
     float             m_CycleSeconds = CDayNightCycle::kDefaultCycleSeconds;
@@ -484,14 +488,59 @@ class CTerrainApp
             return false;
         }
 
-        // Untextured PBR material - relies on default factors. Acts as the v1
-        // material until the slope/altitude blend (terrain-material todo) lands.
+        // Build the terrain material. The atlas pair is either user-supplied
+        // via --atlas-albedo / --atlas-orm or falls back to the sample assets
+        // shipped beside the executable.
+        const auto exeDir = []{
+            wchar_t path[MAX_PATH] = {};
+            GetModuleFileNameW(nullptr, path, MAX_PATH);
+            return std::filesystem::path(path).parent_path();
+        }();
+        const std::filesystem::path defaultAlbedo = exeDir / "assets" / "terrain_atlas_albedo.png";
+        const std::filesystem::path defaultORM    = exeDir / "assets" / "terrain_atlas_orm.png";
+        const std::filesystem::path albedoPath = m_AtlasAlbedoPath.empty() ? defaultAlbedo : m_AtlasAlbedoPath;
+        const std::filesystem::path ormPath    = m_AtlasORMPath.empty()    ? defaultORM    : m_AtlasORMPath;
+
+        Canvas::TerrainViewer::ImageRGBA8 albedoAtlas, ormAtlas;
+        if (!Canvas::TerrainViewer::LoadImageRGBA8(albedoPath.wstring().c_str(),
+                &albedoAtlas, m_pLogger.Get()))
+        {
+            Canvas::LogError(m_pLogger.Get(), "Failed to load atlas albedo '%s'",
+                albedoPath.string().c_str());
+            return false;
+        }
+        if (!Canvas::TerrainViewer::LoadImageRGBA8(ormPath.wstring().c_str(),
+                &ormAtlas, m_pLogger.Get()))
+        {
+            Canvas::LogError(m_pLogger.Get(), "Failed to load atlas ORM '%s'",
+                ormPath.string().c_str());
+            return false;
+        }
+
+        Canvas::TerrainViewer::TerrainMaterialOptions matOpts;
+        matOpts.OriginX           = -0.5f * field.WorldWidth();
+        matOpts.OriginY           = -0.5f * field.WorldHeight();
+        matOpts.AtlasRepeatMeters = 8.0f;
+
+        Canvas::TerrainViewer::TerrainMaterialOutputs matOutputs;
+        Gem::Result mr = Canvas::TerrainViewer::BuildTerrainMaterial(
+            m_pGfxDevice, field, albedoAtlas, ormAtlas, matOpts, &matOutputs, m_pLogger.Get());
+        if (Gem::Failed(mr))
+        {
+            Canvas::LogError(m_pLogger.Get(),
+                "BuildTerrainMaterial failed: %s", GemResultString(mr));
+            return false;
+        }
+
         Gem::ThrowGemError(m_pGfxDevice->CreateMaterial(&m_pTerrainMaterial));
+        // Factors stay at identity (1) so the textures' values pass through unscaled.
         m_pTerrainMaterial->SetBaseColorFactor(
-            Canvas::Math::FloatVector4(0.45f, 0.50f, 0.35f, 1.0f));
-        // R=Roughness G=Metallic B=AO A=spare.
+            Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f));
         m_pTerrainMaterial->SetRoughMetalAOFactor(
-            Canvas::Math::FloatVector4(0.85f, 0.0f, 1.0f, 0.0f));
+            Canvas::Math::FloatVector4(1.0f, 0.0f, 1.0f, 0.0f));
+        m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::Albedo,           matOutputs.pAlbedo);
+        m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::AmbientOcclusion, matOutputs.pAO);
+        m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::Roughness,        matOutputs.pRoughness);
 
         Canvas::HeightField::TerrainMeshOptions meshOpts;
         // Center the tile under the camera so default framing works.
@@ -561,6 +610,8 @@ public:
         int       exitFrameCount,
         bool      logFps,
         std::filesystem::path heightmapPath,
+        std::filesystem::path atlasAlbedoPath,
+        std::filesystem::path atlasORMPath,
         float     dxy,
         float     heightScale,
         float     cycleSeconds)
@@ -570,6 +621,8 @@ public:
         , m_exitFrameCount(exitFrameCount)
         , m_logFps(logFps)
         , m_HeightmapPath(std::move(heightmapPath))
+        , m_AtlasAlbedoPath(std::move(atlasAlbedoPath))
+        , m_AtlasORMPath(std::move(atlasORMPath))
         , m_DxyMeters(dxy)
         , m_HeightScale(heightScale)
         , m_CycleSeconds(cycleSeconds)
@@ -931,6 +984,8 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     bool        logConsole = false;
     bool        logFps     = false;
     std::string heightmapPath;
+    std::string atlasAlbedoPath;
+    std::string atlasORMPath;
     int         exitFrameCount = -1;
     float       dxy = 1.0f;
     float       heightScale = 64.0f;
@@ -949,6 +1004,14 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         rootCmd.AddOption(InCommand::OptionType::Variable, "heightmap")
             .SetDescription("Path to a heightfield bitmap (any WIC-decodable format)")
             .BindTo(heightmapPath);
+
+        rootCmd.AddOption(InCommand::OptionType::Variable, "atlas-albedo")
+            .SetDescription("Path to a 2x2 RGBA material atlas (grass/rock/sand/snow albedo)")
+            .BindTo(atlasAlbedoPath);
+
+        rootCmd.AddOption(InCommand::OptionType::Variable, "atlas-orm")
+            .SetDescription("Path to a 2x2 RGBA material atlas (R=AO G=Roughness B=Metallic)")
+            .BindTo(atlasORMPath);
 
         rootCmd.AddOption(InCommand::OptionType::Variable, "dxy")
             .SetDescription("World spacing per heightmap texel, in meters (default 1.0)")
@@ -1053,19 +1116,23 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
 
     Canvas::LogInfo(pLogger.Get(), "Log file: %s", logFilePath.string().c_str());
     Canvas::LogInfo(pLogger.Get(),
-        "Startup: --heightmap='%s' --dxy=%.3f --heightscale=%.1f --cycleseconds=%.1f log='%s'",
-        heightmapPath.c_str(), dxy, heightScale, cycleSeconds, logLevel.c_str());
+        "Startup: --heightmap='%s' --atlas-albedo='%s' --atlas-orm='%s' --dxy=%.3f --heightscale=%.1f --cycleseconds=%.1f log='%s'",
+        heightmapPath.c_str(), atlasAlbedoPath.c_str(), atlasORMPath.c_str(),
+        dxy, heightScale, cycleSeconds, logLevel.c_str());
 
     ThinWin::CWindow::RegisterWindowClass(hInstance);
 
-    std::filesystem::path heightmap;
-    if (!heightmapPath.empty())
-        heightmap = std::filesystem::u8path(heightmapPath);
+    auto pathFromUtf8 = [](const std::string& s) {
+        return s.empty() ? std::filesystem::path{} : std::filesystem::u8path(s);
+    };
 
     auto pApp = std::make_unique<CTerrainApp>(
         hInstance, "CanvasTerrainViewer", pLogger,
         exitFrameCount, logFps,
-        heightmap, dxy, heightScale, cycleSeconds);
+        pathFromUtf8(heightmapPath),
+        pathFromUtf8(atlasAlbedoPath),
+        pathFromUtf8(atlasORMPath),
+        dxy, heightScale, cycleSeconds);
 
     if (!pApp->Initialize(nCmdShow))
     {

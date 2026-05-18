@@ -7,6 +7,10 @@ add_executable(CanvasTerrainViewer WIN32
     CanvasTerrainViewer.cpp
     HeightField.cpp
     HeightField.h
+    ImageLoader.cpp
+    ImageLoader.h
+    TerrainMaterial.cpp
+    TerrainMaterial.h
     pch.h
     QLogAdapter.h
     CanvasTerrainViewer.rc

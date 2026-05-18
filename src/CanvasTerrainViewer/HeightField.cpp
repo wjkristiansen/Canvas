@@ -73,6 +73,27 @@ bool LoadHeightFieldWIC(
         return false;
     }
 
+    // Validate scale/bias before doing any work; non-finite values would
+    // propagate NaN/Inf into every downstream consumer.
+    if (!std::isfinite(opts.HeightScale) || opts.HeightScale <= 0.0f)
+    {
+        LogError(pLogger, "LoadHeightFieldWIC: HeightScale must be a finite positive value (got %g)",
+            static_cast<double>(opts.HeightScale));
+        return false;
+    }
+    if (!std::isfinite(opts.HeightBias))
+    {
+        LogError(pLogger, "LoadHeightFieldWIC: HeightBias must be finite (got %g)",
+            static_cast<double>(opts.HeightBias));
+        return false;
+    }
+    if (!std::isfinite(opts.DxyMeters) || opts.DxyMeters <= 0.0f)
+    {
+        LogError(pLogger, "LoadHeightFieldWIC: DxyMeters must be a finite positive value (got %g)",
+            static_cast<double>(opts.DxyMeters));
+        return false;
+    }
+
     CComPtr<IWICImagingFactory> pFactory;
     HRESULT hr = EnsureFactory(pFactory);
     if (FAILED(hr))
@@ -271,8 +292,14 @@ Gem::Result BuildTerrainMesh(
             const size_t i = static_cast<size_t>(y) * vertsX + x;
             gridPos[i] = Math::FloatVector4(wx, wy, wz, 1.0f);
             gridNrm[i] = n;
-            // World-XY-derived UVs so adjacent tiles seam naturally.
-            gridUv [i] = Math::FloatVector2(wx, wy);
+            // Tile-normalized UVs in [0, 1] across the heightfield so a
+            // per-tile composite texture samples 1:1 with terrain texels under
+            // the standard LinearWrap/LinearClamp sampler. (For multi-tile
+            // scenes each tile binds its own composite; the shared edge still
+            // matches because the bake reads from world coords.)
+            const float u = (vertsX > 1) ? static_cast<float>(x) / static_cast<float>(vertsX - 1) : 0.0f;
+            const float v = (vertsY > 1) ? static_cast<float>(y) / static_cast<float>(vertsY - 1) : 0.0f;
+            gridUv [i] = Math::FloatVector2(u, v);
         }
     }
 
