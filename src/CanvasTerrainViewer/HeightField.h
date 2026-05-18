@@ -75,6 +75,31 @@ struct HeightField
 };
 
 //------------------------------------------------------------------------------------------------
+// A single mip level produced by BuildMipChain.
+struct HeightMipLevel
+{
+    uint32_t              Width  = 0;
+    uint32_t              Height = 0;
+    std::vector<uint16_t> Samples;  // Length == Width * Height, row-major R16
+};
+
+// Build a complete mip chain from a heightfield by repeated 2x2 box
+// downsampling. Mip 0 is a copy of the source heightfield; each subsequent
+// level halves both dimensions (clamped to a minimum of 1). The chain
+// terminates when both dimensions reach 1.
+//
+// The box filter is the right anti-aliased reconstruction for our use case:
+// the HS in GPU tessellation samples the mip whose texel size matches the
+// patch's screen size, and a per-texel box-averaged height gives a stable
+// 2nd-derivative reading at that scale.
+//
+// Note: this convention does NOT preserve the shared-edge tile invariant
+// (a 1025x1025 mip 0 produces a 512x512 mip 1, dropping the boundary
+// column/row). That is fine for curvature-LOD sampling; multi-tile seam
+// matching is enforced at mip 0 only.
+bool BuildMipChain(const HeightField& field, std::vector<HeightMipLevel>* outMips);
+
+//------------------------------------------------------------------------------------------------
 struct LoadOptions
 {
     float    DxyMeters   = 1.0f;

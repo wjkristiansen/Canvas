@@ -210,6 +210,60 @@ bool LoadHeightFieldWIC(
 }
 
 //------------------------------------------------------------------------------------------------
+bool BuildMipChain(const HeightField& field, std::vector<HeightMipLevel>* outMips)
+{
+    if (!outMips) return false;
+    outMips->clear();
+    if (field.IsEmpty()) return false;
+
+    HeightMipLevel mip0;
+    mip0.Width   = field.Desc.Width;
+    mip0.Height  = field.Desc.Height;
+    mip0.Samples = field.Samples;
+    outMips->push_back(std::move(mip0));
+
+    uint32_t w = field.Desc.Width;
+    uint32_t h = field.Desc.Height;
+    while (w > 1 || h > 1)
+    {
+        const uint32_t prevW = w;
+        const uint32_t prevH = h;
+        const uint32_t nextW = std::max(1u, w / 2u);
+        const uint32_t nextH = std::max(1u, h / 2u);
+
+        HeightMipLevel m;
+        m.Width  = nextW;
+        m.Height = nextH;
+        m.Samples.resize(static_cast<size_t>(nextW) * nextH);
+
+        const auto& prev = outMips->back().Samples;
+        for (uint32_t y = 0; y < nextH; ++y)
+        {
+            const uint32_t py0 = std::min(y * 2u,      prevH - 1u);
+            const uint32_t py1 = std::min(y * 2u + 1u, prevH - 1u);
+            for (uint32_t x = 0; x < nextW; ++x)
+            {
+                const uint32_t px0 = std::min(x * 2u,      prevW - 1u);
+                const uint32_t px1 = std::min(x * 2u + 1u, prevW - 1u);
+                const uint32_t sum =
+                      static_cast<uint32_t>(prev[static_cast<size_t>(py0) * prevW + px0])
+                    + static_cast<uint32_t>(prev[static_cast<size_t>(py0) * prevW + px1])
+                    + static_cast<uint32_t>(prev[static_cast<size_t>(py1) * prevW + px0])
+                    + static_cast<uint32_t>(prev[static_cast<size_t>(py1) * prevW + px1]);
+                m.Samples[static_cast<size_t>(y) * nextW + x] =
+                    static_cast<uint16_t>((sum + 2u) / 4u);
+            }
+        }
+
+        outMips->push_back(std::move(m));
+        w = nextW;
+        h = nextH;
+    }
+
+    return true;
+}
+
+//------------------------------------------------------------------------------------------------
 // v1 CPU mesh builder.
 //
 // Produces a regular triangulated grid covering the heightfield. No index

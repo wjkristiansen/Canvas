@@ -585,6 +585,25 @@ class CTerrainApp
             field.Desc.Width, field.Desc.Height,
             field.WorldWidth(), field.WorldHeight(),
             field.Desc.HeightScale);
+
+        // Build the heightfield mip chain. v2 GPU tessellation will sample
+        // this in the HS for stable curvature LOD; for v1 we only validate
+        // that the chain builds and log its shape so any regression is
+        // visible in the load log.
+        std::vector<Canvas::HeightField::HeightMipLevel> mips;
+        if (Canvas::HeightField::BuildMipChain(field, &mips) && !mips.empty())
+        {
+            Canvas::LogInfo(m_pLogger.Get(),
+                "Heightfield mip chain: %zu levels (mip 0 = %ux%u, mip %zu = %ux%u)",
+                mips.size(),
+                mips.front().Width, mips.front().Height,
+                mips.size() - 1,
+                mips.back().Width, mips.back().Height);
+        }
+        else
+        {
+            Canvas::LogWarn(m_pLogger.Get(), "BuildMipChain failed; v2 curvature LOD will lack mip-matched sampling");
+        }
         return true;
     }
 
