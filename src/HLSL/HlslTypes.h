@@ -74,6 +74,19 @@ struct ALIGN16 HlslPerObjectConstants
     uint   _Pad2;
 };
 
+//------------------------------------------------------------------------------------------------
+// Per-tile constants for the terrain pipeline (VSTerrain / HSTerrain /
+// DSTerrain / PSTerrain).
+struct ALIGN16 HlslTerrainConstants
+{
+    ROW_MAJOR float4x4 World;        // Tile world transform (typically identity for the v1 sample)
+    float4 TileOriginAndSize;        // xy = world-space origin of texel (0,0); zw = world-space tile size
+    uint   PatchGridDim;             // Patch count per side; total patches = PatchGridDim^2
+    float  HeightScale;              // Meters per [0, 1] heightmap sample
+    float  HeightBias;               // Meters added after scale
+    uint   _Pad0;
+};
+
 // Per-draw material flags. Bits are uniform per-draw and used to enable
 // optional sample/multiply paths in the uber-shader. When a flag is clear the
 // corresponding sampled value is ignored and only the *Factor is used.

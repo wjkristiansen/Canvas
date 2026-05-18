@@ -239,7 +239,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    // Render queue — submits and executes rendering work.
+    // Render queue - submits and executes rendering work.
     struct XGfxRenderQueue : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
@@ -255,6 +255,12 @@ namespace Canvas
         GEMMETHOD(SubmitForRender)(XSceneGraphNode *pNode) = 0;
         GEMMETHOD(SubmitForUIRender)(XUIGraphNode *pNode) = 0;
         GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
+
+        // Debug: force the geometry pass to render as wireframe. UI / composite
+        // passes are unaffected. Default false. The PSO variant is created
+        // lazily on first enable so the cost is zero until used.
+        GEMMETHOD_(void, SetGeometryWireframe)(bool wireframe) = 0;
+        GEMMETHOD_(bool, GetGeometryWireframe)() const = 0;
     };
 
     enum GfxSurfaceFlags : uint32_t

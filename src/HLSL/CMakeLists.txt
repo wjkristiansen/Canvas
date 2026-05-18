@@ -106,6 +106,14 @@ add_hlsl_shader("PSText.hlsl" "ps_6_0" "main")
 add_hlsl_shader("VSRect.hlsl" "vs_6_0" "main")
 add_hlsl_shader("PSRect.hlsl" "ps_6_0" "main")
 
+# Terrain pipeline (v2 GPU tessellation: VS + HS + DS + PS).
+# These compile against the same HlslTypes.h / Common.hlsli the rest of the
+# engine uses, plus Terrain.hlsli for terrain-specific bindings + structs.
+add_hlsl_shader("VSTerrain.hlsl" "vs_6_0" "VSTerrain")
+add_hlsl_shader("HSTerrain.hlsl" "hs_6_0" "HSTerrain")
+add_hlsl_shader("DSTerrain.hlsl" "ds_6_0" "DSTerrain")
+add_hlsl_shader("PSTerrain.hlsl" "ps_6_0" "PSTerrain")
+
 # Create the HLSL target
 add_custom_target(HLSL ALL
     DEPENDS ${SHADER_OUTPUTS}
