@@ -323,15 +323,19 @@ public:
         m_pMoon->SetColor(moonColor);
         m_pMoon->SetIntensity(kMoonPeakIntensity * moonGate);
 
-        // Ambient scales with sky brightness; warm at horizon, cool blue at night.
-        const float ambDay   = 0.10f * sunGate;
-        const float ambNight = 0.04f * moonGate;
+        // Ambient: a non-trivial floor so back-facing slopes stay readable.
+        // Day ambient is roughly sunIntensity / 8; night ambient is moon-anchored
+        // with a small irreducible floor so totally moonless scenes still show
+        // shape against the sky.
+        const float ambDay     = 0.45f * sunGate;
+        const float ambNight   = 0.10f * moonGate;
+        const float ambFloor   = 0.05f;
         const Canvas::Math::FloatVector4 ambDayColor (0.55f, 0.65f, 0.85f, 1.0f);
-        const Canvas::Math::FloatVector4 ambNightColor(0.10f, 0.15f, 0.30f, 1.0f);
+        const Canvas::Math::FloatVector4 ambNightColor(0.15f, 0.20f, 0.35f, 1.0f);
         const float ambBlend = sunGate / std::max(0.001f, sunGate + moonGate);
         const Canvas::Math::FloatVector4 ambColor = Lerp(ambNightColor, ambDayColor, ambBlend);
         m_pAmbient->SetColor(ambColor);
-        m_pAmbient->SetIntensity(ambDay + ambNight);
+        m_pAmbient->SetIntensity(ambDay + ambNight + ambFloor);
     }
 
     // 24-hour clock string: 00:00 at theta=0 (midnight), 06:00 at theta=pi/2, etc.
