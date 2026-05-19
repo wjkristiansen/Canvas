@@ -417,7 +417,9 @@ class CTerrainApp
     Gem::TGemPtr<Canvas::XGfxSwapChain>     m_pGfxSwapChain;
     Gem::TGemPtr<Canvas::XGfxRenderQueue>   m_pGfxRenderQueue;
     Gem::TGemPtr<Canvas::XGfxSurface>       m_pHeightmapSurface;
-    Gem::TGemPtr<Canvas::XTerrainTile>      m_pTerrainTile;
+    Gem::TGemPtr<Canvas::XGfxMaterial>      m_pTerrainMaterial;
+    Gem::TGemPtr<Canvas::XGfxMeshData>      m_pTerrainPatchMesh;
+    Gem::TGemPtr<Canvas::XMeshInstance>     m_pTerrainInstance;
     Gem::TGemPtr<Canvas::XSceneGraphNode>   m_pTerrainNode;
     Gem::TGemPtr<Canvas::XFont>             m_pFont;
     Gem::TGemPtr<Canvas::XFont>             m_pFontMono;
@@ -546,24 +548,51 @@ class CTerrainApp
                 m_pHeightmapSurface));
         }
 
-        // Build a scene-graph terrain tile element. The render queue routes
-        // these through the GPU tessellation pipeline on its own; no draw
-        // calls or PSO knowledge required here.
+        // Build the terrain material: standard albedo / AO / roughness
+        // textures plus a displacement extension that carries the heightmap
+        // and the tessellation-LOD knobs. The engine picks the
+        // displacement render path automatically when DrawMesh sees a
+        // procedural-patch mesh whose material has displacement attached.
+        Gem::ThrowGemError(m_pGfxDevice->CreateMaterial(&m_pTerrainMaterial));
+        m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::Albedo,           matOutputs.pAlbedo);
+        m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::AmbientOcclusion, matOutputs.pAO);
+        m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::Roughness,        matOutputs.pRoughness);
+
+        Canvas::GfxDisplacementDesc disp = {};
+        disp.pHeightmap        = m_pHeightmapSurface;
+        disp.HeightScale       = field.Desc.HeightScale;
+        disp.HeightBias        = field.Desc.HeightBias;
+        disp.TileSizeWorldX    = field.WorldWidth();
+        disp.TileSizeWorldY    = field.WorldHeight();
+        disp.MinTessFactor     = 2.0f;
+        disp.MaxTessFactor     = 32.0f;
+        disp.DistanceLodScale  = 10.0f;
+        disp.CurvatureLodScale = 0.5f;
+        m_pTerrainMaterial->SetDisplacement(&disp);
+
+        // Procedural patch-grid mesh: [0,1]^2 unit-square grid of 64x64
+        // quad patches. The scene-graph node's local transform scales
+        // this to (WorldSizeX, WorldSizeY, 1) and translates to the
+        // tile's world origin.
+        char meshName[64];
+        snprintf(meshName, sizeof(meshName), "TerrainPatchMesh_64x64");
+        Gem::ThrowGemError(m_pGfxDevice->CreateProceduralPatchGrid(
+            64, m_pTerrainMaterial, &m_pTerrainPatchMesh, meshName));
+
         char tileName[64];
         snprintf(tileName, sizeof(tileName), "Tile_%d_%d",
             static_cast<int>(std::round(matOpts.OriginX / std::max(1.0f, field.WorldWidth()))),
             static_cast<int>(std::round(matOpts.OriginY / std::max(1.0f, field.WorldHeight()))));
-        Gem::ThrowGemError(m_pCanvas->CreateTerrainTile(&m_pTerrainTile, tileName));
-        m_pTerrainTile->SetHeightmap(m_pHeightmapSurface);
-        m_pTerrainTile->SetMaterial(matOutputs.pAlbedo, matOutputs.pAO, matOutputs.pRoughness);
-        m_pTerrainTile->SetExtents(
-            matOpts.OriginX, matOpts.OriginY,
-            field.WorldWidth(), field.WorldHeight(),
-            field.Desc.HeightScale, field.Desc.HeightBias);
-        m_pTerrainTile->SetPatchGridDim(64);
+        Gem::ThrowGemError(m_pCanvas->CreateMeshInstance(&m_pTerrainInstance, tileName));
+        m_pTerrainInstance->SetMeshData(m_pTerrainPatchMesh);
 
         Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&m_pTerrainNode, "TerrainNode"));
-        m_pTerrainNode->BindElement(m_pTerrainTile);
+        // Only translation on the node - the tile's world dimensions live
+        // on the material's displacement desc so children attached to this
+        // node (e.g. trees, markers) don't inherit a 1024x scale factor.
+        m_pTerrainNode->SetLocalTranslation(
+            Canvas::Math::FloatVector4{ matOpts.OriginX, matOpts.OriginY, 0.0f, 1.0f });
+        m_pTerrainNode->BindElement(m_pTerrainInstance);
         m_pScene->GetRootSceneGraphNode()->AddChild(m_pTerrainNode);
 
         // Camera start pose from the scene config.

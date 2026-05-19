@@ -1611,8 +1611,8 @@ Gem::Result CRenderQueue12::DrawMesh(
                 // convention: translation in row 3; scale on the diagonal.
                 tdesc.OriginX     = worldTransform[3][0];
                 tdesc.OriginY     = worldTransform[3][1];
-                tdesc.WorldSizeX  = worldTransform[0][0];
-                tdesc.WorldSizeY  = worldTransform[1][1];
+                tdesc.WorldSizeX  = pDisp->TileSizeWorldX;
+                tdesc.WorldSizeY  = pDisp->TileSizeWorldY;
 
                 tdesc.HeightScale  = pDisp->HeightScale;
                 tdesc.HeightBias   = pDisp->HeightBias;

@@ -600,6 +600,7 @@ GEMMETHODIMP CDevice12::CreateMeshData(
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::CreateProceduralPatchGrid(
     uint32_t patchesPerSide,
+    Canvas::XGfxMaterial *pMaterial,
     Canvas::XGfxMeshData **ppMesh,
     const char *name)
 {
@@ -618,6 +619,7 @@ GEMMETHODIMP CDevice12::CreateProceduralPatchGrid(
     // constants. The CP count is what the engine passes to DrawInstanced.
     Canvas::MeshDataGroupDesc group = {};
     group.VertexCount = cpCount;
+    group.pMaterial   = pMaterial;
 
     Canvas::MeshDataDesc desc = {};
     desc.pGroups    = &group;

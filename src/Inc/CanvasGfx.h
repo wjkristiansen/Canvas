@@ -117,6 +117,17 @@ namespace Canvas
         XGfxSurface *pHeightmap        = nullptr;   // single-channel UNorm
         float        HeightScale       = 1.0f;      // world units per 1.0 sample
         float        HeightBias        = 0.0f;      // world units added to all samples
+
+        // World-space tile extents along the displaced surface's local X / Y
+        // axes.  The procedural patch grid mesh emits unit-square [0,1]^2
+        // positions; the engine multiplies by these to obtain world-space
+        // patch XY.  Kept here (on the material extension) rather than
+        // encoded as node scale because scale propagates through the
+        // scene-graph hierarchy and would wrongly affect children of
+        // the tile node.
+        float        TileSizeWorldX    = 1.0f;
+        float        TileSizeWorldY    = 1.0f;
+
         float        MinTessFactor     = 2.0f;
         float        MaxTessFactor     = 32.0f;
         // Distance factor: clamp(scale * edge_world_length / dist_to_midpoint, Min, Max).
@@ -468,15 +479,19 @@ namespace Canvas
 
         // Convenience factory for a [0,1]^2 unit-square procedural patch
         // grid mesh.  patchesPerSide >= 1.  Result is a single-group
-        // XGfxMeshData with PatchList4CP topology, no vertex buffers, and
-        // VertexCount = patchesPerSide * patchesPerSide * 4.  Intended to
-        // be paired with a material that has a displacement extension
-        // attached (XGfxMaterial::SetDisplacement); the engine generates
-        // the per-CP positions and UVs from SV_VertexID.  The mesh
-        // instance's world transform should scale this unit square to the
-        // tile's world extents and translate to its origin.
+        // XGfxMeshData with PatchList4CP topology, no vertex buffers,
+        // VertexCount = patchesPerSide * patchesPerSide * 4, and the
+        // supplied material attached to the group.  Intended to be paired
+        // with a material that has a displacement extension attached
+        // (XGfxMaterial::SetDisplacement); the engine generates per-CP
+        // positions / UVs from SV_VertexID.  The mesh instance's world
+        // transform should scale this unit square to the tile's world
+        // extents and translate to its origin.  pMaterial may be null
+        // (rendering will be skipped until a material is attached via
+        // some future API).
         GEMMETHOD(CreateProceduralPatchGrid)(
             uint32_t patchesPerSide,
+            XGfxMaterial *pMaterial,
             XGfxMeshData **ppMesh,
             const char *name = nullptr) = 0;
 
