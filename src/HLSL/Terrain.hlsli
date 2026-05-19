@@ -19,6 +19,14 @@ ConstantBuffer<HlslTerrainConstants>  PerTile  : register(b1);
 // extent for stable curvature reads.
 Texture2D<float> Heightmap : register(t0);
 
+// Pre-baked tile-sized material atlases. The slope+altitude blend has
+// already been resolved on the CPU during BuildTerrainMaterial, so the PS
+// just samples by TileUV. All three live in the same descriptor table as
+// each other and stay LAYOUT_SHADER_RESOURCE after upload.
+Texture2D<float4> AlbedoMap    : register(t1);
+Texture2D<float>  AOMap        : register(t2);
+Texture2D<float>  RoughnessMap : register(t3);
+
 SamplerState HeightSampler : register(s0);
 
 // Patch control-point payload that flows VS -> HS -> DS.

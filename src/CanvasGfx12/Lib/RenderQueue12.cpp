@@ -927,20 +927,36 @@ void CRenderQueue12::EnsureTerrainPSO()
     // ---------- Root signature ----------
     if (!m_pTerrainRootSig)
     {
-        CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-        srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
-            D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t0: heightmap
+        // The heightmap (t0) and the three material atlases (t1..t3) live
+        // in separate descriptor tables so each can carry a tight shader-
+        // visibility scope: DS samples the heightmap, PS samples the
+        // material atlases. All four ranges are DATA_STATIC; the render
+        // queue's FinalizeUploadAsShaderResource gate ensures their layout
+        // transitions have retired before bind time.
+        CD3DX12_DESCRIPTOR_RANGE1 heightRange;
+        heightRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
+            D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t0
 
-        std::vector<CD3DX12_ROOT_PARAMETER1> rootParams(3);
+        CD3DX12_DESCRIPTOR_RANGE1 materialRange;
+        materialRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 1, 0,
+            D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t1..t3
+
+        std::vector<CD3DX12_ROOT_PARAMETER1> rootParams(4);
         rootParams[0].InitAsConstantBufferView(0, 0,
             D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
             D3D12_SHADER_VISIBILITY_ALL);   // b0 PerFrame
         rootParams[1].InitAsConstantBufferView(1, 0,
             D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
             D3D12_SHADER_VISIBILITY_ALL);   // b1 PerTile
-        rootParams[2].InitAsDescriptorTable(1, &srvRange,
-            D3D12_SHADER_VISIBILITY_DOMAIN); // t0 heightmap (DS samples it)
+        rootParams[2].InitAsDescriptorTable(1, &heightRange,
+            D3D12_SHADER_VISIBILITY_DOMAIN);   // t0
+        rootParams[3].InitAsDescriptorTable(1, &materialRange,
+            D3D12_SHADER_VISIBILITY_PIXEL);    // t1..t3
 
+        // One static sampler serves both stages. Both the heightmap (DS)
+        // and the pre-baked tile-sized material atlases (PS) want
+        // linear-filtered clamp-addressed sampling, so a single ALL-visible
+        // sampler keeps the root sig small.
         CD3DX12_STATIC_SAMPLER_DESC sampler;
         sampler.Init(
             0,
@@ -948,7 +964,7 @@ void CRenderQueue12::EnsureTerrainPSO()
             D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
             D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
             D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
-        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_DOMAIN;
+        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rsDesc(
             static_cast<UINT>(rootParams.size()), rootParams.data(),
@@ -2021,7 +2037,9 @@ GEMMETHODIMP_(void) CRenderQueue12::SetActiveCamera(Canvas::XCamera *pCamera)
 //------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::SubmitTerrainTile(const Canvas::TerrainTileSubmitDesc &desc)
 {
-    if (!desc.pHeightmap || desc.PatchGridDim == 0)
+    if (!desc.pHeightmap || !desc.pAlbedo || !desc.pAOMap || !desc.pRoughnessMap)
+        return Gem::Result::InvalidArg;
+    if (desc.PatchGridDim == 0)
         return Gem::Result::InvalidArg;
     if (desc.WorldSizeX <= 0.0f || desc.WorldSizeY <= 0.0f)
         return Gem::Result::InvalidArg;
@@ -2267,14 +2285,30 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 // any submission that follows. Tiles whose heightmaps are not
                 // yet ready are simply skipped this frame; the scene graph will
                 // re-submit them next frame.
+                // All four terrain-bound surfaces must have their COMMON ->
+                // SHADER_RESOURCE fixup CL retired on the GPU before we can
+                // bind them as DATA_STATIC SRVs. Tiles whose heightmap or
+                // material atlases are not yet ready are simply skipped this
+                // frame; the scene graph re-submits them next frame.
                 auto* pHeightSurf = static_cast<CSurface12*>(sub.pHeightmap);
-                if (pHeightSurf->m_UploadFixupToken.IsValid())
+                auto* pAlbedoSurf = static_cast<CSurface12*>(sub.pAlbedo);
+                auto* pAOSurf     = static_cast<CSurface12*>(sub.pAOMap);
+                auto* pRoughSurf  = static_cast<CSurface12*>(sub.pRoughnessMap);
+
+                auto isReady = [this](CSurface12* pSurf) -> bool
                 {
+                    if (!pSurf || !pSurf->m_UploadFixupToken.IsValid())
+                        return true;
                     ID3D12Fence* pFence = m_pDevice->GetResourceManager().GetTimelineFence(
-                        pHeightSurf->m_UploadFixupToken.TimelineId);
-                    if (!pFence || pFence->GetCompletedValue() < pHeightSurf->m_UploadFixupToken.Value)
-                        continue;
+                        pSurf->m_UploadFixupToken.TimelineId);
+                    return pFence && pFence->GetCompletedValue() >= pSurf->m_UploadFixupToken.Value;
+                };
+                if (!isReady(pHeightSurf) || !isReady(pAlbedoSurf) ||
+                    !isReady(pAOSurf)     || !isReady(pRoughSurf))
+                {
+                    continue;
                 }
+
                 // ---- Per-tile constant buffer ----
                 HlslTypes::HlslTerrainConstants tileCb = {};
                 memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
@@ -2288,45 +2322,75 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 memcpy(tileHw.pMapped, &tileCb, sizeof(tileCb));
                 D3D12_GPU_VIRTUAL_ADDRESS perTileCbvAddr = tileHw.GpuAddress;
 
-                // ---- Heightmap SRV in the shader-visible descriptor heap ----
-                if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
+                // ---- SRVs: 4 contiguous slots (heightmap + 3 material atlases) ----
+                // The terrain root sig has two descriptor tables; both point
+                // into this same contiguous block (heightmap at base, atlases
+                // at base+1..base+3). Two tables let us scope visibility to
+                // DOMAIN / PIXEL respectively without splitting the heap.
+                constexpr UINT kTerrainSRVCount = 4;
+                if (m_NextSRVSlot + kTerrainSRVCount > NumShaderResourceDescriptors)
                     m_NextSRVSlot = 0;
-                UINT heightSrvSlot = m_NextSRVSlot++;
+                UINT baseSrvSlot = m_NextSRVSlot;
+                m_NextSRVSlot += kTerrainSRVCount;
+
                 CD3DX12_CPU_DESCRIPTOR_HANDLE heightCpu(
                     m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-                    heightSrvSlot, incSize);
+                    baseSrvSlot, incSize);
                 CD3DX12_GPU_DESCRIPTOR_HANDLE heightGpu(
                     m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
-                    heightSrvSlot, incSize);
+                    baseSrvSlot, incSize);
+                CD3DX12_GPU_DESCRIPTOR_HANDLE materialGpu(
+                    m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+                    baseSrvSlot + 1, incSize);
 
-                ID3D12Resource* pHeightResource =
-                    static_cast<CSurface12*>(sub.pHeightmap)->GetD3DResource();
-                D3D12_RESOURCE_DESC hdesc = pHeightResource->GetDesc();
-                D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-                srvDesc.Format                    = hdesc.Format;
-                srvDesc.ViewDimension             = D3D12_SRV_DIMENSION_TEXTURE2D;
-                srvDesc.Shader4ComponentMapping   = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-                srvDesc.Texture2D.MostDetailedMip = 0;
-                srvDesc.Texture2D.MipLevels       = hdesc.MipLevels;
-                srvDesc.Texture2D.PlaneSlice      = 0;
-                srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-                pD3DDevice->CreateShaderResourceView(pHeightResource, &srvDesc, heightCpu);
+                auto createTex2DSRV = [&](CSurface12* pSurf, UINT slotOffset)
+                {
+                    ID3D12Resource* pRes = pSurf->GetD3DResource();
+                    D3D12_RESOURCE_DESC desc = pRes->GetDesc();
+                    D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
+                    srv.Format                    = desc.Format;
+                    srv.ViewDimension             = D3D12_SRV_DIMENSION_TEXTURE2D;
+                    srv.Shader4ComponentMapping   = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                    srv.Texture2D.MostDetailedMip = 0;
+                    srv.Texture2D.MipLevels       = desc.MipLevels;
+                    srv.Texture2D.PlaneSlice      = 0;
+                    srv.Texture2D.ResourceMinLODClamp = 0.0f;
+                    CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(
+                        m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                        baseSrvSlot + slotOffset, incSize);
+                    pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
+                };
+                createTex2DSRV(pHeightSurf, 0);
+                createTex2DSRV(pAlbedoSurf, 1);
+                createTex2DSRV(pAOSurf,     2);
+                createTex2DSRV(pRoughSurf,  3);
 
                 const uint32_t patchCount = sub.PatchGridDim * sub.PatchGridDim;
                 const uint32_t cpVertexCount = patchCount * 4u;
 
                 auto& drawTask = CreateGpuTask("DrawTerrainTile");
-                DeclareGpuTextureUsage(drawTask,
-                    static_cast<CSurface12*>(sub.pHeightmap),
+                // SYNC_VERTEX_SHADING covers VS / HS / DS / GS under the
+                // enhanced-barriers grouping. The heightmap is sampled in
+                // the domain shader; the material atlases are sampled in
+                // the pixel shader (SYNC_PIXEL_SHADING).
+                DeclareGpuTextureUsage(drawTask, pHeightSurf,
                     D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                    // SYNC_VERTEX_SHADING covers VS / HS / DS / GS under the
-                    // enhanced-barriers grouping. The heightmap is sampled in
-                    // the domain shader (terrain root sig SRV visibility is
-                    // D3D12_SHADER_VISIBILITY_DOMAIN).
                     D3D12_BARRIER_SYNC_VERTEX_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                DeclareGpuTextureUsage(drawTask, pAlbedoSurf,
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                DeclareGpuTextureUsage(drawTask, pAOSurf,
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                DeclareGpuTextureUsage(drawTask, pRoughSurf,
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-                drawTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr, heightGpu, cpVertexCount]
+                drawTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr, heightGpu, materialGpu, cpVertexCount]
                                       (ID3D12GraphicsCommandList* pCL)
                 {
                     pCL->SetPipelineState(GetActiveTerrainPSO());
@@ -2337,6 +2401,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
                     pCL->SetGraphicsRootConstantBufferView(1, perTileCbvAddr);
                     pCL->SetGraphicsRootDescriptorTable(2, heightGpu);
+                    pCL->SetGraphicsRootDescriptorTable(3, materialGpu);
                     pCL->DrawInstanced(cpVertexCount, 1, 0, 0);
                 };
                 m_GpuTaskGraph.InsertTask(drawTask);

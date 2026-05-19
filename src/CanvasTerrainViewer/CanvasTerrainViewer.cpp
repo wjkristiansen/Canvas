@@ -516,6 +516,13 @@ class CTerrainApp
                 "BuildTerrainMaterial failed: %s", GemResultString(mr));
             return false;
         }
+        // BuildTerrainMaterial uploads the atlases via the device copy queue
+        // but leaves them in LAYOUT_COMMON. Schedule the COMMON ->
+        // SHADER_RESOURCE finalization so the terrain PS can sample them
+        // through DATA_STATIC SRVs.
+        Gem::ThrowGemError(m_pGfxRenderQueue->FinalizeUploadAsShaderResource(matOutputs.pAlbedo));
+        Gem::ThrowGemError(m_pGfxRenderQueue->FinalizeUploadAsShaderResource(matOutputs.pAO));
+        Gem::ThrowGemError(m_pGfxRenderQueue->FinalizeUploadAsShaderResource(matOutputs.pRoughness));
 
         // Upload the heightmap into an R16_UNorm 2D surface; the GPU
         // tessellation pipeline's DS samples it to lift patch vertices into Z.

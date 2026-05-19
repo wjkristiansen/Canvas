@@ -1,12 +1,11 @@
 // PSTerrain.hlsl - terrain pixel stage.
 //
-// v1 scaffold: writes the DS-supplied world position and normal into the
-// deferred G-buffer alongside a placeholder albedo / PBR. The composite
-// shader picks it up via the existing G-buffer sampling path, so no
-// changes to PSComposite are required.
-//
-// The composite albedo / AO / roughness textures will be bound to t1/t2/t3
-// in a follow-up; for the scaffold the terrain uses fixed factors.
+// Writes the DS-supplied world position and normal into the deferred
+// G-buffer, sampling the pre-baked terrain material atlases (albedo, AO,
+// roughness) by TileUV. The slope+altitude blend that produces those
+// atlases is resolved on the CPU during BuildTerrainMaterial, so the PS
+// is a straight lookup. PSComposite picks the result up via the existing
+// G-buffer sampling path.
 
 #include "Terrain.hlsli"
 
@@ -33,10 +32,17 @@ GBufferOutput PSTerrain(PSInput input)
     GBufferOutput output;
 
     float3 N = normalize(input.Normal);
+
+    float4 albedo    = AlbedoMap.Sample(HeightSampler, input.TexCoord);
+    float  ao        = AOMap.Sample(HeightSampler, input.TexCoord);
+    float  roughness = RoughnessMap.Sample(HeightSampler, input.TexCoord);
+
     output.Normals      = float4(N * 0.5 + 0.5, 1.0);
-    output.DiffuseColor = float4(0.45, 0.50, 0.35, 1.0);  // placeholder olive until v2 material binds
+    output.DiffuseColor = float4(albedo.rgb, 1.0);
     output.WorldPos     = float4(input.WorldPos, 1.0);
-    output.PBR          = float4(0.85, 0.0, 1.0, 0.0);    // R=rough, G=metal, B=AO, A=spare
+    // PBR layout matches the rest of the engine: R=rough, G=metal, B=AO, A=spare.
+    // Terrain is fully dielectric so metallic stays 0.
+    output.PBR          = float4(roughness, 0.0, ao, 0.0);
     output.Emissive     = float4(0.0, 0.0, 0.0, 1.0);
     return output;
 }
