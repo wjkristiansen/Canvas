@@ -437,77 +437,87 @@ GEMMETHODIMP CDevice12::CreateMeshData(
     if (desc.GroupCount == 0 || desc.pGroups == nullptr)
         return Gem::Result::InvalidArg;
 
-    // Validate every group up front: positions and normals are required, and
-    // every present stream must have VertexCount entries (no count != 0 with
-    // null pointers).
+    const bool procedural = (desc.Topology != Canvas::GfxPrimitiveTopology::TriangleList);
+
+    // Validate every group up front. For non-procedural (vertex-buffered)
+    // meshes positions and normals are required and present streams must
+    // have VertexCount entries. For procedural meshes the engine emits
+    // draws directly from SV_VertexID so vertex arrays are not required;
+    // VertexCount is still meaningful (total CP count for the group).
+    uint32_t totalVertexCount = 0;
     for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
     {
         const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
         if (g.VertexCount == 0)
             return Gem::Result::InvalidArg;
-        if (g.pPositions == nullptr || g.pNormals == nullptr)
-            return Gem::Result::InvalidArg;
+        if (!procedural)
+        {
+            if (g.pPositions == nullptr || g.pNormals == nullptr)
+                return Gem::Result::InvalidArg;
+        }
+        totalVertexCount += g.VertexCount;
     }
 
     const char *baseName = desc.pName;
 
     try
     {
-        // Pre-compute a single staging allocation that holds every stream of
-        // every group concatenated, so the upload ring is amortized across the
-        // whole mesh.
-        struct StreamLayout
-        {
-            uint32_t                                Group;
-            Canvas::GfxVertexBufferType             Type;
-            const void                             *pSrc;
-            uint64_t                                Size;
-            uint64_t                                StagingOffset;
-        };
-
-        std::vector<StreamLayout> streams;
-        streams.reserve(desc.GroupCount * 4);
-
-        uint64_t stagingTotal = 0;
-        for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
-        {
-            const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
-            const uint64_t v4Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector4);
-            const uint64_t v2Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector2);
-
-            streams.push_back({ gi, Canvas::GfxVertexBufferType::Position, g.pPositions, v4Size, stagingTotal });
-            stagingTotal += v4Size;
-            streams.push_back({ gi, Canvas::GfxVertexBufferType::Normal,   g.pNormals,   v4Size, stagingTotal });
-            stagingTotal += v4Size;
-
-            if (g.pUV0)
-            {
-                streams.push_back({ gi, Canvas::GfxVertexBufferType::UV0, g.pUV0, v2Size, stagingTotal });
-                stagingTotal += v2Size;
-            }
-            if (g.pTangents)
-            {
-                streams.push_back({ gi, Canvas::GfxVertexBufferType::Tangent, g.pTangents, v4Size, stagingTotal });
-                stagingTotal += v4Size;
-            }
-        }
-
-        HostWriteAllocation staging;
-        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(stagingTotal, staging));
-        {
-            uint8_t *dst = static_cast<uint8_t *>(staging.pMapped);
-            for (const StreamLayout &s : streams)
-                memcpy(dst + s.StagingOffset, s.pSrc, static_cast<size_t>(s.Size));
-        }
-
-        // Allocate one D3D12 buffer per stream and enqueue its copy.
         std::vector<CMeshData12::GroupResources> groups(desc.GroupCount);
 
-        D3D12_RESOURCE_DESC bufDesc = {};
-        bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
-        bufDesc.Height           = 1;
-        bufDesc.DepthOrArraySize = 1;
-        bufDesc.MipLevels        = 1;
+        if (!procedural)
+        {
+            // Pre-compute a single staging allocation that holds every
+            // stream of every group concatenated, so the upload ring is
+            // amortized across the whole mesh.
+            struct StreamLayout
+            {
+                uint32_t                                Group;
+                Canvas::GfxVertexBufferType             Type;
+                const void                             *pSrc;
+                uint64_t                                Size;
+                uint64_t                                StagingOffset;
+            };
+
+            std::vector<StreamLayout> streams;
+            streams.reserve(desc.GroupCount * 4);
+
+            uint64_t stagingTotal = 0;
+            for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
+            {
+                const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
+                const uint64_t v4Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector4);
+                const uint64_t v2Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector2);
+
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::Position, g.pPositions, v4Size, stagingTotal });
+                stagingTotal += v4Size;
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::Normal,   g.pNormals,   v4Size, stagingTotal });
+                stagingTotal += v4Size;
+
+                if (g.pUV0)
+                {
+                    streams.push_back({ gi, Canvas::GfxVertexBufferType::UV0, g.pUV0, v2Size, stagingTotal });
+                    stagingTotal += v2Size;
+                }
+                if (g.pTangents)
+                {
+                    streams.push_back({ gi, Canvas::GfxVertexBufferType::Tangent, g.pTangents, v4Size, stagingTotal });
+                    stagingTotal += v4Size;
+                }
+            }
+
+            HostWriteAllocation staging;
+            Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(stagingTotal, staging));
+            {
+                uint8_t *dst = static_cast<uint8_t *>(staging.pMapped);
+                for (const StreamLayout &s : streams)
+                    memcpy(dst + s.StagingOffset, s.pSrc, static_cast<size_t>(s.Size));
+            }
+
+            D3D12_RESOURCE_DESC bufDesc = {};
+            bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+            bufDesc.Height           = 1;
+            bufDesc.DepthOrArraySize = 1;
+            bufDesc.MipLevels        = 1;
         bufDesc.SampleDesc.Count = 1;
         bufDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
@@ -565,14 +575,18 @@ GEMMETHODIMP CDevice12::CreateMeshData(
             default: break;
             }
         }
+        } // end if (!procedural)
 
-        // Attach materials (if any) to their groups.
+        // Attach materials (if any) to their groups. Procedural meshes
+        // typically leave pMaterial null and acquire it via XMeshInstance.
         for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
             groups[gi].pMaterial = desc.pGroups[gi].pMaterial;
 
         Gem::TGemPtr<CMeshData12> pMeshData;
         Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas(), baseName));
         pMeshData->SetGroups(std::move(groups));
+        pMeshData->SetTopology(desc.Topology);
+        pMeshData->SetTotalVertexCount(totalVertexCount);
 
         *ppMesh = pMeshData.Detach();
         return Gem::Result::Success;
@@ -581,6 +595,37 @@ GEMMETHODIMP CDevice12::CreateMeshData(
     {
         return e.Result();
     }
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CDevice12::CreateProceduralPatchGrid(
+    uint32_t patchesPerSide,
+    Canvas::XGfxMeshData **ppMesh,
+    const char *name)
+{
+    if (!ppMesh)
+        return Gem::Result::BadPointer;
+
+    *ppMesh = nullptr;
+
+    if (patchesPerSide == 0)
+        return Gem::Result::InvalidArg;
+
+    const uint32_t cpCount = patchesPerSide * patchesPerSide * 4u;
+
+    // One group, no vertex arrays - the VS reconstructs CP positions from
+    // SV_VertexID using the patchesPerSide value baked into per-instance
+    // constants. The CP count is what the engine passes to DrawInstanced.
+    Canvas::MeshDataGroupDesc group = {};
+    group.VertexCount = cpCount;
+
+    Canvas::MeshDataDesc desc = {};
+    desc.pGroups    = &group;
+    desc.GroupCount = 1;
+    desc.pName      = name;
+    desc.Topology   = Canvas::GfxPrimitiveTopology::PatchList4CP;
+
+    return CreateMeshData(desc, ppMesh);
 }
 
 //------------------------------------------------------------------------------------------------

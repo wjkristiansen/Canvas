@@ -58,6 +58,7 @@ public:
     GEMMETHOD(CreateSurface)(const Canvas::GfxSurfaceDesc &desc, Canvas::XGfxSurface **ppSurface) final;
     GEMMETHOD(CreateBuffer)(uint64_t sizeInBytes, Canvas::GfxMemoryUsage memoryUsage, Canvas::XGfxBuffer **ppBuffer) final;
     GEMMETHOD(CreateMeshData)(const Canvas::MeshDataDesc &desc, Canvas::XGfxMeshData **ppMesh) final;
+    GEMMETHOD(CreateProceduralPatchGrid)(uint32_t patchesPerSide, Canvas::XGfxMeshData **ppMesh, const char *name) final;
     GEMMETHOD(CreateDebugMeshData)(
         uint32_t vertexCount,
         const Canvas::Math::FloatVector4 *positions,

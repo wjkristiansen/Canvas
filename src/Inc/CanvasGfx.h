@@ -100,6 +100,33 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    // Optional displacement extension on a material.  When attached, the
+    // engine selects a tessellation+displacement render path for this
+    // material instead of the standard lit path.  All shaders, root sigs,
+    // and PSOs stay engine-owned; the material only describes intent.
+    //
+    // Heightmap is a single-channel UNorm texture sampled per displaced
+    // vertex.  HeightScale / HeightBias decode the [0,1] sample into world
+    // units along the surface normal (for a flat tile mesh this is the
+    // local +Z direction).  Tess factors are computed by the engine using
+    // a distance + curvature LOD scheme parameterized by the four LOD
+    // knobs below; per-edge factors are computed from edge-midpoint
+    // quantities so adjacent patches agree on shared edges.
+    struct GfxDisplacementDesc
+    {
+        XGfxSurface *pHeightmap        = nullptr;   // single-channel UNorm
+        float        HeightScale       = 1.0f;      // world units per 1.0 sample
+        float        HeightBias        = 0.0f;      // world units added to all samples
+        float        MinTessFactor     = 2.0f;
+        float        MaxTessFactor     = 32.0f;
+        // Distance factor: clamp(scale * edge_world_length / dist_to_midpoint, Min, Max).
+        float        DistanceLodScale  = 10.0f;
+        // Curvature factor (added on top of distance): meters of 2nd-derivative
+        // at a coarse-mip Laplacian, scaled by this constant.
+        float        CurvatureLodScale = 0.5f;
+    };
+
+    //------------------------------------------------------------------------------------------------
     enum MaterialLayerFlags : uint32_t
     {
         None            = 0,
@@ -154,6 +181,14 @@ namespace Canvas
         // Default = (1,0,1,0): fully rough, non-metallic, no AO occlusion.
         GEMMETHOD_(void, SetRoughMetalAOFactor)(const Math::FloatVector4 &factor) = 0;
         GEMMETHOD_(Math::FloatVector4, GetRoughMetalAOFactor)() = 0;
+
+        // Attach (or clear) a displacement extension.  Pass nullptr to clear.
+        // Stored by value; the surface reference inside is held strongly.
+        // When set, the engine routes draws of this material through its
+        // built-in tessellation+displacement render path.
+        GEMMETHOD_(void, SetDisplacement)(const GfxDisplacementDesc *pDesc) = 0;
+        // Returns nullptr when no displacement is attached.
+        GEMMETHOD_(const GfxDisplacementDesc *, GetDisplacement)() const = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -187,6 +222,21 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    // Primitive topology for mesh data.  TriangleList is the standard case
+    // (3 verts per triangle, requires position / normal vertex buffers).
+    // PatchList4CP marks a "procedural" mesh: no vertex buffers, the
+    // engine emits DrawInstanced(VertexCount, 1, 0, 0) with
+    // 4-control-point patch list topology and the VS reconstructs the
+    // mesh from SV_VertexID.  Used by tessellated displacement materials
+    // and by any future SV_VertexID-driven mesh (instanced grids,
+    // particle expansion).
+    enum class GfxPrimitiveTopology
+    {
+        TriangleList,
+        PatchList4CP,
+    };
+
+    //------------------------------------------------------------------------------------------------
     struct
     XGfxMeshData : public XCanvasElement
     {
@@ -195,6 +245,15 @@ namespace Canvas
         GEMMETHOD_(uint32_t, GetNumMaterialGroups)() = 0;
         GEMMETHOD_(GfxResourceAllocation *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
         GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t materialIndex) = 0;
+
+        // Topology shared by all groups of this mesh.  Default constructed
+        // mesh data is TriangleList for backward compatibility.
+        GEMMETHOD_(GfxPrimitiveTopology, GetTopology)() = 0;
+
+        // Total vertex / control-point count across all groups.  For a
+        // procedural mesh this is what the engine passes to DrawInstanced;
+        // for a triangle-list mesh it is the sum of per-group VertexCounts.
+        GEMMETHOD_(uint32_t, GetTotalVertexCount)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -220,6 +279,12 @@ namespace Canvas
         const MeshDataGroupDesc        *pGroups       = nullptr;
         uint32_t                        GroupCount    = 0;
         const char                     *pName         = nullptr;
+
+        // When Topology is a procedural type (e.g. PatchList4CP) the
+        // group's vertex arrays may be null - the engine will draw
+        // VertexCount control points from SV_VertexID with no input
+        // assembler bindings.
+        GfxPrimitiveTopology            Topology      = GfxPrimitiveTopology::TriangleList;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -400,6 +465,20 @@ namespace Canvas
         // Primary mesh-data factory: multi-group, supports UV0 / tangents /
         // per-group materials. Group count >= 1.
         GEMMETHOD(CreateMeshData)(const MeshDataDesc &desc, XGfxMeshData **ppMesh) = 0;
+
+        // Convenience factory for a [0,1]^2 unit-square procedural patch
+        // grid mesh.  patchesPerSide >= 1.  Result is a single-group
+        // XGfxMeshData with PatchList4CP topology, no vertex buffers, and
+        // VertexCount = patchesPerSide * patchesPerSide * 4.  Intended to
+        // be paired with a material that has a displacement extension
+        // attached (XGfxMaterial::SetDisplacement); the engine generates
+        // the per-CP positions and UVs from SV_VertexID.  The mesh
+        // instance's world transform should scale this unit square to the
+        // tile's world extents and translate to its origin.
+        GEMMETHOD(CreateProceduralPatchGrid)(
+            uint32_t patchesPerSide,
+            XGfxMeshData **ppMesh,
+            const char *name = nullptr) = 0;
 
         GEMMETHOD(CreateDebugMeshData)(
             uint32_t vertexCount,
