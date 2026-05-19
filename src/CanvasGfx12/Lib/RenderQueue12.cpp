@@ -1573,6 +1573,59 @@ Gem::Result CRenderQueue12::DrawMesh(
         if (materialGroupIndex >= pMesh->GetNumMaterialGroups())
             return Gem::Result::InvalidArg;
 
+        // Procedural patch-list mesh + displacement-enabled material is the
+        // "displaced terrain-like draw" path. Translate the material's
+        // displacement desc and the mesh-instance world transform into the
+        // engine's existing terrain submission queue. Per-tile origin/size
+        // are extracted from a translate+scale world transform (no
+        // rotation expected for axis-aligned tile placements). When the
+        // legacy XTerrainTile path is retired (Phase E) this is the only
+        // entry point into the displaced render path.
+        if (pMesh->GetTopology() == Canvas::GfxPrimitiveTopology::PatchList4CP)
+        {
+            Canvas::XGfxMaterial *pMaterialCheck = pMesh->GetMaterial(materialGroupIndex);
+            const Canvas::GfxDisplacementDesc *pDisp =
+                pMaterialCheck ? pMaterialCheck->GetDisplacement() : nullptr;
+            if (pDisp && pDisp->pHeightmap)
+            {
+                const uint32_t totalCp = pMesh->GetTotalVertexCount();
+                if (totalCp == 0 || (totalCp % 4u) != 0)
+                    return Gem::Result::InvalidArg;
+                const uint32_t patchCount = totalCp / 4u;
+                // sqrt for square grid; assert squareness via round-trip.
+                uint32_t patchesPerSide = 0;
+                while ((patchesPerSide + 1) * (patchesPerSide + 1) <= patchCount)
+                    ++patchesPerSide;
+                if (patchesPerSide * patchesPerSide != patchCount)
+                    return Gem::Result::InvalidArg;
+
+                Canvas::TerrainTileSubmitDesc tdesc = {};
+                // The world matrix in the submission is consumed multiplicatively
+                // after the shader computes world XY from TileOriginAndSize.
+                // Identity here means "the tile origin/size are already in
+                // world space"; the user's translate+scale lives in the
+                // origin/size fields below.
+                tdesc.World = Canvas::Math::FloatMatrix4x4::Identity();
+
+                // Decompose translate+scale from worldTransform. Row-major
+                // convention: translation in row 3; scale on the diagonal.
+                tdesc.OriginX     = worldTransform[3][0];
+                tdesc.OriginY     = worldTransform[3][1];
+                tdesc.WorldSizeX  = worldTransform[0][0];
+                tdesc.WorldSizeY  = worldTransform[1][1];
+
+                tdesc.HeightScale  = pDisp->HeightScale;
+                tdesc.HeightBias   = pDisp->HeightBias;
+                tdesc.PatchGridDim = patchesPerSide;
+                tdesc.pHeightmap   = pDisp->pHeightmap;
+                tdesc.pAlbedo       = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::Albedo);
+                tdesc.pAOMap        = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::AmbientOcclusion);
+                tdesc.pRoughnessMap = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::Roughness);
+
+                return SubmitTerrainTile(tdesc);
+            }
+        }
+
         // Fetch all per-group vertex streams. Position is required; the rest
         // are optional and gated by MATERIAL_FLAG_HAS_* bits in the per-object CB.
         auto pPosEntry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Position);
