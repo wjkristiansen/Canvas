@@ -25,7 +25,7 @@ TerrainPatchConstants HSTerrainPatchConst(InputPatch<TerrainControlPoint, 4> pat
 
 [domain("quad")]
 [partitioning("integer")]
-[outputtopology("triangle_cw")]
+[outputtopology("triangle_ccw")]
 [outputcontrolpoints(4)]
 [patchconstantfunc("HSTerrainPatchConst")]
 [maxtessfactor(64.0)]

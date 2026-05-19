@@ -29,6 +29,7 @@ add_library(CanvasCore SHARED
     DataSource.h
     Light.h
     Mesh.h
+    TerrainTile.h
     Model.h
     Scene.h
     SceneGraph.h

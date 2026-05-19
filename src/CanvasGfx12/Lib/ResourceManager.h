@@ -14,6 +14,7 @@
 #pragma once
 
 #include "ResourceAllocator.h"
+#include "FenceToken.h"
 #include <d3d12.h>
 #include <atlbase.h>
 #include <cstdint>
@@ -27,21 +28,6 @@ namespace Gem { struct XGeneric; }
 namespace Canvas { struct GfxResourceAllocation; }
 
 class CDevice12;
-
-//------------------------------------------------------------------------------------------------
-// FenceToken - lightweight {timeline, value} handle passed by value.
-//
-// TimelineId indexes into CResourceManager::m_Timelines.  The ID3D12Fence* COM
-// pointer lives once in the FenceTimeline, not duplicated per token.
-struct FenceToken
-{
-    uint32_t TimelineId = kInvalidTimelineId;
-    UINT64   Value      = 0;
-
-    static constexpr uint32_t kInvalidTimelineId = UINT32_MAX;
-
-    bool IsValid() const { return TimelineId != kInvalidTimelineId; }
-};
 
 //------------------------------------------------------------------------------------------------
 // FenceTimeline - per-queue retirement bucket.

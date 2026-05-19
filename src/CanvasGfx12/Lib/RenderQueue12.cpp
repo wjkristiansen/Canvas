@@ -857,6 +857,168 @@ void CRenderQueue12::EnsureDefaultPSO()
 }
 
 //------------------------------------------------------------------------------------------------
+// Terrain pipeline (GPU tessellation): VS + HS + DS + PS over a quad patch
+// list. Root signature exposes:
+//   b0: per-frame constants (shared with the rest of the engine)
+//   b1: per-tile constants (HlslTerrainConstants)
+//   t0: heightmap SRV (DS-visible)
+//   s0: static linear-clamp sampler for the heightmap
+// Material texture binding (composite albedo / AO / roughness for PSTerrain)
+// will join when PSTerrain stops using its placeholder factors.
+//------------------------------------------------------------------------------------------------
+static void BuildTerrainPSODesc(D3D12_GRAPHICS_PIPELINE_STATE_DESC &out,
+                                const std::vector<uint8_t> &vsBytecode,
+                                const std::vector<uint8_t> &hsBytecode,
+                                const std::vector<uint8_t> &dsBytecode,
+                                const std::vector<uint8_t> &psBytecode,
+                                ID3D12RootSignature *pRootSig,
+                                DXGI_FORMAT normalsFmt,
+                                DXGI_FORMAT diffuseFmt,
+                                DXGI_FORMAT worldPosFmt,
+                                DXGI_FORMAT pbrFmt,
+                                DXGI_FORMAT emissiveFmt,
+                                bool wireframe)
+{
+    out = {};
+    out.pRootSignature = pRootSig;
+    out.VS = { vsBytecode.data(), vsBytecode.size() };
+    out.HS = { hsBytecode.data(), hsBytecode.size() };
+    out.DS = { dsBytecode.data(), dsBytecode.size() };
+    out.PS = { psBytecode.data(), psBytecode.size() };
+    out.InputLayout = { nullptr, 0 };  // CPs generated from SV_VertexID
+
+    out.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    out.RasterizerState.FrontCounterClockwise = TRUE;
+    // Disable culling on the solid terrain PSO during v2 bring-up; terrain
+    // back-facing patches are rarely useful but having them visible while
+    // verifying tessellation removes one variable from "why don't I see
+    // anything?" debugging. Wireframe variant also disables culling below.
+    out.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    if (wireframe)
+    {
+        out.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+        out.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    }
+
+    out.BlendState        = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    out.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    out.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+    out.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+
+    out.SampleMask = UINT_MAX;
+    out.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+    out.NumRenderTargets = 5;
+    out.RTVFormats[0] = normalsFmt;
+    out.RTVFormats[1] = diffuseFmt;
+    out.RTVFormats[2] = worldPosFmt;
+    out.RTVFormats[3] = pbrFmt;
+    out.RTVFormats[4] = emissiveFmt;
+    out.SampleDesc.Count   = 1;
+    out.SampleDesc.Quality = 0;
+}
+
+void CRenderQueue12::EnsureTerrainPSO()
+{
+    if (m_pTerrainPSO)
+        return;
+
+    ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+
+    // ---------- Root signature ----------
+    if (!m_pTerrainRootSig)
+    {
+        CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+        srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
+            D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t0: heightmap
+
+        std::vector<CD3DX12_ROOT_PARAMETER1> rootParams(3);
+        rootParams[0].InitAsConstantBufferView(0, 0,
+            D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
+            D3D12_SHADER_VISIBILITY_ALL);   // b0 PerFrame
+        rootParams[1].InitAsConstantBufferView(1, 0,
+            D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
+            D3D12_SHADER_VISIBILITY_ALL);   // b1 PerTile
+        rootParams[2].InitAsDescriptorTable(1, &srvRange,
+            D3D12_SHADER_VISIBILITY_DOMAIN); // t0 heightmap (DS samples it)
+
+        CD3DX12_STATIC_SAMPLER_DESC sampler;
+        sampler.Init(
+            0,
+            D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_DOMAIN;
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rsDesc(
+            static_cast<UINT>(rootParams.size()), rootParams.data(),
+            1, &sampler,
+            D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+        CComPtr<ID3DBlob> pRSBlob;
+        ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&rsDesc, &pRSBlob, nullptr));
+        ThrowFailedHResult(pD3DDevice->CreateRootSignature(1,
+            pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(),
+            IID_PPV_ARGS(&m_pTerrainRootSig)));
+        SetD3D12DebugName(m_pTerrainRootSig, GetName(), "TerrainRootSig");
+    }
+
+    // ---------- Solid PSO ----------
+    auto shaderDir = GetShaderDirectory();
+    auto vs = LoadShaderBytecode(shaderDir / "VSTerrain.cso");
+    auto hs = LoadShaderBytecode(shaderDir / "HSTerrain.cso");
+    auto ds = LoadShaderBytecode(shaderDir / "DSTerrain.cso");
+    auto ps = LoadShaderBytecode(shaderDir / "PSTerrain.cso");
+    if (vs.empty() || hs.empty() || ds.empty() || ps.empty())
+    {
+        Canvas::LogError(m_pDevice->GetLogger(),
+            "Failed to load terrain shader bytecode (VS:%s HS:%s DS:%s PS:%s)",
+            vs.empty() ? "MISSING" : "OK", hs.empty() ? "MISSING" : "OK",
+            ds.empty() ? "MISSING" : "OK", ps.empty() ? "MISSING" : "OK");
+        Gem::ThrowGemError(Gem::Result::Fail);
+    }
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
+    BuildTerrainPSODesc(psoDesc, vs, hs, ds, ps, m_pTerrainRootSig,
+        CanvasFormatToDXGIFormat(m_GBufferNormalsFormat),
+        CanvasFormatToDXGIFormat(m_GBufferDiffuseFormat),
+        CanvasFormatToDXGIFormat(m_GBufferWorldPosFormat),
+        CanvasFormatToDXGIFormat(m_GBufferPBRFormat),
+        CanvasFormatToDXGIFormat(m_GBufferEmissiveFormat),
+        /*wireframe*/ false);
+    ThrowFailedHResult(pD3DDevice->CreateGraphicsPipelineState(
+        &psoDesc, IID_PPV_ARGS(&m_pTerrainPSO)));
+    SetD3D12DebugName(m_pTerrainPSO, GetName(), "TerrainPSO");
+
+    Canvas::LogInfo(m_pDevice->GetLogger(), "Terrain PSO created (VS+HS+DS+PS, quad patches)");
+}
+
+void CRenderQueue12::EnsureTerrainPSOWireframe()
+{
+    if (m_pTerrainPSOWireframe)
+        return;
+    EnsureTerrainPSO();  // share root sig + shaders
+
+    auto shaderDir = GetShaderDirectory();
+    auto vs = LoadShaderBytecode(shaderDir / "VSTerrain.cso");
+    auto hs = LoadShaderBytecode(shaderDir / "HSTerrain.cso");
+    auto ds = LoadShaderBytecode(shaderDir / "DSTerrain.cso");
+    auto ps = LoadShaderBytecode(shaderDir / "PSTerrain.cso");
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
+    BuildTerrainPSODesc(psoDesc, vs, hs, ds, ps, m_pTerrainRootSig,
+        CanvasFormatToDXGIFormat(m_GBufferNormalsFormat),
+        CanvasFormatToDXGIFormat(m_GBufferDiffuseFormat),
+        CanvasFormatToDXGIFormat(m_GBufferWorldPosFormat),
+        CanvasFormatToDXGIFormat(m_GBufferPBRFormat),
+        CanvasFormatToDXGIFormat(m_GBufferEmissiveFormat),
+        /*wireframe*/ true);
+    ThrowFailedHResult(m_pDevice->GetD3DDevice()->CreateGraphicsPipelineState(
+        &psoDesc, IID_PPV_ARGS(&m_pTerrainPSOWireframe)));
+    SetD3D12DebugName(m_pTerrainPSOWireframe, GetName(), "TerrainPSO_Wireframe");
+}
+
+//------------------------------------------------------------------------------------------------
 void CRenderQueue12::EnsureTextPSO(DXGI_FORMAT rtvFormat)
 {
     if (m_pTextPSO && m_TextPSOFormat == rtvFormat)
@@ -1174,7 +1336,6 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
 
         D3D12_BOX srcBox = { 0, 0, 0, width, height, 1 };
 
-        // Route to whichever task graph is currently active
         auto& taskGraph = m_UICommandListOpen ? m_UIGpuTaskGraph : m_GpuTaskGraph;
         auto& copyTask = taskGraph.CreateTask("UploadTextureRegion");
         taskGraph.DeclareTextureUsage(copyTask, pDst,
@@ -1199,9 +1360,55 @@ Gem::Result CRenderQueue12::UploadTextureRegion(
     }
 }
 
-//================================================================================================
-// Frame rendering methods
-//================================================================================================
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CRenderQueue12::FinalizeUploadAsShaderResource(Canvas::XGfxSurface *pSurface)
+{
+    if (!pSurface)
+        return Gem::Result::BadPointer;
+
+    try
+    {
+        auto* pDst = static_cast<CSurface12*>(pSurface);
+
+        // No-op if the surface isn't in LAYOUT_COMMON: either it was already
+        // finalized once (now SHADER_RESOURCE) or it lives in some other
+        // layout that this helper isn't designed to handle.
+        if (!pDst->m_CurrentLayout.m_AllSame ||
+            pDst->m_CurrentLayout.m_UniformLayout != D3D12_BARRIER_LAYOUT_COMMON)
+        {
+            return Gem::Result::Success;
+        }
+
+        // Schedule a direct-queue barrier-only task that declares the surface
+        // as SHADER_RESOURCE. The task graph's fixup-barrier mechanism will
+        // emit the COMMON -> SHADER_RESOURCE transition in the fixup CL.
+        // Cross-queue synchronization with the device's copy queue is handled
+        // by Flush() (it issues a Wait against the copy queue fence before
+        // dispatching this graph).
+        if (!m_UICommandListOpen)
+            EnsureTaskGraphActive();
+        auto& taskGraph = m_UICommandListOpen ? m_UIGpuTaskGraph : m_GpuTaskGraph;
+        auto& fixupTask = taskGraph.CreateTask("FinalizeUploadAsShaderResource");
+        taskGraph.DeclareTextureUsage(fixupTask, pDst,
+            D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+            D3D12_BARRIER_SYNC_ALL,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        fixupTask.RecordFunc = [](ID3D12GraphicsCommandList*) { /* barrier-only */ };
+        taskGraph.InsertTask(fixupTask);
+
+        // Stamp the surface with the value this render queue will signal on
+        // the next Flush(). DATA_STATIC SRV consumers (e.g. the terrain draw)
+        // must wait for the fixup CL to retire on the GPU before binding the
+        // descriptor: D3D12 forbids state changes on a DATA_STATIC-bound
+        // resource while the binding CL is in flight, and the
+        // COMMON -> SHADER_RESOURCE transition is such a change.
+        pDst->m_UploadFixupToken = FenceToken{ m_TimelineId, m_FenceValue + 1 };
+
+        return Gem::Result::Success;
+    }
+    catch (Gem::GemError& e) { return e.Result(); }
+    catch (_com_error& e)    { return ResultFromHRESULT(e.Error()); }
+}
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CRenderQueue12::BeginFrame(
@@ -1812,6 +2019,18 @@ GEMMETHODIMP_(void) CRenderQueue12::SetActiveCamera(Canvas::XCamera *pCamera)
 }
 
 //------------------------------------------------------------------------------------------------
+Gem::Result CRenderQueue12::SubmitTerrainTile(const Canvas::TerrainTileSubmitDesc &desc)
+{
+    if (!desc.pHeightmap || desc.PatchGridDim == 0)
+        return Gem::Result::InvalidArg;
+    if (desc.WorldSizeX <= 0.0f || desc.WorldSizeY <= 0.0f)
+        return Gem::Result::InvalidArg;
+
+    m_TerrainSubmissions.push_back(desc);
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
 {
     if (!pLight || m_LightCount >= MAX_LIGHTS_PER_REGION)
@@ -1973,7 +2192,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         };
         m_GpuTaskGraph.InsertTask(frameConstTask);
 
-        // Drain the renderable queue — process nodes inline
+        // Drain the renderable queue - process nodes inline
         for (auto *pNode : m_RenderableQueue)
         {
             UINT elementCount = pNode->GetBoundElementCount();
@@ -1995,11 +2214,135 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                             Gem::ThrowGemError(DrawMesh(pMeshData, g, worldMatrix));
                         }
                     }
+                    continue;
                 }
-                // Lights were already accumulated during SubmitForRender — skip here
+
+                // Terrain tiles: pull extents + GPU resources from the element,
+                // build a submit-desc, route through the internal terrain path.
+                // A tile with a null heightmap is a construction bug, not a
+                // runtime condition: SubmitTerrainTile validates and returns
+                // InvalidArg, which ThrowGemError turns into a hard error.
+                Gem::TGemPtr<Canvas::XTerrainTile> pTerrainTile;
+                if (SUCCEEDED(pElement->QueryInterface(&pTerrainTile)))
+                {
+                    Canvas::TerrainTileSubmitDesc tdesc;
+                    tdesc.pHeightmap = pTerrainTile->GetHeightmap();
+                    pTerrainTile->GetMaterial(&tdesc.pAlbedo, &tdesc.pAOMap, &tdesc.pRoughnessMap);
+                    pTerrainTile->GetExtents(
+                        &tdesc.OriginX, &tdesc.OriginY,
+                        &tdesc.WorldSizeX, &tdesc.WorldSizeY,
+                        &tdesc.HeightScale, &tdesc.HeightBias);
+                    tdesc.PatchGridDim = pTerrainTile->GetPatchGridDim();
+                    tdesc.World        = pNode->GetGlobalMatrix();
+                    Gem::ThrowGemError(SubmitTerrainTile(tdesc));
+                    continue;
+                }
+                // Lights were already accumulated during SubmitForRender - skip here
             }
         }
         m_RenderableQueue.clear();
+
+        //==========================================================================================
+        // Terrain submissions: GPU-tessellated patch lists writing into the
+        // G-buffer. Same MRT shape as the default geometry pass, so the
+        // composite picks up terrain pixels uniformly with the rest of the
+        // scene.
+        //==========================================================================================
+        if (!m_TerrainSubmissions.empty())
+        {
+            EnsureTerrainPSO();   // make sure both root sig + PSO are available
+            ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+            const UINT incSize = m_CbvSrvUavIncrement;
+
+            const uint64_t terrainCbSize = (sizeof(HlslTypes::HlslTerrainConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
+
+            for (const auto& sub : m_TerrainSubmissions)
+            {
+                // Don't bind the heightmap until its upload + COMMON->SHADER_RESOURCE
+                // fixup CL has fully retired on the GPU. The terrain root sig
+                // declares the heightmap SRV range as DATA_STATIC, which forbids
+                // any state change on the resource while a CL with the binding
+                // is in flight. By waiting for the fixup token to retire, we
+                // guarantee the layout transition is in the past relative to
+                // any submission that follows. Tiles whose heightmaps are not
+                // yet ready are simply skipped this frame; the scene graph will
+                // re-submit them next frame.
+                auto* pHeightSurf = static_cast<CSurface12*>(sub.pHeightmap);
+                if (pHeightSurf->m_UploadFixupToken.IsValid())
+                {
+                    ID3D12Fence* pFence = m_pDevice->GetResourceManager().GetTimelineFence(
+                        pHeightSurf->m_UploadFixupToken.TimelineId);
+                    if (!pFence || pFence->GetCompletedValue() < pHeightSurf->m_UploadFixupToken.Value)
+                        continue;
+                }
+                // ---- Per-tile constant buffer ----
+                HlslTypes::HlslTerrainConstants tileCb = {};
+                memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
+                tileCb.TileOriginAndSize = { sub.OriginX, sub.OriginY, sub.WorldSizeX, sub.WorldSizeY };
+                tileCb.PatchGridDim      = sub.PatchGridDim;
+                tileCb.HeightScale       = sub.HeightScale;
+                tileCb.HeightBias        = sub.HeightBias;
+
+                HostWriteAllocation tileHw;
+                Gem::ThrowGemError(m_UploadRing.AllocateFromRing(terrainCbSize, tileHw));
+                memcpy(tileHw.pMapped, &tileCb, sizeof(tileCb));
+                D3D12_GPU_VIRTUAL_ADDRESS perTileCbvAddr = tileHw.GpuAddress;
+
+                // ---- Heightmap SRV in the shader-visible descriptor heap ----
+                if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
+                    m_NextSRVSlot = 0;
+                UINT heightSrvSlot = m_NextSRVSlot++;
+                CD3DX12_CPU_DESCRIPTOR_HANDLE heightCpu(
+                    m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                    heightSrvSlot, incSize);
+                CD3DX12_GPU_DESCRIPTOR_HANDLE heightGpu(
+                    m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+                    heightSrvSlot, incSize);
+
+                ID3D12Resource* pHeightResource =
+                    static_cast<CSurface12*>(sub.pHeightmap)->GetD3DResource();
+                D3D12_RESOURCE_DESC hdesc = pHeightResource->GetDesc();
+                D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+                srvDesc.Format                    = hdesc.Format;
+                srvDesc.ViewDimension             = D3D12_SRV_DIMENSION_TEXTURE2D;
+                srvDesc.Shader4ComponentMapping   = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                srvDesc.Texture2D.MostDetailedMip = 0;
+                srvDesc.Texture2D.MipLevels       = hdesc.MipLevels;
+                srvDesc.Texture2D.PlaneSlice      = 0;
+                srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+                pD3DDevice->CreateShaderResourceView(pHeightResource, &srvDesc, heightCpu);
+
+                const uint32_t patchCount = sub.PatchGridDim * sub.PatchGridDim;
+                const uint32_t cpVertexCount = patchCount * 4u;
+
+                auto& drawTask = CreateGpuTask("DrawTerrainTile");
+                DeclareGpuTextureUsage(drawTask,
+                    static_cast<CSurface12*>(sub.pHeightmap),
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    // SYNC_VERTEX_SHADING covers VS / HS / DS / GS under the
+                    // enhanced-barriers grouping. The heightmap is sampled in
+                    // the domain shader (terrain root sig SRV visibility is
+                    // D3D12_SHADER_VISIBILITY_DOMAIN).
+                    D3D12_BARRIER_SYNC_VERTEX_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+
+                drawTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr, heightGpu, cpVertexCount]
+                                      (ID3D12GraphicsCommandList* pCL)
+                {
+                    pCL->SetPipelineState(GetActiveTerrainPSO());
+                    pCL->SetGraphicsRootSignature(m_pTerrainRootSig);
+                    pCL->OMSetRenderTargets(5, m_GBufferRTVs, FALSE, &m_CurrentDSV);
+                    pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
+                    pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
+                    pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
+                    pCL->SetGraphicsRootConstantBufferView(1, perTileCbvAddr);
+                    pCL->SetGraphicsRootDescriptorTable(2, heightGpu);
+                    pCL->DrawInstanced(cpVertexCount, 1, 0, 0);
+                };
+                m_GpuTaskGraph.InsertTask(drawTask);
+            }
+        }
+        m_TerrainSubmissions.clear();
 
         //==========================================================================================
         // Composition pass: read G-buffers, perform deferred lighting, write to back buffer
@@ -2051,6 +2394,9 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
                 pCL->SetGraphicsRootSignature(m_pCompositeRootSig);
                 pCL->SetPipelineState(m_pCompositePSO);
+                // Explicit topology: prior draws (e.g. terrain) may have left
+                // the IA in PATCHLIST. Composite PSO expects TRIANGLE.
+                pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                 pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
                 pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
                 pCL->SetGraphicsRootDescriptorTable(1, baseGpuHandle);
@@ -2119,6 +2465,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     {
         m_RenderableQueue.clear();
         m_UIRenderableQueue.clear();
+        m_TerrainSubmissions.clear();
         m_pCurrentSwapChain = nullptr;
         m_pActiveCamera = nullptr;
         return e.Result();

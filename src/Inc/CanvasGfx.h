@@ -239,6 +239,27 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    // Per-tile parameters consumed internally when the render queue routes an
+    // XTerrainTile through the terrain pipeline. Exposed publicly only so a
+    // future advanced consumer can construct a tile entirely outside the
+    // scene graph if needed; standard use goes through XTerrainTile.
+    struct TerrainTileSubmitDesc
+    {
+        XGfxSurface *pHeightmap     = nullptr;  // R16_UNorm 2D, mip-mapped (mip 0 mandatory)
+        XGfxSurface *pAlbedo        = nullptr;  // RGBA8 composite (per-tile baked)
+        XGfxSurface *pAOMap         = nullptr;  // R8 composite
+        XGfxSurface *pRoughnessMap  = nullptr;  // R8 composite
+        Math::FloatMatrix4x4 World;             // Tile world transform (typically identity)
+        float    OriginX            = 0.0f;     // World-space origin of texel (0, 0)
+        float    OriginY            = 0.0f;
+        float    WorldSizeX         = 0.0f;     // World-space tile size (== (Width-1)*Dxy)
+        float    WorldSizeY         = 0.0f;
+        float    HeightScale        = 0.0f;     // Meters per [0, 1] heightmap sample
+        float    HeightBias         = 0.0f;
+        uint32_t PatchGridDim       = 64;       // Patches per side; total patches = PatchGridDim^2
+    };
+
+    //------------------------------------------------------------------------------------------------
     // Render queue - submits and executes rendering work.
     struct XGfxRenderQueue : public XCanvasElement
     {
@@ -261,6 +282,16 @@ namespace Canvas
         // lazily on first enable so the cost is zero until used.
         GEMMETHOD_(void, SetGeometryWireframe)(bool wireframe) = 0;
         GEMMETHOD_(bool, GetGeometryWireframe)() const = 0;
+
+        // Finalize a one-shot texture upload by scheduling a direct-queue
+        // barrier that transitions the surface from LAYOUT_COMMON to
+        // LAYOUT_SHADER_RESOURCE. Use after XGfxDevice::UploadTextureRegion
+        // for textures that will be sampled as static SRVs (e.g. terrain
+        // heightmaps, material atlases). The render queue stamps the surface
+        // with a fence token so DATA_STATIC consumers can wait for the
+        // transition to fully retire before binding the descriptor. Calling
+        // this on a surface that is not in LAYOUT_COMMON is a no-op.
+        GEMMETHOD(FinalizeUploadAsShaderResource)(XGfxSurface *pSurface) = 0;
     };
 
     enum GfxSurfaceFlags : uint32_t

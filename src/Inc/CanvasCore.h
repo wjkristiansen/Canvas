@@ -40,6 +40,7 @@ struct XGfxBuffer;
 struct XGfxMeshData;
 struct XGfxMaterial;
 struct XMeshInstance;
+struct XTerrainTile;
 struct XModel;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
@@ -181,6 +182,7 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateTerrainTile)(XTerrainTile **ppTerrainTile, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateModel)(XGfxDevice *pDevice, XModel **ppModel, PCSTR name = nullptr) = 0;
 
     // Text/UI factory methods
@@ -411,6 +413,53 @@ XMeshInstance : public XSceneGraphElement
     
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() = 0;
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+// Terrain tile: GPU-tessellated heightfield-driven terrain patch.
+//
+// Holds non-owning references to GPU resources (heightmap texture, material
+// composites) plus per-tile spatial extents and LOD parameters. When the
+// scene's render-queue submit walks the element, the deferred terrain pass
+// reads these to issue a single tessellated draw per tile.
+//
+// The scene-graph parent's transform is applied as the tile's "world"
+// transform in addition to the per-tile origin/size, so a tile can be
+// re-positioned by reparenting / moving its node.
+struct
+XTerrainTile : public XSceneGraphElement
+{
+    GEM_INTERFACE_DECLARE(XTerrainTile, 0x9E37A1C45F1A0D62);
+
+    // GPU resources (non-owning; tile holds AddRefs internally to keep alive).
+    GEMMETHOD_(XGfxSurface *, GetHeightmap)() = 0;
+    GEMMETHOD_(void, SetHeightmap)(XGfxSurface *pHeightmap) = 0;
+
+    GEMMETHOD_(void, SetMaterial)(
+        XGfxSurface *pAlbedo,
+        XGfxSurface *pAOMap,
+        XGfxSurface *pRoughnessMap) = 0;
+
+    GEMMETHOD_(void, GetMaterial)(
+        XGfxSurface **ppAlbedo,
+        XGfxSurface **ppAOMap,
+        XGfxSurface **ppRoughnessMap) const = 0;
+
+    // Per-tile spatial extents (world meters).
+    GEMMETHOD_(void, SetExtents)(
+        float originX, float originY,
+        float worldSizeX, float worldSizeY,
+        float heightScale, float heightBias) = 0;
+
+    GEMMETHOD_(void, GetExtents)(
+        float *pOriginX, float *pOriginY,
+        float *pWorldSizeX, float *pWorldSizeY,
+        float *pHeightScale, float *pHeightBias) const = 0;
+
+    // Patch grid dimension: PatchGridDim x PatchGridDim quad patches per
+    // tile, each refined by GPU tessellation. Default 64.
+    GEMMETHOD_(void, SetPatchGridDim)(uint32_t dim) = 0;
+    GEMMETHOD_(uint32_t, GetPatchGridDim)() const = 0;
 };
 
 //------------------------------------------------------------------------------------------------

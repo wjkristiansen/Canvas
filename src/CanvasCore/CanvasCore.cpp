@@ -9,6 +9,7 @@
 #include "Camera.h"
 #include "Light.h"
 #include "Mesh.h"
+#include "TerrainTile.h"
 #include "Model.h"
 #include "Scene.h"
 #include "CanvasGfx.h"
@@ -180,6 +181,14 @@ GEMMETHODIMP CCanvas::CreateMeshInstance(XMeshInstance **ppMeshInstance, PCSTR n
     CFunctionSentinel sentinel("XCanvas::CreateMeshInstance", m_pLogger);
 
     return CreateElement<CMeshInstance>(ppMeshInstance, name);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateTerrainTile(XTerrainTile **ppTerrainTile, PCSTR name)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateTerrainTile", m_pLogger);
+
+    return CreateElement<CTerrainTile>(ppTerrainTile, name);
 }
 
 //------------------------------------------------------------------------------------------------

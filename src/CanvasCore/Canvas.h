@@ -128,6 +128,7 @@ public:
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;
     GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, PCSTR name = nullptr) final;
+    GEMMETHOD(CreateTerrainTile)(XTerrainTile **ppTerrainTile, PCSTR name = nullptr) final;
     GEMMETHOD(CreateModel)(XGfxDevice *pDevice, XModel **ppModel, PCSTR name = nullptr) final;
 
     // Text/UI factory methods

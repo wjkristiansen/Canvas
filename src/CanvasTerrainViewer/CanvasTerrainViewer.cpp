@@ -416,10 +416,9 @@ class CTerrainApp
     Gem::TGemPtr<Canvas::XGfxDevice>        m_pGfxDevice;
     Gem::TGemPtr<Canvas::XGfxSwapChain>     m_pGfxSwapChain;
     Gem::TGemPtr<Canvas::XGfxRenderQueue>   m_pGfxRenderQueue;
-    Gem::TGemPtr<Canvas::XGfxMeshData>      m_pTerrainMesh;
-    Gem::TGemPtr<Canvas::XMeshInstance>     m_pTerrainInstance;
+    Gem::TGemPtr<Canvas::XGfxSurface>       m_pHeightmapSurface;
+    Gem::TGemPtr<Canvas::XTerrainTile>      m_pTerrainTile;
     Gem::TGemPtr<Canvas::XSceneGraphNode>   m_pTerrainNode;
-    Gem::TGemPtr<Canvas::XGfxMaterial>      m_pTerrainMaterial;
     Gem::TGemPtr<Canvas::XFont>             m_pFont;
     Gem::TGemPtr<Canvas::XFont>             m_pFontMono;
     Gem::TGemPtr<Canvas::XUIGraph>          m_pUIGraph;
@@ -518,35 +517,46 @@ class CTerrainApp
             return false;
         }
 
-        Gem::ThrowGemError(m_pGfxDevice->CreateMaterial(&m_pTerrainMaterial));
-        m_pTerrainMaterial->SetBaseColorFactor(
-            Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 1.0f));
-        m_pTerrainMaterial->SetRoughMetalAOFactor(
-            Canvas::Math::FloatVector4(1.0f, 0.0f, 1.0f, 0.0f));
-        m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::Albedo,           matOutputs.pAlbedo);
-        m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::AmbientOcclusion, matOutputs.pAO);
-        m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::Roughness,        matOutputs.pRoughness);
-
-        Canvas::HeightField::TerrainMeshOptions meshOpts;
-        meshOpts.OriginX   = matOpts.OriginX;
-        meshOpts.OriginY   = matOpts.OriginY;
-        meshOpts.pMaterial = m_pTerrainMaterial;
-        meshOpts.Stride    = 1;
-
-        Gem::Result r = Canvas::HeightField::BuildTerrainMesh(
-            m_pGfxDevice, field, meshOpts, &m_pTerrainMesh, "TerrainMesh");
-        if (Gem::Failed(r))
+        // Upload the heightmap into an R16_UNorm 2D surface; the GPU
+        // tessellation pipeline's DS samples it to lift patch vertices into Z.
         {
-            Canvas::LogError(m_pLogger.Get(),
-                "BuildTerrainMesh failed: %s", GemResultString(r));
-            return false;
+            Canvas::GfxSurfaceDesc hd = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+                Canvas::GfxFormat::R16_UNorm,
+                field.Desc.Width, field.Desc.Height,
+                Canvas::SurfaceFlag_ShaderResource);
+            Gem::ThrowGemError(m_pGfxDevice->CreateSurface(hd, &m_pHeightmapSurface));
+            const uint32_t rowPitchBytes = field.Desc.Width * sizeof(uint16_t);
+            Gem::ThrowGemError(m_pGfxDevice->UploadTextureRegion(
+                m_pHeightmapSurface, 0, 0,
+                field.Desc.Width, field.Desc.Height,
+                field.Samples.data(), rowPitchBytes));
+            // Schedule the COMMON -> SHADER_RESOURCE transition on the
+            // render queue so the heightmap is sampleable by the terrain
+            // tessellation pipeline. The render queue stamps the surface
+            // with a fence token; the terrain drain waits for retirement
+            // before binding (terrain root sig uses DATA_STATIC SRVs).
+            Gem::ThrowGemError(m_pGfxRenderQueue->FinalizeUploadAsShaderResource(
+                m_pHeightmapSurface));
         }
 
-        Gem::ThrowGemError(m_pCanvas->CreateMeshInstance(&m_pTerrainInstance, "TerrainInstance"));
-        m_pTerrainInstance->SetMeshData(m_pTerrainMesh);
+        // Build a scene-graph terrain tile element. The render queue routes
+        // these through the GPU tessellation pipeline on its own; no draw
+        // calls or PSO knowledge required here.
+        char tileName[64];
+        snprintf(tileName, sizeof(tileName), "Tile_%d_%d",
+            static_cast<int>(std::round(matOpts.OriginX / std::max(1.0f, field.WorldWidth()))),
+            static_cast<int>(std::round(matOpts.OriginY / std::max(1.0f, field.WorldHeight()))));
+        Gem::ThrowGemError(m_pCanvas->CreateTerrainTile(&m_pTerrainTile, tileName));
+        m_pTerrainTile->SetHeightmap(m_pHeightmapSurface);
+        m_pTerrainTile->SetMaterial(matOutputs.pAlbedo, matOutputs.pAO, matOutputs.pRoughness);
+        m_pTerrainTile->SetExtents(
+            matOpts.OriginX, matOpts.OriginY,
+            field.WorldWidth(), field.WorldHeight(),
+            field.Desc.HeightScale, field.Desc.HeightBias);
+        m_pTerrainTile->SetPatchGridDim(64);
 
         Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&m_pTerrainNode, "TerrainNode"));
-        m_pTerrainNode->BindElement(m_pTerrainInstance);
+        m_pTerrainNode->BindElement(m_pTerrainTile);
         m_pScene->GetRootSceneGraphNode()->AddChild(m_pTerrainNode);
 
         // Camera start pose from the scene config.
