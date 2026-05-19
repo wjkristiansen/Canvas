@@ -949,7 +949,7 @@ void CRenderQueue12::EnsureTerrainPSO()
             D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
             D3D12_SHADER_VISIBILITY_ALL);   // b1 PerTile
         rootParams[2].InitAsDescriptorTable(1, &heightRange,
-            D3D12_SHADER_VISIBILITY_DOMAIN);   // t0
+            D3D12_SHADER_VISIBILITY_ALL);      // t0 (HS reads for LOD, DS reads for height lift)
         rootParams[3].InitAsDescriptorTable(1, &materialRange,
             D3D12_SHADER_VISIBILITY_PIXEL);    // t1..t3
 
@@ -2375,6 +2375,9 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 // the pixel shader (SYNC_PIXEL_SHADING).
                 DeclareGpuTextureUsage(drawTask, pHeightSurf,
                     D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    // SYNC_VERTEX_SHADING covers VS / HS / DS / GS. The HS
+                    // reads the heightmap for distance + curvature LOD, the
+                    // DS reads it for the height lift.
                     D3D12_BARRIER_SYNC_VERTEX_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 DeclareGpuTextureUsage(drawTask, pAlbedoSurf,
