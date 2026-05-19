@@ -1573,15 +1573,14 @@ Gem::Result CRenderQueue12::DrawMesh(
         if (materialGroupIndex >= pMesh->GetNumMaterialGroups())
             return Gem::Result::InvalidArg;
 
-        // Procedural patch-list mesh + displacement-enabled material is the
-        // "displaced terrain-like draw" path. Translate the material's
-        // displacement desc and the mesh-instance world transform into the
-        // engine's existing terrain submission queue. Per-tile origin/size
-        // are extracted from a translate+scale world transform (no
-        // rotation expected for axis-aligned tile placements). When the
-        // legacy XTerrainTile path is retired (Phase E) this is the only
-        // entry point into the displaced render path.
-        if (pMesh->GetTopology() == Canvas::GfxPrimitiveTopology::PatchList4CP)
+                // Procedural patch-list mesh + displacement-enabled material is the
+                // displaced-mesh draw path. Translate the material's displacement
+                // desc and the mesh-instance world transform into the engine's
+                // internal terrain submission queue. Per-tile world dimensions
+                // come from the displacement desc (kept off node scale so child
+                // nodes don't inherit tile-size stretches); origin comes from
+                // the node's translation row.
+                if (pMesh->GetTopology() == Canvas::GfxPrimitiveTopology::PatchList4CP)
         {
             Canvas::XGfxMaterial *pMaterialCheck = pMesh->GetMaterial(materialGroupIndex);
             const Canvas::GfxDisplacementDesc *pDisp =
@@ -1599,7 +1598,7 @@ Gem::Result CRenderQueue12::DrawMesh(
                 if (patchesPerSide * patchesPerSide != patchCount)
                     return Gem::Result::InvalidArg;
 
-                Canvas::TerrainTileSubmitDesc tdesc = {};
+                TerrainTileSubmitDesc tdesc = {};
                 // The world matrix in the submission is consumed multiplicatively
                 // after the shader computes world XY from TileOriginAndSize.
                 // Identity here means "the tile origin/size are already in
@@ -2088,7 +2087,7 @@ GEMMETHODIMP_(void) CRenderQueue12::SetActiveCamera(Canvas::XCamera *pCamera)
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CRenderQueue12::SubmitTerrainTile(const Canvas::TerrainTileSubmitDesc &desc)
+Gem::Result CRenderQueue12::SubmitTerrainTile(const TerrainTileSubmitDesc &desc)
 {
     if (!desc.pHeightmap || !desc.pAlbedo || !desc.pAOMap || !desc.pRoughnessMap)
         return Gem::Result::InvalidArg;
@@ -2288,26 +2287,6 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     continue;
                 }
 
-                // Terrain tiles: pull extents + GPU resources from the element,
-                // build a submit-desc, route through the internal terrain path.
-                // A tile with a null heightmap is a construction bug, not a
-                // runtime condition: SubmitTerrainTile validates and returns
-                // InvalidArg, which ThrowGemError turns into a hard error.
-                Gem::TGemPtr<Canvas::XTerrainTile> pTerrainTile;
-                if (SUCCEEDED(pElement->QueryInterface(&pTerrainTile)))
-                {
-                    Canvas::TerrainTileSubmitDesc tdesc;
-                    tdesc.pHeightmap = pTerrainTile->GetHeightmap();
-                    pTerrainTile->GetMaterial(&tdesc.pAlbedo, &tdesc.pAOMap, &tdesc.pRoughnessMap);
-                    pTerrainTile->GetExtents(
-                        &tdesc.OriginX, &tdesc.OriginY,
-                        &tdesc.WorldSizeX, &tdesc.WorldSizeY,
-                        &tdesc.HeightScale, &tdesc.HeightBias);
-                    tdesc.PatchGridDim = pTerrainTile->GetPatchGridDim();
-                    tdesc.World        = pNode->GetGlobalMatrix();
-                    Gem::ThrowGemError(SubmitTerrainTile(tdesc));
-                    continue;
-                }
                 // Lights were already accumulated during SubmitForRender - skip here
             }
         }

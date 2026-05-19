@@ -22,6 +22,29 @@
 class CSurface12;
 class CSwapChain12;
 
+// Private representation of one displaced patch-grid draw queued by
+// CRenderQueue12::DrawMesh during scene walk and drained at EndFrame.
+// Carries everything the GPU-tessellated drain needs: GPU resources,
+// LOD knobs (read from the material's GfxDisplacementDesc), per-tile
+// extents (also from the displacement desc + the node transform), and
+// the patch grid dim derived from the procedural mesh's vertex count.
+// Engine-internal only; not visible through any public API.
+struct TerrainTileSubmitDesc
+{
+    Canvas::XGfxSurface     *pHeightmap     = nullptr;
+    Canvas::XGfxSurface     *pAlbedo        = nullptr;
+    Canvas::XGfxSurface     *pAOMap         = nullptr;
+    Canvas::XGfxSurface     *pRoughnessMap  = nullptr;
+    Canvas::Math::FloatMatrix4x4 World;
+    float    OriginX       = 0.0f;
+    float    OriginY       = 0.0f;
+    float    WorldSizeX    = 0.0f;
+    float    WorldSizeY    = 0.0f;
+    float    HeightScale   = 0.0f;
+    float    HeightBias    = 0.0f;
+    uint32_t PatchGridDim  = 64;
+};
+
 // Enable resource usage validation diagnostics (conflict detection, write exclusivity checking)
 // Set to 0 to disable for production builds with minimal overhead
 #define CANVAS_RESOURCE_USAGE_DIAGNOSTICS 0
@@ -528,7 +551,7 @@ public:
     std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
 
     // Pending terrain-tile submissions, drained during EndFrame.
-    std::vector<Canvas::TerrainTileSubmitDesc> m_TerrainSubmissions;
+    std::vector<TerrainTileSubmitDesc> m_TerrainSubmissions;
 
     // UI graph nodes enqueued during UI graph submission, dispatched during EndFrame
     std::vector<Canvas::XUIGraphNode*> m_UIRenderableQueue;
@@ -578,9 +601,10 @@ public:
     GEMMETHOD(FinalizeUploadAsShaderResource)(Canvas::XGfxSurface *pSurface) final;
     GEMMETHOD(EndFrame)() final;
 
-    // Internal: queue a terrain submission (called by SubmitForRender when
-    // it walks an XTerrainTile element). Not part of the public interface.
-    Gem::Result SubmitTerrainTile(const Canvas::TerrainTileSubmitDesc &desc);
+    // Internal: queue a terrain submission, called by DrawMesh when it
+    // detects a procedural patch-grid mesh paired with a displacement-
+    // enabled material. Not part of the public interface.
+    Gem::Result SubmitTerrainTile(const TerrainTileSubmitDesc &desc);
 
     // Internal functions
     CDevice12 *GetDevice() const { return m_pDevice; }
