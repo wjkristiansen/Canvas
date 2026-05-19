@@ -857,16 +857,16 @@ void CRenderQueue12::EnsureDefaultPSO()
 }
 
 //------------------------------------------------------------------------------------------------
-// Terrain pipeline (GPU tessellation): VS + HS + DS + PS over a quad patch
+// Displaced-mesh pipeline (GPU tessellation): VS + HS + DS + PS over a quad patch
 // list. Root signature exposes:
 //   b0: per-frame constants (shared with the rest of the engine)
-//   b1: per-tile constants (HlslTerrainConstants)
-//   t0: heightmap SRV (DS-visible)
-//   s0: static linear-clamp sampler for the heightmap
-// Material texture binding (composite albedo / AO / roughness for PSTerrain)
-// will join when PSTerrain stops using its placeholder factors.
+//   b1: per-instance constants (HlslDisplacedConstants)
+//   t0: heightmap SRV (HS + DS visible: HS reads coarse mip for curvature,
+//       DS reads mip 0 for vertex displacement)
+//   t1..t3: material atlas SRVs (PS visible: albedo / AO / roughness)
+//   s0: static linear-clamp sampler shared by all stages
 //------------------------------------------------------------------------------------------------
-static void BuildTerrainPSODesc(D3D12_GRAPHICS_PIPELINE_STATE_DESC &out,
+static void BuildDisplacedPSODesc(D3D12_GRAPHICS_PIPELINE_STATE_DESC &out,
                                 const std::vector<uint8_t> &vsBytecode,
                                 const std::vector<uint8_t> &hsBytecode,
                                 const std::vector<uint8_t> &dsBytecode,
@@ -889,7 +889,7 @@ static void BuildTerrainPSODesc(D3D12_GRAPHICS_PIPELINE_STATE_DESC &out,
 
     out.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     out.RasterizerState.FrontCounterClockwise = TRUE;
-    // Disable culling on the solid terrain PSO during v2 bring-up; terrain
+    // Disable culling on the solid displaced PSO during v2 bring-up; displaced
     // back-facing patches are rarely useful but having them visible while
     // verifying tessellation removes one variable from "why don't I see
     // anything?" debugging. Wireframe variant also disables culling below.
@@ -917,15 +917,15 @@ static void BuildTerrainPSODesc(D3D12_GRAPHICS_PIPELINE_STATE_DESC &out,
     out.SampleDesc.Quality = 0;
 }
 
-void CRenderQueue12::EnsureTerrainPSO()
+void CRenderQueue12::EnsureDisplacedPSO()
 {
-    if (m_pTerrainPSO)
+    if (m_pDisplacedPSO)
         return;
 
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // ---------- Root signature ----------
-    if (!m_pTerrainRootSig)
+    if (!m_pDisplacedRootSig)
     {
         // The heightmap (t0) and the three material atlases (t1..t3) live
         // in separate descriptor tables so each can carry a tight shader-
@@ -975,27 +975,27 @@ void CRenderQueue12::EnsureTerrainPSO()
         ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&rsDesc, &pRSBlob, nullptr));
         ThrowFailedHResult(pD3DDevice->CreateRootSignature(1,
             pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(),
-            IID_PPV_ARGS(&m_pTerrainRootSig)));
-        SetD3D12DebugName(m_pTerrainRootSig, GetName(), "TerrainRootSig");
+            IID_PPV_ARGS(&m_pDisplacedRootSig)));
+        SetD3D12DebugName(m_pDisplacedRootSig, GetName(), "DisplacedRootSig");
     }
 
     // ---------- Solid PSO ----------
     auto shaderDir = GetShaderDirectory();
-    auto vs = LoadShaderBytecode(shaderDir / "VSTerrain.cso");
-    auto hs = LoadShaderBytecode(shaderDir / "HSTerrain.cso");
-    auto ds = LoadShaderBytecode(shaderDir / "DSTerrain.cso");
-    auto ps = LoadShaderBytecode(shaderDir / "PSTerrain.cso");
+    auto vs = LoadShaderBytecode(shaderDir / "VSDisplaced.cso");
+    auto hs = LoadShaderBytecode(shaderDir / "HSDisplaced.cso");
+    auto ds = LoadShaderBytecode(shaderDir / "DSDisplaced.cso");
+    auto ps = LoadShaderBytecode(shaderDir / "PSDisplaced.cso");
     if (vs.empty() || hs.empty() || ds.empty() || ps.empty())
     {
         Canvas::LogError(m_pDevice->GetLogger(),
-            "Failed to load terrain shader bytecode (VS:%s HS:%s DS:%s PS:%s)",
+            "Failed to load displaced-mesh shader bytecode (VS:%s HS:%s DS:%s PS:%s)",
             vs.empty() ? "MISSING" : "OK", hs.empty() ? "MISSING" : "OK",
             ds.empty() ? "MISSING" : "OK", ps.empty() ? "MISSING" : "OK");
         Gem::ThrowGemError(Gem::Result::Fail);
     }
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
-    BuildTerrainPSODesc(psoDesc, vs, hs, ds, ps, m_pTerrainRootSig,
+    BuildDisplacedPSODesc(psoDesc, vs, hs, ds, ps, m_pDisplacedRootSig,
         CanvasFormatToDXGIFormat(m_GBufferNormalsFormat),
         CanvasFormatToDXGIFormat(m_GBufferDiffuseFormat),
         CanvasFormatToDXGIFormat(m_GBufferWorldPosFormat),
@@ -1003,26 +1003,26 @@ void CRenderQueue12::EnsureTerrainPSO()
         CanvasFormatToDXGIFormat(m_GBufferEmissiveFormat),
         /*wireframe*/ false);
     ThrowFailedHResult(pD3DDevice->CreateGraphicsPipelineState(
-        &psoDesc, IID_PPV_ARGS(&m_pTerrainPSO)));
-    SetD3D12DebugName(m_pTerrainPSO, GetName(), "TerrainPSO");
+        &psoDesc, IID_PPV_ARGS(&m_pDisplacedPSO)));
+    SetD3D12DebugName(m_pDisplacedPSO, GetName(), "DisplacedPSO");
 
-    Canvas::LogInfo(m_pDevice->GetLogger(), "Terrain PSO created (VS+HS+DS+PS, quad patches)");
+    Canvas::LogInfo(m_pDevice->GetLogger(), "Displaced-mesh PSO created (VS+HS+DS+PS, quad patches)");
 }
 
-void CRenderQueue12::EnsureTerrainPSOWireframe()
+void CRenderQueue12::EnsureDisplacedPSOWireframe()
 {
-    if (m_pTerrainPSOWireframe)
+    if (m_pDisplacedPSOWireframe)
         return;
-    EnsureTerrainPSO();  // share root sig + shaders
+    EnsureDisplacedPSO();  // share root sig + shaders
 
     auto shaderDir = GetShaderDirectory();
-    auto vs = LoadShaderBytecode(shaderDir / "VSTerrain.cso");
-    auto hs = LoadShaderBytecode(shaderDir / "HSTerrain.cso");
-    auto ds = LoadShaderBytecode(shaderDir / "DSTerrain.cso");
-    auto ps = LoadShaderBytecode(shaderDir / "PSTerrain.cso");
+    auto vs = LoadShaderBytecode(shaderDir / "VSDisplaced.cso");
+    auto hs = LoadShaderBytecode(shaderDir / "HSDisplaced.cso");
+    auto ds = LoadShaderBytecode(shaderDir / "DSDisplaced.cso");
+    auto ps = LoadShaderBytecode(shaderDir / "PSDisplaced.cso");
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
-    BuildTerrainPSODesc(psoDesc, vs, hs, ds, ps, m_pTerrainRootSig,
+    BuildDisplacedPSODesc(psoDesc, vs, hs, ds, ps, m_pDisplacedRootSig,
         CanvasFormatToDXGIFormat(m_GBufferNormalsFormat),
         CanvasFormatToDXGIFormat(m_GBufferDiffuseFormat),
         CanvasFormatToDXGIFormat(m_GBufferWorldPosFormat),
@@ -1030,8 +1030,8 @@ void CRenderQueue12::EnsureTerrainPSOWireframe()
         CanvasFormatToDXGIFormat(m_GBufferEmissiveFormat),
         /*wireframe*/ true);
     ThrowFailedHResult(m_pDevice->GetD3DDevice()->CreateGraphicsPipelineState(
-        &psoDesc, IID_PPV_ARGS(&m_pTerrainPSOWireframe)));
-    SetD3D12DebugName(m_pTerrainPSOWireframe, GetName(), "TerrainPSO_Wireframe");
+        &psoDesc, IID_PPV_ARGS(&m_pDisplacedPSOWireframe)));
+    SetD3D12DebugName(m_pDisplacedPSOWireframe, GetName(), "DisplacedPSO_Wireframe");
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1413,7 +1413,7 @@ GEMMETHODIMP CRenderQueue12::FinalizeUploadAsShaderResource(Canvas::XGfxSurface 
         taskGraph.InsertTask(fixupTask);
 
         // Stamp the surface with the value this render queue will signal on
-        // the next Flush(). DATA_STATIC SRV consumers (e.g. the terrain draw)
+        // the next Flush(). DATA_STATIC SRV consumers (e.g. the displaced draw)
         // must wait for the fixup CL to retire on the GPU before binding the
         // descriptor: D3D12 forbids state changes on a DATA_STATIC-bound
         // resource while the binding CL is in flight, and the
@@ -1576,7 +1576,7 @@ Gem::Result CRenderQueue12::DrawMesh(
                 // Procedural patch-list mesh + displacement-enabled material is the
                 // displaced-mesh draw path. Translate the material's displacement
                 // desc and the mesh-instance world transform into the engine's
-                // internal terrain submission queue. Per-tile world dimensions
+                // internal displaced-draw queue. Per-tile world dimensions
                 // come from the displacement desc (kept off node scale so child
                 // nodes don't inherit tile-size stretches); origin comes from
                 // the node's translation row.
@@ -1598,7 +1598,7 @@ Gem::Result CRenderQueue12::DrawMesh(
                 if (patchesPerSide * patchesPerSide != patchCount)
                     return Gem::Result::InvalidArg;
 
-                TerrainTileSubmitDesc tdesc = {};
+                DisplacedDrawDesc tdesc = {};
                 // The world matrix in the submission is consumed multiplicatively
                 // after the shader computes world XY from TileOriginAndSize.
                 // Identity here means "the tile origin/size are already in
@@ -1621,7 +1621,7 @@ Gem::Result CRenderQueue12::DrawMesh(
                 tdesc.pAOMap        = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::AmbientOcclusion);
                 tdesc.pRoughnessMap = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::Roughness);
 
-                return SubmitTerrainTile(tdesc);
+                return SubmitDisplacedDraw(tdesc);
             }
         }
 
@@ -2087,7 +2087,7 @@ GEMMETHODIMP_(void) CRenderQueue12::SetActiveCamera(Canvas::XCamera *pCamera)
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CRenderQueue12::SubmitTerrainTile(const TerrainTileSubmitDesc &desc)
+Gem::Result CRenderQueue12::SubmitDisplacedDraw(const DisplacedDrawDesc &desc)
 {
     if (!desc.pHeightmap || !desc.pAlbedo || !desc.pAOMap || !desc.pRoughnessMap)
         return Gem::Result::InvalidArg;
@@ -2096,7 +2096,7 @@ Gem::Result CRenderQueue12::SubmitTerrainTile(const TerrainTileSubmitDesc &desc)
     if (desc.WorldSizeX <= 0.0f || desc.WorldSizeY <= 0.0f)
         return Gem::Result::InvalidArg;
 
-    m_TerrainSubmissions.push_back(desc);
+    m_DisplacedDraws.push_back(desc);
     return Gem::Result::Success;
 }
 
@@ -2293,23 +2293,23 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         m_RenderableQueue.clear();
 
         //==========================================================================================
-        // Terrain submissions: GPU-tessellated patch lists writing into the
+        // Displaced-mesh draws: GPU-tessellated patch lists writing into the
         // G-buffer. Same MRT shape as the default geometry pass, so the
-        // composite picks up terrain pixels uniformly with the rest of the
+        // composite picks up displaced pixels uniformly with the rest of the
         // scene.
         //==========================================================================================
-        if (!m_TerrainSubmissions.empty())
+        if (!m_DisplacedDraws.empty())
         {
-            EnsureTerrainPSO();   // make sure both root sig + PSO are available
+            EnsureDisplacedPSO();   // make sure both root sig + PSO are available
             ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
             const UINT incSize = m_CbvSrvUavIncrement;
 
-            const uint64_t terrainCbSize = (sizeof(HlslTypes::HlslTerrainConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
+            const uint64_t displacedCbSize = (sizeof(HlslTypes::HlslDisplacedConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
 
-            for (const auto& sub : m_TerrainSubmissions)
+            for (const auto& sub : m_DisplacedDraws)
             {
                 // Don't bind the heightmap until its upload + COMMON->SHADER_RESOURCE
-                // fixup CL has fully retired on the GPU. The terrain root sig
+                // fixup CL has fully retired on the GPU. The displaced root sig
                 // declares the heightmap SRV range as DATA_STATIC, which forbids
                 // any state change on the resource while a CL with the binding
                 // is in flight. By waiting for the fixup token to retire, we
@@ -2317,7 +2317,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 // any submission that follows. Tiles whose heightmaps are not
                 // yet ready are simply skipped this frame; the scene graph will
                 // re-submit them next frame.
-                // All four terrain-bound surfaces must have their COMMON ->
+                // All four displaced-draw-bound surfaces must have their COMMON ->
                 // SHADER_RESOURCE fixup CL retired on the GPU before we can
                 // bind them as DATA_STATIC SRVs. Tiles whose heightmap or
                 // material atlases are not yet ready are simply skipped this
@@ -2342,7 +2342,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 }
 
                 // ---- Per-tile constant buffer ----
-                HlslTypes::HlslTerrainConstants tileCb = {};
+                HlslTypes::HlslDisplacedConstants tileCb = {};
                 memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
                 tileCb.TileOriginAndSize = { sub.OriginX, sub.OriginY, sub.WorldSizeX, sub.WorldSizeY };
                 tileCb.PatchGridDim      = sub.PatchGridDim;
@@ -2350,20 +2350,20 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 tileCb.HeightBias        = sub.HeightBias;
 
                 HostWriteAllocation tileHw;
-                Gem::ThrowGemError(m_UploadRing.AllocateFromRing(terrainCbSize, tileHw));
+                Gem::ThrowGemError(m_UploadRing.AllocateFromRing(displacedCbSize, tileHw));
                 memcpy(tileHw.pMapped, &tileCb, sizeof(tileCb));
                 D3D12_GPU_VIRTUAL_ADDRESS perTileCbvAddr = tileHw.GpuAddress;
 
                 // ---- SRVs: 4 contiguous slots (heightmap + 3 material atlases) ----
-                // The terrain root sig has two descriptor tables; both point
+                // The displaced root sig has two descriptor tables; both point
                 // into this same contiguous block (heightmap at base, atlases
                 // at base+1..base+3). Two tables let us scope visibility to
                 // DOMAIN / PIXEL respectively without splitting the heap.
-                constexpr UINT kTerrainSRVCount = 4;
-                if (m_NextSRVSlot + kTerrainSRVCount > NumShaderResourceDescriptors)
+                constexpr UINT kDisplacedSRVCount = 4;
+                if (m_NextSRVSlot + kDisplacedSRVCount > NumShaderResourceDescriptors)
                     m_NextSRVSlot = 0;
                 UINT baseSrvSlot = m_NextSRVSlot;
-                m_NextSRVSlot += kTerrainSRVCount;
+                m_NextSRVSlot += kDisplacedSRVCount;
 
                 CD3DX12_CPU_DESCRIPTOR_HANDLE heightCpu(
                     m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
@@ -2400,7 +2400,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 const uint32_t patchCount = sub.PatchGridDim * sub.PatchGridDim;
                 const uint32_t cpVertexCount = patchCount * 4u;
 
-                auto& drawTask = CreateGpuTask("DrawTerrainTile");
+                auto& drawTask = CreateGpuTask("DrawDisplaced");
                 // SYNC_VERTEX_SHADING covers VS / HS / DS / GS under the
                 // enhanced-barriers grouping. The heightmap is sampled in
                 // the domain shader; the material atlases are sampled in
@@ -2428,8 +2428,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 drawTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr, heightGpu, materialGpu, cpVertexCount]
                                       (ID3D12GraphicsCommandList* pCL)
                 {
-                    pCL->SetPipelineState(GetActiveTerrainPSO());
-                    pCL->SetGraphicsRootSignature(m_pTerrainRootSig);
+                    pCL->SetPipelineState(GetActiveDisplacedPSO());
+                    pCL->SetGraphicsRootSignature(m_pDisplacedRootSig);
                     pCL->OMSetRenderTargets(5, m_GBufferRTVs, FALSE, &m_CurrentDSV);
                     pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
                     pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
@@ -2442,7 +2442,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 m_GpuTaskGraph.InsertTask(drawTask);
             }
         }
-        m_TerrainSubmissions.clear();
+        m_DisplacedDraws.clear();
 
         //==========================================================================================
         // Composition pass: read G-buffers, perform deferred lighting, write to back buffer
@@ -2494,7 +2494,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
                 pCL->SetGraphicsRootSignature(m_pCompositeRootSig);
                 pCL->SetPipelineState(m_pCompositePSO);
-                // Explicit topology: prior draws (e.g. terrain) may have left
+                // Explicit topology: prior draws (e.g. displaced) may have left
                 // the IA in PATCHLIST. Composite PSO expects TRIANGLE.
                 pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                 pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
@@ -2565,7 +2565,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     {
         m_RenderableQueue.clear();
         m_UIRenderableQueue.clear();
-        m_TerrainSubmissions.clear();
+        m_DisplacedDraws.clear();
         m_pCurrentSwapChain = nullptr;
         m_pActiveCamera = nullptr;
         return e.Result();

@@ -1,14 +1,14 @@
-// DSTerrain.hlsl - terrain domain stage.
+// DSDisplaced.hlsl - domain stage for the engine's displaced-mesh path.
 //
 // Runs per output vertex produced by the fixed-function tessellator. Given
 // barycentric (u, v) in [0, 1]^2 on the quad and the 4 input CPs, computes:
 //   - World-space XYZ of the vertex by bilinearly interpolating the CPs'
 //     TileUV, sampling the heightmap, and lifting Z.
 //   - World-space normal via central differences on the heightmap.
-//   - Tile-relative UVs for the PS to sample the terrain composite textures.
+//   - Tile-relative UVs for the PS to sample the material atlases.
 //   - Clip-space position for rasterization.
 
-#include "Terrain.hlsli"
+#include "Displaced.hlsli"
 
 struct DSOutput
 {
@@ -42,10 +42,10 @@ float3 ComputeWorldNormal(float2 tileUv)
 }
 
 [domain("quad")]
-DSOutput DSTerrain(
-    TerrainPatchConstants pc,
+DSOutput DSDisplaced(
+    DisplacedPatchConstants pc,
     float2 uv : SV_DomainLocation,
-    OutputPatch<TerrainControlPoint, 4> patch)
+    OutputPatch<DisplacedControlPoint, 4> patch)
 {
     // Bilinear interpolation of patch CPs in tile-UV and world-XY.
     float2 tileUv =
@@ -58,13 +58,13 @@ DSOutput DSTerrain(
              lerp(patch[3].WorldXY0Z, patch[2].WorldXY0Z, uv.x),
              uv.y);
 
-    // Sample the heightmap (mip 0 for the scaffold; mip selection joins
-    // when curvature LOD lands).
+    // Sample the heightmap (mip 0 for vertex displacement; the curvature
+    // term in HS uses a coarser mip).
     float hSample = Heightmap.SampleLevel(HeightSampler, tileUv, 0);
     float worldZ  = DecodeHeightMeters(hSample);
 
     float4 worldPos4 = float4(worldXY0Z.x, worldXY0Z.y, worldZ, 1.0);
-    // Apply tile transform (row-vector convention).
+    // Apply per-instance world transform (row-vector convention).
     worldPos4 = mul(worldPos4, PerTile.World);
 
     DSOutput o;

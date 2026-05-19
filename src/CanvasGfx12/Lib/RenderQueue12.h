@@ -14,7 +14,7 @@
 #ifdef _MSC_VER
 #pragma warning(push)
 // 4324: 'CRenderQueue12': structure padded due to alignment specifier. Triggered
-// by std::vector<TerrainTileSubmitDesc> embedding a FloatMatrix4x4 (alignas(16)).
+// by std::vector<DisplacedDrawDesc> embedding a FloatMatrix4x4 (alignas(16)).
 #pragma warning(disable: 4324)
 #endif
 
@@ -29,7 +29,7 @@ class CSwapChain12;
 // extents (also from the displacement desc + the node transform), and
 // the patch grid dim derived from the procedural mesh's vertex count.
 // Engine-internal only; not visible through any public API.
-struct TerrainTileSubmitDesc
+struct DisplacedDrawDesc
 {
     Canvas::XGfxSurface     *pHeightmap     = nullptr;
     Canvas::XGfxSurface     *pAlbedo        = nullptr;
@@ -484,9 +484,9 @@ public:
     CComPtr<ID3D12PipelineState> m_pDefaultPSO;
     CComPtr<ID3D12PipelineState> m_pDefaultPSOWireframe;  // built lazily on first wireframe enable
     bool                          m_GeometryWireframe = false;
-    CComPtr<ID3D12RootSignature> m_pTerrainRootSig;
-    CComPtr<ID3D12PipelineState> m_pTerrainPSO;
-    CComPtr<ID3D12PipelineState> m_pTerrainPSOWireframe;
+    CComPtr<ID3D12RootSignature> m_pDisplacedRootSig;
+    CComPtr<ID3D12PipelineState> m_pDisplacedPSO;
+    CComPtr<ID3D12PipelineState> m_pDisplacedPSOWireframe;
     CComPtr<ID3D12RootSignature> m_pTextRootSig;
     CComPtr<ID3D12PipelineState> m_pTextPSO;
     DXGI_FORMAT m_TextPSOFormat = DXGI_FORMAT_UNKNOWN;
@@ -550,8 +550,8 @@ public:
     // Renderable nodes enqueued during scene graph update, dispatched during EndFrame
     std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
 
-    // Pending terrain-tile submissions, drained during EndFrame.
-    std::vector<TerrainTileSubmitDesc> m_TerrainSubmissions;
+    // Pending displaced-mesh submissions, drained during EndFrame.
+    std::vector<DisplacedDrawDesc> m_DisplacedDraws;
 
     // UI graph nodes enqueued during UI graph submission, dispatched during EndFrame
     std::vector<Canvas::XUIGraphNode*> m_UIRenderableQueue;
@@ -601,10 +601,10 @@ public:
     GEMMETHOD(FinalizeUploadAsShaderResource)(Canvas::XGfxSurface *pSurface) final;
     GEMMETHOD(EndFrame)() final;
 
-    // Internal: queue a terrain submission, called by DrawMesh when it
+    // Internal: queue a displaced-mesh draw, called by DrawMesh when it
     // detects a procedural patch-grid mesh paired with a displacement-
     // enabled material. Not part of the public interface.
-    Gem::Result SubmitTerrainTile(const TerrainTileSubmitDesc &desc);
+    Gem::Result SubmitDisplacedDraw(const DisplacedDrawDesc &desc);
 
     // Internal functions
     CDevice12 *GetDevice() const { return m_pDevice; }
@@ -632,19 +632,19 @@ public:
     // Lazily create the wireframe variant of the geometry pass PSO.
     void EnsureDefaultPSOWireframe();
 
-    // Lazily create the terrain root sig + PSO variants (solid + wireframe).
-    void EnsureTerrainPSO();
-    void EnsureTerrainPSOWireframe();
+    // Lazily create the displaced-mesh root sig + PSO variants (solid + wireframe).
+    void EnsureDisplacedPSO();
+    void EnsureDisplacedPSOWireframe();
 
-    ID3D12PipelineState* GetActiveTerrainPSO()
+    ID3D12PipelineState* GetActiveDisplacedPSO()
     {
         if (m_GeometryWireframe)
         {
-            EnsureTerrainPSOWireframe();
-            return m_pTerrainPSOWireframe;
+            EnsureDisplacedPSOWireframe();
+            return m_pDisplacedPSOWireframe;
         }
-        EnsureTerrainPSO();
-        return m_pTerrainPSO;
+        EnsureDisplacedPSO();
+        return m_pDisplacedPSO;
     }
 
     // Pick the appropriate variant of the default geometry pass PSO based

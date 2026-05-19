@@ -75,11 +75,13 @@ struct ALIGN16 HlslPerObjectConstants
 };
 
 //------------------------------------------------------------------------------------------------
-// Per-tile constants for the terrain pipeline (VSTerrain / HSTerrain /
-// DSTerrain / PSTerrain).
-struct ALIGN16 HlslTerrainConstants
+// Per-instance constants for the engine's displaced-mesh pipeline
+// (VS/HS/DS/PS in Displaced.hlsli). Populated by the engine from a
+// material's GfxDisplacementDesc, the mesh's procedural patch grid
+// dim, and the mesh instance's world transform.
+struct ALIGN16 HlslDisplacedConstants
 {
-    ROW_MAJOR float4x4 World;        // Tile world transform (typically identity for the v1 sample)
+    ROW_MAJOR float4x4 World;        // Tile world transform (typically identity)
     float4 TileOriginAndSize;        // xy = world-space origin of texel (0,0); zw = world-space tile size
     uint   PatchGridDim;             // Patch count per side; total patches = PatchGridDim^2
     float  HeightScale;              // Meters per [0, 1] heightmap sample

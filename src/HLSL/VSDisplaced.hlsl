@@ -1,9 +1,9 @@
-// VSTerrain.hlsl - terrain vertex stage.
+// VSDisplaced.hlsl - vertex stage for the engine's displaced-mesh path.
 //
-// No vertex buffer: control points are generated from SV_VertexID, given the
-// per-tile patch grid dimensions. For a tile with PatchGridDim = N, the IA is
-// invoked with 4 * N * N "vertices" using PATCH_4_CONTROL_POINT topology, so
-// each successive 4 inputs form one quad patch (CCW corners).
+// No vertex buffer: control points are generated from SV_VertexID, given
+// the per-instance patch grid dimensions. For a draw with PatchGridDim = N,
+// the IA is invoked with 4 * N * N "vertices" using PATCH_4_CONTROL_POINT
+// topology, so each successive 4 inputs form one quad patch (CCW corners).
 //
 // CP layout per patch (cornerIdx in [0..3]):
 //   0 -> (0, 0)     1 -> (1, 0)
@@ -14,9 +14,9 @@
 //     heightmap directly.
 //   - WorldXY0Z: world-space (x, y, 0) before the height lift in DS.
 
-#include "Terrain.hlsli"
+#include "Displaced.hlsli"
 
-TerrainControlPoint VSTerrain(uint vertexId : SV_VertexID)
+DisplacedControlPoint VSDisplaced(uint vertexId : SV_VertexID)
 {
     const uint cps_per_patch = 4u;
     uint patchIndex = vertexId / cps_per_patch;
@@ -40,7 +40,7 @@ TerrainControlPoint VSTerrain(uint vertexId : SV_VertexID)
     float2 worldSize   = PerTile.TileOriginAndSize.zw;
     float2 worldXY = worldOrigin + cpTile * worldSize;
 
-    TerrainControlPoint cp;
+    DisplacedControlPoint cp;
     cp.TileUV    = cpTile;
     cp.WorldXY0Z = float3(worldXY.x, worldXY.y, 0.0);
     return cp;

@@ -1,4 +1,4 @@
-// HSTerrain.hlsl - terrain hull stage.
+// HSDisplaced.hlsl - hull stage for the engine's displaced-mesh path.
 //
 // Patch-constant function computes per-edge tessellation factors from two
 // signals:
@@ -19,7 +19,7 @@
 // neighbors do NOT share) can only be applied to the patch's inside tess
 // factors, never to its edge factors.
 
-#include "Terrain.hlsli"
+#include "Displaced.hlsli"
 
 static const float kMinTess = 2.0;
 static const float kMaxTess = 32.0;
@@ -62,7 +62,7 @@ float CurvatureMetersAt(float2 uv)
 // Per-edge factor combining distance and curvature, computed purely from
 // edge-shared inputs (endpoints and their shared UVs). Both neighbors
 // arrive at bit-identical results for a shared edge.
-float EdgeTessFactor(TerrainControlPoint a, TerrainControlPoint b, float3 cam)
+float EdgeTessFactor(DisplacedControlPoint a, DisplacedControlPoint b, float3 cam)
 {
     float3 midpos = 0.5 * (a.WorldXY0Z + b.WorldXY0Z);
     float2 miduv  = 0.5 * (a.TileUV    + b.TileUV);
@@ -76,9 +76,9 @@ float EdgeTessFactor(TerrainControlPoint a, TerrainControlPoint b, float3 cam)
     return clamp(distanceFactor + curvatureFactor, kMinTess, kMaxTess);
 }
 
-TerrainPatchConstants HSTerrainPatchConst(InputPatch<TerrainControlPoint, 4> patch)
+DisplacedPatchConstants HSDisplacedPatchConst(InputPatch<DisplacedControlPoint, 4> patch)
 {
-    TerrainPatchConstants pc;
+    DisplacedPatchConstants pc;
 
     float3 cam = PerFrame.CameraWorldPos.xyz;
 
@@ -108,10 +108,10 @@ TerrainPatchConstants HSTerrainPatchConst(InputPatch<TerrainControlPoint, 4> pat
 [partitioning("integer")]
 [outputtopology("triangle_ccw")]
 [outputcontrolpoints(4)]
-[patchconstantfunc("HSTerrainPatchConst")]
+[patchconstantfunc("HSDisplacedPatchConst")]
 [maxtessfactor(64.0)]
-TerrainControlPoint HSTerrain(
-    InputPatch<TerrainControlPoint, 4> patch,
+DisplacedControlPoint HSDisplaced(
+    InputPatch<DisplacedControlPoint, 4> patch,
     uint cpid : SV_OutputControlPointID,
     uint pid  : SV_PrimitiveID)
 {
