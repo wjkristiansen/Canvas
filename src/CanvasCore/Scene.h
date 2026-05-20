@@ -20,6 +20,14 @@ private:
     Gem::TGemPtr<XCamera> m_pActiveCamera;
     std::vector<XSceneGraphNode*> m_TraversalStack;  // Reused across frames to avoid allocation
 
+    // Background storage.  Every scene has a background; default-constructed
+    // GfxBackgroundDesc is opaque black with no cubemap.  pSkyboxCubemapA/B
+    // raw observer pointers in m_Background are kept alive by the strong
+    // refs m_pSkyboxCubemapA/B; setter populates both together.
+    GfxBackgroundDesc                 m_Background;
+    Gem::TGemPtr<XGfxSurface>         m_pSkyboxCubemapA;
+    Gem::TGemPtr<XGfxSurface>         m_pSkyboxCubemapB;
+
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
@@ -48,6 +56,27 @@ public: // XScene methods
     GEMMETHOD_(XCamera *, GetActiveCamera)() const final
     {
         return m_pActiveCamera.Get();
+    }
+
+    GEMMETHOD_(void, SetBackground)(const GfxBackgroundDesc *pDesc) final
+    {
+        if (pDesc)
+        {
+            m_Background      = *pDesc;
+            m_pSkyboxCubemapA = pDesc->pSkyboxCubemapA;
+            m_pSkyboxCubemapB = pDesc->pSkyboxCubemapB;
+        }
+        else
+        {
+            m_Background      = {};
+            m_pSkyboxCubemapA = nullptr;
+            m_pSkyboxCubemapB = nullptr;
+        }
+    }
+
+    GEMMETHOD_(const GfxBackgroundDesc *, GetBackground)() const final
+    {
+        return &m_Background;
     }
 
     GEMMETHOD(Update)(float dtime) final

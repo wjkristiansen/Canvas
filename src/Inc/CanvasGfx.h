@@ -138,6 +138,35 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    // Scene background description.  Owned by XScene via SetBackground.
+    // The background is what fills G-buffer pixels with no geometry; it
+    // has no transform in the scene graph and is sampled by view direction
+    // in the composite pass.  Every scene has a background -- the default
+    // is opaque black -- so the composite pass always writes every pixel.
+    struct GfxBackgroundDesc
+    {
+        // When pSkyboxCubemapA is non-null the background is sampled
+        // from the cubemap(s) by world-space view direction; otherwise
+        // the background is the flat SolidColor.
+        Math::FloatVector4     SolidColor       = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+        // Optional skybox.  Surfaces must have Dimension = DimensionCube
+        // and ArraySize = 6.  When pSkyboxCubemapB is non-null the sample
+        // is a linear interpolation:
+        //   lerp(sample(A, dir), sample(B, dir), BlendFactor)
+        // so apps can crossfade between authored sky presets (day -> dusk
+        // -> night, clear -> storm) without a CPU rebake.  Both surfaces
+        // must share face size and format.  Orientation applies to both.
+        // The view ray is rotated by the inverse of Orientation before
+        // sampling, so cubemaps can be authored in any basis.
+        XGfxSurface           *pSkyboxCubemapA  = nullptr;
+        XGfxSurface           *pSkyboxCubemapB  = nullptr;   // optional; ignored when null
+        float                  BlendFactor      = 0.0f;      // 0 = A, 1 = B
+        Math::FloatQuaternion  Orientation;                  // identity by default
+        float                  Intensity        = 1.0f;      // linear multiplier on sample
+    };
+
+    //------------------------------------------------------------------------------------------------
     enum MaterialLayerFlags : uint32_t
     {
         None            = 0,

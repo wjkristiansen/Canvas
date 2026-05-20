@@ -53,6 +53,7 @@ struct XUITextElement;
 struct XUIRectElement;
 struct GfxResourceAllocation;
 struct XGfxSurface;
+struct GfxBackgroundDesc;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -398,6 +399,15 @@ XScene : public XCanvasElement
 
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
     GEMMETHOD_(XCamera *, GetActiveCamera)() const = 0;
+
+    // Scene background (what fills G-buffer pixels with no geometry).
+    // Every scene has a background; the default for a newly created
+    // scene is opaque black.  Stored by value; any surface referenced
+    // by the desc (sky cubemaps) is held strongly for as long as the
+    // background references it.  Pass nullptr to reset to the default.
+    GEMMETHOD_(void, SetBackground)(const GfxBackgroundDesc *pDesc) = 0;
+    // Returns the current background (never nullptr).
+    GEMMETHOD_(const GfxBackgroundDesc *, GetBackground)() const = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
