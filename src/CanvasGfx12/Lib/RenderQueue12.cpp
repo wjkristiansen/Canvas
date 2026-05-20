@@ -762,7 +762,6 @@ void CRenderQueue12::EnsureDefaultPSOWireframe()
     psoDesc.PS = { psBytecode.data(), psBytecode.size() };
     psoDesc.InputLayout = { nullptr, 0 };
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
     psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
     psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;     // see both sides while debugging
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -826,8 +825,7 @@ void CRenderQueue12::EnsureDefaultPSO()
     
     // Rasterizer state
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
-    
+
     // Blend state (opaque)
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     
@@ -888,12 +886,11 @@ static void BuildDisplacedPSODesc(D3D12_GRAPHICS_PIPELINE_STATE_DESC &out,
     out.InputLayout = { nullptr, 0 };  // CPs generated from SV_VertexID
 
     out.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    out.RasterizerState.FrontCounterClockwise = TRUE;
-    // Disable culling on the solid displaced PSO during v2 bring-up; displaced
-    // back-facing patches are rarely useful but having them visible while
-    // verifying tessellation removes one variable from "why don't I see
-    // anything?" debugging. Wireframe variant also disables culling below.
-    out.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    // Solid PSO culls back faces (D3D12_CULL_MODE_BACK is the default).
+    // FrontCounterClockwise stays at the D3D default (FALSE / CW = front)
+    // because Canvas view space is now standard D3D LHS (X=right, Y=up,
+    // Z=forward). The wireframe variant disables culling so wireframe
+    // debugging shows both faces of a displaced patch.
     if (wireframe)
     {
         out.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;

@@ -333,28 +333,34 @@ namespace CanvasUnitTest
             Assert::IsFalse(AlmostEqual(viewMatrix1, identity), L"View matrix should not be identity");
             Assert::IsFalse(AlmostEqual(projMatrix1, identity), L"Projection matrix should not be identity");
             
-            // For the new coordinate system (X=forward, Y=left, Z=up), verify expected structure
-            // Row 0: [   0,    0,   A,  1  ]  (x_cam: forward -> depth + w)
-            // Row 1: [-f/a,    0,   0,  0  ]  (y_cam: left -> -x_clip)
-            // Row 2: [   0,    f,   0,  0  ]  (z_cam: up -> y_clip)
-            // Row 3: [   0,    0,   B,  0  ]  (const -> depth bias)
-            
+            // Projection now produces standard D3D LHS clip space from a
+            // view space where +X=right, +Y=up, +Z=forward. The matrix
+            // should look like:
+            // Row 0: [ f/aspect, 0,    0,    0 ]  (x_view=right    -> x_clip)
+            // Row 1: [    0,     f,    0,    0 ]  (y_view=up       -> y_clip)
+            // Row 2: [    0,     0,    A,    1 ]  (z_view=forward  -> z_clip + w_clip)
+            // Row 3: [    0,     0,    B,    0 ]  (const           -> z_clip depth bias)
+
             // Check specific elements to validate the projection matrix structure
             const float tolerance = 1e-5f;
             float f = 1.0f / std::tan(fov * 0.5f);  // approx 2.414
-            
-            // Row 2, col 1: Should have f (z_cam -> y_clip)
-            Assert::IsTrue(std::abs(projMatrix1[2][1] - f) < 0.01f,
-                L"proj[2][1] should be approximately 2.414 (f)");
-            
-            // Row 0, col 3: Should have 1.0 for perspective divide (forward -> w_clip)
-            Assert::IsTrue(std::abs(projMatrix1[0][3] - 1.0f) < tolerance,
-                L"proj[0][3] should be 1.0 for perspective divide");
-            
-            // Diagonal should all be zero (NOT identity)
-            Assert::IsTrue(std::abs(projMatrix1[0][0]) < tolerance, L"proj[0][0] should be 0");
-            Assert::IsTrue(std::abs(projMatrix1[1][1]) < tolerance, L"proj[1][1] should be 0");
-            Assert::IsTrue(std::abs(projMatrix1[2][2]) < tolerance, L"proj[2][2] should be 0");
+
+            // Row 0, col 0: f / aspect (right -> x_clip)
+            Assert::IsTrue(std::abs(projMatrix1[0][0] - f / aspect) < 0.01f,
+                L"proj[0][0] should be approximately f/aspect");
+
+            // Row 1, col 1: f (up -> y_clip)
+            Assert::IsTrue(std::abs(projMatrix1[1][1] - f) < 0.01f,
+                L"proj[1][1] should be approximately 2.414 (f)");
+
+            // Row 2, col 3: Should have 1.0 for perspective divide (forward -> w_clip)
+            Assert::IsTrue(std::abs(projMatrix1[2][3] - 1.0f) < tolerance,
+                L"proj[2][3] should be 1.0 for perspective divide");
+
+            // The old shape's hot cells should now be zero.
+            Assert::IsTrue(std::abs(projMatrix1[0][3]) < tolerance, L"proj[0][3] should be 0 in new convention");
+            Assert::IsTrue(std::abs(projMatrix1[1][0]) < tolerance, L"proj[1][0] should be 0 in new convention");
+            Assert::IsTrue(std::abs(projMatrix1[2][1]) < tolerance, L"proj[2][1] should be 0 in new convention");
             Assert::IsTrue(std::abs(projMatrix1[3][3]) < tolerance, L"proj[3][3] should be 0");
 
             // Verify view-projection is the product of view and projection
