@@ -28,9 +28,10 @@
     }
   },
   "camera": {
-    // Start south of the tile, looking north toward center.
-    "startPositionXYZ": [0, -800, 100],
-    "startLookAtXYZ":   [0,    0,   0],
+    // Start above the center of the tile, tilted forward to look out across
+    // the terrain at roughly a 30-degree downward pitch.
+    "startPositionXYZ": [0,   0, 150],
+    "startLookAtXYZ":   [0, 500,   0],
     "fovDegrees":       60
   }
 }
