@@ -242,7 +242,7 @@ public:
 
     void Initialize(
         Canvas::XCanvas*           pCanvas,
-        Canvas::XSceneGraph*       pScene)
+        Canvas::XScene*       pScene)
     {
         Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &m_pSun, "Sun"));
         Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &m_pMoon, "Moon"));
@@ -260,7 +260,7 @@ public:
         m_pMoonNode->BindElement(m_pMoon);
         m_pAmbientNode->BindElement(m_pAmbient);
 
-        Canvas::XSceneGraphNode* pRoot = pScene->GetRootSceneGraphNode();
+        Canvas::XSceneGraphNode* pRoot = pScene->GetRootNode();
         pRoot->AddChild(m_pSunNode);
         pRoot->AddChild(m_pMoonNode);
         pRoot->AddChild(m_pAmbientNode);
@@ -410,7 +410,7 @@ class CTerrainApp
     Gem::TGemPtr<Canvas::XLogger>           m_pLogger;
     std::unique_ptr<CViewerWindow>          m_pWindow;
     Gem::TGemPtr<Canvas::XCanvas>           m_pCanvas;
-    Gem::TGemPtr<Canvas::XSceneGraph>       m_pScene;
+    Gem::TGemPtr<Canvas::XScene>       m_pScene;
     Gem::TGemPtr<Canvas::XCamera>           m_pCamera;
     Gem::TGemPtr<Canvas::XCanvasPlugin>     m_pGfxPlugin;
     Gem::TGemPtr<Canvas::XGfxDevice>        m_pGfxDevice;
@@ -593,7 +593,7 @@ class CTerrainApp
         m_pTerrainNode->SetLocalTranslation(
             Canvas::Math::FloatVector4{ matOpts.OriginX, matOpts.OriginY, 0.0f, 1.0f });
         m_pTerrainNode->BindElement(m_pTerrainInstance);
-        m_pScene->GetRootSceneGraphNode()->AddChild(m_pTerrainNode);
+        m_pScene->GetRootNode()->AddChild(m_pTerrainNode);
 
         // Camera start pose from the scene config.
         const Canvas::TerrainViewer::SceneCamera& sc = m_SceneConfig.Camera;
@@ -707,8 +707,8 @@ public:
                 reinterpret_cast<void**>(&pDevice)));
 
             initStep = "create_scene";
-            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraph(pDevice, &pScene, "TerrainScene"));
+            Gem::TGemPtr<Canvas::XScene> pScene;
+            Gem::ThrowGemError(pCanvas->CreateScene(pDevice, &pScene, "TerrainScene"));
 
             initStep = "create_render_queue";
             Gem::TGemPtr<Canvas::XGfxRenderQueue> pRq;
@@ -730,7 +730,7 @@ public:
             Gem::TGemPtr<Canvas::XSceneGraphNode> pCameraNode;
             Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pCameraNode, "MainCameraNode"));
             pCameraNode->BindElement(pCamera);
-            pScene->GetRootSceneGraphNode()->AddChild(pCameraNode);
+            pScene->GetRootNode()->AddChild(pCameraNode);
             pScene->SetActiveCamera(pCamera);
 
             // Stash early so LoadTerrain can use them.

@@ -33,7 +33,7 @@ namespace Canvas
 #endif
 
 // Forward declarations
-struct XSceneGraph;
+struct XScene;
 struct XCamera;
 struct XLight;
 struct XGfxBuffer;
@@ -176,7 +176,7 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(LoadPlugin)(PCSTR path, struct XCanvasPlugin **ppPlugin) = 0;
 
-    GEMMETHOD(CreateSceneGraph)(XGfxDevice *pDevice, XSceneGraph **ppScene, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateScene)(XGfxDevice *pDevice, XScene **ppScene, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
@@ -389,12 +389,12 @@ XLight : public XSceneGraphElement
 
 //------------------------------------------------------------------------------------------------
 struct
-XSceneGraph : public XCanvasElement
+XScene : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(XSceneGraph, 0x0A470E86351AF96A);
+    GEM_INTERFACE_DECLARE(XScene, 0x0A470E86351AF96A);
 
     GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
-    GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
+    GEMMETHOD_(XSceneGraphNode *, GetRootNode)() = 0;
 
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
     GEMMETHOD_(XCamera *, GetActiveCamera)() const = 0;

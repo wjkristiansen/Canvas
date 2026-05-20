@@ -21,9 +21,9 @@ namespace CanvasUnitTest
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-            // Create XSceneGraph object
-            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene)));
+            // Create XScene object
+            Gem::TGemPtr<Canvas::XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
 
             // Create an empty XSceneGraphNode
             Gem::TGemPtr<Canvas::XSceneGraphNode> pSceneGraphNode;
@@ -46,9 +46,9 @@ namespace CanvasUnitTest
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-            // Create XSceneGraph object
-            Gem::TGemPtr<XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene)));
+            // Create XScene object
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
 
             // Create nodes
             Gem::TGemPtr<XSceneGraphNode> pNodes[6];
@@ -74,7 +74,7 @@ namespace CanvasUnitTest
             //      - Node4
             //          - Node5
 
-            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
             Assert::IsNotNull(pRoot.Get());
             Assert::IsTrue(Succeeded(pRoot->AddChild(pNodes[0])));
             Assert::IsTrue(Succeeded(pRoot->AddChild(pNodes[1])));
@@ -120,15 +120,15 @@ namespace CanvasUnitTest
             Gem::TGemPtr<XCanvas> pCanvas;
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             CreateTestCanvasAndDevice(pCanvas, pDevice);
-            Gem::TGemPtr<XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
 
             // Create a small hierarchy: root -> A -> B
             Gem::TGemPtr<XSceneGraphNode> pA, pB;
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
 
-            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
             Assert::IsNotNull(pRoot.Get());
             Assert::IsTrue(Succeeded(pRoot->AddChild(pA)));
             Assert::IsTrue(Succeeded(pA->AddChild(pB)));
@@ -278,8 +278,8 @@ namespace CanvasUnitTest
             Gem::TGemPtr<XCanvas> pCanvas;
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             CreateTestCanvasAndDevice(pCanvas, pDevice);
-            Gem::TGemPtr<XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
 
             // Create a hierarchy: root -> A -> B -> cameraNode
             Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
@@ -287,7 +287,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
 
-            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
             Assert::IsNotNull(pRoot.Get());
             Assert::IsTrue(Succeeded(pRoot->AddChild(pA)));
             Assert::IsTrue(Succeeded(pA->AddChild(pB)));
@@ -437,8 +437,8 @@ namespace CanvasUnitTest
             Gem::TGemPtr<XCanvas> pCanvas;
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             CreateTestCanvasAndDevice(pCanvas, pDevice);
-            Gem::TGemPtr<XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
 
             // Create two separate branches: root -> A and root -> B
             Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
@@ -446,7 +446,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
 
-            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
             Assert::IsNotNull(pRoot.Get());
             
             // Initial setup: cameraNode is under A
@@ -523,14 +523,14 @@ namespace CanvasUnitTest
             Gem::TGemPtr<XCanvas> pCanvas;
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             CreateTestCanvasAndDevice(pCanvas, pDevice);
-            Gem::TGemPtr<XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
 
             // Create camera node
             Gem::TGemPtr<XSceneGraphNode> pCameraNode;
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
             
-            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
             Assert::IsTrue(Succeeded(pRoot->AddChild(pCameraNode)));
 
             // Create and attach camera
@@ -593,8 +593,8 @@ namespace CanvasUnitTest
             Gem::TGemPtr<XCanvas> pCanvas;
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             CreateTestCanvasAndDevice(pCanvas, pDevice);
-            Gem::TGemPtr<XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
 
             // Create a hierarchy: root -> A -> B -> lightNode
             Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
@@ -602,7 +602,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
 
-            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
             Assert::IsNotNull(pRoot.Get());
             Assert::IsTrue(Succeeded(pRoot->AddChild(pA)));
             Assert::IsTrue(Succeeded(pA->AddChild(pB)));
@@ -660,8 +660,8 @@ namespace CanvasUnitTest
             Gem::TGemPtr<XCanvas> pCanvas;
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             CreateTestCanvasAndDevice(pCanvas, pDevice);
-            Gem::TGemPtr<XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
 
             // Create nodes: A, B, and lightNode
             Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
@@ -669,7 +669,7 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
 
-            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
             
             // Initial hierarchy: root -> A -> lightNode
             Assert::IsTrue(Succeeded(pRoot->AddChild(pA)));
@@ -732,15 +732,15 @@ namespace CanvasUnitTest
             Gem::TGemPtr<XCanvas> pCanvas;
             Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
             CreateTestCanvasAndDevice(pCanvas, pDevice);
-            Gem::TGemPtr<XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene)));
+            Gem::TGemPtr<XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
 
             // Create hierarchy: root -> parent -> lightNode
             Gem::TGemPtr<XSceneGraphNode> pParent, pLightNode;
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
             Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
 
-            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootSceneGraphNode();
+            Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
             Assert::IsTrue(Succeeded(pRoot->AddChild(pParent)));
             Assert::IsTrue(Succeeded(pParent->AddChild(pLightNode)));
 
@@ -997,18 +997,18 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pNodeB->AddChild(pNodeC)));
 
             // Instantiate into a scene
-            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+            Gem::TGemPtr<Canvas::XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
 
             Canvas::ModelInstantiateResult result{};
-            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result)));
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
 
             // Verify instance root was created
             Assert::IsNotNull(result.pInstanceRoot);
             Assert::IsNull(result.pActiveCamera); // no camera in model
 
             // Instance root should be a child of scene root
-            Canvas::XSceneGraphNode *pSceneRoot = pScene->GetRootSceneGraphNode();
+            Canvas::XSceneGraphNode *pSceneRoot = pScene->GetRootNode();
             Assert::IsTrue(pSceneRoot->GetFirstChild() == result.pInstanceRoot);
 
             // Instance root should have 2 children (cloned NodeA and NodeB)
@@ -1058,12 +1058,12 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pModel->GetRootNode()->AddChild(pNodeA)));
 
             // Create scene and instantiate twice
-            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+            Gem::TGemPtr<Canvas::XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
 
             Canvas::ModelInstantiateResult result1{}, result2{};
-            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result1)));
-            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result2)));
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result1)));
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result2)));
 
             // Both instances should exist independently
             Assert::IsNotNull(result1.pInstanceRoot);
@@ -1111,11 +1111,11 @@ namespace CanvasUnitTest
             Assert::IsTrue(pModel->GetActiveCameraNode() == pCamNode.Get());
 
             // Instantiate
-            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+            Gem::TGemPtr<Canvas::XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
 
             Canvas::ModelInstantiateResult result{};
-            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result)));
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
 
             // Active camera should be mapped in result
             Assert::IsNotNull(result.pActiveCamera);
@@ -1156,11 +1156,11 @@ namespace CanvasUnitTest
             Assert::IsTrue(Succeeded(pModel->GetRootNode()->AddChild(pLightNode)));
 
             // Instantiate
-            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+            Gem::TGemPtr<Canvas::XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
 
             Canvas::ModelInstantiateResult result{};
-            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result)));
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
 
             // Find cloned light
             Canvas::XSceneGraphNode *pClonedLightNode = result.pInstanceRoot->GetFirstChild();
@@ -1186,11 +1186,11 @@ namespace CanvasUnitTest
             Gem::TGemPtr<Canvas::XModel> pModel;
             Assert::IsTrue(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "EmptyModel")));
 
-            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-            Assert::IsTrue(Succeeded(pCanvas->CreateSceneGraph(pDevice, &pScene, "TestScene")));
+            Gem::TGemPtr<Canvas::XScene> pScene;
+            Assert::IsTrue(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
 
             Canvas::ModelInstantiateResult result{};
-            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result)));
+            Assert::IsTrue(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
 
             // Should still create a synthetic instance root
             Assert::IsNotNull(result.pInstanceRoot);
