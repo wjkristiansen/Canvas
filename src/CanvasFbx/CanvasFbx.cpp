@@ -1279,7 +1279,11 @@ Gem::Result BuildModel(
         pNode->SetName(nodeName.c_str());
         pNode->SetLocalTranslation(srcNode.Translation);
         pNode->SetLocalRotation(srcNode.Rotation);
-        pNode->SetLocalScale(srcNode.Scale);
+        // Intentionally do not propagate srcNode.Scale: ufbx is configured with
+        // UFBX_SPACE_CONVERSION_MODIFY_GEOMETRY (units baked into vertices) and
+        // UFBX_INHERIT_MODE_HANDLING_HELPER_NODES (inherit-mode compensation baked
+        // into helper-node matrices). Applying those row magnitudes as a Canvas
+        // node-local scale would double-count and deform the model.
 
         // Bind mesh instance
         if (srcNode.MeshIndex >= 0 && static_cast<size_t>(srcNode.MeshIndex) < meshDataByIndex.size())
