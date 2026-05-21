@@ -267,7 +267,9 @@ public:
         pRoot->AddChild(m_pAmbientNode);
 
         // Initial state - start at a sunrise-ish angle so the user sees colored
-        // lighting on the first frame.
+        // lighting on the first frame.  TimeString interprets phase=0.25 as
+        // 06:00, and Update's sun-position math now puts the sun at the +X
+        // horizon there, so this lands on the dawn crossfade as intended.
         m_TimeOfDay = 0.25f * kDefaultCycleSeconds; // ~6:00 AM equivalent
         Update(0.0f);
     }
@@ -293,15 +295,18 @@ public:
 
         const float theta = (m_TimeOfDay / m_CycleSeconds)
                           * static_cast<float>(2.0 * Canvas::Math::Pi);
-        // Sun's apparent position in the sky: rises in +X, peaks at +Z, sets
-        // in -X. The deferred shader treats the directional light's basis-row-0
-        // forward as the *direction photons travel* (it negates it to compute
-        // L), so we point the light *away* from the sun's position. Moon is
-        // the polar opposite.
-        const float ct = std::cos(theta);
-        const float st = std::sin(theta);
-
-        const Canvas::Math::FloatVector4 sunPos (ct, 0.0f, st, 0.0f);
+        // Sun's apparent position in the sky, parameterised so the phase
+        // values match the TimeString clock:
+        //   theta = 0    (00:00, midnight) -> sun at nadir   (0, 0, -1)
+        //   theta = pi/2 (06:00, sunrise)  -> sun at +X      (1, 0,  0)
+        //   theta = pi   (12:00, noon)     -> sun at zenith  (0, 0,  1)
+        //   theta = 3pi/2 (18:00, sunset)  -> sun at -X      (-1, 0, 0)
+        // The deferred shader treats the directional light's basis-row-0
+        // forward as the *direction photons travel* (it negates it to
+        // compute L), so we point the light *away* from the sun's
+        // position.  Moon is the polar opposite.
+        const Canvas::Math::FloatVector4 sunPos (
+            std::sin(theta), 0.0f, -std::cos(theta), 0.0f);
         const Canvas::Math::FloatVector4 sunDir  = -sunPos;  // photons travel away from sun
         const Canvas::Math::FloatVector4 moonDir =  sunPos;  // polar opposite
         const Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
@@ -309,13 +314,16 @@ public:
         OrientLightNode(m_pSunNode,  sunDir,  worldUp);
         OrientLightNode(m_pMoonNode, moonDir, worldUp);
 
-        // Intensity fades smoothly across the horizon. smoothstep(-0.1, 0.2, sin)
-        // gives a gentle dawn/dusk crossfade where both lights contribute.
-        const float sunGate  = SmoothStep(-0.1f, 0.2f,  st);
-        const float moonGate = SmoothStep(-0.1f, 0.2f, -st);
+        // Intensity fades smoothly across the horizon.  sunPos.z is the
+        // sun's height above the horizon plane (positive = above, negative
+        // = below); smoothstep(-0.1, 0.2, sunPos.z) gives a gentle
+        // dawn/dusk crossfade where both lights contribute.
+        const float sunHeight = sunPos.Z;
+        const float sunGate  = SmoothStep(-0.1f, 0.2f,  sunHeight);
+        const float moonGate = SmoothStep(-0.1f, 0.2f, -sunHeight);
 
         // Warm sun: yellowish-white. Color tints toward orange near horizon.
-        const float horizonness = 1.0f - std::min(1.0f, std::abs(st) * 2.5f);
+        const float horizonness = 1.0f - std::min(1.0f, std::abs(sunHeight) * 2.5f);
         const Canvas::Math::FloatVector4 sunDay   (1.00f, 0.95f, 0.80f, 1.0f);
         const Canvas::Math::FloatVector4 sunDawn  (1.00f, 0.55f, 0.25f, 1.0f);
         const Canvas::Math::FloatVector4 sunColor = Lerp(sunDay, sunDawn, horizonness * sunGate);
