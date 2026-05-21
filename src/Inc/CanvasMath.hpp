@@ -772,7 +772,11 @@ namespace Canvas
         {
             using Type = _Type;
 
-            TQuaternion() = default;
+            // Default-constructs to the multiplicative identity (0, 0, 0, 1),
+            // which is what every default-constructed rotation should be.
+            // (The additive identity (0, 0, 0, 0) is not a meaningful rotation.)
+            TQuaternion() :
+                TVector{ 0, 0, 0, 1 } {}
             TQuaternion(_Type scalar) :
                 TVector{ 0, 0, 0, scalar } {}
             TQuaternion(const TVector<Type, 4> & v) :
