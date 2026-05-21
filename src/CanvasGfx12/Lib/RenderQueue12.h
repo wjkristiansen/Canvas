@@ -541,6 +541,15 @@ public:
     // Frame rendering state
     CSwapChain12 *m_pCurrentSwapChain = nullptr;   // Set during BeginFrame..EndFrame
     Canvas::XCamera *m_pActiveCamera = nullptr;     // Set by scene via SetActiveCamera during Update
+
+    // Scene background.  Populated by SetBackground (typically forwarded
+    // from XScene at the start of each submission); the cubemap surfaces
+    // are held via strong refs that parallel the raw pointers in
+    // m_Background so the surfaces stay alive while bound.  When no
+    // background has been set the default is opaque black with no skybox.
+    Canvas::GfxBackgroundDesc m_Background;
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pSkyCubeA;
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pSkyCubeB;
     HlslTypes::HlslLight m_Lights[MAX_LIGHTS_PER_REGION] = {};
     uint32_t m_LightCount = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};
@@ -596,6 +605,7 @@ public:
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
     GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
+    GEMMETHOD_(void, SetBackground)(const Canvas::GfxBackgroundDesc *pDesc) final;
     GEMMETHOD_(void, SetGeometryWireframe)(bool wireframe) final;
     GEMMETHOD_(bool, GetGeometryWireframe)() const final;
     GEMMETHOD(FinalizeUploadAsShaderResource)(Canvas::XGfxSurface *pSurface) final;

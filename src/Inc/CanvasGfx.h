@@ -361,6 +361,15 @@ namespace Canvas
         GEMMETHOD(SubmitForUIRender)(XUIGraphNode *pNode) = 0;
         GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
 
+        // Set the scene background used by the composite pass to fill
+        // pixels with no geometry.  Pass nullptr to clear back to opaque
+        // black with no skybox.  The render queue takes its own strong
+        // references to any surfaces referenced by the desc (sky cubes)
+        // for the life of the binding.  XScene::SubmitRenderables
+        // forwards the scene's background here at the start of each
+        // submission so apps only set background once on the scene.
+        GEMMETHOD_(void, SetBackground)(const GfxBackgroundDesc *pDesc) = 0;
+
         // Debug: force the geometry pass to render as wireframe. UI / composite
         // passes are unaffected. Default false. The PSO variant is created
         // lazily on first enable so the cost is zero until used.

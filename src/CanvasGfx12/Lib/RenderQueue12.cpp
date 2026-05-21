@@ -1230,18 +1230,30 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // Composite root signature:
-    //   Slot 0: Root CBV (b0) — lighting / per-frame constants
-    //   Slot 1: Descriptor table with SRV[3] at t0-t2 — G-buffer textures
-    //   Static sampler s0: point, clamp (exact texel fetch)
-    CD3DX12_STATIC_SAMPLER_DESC pointSampler(
+    //   Slot 0: Root CBV (b0) -- per-frame constants (camera, lights, sky params)
+    //   Slot 1: Descriptor table with SRV[5] at t0-t4:
+    //             t0-t2 = G-buffer (normals, diffuse, world pos) [Texture2D]
+    //             t3-t4 = optional skybox cubes A / B            [TextureCube]
+    //           When no skybox is bound the cube slots hold null SRVs and
+    //           the shader's SkyHasCubemap flag in PerFrame is 0.
+    //   Static sampler s0: point/clamp (exact G-buffer texel fetch)
+    //   Static sampler s1: linear/wrap (skybox cube sampling)
+    CD3DX12_STATIC_SAMPLER_DESC staticSamplers[2] = {};
+    staticSamplers[0].Init(
         0,                                      // shader register s0
         D3D12_FILTER_MIN_MAG_MIP_POINT,
         D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
         D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
         D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+    staticSamplers[1].Init(
+        1,                                      // shader register s1
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP,
+        D3D12_TEXTURE_ADDRESS_MODE_WRAP);
 
     CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0, 0,  // SRV[3] at t0-t2, space0
+    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0, 0,  // SRV[5] at t0-t4, space0
                   D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 
     std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(2);
@@ -1252,7 +1264,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC compositeRootSigDesc(
         static_cast<UINT>(compositeRootParams.size()),
         compositeRootParams.data(),
-        1, &pointSampler,
+        2, staticSamplers,
         D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     CComPtr<ID3DBlob> pRSBlob;
@@ -2084,6 +2096,23 @@ GEMMETHODIMP_(void) CRenderQueue12::SetActiveCamera(Canvas::XCamera *pCamera)
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CRenderQueue12::SetBackground(const Canvas::GfxBackgroundDesc *pDesc)
+{
+    if (pDesc)
+    {
+        m_Background = *pDesc;
+        m_pSkyCubeA  = pDesc->pSkyboxCubemapA;
+        m_pSkyCubeB  = pDesc->pSkyboxCubemapB;
+    }
+    else
+    {
+        m_Background = {};
+        m_pSkyCubeA  = nullptr;
+        m_pSkyCubeB  = nullptr;
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::SubmitDisplacedDraw(const DisplacedDrawDesc &desc)
 {
     if (!desc.pHeightmap || !desc.pAlbedo || !desc.pAOMap || !desc.pRoughnessMap)
@@ -2238,6 +2267,21 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
         frameConstants.LightCount = m_LightCount;
         frameConstants.LightCullThreshold = kDefaultLightCullThreshold;
+
+        // Scene background -> per-frame constants.  The cube SRVs themselves
+        // are bound below as part of the composite descriptor table.
+        {
+            const auto &bg = m_Background;
+            frameConstants.SkySolidColor = { bg.SolidColor.X, bg.SolidColor.Y,
+                                             bg.SolidColor.Z, bg.SolidColor.W };
+            frameConstants.SkyOrientationQuat = { bg.Orientation.X, bg.Orientation.Y,
+                                                  bg.Orientation.Z, bg.Orientation.W };
+            frameConstants.SkyHasCubemap   = m_pSkyCubeA ? 1u : 0u;
+            frameConstants.SkyHasCubemapB  = (m_pSkyCubeA && m_pSkyCubeB) ? 1u : 0u;
+            frameConstants.SkyBlendFactor  = bg.BlendFactor;
+            frameConstants.SkyIntensity    = bg.Intensity;
+        }
+
         if (m_LightCount > 0)
             memcpy(frameConstants.Lights, m_Lights, m_LightCount * sizeof(HlslTypes::HlslLight));
 
@@ -2442,19 +2486,26 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         m_DisplacedDraws.clear();
 
         //==========================================================================================
-        // Composition pass: read G-buffers, perform deferred lighting, write to back buffer
+        // Composition pass: read G-buffers + scene background, perform deferred lighting,
+        // write to back buffer.  The composite owns every output pixel (background fills
+        // empty G-buffer pixels), so the render-target clear is no longer required.
         //==========================================================================================
         {
             CSurface12* pBackBuffer = m_pCurrentSwapChain->m_pSurface;
 
-            // CPU work: allocate SRV descriptors and create SRVs
+            // CPU work: allocate SRV descriptors and create SRVs.  Slots 0-2 are the
+            // G-buffer Texture2D SRVs (always present); slots 3-4 are skybox cube
+            // SRVs (real cube SRVs when m_pSkyCubeA / m_pSkyCubeB are set, otherwise
+            // null cube SRVs so the descriptor table stays well-defined and the
+            // shader's SkyHasCubemap flag selects the SolidColor path).
             ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
             const UINT incSize = m_CbvSrvUavIncrement;
 
-            if (m_NextSRVSlot + 3 > NumShaderResourceDescriptors)
+            constexpr UINT kCompositeSRVCount = 5;
+            if (m_NextSRVSlot + kCompositeSRVCount > NumShaderResourceDescriptors)
                 m_NextSRVSlot = 0;
             UINT baseSlot = m_NextSRVSlot;
-            m_NextSRVSlot += 3;
+            m_NextSRVSlot += kCompositeSRVCount;
 
             CD3DX12_CPU_DESCRIPTOR_HANDLE baseCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), baseSlot, incSize);
             CD3DX12_GPU_DESCRIPTOR_HANDLE baseGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), baseSlot, incSize);
@@ -2465,7 +2516,41 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             CD3DX12_CPU_DESCRIPTOR_HANDLE worldPosSrvHandle(baseCpuHandle, 2, incSize);
             pD3DDevice->CreateShaderResourceView(m_pGBufferWorldPos->GetD3DResource(), nullptr, worldPosSrvHandle);
 
-            // Composite task: transition G-buffers to SR, back buffer to RT, then draw
+            // Skybox cube SRVs at t3 / t4.  D3D12 permits a null resource paired
+            // with an explicit SRV desc; sampling such a descriptor returns zero,
+            // which is harmless because the shader's SkyHasCubemap flag bypasses
+            // the sample entirely when no cube is bound.
+            auto createCubeSRV = [&](Canvas::XGfxSurface* pSurf, UINT slotOffset)
+            {
+                D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
+                srv.ViewDimension           = D3D12_SRV_DIMENSION_TEXTURECUBE;
+                srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                ID3D12Resource* pRes = nullptr;
+                if (pSurf)
+                {
+                    auto* pCube = static_cast<CSurface12*>(pSurf);
+                    pRes = pCube->GetD3DResource();
+                    D3D12_RESOURCE_DESC rd = pRes->GetDesc();
+                    srv.Format                          = rd.Format;
+                    srv.TextureCube.MostDetailedMip     = 0;
+                    srv.TextureCube.MipLevels           = rd.MipLevels;
+                    srv.TextureCube.ResourceMinLODClamp = 0.0f;
+                }
+                else
+                {
+                    // Null SRV must still specify a concrete format.
+                    srv.Format                          = DXGI_FORMAT_R8G8B8A8_UNORM;
+                    srv.TextureCube.MostDetailedMip     = 0;
+                    srv.TextureCube.MipLevels           = 1;
+                    srv.TextureCube.ResourceMinLODClamp = 0.0f;
+                }
+                CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(baseCpuHandle, slotOffset, incSize);
+                pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
+            };
+            createCubeSRV(m_pSkyCubeA.Get(), 3);
+            createCubeSRV(m_pSkyCubeB.Get(), 4);
+
+            // Composite task: transition G-buffers + skybox cubes to SR, back buffer to RT, then draw
             auto& compositeTask = CreateGpuTask("CompositePass");
             DeclareGpuTextureUsage(compositeTask, m_pGBufferNormals,
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
@@ -2479,15 +2564,28 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if (m_pSkyCubeA)
+            {
+                DeclareGpuTextureUsage(compositeTask, static_cast<CSurface12*>(m_pSkyCubeA.Get()),
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+            if (m_pSkyCubeB)
+            {
+                DeclareGpuTextureUsage(compositeTask, static_cast<CSurface12*>(m_pSkyCubeB.Get()),
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
             DeclareGpuTextureUsage(compositeTask, pBackBuffer,
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
                 D3D12_BARRIER_ACCESS_RENDER_TARGET);
             compositeTask.RecordFunc = [frameCBVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
             {
-                // BUGBUG: TODO: Make clearColor selectable by client application
-                const float clearColor[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
-                pCL->ClearRenderTargetView(m_CurrentRTV, clearColor, 0, nullptr);
+                // No clear: every back-buffer pixel is written by the composite PS
+                // (background fills empty G-buffer pixels).
                 pCL->OMSetRenderTargets(1, &m_CurrentRTV, FALSE, nullptr);
                 pCL->SetGraphicsRootSignature(m_pCompositeRootSig);
                 pCL->SetPipelineState(m_pCompositePSO);

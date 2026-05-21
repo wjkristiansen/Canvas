@@ -1,16 +1,22 @@
 // Composition pixel shader - reads G-buffers and performs deferred lighting.
-// On pixels with no geometry (empty G-buffer) emits an analytic sky color
-// reconstructed from the per-frame camera basis + lights, so the day/night
-// cycle drives the visible sky tint with zero extra binding cost.
+// Pixels with no geometry are filled by the scene background: either the
+// SolidColor or a sample from the bound skybox cubemap(s).  The composite
+// owns every output pixel, so the render-target clear color is irrelevant.
 // Outputs final lit color to the back buffer (SV_Target0).
 
-// G-buffer textures bound via descriptor table
-Texture2D GBufferNormals      : register(t0);
-Texture2D GBufferDiffuseColor : register(t1);
-Texture2D GBufferWorldPos     : register(t2);
+// G-buffer textures (t0-t2) and optional skybox cubes (t3 = A, t4 = B)
+// bound via the composite descriptor table.  When no skybox is bound the
+// cube slots hold null SRVs and the shader's SkyHasCubemap flag is 0.
+Texture2D   GBufferNormals      : register(t0);
+Texture2D   GBufferDiffuseColor : register(t1);
+Texture2D   GBufferWorldPos     : register(t2);
+TextureCube SkyCubeA            : register(t3);
+TextureCube SkyCubeB            : register(t4);
 
-// Point sampler for exact texel fetch (G-buffer is 1:1 with screen)
-SamplerState PointSampler : register(s0);
+// s0: point/clamp for exact G-buffer texel fetch.
+// s1: linear/wrap for cubemap sky sampling.
+SamplerState PointSampler  : register(s0);
+SamplerState LinearSampler : register(s1);
 
 #include "HlslTypes.h"
 
@@ -56,60 +62,38 @@ float3 ScreenUVToWorldDir(float2 uv)
 }
 
 //----------------------------------------------------------------------------
-// Analytic sky for pixels with no geometry. Two contributions:
-//   (1) A vertical gradient zenith -> horizon -> ground (cosine-weighted by
-//       directional-light brightness so the sky goes dark at night).
-//   (2) A small sun/moon disc where the view ray aligns with the inverse
-//       direction of any directional light.
+// Rotate a vector by the conjugate of a unit quaternion.  Used to map a
+// world-space view direction into the cubemap's authoring basis before
+// sampling, so apps can rotate the sky (e.g. for diurnal alignment) without
+// re-uploading textures.
 //----------------------------------------------------------------------------
-float3 SampleSky(float3 viewDir)
+float3 RotateByQuatConjugate(float4 q, float3 v)
 {
-    float verticalT = saturate(viewDir.z * 0.5 + 0.5);  // 0 nadir -> 0.5 horizon -> 1 zenith
+    // Conjugate is (-q.xyz, q.w); rotation formula:
+    //   v' = v + 2 * cross(-q.xyz, cross(-q.xyz, v) + q.w * v)
+    float3 qv = -q.xyz;
+    float3 t  = cross(qv, v) + q.w * v;
+    return v + 2.0 * cross(qv, t);
+}
 
-    // Base palette is fixed; day/night brightness comes from the directional
-    // lights summed below. The constants are chosen to read as "a sky" even
-    // when there's no light at all.
-    float3 zenithBase  = float3(0.05, 0.08, 0.18);
-    float3 horizonBase = float3(0.18, 0.20, 0.25);
-    float3 groundBase  = float3(0.02, 0.02, 0.03);
+//----------------------------------------------------------------------------
+// Scene background sample for pixels with no geometry.  Selected by the
+// SkyHasCubemap flag in per-frame constants; intensity / tint / orientation
+// / crossfade are all CB-driven.
+//----------------------------------------------------------------------------
+float3 SampleBackground(float3 viewDir)
+{
+    if (PerFrame.SkyHasCubemap == 0)
+        return PerFrame.SkySolidColor.rgb;
 
-    float3 sky;
-    if (viewDir.z >= 0.0)
-        sky = lerp(horizonBase, zenithBase, smoothstep(0.0, 1.0, viewDir.z));
-    else
-        sky = lerp(horizonBase, groundBase, smoothstep(0.0, 1.0, -viewDir.z));
-
-    // Per-light contribution: warm tint near each directional light's
-    // anti-direction, sun-disc highlight at the brightest end of the cone.
-    [loop]
-    for (uint i = 0; i < PerFrame.LightCount && i < MAX_LIGHTS_PER_REGION; ++i)
+    float3 sampleDir = RotateByQuatConjugate(PerFrame.SkyOrientationQuat, viewDir);
+    float3 sky = SkyCubeA.SampleLevel(LinearSampler, sampleDir, 0).rgb;
+    if (PerFrame.SkyHasCubemapB != 0)
     {
-        HlslLight light = PerFrame.Lights[i];
-        if (light.Type != LIGHT_DIRECTIONAL)
-            continue;
-
-        // DirectionOrPosition is the direction photons travel; the apparent
-        // position of the source is the opposite.
-        float3 sourceDir = normalize(-light.DirectionOrPosition.xyz);
-        float c = saturate(dot(viewDir, sourceDir));
-
-        // Atmospheric scattering proxy: smooth halo with a steep core.
-        float halo = pow(c, 8.0)  * 0.4;
-        float disc = pow(c, 512.0) * 4.0;
-        float3 srcColor = light.Color.rgb;
-        float srcMag = max(max(srcColor.r, srcColor.g), srcColor.b);
-
-        // Modulate base sky brightness by directional-light strength so the
-        // sky darkens at night naturally.
-        sky *= (1.0 + srcMag * 0.4);
-
-        // Add halo + disc, clipped to the upper hemisphere so the sun/moon
-        // don't punch through ground pixels in the analytic sky.
-        if (viewDir.z > -0.1)
-            sky += srcColor * (halo + disc);
+        float3 skyB = SkyCubeB.SampleLevel(LinearSampler, sampleDir, 0).rgb;
+        sky = lerp(sky, skyB, saturate(PerFrame.SkyBlendFactor));
     }
-
-    return sky;
+    return sky * PerFrame.SkyIntensity;
 }
 
 float4 PSComposite(FSInput input) : SV_Target0
@@ -119,13 +103,13 @@ float4 PSComposite(FSInput input) : SV_Target0
     float4 diffuseSample = GBufferDiffuseColor.Sample(PointSampler, input.TexCoord);
     float4 worldPosSample = GBufferWorldPos.Sample(PointSampler, input.TexCoord);
 
-    // No geometry at this pixel: emit analytic sky color, then run the
-    // composite's exposure curve on it so it tonemaps consistently with the
-    // lit terrain.
+    // No geometry at this pixel: emit the scene background (solid color or
+    // skybox), then run the composite's exposure curve on it so it tonemaps
+    // consistently with the lit scene.
     if (normalSample.a == 0.0)
     {
         float3 viewDir = ScreenUVToWorldDir(input.TexCoord);
-        float3 skyColor = SampleSky(viewDir);
+        float3 skyColor = SampleBackground(viewDir);
         skyColor = 1.0 - exp(-skyColor * PerFrame.Exposure);
         return float4(skyColor, 1.0);
     }

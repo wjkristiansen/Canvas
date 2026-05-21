@@ -58,6 +58,21 @@ struct ALIGN16 HlslPerFrameConstants
     float LightCullThreshold;
     float Exposure;            // Linear scene-radiance multiplier (exp2(stops))
     float _PerFramePad0;
+
+    // Scene background.  Composite fills empty G-buffer pixels with either
+    // the SolidColor (when SkyHasCubemap == 0) or a sample from the bound
+    // skybox cubemap (t3, and optionally t4 with SkyBlendFactor crossfade
+    // when SkyHasCubemapB != 0).  SkyOrientationQuat rotates the view ray
+    // (its conjugate is applied) before sampling so cubemaps can be authored
+    // in any basis.  SkyIntensity is a linear multiplier on the sampled
+    // cubemap color (not applied to SolidColor).
+    float4 SkySolidColor;            // rgb = solid background, a unused
+    float4 SkyOrientationQuat;       // (x, y, z, w), identity = (0,0,0,1)
+    uint   SkyHasCubemap;            // 0 = no skybox bound -> use SolidColor
+    uint   SkyHasCubemapB;           // 0 = single-cube path (no crossfade)
+    float  SkyBlendFactor;           // 0 = A only, 1 = B only
+    float  SkyIntensity;             // linear multiplier on cubemap sample
+
     HlslLight Lights[MAX_LIGHTS_PER_REGION];
 };
 

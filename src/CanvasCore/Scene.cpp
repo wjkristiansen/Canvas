@@ -48,6 +48,8 @@ GEMMETHODIMP CScene::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
         if (m_pActiveCamera)
             pRenderQueue->SetActiveCamera(m_pActiveCamera);
 
+        pRenderQueue->SetBackground(&m_Background);
+
         // Iterative depth-first traversal using persistent stack (no per-frame allocation)
         m_TraversalStack.clear();
         m_TraversalStack.push_back(m_pRoot.Get());
