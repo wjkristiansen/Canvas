@@ -1209,18 +1209,24 @@ namespace Canvas
         //------------------------------------------------------------------------------------------------
         // PerspectiveReverseZ: Generates a reverse-Z perspective projection matrix.
         //
-        // Conventions:
-        //   Camera (view) space:  X = right, Y = up, Z = forward (LHS, standard D3D)
-        //   Clip space:           X = right, Y = up, Z = depth (1.0 at near, 0.0 at far)
+        // Engine coordinate-system contract:
+        //   World space:  RHS, +X = forward, +Y = left, +Z = up
+        //                 (meshes are authored CCW-front in this basis)
+        //   View space:   LHS, +X = right, +Y = up, +Z = forward
+        //                 (standard D3D LHS, matches every D3D sample,
+        //                  RenderDoc / PIX expectation, and shader debugger
+        //                  convention)
+        //   Clip space:   X = right, Y = up, Z = depth (1.0 at near, 0.0 at far)
         //
-        // World space remains right-handed with X=forward / Y=left / Z=up (the
-        // engine's robotics-style world frame), but the *view space* the
-        // camera produces, and that this projection matrix consumes, is the
-        // mainstream D3D LHS frame (X=right, Y=up, Z=forward). This matches
-        // every D3D sample, tutorial, RenderDoc/PIX expectation, and shader
-        // debugger convention, which keeps the winding analysis natural
-        // (CCW in world -> CCW in view -> CCW in clip -> front face when
-        // FrontCounterClockwise=FALSE, which is the D3D LHS default).
+        // The world->view basis change is the engine's single internal
+        // RHS->LHS bridge.  Its 3x3 has determinant -1, so triangle winding
+        // flips once across the entire pipeline:
+        //
+        //   author CCW-front in world  ->  CW in view  ->  CW in clip   (det -1, view)
+        //                                                  becomes      (one more conceptual flip
+        //                                                  CCW seen     because the LHS view
+        //                                                  by raster)   reverses the "outward"
+        //                                                               winding orientation
         //
         // Parameters:
         //   fovY        - Vertical field of view angle in radians

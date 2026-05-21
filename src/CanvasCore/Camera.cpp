@@ -14,6 +14,13 @@ GEMMETHODIMP_(Math::FloatMatrix4x4) CCamera::GetViewMatrix()
 {
     if (m_ViewMatrixDirty)
     {
+        // The view matrix is the engine's single internal RHS->LHS bridge.
+        // It takes Canvas world coordinates (RHS: +X=forward, +Y=left,
+        // +Z=up) and produces view-space coordinates (LHS: +X=right, +Y=up,
+        // +Z=forward).  The 3x3 has determinant -1, which flips triangle
+        // winding once across the whole pipeline; see CanvasMath.hpp
+        // PerspectiveReverseZ for the full winding contract and the
+        // matching rasterizer setting.
         // Get the camera's world transform from the attached scene graph node
         auto pNode = GetAttachedNode();
         if (pNode)
