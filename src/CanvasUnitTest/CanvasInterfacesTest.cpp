@@ -491,16 +491,19 @@ namespace CanvasUnitTest
             Assert::IsFalse(AlmostEqual(viewMatrix1, viewMatrix2));
             Assert::IsFalse(AlmostEqual(viewProjMatrix1, viewProjMatrix2));
 
-            // Verify the view matrix is the inverse of the camera's world transform
+            // The view matrix bakes in the world(X-fwd, Y-left, Z-up) ->
+            // view(X-right, Y-up, Z-fwd) basis remap, so world * view is no
+            // longer identity.  The invariant that does hold is that the
+            // camera's world-space position maps to the view-space origin.
             auto cameraWorldMatrix = pCameraNode->GetGlobalMatrix();
-            
-            // For a proper inverse check, multiply view * world should give identity
-            // But since we're using row vectors, it's world * view = identity
-            auto shouldBeIdentity = cameraWorldMatrix * viewMatrix2;
-            
-            // Check if result is close to identity (accounting for floating point error)
-            auto identity = FloatMatrix4x4::Identity();
-            Assert::IsTrue(AlmostEqual(shouldBeIdentity, identity));
+            FloatVector4 cameraWorldPos(
+                cameraWorldMatrix[3][0], cameraWorldMatrix[3][1],
+                cameraWorldMatrix[3][2], 1.0f);
+            FloatVector4 cameraViewPos = cameraWorldPos * viewMatrix2;
+            Assert::IsTrue(std::abs(cameraViewPos.X) < 1e-4f);
+            Assert::IsTrue(std::abs(cameraViewPos.Y) < 1e-4f);
+            Assert::IsTrue(std::abs(cameraViewPos.Z) < 1e-4f);
+            Assert::IsTrue(std::abs(cameraViewPos.W - 1.0f) < 1e-4f);
 
             // Test moving to root (no parent transform)
             Assert::IsTrue(Succeeded(pRoot->AddChild(pCameraNode)));

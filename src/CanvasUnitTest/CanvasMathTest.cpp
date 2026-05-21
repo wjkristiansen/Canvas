@@ -806,8 +806,9 @@ namespace CanvasUnitTest
 
         TEST_METHOD(PerspectiveReverseZBasic)
         {
-            // Test basic reverse-Z perspective matrix properties
-            // RHS: +X=forward, +Y=left, +Z=up
+            // Test basic reverse-Z perspective matrix properties.
+            // View space: +X=right, +Y=up, +Z=forward (D3D LHS, standard).
+            // Row-vector layout: [x_v, y_v, z_v, 1] * M = [x_c, y_c, z_c, w_c].
             float fovY = static_cast<float>(g_PI / 4.0);  // 45 degrees
             float aspect = 16.0f / 9.0f;
             float nearPlane = 0.1f;
@@ -815,23 +816,22 @@ namespace CanvasUnitTest
 
             auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
 
-            // Check matrix elements for row-vector multiplication (v * M)
-            // M[i][j] maps input axis i to output axis j
-            // [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
-            Assert::IsTrue(proj[1][0] != 0.0f);  // Y(left) → -X_clip scaling (-f/aspect)
-            Assert::IsTrue(proj[2][1] != 0.0f);  // Z(up) → Y_clip scaling (f)
-            Assert::IsTrue(proj[0][2] != 0.0f);  // X(forward) → Z_clip depth
-            Assert::IsTrue(proj[0][3] == 1.0f);  // X(forward) → W_clip (perspective divide)
+            // Non-zero elements per the canonical D3D LHS perspective layout.
+            Assert::IsTrue(proj[0][0] != 0.0f);  // X(right)   -> X_clip scaling (f/aspect)
+            Assert::IsTrue(proj[1][1] != 0.0f);  // Y(up)      -> Y_clip scaling (f)
+            Assert::IsTrue(proj[2][2] != 0.0f);  // Z(forward) -> Z_clip depth
+            Assert::IsTrue(proj[2][3] == 1.0f);  // Z(forward) -> W_clip (perspective divide)
 
             // Verify f = cot(fovY/2)
             float f = 1.0f / std::tan(fovY * 0.5f);
-            Assert::IsTrue(std::abs(proj[1][0] - (-f / aspect)) < FLT_EPSILON);
-            Assert::IsTrue(std::abs(proj[2][1] - f) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[0][0] - (f / aspect)) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[1][1] - f) < FLT_EPSILON);
         }
 
         TEST_METHOD(PerspectiveReverseZDepthMapping)
         {
-            // Test reverse-Z perspective matrix generates correct depth coefficients
+            // Test reverse-Z perspective matrix generates correct depth coefficients.
+            // View space: +X=right, +Y=up, +Z=forward.
             float fovY = static_cast<float>(g_PI / 4.0);
             float aspect = 16.0f / 9.0f;
             float nearPlane = 0.1f;
@@ -839,30 +839,31 @@ namespace CanvasUnitTest
 
             auto proj = PerspectiveReverseZ(fovY, aspect, nearPlane, farPlane);
 
-            // Row-vector: M[0][2] = A (forward → z_clip), M[3][2] = B (depth bias)
-            Assert::IsTrue(proj[0][2] != 0.0f);
+            // Row-vector: M[2][2] = A (forward -> z_clip), M[3][2] = B (depth bias).
+            Assert::IsTrue(proj[2][2] != 0.0f);
             Assert::IsTrue(proj[3][2] != 0.0f);
 
             // A = nearPlane / (nearPlane - farPlane)
             // B = -(nearPlane * farPlane) / (nearPlane - farPlane)
             float rangeInv = 1.0f / (nearPlane - farPlane);
-            Assert::IsTrue(std::abs(proj[0][2] - nearPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[2][2] - nearPlane * rangeInv) < FLT_EPSILON);
             Assert::IsTrue(std::abs(proj[3][2] - (-(nearPlane * farPlane * rangeInv))) < FLT_EPSILON);
 
-            // Verify depth mapping: ndc_z = (A*x + B) / x where x = forward distance
-            // At near plane (x=near): ndc_z should be 1.0
-            float A = proj[0][2];
+            // Verify depth mapping: ndc_z = (A*z + B) / z where z = forward distance.
+            // At near plane (z=near): ndc_z should be 1.0
+            float A = proj[2][2];
             float B = proj[3][2];
             float ndc_near = (A * nearPlane + B) / nearPlane;
             Assert::IsTrue(std::abs(ndc_near - 1.0f) < 1e-5f);
-            // At far plane (x=far): ndc_z should be 0.0
+            // At far plane (z=far): ndc_z should be 0.0
             float ndc_far = (A * farPlane + B) / farPlane;
             Assert::IsTrue(std::abs(ndc_far - 0.0f) < 1e-5f);
         }
 
         TEST_METHOD(PerspectiveReverseZCoordinateTransform)
         {
-            // Test coordinate system transformation: X_in(forward)→Z_clip, Y_in(left)→-X_clip, Z_in(up)→Y_clip
+            // Test coordinate system transformation: X_v(right)->X_clip,
+            // Y_v(up)->Y_clip, Z_v(forward)->Z_clip + W_clip.
             float fovY = static_cast<float>(g_PI / 4.0);
             float aspect = 1.0f;
             float nearPlane = 1.0f;
@@ -872,19 +873,19 @@ namespace CanvasUnitTest
 
             float f = 1.0f / std::tan(fovY * 0.5f);
 
-            // Row-vector: M[1][0] = -f/a (left → -x_clip), M[2][1] = f (up → y_clip)
-            Assert::IsTrue(std::abs(proj[1][0] - (-f)) < 1e-5f);  // Y(left) → -X_clip
-            Assert::IsTrue(std::abs(proj[2][1] - f) < 1e-5f);     // Z(up) → Y_clip
+            // Row-vector: M[0][0] = f/a (right -> x_clip), M[1][1] = f (up -> y_clip).
+            Assert::IsTrue(std::abs(proj[0][0] - f) < 1e-5f);  // aspect=1
+            Assert::IsTrue(std::abs(proj[1][1] - f) < 1e-5f);
 
-            // Verify perspective divide: M[0][3] = 1 (forward → w_clip)
-            Assert::IsTrue(std::abs(proj[0][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
-            Assert::IsTrue(std::abs(proj[3][3] - 0.0f) < 1e-5f);  // no constant contribution to w_clip
+            // Perspective divide: M[2][3] = 1 (forward -> w_clip), M[3][3] = 0.
+            Assert::IsTrue(std::abs(proj[2][3] - 1.0f) < 1e-5f);  // w_clip = z_view
+            Assert::IsTrue(std::abs(proj[3][3] - 0.0f) < 1e-5f);
         }
 
         TEST_METHOD(PerspectiveForwardZBasic)
         {
-            // Test basic forward-Z perspective matrix properties
-            // RHS: +X=forward, +Y=left, +Z=up
+            // Test basic forward-Z perspective matrix properties.
+            // View space: +X=right, +Y=up, +Z=forward.
             float fovY = static_cast<float>(g_PI / 4.0);
             float aspect = 16.0f / 9.0f;
             float nearPlane = 0.1f;
@@ -892,21 +893,21 @@ namespace CanvasUnitTest
 
             auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
 
-            // Row-vector: M[i][j] maps input axis i to output axis j
-            Assert::IsTrue(proj[1][0] != 0.0f);  // Y(left) → -X_clip
-            Assert::IsTrue(proj[2][1] != 0.0f);  // Z(up) → Y_clip
-            Assert::IsTrue(proj[0][2] != 0.0f);  // X(forward) → Z_clip
-            Assert::IsTrue(proj[0][3] == 1.0f);  // X(forward) → W_clip
+            // Row-vector: M[i][j] maps input axis i to output axis j.
+            Assert::IsTrue(proj[0][0] != 0.0f);  // X(right)   -> X_clip
+            Assert::IsTrue(proj[1][1] != 0.0f);  // Y(up)      -> Y_clip
+            Assert::IsTrue(proj[2][2] != 0.0f);  // Z(forward) -> Z_clip
+            Assert::IsTrue(proj[2][3] == 1.0f);  // Z(forward) -> W_clip
 
             // Verify f = cot(fovY/2)
             float f = 1.0f / std::tan(fovY * 0.5f);
-            Assert::IsTrue(std::abs(proj[1][0] - (-f / aspect)) < FLT_EPSILON);
-            Assert::IsTrue(std::abs(proj[2][1] - f) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[0][0] - (f / aspect)) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[1][1] - f) < FLT_EPSILON);
         }
 
         TEST_METHOD(PerspectiveForwardZDepthMapping)
         {
-            // Test forward-Z perspective matrix generates correct depth coefficients
+            // Test forward-Z perspective matrix generates correct depth coefficients.
             float fovY = static_cast<float>(g_PI / 4.0);
             float aspect = 16.0f / 9.0f;
             float nearPlane = 0.1f;
@@ -914,19 +915,19 @@ namespace CanvasUnitTest
 
             auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
 
-            // Row-vector: M[0][2] = A (forward → z_clip), M[3][2] = -B (depth bias)
-            Assert::IsTrue(proj[0][2] != 0.0f);
+            // Row-vector: M[2][2] = A (forward -> z_clip), M[3][2] = B (depth bias).
+            Assert::IsTrue(proj[2][2] != 0.0f);
             Assert::IsTrue(proj[3][2] != 0.0f);
 
             // A = farPlane / (farPlane - nearPlane)
-            // -B = -(nearPlane * farPlane) / (farPlane - nearPlane)
+            // B = -(nearPlane * farPlane) / (farPlane - nearPlane)
             float rangeInv = 1.0f / (farPlane - nearPlane);
-            Assert::IsTrue(std::abs(proj[0][2] - farPlane * rangeInv) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[2][2] - farPlane * rangeInv) < FLT_EPSILON);
             Assert::IsTrue(std::abs(proj[3][2] + nearPlane * farPlane * rangeInv) < FLT_EPSILON);
 
-            // Verify depth mapping: ndc_z = (A*x + bias) / x
+            // Verify depth mapping: ndc_z = (A*z + B) / z.
             // At near plane: ndc_z should be 0.0
-            float A = proj[0][2];
+            float A = proj[2][2];
             float B = proj[3][2];
             float ndc_near = (A * nearPlane + B) / nearPlane;
             Assert::IsTrue(std::abs(ndc_near - 0.0f) < 1e-5f);
@@ -937,8 +938,8 @@ namespace CanvasUnitTest
 
         TEST_METHOD(PerspectiveForwardZCoordinateTransform)
         {
-            // Test coordinate system transformation for forward-Z
-            // X_in(forward)→Z_clip, Y_in(left)→-X_clip, Z_in(up)→Y_clip
+            // Test coordinate system transformation for forward-Z.
+            // X_v(right)->X_clip, Y_v(up)->Y_clip, Z_v(forward)->Z/W_clip.
             float fovY = static_cast<float>(g_PI / 4.0);
             float aspect = 1.0f;
             float nearPlane = 1.0f;
@@ -948,19 +949,19 @@ namespace CanvasUnitTest
 
             float f = 1.0f / std::tan(fovY * 0.5f);
 
-            // Row-vector: M[1][0] = -f/a (left → -x_clip), M[2][1] = f (up → y_clip)
-            Assert::IsTrue(std::abs(proj[1][0] - (-f)) < 1e-5f);  // Y(left) → -X_clip
-            Assert::IsTrue(std::abs(proj[2][1] - f) < 1e-5f);     // Z(up) → Y_clip
+            // Row-vector: M[0][0] = f/a (right -> x_clip), M[1][1] = f (up -> y_clip).
+            Assert::IsTrue(std::abs(proj[0][0] - f) < 1e-5f);
+            Assert::IsTrue(std::abs(proj[1][1] - f) < 1e-5f);
 
-            // Verify perspective divide: M[0][3] = 1 (forward → w_clip)
-            Assert::IsTrue(std::abs(proj[0][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
+            // Perspective divide: M[2][3] = 1 (forward -> w_clip).
+            Assert::IsTrue(std::abs(proj[2][3] - 1.0f) < 1e-5f);  // w_clip = z_view
             Assert::IsTrue(std::abs(proj[3][3] - 0.0f) < 1e-5f);  // no constant contribution to w_clip
         }
 
         TEST_METHOD(PerspectiveReverseZVsForwardZDifference)
         {
-            // Verify both reverse-Z and forward-Z functions create valid projection matrices
-            // RHS: +X=forward, +Y=left, +Z=up
+            // Verify both reverse-Z and forward-Z functions create valid projection matrices.
+            // View space: +X=right, +Y=up, +Z=forward.
             float fovY = static_cast<float>(g_PI / 4.0);
             float aspect = 1.0f;
             float nearPlane = 1.0f;
@@ -971,17 +972,22 @@ namespace CanvasUnitTest
 
             float f = 1.0f / std::tan(fovY * 0.5f);
 
-            // Both should have identical FOV and perspective setup (row-vector layout)
-            Assert::IsTrue(std::abs(projRZ[1][0] - (-f)) < 1e-5f);  // Y(left) → -X_clip
-            Assert::IsTrue(std::abs(projRZ[2][1] - f) < 1e-5f);     // Z(up) → Y_clip
-            Assert::IsTrue(std::abs(projFZ[1][0] - (-f)) < 1e-5f);
-            Assert::IsTrue(std::abs(projFZ[2][1] - f) < 1e-5f);
+            // Both should have identical FOV and perspective setup (row-vector layout).
+            Assert::IsTrue(std::abs(projRZ[0][0] - f) < 1e-5f);  // X(right) -> X_clip
+            Assert::IsTrue(std::abs(projRZ[1][1] - f) < 1e-5f);  // Y(up)    -> Y_clip
+            Assert::IsTrue(std::abs(projFZ[0][0] - f) < 1e-5f);
+            Assert::IsTrue(std::abs(projFZ[1][1] - f) < 1e-5f);
 
-            // Verify perspective divide is correctly set for both
-            Assert::IsTrue(std::abs(projRZ[0][3] - 1.0f) < 1e-5f);  // w_clip = x_cam
-            Assert::IsTrue(std::abs(projFZ[0][3] - 1.0f) < 1e-5f);
+            // Verify perspective divide is correctly set for both.
+            Assert::IsTrue(std::abs(projRZ[2][3] - 1.0f) < 1e-5f);  // w_clip = z_view
+            Assert::IsTrue(std::abs(projFZ[2][3] - 1.0f) < 1e-5f);
             Assert::IsTrue(std::abs(projRZ[3][3] - 0.0f) < 1e-5f);
             Assert::IsTrue(projFZ[3][3] == 0.0f);
+
+            // Depth coefficients differ: reverse-Z and forward-Z must produce
+            // different A and B values (otherwise they are the same mapping).
+            Assert::IsTrue(std::abs(projRZ[2][2] - projFZ[2][2]) > 1e-5f);
+            Assert::IsTrue(std::abs(projRZ[3][2] - projFZ[3][2]) > 1e-5f);
         }
 	};
 }
