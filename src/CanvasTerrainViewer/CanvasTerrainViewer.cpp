@@ -348,6 +348,28 @@ public:
         const Canvas::Math::FloatVector4 ambColor = Lerp(ambNightColor, ambDayColor, ambBlend);
         m_pAmbient->SetColor(ambColor);
         m_pAmbient->SetIntensity(ambDay + ambNight + ambFloor);
+
+        // Cache display-side state for the composite background to read.
+        // sunPos is the direction toward the sun in the sky (same vector
+        // the procedural composite shader expects via SunDirection); the
+        // moon is the polar opposite.  Display colours pack intensity
+        // (sunGate / moonGate) into .a so a single field carries both
+        // tint and brightness.  Stars fade out during the day by gating
+        // on moonGate (which is 1 when the sun is below the horizon).
+        m_SunPos  = sunPos;
+        m_MoonPos = -sunPos;
+        m_SunDisplayColor  = Canvas::Math::FloatVector4(
+            sunColor.X,  sunColor.Y,  sunColor.Z,  kSunPeakIntensity * sunGate);
+        // Moon disc display colour is the moon's visual appearance (very
+        // pale neutral white), NOT the cooler moonColor used above for
+        // the directional light's tint of the scene.  Moonlight is the
+        // sun's light reflected off a near-grey surface and arrives at
+        // the eye after a Rayleigh-scattering bias toward blue, hence
+        // the cool tint for the *lighting*; but the moon disc itself
+        // looks roughly white-grey.
+        m_MoonDisplayColor = Canvas::Math::FloatVector4(
+            0.95f, 0.95f, 0.92f, moonGate);
+        m_StarsIntensity = moonGate;
     }
 
     // 24-hour clock string: 00:00 at theta=0 (midnight), 06:00 at theta=pi/2, etc.
@@ -372,6 +394,18 @@ public:
         const float p = m_TimeOfDay / m_CycleSeconds;
         return p - std::floor(p);
     }
+
+    // Display-side accessors used by the composite background:
+    //   GetSunPosition / GetMoonPosition return the unit world vector
+    //   pointing from the viewer TOWARD the body (opposite of the
+    //   matching directional light's photon direction).
+    //   Get*DisplayColor returns rgb tint with intensity baked into .a;
+    //   GetStarsIntensity is 1 at night, fades to 0 around dawn/dusk.
+    Canvas::Math::FloatVector4 GetSunPosition()      const { return m_SunPos; }
+    Canvas::Math::FloatVector4 GetMoonPosition()     const { return m_MoonPos; }
+    Canvas::Math::FloatVector4 GetSunDisplayColor()  const { return m_SunDisplayColor; }
+    Canvas::Math::FloatVector4 GetMoonDisplayColor() const { return m_MoonDisplayColor; }
+    float                      GetStarsIntensity()   const { return m_StarsIntensity; }
 
 private:
     static float SmoothStep(float edge0, float edge1, float x)
@@ -413,9 +447,22 @@ private:
     Gem::TGemPtr<Canvas::XSceneGraphNode> m_pSunNode;
     Gem::TGemPtr<Canvas::XSceneGraphNode> m_pMoonNode;
     Gem::TGemPtr<Canvas::XSceneGraphNode> m_pAmbientNode;
-    float m_CycleSeconds = kDefaultCycleSeconds;
-    float m_TimeOfDay    = 0.0f;
-    bool  m_Paused       = false;
+
+    // Cached display-side state produced by Update for the composite
+    // background to consume each frame.  Sun/moon positions are the
+    // sky-facing directions (toward the body), display colours pack
+    // intensity into .a, and stars intensity fades to zero during day.
+    // Kept together up front to avoid alignment padding between the
+    // alignas(16) FloatVector4 members and the trailing scalars.
+    Canvas::Math::FloatVector4 m_SunPos          { 0.0f, 0.0f, -1.0f, 0.0f };
+    Canvas::Math::FloatVector4 m_MoonPos         { 0.0f, 0.0f,  1.0f, 0.0f };
+    Canvas::Math::FloatVector4 m_SunDisplayColor { 1.0f, 1.0f, 1.0f, 0.0f };
+    Canvas::Math::FloatVector4 m_MoonDisplayColor{ 1.0f, 1.0f, 1.0f, 0.0f };
+
+    float m_CycleSeconds   = kDefaultCycleSeconds;
+    float m_TimeOfDay      = 0.0f;
+    float m_StarsIntensity = 0.0f;
+    bool  m_Paused         = false;
 };
 
 } // anonymous namespace
@@ -438,6 +485,8 @@ class CTerrainApp
     Gem::TGemPtr<Canvas::XGfxSurface>       m_pSkyCubeDay;
     Gem::TGemPtr<Canvas::XGfxSurface>       m_pSkyCubeDusk;
     Gem::TGemPtr<Canvas::XGfxSurface>       m_pSkyCubeNight;
+    Gem::TGemPtr<Canvas::XGfxSurface>       m_pSkyCubeStars;
+    Gem::TGemPtr<Canvas::XGfxSurface>       m_pMoonTexture;
     Gem::TGemPtr<Canvas::XGfxMaterial>      m_pTerrainMaterial;
     Gem::TGemPtr<Canvas::XGfxMeshData>      m_pTerrainPatchMesh;
     Gem::TGemPtr<Canvas::XMeshInstance>     m_pTerrainInstance;
@@ -708,6 +757,31 @@ class CTerrainApp
         if (!loadOne("day",   m_pSkyCubeDay))   return false;
         if (!loadOne("dusk",  m_pSkyCubeDusk))  return false;
         if (!loadOne("night", m_pSkyCubeNight)) return false;
+        if (!loadOne("stars", m_pSkyCubeStars)) return false;
+
+        // Moon billboard sprite (2D RGBA).  Composite samples it inside
+        // the angular disc around MoonDirection (see GfxBackgroundDesc).
+        const std::filesystem::path moonPath = skyDir / "moon.png";
+        Canvas::TerrainViewer::ImageRGBA8 moonImg;
+        if (!Canvas::TerrainViewer::LoadImageRGBA8(
+                moonPath.wstring().c_str(), &moonImg, m_pLogger.Get()))
+        {
+            Canvas::LogError(m_pLogger.Get(), "LoadSky: failed to load '%s'",
+                moonPath.string().c_str());
+            return false;
+        }
+        {
+            Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+                Canvas::GfxFormat::R8G8B8A8_UNorm,
+                moonImg.Width, moonImg.Height,
+                Canvas::SurfaceFlag_ShaderResource);
+            Gem::ThrowGemError(m_pGfxDevice->CreateSurface(desc, &m_pMoonTexture));
+            Gem::ThrowGemError(m_pGfxDevice->UploadTextureRegion(
+                m_pMoonTexture, 0, 0, 0,
+                moonImg.Width, moonImg.Height,
+                moonImg.Pixels.data(), moonImg.Width * 4));
+            Gem::ThrowGemError(m_pGfxRenderQueue->FinalizeUploadAsShaderResource(m_pMoonTexture.Get()));
+        }
         return true;
     }
 
@@ -739,6 +813,41 @@ class CTerrainApp
         bg.pSkyboxCubemapB = pB;
         bg.BlendFactor     = t;
         bg.Intensity       = 1.0f;
+
+        // Stars cube: rotated around the world +Y "polar" axis so the
+        // entire star sphere sweeps with the diurnal cycle.  Stars cube
+        // is authored such that the rest position aligns with world
+        // forward (+X) at sunrise; matching the sun/moon rotation keeps
+        // their relative positions on the celestial sphere stable.
+        //   theta around +Y = pi/2 - 2*pi*phase
+        // (same derivation as the prior celestial cube; see
+        // CDayNightCycle::Update for the position semantics.)
+        const float theta =
+            static_cast<float>(Canvas::Math::Pi * 0.5)
+            - 2.0f * static_cast<float>(Canvas::Math::Pi) * phase;
+        const float halfTheta = 0.5f * theta;
+        bg.pStarsCubemap   = m_pSkyCubeStars;
+        bg.StarsOrientation = Canvas::Math::FloatQuaternion(
+            0.0f, std::sin(halfTheta), 0.0f, std::cos(halfTheta));
+        bg.StarsIntensity  = m_DayNight.GetStarsIntensity();
+
+        // Sun: procedural disc driven by the same direction vector the
+        // sun directional light uses.  Display colour packs intensity
+        // into .a (sun fades to zero across the horizon via sunGate).
+        const auto sunPos   = m_DayNight.GetSunPosition();
+        const auto sunColor = m_DayNight.GetSunDisplayColor();
+        bg.SunDirection     = sunPos;
+        bg.SunColor         = sunColor;
+        bg.SunAngularRadius = 0.07f;     // ~4 deg, matches the celestial-cube authoring
+
+        // Moon: textured billboard at the anti-sun direction.
+        const auto moonPos   = m_DayNight.GetMoonPosition();
+        const auto moonColor = m_DayNight.GetMoonDisplayColor();
+        bg.pMoonTexture      = m_pMoonTexture;
+        bg.MoonDirection     = moonPos;
+        bg.MoonColor         = moonColor;
+        bg.MoonAngularRadius = 0.05f;    // ~3 deg
+
         m_pScene->SetBackground(&bg);
     }
 
