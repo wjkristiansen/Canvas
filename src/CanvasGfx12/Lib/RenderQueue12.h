@@ -799,6 +799,33 @@ private:
 
     // Accumulate a light for the current frame's deferred lighting pass
     Gem::Result SubmitLight(Canvas::XLight *pLight);
+
+    // Build a texel-snapped world-to-shadow-clip matrix for a directional
+    // light.  The shadow frustum is an ortho box of side 2 * halfWidth in
+    // light-space XY, depth depthRange in light-space Z, centred on the
+    // camera position projected into light space and snapped to the
+    // shadow-atlas texel grid.  Texel snapping is what stops shadow edges
+    // from shimmering as the camera translates.
+    //
+    //   lightDir       - unit world-space direction the light emits along.
+    //   worldUp        - reference up vector (typically scene Z-up); used
+    //                    only to disambiguate the light-space basis.  Must
+    //                    not be parallel to lightDir.
+    //   focusPoint     - world-space point the shadow frustum is centred on
+    //                    (typically the active camera position).
+    //   halfWidth      - half side length of the ortho box in meters.
+    //   depthRange     - light-space Z extent of the ortho box in meters.
+    //   resolution     - shadow map resolution in texels (used for snapping).
+    //
+    // The returned matrix takes world-space row vectors directly to shadow
+    // clip space (reverse-Z: 1.0 at near, 0.0 at far).
+    static Canvas::Math::FloatMatrix4x4 BuildDirectionalShadowMatrix(
+        const Canvas::Math::FloatVector4& lightDir,
+        const Canvas::Math::FloatVector4& worldUp,
+        const Canvas::Math::FloatVector4& focusPoint,
+        float halfWidth,
+        float depthRange,
+        UINT  resolution);
     
     // GPU Task Graphs — three graphs dispatched in order: scene → UI → present
     Canvas::CGpuTaskGraph m_GpuTaskGraph;        // Scene: geometry, composite

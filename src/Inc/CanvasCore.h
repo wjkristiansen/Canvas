@@ -386,6 +386,39 @@ XLight : public XSceneGraphElement
     // Spot light parameters (only valid for Spot lights)
     GEMMETHOD_(void, SetSpotAngles)(float innerAngle, float outerAngle) = 0;
     GEMMETHOD_(void, GetSpotAngles)(float* pInnerAngle, float* pOuterAngle) const = 0;
+
+    // Shadow parameters - take effect only when the LightFlags::CastsShadows
+    // bit is set and the backend supports shadow-casting for this light type.
+    // The backend allocates and manages the underlying shadow map.
+
+    // Square shadow-map resolution in texels. 0 selects the backend default
+    // (currently 2048). Higher values trade VRAM + fill cost for sharper
+    // shadow edges.
+    GEMMETHOD_(void, SetShadowResolution)(UINT pixels) = 0;
+    GEMMETHOD_(UINT, GetShadowResolution)() const = 0;
+
+    // Self-shadowing bias knobs.
+    //   constantBias   - added to the receiver's projected depth before
+    //                    the shadow compare. Use small positive values
+    //                    (e.g. 1e-4) to push receivers past their caster.
+    //   slopeScaleBias - scaled by max(|ddx z|, |ddy z|) during the shadow
+    //                    draw to compensate steep polygons.
+    //   normalOffset   - in shadow-map texels; pushes the sample point
+    //                    along the surface normal at compare time so
+    //                    grazing-angle surfaces don't self-shadow.
+    GEMMETHOD_(void, SetShadowDepthBias)(float constantBias, float slopeScaleBias, float normalOffset) = 0;
+    GEMMETHOD_(void, GetShadowDepthBias)(float* pConstantBias, float* pSlopeScaleBias, float* pNormalOffset) const = 0;
+
+    // Directional-light shadow frustum (ignored for other light types).
+    //   halfWidthMeters  - half side length of the light-space ortho box
+    //                      covered by the shadow map. The box is centred
+    //                      on the camera and texel-snapped to remove
+    //                      shimmer when the camera moves.
+    //   depthRangeMeters - distance from the light's near to far plane
+    //                      along its forward direction. Geometry outside
+    //                      this slab is not captured.
+    GEMMETHOD_(void, SetDirectionalShadowExtent)(float halfWidthMeters, float depthRangeMeters) = 0;
+    GEMMETHOD_(void, GetDirectionalShadowExtent)(float* pHalfWidthMeters, float* pDepthRangeMeters) const = 0;
 };
 
 //------------------------------------------------------------------------------------------------

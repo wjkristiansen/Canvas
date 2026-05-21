@@ -2155,6 +2155,82 @@ Gem::Result CRenderQueue12::SubmitDisplacedDraw(const DisplacedDrawDesc &desc)
 }
 
 //------------------------------------------------------------------------------------------------
+Canvas::Math::FloatMatrix4x4 CRenderQueue12::BuildDirectionalShadowMatrix(
+    const Canvas::Math::FloatVector4& lightDir,
+    const Canvas::Math::FloatVector4& worldUp,
+    const Canvas::Math::FloatVector4& focusPoint,
+    float halfWidth,
+    float depthRange,
+    UINT  resolution)
+{
+    using namespace Canvas::Math;
+
+    // Light "view" space (LHS, matches the engine camera view convention):
+    //   +X = right, +Y = up, +Z = forward (along light emission).
+    // viewFwd is lightDir; viewUp is the worldUp projected perpendicular
+    // to viewFwd; viewRight = cross(viewUp, viewFwd) keeps the basis LHS.
+    FloatVector4 viewFwd = lightDir;
+    {
+        const float lenSq = DotProduct(viewFwd, viewFwd);
+        viewFwd = (lenSq > 1e-12f) ? viewFwd * (1.0f / std::sqrt(lenSq))
+                                   : FloatVector4(1.0f, 0.0f, 0.0f, 0.0f);
+    }
+
+    FloatVector4 up = worldUp;
+    // If worldUp is (near-)parallel to viewFwd fall back to a fixed axis
+    // so the basis stays well-defined.
+    if (std::fabs(DotProduct(up, viewFwd)) > 0.999f)
+        up = FloatVector4(1.0f, 0.0f, 0.0f, 0.0f);
+
+    // Gram-Schmidt: viewUp perpendicular to viewFwd, then normalize.
+    FloatVector4 viewUp = up - viewFwd * DotProduct(up, viewFwd);
+    {
+        const float lenSq = DotProduct(viewUp, viewUp);
+        viewUp = (lenSq > 1e-12f) ? viewUp * (1.0f / std::sqrt(lenSq))
+                                  : FloatVector4(0.0f, 0.0f, 1.0f, 0.0f);
+    }
+    FloatVector4 viewRight = CrossProduct(viewUp, viewFwd);  // LHS
+
+    // Project the focus point into light-view space (rotation only; the
+    // eye translation is folded in below after texel snapping).
+    const float focusX = DotProduct(focusPoint, viewRight);
+    const float focusY = DotProduct(focusPoint, viewUp);
+    const float focusZ = DotProduct(focusPoint, viewFwd);
+
+    // Snap the focus XY to the shadow-atlas texel grid (in light-view
+    // meters per texel) so frame-to-frame camera motion does not cause
+    // sub-texel shimmer on shadow edges.
+    const UINT  res        = (resolution > 0u) ? resolution : 1u;
+    const float texelMeters = (2.0f * halfWidth) / static_cast<float>(res);
+    const float snappedX   = std::floor(focusX / texelMeters) * texelMeters;
+    const float snappedY   = std::floor(focusY / texelMeters) * texelMeters;
+
+    // Place the light eye behind the snapped focus along -viewFwd by
+    // half the depth range, so the ortho box [zNear, zFar] = [0, depthRange]
+    // straddles the focus depth.
+    const float zNear = 0.0f;
+    const float zFar  = (depthRange > 0.0f) ? depthRange : 1.0f;
+    const float eyeZ  = focusZ - 0.5f * zFar;
+
+    // World -> light-view (row vectors): rotation columns are
+    // (viewRight, viewUp, viewFwd); translation row removes the eye
+    // offset along each view axis.
+    FloatMatrix4x4 view = {};
+    view[0][0] = viewRight.X; view[0][1] = viewUp.X; view[0][2] = viewFwd.X; view[0][3] = 0.0f;
+    view[1][0] = viewRight.Y; view[1][1] = viewUp.Y; view[1][2] = viewFwd.Y; view[1][3] = 0.0f;
+    view[2][0] = viewRight.Z; view[2][1] = viewUp.Z; view[2][2] = viewFwd.Z; view[2][3] = 0.0f;
+    view[3][0] = -snappedX;
+    view[3][1] = -snappedY;
+    view[3][2] = -eyeZ;
+    view[3][3] = 1.0f;
+
+    // Reverse-Z ortho box: half side = halfWidth, z in [zNear, zFar] -> [1, 0].
+    FloatMatrix4x4 proj = OrthoReverseZ(halfWidth, halfWidth, zNear, zFar);
+
+    return view * proj;
+}
+
+//------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
 {
     if (!pLight || m_LightCount >= MAX_LIGHTS_PER_REGION)

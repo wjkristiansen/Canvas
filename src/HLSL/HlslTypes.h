@@ -39,7 +39,28 @@ struct ALIGN16 HlslLight
     float4 DirectionAndSpot;
     float4 AttenuationAndRange;
     uint   Type;
+
+    // Shadow parameters (zero / identity when this light does not cast shadows).
+    //   ShadowFlags bit 0 = HasShadow (atlas + view matrix are valid).
+    //   ShadowAtlasRectUV.xy = atlas-UV origin of this light's tile,
+    //                    .zw = atlas-UV size of this light's tile.
+    //                    (0,0,0,0) when the light has no allocated tile.
+    //   ShadowDepthBias is a constant value added to the receiver's
+    //                   projected NDC z before the hardware compare.
+    //   ShadowNormalOffsetTexels pushes the sample point along the
+    //                   surface normal at compare time (in shadow-atlas
+    //                   texels of this light's tile).
+    //   ShadowViewProj transforms world-space positions into shadow NDC.
+    //                  Reverse-Z ortho for directional lights.
+    uint   ShadowFlags;
+    float  ShadowDepthBias;
+    float  ShadowNormalOffsetTexels;
+    float  _ShadowPad0;
+    float4 ShadowAtlasRectUV;
+    ROW_MAJOR float4x4 ShadowViewProj;
 };
+
+#define SHADOW_FLAG_HAS_SHADOW (1u << 0)
 
 struct ALIGN16 HlslPerFrameConstants
 {
@@ -58,6 +79,15 @@ struct ALIGN16 HlslPerFrameConstants
     float LightCullThreshold;
     float Exposure;            // Linear scene-radiance multiplier (exp2(stops))
     float _PerFramePad0;
+
+    // Shadow-atlas global parameters. ShadowAtlasSize is in texels (atlas is
+    // square). ShadowPcfTexelStep = 1 / ShadowAtlasSize, precomputed on the
+    // CPU so the composite shader can compute neighbour-tap offsets without
+    // a divide.
+    uint   ShadowAtlasSize;
+    float  ShadowPcfTexelStep;
+    float  _ShadowAtlasPad0;
+    float  _ShadowAtlasPad1;
 
     // Scene background.  Composite fills empty G-buffer pixels with either
     // the SolidColor (when SkyHasCubemap == 0) or a sample from the bound
