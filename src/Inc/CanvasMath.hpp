@@ -1302,6 +1302,47 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
+        // OrthoReverseZ: Reverse-Z orthographic projection matrix.
+        //
+        // Consumes view space (LHS: +X=right, +Y=up, +Z=forward) and produces
+        // clip space where x in [-halfWidth, halfWidth] maps to [-1, 1],
+        // y in [-halfHeight, halfHeight] maps to [-1, 1], and z in
+        // [zNear, zFar] maps to [1, 0] (reverse-Z, matching PerspectiveReverseZ).
+        //
+        // Used for directional-light shadow maps: the light's view matrix
+        // brings world-space receivers into a light-aligned view, this matrix
+        // maps the light's box of interest to clip space, and the resulting
+        // depth respects the engine's GREATER_EQUAL depth test.
+        //
+        // Parameters:
+        //   halfWidth   - half side length along x (meters)
+        //   halfHeight  - half side length along y (meters)
+        //   zNear       - near plane along +Z (meters; receivers nearer than this clip away)
+        //   zFar        - far plane along +Z (meters; zFar > zNear)
+        //
+        // Returns a 4x4 matrix for row vectors (v' = v * M).
+        //
+        // [ 1/halfWidth   0           0                  0 ]
+        // [ 0             1/halfHeight 0                 0 ]
+        // [ 0             0          -1/(zFar-zNear)     0 ]
+        // [ 0             0           zFar/(zFar-zNear)  1 ]
+        template<class _Type>
+        TMatrix<_Type, 4, 4> OrthoReverseZ(_Type halfWidth, _Type halfHeight, _Type zNear, _Type zFar)
+        {
+            TMatrix<_Type, 4, 4> m = {};
+
+            const _Type rangeInv = _Type(1.0) / (zFar - zNear);  // positive (zFar > zNear)
+
+            m[0][0] = _Type(1.0) / halfWidth;    // x_view -> x_clip
+            m[1][1] = _Type(1.0) / halfHeight;   // y_view -> y_clip
+            m[2][2] = -rangeInv;                 // z_view -> z_clip slope (reverse-Z)
+            m[3][2] = zFar * rangeInv;           // z_view -> z_clip intercept
+            m[3][3] = _Type(1.0);                // affine w
+
+            return m;
+        }
+
+        //------------------------------------------------------------------------------------------------
         // Axis-Aligned Bounding Box
         struct AABB
         {
