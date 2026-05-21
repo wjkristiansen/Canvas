@@ -721,6 +721,7 @@ GEMMETHODIMP CDevice12::AllocateStructuredBuffer(uint32_t elementCount, uint32_t
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CDevice12::UploadTextureRegion(
     Canvas::XGfxSurface *pDstSurface,
+    uint32_t subresourceIndex,
     uint32_t dstX, uint32_t dstY,
     uint32_t width, uint32_t height,
     const void *pData,
@@ -769,7 +770,7 @@ GEMMETHODIMP CDevice12::UploadTextureRegion(
         pDst->QueryInterface(&pDstKeepAlive);
         m_CopyQueue.EnqueueTextureCopy(
             hw.pResource, footprint,
-            pDstResource, /*dstSubresource*/ 0,
+            pDstResource, subresourceIndex,
             dstX, dstY,
             width, height,
             std::move(pDstKeepAlive));

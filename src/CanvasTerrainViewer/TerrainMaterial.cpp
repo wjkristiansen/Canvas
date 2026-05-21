@@ -194,7 +194,7 @@ Gem::Result BuildTerrainMaterial(
         Gem::Result r = pDevice->CreateSurface(desc, &out);
         if (Gem::Failed(r))
             return r;
-        return pDevice->UploadTextureRegion(out.Get(), 0, 0, W, H, data.data(), W * bpp);
+        return pDevice->UploadTextureRegion(out.Get(), 0, 0, 0, W, H, data.data(), W * bpp);
     };
 
     Gem::Result r;

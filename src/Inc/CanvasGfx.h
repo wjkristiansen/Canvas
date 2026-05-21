@@ -553,11 +553,15 @@ namespace Canvas
         // eagerly (e.g., at scene-load time, before the first frame).
         GEMMETHOD(FlushUploads)() = 0;
 
-        // Upload CPU data into a sub-region of a GPU surface via a staging copy
-        // on the device's copy queue.  Safe to call before the first BeginFrame;
-        // the next render submit gates on the copy fence.
+        // Upload CPU data into a sub-region of a single subresource of a GPU
+        // surface via a staging copy on the device's copy queue.  Safe to call
+        // before the first BeginFrame; the next render submit gates on the
+        // copy fence.  subresourceIndex selects the destination subresource
+        // (for cube/array textures: arraySlice * MipLevels + mipSlice; cube
+        // face order is posX=0, negX=1, posY=2, negY=3, posZ=4, negZ=5).
         GEMMETHOD(UploadTextureRegion)(
             XGfxSurface *pDstSurface,
+            uint32_t subresourceIndex,
             uint32_t dstX, uint32_t dstY,
             uint32_t width, uint32_t height,
             const void *pData,

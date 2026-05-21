@@ -145,7 +145,7 @@ public:
             return false;
         }
 
-        r = pDevice->UploadTextureRegion(pSurface.Get(), 0, 0, width, height,
+        r = pDevice->UploadTextureRegion(pSurface.Get(), 0, 0, 0, width, height,
             pixels.data(), rowPitch);
         if (Gem::Failed(r))
         {

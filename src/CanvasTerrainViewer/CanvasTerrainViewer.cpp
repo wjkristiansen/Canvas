@@ -536,7 +536,7 @@ class CTerrainApp
             Gem::ThrowGemError(m_pGfxDevice->CreateSurface(hd, &m_pHeightmapSurface));
             const uint32_t rowPitchBytes = field.Desc.Width * sizeof(uint16_t);
             Gem::ThrowGemError(m_pGfxDevice->UploadTextureRegion(
-                m_pHeightmapSurface, 0, 0,
+                m_pHeightmapSurface, 0, 0, 0,
                 field.Desc.Width, field.Desc.Height,
                 field.Samples.data(), rowPitchBytes));
             // Schedule the COMMON -> SHADER_RESOURCE transition on the
