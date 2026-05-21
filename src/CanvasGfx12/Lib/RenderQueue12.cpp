@@ -1245,14 +1245,18 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
 
     // Composite root signature:
     //   Slot 0: Root CBV (b0) -- per-frame constants (camera, lights, sky params)
-    //   Slot 1: Descriptor table with SRV[5] at t0-t4:
+    //   Slot 1: Descriptor table with SRV[7] at t0-t6:
     //             t0-t2 = G-buffer (normals, diffuse, world pos) [Texture2D]
     //             t3-t4 = optional skybox cubes A / B            [TextureCube]
-    //           When no skybox is bound the cube slots hold null SRVs and
-    //           the shader's SkyHasCubemap flag in PerFrame is 0.
-    //   Static sampler s0: point/clamp (exact G-buffer texel fetch)
-    //   Static sampler s1: linear/wrap (skybox cube sampling)
-    CD3DX12_STATIC_SAMPLER_DESC staticSamplers[2] = {};
+    //             t5    = optional stars cube                    [TextureCube]
+    //             t6    = optional moon billboard texture        [Texture2D]
+    //           Unbound slots hold null SRVs and the shader's
+    //           SkyHasCubemap / HasStars / HasMoon flags select active
+    //           branches.  The sun has no texture (procedural disc).
+    //   Static sampler s0: point/clamp  (exact G-buffer texel fetch)
+    //   Static sampler s1: linear/wrap  (cube sampling for skybox + stars)
+    //   Static sampler s2: linear/clamp (moon billboard quad)
+    CD3DX12_STATIC_SAMPLER_DESC staticSamplers[3] = {};
     staticSamplers[0].Init(
         0,                                      // shader register s0
         D3D12_FILTER_MIN_MAG_MIP_POINT,
@@ -1265,9 +1269,15 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
         D3D12_TEXTURE_ADDRESS_MODE_WRAP,
         D3D12_TEXTURE_ADDRESS_MODE_WRAP,
         D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+    staticSamplers[2].Init(
+        2,                                      // shader register s2
+        D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+        D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
     CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0, 0,  // SRV[5] at t0-t4, space0
+    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 7, 0, 0,  // SRV[7] at t0-t6, space0
                   D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 
     std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(2);
@@ -1278,7 +1288,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC compositeRootSigDesc(
         static_cast<UINT>(compositeRootParams.size()),
         compositeRootParams.data(),
-        2, staticSamplers,
+        3, staticSamplers,
         D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     CComPtr<ID3DBlob> pRSBlob;
@@ -2114,15 +2124,19 @@ GEMMETHODIMP_(void) CRenderQueue12::SetBackground(const Canvas::GfxBackgroundDes
 {
     if (pDesc)
     {
-        m_Background = *pDesc;
-        m_pSkyCubeA  = pDesc->pSkyboxCubemapA;
-        m_pSkyCubeB  = pDesc->pSkyboxCubemapB;
+        m_Background    = *pDesc;
+        m_pSkyCubeA     = pDesc->pSkyboxCubemapA;
+        m_pSkyCubeB     = pDesc->pSkyboxCubemapB;
+        m_pStarsCube    = pDesc->pStarsCubemap;
+        m_pMoonTexture  = pDesc->pMoonTexture;
     }
     else
     {
-        m_Background = {};
-        m_pSkyCubeA  = nullptr;
-        m_pSkyCubeB  = nullptr;
+        m_Background    = {};
+        m_pSkyCubeA     = nullptr;
+        m_pSkyCubeB     = nullptr;
+        m_pStarsCube    = nullptr;
+        m_pMoonTexture  = nullptr;
     }
 }
 
@@ -2294,6 +2308,31 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             frameConstants.SkyHasCubemapB  = (m_pSkyCubeA && m_pSkyCubeB) ? 1u : 0u;
             frameConstants.SkyBlendFactor  = bg.BlendFactor;
             frameConstants.SkyIntensity    = bg.Intensity;
+
+            // Stars overlay.
+            frameConstants.StarsOrientationQuat =
+                { bg.StarsOrientation.X, bg.StarsOrientation.Y,
+                  bg.StarsOrientation.Z, bg.StarsOrientation.W };
+            frameConstants.HasStars       = m_pStarsCube ? 1u : 0u;
+            frameConstants.StarsIntensity = bg.StarsIntensity;
+
+            // Sun procedural disc.  The engine precomputes cos(angularRadius)
+            // so the per-pixel shader can use a single dot-product compare.
+            const float cosSunRadius = std::cos((std::max)(bg.SunAngularRadius, 0.0f));
+            frameConstants.SunDirAndCosRadius =
+                { bg.SunDirection.X, bg.SunDirection.Y,
+                  bg.SunDirection.Z, cosSunRadius };
+            frameConstants.SunColorAndIntensity =
+                { bg.SunColor.X, bg.SunColor.Y, bg.SunColor.Z, bg.SunColor.W };
+
+            // Moon billboard.
+            const float cosMoonRadius = std::cos((std::max)(bg.MoonAngularRadius, 0.0f));
+            frameConstants.MoonDirAndCosRadius =
+                { bg.MoonDirection.X, bg.MoonDirection.Y,
+                  bg.MoonDirection.Z, cosMoonRadius };
+            frameConstants.MoonColorAndIntensity =
+                { bg.MoonColor.X, bg.MoonColor.Y, bg.MoonColor.Z, bg.MoonColor.W };
+            frameConstants.HasMoon = m_pMoonTexture ? 1u : 0u;
         }
 
         if (m_LightCount > 0)
@@ -2509,13 +2548,14 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
             // CPU work: allocate SRV descriptors and create SRVs.  Slots 0-2 are the
             // G-buffer Texture2D SRVs (always present); slots 3-4 are skybox cube
-            // SRVs (real cube SRVs when m_pSkyCubeA / m_pSkyCubeB are set, otherwise
-            // null cube SRVs so the descriptor table stays well-defined and the
-            // shader's SkyHasCubemap flag selects the SolidColor path).
+            // SRVs; slot 5 is the optional stars cube; slot 6 is the optional moon
+            // 2D billboard texture.  Unbound slots hold null SRVs (cube or 2D as
+            // appropriate) so the descriptor table stays well defined; the shader's
+            // SkyHasCubemap / HasStars / HasMoon flags select active branches.
             ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
             const UINT incSize = m_CbvSrvUavIncrement;
 
-            constexpr UINT kCompositeSRVCount = 5;
+            constexpr UINT kCompositeSRVCount = 7;
             if (m_NextSRVSlot + kCompositeSRVCount > NumShaderResourceDescriptors)
                 m_NextSRVSlot = 0;
             UINT baseSlot = m_NextSRVSlot;
@@ -2563,6 +2603,37 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             };
             createCubeSRV(m_pSkyCubeA.Get(), 3);
             createCubeSRV(m_pSkyCubeB.Get(), 4);
+            createCubeSRV(m_pStarsCube.Get(), 5);
+
+            // Moon 2D billboard SRV at t6.  Same null-with-explicit-desc
+            // approach as the cubes above.
+            {
+                D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
+                srv.ViewDimension           = D3D12_SRV_DIMENSION_TEXTURE2D;
+                srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                ID3D12Resource* pRes = nullptr;
+                if (m_pMoonTexture)
+                {
+                    auto* pTex = static_cast<CSurface12*>(m_pMoonTexture.Get());
+                    pRes = pTex->GetD3DResource();
+                    D3D12_RESOURCE_DESC rd = pRes->GetDesc();
+                    srv.Format                          = rd.Format;
+                    srv.Texture2D.MostDetailedMip       = 0;
+                    srv.Texture2D.MipLevels             = rd.MipLevels;
+                    srv.Texture2D.PlaneSlice            = 0;
+                    srv.Texture2D.ResourceMinLODClamp   = 0.0f;
+                }
+                else
+                {
+                    srv.Format                          = DXGI_FORMAT_R8G8B8A8_UNORM;
+                    srv.Texture2D.MostDetailedMip       = 0;
+                    srv.Texture2D.MipLevels             = 1;
+                    srv.Texture2D.PlaneSlice            = 0;
+                    srv.Texture2D.ResourceMinLODClamp   = 0.0f;
+                }
+                CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(baseCpuHandle, 6, incSize);
+                pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
+            }
 
             // Composite task: transition G-buffers + skybox cubes to SR, back buffer to RT, then draw
             auto& compositeTask = CreateGpuTask("CompositePass");
@@ -2588,6 +2659,20 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             if (m_pSkyCubeB)
             {
                 DeclareGpuTextureUsage(compositeTask, static_cast<CSurface12*>(m_pSkyCubeB.Get()),
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+            if (m_pStarsCube)
+            {
+                DeclareGpuTextureUsage(compositeTask, static_cast<CSurface12*>(m_pStarsCube.Get()),
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+            if (m_pMoonTexture)
+            {
+                DeclareGpuTextureUsage(compositeTask, static_cast<CSurface12*>(m_pMoonTexture.Get()),
                     D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);

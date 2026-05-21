@@ -550,6 +550,8 @@ public:
     Canvas::GfxBackgroundDesc m_Background;
     Gem::TGemPtr<Canvas::XGfxSurface> m_pSkyCubeA;
     Gem::TGemPtr<Canvas::XGfxSurface> m_pSkyCubeB;
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pStarsCube;
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pMoonTexture;
     HlslTypes::HlslLight m_Lights[MAX_LIGHTS_PER_REGION] = {};
     uint32_t m_LightCount = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};

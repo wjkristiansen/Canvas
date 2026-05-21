@@ -4,19 +4,26 @@
 // owns every output pixel, so the render-target clear color is irrelevant.
 // Outputs final lit color to the back buffer (SV_Target0).
 
-// G-buffer textures (t0-t2) and optional skybox cubes (t3 = A, t4 = B)
-// bound via the composite descriptor table.  When no skybox is bound the
-// cube slots hold null SRVs and the shader's SkyHasCubemap flag is 0.
+// G-buffer textures (t0-t2), optional skybox cubes (t3 = A, t4 = B), an
+// optional stars cube (t5), and an optional moon sprite (t6).  Unbound
+// slots hold null SRVs; the shader's HasCubemap / HasStars / HasMoon
+// flags select active branches.  The sun has no texture -- it's a
+// procedural disc in the composite, driven by SunDirAndCosRadius +
+// SunColorAndIntensity.
 Texture2D   GBufferNormals      : register(t0);
 Texture2D   GBufferDiffuseColor : register(t1);
 Texture2D   GBufferWorldPos     : register(t2);
 TextureCube SkyCubeA            : register(t3);
 TextureCube SkyCubeB            : register(t4);
+TextureCube StarsCube           : register(t5);
+Texture2D   MoonTexture         : register(t6);
 
 // s0: point/clamp for exact G-buffer texel fetch.
-// s1: linear/wrap for cubemap sky sampling.
-SamplerState PointSampler  : register(s0);
-SamplerState LinearSampler : register(s1);
+// s1: linear/wrap for cubemap sky / stars sampling.
+// s2: linear/clamp for the moon billboard quad.
+SamplerState PointSampler         : register(s0);
+SamplerState LinearWrapSampler    : register(s1);
+SamplerState LinearClampSampler   : register(s2);
 
 #include "HlslTypes.h"
 
@@ -87,13 +94,101 @@ float3 SampleBackground(float3 viewDir)
         return PerFrame.SkySolidColor.rgb;
 
     float3 sampleDir = RotateByQuatConjugate(PerFrame.SkyOrientationQuat, viewDir);
-    float3 sky = SkyCubeA.SampleLevel(LinearSampler, sampleDir, 0).rgb;
+    float3 sky = SkyCubeA.SampleLevel(LinearWrapSampler, sampleDir, 0).rgb;
     if (PerFrame.SkyHasCubemapB != 0)
     {
-        float3 skyB = SkyCubeB.SampleLevel(LinearSampler, sampleDir, 0).rgb;
+        float3 skyB = SkyCubeB.SampleLevel(LinearWrapSampler, sampleDir, 0).rgb;
         sky = lerp(sky, skyB, saturate(PerFrame.SkyBlendFactor));
     }
     return sky * PerFrame.SkyIntensity;
+}
+
+//----------------------------------------------------------------------------
+// Stars overlay: rotating RGBA cubemap sampled with the conjugate-rotated
+// view ray.  Returns an additive contribution (rgb * alpha * intensity),
+// clipped below the horizon.  Returns zero when no stars cube is bound.
+//----------------------------------------------------------------------------
+float3 SampleStars(float3 viewDir)
+{
+    if (PerFrame.HasStars == 0)
+        return float3(0.0, 0.0, 0.0);
+    if (viewDir.z < 0.0)
+        return float3(0.0, 0.0, 0.0);
+
+    float3 sampleDir = RotateByQuatConjugate(PerFrame.StarsOrientationQuat, viewDir);
+    float4 stars = StarsCube.SampleLevel(LinearWrapSampler, sampleDir, 0);
+    return stars.rgb * stars.a * PerFrame.StarsIntensity;
+}
+
+//----------------------------------------------------------------------------
+// Sun: procedural soft-edged disc rendered directly from SunDirection and
+// SunAngularRadius.  Inside the cone we fade with a smooth disc + halo
+// falloff so the body has a bright core and a soft atmospheric edge.
+// Disabled when SunColorAndIntensity.a == 0; clipped below the horizon.
+//----------------------------------------------------------------------------
+float3 SampleProceduralSun(float3 viewDir)
+{
+    float intensity = PerFrame.SunColorAndIntensity.a;
+    if (intensity <= 0.0)
+        return float3(0.0, 0.0, 0.0);
+    float3 sunDir = PerFrame.SunDirAndCosRadius.xyz;
+    if (sunDir.z < 0.0)
+        return float3(0.0, 0.0, 0.0);
+
+    float cosRadius = PerFrame.SunDirAndCosRadius.w;
+    float cosAngle  = dot(viewDir, sunDir);
+    if (cosAngle < cosRadius)
+        return float3(0.0, 0.0, 0.0);
+
+    // Normalized distance from disc center in [0, 1] (0 = centre, 1 = edge).
+    float sinRadius = sqrt(saturate(1.0 - cosRadius * cosRadius));
+    float radial    = sqrt(saturate(1.0 - cosAngle * cosAngle)) / max(sinRadius, 1e-6);
+
+    // Bright core out to ~0.6, then smooth falloff to the edge.
+    float core = 1.0 - smoothstep(0.6, 1.0, radial);
+    return PerFrame.SunColorAndIntensity.rgb * (intensity * core);
+}
+
+//----------------------------------------------------------------------------
+// Moon: textured billboard sampled inside an angular disc around
+// MoonDirection.  Texture's alpha modulates blending; MoonColor.rgb
+// tints; MoonColor.a is the overall multiplier (0 disables).  Clipped
+// below the horizon.  Returns straight-alpha rgba so the caller can
+// alpha-over.
+//----------------------------------------------------------------------------
+float4 SampleMoonBillboard(float3 viewDir)
+{
+    if (PerFrame.HasMoon == 0)
+        return float4(0.0, 0.0, 0.0, 0.0);
+    float intensity = PerFrame.MoonColorAndIntensity.a;
+    if (intensity <= 0.0)
+        return float4(0.0, 0.0, 0.0, 0.0);
+
+    float3 moonDir = PerFrame.MoonDirAndCosRadius.xyz;
+    if (moonDir.z < 0.0)
+        return float4(0.0, 0.0, 0.0, 0.0);
+
+    float cosRadius = PerFrame.MoonDirAndCosRadius.w;
+    float cosAngle  = dot(viewDir, moonDir);
+    if (cosAngle < cosRadius)
+        return float4(0.0, 0.0, 0.0, 0.0);
+
+    // Local 2D basis perpendicular to moonDir; project the in-cone offset
+    // and map to texture UV.  Y flipped so the texture's top row maps to
+    // the visual top of the disc on screen.
+    float3 ref = (abs(moonDir.z) > 0.9) ? float3(0.0, 1.0, 0.0)
+                                        : float3(0.0, 0.0, 1.0);
+    float3 right = normalize(cross(ref, moonDir));
+    float3 up    = cross(moonDir, right);
+
+    float3 offset = viewDir - cosAngle * moonDir;
+    float  sinRadius = sqrt(saturate(1.0 - cosRadius * cosRadius));
+    float2 discUV    = float2(dot(offset, right), dot(offset, up)) / max(sinRadius, 1e-6);
+    float2 uv        = float2(discUV.x * 0.5 + 0.5, 0.5 - discUV.y * 0.5);
+
+    float4 tex = MoonTexture.SampleLevel(LinearClampSampler, uv, 0);
+    return float4(tex.rgb * PerFrame.MoonColorAndIntensity.rgb,
+                  tex.a   * intensity);
 }
 
 float4 PSComposite(FSInput input) : SV_Target0
@@ -103,13 +198,20 @@ float4 PSComposite(FSInput input) : SV_Target0
     float4 diffuseSample = GBufferDiffuseColor.Sample(PointSampler, input.TexCoord);
     float4 worldPosSample = GBufferWorldPos.Sample(PointSampler, input.TexCoord);
 
-    // No geometry at this pixel: emit the scene background (solid color or
-    // skybox), then run the composite's exposure curve on it so it tonemaps
-    // consistently with the lit scene.
+    // No geometry at this pixel: emit the scene background (solid color
+    // or skybox) plus the stars + procedural sun + moon billboard, then
+    // run the composite's exposure curve so the result tonemaps
+    // consistently with the lit scene.  Stars and sun are additive over
+    // the sky; the moon is alpha-blended on top so its rgb is independent
+    // of the sky brightness behind it.
     if (normalSample.a == 0.0)
     {
-        float3 viewDir = ScreenUVToWorldDir(input.TexCoord);
-        float3 skyColor = SampleBackground(viewDir);
+        float3 viewDir   = ScreenUVToWorldDir(input.TexCoord);
+        float3 skyColor  = SampleBackground(viewDir);
+        skyColor += SampleStars(viewDir);
+        skyColor += SampleProceduralSun(viewDir);
+        float4 moonRgba  = SampleMoonBillboard(viewDir);
+        skyColor         = lerp(skyColor, moonRgba.rgb, saturate(moonRgba.a));
         skyColor = 1.0 - exp(-skyColor * PerFrame.Exposure);
         return float4(skyColor, 1.0);
     }

@@ -164,6 +164,41 @@ namespace Canvas
         float                  BlendFactor      = 0.0f;      // 0 = A, 1 = B
         Math::FloatQuaternion  Orientation;                  // identity by default
         float                  Intensity        = 1.0f;      // linear multiplier on sample
+
+        // Optional rotating stars cubemap.  RGBA where rgb is per-star
+        // colour and alpha is per-star coverage; the composite samples it
+        // with the view direction rotated by the conjugate of
+        // StarsOrientation, then additively blends rgb * alpha *
+        // StarsIntensity over the skybox.  Apps drive sidereal motion by
+        // updating StarsOrientation each frame.  Lower hemisphere
+        // (viewDir.z < 0) is clipped so stars never appear through the
+        // ground.  Format is typically R8G8B8A8_UNorm.
+        XGfxSurface           *pStarsCubemap    = nullptr;
+        Math::FloatQuaternion  StarsOrientation;             // identity by default
+        float                  StarsIntensity   = 1.0f;
+
+        // Sun: procedurally rendered as a soft-edged disc in the
+        // composite shader, driven entirely by SunDirection (the same
+        // unit vector the app uses for the sun's directional light, so
+        // there's a single source of truth for the sun's position).
+        // SunColor.a > 0 enables; .rgb tints the disc additively, .a
+        // scales overall intensity.  Naturally clipped below the
+        // horizon.
+        Math::FloatVector4     SunDirection     = { 0.0f, 0.0f, 1.0f, 0.0f };
+        Math::FloatVector4     SunColor         = { 0.0f, 0.0f, 0.0f, 0.0f };  // a = 0 disables
+        float                  SunAngularRadius = 0.012f;    // radians (~0.69 deg)
+
+        // Moon: textured billboard on the celestial sphere.  pMoonTexture
+        // (2D RGBA) is sampled within an angular disc centred on
+        // MoonDirection; the sample's alpha modulates blending and
+        // MoonColor.rgb tints the result.  MoonColor.a scales the
+        // overall contribution (0 disables).  Naturally clipped below
+        // the horizon.  Like the sun, MoonDirection is the same vector
+        // the app uses for the moon's directional light.
+        XGfxSurface           *pMoonTexture      = nullptr;
+        Math::FloatVector4     MoonDirection     = { 0.0f, 0.0f, -1.0f, 0.0f };
+        Math::FloatVector4     MoonColor         = { 1.0f, 1.0f, 1.0f, 0.0f };  // a = 0 disables
+        float                  MoonAngularRadius = 0.012f;
     };
 
     //------------------------------------------------------------------------------------------------

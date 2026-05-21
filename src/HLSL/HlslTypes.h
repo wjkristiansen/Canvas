@@ -73,6 +73,30 @@ struct ALIGN16 HlslPerFrameConstants
     float  SkyBlendFactor;           // 0 = A only, 1 = B only
     float  SkyIntensity;             // linear multiplier on cubemap sample
 
+    // Stars overlay: rotating RGBA cubemap (just stars; sun and moon
+    // are rendered procedurally / billboard below).  Bound at t5; null
+    // SRV when HasStars == 0.
+    float4 StarsOrientationQuat;     // identity = (0, 0, 0, 1)
+    uint   HasStars;                 // 0 = no stars cube bound
+    float  StarsIntensity;
+    float  _StarsPad0;
+    float  _StarsPad1;
+
+    // Sun: procedural disc in the composite shader.  SunColor.a > 0
+    // enables; a controls overall intensity.  cos(SunAngularRadius)
+    // is precomputed by the engine for the cone test.
+    float4 SunDirAndCosRadius;       // xyz = unit dir, w = cos(SunAngularRadius)
+    float4 SunColorAndIntensity;     // rgb = additive tint, a = intensity (0 disables)
+
+    // Moon: textured billboard.  Texture bound at t6; null SRV when
+    // HasMoon == 0.  cos(MoonAngularRadius) precomputed for cone test.
+    float4 MoonDirAndCosRadius;      // xyz = unit dir, w = cos(MoonAngularRadius)
+    float4 MoonColorAndIntensity;    // rgb = tint, a = overall multiplier
+    uint   HasMoon;                  // 0 = no moon texture bound
+    float  _MoonPad0;
+    float  _MoonPad1;
+    float  _MoonPad2;
+
     HlslLight Lights[MAX_LIGHTS_PER_REGION];
 };
 
