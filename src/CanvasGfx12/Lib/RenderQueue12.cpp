@@ -823,8 +823,17 @@ void CRenderQueue12::EnsureDefaultPSO()
     // No input layout needed - vertices come from structured buffers via SV_VertexID
     psoDesc.InputLayout = { nullptr, 0 };
     
-    // Rasterizer state
+    // Rasterizer state.  Engine winding contract:
+    //   Author CCW-front meshes in Canvas world (RHS standard).
+    //   The world->view basis change is the engine's single internal
+    //   RHS->LHS bridge; it has determinant -1, so authored CCW-front
+    //   triangles arrive in clip space as CCW.  FrontCounterClockwise=TRUE
+    //   tells the rasterizer that those clip-space CCW triangles are
+    //   front-facing, matching the actual post-view winding produced by
+    //   valid mesh data.  See CanvasMath.hpp PerspectiveReverseZ and
+    //   CanvasCore/Camera.cpp for the full pipeline documentation.
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
 
     // Blend state (opaque)
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -886,11 +895,16 @@ static void BuildDisplacedPSODesc(D3D12_GRAPHICS_PIPELINE_STATE_DESC &out,
     out.InputLayout = { nullptr, 0 };  // CPs generated from SV_VertexID
 
     out.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    // Solid PSO culls back faces (D3D12_CULL_MODE_BACK is the default).
-    // FrontCounterClockwise stays at the D3D default (FALSE / CW = front)
-    // because Canvas view space is now standard D3D LHS (X=right, Y=up,
-    // Z=forward). The wireframe variant disables culling so wireframe
+    // See EnsureDefaultPSO for the full winding-contract documentation.
+    // Canvas authors CCW-front meshes in RHS world; the world->view bridge
+    // has det -1; the resulting clip-space CCW triangles are front-facing.
+    // The procedural patch grid feeding this PSO compensates for the D3D
+    // (u, v) texture handedness via VSDisplaced (v -> worldY sign flip)
+    // and HSDisplaced (triangle_ccw topology) so the world-space geometry
+    // remains CCW-front and feeds this same FCC=TRUE chain.
+    // The wireframe variant disables culling entirely so wireframe
     // debugging shows both faces of a displaced patch.
+    out.RasterizerState.FrontCounterClockwise = TRUE;
     if (wireframe)
     {
         out.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;

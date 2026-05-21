@@ -106,6 +106,22 @@ DisplacedPatchConstants HSDisplacedPatchConst(InputPatch<DisplacedControlPoint, 
 
 [domain("quad")]
 [partitioning("integer")]
+// VSDisplaced flips v -> worldY to eliminate the image-vs-bird's-eye
+// mirror (see its header for the full reasoning).  That sign flip makes
+// the 2D (u, v) -> (worldX, worldY) Jacobian determinant negative, which
+// inverts the world-space winding of triangles emitted by the tessellator
+// relative to the same topology on an identity-positive mapping.
+//
+// The tessellator emits one triangle whose vertices, in D3D's v-down
+// domain (u-right, v-down), follow the topology winding.  Under v-down,
+// the unsigned-area cross is the negation of the math (v-up) basis, so
+// outputtopology = "triangle_ccw" actually emits triangles that are CW
+// in the standard math basis.  Combined with the det-negative VSDisplaced
+// mapping, those CW-in-math-domain triangles become CCW-front in Canvas
+// world (right-hand normal +Z toward the sky), matching the engine
+// winding contract.  The rasterizer then renders them via
+// FrontCounterClockwise = TRUE (see CanvasGfx12 EnsureDefaultPSO /
+// BuildDisplacedPSODesc).
 [outputtopology("triangle_ccw")]
 [outputcontrolpoints(4)]
 [patchconstantfunc("HSDisplacedPatchConst")]

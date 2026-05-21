@@ -38,7 +38,12 @@ float3 ComputeWorldNormal(float2 tileUv)
     float dhdx = (hR - hL) / (2.0 * worldPerUvStep.x);
     float dhdy = (hU - hD) / (2.0 * worldPerUvStep.y);
 
-    return normalize(float3(-dhdx, -dhdy, 1.0));
+    // VSDisplaced flips v -> worldY (see VSDisplaced.hlsl header for the
+    // image-vs-bird's-eye handedness rationale).  Chain rule:
+    //   dh/d(worldY) = dh/dv * dv/d(worldY)  with  dv/d(worldY) < 0
+    // so the geometric normal's y component is -dh/d(worldY) = +dhdy
+    // (rather than -dhdy as a positive v -> worldY mapping would give).
+    return normalize(float3(-dhdx, +dhdy, 1.0));
 }
 
 [domain("quad")]
