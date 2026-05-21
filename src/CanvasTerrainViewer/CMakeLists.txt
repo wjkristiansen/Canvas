@@ -11,6 +11,8 @@ add_executable(CanvasTerrainViewer WIN32
     ImageLoader.h
     SceneConfig.cpp
     SceneConfig.h
+    SkyCubeLoader.cpp
+    SkyCubeLoader.h
     TerrainMaterial.cpp
     TerrainMaterial.h
     pch.h

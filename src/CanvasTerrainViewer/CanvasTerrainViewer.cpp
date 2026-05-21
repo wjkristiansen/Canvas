@@ -11,6 +11,7 @@
 #include "HeightField.h"
 #include "ImageLoader.h"
 #include "SceneConfig.h"
+#include "SkyCubeLoader.h"
 #include "TerrainMaterial.h"
 #include "QLogAdapter.h"
 #include "TokenParser.h"
@@ -355,6 +356,15 @@ public:
 
     bool IsPaused() const { return m_Paused; }
 
+    // Time-of-day phase in [0, 1).  0 = midnight, 0.25 = sunrise, 0.5 = noon,
+    // 0.75 = sunset.  Used by the sky preset selector to crossfade between
+    // authored skybox cubemaps.
+    float GetPhase() const
+    {
+        const float p = m_TimeOfDay / m_CycleSeconds;
+        return p - std::floor(p);
+    }
+
 private:
     static float SmoothStep(float edge0, float edge1, float x)
     {
@@ -417,6 +427,9 @@ class CTerrainApp
     Gem::TGemPtr<Canvas::XGfxSwapChain>     m_pGfxSwapChain;
     Gem::TGemPtr<Canvas::XGfxRenderQueue>   m_pGfxRenderQueue;
     Gem::TGemPtr<Canvas::XGfxSurface>       m_pHeightmapSurface;
+    Gem::TGemPtr<Canvas::XGfxSurface>       m_pSkyCubeDay;
+    Gem::TGemPtr<Canvas::XGfxSurface>       m_pSkyCubeDusk;
+    Gem::TGemPtr<Canvas::XGfxSurface>       m_pSkyCubeNight;
     Gem::TGemPtr<Canvas::XGfxMaterial>      m_pTerrainMaterial;
     Gem::TGemPtr<Canvas::XGfxMeshData>      m_pTerrainPatchMesh;
     Gem::TGemPtr<Canvas::XMeshInstance>     m_pTerrainInstance;
@@ -653,6 +666,74 @@ class CTerrainApp
         return true;
     }
 
+    // Load the three skybox cubemap presets (day, dusk, night) from the same
+    // assets directory as the heightmap, and schedule the COMMON ->
+    // SHADER_RESOURCE transitions so the composite pass can sample them.  The
+    // per-frame UpdateSkyBackground picks an adjacent pair + crossfade factor
+    // by time of day and pushes it into XScene::SetBackground.
+    bool LoadSky()
+    {
+        // Sky assets live next to the rest of the bundled tile assets
+        // (staged into bin/assets/CanvasTerrainViewer/sky/).
+        wchar_t exePath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        const std::filesystem::path skyDir =
+            std::filesystem::path(exePath).parent_path()
+            / "assets" / "CanvasTerrainViewer" / "sky";
+
+        auto loadOne = [&](const char* name, Gem::TGemPtr<Canvas::XGfxSurface>& out) -> bool
+        {
+            Canvas::XGfxSurface* pRaw = nullptr;
+            if (!Canvas::TerrainViewer::LoadSkyCube(
+                    m_pGfxDevice, skyDir, name, &pRaw, m_pLogger.Get()))
+            {
+                Canvas::LogError(m_pLogger.Get(),
+                    "LoadSky: failed to load preset '%s' from '%s'",
+                    name, skyDir.string().c_str());
+                return false;
+            }
+            out.Attach(pRaw);
+            Gem::ThrowGemError(m_pGfxRenderQueue->FinalizeUploadAsShaderResource(out.Get()));
+            return true;
+        };
+
+        if (!loadOne("day",   m_pSkyCubeDay))   return false;
+        if (!loadOne("dusk",  m_pSkyCubeDusk))  return false;
+        if (!loadOne("night", m_pSkyCubeNight)) return false;
+        return true;
+    }
+
+    // Pick the adjacent (A, B) cubemap pair and blend factor for the current
+    // time of day, then publish them through the scene background API.  The
+    // four anchor presets across the 24-hour cycle are
+    //   phase 0.00 = night   0.25 = dusk    0.50 = day    0.75 = dusk
+    // each segment crossfading linearly to the next, so dusk is the shared
+    // transition preset for both sunrise and sunset.
+    void UpdateSkyBackground()
+    {
+        const float phase   = m_DayNight.GetPhase();
+        const float segment = phase * 4.0f;            // [0, 4)
+        const int   segIdx  = static_cast<int>(segment);
+        const float t       = segment - static_cast<float>(segIdx);
+
+        Canvas::XGfxSurface* pA = nullptr;
+        Canvas::XGfxSurface* pB = nullptr;
+        switch (segIdx)
+        {
+            case 0: pA = m_pSkyCubeNight; pB = m_pSkyCubeDusk;  break;  // [00:00, 06:00) night -> dusk
+            case 1: pA = m_pSkyCubeDusk;  pB = m_pSkyCubeDay;   break;  // [06:00, 12:00) dusk  -> day
+            case 2: pA = m_pSkyCubeDay;   pB = m_pSkyCubeDusk;  break;  // [12:00, 18:00) day   -> dusk
+            default: pA = m_pSkyCubeDusk; pB = m_pSkyCubeNight; break;  // [18:00, 24:00) dusk  -> night
+        }
+
+        Canvas::GfxBackgroundDesc bg = {};
+        bg.pSkyboxCubemapA = pA;
+        bg.pSkyboxCubemapB = pB;
+        bg.BlendFactor     = t;
+        bg.Intensity       = 1.0f;
+        m_pScene->SetBackground(&bg);
+    }
+
 public:
     CTerrainApp(
         HINSTANCE hInstance,
@@ -748,6 +829,10 @@ public:
 
             initStep = "load_terrain";
             if (!LoadTerrain())
+                return false;
+
+            initStep = "load_sky";
+            if (!LoadSky())
                 return false;
 
             initStep = "load_fonts";
@@ -961,6 +1046,7 @@ public:
             }
 
             m_DayNight.Update(dtime);
+            UpdateSkyBackground();
 
             // Frame submit.
             m_pGfxRenderQueue->BeginFrame(m_pGfxSwapChain);
