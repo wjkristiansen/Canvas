@@ -2307,13 +2307,25 @@ GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphNode *pNode)
     if (!pNode)
         return Gem::Result::InvalidArg;
 
-    // Route lights directly to SubmitLight — they don't go in the renderable queue
-    UINT elementCount = pNode->GetBoundElementCount();
-    for (UINT i = 0; i < elementCount; ++i)
+    // Route lights directly to SubmitLight -- they don't go in the renderable
+    // queue.  At the same time, accumulate every spatial element's world AABB
+    // into the per-frame scene bounds (consumed by the shadow pass).
+    const UINT elementCount = pNode->GetBoundElementCount();
+    if (elementCount > 0)
     {
-        Gem::TGemPtr<Canvas::XLight> pLight;
-        if (SUCCEEDED(pNode->GetBoundElement(i)->QueryInterface(&pLight)))
-            Gem::ThrowGemError(SubmitLight(pLight));
+        const Canvas::Math::FloatMatrix4x4 nodeWorld = pNode->GetGlobalMatrix();
+        for (UINT i = 0; i < elementCount; ++i)
+        {
+            Canvas::XSceneGraphElement* pElement = pNode->GetBoundElement(i);
+
+            Gem::TGemPtr<Canvas::XLight> pLight;
+            if (SUCCEEDED(pElement->QueryInterface(&pLight)))
+                Gem::ThrowGemError(SubmitLight(pLight));
+
+            const Canvas::Math::AABB localBounds = pElement->GetLocalBounds();
+            if (!localBounds.IsEmpty())
+                m_FrameWorldBounds.ExpandToInclude(localBounds.Transform(nodeWorld));
+        }
     }
 
     m_RenderableQueue.push_back(pNode);
@@ -2372,66 +2384,74 @@ Gem::Result CRenderQueue12::SubmitDisplacedDraw(const DisplacedDrawDesc &desc)
 }
 
 //------------------------------------------------------------------------------------------------
-Canvas::Math::FloatMatrix4x4 CRenderQueue12::BuildDirectionalShadowMatrix(
+Canvas::Math::FloatMatrix4x4 CRenderQueue12::BuildDirectionalShadowMatrixFromBounds(
     const Canvas::Math::FloatVector4& lightDir,
     const Canvas::Math::FloatVector4& worldUp,
-    const Canvas::Math::FloatVector4& focusPoint,
-    float halfWidth,
-    float depthRange,
-    UINT  resolution)
+    const Canvas::Math::AABB&         sceneBounds,
+    UINT                              resolution)
 {
     using namespace Canvas::Math;
 
-    // Light "view" space (LHS, matches the engine camera view convention):
-    //   +X = right, +Y = up, +Z = forward (along light emission).
-    // viewFwd is lightDir; viewUp is the worldUp projected perpendicular
-    // to viewFwd; viewRight = cross(viewUp, viewFwd) keeps the basis LHS.
+    if (sceneBounds.IsEmpty())
+        return FloatMatrix4x4::Identity();
+
+    // Build the same LHS light-view basis as BuildDirectionalShadowMatrix
+    // so caster and receiver matrices agree.
     FloatVector4 viewFwd = lightDir;
     {
         const float lenSq = DotProduct(viewFwd, viewFwd);
         viewFwd = (lenSq > 1e-12f) ? viewFwd * (1.0f / std::sqrt(lenSq))
                                    : FloatVector4(1.0f, 0.0f, 0.0f, 0.0f);
     }
-
     FloatVector4 up = worldUp;
-    // If worldUp is (near-)parallel to viewFwd fall back to a fixed axis
-    // so the basis stays well-defined.
     if (std::fabs(DotProduct(up, viewFwd)) > 0.999f)
         up = FloatVector4(1.0f, 0.0f, 0.0f, 0.0f);
-
-    // Gram-Schmidt: viewUp perpendicular to viewFwd, then normalize.
     FloatVector4 viewUp = up - viewFwd * DotProduct(up, viewFwd);
     {
         const float lenSq = DotProduct(viewUp, viewUp);
         viewUp = (lenSq > 1e-12f) ? viewUp * (1.0f / std::sqrt(lenSq))
                                   : FloatVector4(0.0f, 0.0f, 1.0f, 0.0f);
     }
-    FloatVector4 viewRight = CrossProduct(viewUp, viewFwd);  // LHS
+    FloatVector4 viewRight = CrossProduct(viewUp, viewFwd);
 
-    // Project the focus point into light-view space (rotation only; the
-    // eye translation is folded in below after texel snapping).
-    const float focusX = DotProduct(focusPoint, viewRight);
-    const float focusY = DotProduct(focusPoint, viewUp);
-    const float focusZ = DotProduct(focusPoint, viewFwd);
+    // Project the 8 corners of the world-space scene AABB into light-view
+    // space and AABB the result; that gives the tightest ortho box that
+    // still encloses every scene point in the light's frame.
+    AABB lightViewBounds;
+    for (int i = 0; i < 8; ++i)
+    {
+        const FloatVector4 corner(
+            (i & 1) ? sceneBounds.Max.X : sceneBounds.Min.X,
+            (i & 2) ? sceneBounds.Max.Y : sceneBounds.Min.Y,
+            (i & 4) ? sceneBounds.Max.Z : sceneBounds.Min.Z,
+            1.0f);
+        lightViewBounds.ExpandToInclude(FloatVector4(
+            DotProduct(corner, viewRight),
+            DotProduct(corner, viewUp),
+            DotProduct(corner, viewFwd),
+            0.0f));
+    }
 
-    // Snap the focus XY to the shadow-atlas texel grid (in light-view
-    // meters per texel) so frame-to-frame camera motion does not cause
-    // sub-texel shimmer on shadow edges.
-    const UINT  res        = (resolution > 0u) ? resolution : 1u;
-    const float texelMeters = (2.0f * halfWidth) / static_cast<float>(res);
-    const float snappedX   = std::floor(focusX / texelMeters) * texelMeters;
-    const float snappedY   = std::floor(focusY / texelMeters) * texelMeters;
+    // Symmetric square ortho about the scene's light-view centre.  The
+    // half-width covers the wider of the two lateral extents so the box
+    // is square (matches the shadow atlas tile's square aspect).
+    const FloatVector4 lvCenter  = lightViewBounds.GetCenter();
+    const FloatVector4 lvExtents = lightViewBounds.GetExtents();
+    const float halfWidth = std::max(lvExtents.X, lvExtents.Y);
+    const float depthRange = (std::max)(2.0f * lvExtents.Z, 1.0f);
 
-    // Place the light eye behind the snapped focus along -viewFwd by
-    // half the depth range, so the ortho box [zNear, zFar] = [0, depthRange]
-    // straddles the focus depth.
+    // Texel-snap the centre in light-view XY to suppress shimmer.
+    const UINT  res          = (resolution > 0u) ? resolution : 1u;
+    const float texelMeters  = (2.0f * halfWidth) / static_cast<float>(res);
+    const float snappedX     = std::floor(lvCenter.X / texelMeters) * texelMeters;
+    const float snappedY     = std::floor(lvCenter.Y / texelMeters) * texelMeters;
+
+    // Eye sits half a depthRange behind the scene centre along -viewFwd
+    // so [zNear, zFar] = [0, depthRange] straddles the scene depth slab.
     const float zNear = 0.0f;
-    const float zFar  = (depthRange > 0.0f) ? depthRange : 1.0f;
-    const float eyeZ  = focusZ - 0.5f * zFar;
+    const float zFar  = depthRange;
+    const float eyeZ  = lvCenter.Z - 0.5f * zFar;
 
-    // World -> light-view (row vectors): rotation columns are
-    // (viewRight, viewUp, viewFwd); translation row removes the eye
-    // offset along each view axis.
     FloatMatrix4x4 view = {};
     view[0][0] = viewRight.X; view[0][1] = viewUp.X; view[0][2] = viewFwd.X; view[0][3] = 0.0f;
     view[1][0] = viewRight.Y; view[1][1] = viewUp.Y; view[1][2] = viewFwd.Y; view[1][3] = 0.0f;
@@ -2441,9 +2461,7 @@ Canvas::Math::FloatMatrix4x4 CRenderQueue12::BuildDirectionalShadowMatrix(
     view[3][2] = -eyeZ;
     view[3][3] = 1.0f;
 
-    // Reverse-Z ortho box: half side = halfWidth, z in [zNear, zFar] -> [1, 0].
     FloatMatrix4x4 proj = OrthoReverseZ(halfWidth, halfWidth, zNear, zFar);
-
     return view * proj;
 }
 
@@ -2547,88 +2565,85 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
             range, kDefaultLightCullThreshold);
     }
 
-    // ---- Shadow casting ----
-    // Directional-only in v1.  Lights without CastsShadows, or that fail
-    // to fit in the atlas this frame, are left with ShadowAtlasRectUV
-    // zeroed so the composite skips the sample.  The atlas + DSV are
-    // ensured here lazily so a scene with no shadow casters never pays
-    // the cost.
+    // Shadow casting: directional lights with LightFlags::CastsShadows
+    // record an intent here; the actual atlas allocation and shadow-
+    // matrix derivation happens in ResolveShadowCasters at EndFrame,
+    // after scene traversal has completed and m_FrameWorldBounds is
+    // final.  Deferring is necessary because lights and meshes can be
+    // visited in any order during scene traversal -- computing the
+    // shadow region here would use a partial bounds aggregate.
     if ((pLight->GetFlags() & Canvas::LightFlags::CastsShadows) &&
         pLight->GetType() == Canvas::LightType::Directional &&
-        pNode != nullptr &&
-        m_pActiveCamera != nullptr)
+        pNode != nullptr)
     {
-        EnsureShadowAtlas();
+        PendingShadowCaster caster = {};
+        caster.LightSlotIndex = m_LightCount - 1;  // we incremented above
+        caster.pLight         = pLight;
+        caster.Resolved       = false;
+        m_PendingShadowCasters.push_back(caster);
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+void CRenderQueue12::ResolveShadowCasters()
+{
+    // No geometry bounds -> no shadow region this frame.  Casters
+    // stay unresolved and produce no shadow output; the corresponding
+    // HlslLight.ShadowFlags is left at 0 so the composite skips PCF.
+    if (m_FrameWorldBounds.IsEmpty() || m_PendingShadowCasters.empty())
+        return;
+
+    EnsureShadowAtlas();
+
+    const Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
+
+    for (auto& caster : m_PendingShadowCasters)
+    {
+        Canvas::XLight* pLight = caster.pLight;
+        if (!pLight)
+            continue;
+
         UINT resolution = pLight->GetShadowResolution();
         if (resolution == 0u)
             resolution = kShadowAtlasDefaultSize / kShadowAtlasTilesPerSide;
 
         ShadowAtlasTile tile = AllocateShadowTile(resolution);
-        if (tile.Valid)
-        {
-            // Focus the shadow frustum on the active camera so receivers
-            // near the viewer are inside the high-resolution slab.
-            Canvas::Math::FloatVector4 focusPoint(0.0f, 0.0f, 0.0f, 1.0f);
-            if (auto *pCamNode = m_pActiveCamera->GetAttachedNode())
-            {
-                auto cw = pCamNode->GetGlobalMatrix();
-                focusPoint = Canvas::Math::FloatVector4(cw[3][0], cw[3][1], cw[3][2], 1.0f);
-            }
+        if (!tile.Valid)
+            continue;   // atlas full this frame; drop this caster
 
-            // TODO: replace these fixed defaults once the camera / scene
-            // owns the shadow region (camera-frustum-clipped-to-distance
-            // for the lateral extent, plus a scene look-back along the
-            // light direction for off-screen casters).  Until then, size
-            // the ortho box large enough to cover the current test scenes
-            // (terrain tile ~1 km, peaks up to ~256 m) so directional
-            // shadows aren't clipped at low sun angles.  Atlas tile is
-            // 2048 texels -> ~1 m / texel at this halfWidth.
-            constexpr float kInterimShadowHalfWidth  = 1024.0f;
-            constexpr float kInterimShadowDepthRange = 2048.0f;
-            const float halfWidth  = kInterimShadowHalfWidth;
-            const float depthRange = kInterimShadowDepthRange;
+        HlslTypes::HlslLight& gpu = m_Lights[caster.LightSlotIndex];
 
-            // World-up = Canvas +Z.  BuildDirectionalShadowMatrix
-            // Gram-Schmidts a stable basis even when lightDir is nearly
-            // parallel to world-up.
-            const Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
-            Canvas::Math::FloatVector4 lightDir(
-                gpu.DirectionOrPosition.x,
-                gpu.DirectionOrPosition.y,
-                gpu.DirectionOrPosition.z,
-                0.0f);
+        const Canvas::Math::FloatVector4 lightDir(
+            gpu.DirectionOrPosition.x,
+            gpu.DirectionOrPosition.y,
+            gpu.DirectionOrPosition.z,
+            0.0f);
 
-            Canvas::Math::FloatMatrix4x4 shadowViewProj = BuildDirectionalShadowMatrix(
-                lightDir, worldUp, focusPoint, halfWidth, depthRange, tile.PixelSize);
+        const Canvas::Math::FloatMatrix4x4 shadowViewProj =
+            BuildDirectionalShadowMatrixFromBounds(
+                lightDir, worldUp, m_FrameWorldBounds, tile.PixelSize);
 
-            // Bias knobs.  Caster-side slope+constant biases are baked into
-            // the shadow PSO for v1; the per-light constant + normal-offset
-            // ride through HlslLight and apply at composite sample time.
-            float constantBias = 0.0f, slopeScaleBias = 0.0f, normalOffset = 0.0f;
-            pLight->GetShadowDepthBias(&constantBias, &slopeScaleBias, &normalOffset);
+        float constantBias = 0.0f, slopeScaleBias = 0.0f, normalOffset = 0.0f;
+        pLight->GetShadowDepthBias(&constantBias, &slopeScaleBias, &normalOffset);
 
-            gpu.ShadowFlags                = SHADOW_FLAG_HAS_SHADOW;
-            gpu.ShadowDepthBias            = constantBias;
-            gpu.ShadowNormalOffsetTexels   = normalOffset;
-            gpu.ShadowAtlasRectUV          = {
-                tile.AtlasRectUV[0], tile.AtlasRectUV[1],
-                tile.AtlasRectUV[2], tile.AtlasRectUV[3] };
-            // Row-major copy into HLSL float4x4: HlslLight.ShadowViewProj
-            // is declared ROW_MAJOR, so the CPU's row[i][j] maps element
-            // for element to the GPU layout.
-            memcpy(&gpu.ShadowViewProj, &shadowViewProj, sizeof(gpu.ShadowViewProj));
+        gpu.ShadowFlags              = SHADOW_FLAG_HAS_SHADOW;
+        gpu.ShadowDepthBias          = constantBias;
+        gpu.ShadowNormalOffsetTexels = normalOffset;
+        gpu.ShadowAtlasRectUV        = {
+            tile.AtlasRectUV[0], tile.AtlasRectUV[1],
+            tile.AtlasRectUV[2], tile.AtlasRectUV[3] };
+        // HlslLight.ShadowViewProj is ROW_MAJOR; CPU row[i][j] maps
+        // element-for-element to the GPU layout.
+        memcpy(&gpu.ShadowViewProj, &shadowViewProj, sizeof(gpu.ShadowViewProj));
 
-            PendingShadowCaster caster = {};
-            caster.LightSlotIndex = m_LightCount - 1;  // we incremented above
-            caster.ShadowViewProj = shadowViewProj;
-            caster.TilePixelX     = tile.PixelX;
-            caster.TilePixelY     = tile.PixelY;
-            caster.TilePixelSize  = tile.PixelSize;
-            m_PendingShadowCasters.push_back(caster);
-        }
+        caster.Resolved       = true;
+        caster.ShadowViewProj = shadowViewProj;
+        caster.TilePixelX     = tile.PixelX;
+        caster.TilePixelY     = tile.PixelY;
+        caster.TilePixelSize  = tile.PixelSize;
     }
-
-    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -2637,6 +2652,12 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 {
     try
     {
+        // Resolve shadow-caster intents recorded during scene submission.
+        // This must run before the per-frame CB is built so each light's
+        // HlslLight entry carries its final ShadowFlags / atlas tile / view-
+        // proj.
+        ResolveShadowCasters();
+
         // Build per-frame constants from the active camera + accumulated lights
         // (lights were accumulated during SubmitForRender via SubmitLight)
         HlslTypes::HlslPerFrameConstants frameConstants = {};
@@ -2771,7 +2792,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
         //==========================================================================================
         // Shadow pass: depth-only displaced-mesh draws into per-light atlas
-        // tiles.  One CGpuTask per (shadow-casting light x ready displaced
+        // tiles.  One CGpuTask per (resolved shadow caster x ready displaced
         // tile).  The first task targeting a given tile clears it; the
         // remaining tasks for that tile just accumulate depth.  Declared
         // resource usage (DEPTH_STENCIL_WRITE on the atlas + SHADER_RESOURCE
@@ -2779,7 +2800,11 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         // SHADER_RESOURCE declaration on the atlas downstream finishes
         // the DSV-write -> SRV-read transition.
         //==========================================================================================
-        if (!m_PendingShadowCasters.empty() && !m_DisplacedDraws.empty())
+        bool anyResolvedShadowCaster = false;
+        for (const auto& c : m_PendingShadowCasters)
+            if (c.Resolved) { anyResolvedShadowCaster = true; break; }
+
+        if (anyResolvedShadowCaster && !m_DisplacedDraws.empty())
         {
             EnsureDisplacedShadowPSO();
             // Re-create the atlas DSV every frame.  The DSV descriptor heap
@@ -2809,6 +2834,9 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
             for (const auto& caster : m_PendingShadowCasters)
             {
+                if (!caster.Resolved)
+                    continue;   // dropped at resolution time -- no shadow region
+
                 // Upload the caster's world->shadow-clip matrix once and
                 // share its CBV across every tile it draws into this atlas tile.
                 HostWriteAllocation shadowHw;
@@ -3336,6 +3364,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         m_UIRenderableQueue.clear();
         m_DisplacedDraws.clear();
         m_PendingShadowCasters.clear();
+        m_FrameWorldBounds.Reset();
         m_pCurrentSwapChain = nullptr;
         m_pActiveCamera = nullptr;
         return e.Result();
@@ -3346,5 +3375,6 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     m_LightCount = 0;
     m_NextShadowTileIndex = 0;
     m_PendingShadowCasters.clear();
+    m_FrameWorldBounds.Reset();
     return Gem::Result::Success;
 }

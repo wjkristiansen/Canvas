@@ -600,14 +600,22 @@ public:
     HlslTypes::HlslLight m_Lights[MAX_LIGHTS_PER_REGION] = {};
     uint32_t m_LightCount = 0;
 
-    // Pending shadow-caster work, accumulated by SubmitLight when an
-    // enabled directional light has LightFlags::CastsShadows.  Drained
-    // at EndFrame: each entry generates one ShadowPass GpuTask per
-    // pending displaced draw.  Cleared at EndFrame epilogue alongside
-    // m_LightCount.
+    // Shadow-caster intents recorded by SubmitLight (one per enabled
+    // directional light with LightFlags::CastsShadows).  Resolved at
+    // EndFrame, after scene traversal is complete and m_FrameWorldBounds
+    // is final.  Resolution allocates an atlas tile, fits a shadow
+    // matrix to the world bounds, fills in this struct's tile + matrix
+    // fields, and writes the shadow parameters back into m_Lights[].
+    // Entries whose scene-bounds aggregate is empty get dropped (no
+    // shadow rendered, HlslLight.ShadowFlags stays 0).
     struct PendingShadowCaster
     {
+        // Set by SubmitLight:
         uint32_t                     LightSlotIndex;  // index into m_Lights[]
+        Canvas::XLight*              pLight;          // for resolution-time queries
+
+        // Filled at EndFrame resolution:
+        bool                         Resolved;        // false = drop, no shadow this frame
         Canvas::Math::FloatMatrix4x4 ShadowViewProj;
         UINT                         TilePixelX;
         UINT                         TilePixelY;
@@ -627,6 +635,16 @@ public:
 
     // Renderable nodes enqueued during scene graph update, dispatched during EndFrame
     std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
+
+    // World-space AABB of every spatial element submitted this frame.
+    // Accumulated in SubmitForRender by transforming each bound
+    // element's GetLocalBounds() through its node's global matrix.
+    // Empty when the scene contains no elements with valid geometry
+    // bounds; shadow-pass setup drops shadow casters in that case
+    // (the engine doesn't have enough information to choose a shadow
+    // region, so no shadows are rendered until a future scene-extent
+    // mechanism fills the gap).  Reset at EndFrame epilogue.
+    Canvas::Math::AABB m_FrameWorldBounds;
 
     // Pending displaced-mesh submissions, drained during EndFrame.
     std::vector<DisplacedDrawDesc> m_DisplacedDraws;
@@ -883,32 +901,25 @@ private:
     // Accumulate a light for the current frame's deferred lighting pass
     Gem::Result SubmitLight(Canvas::XLight *pLight);
 
+    // Resolve every PendingShadowCaster: allocate an atlas tile, fit a
+    // shadow matrix to the current frame's world-bounds aggregate, and
+    // write the resulting parameters back into the corresponding
+    // m_Lights[] entry.  Casters whose aggregate is empty are dropped
+    // (Resolved=false) and produce no shadow output this frame.  Called
+    // from EndFrame after scene traversal has completed and before
+    // per-frame constants are uploaded.
+    void ResolveShadowCasters();
+
     // Build a texel-snapped world-to-shadow-clip matrix for a directional
-    // light.  The shadow frustum is an ortho box of side 2 * halfWidth in
-    // light-space XY, depth depthRange in light-space Z, centred on the
-    // camera position projected into light space and snapped to the
-    // shadow-atlas texel grid.  Texel snapping is what stops shadow edges
-    // from shimmering as the camera translates.
-    //
-    //   lightDir       - unit world-space direction the light emits along.
-    //   worldUp        - reference up vector (typically scene Z-up); used
-    //                    only to disambiguate the light-space basis.  Must
-    //                    not be parallel to lightDir.
-    //   focusPoint     - world-space point the shadow frustum is centred on
-    //                    (typically the active camera position).
-    //   halfWidth      - half side length of the ortho box in meters.
-    //   depthRange     - light-space Z extent of the ortho box in meters.
-    //   resolution     - shadow map resolution in texels (used for snapping).
-    //
-    // The returned matrix takes world-space row vectors directly to shadow
-    // clip space (reverse-Z: 1.0 at near, 0.0 at far).
-    static Canvas::Math::FloatMatrix4x4 BuildDirectionalShadowMatrix(
+    // light, fitting the ortho box to a world-space scene AABB.  Projects
+    // the 8 corners of sceneBounds into light-view space, sizes the ortho
+    // from the resulting light-view AABB, and centres / texel-snaps on
+    // that AABB's centre.  Caller must ensure sceneBounds is non-empty.
+    static Canvas::Math::FloatMatrix4x4 BuildDirectionalShadowMatrixFromBounds(
         const Canvas::Math::FloatVector4& lightDir,
         const Canvas::Math::FloatVector4& worldUp,
-        const Canvas::Math::FloatVector4& focusPoint,
-        float halfWidth,
-        float depthRange,
-        UINT  resolution);
+        const Canvas::Math::AABB&         sceneBounds,
+        UINT                              resolution);
     
     // GPU Task Graphs — three graphs dispatched in order: scene → UI → present
     Canvas::CGpuTaskGraph m_GpuTaskGraph;        // Scene: geometry, composite
