@@ -347,18 +347,16 @@ XSceneGraphElement : public XCanvasElement
     // INFLUENCE: the spatial region in which this element affects
     // rendering or simulation, but does not itself occupy as geometry.
     //
-    // Concrete examples (none implemented yet -- see CLight / CCamera):
     //   Point light  -> attenuation cutoff sphere -> AABB
     //   Spot light   -> attenuation + cone        -> AABB
     //   Camera       -> view frustum              -> AABB
     //   Directional / ambient light -> empty (infinite, no spatial bound)
     //   XMeshInstance / XModel      -> empty (geometry-only, no influence)
     //
-    // Intended consumers: light culling (which lights touch which tiles
-    // / clusters / shadow regions), view-driven scene streaming, debug
-    // overlays.  Aggregating shadow casters and aggregating light
-    // influences are different queries served by different methods so
-    // neither has to filter the other out.
+    // Aggregating shadow casters and aggregating light influences are
+    // distinct queries served by separate methods (GetLocalBounds vs
+    // GetLocalInfluenceBounds) so neither walk has to filter the other
+    // out by inspecting element type.
     GEMMETHOD_(Math::AABB, GetLocalInfluenceBounds)() const = 0;
 };
 
@@ -485,7 +483,7 @@ struct
 XMeshInstance : public XSceneGraphElement
 {
     GEM_INTERFACE_DECLARE(XMeshInstance, 0x1C80317FA3B1799D);
-    
+
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() = 0;
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;
 };

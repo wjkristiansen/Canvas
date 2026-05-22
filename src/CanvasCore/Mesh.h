@@ -41,6 +41,14 @@ public:
         return TSceneGraphElement<XMeshInstance>::NotifyNodeContextChanged(pNode);
     }
 
+    // Returns the mesh data's local bounds, or an empty AABB when no
+    // mesh data is bound.  Aggregating callers transform this through
+    // the attached node's global matrix to obtain a world AABB.
+    GEMMETHOD_(Math::AABB, GetLocalBounds)() const final
+    {
+        return m_pMeshData ? m_pMeshData->GetLocalBounds() : Math::AABB{};
+    }
+
     // XMeshInstance methods
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() final 
     { 

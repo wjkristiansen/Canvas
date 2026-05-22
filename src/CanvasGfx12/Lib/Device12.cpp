@@ -444,7 +444,11 @@ GEMMETHODIMP CDevice12::CreateMeshData(
     // have VertexCount entries. For procedural meshes the engine emits
     // draws directly from SV_VertexID so vertex arrays are not required;
     // VertexCount is still meaningful (total CP count for the group).
+    //
+    // Non-procedural groups also contribute their positions to a
+    // mesh-local AABB; procedural meshes leave the AABB empty.
     uint32_t totalVertexCount = 0;
+    Canvas::Math::AABB meshBounds;
     for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
     {
         const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
@@ -454,6 +458,8 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         {
             if (g.pPositions == nullptr || g.pNormals == nullptr)
                 return Gem::Result::InvalidArg;
+            for (uint32_t vi = 0; vi < g.VertexCount; ++vi)
+                meshBounds.ExpandToInclude(g.pPositions[vi]);
         }
         totalVertexCount += g.VertexCount;
     }
@@ -587,6 +593,7 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         pMeshData->SetGroups(std::move(groups));
         pMeshData->SetTopology(desc.Topology);
         pMeshData->SetTotalVertexCount(totalVertexCount);
+        pMeshData->SetLocalBounds(meshBounds);
 
         *ppMesh = pMeshData.Detach();
         return Gem::Result::Success;

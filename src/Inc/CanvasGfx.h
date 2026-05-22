@@ -329,6 +329,16 @@ namespace Canvas
         // procedural mesh this is what the engine passes to DrawInstanced;
         // for a triangle-list mesh it is the sum of per-group VertexCounts.
         GEMMETHOD_(uint32_t, GetTotalVertexCount)() = 0;
+
+        // Mesh-local axis-aligned bounding box, in the same coordinate
+        // space as the mesh's vertex positions.  Computed at
+        // CreateMeshData time by walking the position streams of each
+        // group; an XMeshInstance applies its node's global matrix to
+        // obtain the world-space AABB.
+        //
+        // Procedural meshes (no CPU position arrays) return an empty
+        // AABB.
+        GEMMETHOD_(Canvas::Math::AABB, GetLocalBounds)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------

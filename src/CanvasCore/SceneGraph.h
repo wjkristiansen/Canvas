@@ -49,9 +49,6 @@ public:
     // their node-local influence volume.  Infinite-influence elements
     // (directional / ambient lights) and pure-geometry elements
     // (XMeshInstance, XModel) inherit this default.
-    //
-    // No concrete overrides yet -- the override sites land alongside
-    // the consumer (light / view culling).
     GEMMETHOD_(Math::AABB, GetLocalInfluenceBounds)() const
     {
         return Math::AABB{};
