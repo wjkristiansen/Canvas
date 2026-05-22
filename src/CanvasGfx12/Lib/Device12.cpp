@@ -445,8 +445,10 @@ GEMMETHODIMP CDevice12::CreateMeshData(
     // draws directly from SV_VertexID so vertex arrays are not required;
     // VertexCount is still meaningful (total CP count for the group).
     //
-    // Non-procedural groups also contribute their positions to a
-    // mesh-local AABB; procedural meshes leave the AABB empty.
+    // Any group that supplies positions contributes them to a mesh-local
+    // AABB, regardless of topology -- procedural draws may still want a
+    // real bounds (e.g. a tessellated patch list whose CPs span the
+    // intended draw extent) even though no vertex buffers get uploaded.
     uint32_t totalVertexCount = 0;
     Canvas::Math::AABB meshBounds;
     for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
@@ -458,6 +460,9 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         {
             if (g.pPositions == nullptr || g.pNormals == nullptr)
                 return Gem::Result::InvalidArg;
+        }
+        if (g.pPositions)
+        {
             for (uint32_t vi = 0; vi < g.VertexCount; ++vi)
                 meshBounds.ExpandToInclude(g.pPositions[vi]);
         }
@@ -593,7 +598,10 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         pMeshData->SetGroups(std::move(groups));
         pMeshData->SetTopology(desc.Topology);
         pMeshData->SetTotalVertexCount(totalVertexCount);
-        pMeshData->SetLocalBounds(meshBounds);
+        // Explicit bounds from the desc override anything we walked from
+        // positions -- callers building procedural geometry from
+        // SV_VertexID supply this since the engine has nothing to measure.
+        pMeshData->SetLocalBounds(desc.LocalBounds.IsEmpty() ? meshBounds : desc.LocalBounds);
 
         *ppMesh = pMeshData.Detach();
         return Gem::Result::Success;
@@ -602,39 +610,6 @@ GEMMETHODIMP CDevice12::CreateMeshData(
     {
         return e.Result();
     }
-}
-
-//------------------------------------------------------------------------------------------------
-GEMMETHODIMP CDevice12::CreateProceduralPatchGrid(
-    uint32_t patchesPerSide,
-    Canvas::XGfxMaterial *pMaterial,
-    Canvas::XGfxMeshData **ppMesh,
-    const char *name)
-{
-    if (!ppMesh)
-        return Gem::Result::BadPointer;
-
-    *ppMesh = nullptr;
-
-    if (patchesPerSide == 0)
-        return Gem::Result::InvalidArg;
-
-    const uint32_t cpCount = patchesPerSide * patchesPerSide * 4u;
-
-    // One group, no vertex arrays - the VS reconstructs CP positions from
-    // SV_VertexID using the patchesPerSide value baked into per-instance
-    // constants. The CP count is what the engine passes to DrawInstanced.
-    Canvas::MeshDataGroupDesc group = {};
-    group.VertexCount = cpCount;
-    group.pMaterial   = pMaterial;
-
-    Canvas::MeshDataDesc desc = {};
-    desc.pGroups    = &group;
-    desc.GroupCount = 1;
-    desc.pName      = name;
-    desc.Topology   = Canvas::GfxPrimitiveTopology::PatchList4CP;
-
-    return CreateMeshData(desc, ppMesh);
 }
 
 //------------------------------------------------------------------------------------------------

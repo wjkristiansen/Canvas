@@ -657,14 +657,31 @@ class CTerrainApp
         disp.CurvatureLodScale = 0.5f;
         m_pTerrainMaterial->SetDisplacement(&disp);
 
-        // Procedural patch-grid mesh: [0,1]^2 unit-square grid of 64x64
-        // quad patches. The scene-graph node's local transform scales
-        // this to (WorldSizeX, WorldSizeY, 1) and translates to the
-        // tile's world origin.
-        char meshName[64];
-        snprintf(meshName, sizeof(meshName), "TerrainPatchMesh_64x64");
-        Gem::ThrowGemError(m_pGfxDevice->CreateProceduralPatchGrid(
-            64, m_pTerrainMaterial, &m_pTerrainPatchMesh, meshName));
+        // Procedural patch-grid mesh: a single-group PatchList4CP draw
+        // with VertexCount = 4 * patchesPerSide^2 control points; the
+        // displaced VS reconstructs per-CP positions from SV_VertexID
+        // using the patch count baked into the per-instance constants.
+        // No vertex buffers are uploaded; LocalBounds is supplied
+        // explicitly to cover the post-displacement tile extent.
+        const uint32_t patchesPerSide = 64;
+        const Canvas::Math::AABB tileBounds(
+            Canvas::Math::FloatVector4(0.0f, 0.0f,
+                field.Desc.HeightBias, 0.0f),
+            Canvas::Math::FloatVector4(field.WorldWidth(), field.WorldHeight(),
+                field.Desc.HeightBias + field.Desc.HeightScale, 0.0f));
+
+        Canvas::MeshDataGroupDesc group = {};
+        group.VertexCount = patchesPerSide * patchesPerSide * 4u;
+        group.pMaterial   = m_pTerrainMaterial;
+
+        Canvas::MeshDataDesc meshDesc = {};
+        meshDesc.pGroups     = &group;
+        meshDesc.GroupCount  = 1;
+        meshDesc.pName       = "TerrainPatchMesh_64x64";
+        meshDesc.Topology    = Canvas::GfxPrimitiveTopology::PatchList4CP;
+        meshDesc.LocalBounds = tileBounds;
+
+        Gem::ThrowGemError(m_pGfxDevice->CreateMeshData(meshDesc, &m_pTerrainPatchMesh));
 
         char tileName[64];
         snprintf(tileName, sizeof(tileName), "Tile_%d_%d",

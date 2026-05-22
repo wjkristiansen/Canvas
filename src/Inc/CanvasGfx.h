@@ -332,12 +332,13 @@ namespace Canvas
 
         // Mesh-local axis-aligned bounding box, in the same coordinate
         // space as the mesh's vertex positions.  Computed at
-        // CreateMeshData time by walking the position streams of each
-        // group; an XMeshInstance applies its node's global matrix to
-        // obtain the world-space AABB.
+        // CreateMeshData time by walking any supplied position streams;
+        // an XMeshInstance applies its node's global matrix to obtain
+        // the world-space AABB.
         //
-        // Procedural meshes (no CPU position arrays) return an empty
-        // AABB.
+        // Returns an empty AABB when no group supplied positions
+        // (e.g. a procedural mesh whose draw is entirely SV_VertexID-
+        // driven with no associated geometry the engine can measure).
         GEMMETHOD_(Canvas::Math::AABB, GetLocalBounds)() = 0;
     };
 
@@ -370,6 +371,14 @@ namespace Canvas
         // VertexCount control points from SV_VertexID with no input
         // assembler bindings.
         GfxPrimitiveTopology            Topology      = GfxPrimitiveTopology::TriangleList;
+
+        // Optional explicit local-space AABB.  When non-empty this
+        // overrides the engine's auto-computation from group positions
+        // and becomes the mesh's GetLocalBounds() value verbatim.
+        // Intended for procedural meshes whose drawn geometry covers a
+        // known extent but is not present in any CPU position buffer
+        // (e.g. a tessellated patch grid generated from SV_VertexID).
+        Canvas::Math::AABB              LocalBounds;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -543,20 +552,6 @@ namespace Canvas
         // grid mesh.  patchesPerSide >= 1.  Result is a single-group
         // XGfxMeshData with PatchList4CP topology, no vertex buffers,
         // VertexCount = patchesPerSide * patchesPerSide * 4, and the
-        // supplied material attached to the group.  Intended to be paired
-        // with a material that has a displacement extension attached
-        // (XGfxMaterial::SetDisplacement); the engine generates per-CP
-        // positions / UVs from SV_VertexID.  The mesh instance's world
-        // transform should scale this unit square to the tile's world
-        // extents and translate to its origin.  pMaterial may be null
-        // (rendering will be skipped until a material is attached via
-        // some future API).
-        GEMMETHOD(CreateProceduralPatchGrid)(
-            uint32_t patchesPerSide,
-            XGfxMaterial *pMaterial,
-            XGfxMeshData **ppMesh,
-            const char *name = nullptr) = 0;
-
         GEMMETHOD(CreateDebugMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
