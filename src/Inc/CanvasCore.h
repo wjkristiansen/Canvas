@@ -324,6 +324,42 @@ XSceneGraphElement : public XCanvasElement
     GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode) = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
+
+    // Element-local axis-aligned bounding box of the element's GEOMETRY.
+    //
+    // Returned in node-local coordinates -- transformed through the
+    // attached node's global matrix to obtain a world-space AABB for
+    // shadow-caster aggregation, frustum culling of renderables, or
+    // spatial subdivision of scene geometry.
+    //
+    // "Geometry" here is the element's physical extent: a mesh's vertex
+    // envelope, a model's union-of-meshes envelope.  Non-geometric
+    // elements (XLight, XCamera, ambient) return an empty AABB so they
+    // contribute nothing to geometric aggregates.
+    //
+    // Their AREAS OF INFLUENCE -- point/spot light attenuation volumes,
+    // camera view frusta -- are a separate concept reported by
+    // GetLocalInfluenceBounds so that a shadow-region or frustum-cull
+    // walk can union element bounds without per-element type checks.
+    GEMMETHOD_(Math::AABB, GetLocalBounds)() const = 0;
+
+    // Element-local axis-aligned bounding box of the element's AREA OF
+    // INFLUENCE: the spatial region in which this element affects
+    // rendering or simulation, but does not itself occupy as geometry.
+    //
+    // Concrete examples (none implemented yet -- see CLight / CCamera):
+    //   Point light  -> attenuation cutoff sphere -> AABB
+    //   Spot light   -> attenuation + cone        -> AABB
+    //   Camera       -> view frustum              -> AABB
+    //   Directional / ambient light -> empty (infinite, no spatial bound)
+    //   XMeshInstance / XModel      -> empty (geometry-only, no influence)
+    //
+    // Intended consumers: light culling (which lights touch which tiles
+    // / clusters / shadow regions), view-driven scene streaming, debug
+    // overlays.  Aggregating shadow casters and aggregating light
+    // influences are different queries served by different methods so
+    // neither has to filter the other out.
+    GEMMETHOD_(Math::AABB, GetLocalInfluenceBounds)() const = 0;
 };
 
 //------------------------------------------------------------------------------------------------

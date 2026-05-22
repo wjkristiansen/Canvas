@@ -1360,9 +1360,35 @@ namespace Canvas
             {
             }
 
+            // Empty: the canonical inside-out FLT_MAX sentinel.  This is
+            // the default-constructed state, used as the starting point
+            // for ExpandToInclude aggregation so the first contributed
+            // point lands tightly at min == max without a special-case
+            // first-insertion branch.
+            //
+            // Strict equality with the sentinel is intentional.  An AABB
+            // that is inside-out but NOT this exact sentinel is INVALID
+            // (see IsValid), not empty -- treating such an AABB as empty
+            // would mask a real bug and silently no-op aggregations that
+            // ought to fix or flag the malformed input.
+            bool IsEmpty() const
+            {
+                return Min.V[0] ==  FLT_MAX && Min.V[1] ==  FLT_MAX && Min.V[2] ==  FLT_MAX
+                    && Max.V[0] == -FLT_MAX && Max.V[1] == -FLT_MAX && Max.V[2] == -FLT_MAX;
+            }
+
+            // Valid: either empty (the intentional sentinel) or
+            // geometrically well-formed (min <= max in every axis).  A
+            // degenerate AABB -- a point, line, or face where min == max
+            // in one or more axes -- is well-formed and therefore valid.
+            // Only inside-out, non-empty AABBs are invalid; they indicate
+            // a construction-side bug rather than a meaningful state.
             bool IsValid() const
             {
-                return Min.V[0] <= Max.V[0] && Min.V[1] <= Max.V[1] && Min.V[2] <= Max.V[2];
+                return IsEmpty()
+                    || (Min.V[0] <= Max.V[0]
+                     && Min.V[1] <= Max.V[1]
+                     && Min.V[2] <= Max.V[2]);
             }
 
             void Reset()
@@ -1383,8 +1409,8 @@ namespace Canvas
 
             void ExpandToInclude(const AABB& other)
             {
-                if (!other.IsValid()) return;
-                if (!IsValid())
+                if (other.IsEmpty()) return;
+                if (IsEmpty())
                 {
                     *this = other;
                     return;
@@ -1411,6 +1437,32 @@ namespace Canvas
                     (Max.V[2] - Min.V[2]) * 0.5f,
                     0.0f
                 );
+            }
+
+            // Transform this AABB through an affine row-vector matrix
+            // (v' = v * M) and return the AABB of the eight transformed
+            // corners.  Conservative: the result fully encloses the
+            // transformed box but is generally larger than the tightest
+            // oriented bounding box.  Empty AABBs pass through unchanged;
+            // invalid (inside-out non-sentinel) AABBs do not short-circuit
+            // and will produce a result reflecting their corner positions.
+            AABB Transform(const TMatrix<float, 4, 4>& m) const
+            {
+                if (IsEmpty())
+                    return *this;
+
+                AABB out;
+                for (int i = 0; i < 8; ++i)
+                {
+                    const FloatVector4 corner(
+                        (i & 1) ? Max.V[0] : Min.V[0],
+                        (i & 2) ? Max.V[1] : Min.V[1],
+                        (i & 4) ? Max.V[2] : Min.V[2],
+                        1.0f);
+                    const FloatVector4 t = corner * m;
+                    out.ExpandToInclude(t);
+                }
+                return out;
             }
         };
 

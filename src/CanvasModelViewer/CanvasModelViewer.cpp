@@ -436,7 +436,7 @@ class CApp
         Canvas::XSceneGraphNode *pCameraNode,
         const Canvas::Math::AABB &bounds)
     {
-        if (!pCameraNode || !bounds.IsValid())
+        if (!pCameraNode || bounds.IsEmpty())
             return;
 
         const Canvas::Math::FloatVector4 sceneCenter = bounds.GetCenter();
@@ -510,9 +510,9 @@ class CApp
 
     void LogSceneBounds(const char *label, const Canvas::Math::AABB &bounds)
     {
-        if (!bounds.IsValid())
+        if (bounds.IsEmpty())
         {
-            Canvas::LogWarn(m_pLogger.Get(), "%s: scene bounds invalid", label);
+            Canvas::LogWarn(m_pLogger.Get(), "%s: scene bounds empty", label);
             return;
         }
 

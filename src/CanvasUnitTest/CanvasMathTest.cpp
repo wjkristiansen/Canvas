@@ -706,12 +706,16 @@ namespace CanvasUnitTest
 
         TEST_METHOD(AABBTests)
         {
-            // Test default constructor creates invalid box
+            // Default-constructed AABB is the canonical empty (FLT_MAX
+            // inside-out sentinel) used as the aggregation starting point.
             AABB box1;
-            Assert::IsFalse(box1.IsValid());
+            Assert::IsTrue(box1.IsEmpty());
+            Assert::IsTrue(box1.IsValid());   // empty is intentional, not malformed
 
-            // Test valid constructor
+            // A constructor with explicit min<=max produces a non-empty,
+            // valid box.
             AABB box2(FloatVector4(0.0f, 0.0f, 0.0f, 0.0f), FloatVector4(1.0f, 1.0f, 1.0f, 0.0f));
+            Assert::IsFalse(box2.IsEmpty());
             Assert::IsTrue(box2.IsValid());
 
             // Test center and extents
@@ -720,10 +724,15 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(center, FloatVector4(0.5f, 0.5f, 0.5f, 0.0f)));
             Assert::IsTrue(AlmostEqual(extents, FloatVector4(0.5f, 0.5f, 0.5f, 0.0f)));
 
-            // Test ExpandToInclude with point
+            // Single-point ExpandToInclude on an empty AABB collapses to a
+            // degenerate (zero-volume) AABB at that point -- non-empty,
+            // and well-formed because min == max.
             AABB box3;
             box3.ExpandToInclude(FloatVector4(1.0f, 2.0f, 3.0f, 0.0f));
+            Assert::IsFalse(box3.IsEmpty());
             Assert::IsTrue(box3.IsValid());
+            Assert::IsTrue(AlmostEqual(box3.Min, FloatVector4(1.0f, 2.0f, 3.0f, 0.0f)));
+            Assert::IsTrue(AlmostEqual(box3.Max, FloatVector4(1.0f, 2.0f, 3.0f, 0.0f)));
             box3.ExpandToInclude(FloatVector4(4.0f, 5.0f, 6.0f, 0.0f));
             Assert::IsTrue(AlmostEqual(box3.Min, FloatVector4(1.0f, 2.0f, 3.0f, 0.0f)));
             Assert::IsTrue(AlmostEqual(box3.Max, FloatVector4(4.0f, 5.0f, 6.0f, 0.0f)));
@@ -735,9 +744,77 @@ namespace CanvasUnitTest
             Assert::IsTrue(AlmostEqual(box4.Min, FloatVector4(0.0f, 0.0f, 0.0f, 0.0f)));
             Assert::IsTrue(AlmostEqual(box4.Max, FloatVector4(3.0f, 3.0f, 3.0f, 0.0f)));
 
-            // Test Reset
+            // Reset restores the canonical empty sentinel.
             box4.Reset();
-            Assert::IsFalse(box4.IsValid());
+            Assert::IsTrue(box4.IsEmpty());
+            Assert::IsTrue(box4.IsValid());
+        }
+
+        TEST_METHOD(AABBInsideOutNonSentinelIsInvalidNotEmpty)
+        {
+            // An AABB that is inside-out in some axis but is NOT the
+            // canonical FLT_MAX sentinel is INVALID -- not empty.
+            // Treating it as empty would mask a construction-side bug
+            // and cause aggregation to silently skip it.
+            AABB box(FloatVector4(0.0f, 5.0f, 0.0f, 0.0f),
+                     FloatVector4(10.0f, 2.0f, 10.0f, 0.0f));  // Y inside-out
+            Assert::IsFalse(box.IsEmpty());
+            Assert::IsFalse(box.IsValid());
+
+            // Mixed: partially sentinel values are still not the canonical
+            // empty.  Only the exact FLT_MAX sentinel counts as empty.
+            AABB partial(FloatVector4(FLT_MAX, 0.0f, FLT_MAX, 0.0f),
+                         FloatVector4(-FLT_MAX, 1.0f, -FLT_MAX, 0.0f));
+            Assert::IsFalse(partial.IsEmpty());
+            Assert::IsFalse(partial.IsValid());
+        }
+
+        TEST_METHOD(AABBTransformIdentity)
+        {
+            // Identity matrix leaves the AABB unchanged.
+            AABB box(FloatVector4(-1.0f, -2.0f, -3.0f, 0.0f),
+                     FloatVector4( 1.0f,  2.0f,  3.0f, 0.0f));
+            auto result = box.Transform(FloatMatrix4x4::Identity());
+            Assert::IsTrue(AlmostEqual(result.Min, box.Min));
+            Assert::IsTrue(AlmostEqual(result.Max, box.Max));
+        }
+
+        TEST_METHOD(AABBTransformTranslation)
+        {
+            // Pure translation shifts both Min and Max equally.
+            AABB box(FloatVector4(-1.0f, -1.0f, -1.0f, 0.0f),
+                     FloatVector4( 1.0f,  1.0f,  1.0f, 0.0f));
+            FloatMatrix4x4 m = FloatMatrix4x4::Identity();
+            m[3][0] = 10.0f;
+            m[3][1] = 20.0f;
+            m[3][2] = 30.0f;
+            auto result = box.Transform(m);
+            Assert::IsTrue(AlmostEqual(result.Min, FloatVector4( 9.0f, 19.0f, 29.0f, 0.0f)));
+            Assert::IsTrue(AlmostEqual(result.Max, FloatVector4(11.0f, 21.0f, 31.0f, 0.0f)));
+        }
+
+        TEST_METHOD(AABBTransformRotation)
+        {
+            // 90-degree rotation around Z (row-vector convention: row 0 ->
+            // becomes +Y, row 1 -> becomes -X) of a non-square box.
+            // After rotation:  X extent <- old Y extent, Y extent <- old X extent.
+            AABB box(FloatVector4(-2.0f, -1.0f, -0.5f, 0.0f),
+                     FloatVector4( 2.0f,  1.0f,  0.5f, 0.0f));
+            FloatMatrix4x4 m = FloatMatrix4x4::Identity();
+            m[0][0] =  0.0f; m[0][1] =  1.0f;
+            m[1][0] = -1.0f; m[1][1] =  0.0f;
+            auto result = box.Transform(m);
+            Assert::IsTrue(AlmostEqual(result.Min, FloatVector4(-1.0f, -2.0f, -0.5f, 0.0f)));
+            Assert::IsTrue(AlmostEqual(result.Max, FloatVector4( 1.0f,  2.0f,  0.5f, 0.0f)));
+        }
+
+        TEST_METHOD(AABBTransformEmptyPropagates)
+        {
+            // Transforming an empty AABB returns the same empty AABB.
+            AABB box;
+            Assert::IsTrue(box.IsEmpty());
+            auto result = box.Transform(FloatMatrix4x4::Identity());
+            Assert::IsTrue(result.IsEmpty());
         }
 
         TEST_METHOD(QuaternionNormalize)
