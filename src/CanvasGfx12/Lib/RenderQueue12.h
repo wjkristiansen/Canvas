@@ -487,6 +487,13 @@ public:
     CComPtr<ID3D12RootSignature> m_pDisplacedRootSig;
     CComPtr<ID3D12PipelineState> m_pDisplacedPSO;
     CComPtr<ID3D12PipelineState> m_pDisplacedPSOWireframe;
+    // Depth-only displaced PSO + root sig, used for shadow-atlas tile
+    // rendering.  Reuses VSDisplaced + HSDisplaced bytecode (so shadow
+    // tessellation tracks camera LOD and avoids Peter Panning) and
+    // pairs them with DSDisplacedShadow + no PS.  Created lazily on
+    // first shadow-casting light submission.
+    CComPtr<ID3D12RootSignature> m_pDisplacedShadowRootSig;
+    CComPtr<ID3D12PipelineState> m_pDisplacedShadowPSO;
     CComPtr<ID3D12RootSignature> m_pTextRootSig;
     CComPtr<ID3D12PipelineState> m_pTextPSO;
     DXGI_FORMAT m_TextPSOFormat = DXGI_FORMAT_UNKNOWN;
@@ -517,6 +524,44 @@ public:
     UINT m_DepthBufferWidth = 0;
     UINT m_DepthBufferHeight = 0;
     UINT m_NextDSVSlot = 0;
+
+    // Shadow atlas.  One engine-internal R32_TYPELESS surface shared by
+    // every shadow-casting directional light this frame.  Sub-allocated
+    // into a fixed 2x2 grid of square tiles (so up to 4 directional
+    // shadow casters at the same time); each tile is selected via the
+    // light's atlas-rect-UV in HlslLight.  Created lazily by
+    // EnsureShadowAtlas() the first frame any enabled shadow-casting
+    // light is submitted.
+    //
+    //   m_pShadowAtlas        - committed resource holding the depth data.
+    //   m_ShadowAtlasSize     - atlas side length in texels (square).
+    //   m_ShadowAtlasTilesPerSide - grid resolution (2 -> 2x2 = 4 tiles).
+    //   m_ShadowAtlasDSV      - cached DSV referencing the whole atlas;
+    //                           individual tiles select their region via
+    //                           viewport / scissor / clear rect.
+    //   m_NextShadowTileIndex - per-frame allocator counter; reset to 0
+    //                           at EndFrame start.
+    Gem::TGemPtr<CSurface12>     m_pShadowAtlas;
+    UINT                         m_ShadowAtlasSize         = 0;
+    UINT                         m_ShadowAtlasTilesPerSide = 0;
+    D3D12_CPU_DESCRIPTOR_HANDLE  m_ShadowAtlasDSV          = {};
+    UINT                         m_NextShadowTileIndex     = 0;
+
+    static const UINT kShadowAtlasDefaultSize     = 4096;
+    static const UINT kShadowAtlasTilesPerSide    = 2;     // 2 -> 4 tiles
+    static const UINT kShadowAtlasMaxTiles        = kShadowAtlasTilesPerSide * kShadowAtlasTilesPerSide;
+
+    // One allocated shadow tile.  Pixel coordinates index into the atlas;
+    // AtlasRectUV is the same region expressed in [0,1] atlas UV (xy =
+    // origin, zw = size) and is what the shader sees via HlslLight.
+    struct ShadowAtlasTile
+    {
+        bool                         Valid;
+        UINT                         PixelX;
+        UINT                         PixelY;
+        UINT                         PixelSize;
+        Canvas::Math::FloatVector4   AtlasRectUV;
+    };
 
     // G-buffer render targets for deferred shading
     Gem::TGemPtr<CSurface12> m_pGBufferNormals;
@@ -554,9 +599,31 @@ public:
     Gem::TGemPtr<Canvas::XGfxSurface> m_pMoonTexture;
     HlslTypes::HlslLight m_Lights[MAX_LIGHTS_PER_REGION] = {};
     uint32_t m_LightCount = 0;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};
-    D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentDSV = {};
-    D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[5] = {};
+
+    // Pending shadow-caster work, accumulated by SubmitLight when an
+    // enabled directional light has LightFlags::CastsShadows.  Drained
+    // at EndFrame: each entry generates one ShadowPass GpuTask per
+    // pending displaced draw.  Cleared at EndFrame epilogue alongside
+    // m_LightCount.
+    struct PendingShadowCaster
+    {
+        uint32_t                     LightSlotIndex;  // index into m_Lights[]
+        Canvas::Math::FloatMatrix4x4 ShadowViewProj;
+        UINT                         TilePixelX;
+        UINT                         TilePixelY;
+        UINT                         TilePixelSize;
+    };
+    std::vector<PendingShadowCaster> m_PendingShadowCasters;
+    D3D12_CPU_DESCRIPTOR_HANDLE  m_CurrentRTV = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE  m_CurrentDSV = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE  m_GBufferRTVs[5] = {};
+
+    // Back-buffer viewport + scissor, captured at BeginFrame so passes
+    // that temporarily switch to a different render target (e.g. shadow
+    // atlas tiles) can restore them and keep downstream draws on the
+    // intended visible surface.
+    D3D12_VIEWPORT               m_BackBufferViewport = {};
+    D3D12_RECT                   m_BackBufferScissor  = {};
 
     // Renderable nodes enqueued during scene graph update, dispatched during EndFrame
     std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
@@ -637,6 +704,18 @@ public:
 
     // Create or resize G-buffer render targets to match the given dimensions
     void EnsureGBuffers(UINT width, UINT height);
+
+    // Create the shadow atlas surface + DSV the first time a shadow-casting
+    // light needs one this frame.  Idempotent; safe to call every frame.
+    void EnsureShadowAtlas();
+
+    // Allocate the next shadow tile from the atlas grid for a light that
+    // wants up to `preferredResolution` texels per side.  Tile size is
+    // clamped to the fixed grid cell (atlas side / tiles-per-side).
+    // Returns Valid=false when the atlas is full this frame; caller should
+    // then leave the light's HlslLight.ShadowAtlasRectUV zeroed so the
+    // composite skips its shadow sample.
+    ShadowAtlasTile AllocateShadowTile(UINT preferredResolution);
     
     // Create the default (geometry pass) PSO (lazily, on first use)
     void EnsureDefaultPSO();
@@ -647,6 +726,10 @@ public:
     // Lazily create the displaced-mesh root sig + PSO variants (solid + wireframe).
     void EnsureDisplacedPSO();
     void EnsureDisplacedPSOWireframe();
+
+    // Lazily create the depth-only displaced shadow PSO + root sig used
+    // for rendering shadow-atlas tiles.  Idempotent.
+    void EnsureDisplacedShadowPSO();
 
     ID3D12PipelineState* GetActiveDisplacedPSO()
     {

@@ -989,5 +989,67 @@ namespace CanvasUnitTest
             Assert::IsTrue(std::abs(projRZ[2][2] - projFZ[2][2]) > 1e-5f);
             Assert::IsTrue(std::abs(projRZ[3][2] - projFZ[3][2]) > 1e-5f);
         }
+
+        TEST_METHOD(OrthoReverseZDepthMapping)
+        {
+            // Verify that the reverse-Z ortho helper maps zNear -> 1 and
+            // zFar -> 0 in clip space, matching the engine's reverse-Z
+            // convention used by perspective projections and the
+            // GREATER_EQUAL depth test.  View-space convention is LHS
+            // (X=right, Y=up, Z=forward); row vectors throughout.
+            const float halfW   = 100.0f;
+            const float halfH   = 50.0f;
+            const float zNear   = 1.0f;
+            const float zFar    = 200.0f;
+
+            auto proj = OrthoReverseZ(halfW, halfH, zNear, zFar);
+
+            // Ortho has no perspective divide: row 3 column 3 is the
+            // identity-affine 1, row 2 column 3 must be 0 so w_clip
+            // equals 1 for every input.
+            Assert::IsTrue(std::abs(proj[3][3] - 1.0f) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[2][3] - 0.0f) < FLT_EPSILON);
+
+            // XY scaling: 1/halfWidth, 1/halfHeight.
+            Assert::IsTrue(std::abs(proj[0][0] - (1.0f / halfW)) < FLT_EPSILON);
+            Assert::IsTrue(std::abs(proj[1][1] - (1.0f / halfH)) < FLT_EPSILON);
+
+            // Pump a point at the near plane through the matrix and
+            // verify ndc_z = 1.0.  At z=zNear: clip_z = -zNear/(zFar-zNear)
+            // + zFar/(zFar-zNear) = (zFar - zNear) / (zFar - zNear) = 1.
+            FloatVector4 ptNear(0.0f, 0.0f, zNear, 1.0f);
+            FloatVector4 clipNear = ptNear * proj;
+            Assert::IsTrue(std::abs(clipNear.W - 1.0f) < 1e-5f);
+            Assert::IsTrue(std::abs(clipNear.Z / clipNear.W - 1.0f) < 1e-5f);
+
+            // Same at the far plane: ndc_z = 0.
+            FloatVector4 ptFar(0.0f, 0.0f, zFar, 1.0f);
+            FloatVector4 clipFar = ptFar * proj;
+            Assert::IsTrue(std::abs(clipFar.W - 1.0f) < 1e-5f);
+            Assert::IsTrue(std::abs(clipFar.Z / clipFar.W - 0.0f) < 1e-5f);
+        }
+
+        TEST_METHOD(OrthoReverseZXYExtents)
+        {
+            // Verify points at the +/- box extents map to +/- 1 in NDC.
+            const float halfW = 20.0f;
+            const float halfH = 10.0f;
+            const float zNear = 0.5f;
+            const float zFar  = 100.0f;
+
+            auto proj = OrthoReverseZ(halfW, halfH, zNear, zFar);
+
+            // +halfWidth on x -> +1 in NDC x.
+            FloatVector4 pX(halfW, 0.0f, zNear, 1.0f);
+            FloatVector4 cX = pX * proj;
+            Assert::IsTrue(std::abs(cX.X - 1.0f) < 1e-5f);
+            Assert::IsTrue(std::abs(cX.Y - 0.0f) < 1e-5f);
+
+            // -halfHeight on y -> -1 in NDC y.
+            FloatVector4 pY(0.0f, -halfH, zFar, 1.0f);
+            FloatVector4 cY = pY * proj;
+            Assert::IsTrue(std::abs(cY.X - 0.0f) < 1e-5f);
+            Assert::IsTrue(std::abs(cY.Y - (-1.0f)) < 1e-5f);
+        }
 	};
 }

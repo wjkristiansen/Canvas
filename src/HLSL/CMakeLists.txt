@@ -116,6 +116,12 @@ add_hlsl_shader("HSDisplaced.hlsl" "hs_6_0" "HSDisplaced")
 add_hlsl_shader("DSDisplaced.hlsl" "ds_6_0" "DSDisplaced")
 add_hlsl_shader("PSDisplaced.hlsl" "ps_6_0" "PSDisplaced")
 
+# Depth-only displaced shadow DS. Engine pairs this with the existing
+# VSDisplaced + HSDisplaced bytecode under a separate root signature
+# (no PS, b2 = light shadow ViewProj) to render the displaced terrain
+# into one shadow-atlas tile per shadow-casting light.
+add_hlsl_shader("DSDisplacedShadow.hlsl" "ds_6_0" "DSDisplacedShadow")
+
 # Create the HLSL target
 add_custom_target(HLSL ALL
     DEPENDS ${SHADER_OUTPUTS}

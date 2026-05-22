@@ -37,12 +37,13 @@ class CLight :
     float m_SpotOuterAngle;  // In radians
 
     // Shadow parameters (consumed by the backend when LightFlags::CastsShadows is set).
+    // Frustum extent for directional lights is intentionally absent --
+    // that's a view / scene property, not a light property; the backend
+    // uses a fixed default until proper camera-driven shadow regions land.
     UINT  m_ShadowResolution        = 0;       // 0 = backend default (2048)
     float m_ShadowConstantBias      = 1e-4f;
     float m_ShadowSlopeScaleBias    = 2.0f;
     float m_ShadowNormalOffset      = 0.5f;    // In shadow-map texels
-    float m_DirShadowHalfWidth      = 256.0f;  // Meters; directional only
-    float m_DirShadowDepthRange     = 1024.0f; // Meters; directional only
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -139,17 +140,6 @@ public:
         if (pNormalOffset)   *pNormalOffset   = m_ShadowNormalOffset;
     }
 
-    GEMMETHOD_(void, SetDirectionalShadowExtent)(float halfWidthMeters, float depthRangeMeters) final
-    {
-        m_DirShadowHalfWidth  = halfWidthMeters;
-        m_DirShadowDepthRange = depthRangeMeters;
-    }
-
-    GEMMETHOD_(void, GetDirectionalShadowExtent)(float* pHalfWidthMeters, float* pDepthRangeMeters) const final
-    {
-        if (pHalfWidthMeters)  *pHalfWidthMeters  = m_DirShadowHalfWidth;
-        if (pDepthRangeMeters) *pDepthRangeMeters = m_DirShadowDepthRange;
-    }
 };
 
 }

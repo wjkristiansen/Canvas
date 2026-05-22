@@ -594,6 +594,76 @@ static std::filesystem::path GetShaderDirectory()
 //================================================================================================
 
 //------------------------------------------------------------------------------------------------
+void CRenderQueue12::EnsureShadowAtlas()
+{
+    if (m_pShadowAtlas)
+        return;
+
+    const UINT atlasSize = kShadowAtlasDefaultSize;
+
+    // Typed D32_Float with both DepthStencil and ShaderResource flags --
+    // D3D12 allows binding the same resource as a DSV during the shadow
+    // pass and as an SRV during the composite.  The SRV format will be
+    // R32_Float (the typed depth format itself is not a valid SRV
+    // format) and is created on demand at composite time.
+    auto flags = static_cast<Canvas::GfxSurfaceFlags>(
+        Canvas::SurfaceFlag_DepthStencil | Canvas::SurfaceFlag_ShaderResource);
+    Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+        Canvas::GfxFormat::D32_Float, atlasSize, atlasSize, flags);
+
+    Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
+    Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
+
+    Gem::TGemPtr<CSurface12> pShadowSurface;
+    pSurface->QueryInterface(&pShadowSurface);
+
+    m_pShadowAtlas             = pShadowSurface;
+    m_ShadowAtlasSize          = atlasSize;
+    m_ShadowAtlasTilesPerSide  = kShadowAtlasTilesPerSide;
+
+    // Note: m_ShadowAtlasDSV is allocated PER FRAME (in EndFrame's shadow
+    // pass block), not here.  The DSV descriptor heap is round-robin and
+    // would otherwise eventually wrap and overwrite our cached slot,
+    // silently rebinding m_ShadowAtlasDSV to whatever resource came next.
+}
+
+//------------------------------------------------------------------------------------------------
+CRenderQueue12::ShadowAtlasTile CRenderQueue12::AllocateShadowTile(UINT preferredResolution)
+{
+    ShadowAtlasTile tile = {};
+    tile.Valid = false;
+
+    if (!m_pShadowAtlas || m_ShadowAtlasTilesPerSide == 0)
+        return tile;
+    if (m_NextShadowTileIndex >= kShadowAtlasMaxTiles)
+        return tile;
+
+    const UINT cellSize = m_ShadowAtlasSize / m_ShadowAtlasTilesPerSide;
+    // v1 ignores per-light requested resolution beyond the fixed cell:
+    // each tile is exactly cellSize px on a side.  Smaller requests still
+    // get the cell so we don't waste atlas memory tracking sub-tile slack.
+    (void)preferredResolution;
+
+    const UINT idx  = m_NextShadowTileIndex++;
+    const UINT row  = idx / m_ShadowAtlasTilesPerSide;
+    const UINT col  = idx % m_ShadowAtlasTilesPerSide;
+    const UINT pixX = col * cellSize;
+    const UINT pixY = row * cellSize;
+
+    const float invAtlas = 1.0f / static_cast<float>(m_ShadowAtlasSize);
+    tile.Valid       = true;
+    tile.PixelX      = pixX;
+    tile.PixelY      = pixY;
+    tile.PixelSize   = cellSize;
+    tile.AtlasRectUV = Canvas::Math::FloatVector4(
+        static_cast<float>(pixX)     * invAtlas,
+        static_cast<float>(pixY)     * invAtlas,
+        static_cast<float>(cellSize) * invAtlas,
+        static_cast<float>(cellSize) * invAtlas);
+    return tile;
+}
+
+//------------------------------------------------------------------------------------------------
 void CRenderQueue12::EnsureDepthBuffer(UINT width, UINT height)
 {
     if (m_pDepthBuffer && m_DepthBufferWidth == width && m_DepthBufferHeight == height)
@@ -1046,6 +1116,129 @@ void CRenderQueue12::EnsureDisplacedPSOWireframe()
 }
 
 //------------------------------------------------------------------------------------------------
+// Depth-only displaced shadow PSO.  Shares the displaced VS + HS bytecode
+// with the geometry-pass PSO so shadow tessellation matches receiver
+// tessellation; pairs them with DSDisplacedShadow (writes only
+// SV_Position with the per-light ShadowViewProj at b2) and no PS, so the
+// rasterizer writes only depth into the bound shadow-atlas tile.
+//
+// Root signature:
+//   b0: HlslPerFrameConstants (HS reads CameraWorldPos for LOD)
+//   b1: HlslDisplacedConstants (per-tile world transform + heightmap params)
+//   b2: HlslShadowConstants    (world->shadow-clip matrix for this light)
+//   t0: heightmap SRV          (HS coarse-mip LOD + DS height lift)
+//   s0: static linear-clamp sampler
+//
+// Rasterizer state bakes conservative caster-side depth bias defaults
+// (DepthBias + SlopeScaledDepthBias).  Per-light caster bias from
+// XLight::SetShadowDepthBias is not honoured in v1 -- only the
+// receiver-side constant + normal-offset terms (consumed by the
+// composite via HlslLight) vary per light.  Per-light caster bias
+// would require either dynamic RSSetDepthBias (D3D12 12_2+) or one
+// PSO variant per light; both are deferred.
+void CRenderQueue12::EnsureDisplacedShadowPSO()
+{
+    if (m_pDisplacedShadowPSO)
+        return;
+
+    ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+
+    // ---------- Root signature ----------
+    if (!m_pDisplacedShadowRootSig)
+    {
+        CD3DX12_DESCRIPTOR_RANGE1 heightRange;
+        heightRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
+            D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t0
+
+        std::vector<CD3DX12_ROOT_PARAMETER1> rootParams(4);
+        rootParams[0].InitAsConstantBufferView(0, 0,
+            D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
+            D3D12_SHADER_VISIBILITY_ALL);          // b0 PerFrame (HS LOD)
+        rootParams[1].InitAsConstantBufferView(1, 0,
+            D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
+            D3D12_SHADER_VISIBILITY_ALL);          // b1 PerTile
+        rootParams[2].InitAsConstantBufferView(2, 0,
+            D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
+            D3D12_SHADER_VISIBILITY_DOMAIN);       // b2 Shadow ViewProj
+        rootParams[3].InitAsDescriptorTable(1, &heightRange,
+            D3D12_SHADER_VISIBILITY_ALL);          // t0 heightmap
+
+        CD3DX12_STATIC_SAMPLER_DESC sampler;
+        sampler.Init(
+            0,
+            D3D12_FILTER_MIN_MAG_MIP_LINEAR,
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+            D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rsDesc(
+            static_cast<UINT>(rootParams.size()), rootParams.data(),
+            1, &sampler,
+            D3D12_ROOT_SIGNATURE_FLAG_NONE);
+
+        CComPtr<ID3DBlob> pRSBlob;
+        ThrowFailedHResult(D3D12SerializeVersionedRootSignature(&rsDesc, &pRSBlob, nullptr));
+        ThrowFailedHResult(pD3DDevice->CreateRootSignature(1,
+            pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(),
+            IID_PPV_ARGS(&m_pDisplacedShadowRootSig)));
+        SetD3D12DebugName(m_pDisplacedShadowRootSig, GetName(), "DisplacedShadowRootSig");
+    }
+
+    auto shaderDir = GetShaderDirectory();
+    auto vs = LoadShaderBytecode(shaderDir / "VSDisplaced.cso");
+    auto hs = LoadShaderBytecode(shaderDir / "HSDisplaced.cso");
+    auto ds = LoadShaderBytecode(shaderDir / "DSDisplacedShadow.cso");
+    if (vs.empty() || hs.empty() || ds.empty())
+    {
+        Canvas::LogError(m_pDevice->GetLogger(),
+            "Failed to load displaced shadow shader bytecode (VS:%s HS:%s DS:%s)",
+            vs.empty() ? "MISSING" : "OK", hs.empty() ? "MISSING" : "OK",
+            ds.empty() ? "MISSING" : "OK");
+        Gem::ThrowGemError(Gem::Result::Fail);
+    }
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = m_pDisplacedShadowRootSig;
+    psoDesc.VS = { vs.data(), vs.size() };
+    psoDesc.HS = { hs.data(), hs.size() };
+    psoDesc.DS = { ds.data(), ds.size() };
+    psoDesc.PS = { nullptr, 0 };  // depth-only
+    psoDesc.InputLayout = { nullptr, 0 };
+
+    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.RasterizerState.FrontCounterClockwise = TRUE;  // matches geometry-pass winding
+    // Caster-side bias for reverse-Z self-shadowing:
+    //   NewDepth = OldDepth + DepthBias*r + SlopeScaledDepthBias*MaxDepthSlope
+    // In reverse-Z (near=1, far=0) with a GREATER_EQUAL compare, the caster
+    // must be pushed AWAY from the light (toward 0) so receivers behind it
+    // (lower z) still satisfy receiver_z >= caster_z and avoid spurious
+    // self-shadowing.  Both DepthBias and SlopeScaledDepthBias therefore
+    // take NEGATIVE values here, the opposite of the forward-Z convention.
+    psoDesc.RasterizerState.DepthBias            = -100;
+    psoDesc.RasterizerState.DepthBiasClamp       = 0.0f;
+    psoDesc.RasterizerState.SlopeScaledDepthBias = -2.0f;
+
+    psoDesc.BlendState        = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;  // reverse-Z
+    psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+
+    psoDesc.SampleMask = UINT_MAX;
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+    psoDesc.NumRenderTargets = 0;
+    psoDesc.SampleDesc.Count   = 1;
+    psoDesc.SampleDesc.Quality = 0;
+
+    ThrowFailedHResult(pD3DDevice->CreateGraphicsPipelineState(
+        &psoDesc, IID_PPV_ARGS(&m_pDisplacedShadowPSO)));
+    SetD3D12DebugName(m_pDisplacedShadowPSO, GetName(), "DisplacedShadowPSO");
+
+    Canvas::LogInfo(m_pDevice->GetLogger(),
+        "Displaced-mesh shadow PSO created (VS+HS+DS, depth-only, reverse-Z)");
+}
+
+//------------------------------------------------------------------------------------------------
 void CRenderQueue12::EnsureTextPSO(DXGI_FORMAT rtvFormat)
 {
     if (m_pTextPSO && m_TextPSOFormat == rtvFormat)
@@ -1245,18 +1438,21 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
 
     // Composite root signature:
     //   Slot 0: Root CBV (b0) -- per-frame constants (camera, lights, sky params)
-    //   Slot 1: Descriptor table with SRV[7] at t0-t6:
+    //   Slot 1: Descriptor table with SRV[8] at t0-t7:
     //             t0-t2 = G-buffer (normals, diffuse, world pos) [Texture2D]
     //             t3-t4 = optional skybox cubes A / B            [TextureCube]
     //             t5    = optional stars cube                    [TextureCube]
     //             t6    = optional moon billboard texture        [Texture2D]
+    //             t7    = optional shadow atlas (R32_Float)      [Texture2D]
     //           Unbound slots hold null SRVs and the shader's
-    //           SkyHasCubemap / HasStars / HasMoon flags select active
-    //           branches.  The sun has no texture (procedural disc).
+    //           SkyHasCubemap / HasStars / HasMoon / per-light ShadowFlags
+    //           flags select active branches.  The sun has no texture
+    //           (procedural disc).
     //   Static sampler s0: point/clamp  (exact G-buffer texel fetch)
     //   Static sampler s1: linear/wrap  (cube sampling for skybox + stars)
     //   Static sampler s2: linear/clamp (moon billboard quad)
-    CD3DX12_STATIC_SAMPLER_DESC staticSamplers[3] = {};
+    //   Static sampler s3: PCF comparison sampler (shadow atlas)
+    CD3DX12_STATIC_SAMPLER_DESC staticSamplers[4] = {};
     staticSamplers[0].Init(
         0,                                      // shader register s0
         D3D12_FILTER_MIN_MAG_MIP_POINT,
@@ -1275,9 +1471,24 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
         D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
         D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
         D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+    // s3: hardware PCF (SampleCmpLevelZero).  Reverse-Z atlas (near=1,
+    // far=0) means the receiver is "in shadow" when its biased depth is
+    // LESS than the stored caster depth, hence GREATER_EQUAL is the
+    // visibility comparison.  Border-white addressing means samples
+    // outside any atlas tile return "fully lit" rather than fully
+    // shadowed -- safer when receivers stray past the shadow frustum.
+    staticSamplers[3].Init(
+        3,                                      // shader register s3
+        D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+        D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+        D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+        D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+        0.0f, 16u,
+        D3D12_COMPARISON_FUNC_GREATER_EQUAL,
+        D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE);
 
     CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 7, 0, 0,  // SRV[7] at t0-t6, space0
+    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 8, 0, 0,  // SRV[8] at t0-t7, space0
                   D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 
     std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(2);
@@ -1288,7 +1499,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC compositeRootSigDesc(
         static_cast<UINT>(compositeRootParams.size()),
         compositeRootParams.data(),
-        3, staticSamplers,
+        4, staticSamplers,
         D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
     CComPtr<ID3DBlob> pRSBlob;
@@ -1508,6 +1719,12 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
         scissor.top = 0;
         scissor.right = static_cast<LONG>(width);
         scissor.bottom = static_cast<LONG>(height);
+
+        // Cache so passes that temporarily switch viewport/scissor (e.g.
+        // shadow atlas tile draws) can restore the back-buffer state for
+        // downstream geometry + composite tasks.
+        m_BackBufferViewport = viewport;
+        m_BackBufferScissor  = scissor;
 
         // Scene task: transition G-buffers + depth, then set up geometry pass state
         auto& task = CreateGpuTask("BeginFrame_GBufferPass");
@@ -2330,6 +2547,87 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
             range, kDefaultLightCullThreshold);
     }
 
+    // ---- Shadow casting ----
+    // Directional-only in v1.  Lights without CastsShadows, or that fail
+    // to fit in the atlas this frame, are left with ShadowAtlasRectUV
+    // zeroed so the composite skips the sample.  The atlas + DSV are
+    // ensured here lazily so a scene with no shadow casters never pays
+    // the cost.
+    if ((pLight->GetFlags() & Canvas::LightFlags::CastsShadows) &&
+        pLight->GetType() == Canvas::LightType::Directional &&
+        pNode != nullptr &&
+        m_pActiveCamera != nullptr)
+    {
+        EnsureShadowAtlas();
+        UINT resolution = pLight->GetShadowResolution();
+        if (resolution == 0u)
+            resolution = kShadowAtlasDefaultSize / kShadowAtlasTilesPerSide;
+
+        ShadowAtlasTile tile = AllocateShadowTile(resolution);
+        if (tile.Valid)
+        {
+            // Focus the shadow frustum on the active camera so receivers
+            // near the viewer are inside the high-resolution slab.
+            Canvas::Math::FloatVector4 focusPoint(0.0f, 0.0f, 0.0f, 1.0f);
+            if (auto *pCamNode = m_pActiveCamera->GetAttachedNode())
+            {
+                auto cw = pCamNode->GetGlobalMatrix();
+                focusPoint = Canvas::Math::FloatVector4(cw[3][0], cw[3][1], cw[3][2], 1.0f);
+            }
+
+            // TODO: replace these fixed defaults once the camera / scene
+            // owns the shadow region (camera-frustum-clipped-to-distance
+            // for the lateral extent, plus a scene look-back along the
+            // light direction for off-screen casters).  Until then, size
+            // the ortho box large enough to cover the current test scenes
+            // (terrain tile ~1 km, peaks up to ~256 m) so directional
+            // shadows aren't clipped at low sun angles.  Atlas tile is
+            // 2048 texels -> ~1 m / texel at this halfWidth.
+            constexpr float kInterimShadowHalfWidth  = 1024.0f;
+            constexpr float kInterimShadowDepthRange = 2048.0f;
+            const float halfWidth  = kInterimShadowHalfWidth;
+            const float depthRange = kInterimShadowDepthRange;
+
+            // World-up = Canvas +Z.  BuildDirectionalShadowMatrix
+            // Gram-Schmidts a stable basis even when lightDir is nearly
+            // parallel to world-up.
+            const Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
+            Canvas::Math::FloatVector4 lightDir(
+                gpu.DirectionOrPosition.x,
+                gpu.DirectionOrPosition.y,
+                gpu.DirectionOrPosition.z,
+                0.0f);
+
+            Canvas::Math::FloatMatrix4x4 shadowViewProj = BuildDirectionalShadowMatrix(
+                lightDir, worldUp, focusPoint, halfWidth, depthRange, tile.PixelSize);
+
+            // Bias knobs.  Caster-side slope+constant biases are baked into
+            // the shadow PSO for v1; the per-light constant + normal-offset
+            // ride through HlslLight and apply at composite sample time.
+            float constantBias = 0.0f, slopeScaleBias = 0.0f, normalOffset = 0.0f;
+            pLight->GetShadowDepthBias(&constantBias, &slopeScaleBias, &normalOffset);
+
+            gpu.ShadowFlags                = SHADOW_FLAG_HAS_SHADOW;
+            gpu.ShadowDepthBias            = constantBias;
+            gpu.ShadowNormalOffsetTexels   = normalOffset;
+            gpu.ShadowAtlasRectUV          = {
+                tile.AtlasRectUV[0], tile.AtlasRectUV[1],
+                tile.AtlasRectUV[2], tile.AtlasRectUV[3] };
+            // Row-major copy into HLSL float4x4: HlslLight.ShadowViewProj
+            // is declared ROW_MAJOR, so the CPU's row[i][j] maps element
+            // for element to the GPU layout.
+            memcpy(&gpu.ShadowViewProj, &shadowViewProj, sizeof(gpu.ShadowViewProj));
+
+            PendingShadowCaster caster = {};
+            caster.LightSlotIndex = m_LightCount - 1;  // we incremented above
+            caster.ShadowViewProj = shadowViewProj;
+            caster.TilePixelX     = tile.PixelX;
+            caster.TilePixelY     = tile.PixelY;
+            caster.TilePixelSize  = tile.PixelSize;
+            m_PendingShadowCasters.push_back(caster);
+        }
+    }
+
     return Gem::Result::Success;
 }
 
@@ -2411,6 +2709,15 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             frameConstants.HasMoon = m_pMoonTexture ? 1u : 0u;
         }
 
+        // Add shadow-atlas global constants — composite needs the atlas
+        // size and texel step to do PCF.  These are 0 / 0 when no shadow
+        // atlas was allocated this frame, which the composite treats as
+        // "no shadows" and short-circuits the sample.
+        frameConstants.ShadowAtlasSize    = m_pShadowAtlas ? m_ShadowAtlasSize : 0u;
+        frameConstants.ShadowPcfTexelStep = (m_ShadowAtlasSize > 0u)
+            ? (1.0f / static_cast<float>(m_ShadowAtlasSize))
+            : 0.0f;
+
         if (m_LightCount > 0)
             memcpy(frameConstants.Lights, m_Lights, m_LightCount * sizeof(HlslTypes::HlslLight));
 
@@ -2461,6 +2768,165 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             }
         }
         m_RenderableQueue.clear();
+
+        //==========================================================================================
+        // Shadow pass: depth-only displaced-mesh draws into per-light atlas
+        // tiles.  One CGpuTask per (shadow-casting light x ready displaced
+        // tile).  The first task targeting a given tile clears it; the
+        // remaining tasks for that tile just accumulate depth.  Declared
+        // resource usage (DEPTH_STENCIL_WRITE on the atlas + SHADER_RESOURCE
+        // on each heightmap) drives automatic barriers; the composite's
+        // SHADER_RESOURCE declaration on the atlas downstream finishes
+        // the DSV-write -> SRV-read transition.
+        //==========================================================================================
+        if (!m_PendingShadowCasters.empty() && !m_DisplacedDraws.empty())
+        {
+            EnsureDisplacedShadowPSO();
+            // Re-create the atlas DSV every frame.  The DSV descriptor heap
+            // is round-robin (m_NextDSVSlot mod 64), and a cached handle
+            // from a long-lived resource would eventually be overwritten by
+            // a new DSV pointing to a different resource (m_pDepthBuffer in
+            // particular) -- after that the shadow tasks would write the
+            // scene depth buffer, breaking the geometry pass's depth test.
+            m_ShadowAtlasDSV = CreateDepthStencilView(m_pShadowAtlas);
+
+            ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
+            const UINT incSize = m_CbvSrvUavIncrement;
+
+            const uint64_t shadowCbAlignedSize =
+                (sizeof(Canvas::Math::FloatMatrix4x4) + cbAlignment - 1) & ~(cbAlignment - 1);
+            const uint64_t displacedCbAlignedSize =
+                (sizeof(HlslTypes::HlslDisplacedConstants) + cbAlignment - 1) & ~(cbAlignment - 1);
+
+            auto isReady = [this](CSurface12* pSurf) -> bool
+            {
+                if (!pSurf || !pSurf->m_UploadFixupToken.IsValid())
+                    return true;
+                ID3D12Fence* pFence = m_pDevice->GetResourceManager().GetTimelineFence(
+                    pSurf->m_UploadFixupToken.TimelineId);
+                return pFence && pFence->GetCompletedValue() >= pSurf->m_UploadFixupToken.Value;
+            };
+
+            for (const auto& caster : m_PendingShadowCasters)
+            {
+                // Upload the caster's world->shadow-clip matrix once and
+                // share its CBV across every tile it draws into this atlas tile.
+                HostWriteAllocation shadowHw;
+                Gem::ThrowGemError(m_UploadRing.AllocateFromRing(shadowCbAlignedSize, shadowHw));
+                memcpy(shadowHw.pMapped, &caster.ShadowViewProj, sizeof(caster.ShadowViewProj));
+                const D3D12_GPU_VIRTUAL_ADDRESS shadowCbvAddr = shadowHw.GpuAddress;
+
+                const D3D12_VIEWPORT tileViewport = {
+                    static_cast<FLOAT>(caster.TilePixelX),
+                    static_cast<FLOAT>(caster.TilePixelY),
+                    static_cast<FLOAT>(caster.TilePixelSize),
+                    static_cast<FLOAT>(caster.TilePixelSize),
+                    0.0f, 1.0f };
+                const D3D12_RECT tileScissor = {
+                    static_cast<LONG>(caster.TilePixelX),
+                    static_cast<LONG>(caster.TilePixelY),
+                    static_cast<LONG>(caster.TilePixelX + caster.TilePixelSize),
+                    static_cast<LONG>(caster.TilePixelY + caster.TilePixelSize) };
+
+                bool firstDrawInTile = true;
+
+                for (const auto& sub : m_DisplacedDraws)
+                {
+                    auto* pHeightSurf = static_cast<CSurface12*>(sub.pHeightmap);
+                    if (!isReady(pHeightSurf))
+                        continue;
+
+                    // Per-tile world transform (shadow DS reuses the existing
+                    // HlslDisplacedConstants for tile origin / scale / height).
+                    HlslTypes::HlslDisplacedConstants tileCb = {};
+                    memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
+                    tileCb.TileOriginAndSize = { sub.OriginX, sub.OriginY, sub.WorldSizeX, sub.WorldSizeY };
+                    tileCb.PatchGridDim      = sub.PatchGridDim;
+                    tileCb.HeightScale       = sub.HeightScale;
+                    tileCb.HeightBias        = sub.HeightBias;
+
+                    HostWriteAllocation tileHw;
+                    Gem::ThrowGemError(m_UploadRing.AllocateFromRing(displacedCbAlignedSize, tileHw));
+                    memcpy(tileHw.pMapped, &tileCb, sizeof(tileCb));
+                    const D3D12_GPU_VIRTUAL_ADDRESS perTileCbvAddr = tileHw.GpuAddress;
+
+                    // Heightmap SRV: one slot per shadow draw.  The shadow
+                    // root sig declares t0 DATA_STATIC just like the geometry
+                    // pass; the same readiness gate above keeps the static
+                    // promise honest.
+                    if (m_NextSRVSlot + 1u > NumShaderResourceDescriptors)
+                        m_NextSRVSlot = 0u;
+                    const UINT srvSlot = m_NextSRVSlot++;
+                    {
+                        ID3D12Resource* pRes = pHeightSurf->GetD3DResource();
+                        D3D12_RESOURCE_DESC desc = pRes->GetDesc();
+                        D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
+                        srv.Format                        = desc.Format;
+                        srv.ViewDimension                 = D3D12_SRV_DIMENSION_TEXTURE2D;
+                        srv.Shader4ComponentMapping       = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                        srv.Texture2D.MostDetailedMip     = 0;
+                        srv.Texture2D.MipLevels           = desc.MipLevels;
+                        srv.Texture2D.PlaneSlice          = 0;
+                        srv.Texture2D.ResourceMinLODClamp = 0.0f;
+                        CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(
+                            m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                            srvSlot, incSize);
+                        pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
+                    }
+                    CD3DX12_GPU_DESCRIPTOR_HANDLE heightGpu(
+                        m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+                        srvSlot, incSize);
+
+                    const uint32_t cpVertexCount = sub.PatchGridDim * sub.PatchGridDim * 4u;
+                    const bool doClear = firstDrawInTile;
+                    firstDrawInTile = false;
+
+                    auto& shadowTask = CreateGpuTask("ShadowPass_Displaced");
+                    DeclareGpuTextureUsage(shadowTask, pHeightSurf,
+                        D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_VERTEX_SHADING,   // HS + DS sample
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    DeclareGpuTextureUsage(shadowTask, m_pShadowAtlas.Get(),
+                        D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
+                        D3D12_BARRIER_SYNC_DEPTH_STENCIL,
+                        D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
+
+                    shadowTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr,
+                                             shadowCbvAddr, heightGpu, cpVertexCount,
+                                             tileViewport, tileScissor, doClear]
+                                            (ID3D12GraphicsCommandList* pCL)
+                    {
+                        pCL->SetPipelineState(m_pDisplacedShadowPSO);
+                        pCL->SetGraphicsRootSignature(m_pDisplacedShadowRootSig);
+                        pCL->OMSetRenderTargets(0, nullptr, FALSE, &m_ShadowAtlasDSV);
+                        pCL->RSSetViewports(1, &tileViewport);
+                        pCL->RSSetScissorRects(1, &tileScissor);
+                        if (doClear)
+                        {
+                            // Reverse-Z far plane = 0.0; scissor-restricted
+                            // clear so we only touch this tile.
+                            pCL->ClearDepthStencilView(m_ShadowAtlasDSV,
+                                D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 1, &tileScissor);
+                        }
+                        pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
+                        pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
+                        pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
+                        pCL->SetGraphicsRootConstantBufferView(1, perTileCbvAddr);
+                        pCL->SetGraphicsRootConstantBufferView(2, shadowCbvAddr);
+                        pCL->SetGraphicsRootDescriptorTable(3, heightGpu);
+                        pCL->DrawInstanced(cpVertexCount, 1, 0, 0);
+
+                        // Restore the back-buffer viewport + scissor so
+                        // downstream geometry + composite tasks render into
+                        // the intended visible region; without this they
+                        // inherit the atlas tile rect.
+                        pCL->RSSetViewports(1, &m_BackBufferViewport);
+                        pCL->RSSetScissorRects(1, &m_BackBufferScissor);
+                    };
+                    m_GpuTaskGraph.InsertTask(shadowTask);
+                }
+            }
+        }
 
         //==========================================================================================
         // Displaced-mesh draws: GPU-tessellated patch lists writing into the
@@ -2631,7 +3097,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
             const UINT incSize = m_CbvSrvUavIncrement;
 
-            constexpr UINT kCompositeSRVCount = 7;
+            constexpr UINT kCompositeSRVCount = 8;
             if (m_NextSRVSlot + kCompositeSRVCount > NumShaderResourceDescriptors)
                 m_NextSRVSlot = 0;
             UINT baseSlot = m_NextSRVSlot;
@@ -2711,6 +3177,28 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
             }
 
+            // Shadow atlas SRV at t7.  Created as R32_Float so the
+            // depth surface can be sampled via SamplerComparisonState
+            // (D32_Float is not a valid SRV format).  When no atlas
+            // exists this frame (no shadow casters), a null SRV with
+            // the same format keeps the descriptor table well defined;
+            // per-light ShadowFlags == 0 in the shader skips the sample.
+            {
+                D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
+                srv.Format                          = DXGI_FORMAT_R32_FLOAT;
+                srv.ViewDimension                   = D3D12_SRV_DIMENSION_TEXTURE2D;
+                srv.Shader4ComponentMapping         = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                srv.Texture2D.MostDetailedMip       = 0;
+                srv.Texture2D.MipLevels             = 1;
+                srv.Texture2D.PlaneSlice            = 0;
+                srv.Texture2D.ResourceMinLODClamp   = 0.0f;
+                ID3D12Resource* pRes = m_pShadowAtlas
+                    ? m_pShadowAtlas->GetD3DResource()
+                    : nullptr;
+                CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(baseCpuHandle, 7, incSize);
+                pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
+            }
+
             // Composite task: transition G-buffers + skybox cubes to SR, back buffer to RT, then draw
             auto& compositeTask = CreateGpuTask("CompositePass");
             DeclareGpuTextureUsage(compositeTask, m_pGBufferNormals,
@@ -2749,6 +3237,17 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             if (m_pMoonTexture)
             {
                 DeclareGpuTextureUsage(compositeTask, static_cast<CSurface12*>(m_pMoonTexture.Get()),
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+            // Shadow atlas usage: composite samples it via PCF in the
+            // directional-light branch.  The DSV_WRITE -> SHADER_RESOURCE
+            // transition that follows the shadow-pass tasks is emitted
+            // automatically by the GpuTaskGraph from this declaration.
+            if (m_pShadowAtlas)
+            {
+                DeclareGpuTextureUsage(compositeTask, m_pShadowAtlas.Get(),
                     D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2836,6 +3335,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         m_RenderableQueue.clear();
         m_UIRenderableQueue.clear();
         m_DisplacedDraws.clear();
+        m_PendingShadowCasters.clear();
         m_pCurrentSwapChain = nullptr;
         m_pActiveCamera = nullptr;
         return e.Result();
@@ -2844,5 +3344,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     m_pCurrentSwapChain = nullptr;
     m_pActiveCamera = nullptr;
     m_LightCount = 0;
+    m_NextShadowTileIndex = 0;
+    m_PendingShadowCasters.clear();
     return Gem::Result::Success;
 }

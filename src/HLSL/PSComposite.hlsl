@@ -17,13 +17,21 @@ TextureCube SkyCubeA            : register(t3);
 TextureCube SkyCubeB            : register(t4);
 TextureCube StarsCube           : register(t5);
 Texture2D   MoonTexture         : register(t6);
+// Shadow atlas (R32_Float over a D32_Float depth resource).  All
+// shadow-casting lights this frame share this single 2D texture;
+// each light's HlslLight.ShadowAtlasRectUV picks its tile.  Null
+// SRV when no shadow casters exist this frame, in which case every
+// light's ShadowFlags is also 0 and the PCF path is skipped.
+Texture2D   ShadowAtlas         : register(t7);
 
 // s0: point/clamp for exact G-buffer texel fetch.
 // s1: linear/wrap for cubemap sky / stars sampling.
 // s2: linear/clamp for the moon billboard quad.
-SamplerState PointSampler         : register(s0);
-SamplerState LinearWrapSampler    : register(s1);
-SamplerState LinearClampSampler   : register(s2);
+// s3: hardware PCF comparison sampler (reverse-Z, GREATER_EQUAL).
+SamplerState          PointSampler       : register(s0);
+SamplerState          LinearWrapSampler  : register(s1);
+SamplerState          LinearClampSampler : register(s2);
+SamplerComparisonState ShadowCmpSampler  : register(s3);
 
 #include "HlslTypes.h"
 
@@ -45,6 +53,72 @@ float ComputeAttenuation(float4 attenuationAndRange, float dist, float distSq)
                   attenuationAndRange.y * dist +
                   attenuationAndRange.z * distSq;
     return (denom > 1e-6) ? rcp(denom) : 1.0;
+}
+
+//----------------------------------------------------------------------------
+// Directional shadow lookup.  Returns a [0,1] visibility multiplier for
+// receiver world-position P, normal N, against light `light`.  Inputs
+// expect light.ShadowFlags bit 0 set (caller short-circuits otherwise)
+// and light.ShadowAtlasRectUV.zw > 0 (the per-light atlas tile size in
+// UV).  Implements the three layered self-shadowing fixes:
+//   1. Caster-side rasterizer bias (baked into the shadow PSO).
+//   2. Normal-offset push: shift P along N by ShadowNormalOffsetTexels
+//      in world-space texel units before projecting; combats grazing-
+//      angle acne that pure depth bias misses.
+//   3. Receiver-side constant depth bias added to the projected z.
+// Sampling is 2x2 hardware PCF via SamplerComparisonState (reverse-Z,
+// GREATER_EQUAL); border-white addressing means receivers outside the
+// tile fall back to "fully lit".
+//----------------------------------------------------------------------------
+float SampleDirectionalShadow(HlslLight light, float3 P, float3 N)
+{
+    if ((light.ShadowFlags & SHADOW_FLAG_HAS_SHADOW) == 0u)
+        return 1.0;
+    if (light.ShadowAtlasRectUV.z <= 0.0)
+        return 1.0;
+    if (PerFrame.ShadowAtlasSize == 0u)
+        return 1.0;
+
+    // Normal-offset push.  ShadowAtlasRectUV.z is the tile's UV width;
+    // one tile texel in world-space meters is roughly
+    //   tileWorldWidth / tilePixelWidth
+    // and the tile world-width is implicit in light.ShadowViewProj.
+    // For the offset to scale with map quality we measure it in
+    // atlas texels and convert through ShadowPcfTexelStep (1 / atlas).
+    float worldTexel = PerFrame.ShadowPcfTexelStep / light.ShadowAtlasRectUV.z;
+    float3 Pbiased  = P + N * (light.ShadowNormalOffsetTexels * worldTexel);
+
+    float4 clip = mul(float4(Pbiased, 1.0), light.ShadowViewProj);
+    if (clip.w <= 0.0)
+        return 1.0;
+    float3 ndc = clip.xyz / clip.w;
+
+    // NDC xy [-1, 1] -> shadow-clip UV [0, 1] (D3D texture-space Y flip).
+    // Then remap to atlas UV via the light's tile rect.
+    float2 tileUv = float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    if (any(tileUv < 0.0) || any(tileUv > 1.0))
+        return 1.0;
+    float2 atlasUv =
+        light.ShadowAtlasRectUV.xy + tileUv * light.ShadowAtlasRectUV.zw;
+
+    // Receiver-side constant bias: reverse-Z means biasing the
+    // receiver towards "more lit" pushes its depth UP (closer to 1).
+    float receiverZ = saturate(ndc.z + light.ShadowDepthBias);
+
+    // 2x2 hardware PCF.  GREATER_EQUAL compare means SampleCmp returns
+    // 1.0 when receiverZ >= storedZ (lit) and 0.0 otherwise.
+    float2 atlasTexel = float2(PerFrame.ShadowPcfTexelStep,
+                               PerFrame.ShadowPcfTexelStep);
+    float v = 0.0;
+    v += ShadowAtlas.SampleCmpLevelZero(ShadowCmpSampler,
+            atlasUv + float2(-0.5, -0.5) * atlasTexel, receiverZ);
+    v += ShadowAtlas.SampleCmpLevelZero(ShadowCmpSampler,
+            atlasUv + float2( 0.5, -0.5) * atlasTexel, receiverZ);
+    v += ShadowAtlas.SampleCmpLevelZero(ShadowCmpSampler,
+            atlasUv + float2(-0.5,  0.5) * atlasTexel, receiverZ);
+    v += ShadowAtlas.SampleCmpLevelZero(ShadowCmpSampler,
+            atlasUv + float2( 0.5,  0.5) * atlasTexel, receiverZ);
+    return v * 0.25;
 }
 
 //----------------------------------------------------------------------------
@@ -234,7 +308,8 @@ float4 PSComposite(FSInput input) : SV_Target0
             // Lambert needs the vector from surface toward the light source.
             float3 L = normalize(-light.DirectionOrPosition.xyz);
             float NdotL = saturate(dot(N, L));
-            totalLight += light.Color.rgb * NdotL;
+            float shadow = SampleDirectionalShadow(light, P, N);
+            totalLight += light.Color.rgb * (NdotL * shadow);
         }
         else if (light.Type == LIGHT_POINT)
         {

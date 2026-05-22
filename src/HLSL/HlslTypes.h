@@ -38,24 +38,29 @@ struct ALIGN16 HlslLight
     float4 Color;
     float4 DirectionAndSpot;
     float4 AttenuationAndRange;
-    uint   Type;
 
-    // Shadow parameters (zero / identity when this light does not cast shadows).
-    //   ShadowFlags bit 0 = HasShadow (atlas + view matrix are valid).
-    //   ShadowAtlasRectUV.xy = atlas-UV origin of this light's tile,
-    //                    .zw = atlas-UV size of this light's tile.
-    //                    (0,0,0,0) when the light has no allocated tile.
-    //   ShadowDepthBias is a constant value added to the receiver's
-    //                   projected NDC z before the hardware compare.
-    //   ShadowNormalOffsetTexels pushes the sample point along the
-    //                   surface normal at compare time (in shadow-atlas
-    //                   texels of this light's tile).
-    //   ShadowViewProj transforms world-space positions into shadow NDC.
-    //                  Reverse-Z ortho for directional lights.
+    // Layout note: the four scalars below pack into exactly one 16-byte
+    // HLSL CB chunk so that ShadowAtlasRectUV lands on a 16-byte boundary
+    // without HLSL needing to add hidden padding -- which would desync
+    // from the C++ float4's natural 4-byte alignment and corrupt every
+    // field after it.  Do not insert padding here.
+    //   Type                     - LIGHT_* enum value (matches LightType).
+    //   ShadowFlags bit 0        = HasShadow (atlas + view matrix valid).
+    //   ShadowDepthBias          - constant added to receiver NDC z before
+    //                              the hardware compare (reverse-Z).
+    //   ShadowNormalOffsetTexels - push the sample point along the
+    //                              surface normal at compare time, in
+    //                              shadow-atlas texels of this light's tile.
+    uint   Type;
     uint   ShadowFlags;
     float  ShadowDepthBias;
     float  ShadowNormalOffsetTexels;
-    float  _ShadowPad0;
+
+    //   ShadowAtlasRectUV.xy     = atlas-UV origin of this light's tile,
+    //                    .zw     = atlas-UV size of this light's tile.
+    //                              (0,0,0,0) when the light has no allocated tile.
+    //   ShadowViewProj           - world-space row vector -> shadow NDC.
+    //                              Reverse-Z ortho for directional lights.
     float4 ShadowAtlasRectUV;
     ROW_MAJOR float4x4 ShadowViewProj;
 };
@@ -218,6 +223,16 @@ struct ALIGN16 HlslRectConstants
 static_assert(sizeof(HlslTypes::HlslGlyphInstance) == 32, "HlslGlyphInstance must be 32 bytes");
 static_assert(sizeof(HlslTypes::HlslTextConstants) == 32, "HlslTextConstants must be 32 bytes");
 static_assert(sizeof(HlslTypes::HlslRectConstants) == 48, "HlslRectConstants must be 48 bytes");
+// HlslLight layout must match the HLSL CB packing exactly: the four
+// scalars after AttenuationAndRange (Type, ShadowFlags, ShadowDepthBias,
+// ShadowNormalOffsetTexels) fully consume one 16-byte chunk, then
+// ShadowAtlasRectUV at offset 80 and ShadowViewProj at offset 96.
+// 4*16 (vec4s) + 16 (scalar chunk) + 16 (rect) + 64 (matrix) = 160 bytes.
+static_assert(offsetof(HlslTypes::HlslLight, ShadowAtlasRectUV) == 80,
+    "ShadowAtlasRectUV must sit at offset 80 to match HLSL CB packing");
+static_assert(offsetof(HlslTypes::HlslLight, ShadowViewProj) == 96,
+    "ShadowViewProj must sit at offset 96 to match HLSL CB packing");
+static_assert(sizeof(HlslTypes::HlslLight) == 160, "HlslLight must be 160 bytes");
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif

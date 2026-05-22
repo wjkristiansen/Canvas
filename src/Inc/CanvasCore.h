@@ -409,16 +409,14 @@ XLight : public XSceneGraphElement
     GEMMETHOD_(void, SetShadowDepthBias)(float constantBias, float slopeScaleBias, float normalOffset) = 0;
     GEMMETHOD_(void, GetShadowDepthBias)(float* pConstantBias, float* pSlopeScaleBias, float* pNormalOffset) const = 0;
 
-    // Directional-light shadow frustum (ignored for other light types).
-    //   halfWidthMeters  - half side length of the light-space ortho box
-    //                      covered by the shadow map. The box is centred
-    //                      on the camera and texel-snapped to remove
-    //                      shimmer when the camera moves.
-    //   depthRangeMeters - distance from the light's near to far plane
-    //                      along its forward direction. Geometry outside
-    //                      this slab is not captured.
-    GEMMETHOD_(void, SetDirectionalShadowExtent)(float halfWidthMeters, float depthRangeMeters) = 0;
-    GEMMETHOD_(void, GetDirectionalShadowExtent)(float* pHalfWidthMeters, float* pDepthRangeMeters) const = 0;
+    // Shadow frustum sizing for directional lights is NOT a light-side
+    // concept and so has no API here.  A directional light is infinite;
+    // the "where do we care about shadows" volume is a property of the
+    // view (camera frustum + shadow distance) and / or scene spatial
+    // subdivision.  Until that machinery lands the backend uses a fixed
+    // generous default ortho extent sufficient for current test scenes.
+    // See src/CanvasGfx12/Lib/RenderQueue12.cpp BuildDirectionalShadowMatrix
+    // call sites for the interim constants.
 };
 
 //------------------------------------------------------------------------------------------------

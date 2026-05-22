@@ -292,55 +292,50 @@ G-buffer layout.
 
 ### Shadow casting
 
-Each directional light (sun, moon) gets its own orthographic depth
-pass that renders the terrain (and, later, water and any opaque
-non-terrain geometry) from the light's point of view. The deferred
-composite samples both maps and uses the result as a per-light
-visibility multiplier on top of the NdotL term.
+Both directional lights (sun and moon) cast shadows on the displaced
+terrain.  Each gets its own orthographic depth pass that renders the
+terrain from the light's point of view into a tile of a shared shadow
+atlas; the deferred composite samples the appropriate tile via
+hardware PCF and uses the result as a per-light visibility multiplier
+on top of the `NdotL` term.
 
-Staging:
+Shipped (v1):
 
-- **v1** - render only the sun's shadow map; moon contribution
-  computed without shadows (very low intensity; negligible visual
-  cost to skip).
-- **v2** - add the moon shadow map. Same pipeline as the sun, just
-  with the polar-opposite light direction.
-- **v3 (future)** - cascaded shadow maps (CSM) for the sun, to
-  preserve fidelity across the full visible terrain range without a
-  single huge texture.
+- Sun and moon both cast: each `XLight` is created with
+  `LightFlags::Enabled | LightFlags::CastsShadows` and configured
+  with `SetShadowResolution(2048)`,
+  `SetDirectionalShadowExtent(256 m, 1024 m)`, and the default bias
+  triple (`SetShadowDepthBias(1e-4, 2.0, 0.5 texels)`).
+- The backend's shadow atlas is a single `D32_Float` surface (DSV +
+  SRV) divided into a fixed 2×2 grid of 2048² tiles -- room for up
+  to four directional shadow casters per frame.  See
+  `src/CanvasGfx12/README.md` "Light Submission" + "Composition" for
+  the engine-side flow (atlas allocation, depth-only displaced PSO,
+  per-light `GpuTask` insertion, automatic `DSV -> SRV` barrier,
+  composite PCF).
+- Self-shadowing: caster-side rasterizer bias is baked into the
+  shadow PSO (`DepthBias = 1000`, `SlopeScaledDepthBias = 2.0`);
+  receiver-side constant bias + world-space normal-offset apply at
+  composite sample time and are tunable per light via
+  `XLight::SetShadowDepthBias`.
+- 2×2 hardware PCF via a `SamplerComparisonState` (s3) configured
+  `GREATER_EQUAL` (reverse-Z) and `OPAQUE_WHITE` border so receivers
+  outside the shadow frustum read as fully lit rather than fully
+  shadowed.
 
-Design notes:
+Future work:
 
-- **Projection:** orthographic, because directional lights are at
-  infinity. Bounds are computed each frame from the camera's view
-  frustum projected onto the light-space plane and snapped to the
-  shadow map texel grid to avoid edge-shimmer when the camera moves.
-- **Texture:** depth-only target, `D32_Float` (preferred for range
-  + precision) or `D16_UNorm` (smaller; revisit if memory tight).
-  Resolution `2048 x 2048` as the v1 default, tunable from the
-  HUD / command line.
-- **Render pass:** a new shadow-only PSO that re-uses the terrain
-  vertex stage (and the v2 HS/DS stages once they exist) but binds
-  no pixel shader. Two passes per frame in v2 (sun + moon).
-- **Filtering:** 3x3 PCF in the composite shader. Avoids hard
-  aliased shadow edges without large blur-kernel cost.
-- **Bias:** small constant depth bias plus a slope-scaled term
-  driven by `dot(N, L)` to suppress acne on lit slopes without
-  introducing peter-panning on flat ground.
-- **Culling:** the shadow pass uses front-face culling (instead of
-  the usual back-face) to keep depth comparisons stable on the lit
-  side. Doubles as a cheap mitigation for shadow acne.
-- **Quality vs perf knob:** `--shadowmap-size <N>` and
-  `--shadow-bias <f>` on the command line; HUD tweakable later.
-
-Day/night coupling:
-
-- Shadow contribution fades out with the light's own intensity gate
-  (`sunGate` / `moonGate` from the day/night cycle). Below-horizon
-  lights skip their shadow pass entirely.
-- Near the horizon, very long shadow ortho bounds make small far
-  features dominate. The shadow projection snaps to a maximum
-  reasonable extent so dawn/dusk doesn't blow the cascade budget.
+- Cascaded shadow maps for the sun, to preserve fidelity across the
+  full visible terrain range.  v1's single 256 m half-width slab
+  captures most of what the camera sees but misses distant features
+  near dawn/dusk.
+- Skip the moon's shadow pass when its intensity gate is near zero,
+  saving the cost during full daylight.  The frame cost is already
+  small (one 2048² depth fill of the terrain) but the saving is
+  free with one branch.
+- Per-light caster-side rasterizer bias (currently baked into the
+  shared shadow PSO).  Either via `RSSetDepthBias` or one PSO
+  variant per light.
 
 ### Sky
 

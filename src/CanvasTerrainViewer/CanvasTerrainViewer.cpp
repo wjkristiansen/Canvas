@@ -249,9 +249,20 @@ public:
         Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &m_pMoon, "Moon"));
         Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Ambient,     &m_pAmbient, "Ambient"));
 
-        m_pSun->SetFlags(Canvas::LightFlags::Enabled);
-        m_pMoon->SetFlags(Canvas::LightFlags::Enabled);
+        m_pSun->SetFlags(Canvas::LightFlags::Enabled | Canvas::LightFlags::CastsShadows);
+        m_pMoon->SetFlags(Canvas::LightFlags::Enabled | Canvas::LightFlags::CastsShadows);
         m_pAmbient->SetFlags(Canvas::LightFlags::Enabled);
+
+        // Per-light shadow resolution + bias.  The shadow frustum extent
+        // depends on the loaded terrain (heightScale drives shadow tail
+        // length at low sun angles) and is configured later via
+        // XLight::SetDirectionalShadowAutoFit once LoadTerrain has run.
+        // Until that runs the XLight defaults apply.
+        for (auto* pDirLight : { m_pSun.Get(), m_pMoon.Get() })
+        {
+            pDirLight->SetShadowResolution(2048);
+            pDirLight->SetShadowDepthBias(1e-4f, 2.0f, 0.5f);
+        }
 
         Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&m_pSunNode,  "SunNode"));
         Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&m_pMoonNode, "MoonNode"));
@@ -385,6 +396,12 @@ public:
     }
 
     bool IsPaused() const { return m_Paused; }
+
+    // Direct access to the directional lights.  Used by the application
+    // when it needs to apply per-light state that isn't part of the
+    // day/night cycle itself.
+    Canvas::XLight* GetSunLight()  const { return m_pSun.Get(); }
+    Canvas::XLight* GetMoonLight() const { return m_pMoon.Get(); }
 
     // Time-of-day phase in [0, 1).  0 = midnight, 0.25 = sunrise, 0.5 = noon,
     // 0.75 = sunset.  Used by the sky preset selector to crossfade between
