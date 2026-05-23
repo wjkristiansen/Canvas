@@ -377,9 +377,9 @@ All PSOs are created lazily on first use and cached for the lifetime of the rend
 - 5 render targets matching the G-buffer formats. D32_Float depth with reverse-Z.
 
 **Composition pass**:
-- Slot 0: root CBV at b0 for lighting constants.
-- Slot 1: descriptor table with SRV[3] at t0-t2 reading three G-buffer surfaces.
-- Static sampler s0: point clamp for exact texel fetch.
+- Slot 0: root CBV at b0 for per-frame constants (camera, lights, shadow atlas parameters, sky/background parameters).
+- Slot 1: descriptor table with SRV[8] at t0-t7: G-buffer (normals t0, diffuse t1, world position t2), optional skybox cube A (t3), optional skybox cube B (t4), optional stars cube (t5), optional moon billboard texture (t6), optional shadow atlas (t7). Unbound slots hold null SRVs; shader flags select active branches.
+- Static samplers: s0 = point/clamp (G-buffer texel fetch), s1 = linear/wrap (cubemap / stars sampling), s2 = linear/clamp (moon billboard), s3 = hardware PCF comparison sampler (GREATER_EQUAL reverse-Z, OPAQUE_WHITE border for shadow atlas).
 - Single render target at back-buffer format. No depth.
 
 **Text pass**:
@@ -422,6 +422,22 @@ For each mesh instance the render queue:
 
 Positions are bound as a root SRV at t0 by GPU virtual address. Remaining vertex streams and material textures are bound through the descriptor table.
 
+### Displaced Mesh Drawing (Tessellation Path)
+
+When a mesh instance has a material with a `GfxDisplacementDesc` attached (`XGfxMaterial::SetDisplacement`), the render queue routes it through the displaced-mesh pipeline instead of the standard geometry PSO. This path uses a VS+HS+DS+PS quad-patch pipeline (`PatchList4CP` topology) and no CPU-side vertex buffers — the DS generates world-space geometry by sampling a heightmap texture.
+
+The displaced PSO root signature:
+- Slot 0: root CBV at b0 for per-frame constants.
+- Slot 1: root CBV at b1 for per-tile `HlslDisplacedConstants` (world transform, tile origin and world size, patch grid dimension, `HeightScale`, `HeightBias`).
+- Slot 2: descriptor table with SRV[3]: heightmap texture (t0), albedo atlas (t1), ORM atlas (t2).
+- Static sampler s0: linear/clamp for heightmap and atlas sampling.
+
+`HlslDisplacedConstants` is uploaded to the upload ring once per displaced draw. The heightmap surface must be in `LAYOUT_SHADER_RESOURCE` before the draw (use `XGfxRenderQueue::FinalizeUploadAsShaderResource` after the initial texture upload).
+
+The VS generates control-point UV coordinates from `SV_VertexID` for a `PatchGridDim × PatchGridDim` quad grid. The HS computes per-edge tessellation factors using a distance × curvature LOD scheme: the distance term is proportional to `edgeWorldLength / distToMidpoint`, and the curvature term samples a coarse mip of the heightmap for the Laplacian second derivative. The DS samples the heightmap at full resolution to lift each tessellated vertex into world space and computes per-vertex normals from central differences. The PS samples the material atlases and writes the standard G-buffer layout, so the deferred lighting and composition passes are unchanged.
+
+The displaced shadow PSO shares the VS and HS bytecode (ensuring shadow tessellation matches the scene LOD to prevent Peter Panning) and pairs them with `DSDisplacedShadow`, which writes only `SV_Position` from a `HlslShadowConstants` matrix with no pixel shader.
+
 ### Light Submission
 
 Lights are accumulated during scene graph traversal. Each light's attenuation and cull distance are pre-computed on the CPU and packed into an `HlslLight` struct. Up to `MAX_LIGHTS_PER_REGION` (16) lights are uploaded as part of the per-frame constant buffer.
@@ -440,7 +456,9 @@ The shadow pass uses a dedicated depth-only PSO (`m_pDisplacedShadowPSO`) that r
 
 ### Composition
 
-After all geometry tasks are inserted, the render queue transitions the G-buffer surfaces from render target to shader resource layout and inserts a composition task. Three of the five G-buffer targets are bound as SRVs for the composition shader:
+After all geometry tasks are inserted, the render queue transitions the G-buffer surfaces from render target to shader resource layout and inserts a composition task. The composition shader owns every output pixel on the back buffer: G-buffer pixels receive deferred lighting; pixels with no geometry (normal alpha == 0) are filled by the scene background.
+
+Three of the five G-buffer targets are bound as SRVs for the lighting path:
 
 | SRV Slot | G-Buffer Target |
 |---|---|
@@ -450,7 +468,20 @@ After all geometry tasks are inserted, the render queue transitions the G-buffer
 
 The PBR and emissive targets are written by the geometry pass but are not yet consumed by the composition shader. They are reserved for a future physically-based lighting pass that will incorporate roughness, metallic, AO, and emissive terms. The current composition shader performs Lambertian diffuse lighting only.
 
-The composition task binds the composition PSO, sets the back buffer as the single render target, and draws a fullscreen triangle. The pixel shader decodes normals, loops over the light array, accumulates contributions, applies an exposure multiplier, and writes the final color. The normal alpha channel serves as a coverage flag: pixels with alpha of zero were never written by the geometry pass and are discarded so the background clear color shows through.
+The composition task binds the composition PSO, sets the back buffer as the single render target, and draws a fullscreen triangle. The pixel shader decodes normals, loops over the light array, accumulates contributions, applies an exposure multiplier, and writes the final color.
+
+### Background and Skybox
+
+For pixels with no geometry, the composition shader falls back to the scene background, configured per-scene via `XScene::SetBackground` (which the render queue picks up via `XGfxRenderQueue::SetBackground`). The background is described by `GfxBackgroundDesc`:
+
+- **Solid color fallback**: when no skybox is bound, the scene fills empty pixels with `SolidColor`. This is the default for newly created scenes (opaque black).
+- **Skybox cubemap**: when `pSkyboxCubemapA` is set, empty pixels are filled by sampling the cubemap in the world-space view direction, rotated by the inverse of `Orientation`. `Intensity` is a linear multiplier on the sample.
+- **Cubemap crossfade**: when both `pSkyboxCubemapA` and `pSkyboxCubemapB` are set, the result is `lerp(A, B, BlendFactor)`, enabling smooth transitions between authored sky presets (day → dusk → night) without per-frame CPU rebaking.
+- **Stars cubemap**: an optional RGBA cubemap (`pStarsCubemap`) is additively blended over the skybox, rotated independently by `StarsOrientation`. The lower hemisphere (view direction z < 0) is clipped so stars never appear below the ground. Apps drive sidereal motion by updating `StarsOrientation` each frame.
+- **Procedural sun disc**: rendered as a soft-edged disc in the composite shader, driven by `SunDirection` (the same unit vector the app uses for the sun's directional light, keeping a single source of truth for the sun's position). Enabled when `SunColor.a > 0`.
+- **Moon billboard**: an optional 2D texture (`pMoonTexture`) rendered as a billboard centred on `MoonDirection` within an angular disc of radius `MoonAngularRadius`. Both celestial bodies are naturally clipped below the horizon.
+
+All background parameters are packed into `HlslPerFrameConstants` and uploaded once per frame alongside the light array.
 
 Shadow sampling lives in this same loop. The directional-light branch calls `SampleDirectionalShadow(light, P, N)` whenever `light.ShadowFlags & SHADOW_FLAG_HAS_SHADOW` is set. The helper:
 
@@ -599,7 +630,7 @@ Shaders are compiled offline from HLSL source to CSO files using DXC. CMake cust
 
 `HlslTypes.h` is included by both C++ and HLSL code. It defines the constant buffer layouts that cross the CPU/GPU boundary:
 
-**HlslPerFrameConstants** (register b0): view-projection matrix, camera world position, light count, exposure multiplier, and an array of `HlslLight` structs.
+**HlslPerFrameConstants** (register b0): view-projection matrix, camera world position and basis vectors (for fullscreen view-ray reconstruction), light count, exposure multiplier, shadow atlas global parameters (`ShadowAtlasSize`, `ShadowPcfTexelStep`), scene background parameters (solid color, skybox cubemap flags and blend factor, orientation quaternion, intensity, stars parameters, procedural sun disc parameters, moon billboard parameters), and an array of `HlslLight` structs.
 
 **HlslPerObjectConstants** (register b1): world transform, inverse-transpose for normals, base color / emissive / roughness-metallic-AO factors, and material flag bits.
 
@@ -738,7 +769,8 @@ When investigating a rendering issue:
 CanvasGfx12 is under active development. The architecture is intended to support growth in areas such as:
 
 - Compute shader passes and UAV-driven workflows.
-- Shadow mapping and additional lighting techniques.
+- Cascaded shadow maps for directional lights and shadow support for point / spot lights.
+- Full PBR lighting in the composition shader (roughness, metallic, AO, emissive G-buffer targets are already populated by the geometry pass but not yet consumed).
 - Multi-threaded command recording across the task graph.
 - Additional rendering techniques beyond the current deferred pipeline.
 - Alternative graphics backends leveraging the same CanvasCore interfaces.

@@ -1,9 +1,5 @@
 # CanvasTerrainViewer
 
-> **Status:** design phase - no code yet. This document is the shared
-> reference for collaborators and is expected to evolve as
-> implementation lands.
-
 A Canvas application that loads a height-field bitmap and renders a
 tiled, adaptively-tessellated terrain using the existing `CanvasGfx12`
 backend. Modeled after `CanvasModelViewer`: same windowing, FPS-style
@@ -37,11 +33,11 @@ renderable, new shader pipeline.
 
 ## Plan in stages
 
-| Stage | Scope                                                                                                  |
-|-------|--------------------------------------------------------------------------------------------------------|
-| v1    | CPU-built static grid mesh per heightfield. Validates asset, transform, lighting, HUD.                 |
-| v2    | GPU hardware tessellation (HS/DS) with distance + curvature LOD. Same asset.                           |
-| v3+   | Multi-tile streaming + heightfield composition (stacked layers + blend masks). Animated water surface. |
+| Stage | Status       | Scope                                                                                                  |
+|-------|--------------|--------------------------------------------------------------------------------------------------------|
+| v1    | **Done**     | CPU-built static grid mesh per heightfield. Validates asset, transform, lighting, HUD.                 |
+| v2    | **Done**     | GPU hardware tessellation (HS/DS) with distance + curvature LOD. Same asset. Primary render path.      |
+| v3+   | Not started  | Multi-tile streaming + heightfield composition (stacked layers + blend masks). Animated water surface. |
 
 The v1 path and the v2 path share the same `XHeightField` asset and
 descriptor - only the renderable and the PSO differ, so v1 work is
@@ -339,41 +335,20 @@ Future work:
 
 ### Sky
 
-The terrain needs something behind it. The sky is staged so v1 can be
-trivial while the eventual implementation has room to grow.
+The terrain needs something behind it.
 
-#### v1 - single cubemap, time-of-day tint
+#### Implemented sky system
 
-- One sRGB cubemap (e.g. **`R8G8B8A8_UNORM_SRGB`**, per-face 512^2),
-  authored or generator-produced.
-- Drawn as a fullscreen pass after the G-buffer composite, using a
-  `VSFullscreen` + `PSSky` pair. Depth test = `GREATER_EQUAL` against
-  the cleared far-plane depth so the sky fills only un-shaded pixels;
-  no actual cube geometry needed.
-- Color modulated by the day/night phase:
-  - Day tint ~ neutral (1, 1, 1).
-  - Night tint ~ deep blue `~(0.05, 0.07, 0.15)`.
-  - Horizon dawn/dusk tint applied as a smoothstep band around
-    `sin theta ~ 0`.
-- This single cubemap also feeds the ambient `XLight` color -
-  sampling its low mip per frame gives a cheap, plausible
-  environment ambient that "tracks" the sky tint.
+The sky is integrated into `PSComposite` (not a separate sky shader) via the engine's `GfxBackgroundDesc` / `XScene::SetBackground` API. The viewer configures:
 
-#### v2 - orbiting sun and moon sprites
+- **Up to two cubemaps** (`pSkyboxCubemapA`, `pSkyboxCubemapB`) with a CPU-driven `BlendFactor` for crossfading between presets (e.g. day → dusk → night). Both cubemaps can be bound simultaneously; the composite lerps between them in the shader so transitions are smooth without per-frame texture authoring.
+- **Stars cubemap** (`pStarsCubemap`): additively blended over the sky, lower hemisphere clipped, driven by `StarsOrientation` for sidereal-motion animation.
+- **Procedural sun disc** (`SunDirection`, `SunColor`): a soft-edged disc rendered analytically in the composite shader, driven by the same unit vector used for the sun's directional light.
+- **Moon billboard** (`pMoonTexture`, `MoonDirection`): a 2D RGBA texture blended as a billboard at the angular position of the moon's directional light.
 
-- Sun and moon rendered as **screen-aligned sprites**, *not* baked
-  into the cubemap.
-- Position: project the day/night sun direction `(cos theta, 0, sin theta)`
-  (and `-sun` for moon) into clip space, drop a quad of fixed
-  angular size (e.g. ~0.5 deg for the moon, ~0.55 deg for the sun, both
-  HUD-tunable).
-- Textured with a small RGBA sprite (soft-edged disc + optional
-  corona). Additive blend; tinted by the same sun/moon colors used
-  for the directional lights.
-- Drawn after the sky cube, before opaque terrain, with depth write
-  off and depth test = far-plane equal so terrain occludes them.
-- Cheap, decoupled from the sky shader, and trivially extends to
-  multiple celestial bodies later.
+The viewer's `CDayNightCycle` helper updates `SunDirection`, `MoonDirection`, and the cubemap `BlendFactor` each frame to animate the sky in step with the light positions.
+
+#### v3 - layered sky shader (future)
 
 #### v3 - layered sky shader (future)
 
@@ -392,15 +367,9 @@ trivial while the eventual implementation has room to grow.
 
 #### Authoring
 
-- A dev-time generator `gen_skycube.py` produces a placeholder cube
-  per "preset" (`day`, `night`, `dusk`) by:
-  - Filling each face with a vertical gradient (zenith -> horizon) in
-    a per-preset palette.
-  - Optional star field overlay for `night` (white pixels with
-    Poisson-disk distribution, intensity-jittered).
-  - Saving as a 6-face DDS (BC1 sRGB) or 6 PNG faces.
-- Output to `src/CanvasTerrainViewer/assets/sky/`, regenerated by
-  `regen_all.ps1 / .sh`.
+- `gen_skycube.py` (in `scripts/terrain/`) generates per-preset cubemaps (`day`, `dusk`, `night`) as 6 PNG faces and an optional moon sprite.
+- `gen_starscube.py` generates a separate star-field RGBA cubemap.
+- Output goes to `src/CanvasTerrainViewer/assets/sky/`.
 
 
 
@@ -411,40 +380,40 @@ trivial while the eventual implementation has room to grow.
 ```
 src/CanvasTerrainViewer/
     CMakeLists.txt
-    CanvasTerrainViewer.cpp        (entry point + app shell)
-    HeightField.cpp / .h           (asset + CPU mesh builder)
+    CanvasTerrainViewer.cpp        (entry point, app shell, day/night cycle)
+    HeightField.cpp / .h           (asset loading, CPU mesh builder, mip chain)
+    ImageLoader.cpp / .h           (WIC-based image loading for atlas textures)
+    SceneConfig.cpp / .h           (JSON scene file parsing)
+    SkyCubeLoader.cpp / .h         (cubemap loading for sky / stars)
+    TerrainMaterial.cpp / .h       (terrain material + displacement setup)
     QLogAdapter.h                  (XLogger adapter over QLog)
     pch.h                          (precompiled header)
     CanvasTerrainViewer.rc / .ico  (icons + version info)
     README.md                      (this file)
+    assets/
+        default_heightmap.png      (sample fbm heightfield)
+        scene.json                 (default scene configuration)
+        terrain_atlas_albedo.png   (2048×2048, four 1024×1024 slots: grass/rock/sand/snow)
+        terrain_atlas_orm.png      (matching ORM atlas)
+        sky/                       (per-preset PNG face images and moon sprite)
 
 src/HLSL/
-    VSTerrain.hlsl               (v1 + v2 vertex stage)
-    HSTerrain.hlsl               (v2)
-    DSTerrain.hlsl               (v2)
-    PSTerrain.hlsl               (writes existing G-buffer layout)
-    Terrain.hlsli                (shared constants, sampling helpers)
-    PSSky.hlsl                   (fullscreen sky with time-of-day tint)
-    VSCelestialSprite.hlsl       (sun/moon sprite vertex stage, v2)
-    PSCelestialSprite.hlsl       (sun/moon sprite pixel stage, v2)
+    VSDisplaced.hlsl             (terrain vertex stage: control-point UV gen from SV_VertexID)
+    HSDisplaced.hlsl             (hull shader: distance + curvature tessellation LOD)
+    DSDisplaced.hlsl             (domain shader: heightmap sample, world position, normals)
+    DSDisplacedShadow.hlsl       (depth-only domain shader for shadow atlas passes)
+    PSDisplaced.hlsl             (pixel shader: atlas sample, G-buffer write)
+    Displaced.hlsli              (shared constants and sampling helpers for displaced shaders)
+    PSComposite.hlsl             (composition: deferred lighting + skybox + stars + sun + moon)
 
 scripts/terrain/                 (sandbox asset generators, dev-time)
     gen_heightmap.py
-    gen_tileset.py
     gen_material_atlas.py
-    gen_mask.py
-    gen_skycube.py
-    regen_all.ps1 / regen_all.sh
-
-src/CanvasTerrainViewer/assets/  (sample assets shipped with the viewer)
-    default_heightmap.png        (generated; checked in)
-    ... (atlas + sky added in later milestones)
+    gen_skycube.py               (sky cubemap generator; also produces moon sprite via --moon flag)
+    gen_starscube.py             (separate star-field cubemap generator)
 ```
 
-`CanvasGfx12` gains a dedicated **terrain PSO family** (HS/DS variants
-isolated from the deferred uber-PSO permutation matrix). `XGfxDevice`
-exposes `CreateTerrainPipeline()` / `CreateHeightFieldTexture()` as
-needed.
+The displaced PSO family (`VSDisplaced` + `HSDisplaced` + `DSDisplaced` + `PSDisplaced`, and the depth-only shadow variant) lives entirely inside `CanvasGfx12`. A material with `GfxDisplacementDesc` attached triggers this path automatically; `XGfxDevice` requires no new factory methods. Sky, stars, sun, and moon rendering are integrated into `PSComposite` and configured via `GfxBackgroundDesc` on `XScene`.
 
 ### Source asset ingest
 
@@ -457,10 +426,9 @@ needed.
 
 ## Sandbox asset generators
 
-Procedural Python scripts (Windows + cross-platform; rely only on
-`numpy` + `Pillow`) live under `scripts/terrain/`. They are dev-time
-tools, not part of the runtime build, but emit assets the viewer
-loads directly.
+Procedural Python scripts (rely only on `numpy` + `Pillow`) live under
+`scripts/terrain/`. They are dev-time tools, not part of the runtime
+build, but emit assets the viewer loads directly.
 
 ### `gen_heightmap.py`
 
@@ -482,19 +450,6 @@ Common flags: `--size 1025`, `--seed N`, `--height-scale 256`,
 `--out path.png`, `--tile-x I --tile-y J` (deterministic seed
 `hash(seed, I, J)` so adjacent tiles agree on their shared edges).
 
-### `gen_tileset.py`
-
-Drives `gen_heightmap.py` for an NxN grid and writes each tile such
-that adjacent tiles' shared edges match exactly - gives a real
-multi-tile dataset for the seam work.
-
-### `gen_mask.py`
-
-Produces R8 PNG masks with feathered edges (linear / smoothstep /
-smootherstep), radial / SDF, and noise-modulated variants. Used to
-author blend zones between sandbox biome tiles (e.g. mountain over
-plain).
-
 ### `gen_material_atlas.py`
 
 Procedural material atlas. Default layout: 2x2 of 1024x1024 in a
@@ -515,19 +470,16 @@ Flags: `--seed`, `--tile-size 1024`, `--materials grass,rock,sand,snow`,
 ### `gen_skycube.py`
 
 Placeholder sky cubemaps. Per `--preset` (`day`, `night`, `dusk`):
-fills each face with a per-preset vertical gradient (zenith -> horizon),
-optional Poisson-disk star field for `night`, saves as a 6-face DDS
-(BC1 sRGB) or 6 PNG faces. Companion `gen_celestial_sprite.py` (or
-flag in this script) produces simple soft-edged disc sprites for sun
-and moon.
+fills each face with a per-preset vertical gradient (zenith → horizon)
+and saves as 6 PNG faces. Pass `--moon` to also emit a soft-edged
+disc moon sprite (`moon.png`).
 
-### `regen_all.ps1` / `regen_all.sh`
+### `gen_starscube.py`
 
-Convenience driver that regenerates the default tile set + atlas the
-viewer launches with by default. Output goes to
-`src/CanvasTerrainViewer/assets/`, overwriting the committed defaults.
-Re-run after changing the generator scripts or the desired sample
-content; commit the regenerated PNGs if you want them to ship.
+Separate star-field cubemap generator. Produces a Poisson-disk
+distributed star field in RGBA PNG faces (rgb = per-star colour, a =
+coverage). The composite shader additively blends this over the skybox,
+driven by `StarsOrientation` for sidereal-motion animation.
 
 ---
 

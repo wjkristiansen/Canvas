@@ -17,7 +17,7 @@ Canvas is *not* a production engine. It is a learning vehicle whose value lies i
 
 | Layer                    | Description                                                                                                                                  |
 |--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| **Applications**         | CanvasModelViewer, CanvasConsole                                                                                                             |
+| **Applications**         | CanvasModelViewer, CanvasTerrainViewer, CanvasConsole                                                                                        |
 | **CanvasCore**           | Scene graph, Cameras, Lights, Mesh instances, UI graph, Font / text layout, Math library                                                     |
 | **Graphics Backend**     | Plugin, loaded at runtime. GPU task graph, Resource manager, Render queue, Copy queue, Upload ring, Deferred renderer                        |
 | **Supporting Libraries** | CanvasText, CanvasFbx, RectanglePacker                                                                                                       |
@@ -68,10 +68,11 @@ A header-only math library (`CanvasMath.hpp`) providing templated vectors, matri
 
 ### Applications
 
-| Application           | Description                                                                                                                     |
-|-----------------------|---------------------------------------------------------------------------------------------------------------------------------|
-| **CanvasModelViewer** | Windowed viewer application.  Loads FBX models, renders with PBR deferred shading, SDF text HUD, and FPS-style camera controls. |
-| **CanvasConsole**     | Lightweight console harness for API smoke-testing without a window.                                                             |
+| Application              | Description                                                                                                                                                   |
+|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **CanvasModelViewer**    | Windowed viewer application.  Loads FBX models, renders with PBR deferred shading, SDF text HUD, and FPS-style camera controls.                               |
+| **CanvasTerrainViewer**  | Windowed terrain viewer.  Loads a heightfield bitmap, renders GPU-tessellated displaced terrain with a 5-minute day/night cycle, skybox, and FPS-style camera. |
+| **CanvasConsole**        | Lightweight console harness for API smoke-testing without a window.                                                                                           |
 
 ## Getting Started
 
@@ -267,8 +268,9 @@ ctest --build-config Release --output-on-failure
 | `src/RectanglePacker/`   | Rectangle bin-packing                                          |
 | `src/HLSL/`              | Shader source and compiled header output                       |
 | `src/Common/`            | Shared utilities                                               |
-| `src/CanvasModelViewer/` | Windowed viewer application                                    |
-| `src/CanvasConsole/`     | Console test harness                                           |
+| `src/CanvasModelViewer/`     | Windowed viewer application                                |
+| `src/CanvasTerrainViewer/`   | Heightfield terrain viewer application                     |
+| `src/CanvasConsole/`         | Console test harness                                       |
 | `src/CanvasUnitTest/`    | GoogleTest unit tests                                          |
 
 ## License
