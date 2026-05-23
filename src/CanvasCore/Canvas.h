@@ -123,7 +123,7 @@ public:
     GEMMETHOD(UnregisterElement)(XCanvasElement *) final;
 
     GEMMETHOD(LoadPlugin)(PCSTR path, XCanvasPlugin **ppPlugin) final;
-    GEMMETHOD(CreateSceneGraph)(XGfxDevice *pDevice, XSceneGraph **ppScene, PCSTR name = nullptr) final;
+    GEMMETHOD(CreateScene)(XGfxDevice *pDevice, XScene **ppScene, PCSTR name = nullptr) final;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;

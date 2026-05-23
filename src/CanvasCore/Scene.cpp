@@ -10,14 +10,14 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CSceneGraph::CSceneGraph(XCanvas *pCanvas, XGfxDevice *pDevice) :
+CScene::CScene(XCanvas *pCanvas, XGfxDevice *pDevice) :
     TCanvasElement(pCanvas),
     m_pDevice(pDevice)
 {
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraph::Initialize()
+GEMMETHODIMP CScene::Initialize()
 {
     try
     {
@@ -35,18 +35,20 @@ GEMMETHODIMP CSceneGraph::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CSceneGraph::GetRootSceneGraphNode()
+GEMMETHODIMP_(XSceneGraphNode *) CScene::GetRootNode()
 {
     return m_pRoot.Get();
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraph::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
+GEMMETHODIMP CScene::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
 {
     try
     {
         if (m_pActiveCamera)
             pRenderQueue->SetActiveCamera(m_pActiveCamera);
+
+        pRenderQueue->SetBackground(&m_Background);
 
         // Iterative depth-first traversal using persistent stack (no per-frame allocation)
         m_TraversalStack.clear();

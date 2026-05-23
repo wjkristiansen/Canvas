@@ -140,11 +140,11 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateSceneGraph(XGfxDevice *pDevice, XSceneGraph **ppScene, PCSTR name)
+GEMMETHODIMP CCanvas::CreateScene(XGfxDevice *pDevice, XScene **ppScene, PCSTR name)
 {
-    CFunctionSentinel sentinel("XCanvas::CreateSceneGraph", m_pLogger);
+    CFunctionSentinel sentinel("XCanvas::CreateScene", m_pLogger);
 
-    return CreateElement<CSceneGraph>(ppScene, name, pDevice);
+    return CreateElement<CScene>(ppScene, name, pDevice);
 }
 
 //------------------------------------------------------------------------------------------------

@@ -23,3 +23,7 @@
 [submodule "deps/ufbx"]
 	path = deps/ufbx
 	url = https://github.com/ufbx/ufbx.git
+[submodule "deps/json"]
+	path = deps/json
+	url = https://github.com/nlohmann/json.git
+	branch = v3.12.0

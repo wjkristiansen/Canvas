@@ -34,6 +34,25 @@ public:
         m_pNode = pNode;
         return Gem::Result::Success;
     }
+
+    // Default returns an empty AABB.  Geometric elements (CMeshInstance,
+    // CModel, ...) override with their node-local vertex envelope.
+    // Non-geometric elements -- lights, cameras, ambient -- inherit
+    // this default so they contribute nothing to geometric aggregates.
+    GEMMETHOD_(Math::AABB, GetLocalBounds)() const
+    {
+        return Math::AABB{};
+    }
+
+    // Default returns an empty AABB.  Elements that affect a bounded
+    // region of space (finite-range XLight, XCamera) override with
+    // their node-local influence volume.  Infinite-influence elements
+    // (directional / ambient lights) and pure-geometry elements
+    // (XMeshInstance, XModel) inherit this default.
+    GEMMETHOD_(Math::AABB, GetLocalInfluenceBounds)() const
+    {
+        return Math::AABB{};
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -211,8 +230,23 @@ public: // XSceneGraphNode methods
     {
         if(m_DirtyFlags & DirtyLocalMatrix)
         {
-            // Set affine matrix 3x3 rotation components from local rotation quaternion
+            // Compose local matrix as M = S * R then translation in row 3.
+            // Row-vector convention (v' = v * M): position is scaled first,
+            // then rotated, then translated, which matches the standard
+            // TRS interpretation of SetLocalScale / SetLocalRotation /
+            // SetLocalTranslation.
             m_LocalMatrix = Math::QuaternionToRotationMatrix(m_LocalRotation);
+
+            // Apply per-axis scale by multiplying each basis row by the
+            // corresponding scale component. Each row of a rotation matrix
+            // is a unit basis vector in row-vector convention; scaling a
+            // basis row scales the contribution of that axis in v * M.
+            for (int c = 0; c < 4; ++c)
+            {
+                m_LocalMatrix[0][c] *= m_LocalScale.X;
+                m_LocalMatrix[1][c] *= m_LocalScale.Y;
+                m_LocalMatrix[2][c] *= m_LocalScale.Z;
+            }
 
             // CRITICAL: Canvas uses ROW VECTORS (v' = v * M)
             // Translation MUST be in BOTTOM ROW [3][col], NOT right column [row][3]

@@ -31,7 +31,7 @@ Key concepts:
 | Concept                             | Description                                                                                                                                                        |
 |-------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **XCanvas**                         | Root object and factory.  Creates scenes, cameras, lights, meshes, fonts, and UI graphs.                                                                           |
-| **XSceneGraph / XSceneGraphNode**   | Hierarchical transform graph.  Nodes carry local rotation (quaternion), translation, and scale; global transforms are lazily computed with dirty-flag propagation. |
+| **XScene / XSceneGraphNode**   | Hierarchical transform graph.  Nodes carry local rotation (quaternion), translation, and scale; global transforms are lazily computed with dirty-flag propagation. |
 | **XCamera**                         | Perspective camera (FOV, near/far clip, aspect ratio, exposure compensation).  Attaches to a scene-graph node for positioning.                                     |
 | **XLight**                          | Point, directional, spot, ambient, and area light types with attenuation and spot-angle parameters.                                                                |
 | **XMeshInstance**                   | Binds GPU mesh data to a scene-graph node for rendering.                                                                                                           |
@@ -106,8 +106,8 @@ pRenderQueue->CreateSwapChain(
     Canvas::GfxFormat::R16G16B16A16_Float, 4);
 
 // 5. Build a scene graph
-Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-pCanvas->CreateSceneGraph(pDevice, &pScene, "MyScene");
+Gem::TGemPtr<Canvas::XScene> pScene;
+pCanvas->CreateScene(pDevice, &pScene, "MyScene");
 
 // 6. Add a camera
 Gem::TGemPtr<Canvas::XCamera> pCamera;
@@ -120,7 +120,7 @@ Gem::TGemPtr<Canvas::XSceneGraphNode> pCameraNode;
 pCanvas->CreateSceneGraphNode(&pCameraNode, "CameraNode");
 pCameraNode->BindElement(pCamera);
 pCameraNode->SetLocalTranslation({0.f, -5.f, 2.f, 0.f});
-pScene->GetRootSceneGraphNode()->AddChild(pCameraNode);
+pScene->GetRootNode()->AddChild(pCameraNode);
 pScene->SetActiveCamera(pCamera);
 
 // 7. Add a mesh
@@ -134,7 +134,7 @@ pMeshInstance->SetMeshData(pMeshData);
 Gem::TGemPtr<Canvas::XSceneGraphNode> pMeshNode;
 pCanvas->CreateSceneGraphNode(&pMeshNode, "CubeNode");
 pMeshNode->BindElement(pMeshInstance);
-pScene->GetRootSceneGraphNode()->AddChild(pMeshNode);
+pScene->GetRootNode()->AddChild(pMeshNode);
 
 // 8. Render loop
 while (running)

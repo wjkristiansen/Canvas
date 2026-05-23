@@ -1,13 +1,37 @@
-// Composition pixel shader — reads G-buffers and performs deferred lighting.
+// Composition pixel shader - reads G-buffers and performs deferred lighting.
+// Pixels with no geometry are filled by the scene background: either the
+// SolidColor or a sample from the bound skybox cubemap(s).  The composite
+// owns every output pixel, so the render-target clear color is irrelevant.
 // Outputs final lit color to the back buffer (SV_Target0).
 
-// G-buffer textures bound via descriptor table
-Texture2D GBufferNormals      : register(t0);
-Texture2D GBufferDiffuseColor : register(t1);
-Texture2D GBufferWorldPos     : register(t2);
+// G-buffer textures (t0-t2), optional skybox cubes (t3 = A, t4 = B), an
+// optional stars cube (t5), and an optional moon sprite (t6).  Unbound
+// slots hold null SRVs; the shader's HasCubemap / HasStars / HasMoon
+// flags select active branches.  The sun has no texture -- it's a
+// procedural disc in the composite, driven by SunDirAndCosRadius +
+// SunColorAndIntensity.
+Texture2D   GBufferNormals      : register(t0);
+Texture2D   GBufferDiffuseColor : register(t1);
+Texture2D   GBufferWorldPos     : register(t2);
+TextureCube SkyCubeA            : register(t3);
+TextureCube SkyCubeB            : register(t4);
+TextureCube StarsCube           : register(t5);
+Texture2D   MoonTexture         : register(t6);
+// Shadow atlas (R32_Float over a D32_Float depth resource).  All
+// shadow-casting lights this frame share this single 2D texture;
+// each light's HlslLight.ShadowAtlasRectUV picks its tile.  Null
+// SRV when no shadow casters exist this frame, in which case every
+// light's ShadowFlags is also 0 and the PCF path is skipped.
+Texture2D   ShadowAtlas         : register(t7);
 
-// Point sampler for exact texel fetch (G-buffer is 1:1 with screen)
-SamplerState PointSampler : register(s0);
+// s0: point/clamp for exact G-buffer texel fetch.
+// s1: linear/wrap for cubemap sky / stars sampling.
+// s2: linear/clamp for the moon billboard quad.
+// s3: hardware PCF comparison sampler (reverse-Z, GREATER_EQUAL).
+SamplerState          PointSampler       : register(s0);
+SamplerState          LinearWrapSampler  : register(s1);
+SamplerState          LinearClampSampler : register(s2);
+SamplerComparisonState ShadowCmpSampler  : register(s3);
 
 #include "HlslTypes.h"
 
@@ -31,6 +55,216 @@ float ComputeAttenuation(float4 attenuationAndRange, float dist, float distSq)
     return (denom > 1e-6) ? rcp(denom) : 1.0;
 }
 
+//----------------------------------------------------------------------------
+// Directional shadow lookup.  Returns a [0,1] visibility multiplier for
+// receiver world-position P, normal N, against light `light`.  Inputs
+// expect light.ShadowFlags bit 0 set (caller short-circuits otherwise)
+// and light.ShadowAtlasRectUV.zw > 0 (the per-light atlas tile size in
+// UV).  Implements the three layered self-shadowing fixes:
+//   1. Caster-side rasterizer bias (baked into the shadow PSO).
+//   2. Normal-offset push: shift P along N by ShadowNormalOffsetTexels
+//      in world-space texel units before projecting; combats grazing-
+//      angle acne that pure depth bias misses.
+//   3. Receiver-side constant depth bias added to the projected z.
+// Sampling is 2x2 hardware PCF via SamplerComparisonState (reverse-Z,
+// GREATER_EQUAL); border-white addressing means receivers outside the
+// tile fall back to "fully lit".
+//----------------------------------------------------------------------------
+float SampleDirectionalShadow(HlslLight light, float3 P, float3 N)
+{
+    if ((light.ShadowFlags & SHADOW_FLAG_HAS_SHADOW) == 0u)
+        return 1.0;
+    if (light.ShadowAtlasRectUV.z <= 0.0)
+        return 1.0;
+    if (PerFrame.ShadowAtlasSize == 0u)
+        return 1.0;
+
+    // Normal-offset push.  ShadowAtlasRectUV.z is the tile's UV width;
+    // one tile texel in world-space meters is roughly
+    //   tileWorldWidth / tilePixelWidth
+    // and the tile world-width is implicit in light.ShadowViewProj.
+    // For the offset to scale with map quality we measure it in
+    // atlas texels and convert through ShadowPcfTexelStep (1 / atlas).
+    float worldTexel = PerFrame.ShadowPcfTexelStep / light.ShadowAtlasRectUV.z;
+    float3 Pbiased  = P + N * (light.ShadowNormalOffsetTexels * worldTexel);
+
+    float4 clip = mul(float4(Pbiased, 1.0), light.ShadowViewProj);
+    if (clip.w <= 0.0)
+        return 1.0;
+    float3 ndc = clip.xyz / clip.w;
+
+    // NDC xy [-1, 1] -> shadow-clip UV [0, 1] (D3D texture-space Y flip).
+    // Then remap to atlas UV via the light's tile rect.
+    float2 tileUv = float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    if (any(tileUv < 0.0) || any(tileUv > 1.0))
+        return 1.0;
+    float2 atlasUv =
+        light.ShadowAtlasRectUV.xy + tileUv * light.ShadowAtlasRectUV.zw;
+
+    // Receiver-side constant bias: reverse-Z means biasing the
+    // receiver towards "more lit" pushes its depth UP (closer to 1).
+    float receiverZ = saturate(ndc.z + light.ShadowDepthBias);
+
+    // 2x2 hardware PCF.  GREATER_EQUAL compare means SampleCmp returns
+    // 1.0 when receiverZ >= storedZ (lit) and 0.0 otherwise.
+    float2 atlasTexel = float2(PerFrame.ShadowPcfTexelStep,
+                               PerFrame.ShadowPcfTexelStep);
+    float v = 0.0;
+    v += ShadowAtlas.SampleCmpLevelZero(ShadowCmpSampler,
+            atlasUv + float2(-0.5, -0.5) * atlasTexel, receiverZ);
+    v += ShadowAtlas.SampleCmpLevelZero(ShadowCmpSampler,
+            atlasUv + float2( 0.5, -0.5) * atlasTexel, receiverZ);
+    v += ShadowAtlas.SampleCmpLevelZero(ShadowCmpSampler,
+            atlasUv + float2(-0.5,  0.5) * atlasTexel, receiverZ);
+    v += ShadowAtlas.SampleCmpLevelZero(ShadowCmpSampler,
+            atlasUv + float2( 0.5,  0.5) * atlasTexel, receiverZ);
+    return v * 0.25;
+}
+
+//----------------------------------------------------------------------------
+// Reconstruct a world-space view ray for the current screen UV using the
+// per-frame camera basis + projection params (no matrix inverse required).
+//----------------------------------------------------------------------------
+float3 ScreenUVToWorldDir(float2 uv)
+{
+    float2 ndc = uv * 2.0 - 1.0;
+    ndc.y = -ndc.y;
+    float tanHalfFovY = PerFrame.CamForwardAndTanHalfFov.w;
+    float aspect      = PerFrame.CamRightAndAspect.w;
+    float3 fwd        = PerFrame.CamForwardAndTanHalfFov.xyz;
+    float3 right      = PerFrame.CamRightAndAspect.xyz;
+    float3 up         = PerFrame.CamUp.xyz;
+    // Row-vector convention: row 1 = "left", so the visible right of screen
+    // is -row[1]. Mirror the x ray accordingly.
+    float3 dir = fwd
+               + (-right) * (ndc.x * tanHalfFovY * aspect)
+               + up       * (ndc.y * tanHalfFovY);
+    return normalize(dir);
+}
+
+//----------------------------------------------------------------------------
+// Rotate a vector by the conjugate of a unit quaternion.  Used to map a
+// world-space view direction into the cubemap's authoring basis before
+// sampling, so apps can rotate the sky (e.g. for diurnal alignment) without
+// re-uploading textures.
+//----------------------------------------------------------------------------
+float3 RotateByQuatConjugate(float4 q, float3 v)
+{
+    // Conjugate is (-q.xyz, q.w); rotation formula:
+    //   v' = v + 2 * cross(-q.xyz, cross(-q.xyz, v) + q.w * v)
+    float3 qv = -q.xyz;
+    float3 t  = cross(qv, v) + q.w * v;
+    return v + 2.0 * cross(qv, t);
+}
+
+//----------------------------------------------------------------------------
+// Scene background sample for pixels with no geometry.  Selected by the
+// SkyHasCubemap flag in per-frame constants; intensity / tint / orientation
+// / crossfade are all CB-driven.
+//----------------------------------------------------------------------------
+float3 SampleBackground(float3 viewDir)
+{
+    if (PerFrame.SkyHasCubemap == 0)
+        return PerFrame.SkySolidColor.rgb;
+
+    float3 sampleDir = RotateByQuatConjugate(PerFrame.SkyOrientationQuat, viewDir);
+    float3 sky = SkyCubeA.SampleLevel(LinearWrapSampler, sampleDir, 0).rgb;
+    if (PerFrame.SkyHasCubemapB != 0)
+    {
+        float3 skyB = SkyCubeB.SampleLevel(LinearWrapSampler, sampleDir, 0).rgb;
+        sky = lerp(sky, skyB, saturate(PerFrame.SkyBlendFactor));
+    }
+    return sky * PerFrame.SkyIntensity;
+}
+
+//----------------------------------------------------------------------------
+// Stars overlay: rotating RGBA cubemap sampled with the conjugate-rotated
+// view ray.  Returns an additive contribution (rgb * alpha * intensity),
+// clipped below the horizon.  Returns zero when no stars cube is bound.
+//----------------------------------------------------------------------------
+float3 SampleStars(float3 viewDir)
+{
+    if (PerFrame.HasStars == 0)
+        return float3(0.0, 0.0, 0.0);
+    if (viewDir.z < 0.0)
+        return float3(0.0, 0.0, 0.0);
+
+    float3 sampleDir = RotateByQuatConjugate(PerFrame.StarsOrientationQuat, viewDir);
+    float4 stars = StarsCube.SampleLevel(LinearWrapSampler, sampleDir, 0);
+    return stars.rgb * stars.a * PerFrame.StarsIntensity;
+}
+
+//----------------------------------------------------------------------------
+// Sun: procedural soft-edged disc rendered directly from SunDirection and
+// SunAngularRadius.  Inside the cone we fade with a smooth disc + halo
+// falloff so the body has a bright core and a soft atmospheric edge.
+// Disabled when SunColorAndIntensity.a == 0; clipped below the horizon.
+//----------------------------------------------------------------------------
+float3 SampleProceduralSun(float3 viewDir)
+{
+    float intensity = PerFrame.SunColorAndIntensity.a;
+    if (intensity <= 0.0)
+        return float3(0.0, 0.0, 0.0);
+    float3 sunDir = PerFrame.SunDirAndCosRadius.xyz;
+    if (sunDir.z < 0.0)
+        return float3(0.0, 0.0, 0.0);
+
+    float cosRadius = PerFrame.SunDirAndCosRadius.w;
+    float cosAngle  = dot(viewDir, sunDir);
+    if (cosAngle < cosRadius)
+        return float3(0.0, 0.0, 0.0);
+
+    // Normalized distance from disc center in [0, 1] (0 = centre, 1 = edge).
+    float sinRadius = sqrt(saturate(1.0 - cosRadius * cosRadius));
+    float radial    = sqrt(saturate(1.0 - cosAngle * cosAngle)) / max(sinRadius, 1e-6);
+
+    // Bright core out to ~0.6, then smooth falloff to the edge.
+    float core = 1.0 - smoothstep(0.6, 1.0, radial);
+    return PerFrame.SunColorAndIntensity.rgb * (intensity * core);
+}
+
+//----------------------------------------------------------------------------
+// Moon: textured billboard sampled inside an angular disc around
+// MoonDirection.  Texture's alpha modulates blending; MoonColor.rgb
+// tints; MoonColor.a is the overall multiplier (0 disables).  Clipped
+// below the horizon.  Returns straight-alpha rgba so the caller can
+// alpha-over.
+//----------------------------------------------------------------------------
+float4 SampleMoonBillboard(float3 viewDir)
+{
+    if (PerFrame.HasMoon == 0)
+        return float4(0.0, 0.0, 0.0, 0.0);
+    float intensity = PerFrame.MoonColorAndIntensity.a;
+    if (intensity <= 0.0)
+        return float4(0.0, 0.0, 0.0, 0.0);
+
+    float3 moonDir = PerFrame.MoonDirAndCosRadius.xyz;
+    if (moonDir.z < 0.0)
+        return float4(0.0, 0.0, 0.0, 0.0);
+
+    float cosRadius = PerFrame.MoonDirAndCosRadius.w;
+    float cosAngle  = dot(viewDir, moonDir);
+    if (cosAngle < cosRadius)
+        return float4(0.0, 0.0, 0.0, 0.0);
+
+    // Local 2D basis perpendicular to moonDir; project the in-cone offset
+    // and map to texture UV.  Y flipped so the texture's top row maps to
+    // the visual top of the disc on screen.
+    float3 ref = (abs(moonDir.z) > 0.9) ? float3(0.0, 1.0, 0.0)
+                                        : float3(0.0, 0.0, 1.0);
+    float3 right = normalize(cross(ref, moonDir));
+    float3 up    = cross(moonDir, right);
+
+    float3 offset = viewDir - cosAngle * moonDir;
+    float  sinRadius = sqrt(saturate(1.0 - cosRadius * cosRadius));
+    float2 discUV    = float2(dot(offset, right), dot(offset, up)) / max(sinRadius, 1e-6);
+    float2 uv        = float2(discUV.x * 0.5 + 0.5, 0.5 - discUV.y * 0.5);
+
+    float4 tex = MoonTexture.SampleLevel(LinearClampSampler, uv, 0);
+    return float4(tex.rgb * PerFrame.MoonColorAndIntensity.rgb,
+                  tex.a   * intensity);
+}
+
 float4 PSComposite(FSInput input) : SV_Target0
 {
     // Sample G-buffers
@@ -38,11 +272,25 @@ float4 PSComposite(FSInput input) : SV_Target0
     float4 diffuseSample = GBufferDiffuseColor.Sample(PointSampler, input.TexCoord);
     float4 worldPosSample = GBufferWorldPos.Sample(PointSampler, input.TexCoord);
 
-    // Skip pixels with no geometry (alpha == 0 means nothing was written)
+    // No geometry at this pixel: emit the scene background (solid color
+    // or skybox) plus the stars + procedural sun + moon billboard, then
+    // run the composite's exposure curve so the result tonemaps
+    // consistently with the lit scene.  Stars and sun are additive over
+    // the sky; the moon is alpha-blended on top so its rgb is independent
+    // of the sky brightness behind it.
     if (normalSample.a == 0.0)
-        discard;
+    {
+        float3 viewDir   = ScreenUVToWorldDir(input.TexCoord);
+        float3 skyColor  = SampleBackground(viewDir);
+        skyColor += SampleStars(viewDir);
+        skyColor += SampleProceduralSun(viewDir);
+        float4 moonRgba  = SampleMoonBillboard(viewDir);
+        skyColor         = lerp(skyColor, moonRgba.rgb, saturate(moonRgba.a));
+        skyColor = 1.0 - exp(-skyColor * PerFrame.Exposure);
+        return float4(skyColor, 1.0);
+    }
 
-    // Decode world-space normal from [0,1] → [-1,1]
+    // Decode world-space normal from [0,1] -> [-1,1]
     float3 N = normalize(normalSample.rgb * 2.0 - 1.0);
     float3 albedo = diffuseSample.rgb;
     float3 P = worldPosSample.xyz;
@@ -60,7 +308,8 @@ float4 PSComposite(FSInput input) : SV_Target0
             // Lambert needs the vector from surface toward the light source.
             float3 L = normalize(-light.DirectionOrPosition.xyz);
             float NdotL = saturate(dot(N, L));
-            totalLight += light.Color.rgb * NdotL;
+            float shadow = SampleDirectionalShadow(light, P, N);
+            totalLight += light.Color.rgb * (NdotL * shadow);
         }
         else if (light.Type == LIGHT_POINT)
         {

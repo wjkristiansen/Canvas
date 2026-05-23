@@ -11,9 +11,39 @@
 #include "ResourceManager.h"
 #include "UploadRing.h"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+// 4324: 'CRenderQueue12': structure padded due to alignment specifier. Triggered
+// by std::vector<DisplacedDrawDesc> embedding a FloatMatrix4x4 (alignas(16)).
+#pragma warning(disable: 4324)
+#endif
+
 // Forward declarations
 class CSurface12;
 class CSwapChain12;
+
+// Private representation of one displaced patch-grid draw queued by
+// CRenderQueue12::DrawMesh during scene walk and drained at EndFrame.
+// Carries everything the GPU-tessellated drain needs: GPU resources,
+// LOD knobs (read from the material's GfxDisplacementDesc), per-tile
+// extents (also from the displacement desc + the node transform), and
+// the patch grid dim derived from the procedural mesh's vertex count.
+// Engine-internal only; not visible through any public API.
+struct DisplacedDrawDesc
+{
+    Canvas::XGfxSurface     *pHeightmap     = nullptr;
+    Canvas::XGfxSurface     *pAlbedo        = nullptr;
+    Canvas::XGfxSurface     *pAOMap         = nullptr;
+    Canvas::XGfxSurface     *pRoughnessMap  = nullptr;
+    Canvas::Math::FloatMatrix4x4 World;
+    float    OriginX       = 0.0f;
+    float    OriginY       = 0.0f;
+    float    WorldSizeX    = 0.0f;
+    float    WorldSizeY    = 0.0f;
+    float    HeightScale   = 0.0f;
+    float    HeightBias    = 0.0f;
+    uint32_t PatchGridDim  = 64;
+};
 
 // Enable resource usage validation diagnostics (conflict detection, write exclusivity checking)
 // Set to 0 to disable for production builds with minimal overhead
@@ -452,6 +482,18 @@ public:
     CComPtr<ID3D12DescriptorHeap> m_pDSVDescriptorHeap;
     CComPtr<ID3D12RootSignature> m_pDefaultRootSig;
     CComPtr<ID3D12PipelineState> m_pDefaultPSO;
+    CComPtr<ID3D12PipelineState> m_pDefaultPSOWireframe;  // built lazily on first wireframe enable
+    bool                          m_GeometryWireframe = false;
+    CComPtr<ID3D12RootSignature> m_pDisplacedRootSig;
+    CComPtr<ID3D12PipelineState> m_pDisplacedPSO;
+    CComPtr<ID3D12PipelineState> m_pDisplacedPSOWireframe;
+    // Depth-only displaced PSO + root sig, used for shadow-atlas tile
+    // rendering.  Reuses VSDisplaced + HSDisplaced bytecode (so shadow
+    // tessellation tracks camera LOD and avoids Peter Panning) and
+    // pairs them with DSDisplacedShadow + no PS.  Created lazily on
+    // first shadow-casting light submission.
+    CComPtr<ID3D12RootSignature> m_pDisplacedShadowRootSig;
+    CComPtr<ID3D12PipelineState> m_pDisplacedShadowPSO;
     CComPtr<ID3D12RootSignature> m_pTextRootSig;
     CComPtr<ID3D12PipelineState> m_pTextPSO;
     DXGI_FORMAT m_TextPSOFormat = DXGI_FORMAT_UNKNOWN;
@@ -483,6 +525,44 @@ public:
     UINT m_DepthBufferHeight = 0;
     UINT m_NextDSVSlot = 0;
 
+    // Shadow atlas.  One engine-internal R32_TYPELESS surface shared by
+    // every shadow-casting directional light this frame.  Sub-allocated
+    // into a fixed 2x2 grid of square tiles (so up to 4 directional
+    // shadow casters at the same time); each tile is selected via the
+    // light's atlas-rect-UV in HlslLight.  Created lazily by
+    // EnsureShadowAtlas() the first frame any enabled shadow-casting
+    // light is submitted.
+    //
+    //   m_pShadowAtlas        - committed resource holding the depth data.
+    //   m_ShadowAtlasSize     - atlas side length in texels (square).
+    //   m_ShadowAtlasTilesPerSide - grid resolution (2 -> 2x2 = 4 tiles).
+    //   m_ShadowAtlasDSV      - cached DSV referencing the whole atlas;
+    //                           individual tiles select their region via
+    //                           viewport / scissor / clear rect.
+    //   m_NextShadowTileIndex - per-frame allocator counter; reset to 0
+    //                           at EndFrame start.
+    Gem::TGemPtr<CSurface12>     m_pShadowAtlas;
+    UINT                         m_ShadowAtlasSize         = 0;
+    UINT                         m_ShadowAtlasTilesPerSide = 0;
+    D3D12_CPU_DESCRIPTOR_HANDLE  m_ShadowAtlasDSV          = {};
+    UINT                         m_NextShadowTileIndex     = 0;
+
+    static const UINT kShadowAtlasDefaultSize     = 4096;
+    static const UINT kShadowAtlasTilesPerSide    = 2;     // 2 -> 4 tiles
+    static const UINT kShadowAtlasMaxTiles        = kShadowAtlasTilesPerSide * kShadowAtlasTilesPerSide;
+
+    // One allocated shadow tile.  Pixel coordinates index into the atlas;
+    // AtlasRectUV is the same region expressed in [0,1] atlas UV (xy =
+    // origin, zw = size) and is what the shader sees via HlslLight.
+    struct ShadowAtlasTile
+    {
+        bool                         Valid;
+        UINT                         PixelX;
+        UINT                         PixelY;
+        UINT                         PixelSize;
+        Canvas::Math::FloatVector4   AtlasRectUV;
+    };
+
     // G-buffer render targets for deferred shading
     Gem::TGemPtr<CSurface12> m_pGBufferNormals;
     Gem::TGemPtr<CSurface12> m_pGBufferDiffuseColor;
@@ -506,14 +586,68 @@ public:
     // Frame rendering state
     CSwapChain12 *m_pCurrentSwapChain = nullptr;   // Set during BeginFrame..EndFrame
     Canvas::XCamera *m_pActiveCamera = nullptr;     // Set by scene via SetActiveCamera during Update
+
+    // Scene background.  Populated by SetBackground (typically forwarded
+    // from XScene at the start of each submission); the cubemap surfaces
+    // are held via strong refs that parallel the raw pointers in
+    // m_Background so the surfaces stay alive while bound.  When no
+    // background has been set the default is opaque black with no skybox.
+    Canvas::GfxBackgroundDesc m_Background;
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pSkyCubeA;
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pSkyCubeB;
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pStarsCube;
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pMoonTexture;
     HlslTypes::HlslLight m_Lights[MAX_LIGHTS_PER_REGION] = {};
     uint32_t m_LightCount = 0;
-    D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentRTV = {};
-    D3D12_CPU_DESCRIPTOR_HANDLE m_CurrentDSV = {};
-    D3D12_CPU_DESCRIPTOR_HANDLE m_GBufferRTVs[5] = {};
+
+    // Shadow-caster intents recorded by SubmitLight (one per enabled
+    // directional light with LightFlags::CastsShadows).  Resolved at
+    // EndFrame, after scene traversal is complete and m_FrameWorldBounds
+    // is final.  Resolution allocates an atlas tile, fits a shadow
+    // matrix to the world bounds, fills in this struct's tile + matrix
+    // fields, and writes the shadow parameters back into m_Lights[].
+    // Entries whose scene-bounds aggregate is empty get dropped (no
+    // shadow rendered, HlslLight.ShadowFlags stays 0).
+    struct PendingShadowCaster
+    {
+        // Set by SubmitLight:
+        uint32_t                     LightSlotIndex;  // index into m_Lights[]
+        Canvas::XLight*              pLight;          // for resolution-time queries
+
+        // Filled at EndFrame resolution:
+        bool                         Resolved;        // false = drop, no shadow this frame
+        Canvas::Math::FloatMatrix4x4 ShadowViewProj;
+        UINT                         TilePixelX;
+        UINT                         TilePixelY;
+        UINT                         TilePixelSize;
+    };
+    std::vector<PendingShadowCaster> m_PendingShadowCasters;
+    D3D12_CPU_DESCRIPTOR_HANDLE  m_CurrentRTV = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE  m_CurrentDSV = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE  m_GBufferRTVs[5] = {};
+
+    // Back-buffer viewport + scissor, captured at BeginFrame so passes
+    // that temporarily switch to a different render target (e.g. shadow
+    // atlas tiles) can restore them and keep downstream draws on the
+    // intended visible surface.
+    D3D12_VIEWPORT               m_BackBufferViewport = {};
+    D3D12_RECT                   m_BackBufferScissor  = {};
 
     // Renderable nodes enqueued during scene graph update, dispatched during EndFrame
     std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
+
+    // World-space AABB of every spatial element submitted this frame.
+    // Accumulated in SubmitForRender by transforming each bound
+    // element's GetLocalBounds() through its node's global matrix.
+    // Empty when the scene contains no elements with valid geometry
+    // bounds; shadow-pass setup drops shadow casters in that case
+    // (the engine doesn't have enough information to choose a shadow
+    // region, so no shadows are rendered until a future scene-extent
+    // mechanism fills the gap).  Reset at EndFrame epilogue.
+    Canvas::Math::AABB m_FrameWorldBounds;
+
+    // Pending displaced-mesh submissions, drained during EndFrame.
+    std::vector<DisplacedDrawDesc> m_DisplacedDraws;
 
     // UI graph nodes enqueued during UI graph submission, dispatched during EndFrame
     std::vector<Canvas::XUIGraphNode*> m_UIRenderableQueue;
@@ -558,7 +692,16 @@ public:
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
     GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
+    GEMMETHOD_(void, SetBackground)(const Canvas::GfxBackgroundDesc *pDesc) final;
+    GEMMETHOD_(void, SetGeometryWireframe)(bool wireframe) final;
+    GEMMETHOD_(bool, GetGeometryWireframe)() const final;
+    GEMMETHOD(FinalizeUploadAsShaderResource)(Canvas::XGfxSurface *pSurface) final;
     GEMMETHOD(EndFrame)() final;
+
+    // Internal: queue a displaced-mesh draw, called by DrawMesh when it
+    // detects a procedural patch-grid mesh paired with a displacement-
+    // enabled material. Not part of the public interface.
+    Gem::Result SubmitDisplacedDraw(const DisplacedDrawDesc &desc);
 
     // Internal functions
     CDevice12 *GetDevice() const { return m_pDevice; }
@@ -579,9 +722,56 @@ public:
 
     // Create or resize G-buffer render targets to match the given dimensions
     void EnsureGBuffers(UINT width, UINT height);
+
+    // Create the shadow atlas surface + DSV the first time a shadow-casting
+    // light needs one this frame.  Idempotent; safe to call every frame.
+    void EnsureShadowAtlas();
+
+    // Allocate the next shadow tile from the atlas grid for a light that
+    // wants up to `preferredResolution` texels per side.  Tile size is
+    // clamped to the fixed grid cell (atlas side / tiles-per-side).
+    // Returns Valid=false when the atlas is full this frame; caller should
+    // then leave the light's HlslLight.ShadowAtlasRectUV zeroed so the
+    // composite skips its shadow sample.
+    ShadowAtlasTile AllocateShadowTile(UINT preferredResolution);
     
     // Create the default (geometry pass) PSO (lazily, on first use)
     void EnsureDefaultPSO();
+
+    // Lazily create the wireframe variant of the geometry pass PSO.
+    void EnsureDefaultPSOWireframe();
+
+    // Lazily create the displaced-mesh root sig + PSO variants (solid + wireframe).
+    void EnsureDisplacedPSO();
+    void EnsureDisplacedPSOWireframe();
+
+    // Lazily create the depth-only displaced shadow PSO + root sig used
+    // for rendering shadow-atlas tiles.  Idempotent.
+    void EnsureDisplacedShadowPSO();
+
+    ID3D12PipelineState* GetActiveDisplacedPSO()
+    {
+        if (m_GeometryWireframe)
+        {
+            EnsureDisplacedPSOWireframe();
+            return m_pDisplacedPSOWireframe;
+        }
+        EnsureDisplacedPSO();
+        return m_pDisplacedPSO;
+    }
+
+    // Pick the appropriate variant of the default geometry pass PSO based
+    // on the current wireframe debug flag.
+    ID3D12PipelineState* GetActiveDefaultPSO()
+    {
+        if (m_GeometryWireframe)
+        {
+            EnsureDefaultPSOWireframe();
+            return m_pDefaultPSOWireframe;
+        }
+        EnsureDefaultPSO();
+        return m_pDefaultPSO;
+    }
 
     // Create the composition PSO and root signature (lazily, on first use)
     void EnsureCompositePSO(DXGI_FORMAT rtvFormat);
@@ -710,10 +900,34 @@ private:
 
     // Accumulate a light for the current frame's deferred lighting pass
     Gem::Result SubmitLight(Canvas::XLight *pLight);
+
+    // Resolve every PendingShadowCaster: allocate an atlas tile, fit a
+    // shadow matrix to the current frame's world-bounds aggregate, and
+    // write the resulting parameters back into the corresponding
+    // m_Lights[] entry.  Casters whose aggregate is empty are dropped
+    // (Resolved=false) and produce no shadow output this frame.  Called
+    // from EndFrame after scene traversal has completed and before
+    // per-frame constants are uploaded.
+    void ResolveShadowCasters();
+
+    // Build a texel-snapped world-to-shadow-clip matrix for a directional
+    // light, fitting the ortho box to a world-space scene AABB.  Projects
+    // the 8 corners of sceneBounds into light-view space, sizes the ortho
+    // from the resulting light-view AABB, and centres / texel-snaps on
+    // that AABB's centre.  Caller must ensure sceneBounds is non-empty.
+    static Canvas::Math::FloatMatrix4x4 BuildDirectionalShadowMatrixFromBounds(
+        const Canvas::Math::FloatVector4& lightDir,
+        const Canvas::Math::FloatVector4& worldUp,
+        const Canvas::Math::AABB&         sceneBounds,
+        UINT                              resolution);
     
     // GPU Task Graphs — three graphs dispatched in order: scene → UI → present
     Canvas::CGpuTaskGraph m_GpuTaskGraph;        // Scene: geometry, composite
     Canvas::CGpuTaskGraph m_UIGpuTaskGraph;       // UI: text, HUD overlays
-    Canvas::CGpuTaskGraph m_PresentGpuTaskGraph;  // Present: back buffer → COMMON
+    Canvas::CGpuTaskGraph m_PresentGpuTaskGraph;  // Present: back buffer -> COMMON
     bool m_TaskGraphActive = false;
 };
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

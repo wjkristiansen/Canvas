@@ -115,6 +115,7 @@ public:
     // Texture upload (XGfxDevice interface — copy queue staging)
     GEMMETHOD(UploadTextureRegion)(
         Canvas::XGfxSurface *pDstSurface,
+        uint32_t subresourceIndex,
         uint32_t dstX, uint32_t dstY,
         uint32_t width, uint32_t height,
         const void *pData,

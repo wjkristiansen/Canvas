@@ -145,7 +145,7 @@ public:
             return false;
         }
 
-        r = pDevice->UploadTextureRegion(pSurface.Get(), 0, 0, width, height,
+        r = pDevice->UploadTextureRegion(pSurface.Get(), 0, 0, 0, width, height,
             pixels.data(), rowPitch);
         if (Gem::Failed(r))
         {
@@ -401,7 +401,7 @@ class CApp
     Gem::TGemPtr<Canvas::XLogger> m_pLogger;
     std::unique_ptr<CViewerWindow> m_pWindow;
     Gem::TGemPtr<Canvas::XCanvas> m_pCanvas;
-    Gem::TGemPtr<Canvas::XSceneGraph> m_pScene;
+    Gem::TGemPtr<Canvas::XScene> m_pScene;
     Gem::TGemPtr<Canvas::XCamera> m_pCamera;
     Gem::TGemPtr<Canvas::XCanvasPlugin> m_pGfxPlugin;
     Gem::TGemPtr<Canvas::XGfxDevice> m_pGfxDevice;
@@ -436,7 +436,7 @@ class CApp
         Canvas::XSceneGraphNode *pCameraNode,
         const Canvas::Math::AABB &bounds)
     {
-        if (!pCameraNode || !bounds.IsValid())
+        if (!pCameraNode || bounds.IsEmpty())
             return;
 
         const Canvas::Math::FloatVector4 sceneCenter = bounds.GetCenter();
@@ -510,9 +510,9 @@ class CApp
 
     void LogSceneBounds(const char *label, const Canvas::Math::AABB &bounds)
     {
-        if (!bounds.IsValid())
+        if (bounds.IsEmpty())
         {
-            Canvas::LogWarn(m_pLogger.Get(), "%s: scene bounds invalid", label);
+            Canvas::LogWarn(m_pLogger.Get(), "%s: scene bounds empty", label);
             return;
         }
 
@@ -581,7 +581,7 @@ class CApp
 
     bool TryLoadImportedScene(
         Canvas::XCanvas *pCanvas,
-        Canvas::XSceneGraph *pScene,
+        Canvas::XScene *pScene,
         Canvas::XCamera *pDefaultCamera,
         Canvas::XSceneGraphNode *pDefaultCameraNode)
     {
@@ -683,7 +683,7 @@ class CApp
         // Instantiate model into the scene
         // -----------------------------------------------------------------
         Canvas::ModelInstantiateResult result{};
-        Gem::ThrowGemError(pModel->Instantiate(pScene->GetRootSceneGraphNode(), &result));
+        Gem::ThrowGemError(pModel->Instantiate(pScene->GetRootNode(), &result));
 
         m_pModel = pModel;
         m_pInstanceRoot = result.pInstanceRoot;
@@ -841,8 +841,8 @@ public:
                 (void**)&pDevice));
 
             initStep = "create_scene";
-            Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraph(pDevice, &pScene, "MainScene"));
+            Gem::TGemPtr<Canvas::XScene> pScene;
+            Gem::ThrowGemError(pCanvas->CreateScene(pDevice, &pScene, "MainScene"));
 
             initStep = "create_render_queue";
             // Create the render queue
@@ -892,7 +892,7 @@ public:
             m_CameraYaw = atan2f(basisForward[1], basisForward[0]);
             m_CameraPitch = asinf(std::clamp(basisForward[2], -1.0f, 1.0f));
             
-            pScene->GetRootSceneGraphNode()->AddChild(pCameraNode);
+            pScene->GetRootNode()->AddChild(pCameraNode);
             pScene->SetActiveCamera(pCamera);
 
             initStep = "load_or_build_scene";

@@ -772,7 +772,11 @@ namespace Canvas
         {
             using Type = _Type;
 
-            TQuaternion() = default;
+            // Default-constructs to the multiplicative identity (0, 0, 0, 1),
+            // which is what every default-constructed rotation should be.
+            // (The additive identity (0, 0, 0, 0) is not a meaningful rotation.)
+            TQuaternion() :
+                TVector{ 0, 0, 0, 1 } {}
             TQuaternion(_Type scalar) :
                 TVector{ 0, 0, 0, scalar } {}
             TQuaternion(const TVector<Type, 4> & v) :
@@ -1205,14 +1209,24 @@ namespace Canvas
         //------------------------------------------------------------------------------------------------
         // PerspectiveReverseZ: Generates a reverse-Z perspective projection matrix.
         //
-        // Conventions:
-        //   Input coordinate system:  X = camera's local forward, Y = camera's local left, Z = camera's local up (RHS)
-        //   Clip space:               X = right, Y = up, Z = depth (1.0 at near, 0.0 at far)
+        // Engine coordinate-system contract:
+        //   World space:  RHS, +X = forward, +Y = left, +Z = up
+        //                 (meshes are authored CCW-front in this basis)
+        //   View space:   LHS, +X = right, +Y = up, +Z = forward
+        //                 (standard D3D LHS, matches every D3D sample,
+        //                  RenderDoc / PIX expectation, and shader debugger
+        //                  convention)
+        //   Clip space:   X = right, Y = up, Z = depth (1.0 at near, 0.0 at far)
         //
-        // This transformation maps:
-        //   - Camera's forward (X_cam) → Z_clip (depth into screen, reverse-Z: 1 at near, 0 at far)
-        //   - Camera's left (Y_cam) → -X_clip (negated to become right in clip space)
-        //   - Camera's up (Z_cam) → Y_clip (up in clip space)
+        // The world->view basis change is the engine's single internal
+        // RHS->LHS bridge.  Its 3x3 has determinant -1, so triangle winding
+        // flips once across the entire pipeline:
+        //
+        //   author CCW-front in world  ->  CW in view  ->  CW in clip   (det -1, view)
+        //                                                  becomes      (one more conceptual flip
+        //                                                  CCW seen     because the LHS view
+        //                                                  by raster)   reverses the "outward"
+        //                                                               winding orientation
         //
         // Parameters:
         //   fovY        - Vertical field of view angle in radians
@@ -1222,17 +1236,10 @@ namespace Canvas
         //
         // Returns: A 4x4 projection matrix for use with row vectors (v' = v * M)
         //
-        // Matrix layout for row vectors (v' = v * M):
-        // Row-vector multiplication: [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
-        //
-        // For v * M, element M[i][j] maps input component i to output component j.
-        // RHS camera: +X=forward, +Y=left, +Z=up
-        // Mapping: x_cam(fwd)→z_clip+w_clip, y_cam(left)→-x_clip, z_cam(up)→y_clip
-        //
-        // [   0      0         A        1    ]  row 0 (x_cam: forward → depth + w)
-        // [ -f/aspect 0        0        0    ]  row 1 (y_cam: left → -x_clip)
-        // [   0       f        0        0    ]  row 2 (z_cam: up → y_clip)
-        // [   0       0        B        0    ]  row 3 (const → depth bias)
+        // [ f/aspect  0    0    0 ]  row 0 (x_view=right    -> x_clip)
+        // [   0       f    0    0 ]  row 1 (y_view=up       -> y_clip)
+        // [   0       0    A    1 ]  row 2 (z_view=forward  -> z_clip + w_clip)
+        // [   0       0    B    0 ]  row 3 (const           -> z_clip depth bias)
         //
         // Where: A = nearPlane/(nearPlane-farPlane), B = -(nearPlane*farPlane)/(nearPlane-farPlane)
         template<class _Type>
@@ -1243,18 +1250,11 @@ namespace Canvas
             _Type f = _Type(1.0) / std::tan(fovY * _Type(0.5));  // cotangent of half FOV
             _Type rangeInv = _Type(1.0) / (nearPlane - farPlane);  // negative
 
-            // Row 0: x_cam(forward) → z_clip (depth) and w_clip (perspective divide)
-            m[0][2] = nearPlane * rangeInv;       // A: forward → z_clip
-            m[0][3] = _Type(1.0);                 // forward → w_clip
-
-            // Row 1: y_cam(left) → -x_clip (negated because clip space is +X=right)
-            m[1][0] = -f / aspect;
-
-            // Row 2: z_cam(up) → y_clip
-            m[2][1] = f;
-
-            // Row 3: constant → z_clip (depth bias)
-            m[3][2] = -(nearPlane * farPlane * rangeInv);  // B: depth bias
+            m[0][0] = f / aspect;                            // x_view (right)   -> x_clip
+            m[1][1] = f;                                     // y_view (up)      -> y_clip
+            m[2][2] = nearPlane * rangeInv;                  // z_view (forward) -> z_clip (A, reverse-Z)
+            m[2][3] = _Type(1.0);                            // z_view (forward) -> w_clip (perspective divide)
+            m[3][2] = -(nearPlane * farPlane * rangeInv);    // depth bias       -> z_clip (B)
 
             return m;
         }
@@ -1263,13 +1263,12 @@ namespace Canvas
         // PerspectiveForwardZ: Generates a forward-Z perspective projection matrix.
         //
         // Conventions:
-        //   Input coordinate system:  X = camera's local forward, Y = camera's local left, Z = camera's local up (RHS)
-        //   Clip space:               X = right, Y = up, Z = depth (0.0 at near, 1.0 at far)
+        //   Camera (view) space:  X = right, Y = up, Z = forward (LHS, standard D3D)
+        //   Clip space:           X = right, Y = up, Z = depth (0.0 at near, 1.0 at far)
         //
-        // This transformation maps:
-        //   - Camera's forward (X_cam) → Z_clip (depth into screen, forward-Z: 0 at near, 1 at far)
-        //   - Camera's left (Y_cam) → -X_clip (negated to become right in clip space)
-        //   - Camera's up (Z_cam) → Y_clip (up in clip space)
+        // See PerspectiveReverseZ for the rationale behind the view-space
+        // convention. This variant uses the conventional D3D forward-Z depth
+        // mapping (0 at near, 1 at far) rather than reverse-Z.
         //
         // Parameters:
         //   fovY        - Vertical field of view angle in radians
@@ -1279,19 +1278,12 @@ namespace Canvas
         //
         // Returns: A 4x4 projection matrix for use with row vectors (v' = v * M)
         //
-        // Matrix layout for row vectors (v' = v * M):
-        // Row-vector multiplication: [x_cam, y_cam, z_cam, 1] * M = [x_clip, y_clip, z_clip, w_clip]
+        // [ f/aspect  0    0    0 ]  row 0 (x_view=right    -> x_clip)
+        // [   0       f    0    0 ]  row 1 (y_view=up       -> y_clip)
+        // [   0       0    A    1 ]  row 2 (z_view=forward  -> z_clip + w_clip)
+        // [   0       0    B    0 ]  row 3 (const           -> z_clip depth bias)
         //
-        // For v * M, element M[i][j] maps input component i to output component j.
-        // RHS camera: +X=forward, +Y=left, +Z=up
-        // Mapping: x_cam(fwd)→z_clip+w_clip, y_cam(left)→-x_clip, z_cam(up)→y_clip
-        //
-        // [   0      0         A        1    ]  row 0 (x_cam: forward → depth + w)
-        // [ -f/aspect 0        0        0    ]  row 1 (y_cam: left → -x_clip)
-        // [   0       f        0        0    ]  row 2 (z_cam: up → y_clip)
-        // [   0       0       -B        0    ]  row 3 (const → depth bias)
-        //
-        // Where: A = farPlane/(farPlane-nearPlane), B = (nearPlane*farPlane)/(farPlane-nearPlane)
+        // Where: A = farPlane/(farPlane-nearPlane), B = -nearPlane*farPlane/(farPlane-nearPlane)
         template<class _Type>
         TMatrix<_Type, 4, 4> PerspectiveForwardZ(_Type fovY, _Type aspect, _Type nearPlane, _Type farPlane)
         {
@@ -1300,18 +1292,52 @@ namespace Canvas
             _Type f = _Type(1.0) / std::tan(fovY * _Type(0.5));  // cotangent of half FOV
             _Type rangeInv = _Type(1.0) / (farPlane - nearPlane);  // positive
 
-            // Row 0: x_cam(forward) → z_clip (depth) and w_clip (perspective divide)
-            m[0][2] = farPlane * rangeInv;        // A: forward → z_clip
-            m[0][3] = _Type(1.0);                 // forward → w_clip
+            m[0][0] = f / aspect;                          // x_view (right)   -> x_clip
+            m[1][1] = f;                                   // y_view (up)      -> y_clip
+            m[2][2] = farPlane * rangeInv;                 // z_view (forward) -> z_clip (A)
+            m[2][3] = _Type(1.0);                          // z_view (forward) -> w_clip
+            m[3][2] = -nearPlane * farPlane * rangeInv;    // depth bias       -> z_clip (B)
 
-            // Row 1: y_cam(left) → -x_clip (negated because clip space is +X=right)
-            m[1][0] = -f / aspect;
+            return m;
+        }
 
-            // Row 2: z_cam(up) → y_clip
-            m[2][1] = f;
+        //------------------------------------------------------------------------------------------------
+        // OrthoReverseZ: Reverse-Z orthographic projection matrix.
+        //
+        // Consumes view space (LHS: +X=right, +Y=up, +Z=forward) and produces
+        // clip space where x in [-halfWidth, halfWidth] maps to [-1, 1],
+        // y in [-halfHeight, halfHeight] maps to [-1, 1], and z in
+        // [zNear, zFar] maps to [1, 0] (reverse-Z, matching PerspectiveReverseZ).
+        //
+        // Used for directional-light shadow maps: the light's view matrix
+        // brings world-space receivers into a light-aligned view, this matrix
+        // maps the light's box of interest to clip space, and the resulting
+        // depth respects the engine's GREATER_EQUAL depth test.
+        //
+        // Parameters:
+        //   halfWidth   - half side length along x (meters)
+        //   halfHeight  - half side length along y (meters)
+        //   zNear       - near plane along +Z (meters; receivers nearer than this clip away)
+        //   zFar        - far plane along +Z (meters; zFar > zNear)
+        //
+        // Returns a 4x4 matrix for row vectors (v' = v * M).
+        //
+        // [ 1/halfWidth   0           0                  0 ]
+        // [ 0             1/halfHeight 0                 0 ]
+        // [ 0             0          -1/(zFar-zNear)     0 ]
+        // [ 0             0           zFar/(zFar-zNear)  1 ]
+        template<class _Type>
+        TMatrix<_Type, 4, 4> OrthoReverseZ(_Type halfWidth, _Type halfHeight, _Type zNear, _Type zFar)
+        {
+            TMatrix<_Type, 4, 4> m = {};
 
-            // Row 3: constant → z_clip (depth bias)
-            m[3][2] = -nearPlane * farPlane * rangeInv;  // -B: depth bias
+            const _Type rangeInv = _Type(1.0) / (zFar - zNear);  // positive (zFar > zNear)
+
+            m[0][0] = _Type(1.0) / halfWidth;    // x_view -> x_clip
+            m[1][1] = _Type(1.0) / halfHeight;   // y_view -> y_clip
+            m[2][2] = -rangeInv;                 // z_view -> z_clip slope (reverse-Z)
+            m[3][2] = zFar * rangeInv;           // z_view -> z_clip intercept
+            m[3][3] = _Type(1.0);                // affine w
 
             return m;
         }
@@ -1334,9 +1360,35 @@ namespace Canvas
             {
             }
 
+            // Empty: the canonical inside-out FLT_MAX sentinel.  This is
+            // the default-constructed state, used as the starting point
+            // for ExpandToInclude aggregation so the first contributed
+            // point lands tightly at min == max without a special-case
+            // first-insertion branch.
+            //
+            // Strict equality with the sentinel is intentional.  An AABB
+            // that is inside-out but NOT this exact sentinel is INVALID
+            // (see IsValid), not empty -- treating such an AABB as empty
+            // would mask a real bug and silently no-op aggregations that
+            // ought to fix or flag the malformed input.
+            bool IsEmpty() const
+            {
+                return Min.V[0] ==  FLT_MAX && Min.V[1] ==  FLT_MAX && Min.V[2] ==  FLT_MAX
+                    && Max.V[0] == -FLT_MAX && Max.V[1] == -FLT_MAX && Max.V[2] == -FLT_MAX;
+            }
+
+            // Valid: either empty (the intentional sentinel) or
+            // geometrically well-formed (min <= max in every axis).  A
+            // degenerate AABB -- a point, line, or face where min == max
+            // in one or more axes -- is well-formed and therefore valid.
+            // Only inside-out, non-empty AABBs are invalid; they indicate
+            // a construction-side bug rather than a meaningful state.
             bool IsValid() const
             {
-                return Min.V[0] <= Max.V[0] && Min.V[1] <= Max.V[1] && Min.V[2] <= Max.V[2];
+                return IsEmpty()
+                    || (Min.V[0] <= Max.V[0]
+                     && Min.V[1] <= Max.V[1]
+                     && Min.V[2] <= Max.V[2]);
             }
 
             void Reset()
@@ -1357,8 +1409,8 @@ namespace Canvas
 
             void ExpandToInclude(const AABB& other)
             {
-                if (!other.IsValid()) return;
-                if (!IsValid())
+                if (other.IsEmpty()) return;
+                if (IsEmpty())
                 {
                     *this = other;
                     return;
@@ -1385,6 +1437,32 @@ namespace Canvas
                     (Max.V[2] - Min.V[2]) * 0.5f,
                     0.0f
                 );
+            }
+
+            // Transform this AABB through an affine row-vector matrix
+            // (v' = v * M) and return the AABB of the eight transformed
+            // corners.  Conservative: the result fully encloses the
+            // transformed box but is generally larger than the tightest
+            // oriented bounding box.  Empty AABBs pass through unchanged;
+            // invalid (inside-out non-sentinel) AABBs do not short-circuit
+            // and will produce a result reflecting their corner positions.
+            AABB Transform(const TMatrix<float, 4, 4>& m) const
+            {
+                if (IsEmpty())
+                    return *this;
+
+                AABB out;
+                for (int i = 0; i < 8; ++i)
+                {
+                    const FloatVector4 corner(
+                        (i & 1) ? Max.V[0] : Min.V[0],
+                        (i & 2) ? Max.V[1] : Min.V[1],
+                        (i & 4) ? Max.V[2] : Min.V[2],
+                        1.0f);
+                    const FloatVector4 t = corner * m;
+                    out.ExpandToInclude(t);
+                }
+                return out;
             }
         };
 

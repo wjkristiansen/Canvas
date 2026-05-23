@@ -33,7 +33,7 @@ namespace Canvas
 #endif
 
 // Forward declarations
-struct XSceneGraph;
+struct XScene;
 struct XCamera;
 struct XLight;
 struct XGfxBuffer;
@@ -53,6 +53,7 @@ struct XUITextElement;
 struct XUIRectElement;
 struct GfxResourceAllocation;
 struct XGfxSurface;
+struct GfxBackgroundDesc;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
@@ -176,7 +177,7 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(LoadPlugin)(PCSTR path, struct XCanvasPlugin **ppPlugin) = 0;
 
-    GEMMETHOD(CreateSceneGraph)(XGfxDevice *pDevice, XSceneGraph **ppScene, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateScene)(XGfxDevice *pDevice, XScene **ppScene, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
@@ -323,6 +324,40 @@ XSceneGraphElement : public XCanvasElement
     GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode) = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
+
+    // Element-local axis-aligned bounding box of the element's GEOMETRY.
+    //
+    // Returned in node-local coordinates -- transformed through the
+    // attached node's global matrix to obtain a world-space AABB for
+    // shadow-caster aggregation, frustum culling of renderables, or
+    // spatial subdivision of scene geometry.
+    //
+    // "Geometry" here is the element's physical extent: a mesh's vertex
+    // envelope, a model's union-of-meshes envelope.  Non-geometric
+    // elements (XLight, XCamera, ambient) return an empty AABB so they
+    // contribute nothing to geometric aggregates.
+    //
+    // Their AREAS OF INFLUENCE -- point/spot light attenuation volumes,
+    // camera view frusta -- are a separate concept reported by
+    // GetLocalInfluenceBounds so that a shadow-region or frustum-cull
+    // walk can union element bounds without per-element type checks.
+    GEMMETHOD_(Math::AABB, GetLocalBounds)() const = 0;
+
+    // Element-local axis-aligned bounding box of the element's AREA OF
+    // INFLUENCE: the spatial region in which this element affects
+    // rendering or simulation, but does not itself occupy as geometry.
+    //
+    //   Point light  -> attenuation cutoff sphere -> AABB
+    //   Spot light   -> attenuation + cone        -> AABB
+    //   Camera       -> view frustum              -> AABB
+    //   Directional / ambient light -> empty (infinite, no spatial bound)
+    //   XMeshInstance / XModel      -> empty (geometry-only, no influence)
+    //
+    // Aggregating shadow casters and aggregating light influences are
+    // distinct queries served by separate methods (GetLocalBounds vs
+    // GetLocalInfluenceBounds) so neither walk has to filter the other
+    // out by inspecting element type.
+    GEMMETHOD_(Math::AABB, GetLocalInfluenceBounds)() const = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -385,19 +420,59 @@ XLight : public XSceneGraphElement
     // Spot light parameters (only valid for Spot lights)
     GEMMETHOD_(void, SetSpotAngles)(float innerAngle, float outerAngle) = 0;
     GEMMETHOD_(void, GetSpotAngles)(float* pInnerAngle, float* pOuterAngle) const = 0;
+
+    // Shadow parameters - take effect only when the LightFlags::CastsShadows
+    // bit is set and the backend supports shadow-casting for this light type.
+    // The backend allocates and manages the underlying shadow map.
+
+    // Square shadow-map resolution in texels. 0 selects the backend default
+    // (currently 2048). Higher values trade VRAM + fill cost for sharper
+    // shadow edges.
+    GEMMETHOD_(void, SetShadowResolution)(UINT pixels) = 0;
+    GEMMETHOD_(UINT, GetShadowResolution)() const = 0;
+
+    // Self-shadowing bias knobs.
+    //   constantBias   - added to the receiver's projected depth before
+    //                    the shadow compare. Use small positive values
+    //                    (e.g. 1e-4) to push receivers past their caster.
+    //   slopeScaleBias - scaled by max(|ddx z|, |ddy z|) during the shadow
+    //                    draw to compensate steep polygons.
+    //   normalOffset   - in shadow-map texels; pushes the sample point
+    //                    along the surface normal at compare time so
+    //                    grazing-angle surfaces don't self-shadow.
+    GEMMETHOD_(void, SetShadowDepthBias)(float constantBias, float slopeScaleBias, float normalOffset) = 0;
+    GEMMETHOD_(void, GetShadowDepthBias)(float* pConstantBias, float* pSlopeScaleBias, float* pNormalOffset) const = 0;
+
+    // Shadow frustum sizing for directional lights is NOT a light-side
+    // concept and so has no API here.  A directional light is infinite;
+    // the "where do we care about shadows" volume is a property of the
+    // view (camera frustum + shadow distance) and / or scene spatial
+    // subdivision.  Until that machinery lands the backend uses a fixed
+    // generous default ortho extent sufficient for current test scenes.
+    // See src/CanvasGfx12/Lib/RenderQueue12.cpp BuildDirectionalShadowMatrix
+    // call sites for the interim constants.
 };
 
 //------------------------------------------------------------------------------------------------
 struct
-XSceneGraph : public XCanvasElement
+XScene : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(XSceneGraph, 0x0A470E86351AF96A);
+    GEM_INTERFACE_DECLARE(XScene, 0x0A470E86351AF96A);
 
     GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
-    GEMMETHOD_(XSceneGraphNode *, GetRootSceneGraphNode)() = 0;
+    GEMMETHOD_(XSceneGraphNode *, GetRootNode)() = 0;
 
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
     GEMMETHOD_(XCamera *, GetActiveCamera)() const = 0;
+
+    // Scene background (what fills G-buffer pixels with no geometry).
+    // Every scene has a background; the default for a newly created
+    // scene is opaque black.  Stored by value; any surface referenced
+    // by the desc (sky cubemaps) is held strongly for as long as the
+    // background references it.  Pass nullptr to reset to the default.
+    GEMMETHOD_(void, SetBackground)(const GfxBackgroundDesc *pDesc) = 0;
+    // Returns the current background (never nullptr).
+    GEMMETHOD_(const GfxBackgroundDesc *, GetBackground)() const = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
@@ -408,7 +483,7 @@ struct
 XMeshInstance : public XSceneGraphElement
 {
     GEM_INTERFACE_DECLARE(XMeshInstance, 0x1C80317FA3B1799D);
-    
+
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() = 0;
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;
 };

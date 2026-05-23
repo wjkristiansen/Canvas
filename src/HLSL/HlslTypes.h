@@ -38,17 +38,100 @@ struct ALIGN16 HlslLight
     float4 Color;
     float4 DirectionAndSpot;
     float4 AttenuationAndRange;
+
+    // Layout note: the four scalars below pack into exactly one 16-byte
+    // HLSL CB chunk so that ShadowAtlasRectUV lands on a 16-byte boundary
+    // without HLSL needing to add hidden padding -- which would desync
+    // from the C++ float4's natural 4-byte alignment and corrupt every
+    // field after it.  Do not insert padding here.
+    //   Type                     - LIGHT_* enum value (matches LightType).
+    //   ShadowFlags bit 0        = HasShadow (atlas + view matrix valid).
+    //   ShadowDepthBias          - constant added to receiver NDC z before
+    //                              the hardware compare (reverse-Z).
+    //   ShadowNormalOffsetTexels - push the sample point along the
+    //                              surface normal at compare time, in
+    //                              shadow-atlas texels of this light's tile.
     uint   Type;
+    uint   ShadowFlags;
+    float  ShadowDepthBias;
+    float  ShadowNormalOffsetTexels;
+
+    //   ShadowAtlasRectUV.xy     = atlas-UV origin of this light's tile,
+    //                    .zw     = atlas-UV size of this light's tile.
+    //                              (0,0,0,0) when the light has no allocated tile.
+    //   ShadowViewProj           - world-space row vector -> shadow NDC.
+    //                              Reverse-Z ortho for directional lights.
+    float4 ShadowAtlasRectUV;
+    ROW_MAJOR float4x4 ShadowViewProj;
 };
+
+#define SHADOW_FLAG_HAS_SHADOW (1u << 0)
 
 struct ALIGN16 HlslPerFrameConstants
 {
     ROW_MAJOR float4x4 ViewProj;
     float4 CameraWorldPos;
+
+    // Per-frame camera basis + projection params for view-ray reconstruction
+    // in fullscreen passes (e.g. the analytic sky in PSComposite). Packs
+    // forward / right / up world-space basis vectors with the FOV-derived
+    // tangent and aspect ratio in the w channels.
+    float4 CamForwardAndTanHalfFov;   // xyz = forward, w = tan(fovY / 2)
+    float4 CamRightAndAspect;         // xyz = right,   w = aspect (W/H)
+    float4 CamUp;                     // xyz = up,      w = unused
+
     uint LightCount;
     float LightCullThreshold;
     float Exposure;            // Linear scene-radiance multiplier (exp2(stops))
     float _PerFramePad0;
+
+    // Shadow-atlas global parameters. ShadowAtlasSize is in texels (atlas is
+    // square). ShadowPcfTexelStep = 1 / ShadowAtlasSize, precomputed on the
+    // CPU so the composite shader can compute neighbour-tap offsets without
+    // a divide.
+    uint   ShadowAtlasSize;
+    float  ShadowPcfTexelStep;
+    float  _ShadowAtlasPad0;
+    float  _ShadowAtlasPad1;
+
+    // Scene background.  Composite fills empty G-buffer pixels with either
+    // the SolidColor (when SkyHasCubemap == 0) or a sample from the bound
+    // skybox cubemap (t3, and optionally t4 with SkyBlendFactor crossfade
+    // when SkyHasCubemapB != 0).  SkyOrientationQuat rotates the view ray
+    // (its conjugate is applied) before sampling so cubemaps can be authored
+    // in any basis.  SkyIntensity is a linear multiplier on the sampled
+    // cubemap color (not applied to SolidColor).
+    float4 SkySolidColor;            // rgb = solid background, a unused
+    float4 SkyOrientationQuat;       // (x, y, z, w), identity = (0,0,0,1)
+    uint   SkyHasCubemap;            // 0 = no skybox bound -> use SolidColor
+    uint   SkyHasCubemapB;           // 0 = single-cube path (no crossfade)
+    float  SkyBlendFactor;           // 0 = A only, 1 = B only
+    float  SkyIntensity;             // linear multiplier on cubemap sample
+
+    // Stars overlay: rotating RGBA cubemap (just stars; sun and moon
+    // are rendered procedurally / billboard below).  Bound at t5; null
+    // SRV when HasStars == 0.
+    float4 StarsOrientationQuat;     // identity = (0, 0, 0, 1)
+    uint   HasStars;                 // 0 = no stars cube bound
+    float  StarsIntensity;
+    float  _StarsPad0;
+    float  _StarsPad1;
+
+    // Sun: procedural disc in the composite shader.  SunColor.a > 0
+    // enables; a controls overall intensity.  cos(SunAngularRadius)
+    // is precomputed by the engine for the cone test.
+    float4 SunDirAndCosRadius;       // xyz = unit dir, w = cos(SunAngularRadius)
+    float4 SunColorAndIntensity;     // rgb = additive tint, a = intensity (0 disables)
+
+    // Moon: textured billboard.  Texture bound at t6; null SRV when
+    // HasMoon == 0.  cos(MoonAngularRadius) precomputed for cone test.
+    float4 MoonDirAndCosRadius;      // xyz = unit dir, w = cos(MoonAngularRadius)
+    float4 MoonColorAndIntensity;    // rgb = tint, a = overall multiplier
+    uint   HasMoon;                  // 0 = no moon texture bound
+    float  _MoonPad0;
+    float  _MoonPad1;
+    float  _MoonPad2;
+
     HlslLight Lights[MAX_LIGHTS_PER_REGION];
 };
 
@@ -63,6 +146,21 @@ struct ALIGN16 HlslPerObjectConstants
     uint   _Pad0;
     uint   _Pad1;
     uint   _Pad2;
+};
+
+//------------------------------------------------------------------------------------------------
+// Per-instance constants for the engine's displaced-mesh pipeline
+// (VS/HS/DS/PS in Displaced.hlsli). Populated by the engine from a
+// material's GfxDisplacementDesc, the mesh's procedural patch grid
+// dim, and the mesh instance's world transform.
+struct ALIGN16 HlslDisplacedConstants
+{
+    ROW_MAJOR float4x4 World;        // Tile world transform (typically identity)
+    float4 TileOriginAndSize;        // xy = world-space origin of texel (0,0); zw = world-space tile size
+    uint   PatchGridDim;             // Patch count per side; total patches = PatchGridDim^2
+    float  HeightScale;              // Meters per [0, 1] heightmap sample
+    float  HeightBias;               // Meters added after scale
+    uint   _Pad0;
 };
 
 // Per-draw material flags. Bits are uniform per-draw and used to enable
@@ -125,6 +223,16 @@ struct ALIGN16 HlslRectConstants
 static_assert(sizeof(HlslTypes::HlslGlyphInstance) == 32, "HlslGlyphInstance must be 32 bytes");
 static_assert(sizeof(HlslTypes::HlslTextConstants) == 32, "HlslTextConstants must be 32 bytes");
 static_assert(sizeof(HlslTypes::HlslRectConstants) == 48, "HlslRectConstants must be 48 bytes");
+// HlslLight layout must match the HLSL CB packing exactly: the four
+// scalars after AttenuationAndRange (Type, ShadowFlags, ShadowDepthBias,
+// ShadowNormalOffsetTexels) fully consume one 16-byte chunk, then
+// ShadowAtlasRectUV at offset 80 and ShadowViewProj at offset 96.
+// 4*16 (vec4s) + 16 (scalar chunk) + 16 (rect) + 64 (matrix) = 160 bytes.
+static_assert(offsetof(HlslTypes::HlslLight, ShadowAtlasRectUV) == 80,
+    "ShadowAtlasRectUV must sit at offset 80 to match HLSL CB packing");
+static_assert(offsetof(HlslTypes::HlslLight, ShadowViewProj) == 96,
+    "ShadowViewProj must sit at offset 96 to match HLSL CB packing");
+static_assert(sizeof(HlslTypes::HlslLight) == 160, "HlslLight must be 160 bytes");
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif

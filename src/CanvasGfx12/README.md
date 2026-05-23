@@ -426,6 +426,18 @@ Positions are bound as a root SRV at t0 by GPU virtual address. Remaining vertex
 
 Lights are accumulated during scene graph traversal. Each light's attenuation and cull distance are pre-computed on the CPU and packed into an `HlslLight` struct. Up to `MAX_LIGHTS_PER_REGION` (16) lights are uploaded as part of the per-frame constant buffer.
 
+For directional lights with `LightFlags::CastsShadows`, `SubmitLight` additionally:
+
+1. Lazily allocates the shadow atlas (one `D32_Float` surface with both `DepthStencil` and `ShaderResource` usage, 4096 px per side, divided into a fixed 2×2 grid of 2048² tiles — up to four shadow casters per frame).
+2. Picks the next free atlas tile.
+3. Builds a texel-snapped, reverse-Z orthographic `world -> shadow-clip` matrix via `BuildDirectionalShadowMatrix`, centring the frustum on the active camera so receivers near the viewer fall into the high-resolution slab. Snapping the focus point to the atlas texel grid removes shimmer when the camera moves.
+4. Writes `ShadowAtlasRectUV`, `ShadowViewProj`, `ShadowFlags`, `ShadowDepthBias`, and `ShadowNormalOffsetTexels` into the light's `HlslLight` entry so the composite can sample without additional CPU plumbing.
+5. Queues a `PendingShadowCaster` record for `EndFrame` to drain.
+
+`EndFrame` then inserts one `ShadowPass_Displaced` `GpuTask` per (shadow caster × ready displaced tile), each declaring DSV-write usage on the atlas and SRV-read usage on the heightmap. The first task into a tile clears it with a scissor-restricted `ClearDepthStencilView(0.0f)` (reverse-Z far plane); subsequent tasks accumulate depth. The composite task downstream declares SRV usage on the atlas, so the `DEPTH_STENCIL_WRITE -> SHADER_RESOURCE` transition is emitted automatically by the task graph.
+
+The shadow pass uses a dedicated depth-only PSO (`m_pDisplacedShadowPSO`) that reuses the existing `VSDisplaced` + `HSDisplaced` bytecode (so shadow tessellation tracks the camera and matches receiver LOD, preventing Peter Panning) and pairs them with `DSDisplacedShadow` (writes only `SV_Position` from a `b2` `HlslShadowConstants` matrix) with no pixel shader. Conservative caster-side `DepthBias` + `SlopeScaledDepthBias` are baked into the PSO; per-light caster bias values from `XLight::SetShadowDepthBias` are not honoured in v1 (only the receiver-side constant + normal-offset terms vary per light).
+
 ### Composition
 
 After all geometry tasks are inserted, the render queue transitions the G-buffer surfaces from render target to shader resource layout and inserts a composition task. Three of the five G-buffer targets are bound as SRVs for the composition shader:
@@ -439,6 +451,15 @@ After all geometry tasks are inserted, the render queue transitions the G-buffer
 The PBR and emissive targets are written by the geometry pass but are not yet consumed by the composition shader. They are reserved for a future physically-based lighting pass that will incorporate roughness, metallic, AO, and emissive terms. The current composition shader performs Lambertian diffuse lighting only.
 
 The composition task binds the composition PSO, sets the back buffer as the single render target, and draws a fullscreen triangle. The pixel shader decodes normals, loops over the light array, accumulates contributions, applies an exposure multiplier, and writes the final color. The normal alpha channel serves as a coverage flag: pixels with alpha of zero were never written by the geometry pass and are discarded so the background clear color shows through.
+
+Shadow sampling lives in this same loop. The directional-light branch calls `SampleDirectionalShadow(light, P, N)` whenever `light.ShadowFlags & SHADOW_FLAG_HAS_SHADOW` is set. The helper:
+
+1. Pushes `P` along `N` by `ShadowNormalOffsetTexels` (in shadow-atlas texels, converted to world meters via `ShadowPcfTexelStep / tileUvWidth`) — combats grazing-angle acne that pure depth bias cannot remove.
+2. Projects the biased position through `light.ShadowViewProj` and remaps NDC.xy into atlas UV via `light.ShadowAtlasRectUV`.
+3. Adds `ShadowDepthBias` to the projected NDC z (receiver-side bias in reverse-Z space).
+4. Does a 2×2 hardware PCF lookup with a `SamplerComparisonState` (s3) configured `GREATER_EQUAL` (reverse-Z) and `D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE` so receivers outside the shadow frustum read as fully lit.
+
+The shadow atlas itself is bound at `t7`. When no shadow casters exist in a frame, a null SRV is bound there and every light's `ShadowFlags == 0`, so the PCF path is short-circuited.
 
 ### UI Drawing
 
@@ -635,7 +656,7 @@ CanvasCore owns the scene graph and UI graph; CanvasGfx12 consumes them during r
 
 ### Scene Graph
 
-`XSceneGraph` is a hierarchical transform graph. Each `XSceneGraphNode` carries a local rotation (quaternion), translation, and scale. Global transforms are computed lazily with dirty-flag propagation, avoiding redundant matrix recomputation when only a few nodes change.
+`XScene` is a hierarchical transform graph. Each `XSceneGraphNode` carries a local rotation (quaternion), translation, and scale. Global transforms are computed lazily with dirty-flag propagation, avoiding redundant matrix recomputation when only a few nodes change.
 
 During `Update`, the scene graph marks dirty transforms and propagates them down the hierarchy. `SubmitRenderables` then traverses the graph and calls `SubmitForRender` on the render queue for each node that carries a bound element. Lights are extracted and routed to `SubmitLight`. Mesh instances are queued for drawing in `EndFrame`.
 

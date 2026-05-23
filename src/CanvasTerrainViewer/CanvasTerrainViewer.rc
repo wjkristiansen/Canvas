@@ -1,0 +1,49 @@
+// CanvasTerrainViewer resource script - icons + file version info only.
+//
+// No accompanying header: these IDs are referenced only here, and the EXE
+// shell icon is selected by lowest numeric ID, so numeric IDs are retained
+// rather than switching to named resources.
+#include <windows.h>
+
+#define IDI_CANVASTERRAINVIEWER 107
+#define IDI_SMALL               108
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+// Icon with lowest ID value placed first so the executable's shell icon
+// resolves to the main app icon on all systems.
+IDI_CANVASTERRAINVIEWER ICON "CanvasTerrainViewer.ico"
+IDI_SMALL               ICON "small.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName",      "Bill Kristiansen"
+            VALUE "FileDescription",  "Canvas Terrain Viewer"
+            VALUE "FileVersion",      "1.0.0.1"
+            VALUE "InternalName",     "CanvasTerrainViewer.exe"
+            VALUE "LegalCopyright",   "Copyright (C) 2026"
+            VALUE "OriginalFilename", "CanvasTerrainViewer.exe"
+            VALUE "ProductName",      "CanvasTerrainViewer"
+            VALUE "ProductVersion",   "1.0.0.1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

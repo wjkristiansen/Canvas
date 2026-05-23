@@ -106,6 +106,22 @@ add_hlsl_shader("PSText.hlsl" "ps_6_0" "main")
 add_hlsl_shader("VSRect.hlsl" "vs_6_0" "main")
 add_hlsl_shader("PSRect.hlsl" "ps_6_0" "main")
 
+# Displaced-mesh pipeline (VS + HS + DS + PS). Engine selects this
+# pipeline when a material has a GfxDisplacementDesc attached and is
+# paired with a procedural patch-grid mesh. Shaders compile against
+# HlslTypes.h / Common.hlsli plus Displaced.hlsli for the displaced-
+# pipeline-specific bindings + structs.
+add_hlsl_shader("VSDisplaced.hlsl" "vs_6_0" "VSDisplaced")
+add_hlsl_shader("HSDisplaced.hlsl" "hs_6_0" "HSDisplaced")
+add_hlsl_shader("DSDisplaced.hlsl" "ds_6_0" "DSDisplaced")
+add_hlsl_shader("PSDisplaced.hlsl" "ps_6_0" "PSDisplaced")
+
+# Depth-only displaced shadow DS. Engine pairs this with the existing
+# VSDisplaced + HSDisplaced bytecode under a separate root signature
+# (no PS, b2 = light shadow ViewProj) to render the displaced terrain
+# into one shadow-atlas tile per shadow-casting light.
+add_hlsl_shader("DSDisplacedShadow.hlsl" "ds_6_0" "DSDisplacedShadow")
+
 # Create the HLSL target
 add_custom_target(HLSL ALL
     DEPENDS ${SHADER_OUTPUTS}

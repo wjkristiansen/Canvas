@@ -36,6 +36,15 @@ class CLight :
     float m_SpotInnerAngle;  // In radians
     float m_SpotOuterAngle;  // In radians
 
+    // Shadow parameters (consumed by the backend when LightFlags::CastsShadows is set).
+    // Frustum extent for directional lights is intentionally absent --
+    // that's a view / scene property, not a light property; the backend
+    // uses a fixed default until proper camera-driven shadow regions land.
+    UINT  m_ShadowResolution        = 0;       // 0 = backend default (2048)
+    float m_ShadowConstantBias      = 1e-4f;
+    float m_ShadowSlopeScaleBias    = 2.0f;
+    float m_ShadowNormalOffset      = 0.5f;    // In shadow-map texels
+
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
@@ -112,6 +121,25 @@ public:
         if (pInnerAngle) *pInnerAngle = m_SpotInnerAngle;
         if (pOuterAngle) *pOuterAngle = m_SpotOuterAngle;
     }
+
+    // Shadow parameters
+    GEMMETHOD_(void, SetShadowResolution)(UINT pixels) final { m_ShadowResolution = pixels; }
+    GEMMETHOD_(UINT, GetShadowResolution)() const final { return m_ShadowResolution; }
+
+    GEMMETHOD_(void, SetShadowDepthBias)(float constantBias, float slopeScaleBias, float normalOffset) final
+    {
+        m_ShadowConstantBias   = constantBias;
+        m_ShadowSlopeScaleBias = slopeScaleBias;
+        m_ShadowNormalOffset   = normalOffset;
+    }
+
+    GEMMETHOD_(void, GetShadowDepthBias)(float* pConstantBias, float* pSlopeScaleBias, float* pNormalOffset) const final
+    {
+        if (pConstantBias)   *pConstantBias   = m_ShadowConstantBias;
+        if (pSlopeScaleBias) *pSlopeScaleBias = m_ShadowSlopeScaleBias;
+        if (pNormalOffset)   *pNormalOffset   = m_ShadowNormalOffset;
+    }
+
 };
 
 }

@@ -6,6 +6,7 @@
 
 #include "D3D12ResourceUtils.h"
 #include "CanvasGfx12.h"
+#include "FenceToken.h"
 
 //------------------------------------------------------------------------------------------------
 class CSurface12 :
@@ -45,4 +46,14 @@ public:
     
     // Weak pointer to owner swap chain (if this surface is a swap chain back buffer)
     class CSwapChain12* m_pOwnerSwapChain;
+
+    // Fence token set when an upload + SHADER_RESOURCE fixup barrier has been
+    // queued via UploadTextureRegion. The render queue must not bind this
+    // surface through a DATA_STATIC SRV range until this token has retired
+    // on the GPU: D3D12 considers the layout transition that put the surface
+    // in SHADER_RESOURCE to be a "state change", and DATA_STATIC promises no
+    // such change happens during any in-flight CL that has the descriptor
+    // bound. Waiting for retirement guarantees the change is in the past.
+    // Default-constructed token is invalid -> treated as "no pending upload".
+    FenceToken m_UploadFixupToken;
 };

@@ -100,6 +100,108 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    // Optional displacement extension on a material.  When attached, the
+    // engine selects a tessellation+displacement render path for this
+    // material instead of the standard lit path.  All shaders, root sigs,
+    // and PSOs stay engine-owned; the material only describes intent.
+    //
+    // Heightmap is a single-channel UNorm texture sampled per displaced
+    // vertex.  HeightScale / HeightBias decode the [0,1] sample into world
+    // units along the surface normal (for a flat tile mesh this is the
+    // local +Z direction).  Tess factors are computed by the engine using
+    // a distance + curvature LOD scheme parameterized by the four LOD
+    // knobs below; per-edge factors are computed from edge-midpoint
+    // quantities so adjacent patches agree on shared edges.
+    struct GfxDisplacementDesc
+    {
+        XGfxSurface *pHeightmap        = nullptr;   // single-channel UNorm
+        float        HeightScale       = 1.0f;      // world units per 1.0 sample
+        float        HeightBias        = 0.0f;      // world units added to all samples
+
+        // World-space tile extents along the displaced surface's local X / Y
+        // axes.  The procedural patch grid mesh emits unit-square [0,1]^2
+        // positions; the engine multiplies by these to obtain world-space
+        // patch XY.  Kept here (on the material extension) rather than
+        // encoded as node scale because scale propagates through the
+        // scene-graph hierarchy and would wrongly affect children of
+        // the tile node.
+        float        TileSizeWorldX    = 1.0f;
+        float        TileSizeWorldY    = 1.0f;
+
+        float        MinTessFactor     = 2.0f;
+        float        MaxTessFactor     = 32.0f;
+        // Distance factor: clamp(scale * edge_world_length / dist_to_midpoint, Min, Max).
+        float        DistanceLodScale  = 10.0f;
+        // Curvature factor (added on top of distance): meters of 2nd-derivative
+        // at a coarse-mip Laplacian, scaled by this constant.
+        float        CurvatureLodScale = 0.5f;
+    };
+
+    //------------------------------------------------------------------------------------------------
+    // Scene background description.  Owned by XScene via SetBackground.
+    // The background is what fills G-buffer pixels with no geometry; it
+    // has no transform in the scene graph and is sampled by view direction
+    // in the composite pass.  Every scene has a background -- the default
+    // is opaque black -- so the composite pass always writes every pixel.
+    struct GfxBackgroundDesc
+    {
+        // When pSkyboxCubemapA is non-null the background is sampled
+        // from the cubemap(s) by world-space view direction; otherwise
+        // the background is the flat SolidColor.
+        Math::FloatVector4     SolidColor       = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+        // Optional skybox.  Surfaces must have Dimension = DimensionCube
+        // and ArraySize = 6.  When pSkyboxCubemapB is non-null the sample
+        // is a linear interpolation:
+        //   lerp(sample(A, dir), sample(B, dir), BlendFactor)
+        // so apps can crossfade between authored sky presets (day -> dusk
+        // -> night, clear -> storm) without a CPU rebake.  Both surfaces
+        // must share face size and format.  Orientation applies to both.
+        // The view ray is rotated by the inverse of Orientation before
+        // sampling, so cubemaps can be authored in any basis.
+        XGfxSurface           *pSkyboxCubemapA  = nullptr;
+        XGfxSurface           *pSkyboxCubemapB  = nullptr;   // optional; ignored when null
+        float                  BlendFactor      = 0.0f;      // 0 = A, 1 = B
+        Math::FloatQuaternion  Orientation;                  // identity by default
+        float                  Intensity        = 1.0f;      // linear multiplier on sample
+
+        // Optional rotating stars cubemap.  RGBA where rgb is per-star
+        // colour and alpha is per-star coverage; the composite samples it
+        // with the view direction rotated by the conjugate of
+        // StarsOrientation, then additively blends rgb * alpha *
+        // StarsIntensity over the skybox.  Apps drive sidereal motion by
+        // updating StarsOrientation each frame.  Lower hemisphere
+        // (viewDir.z < 0) is clipped so stars never appear through the
+        // ground.  Format is typically R8G8B8A8_UNorm.
+        XGfxSurface           *pStarsCubemap    = nullptr;
+        Math::FloatQuaternion  StarsOrientation;             // identity by default
+        float                  StarsIntensity   = 1.0f;
+
+        // Sun: procedurally rendered as a soft-edged disc in the
+        // composite shader, driven entirely by SunDirection (the same
+        // unit vector the app uses for the sun's directional light, so
+        // there's a single source of truth for the sun's position).
+        // SunColor.a > 0 enables; .rgb tints the disc additively, .a
+        // scales overall intensity.  Naturally clipped below the
+        // horizon.
+        Math::FloatVector4     SunDirection     = { 0.0f, 0.0f, 1.0f, 0.0f };
+        Math::FloatVector4     SunColor         = { 0.0f, 0.0f, 0.0f, 0.0f };  // a = 0 disables
+        float                  SunAngularRadius = 0.012f;    // radians (~0.69 deg)
+
+        // Moon: textured billboard on the celestial sphere.  pMoonTexture
+        // (2D RGBA) is sampled within an angular disc centred on
+        // MoonDirection; the sample's alpha modulates blending and
+        // MoonColor.rgb tints the result.  MoonColor.a scales the
+        // overall contribution (0 disables).  Naturally clipped below
+        // the horizon.  Like the sun, MoonDirection is the same vector
+        // the app uses for the moon's directional light.
+        XGfxSurface           *pMoonTexture      = nullptr;
+        Math::FloatVector4     MoonDirection     = { 0.0f, 0.0f, -1.0f, 0.0f };
+        Math::FloatVector4     MoonColor         = { 1.0f, 1.0f, 1.0f, 0.0f };  // a = 0 disables
+        float                  MoonAngularRadius = 0.012f;
+    };
+
+    //------------------------------------------------------------------------------------------------
     enum MaterialLayerFlags : uint32_t
     {
         None            = 0,
@@ -154,6 +256,14 @@ namespace Canvas
         // Default = (1,0,1,0): fully rough, non-metallic, no AO occlusion.
         GEMMETHOD_(void, SetRoughMetalAOFactor)(const Math::FloatVector4 &factor) = 0;
         GEMMETHOD_(Math::FloatVector4, GetRoughMetalAOFactor)() = 0;
+
+        // Attach (or clear) a displacement extension.  Pass nullptr to clear.
+        // Stored by value; the surface reference inside is held strongly.
+        // When set, the engine routes draws of this material through its
+        // built-in tessellation+displacement render path.
+        GEMMETHOD_(void, SetDisplacement)(const GfxDisplacementDesc *pDesc) = 0;
+        // Returns nullptr when no displacement is attached.
+        GEMMETHOD_(const GfxDisplacementDesc *, GetDisplacement)() const = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -187,6 +297,21 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    // Primitive topology for mesh data.  TriangleList is the standard case
+    // (3 verts per triangle, requires position / normal vertex buffers).
+    // PatchList4CP marks a "procedural" mesh: no vertex buffers, the
+    // engine emits DrawInstanced(VertexCount, 1, 0, 0) with
+    // 4-control-point patch list topology and the VS reconstructs the
+    // mesh from SV_VertexID.  Used by tessellated displacement materials
+    // and by any future SV_VertexID-driven mesh (instanced grids,
+    // particle expansion).
+    enum class GfxPrimitiveTopology
+    {
+        TriangleList,
+        PatchList4CP,
+    };
+
+    //------------------------------------------------------------------------------------------------
     struct
     XGfxMeshData : public XCanvasElement
     {
@@ -195,6 +320,26 @@ namespace Canvas
         GEMMETHOD_(uint32_t, GetNumMaterialGroups)() = 0;
         GEMMETHOD_(GfxResourceAllocation *, GetVertexBuffer)(uint32_t materialIndex, GfxVertexBufferType type) = 0;
         GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t materialIndex) = 0;
+
+        // Topology shared by all groups of this mesh.  Default constructed
+        // mesh data is TriangleList for backward compatibility.
+        GEMMETHOD_(GfxPrimitiveTopology, GetTopology)() = 0;
+
+        // Total vertex / control-point count across all groups.  For a
+        // procedural mesh this is what the engine passes to DrawInstanced;
+        // for a triangle-list mesh it is the sum of per-group VertexCounts.
+        GEMMETHOD_(uint32_t, GetTotalVertexCount)() = 0;
+
+        // Mesh-local axis-aligned bounding box, in the same coordinate
+        // space as the mesh's vertex positions.  Computed at
+        // CreateMeshData time by walking any supplied position streams;
+        // an XMeshInstance applies its node's global matrix to obtain
+        // the world-space AABB.
+        //
+        // Returns an empty AABB when no group supplied positions
+        // (e.g. a procedural mesh whose draw is entirely SV_VertexID-
+        // driven with no associated geometry the engine can measure).
+        GEMMETHOD_(Canvas::Math::AABB, GetLocalBounds)() = 0;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -220,6 +365,20 @@ namespace Canvas
         const MeshDataGroupDesc        *pGroups       = nullptr;
         uint32_t                        GroupCount    = 0;
         const char                     *pName         = nullptr;
+
+        // When Topology is a procedural type (e.g. PatchList4CP) the
+        // group's vertex arrays may be null - the engine will draw
+        // VertexCount control points from SV_VertexID with no input
+        // assembler bindings.
+        GfxPrimitiveTopology            Topology      = GfxPrimitiveTopology::TriangleList;
+
+        // Optional explicit local-space AABB.  When non-empty this
+        // overrides the engine's auto-computation from group positions
+        // and becomes the mesh's GetLocalBounds() value verbatim.
+        // Intended for procedural meshes whose drawn geometry covers a
+        // known extent but is not present in any CPU position buffer
+        // (e.g. a tessellated patch grid generated from SV_VertexID).
+        Canvas::Math::AABB              LocalBounds;
     };
 
     //------------------------------------------------------------------------------------------------
@@ -239,7 +398,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    // Render queue — submits and executes rendering work.
+    // Render queue - submits and executes rendering work.
     struct XGfxRenderQueue : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
@@ -255,6 +414,31 @@ namespace Canvas
         GEMMETHOD(SubmitForRender)(XSceneGraphNode *pNode) = 0;
         GEMMETHOD(SubmitForUIRender)(XUIGraphNode *pNode) = 0;
         GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
+
+        // Set the scene background used by the composite pass to fill
+        // pixels with no geometry.  Pass nullptr to clear back to opaque
+        // black with no skybox.  The render queue takes its own strong
+        // references to any surfaces referenced by the desc (sky cubes)
+        // for the life of the binding.  XScene::SubmitRenderables
+        // forwards the scene's background here at the start of each
+        // submission so apps only set background once on the scene.
+        GEMMETHOD_(void, SetBackground)(const GfxBackgroundDesc *pDesc) = 0;
+
+        // Debug: force the geometry pass to render as wireframe. UI / composite
+        // passes are unaffected. Default false. The PSO variant is created
+        // lazily on first enable so the cost is zero until used.
+        GEMMETHOD_(void, SetGeometryWireframe)(bool wireframe) = 0;
+        GEMMETHOD_(bool, GetGeometryWireframe)() const = 0;
+
+        // Finalize a one-shot texture upload by scheduling a direct-queue
+        // barrier that transitions the surface from LAYOUT_COMMON to
+        // LAYOUT_SHADER_RESOURCE. Use after XGfxDevice::UploadTextureRegion
+        // for textures that will be sampled as static SRVs (e.g. terrain
+        // heightmaps, material atlases). The render queue stamps the surface
+        // with a fence token so DATA_STATIC consumers can wait for the
+        // transition to fully retire before binding the descriptor. Calling
+        // this on a surface that is not in LAYOUT_COMMON is a no-op.
+        GEMMETHOD(FinalizeUploadAsShaderResource)(XGfxSurface *pSurface) = 0;
     };
 
     enum GfxSurfaceFlags : uint32_t
@@ -364,6 +548,10 @@ namespace Canvas
         // per-group materials. Group count >= 1.
         GEMMETHOD(CreateMeshData)(const MeshDataDesc &desc, XGfxMeshData **ppMesh) = 0;
 
+        // Convenience factory for a [0,1]^2 unit-square procedural patch
+        // grid mesh.  patchesPerSide >= 1.  Result is a single-group
+        // XGfxMeshData with PatchList4CP topology, no vertex buffers,
+        // VertexCount = patchesPerSide * patchesPerSide * 4, and the
         GEMMETHOD(CreateDebugMeshData)(
             uint32_t vertexCount,
             const Canvas::Math::FloatVector4 *positions,
@@ -405,11 +593,15 @@ namespace Canvas
         // eagerly (e.g., at scene-load time, before the first frame).
         GEMMETHOD(FlushUploads)() = 0;
 
-        // Upload CPU data into a sub-region of a GPU surface via a staging copy
-        // on the device's copy queue.  Safe to call before the first BeginFrame;
-        // the next render submit gates on the copy fence.
+        // Upload CPU data into a sub-region of a single subresource of a GPU
+        // surface via a staging copy on the device's copy queue.  Safe to call
+        // before the first BeginFrame; the next render submit gates on the
+        // copy fence.  subresourceIndex selects the destination subresource
+        // (for cube/array textures: arraySlice * MipLevels + mipSlice; cube
+        // face order is posX=0, negX=1, posY=2, negY=3, posZ=4, negZ=5).
         GEMMETHOD(UploadTextureRegion)(
             XGfxSurface *pDstSurface,
+            uint32_t subresourceIndex,
             uint32_t dstX, uint32_t dstY,
             uint32_t width, uint32_t height,
             const void *pData,

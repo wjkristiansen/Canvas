@@ -108,6 +108,12 @@ target_include_directories(GEM INTERFACE
     $<INSTALL_INTERFACE:include/GEM>
 )
 
+# Header-only nlohmann/json (single-include build)
+add_library(NlohmannJson INTERFACE)
+target_include_directories(NlohmannJson INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/json/single_include>
+)
+
 # Add subdirectories for submodules first (they may be dependencies)
 add_subdirectory(deps/QLog)
 add_subdirectory(deps/ThinWin)
@@ -129,6 +135,7 @@ add_subdirectory(src/CanvasGfx12)
 add_subdirectory(src/CanvasFbx)
 add_subdirectory(src/CanvasConsole)
 add_subdirectory(src/CanvasModelViewer)
+add_subdirectory(src/CanvasTerrainViewer)
 add_subdirectory(src/CanvasUnitTest)
 # Allocators tests - conditionally include based on option
 if(ALLOCATORS_BUILD_TESTS)
@@ -137,6 +144,8 @@ endif()
 add_subdirectory(src/HLSL)
 
 # Install runtime test/demo assets next to installed binaries.
+# (Per-app sample assets are installed by their own CMakeLists.txt; this
+# top-level rule is a fallback for any repo-root assets/ tree.)
 if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
     install(DIRECTORY "${CMAKE_SOURCE_DIR}/assets/"
         DESTINATION "${CANVAS_INSTALL_DEST}/bin/assets"

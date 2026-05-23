@@ -41,8 +41,8 @@ int main()
         pCanvas, Canvas::TypeId::TypeId_GfxDevice, "ConsoleDevice",
         Canvas::XGfxDevice::IId, reinterpret_cast<void**>(&pDevice));
 
-    Gem::TGemPtr<Canvas::XSceneGraph> pScene;
-    result = pCanvas->CreateSceneGraph(pDevice, &pScene);
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    result = pCanvas->CreateScene(pDevice, &pScene);
 
     Gem::TGemPtr<Canvas::XSceneGraphNode> pRootSceneGraphNode;
     result = pScene->QueryInterface(&pRootSceneGraphNode);
