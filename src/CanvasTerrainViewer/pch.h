@@ -32,8 +32,8 @@
 #include <unordered_map>
 #include <vector>
 
-// ThinWin
-#include "ThinWin.h"
+// CanvasPlatformWin32
+#include "CanvasPlatformWin32.h"
 
 // GEM
 #include "Gem.hpp"

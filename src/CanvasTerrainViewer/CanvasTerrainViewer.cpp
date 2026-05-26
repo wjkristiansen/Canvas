@@ -81,153 +81,6 @@ public:
 };
 
 //-------------------------------------------------------------------------------------------------
-// Window subclass providing raw-mouse-input deltas for the FPS camera. Identical
-// to the CanvasModelViewer version; see that file for the design notes.
-class CViewerWindow : public ThinWin::CWindow
-{
-public:
-    using CWindow::CWindow;
-
-    bool IsMouseCaptured() const { return m_Captured; }
-
-    void SetMouseCaptured(bool captured)
-    {
-        if (captured && !m_Captured)
-        {
-            ::SetCapture(m_hWnd);
-            ::SetCursor(NULL);
-
-            RECT rc;
-            ::GetClientRect(m_hWnd, &rc);
-            ::MapWindowPoints(m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
-            ::ClipCursor(&rc);
-
-            RAWINPUTDEVICE rid{};
-            rid.usUsagePage = 0x01;
-            rid.usUsage     = 0x02;
-            rid.dwFlags     = 0;
-            rid.hwndTarget  = m_hWnd;
-            ::RegisterRawInputDevices(&rid, 1, sizeof(rid));
-
-            m_Captured = true;
-            m_HasLastAbsPos = false;
-            m_MouseDX = m_MouseDY = 0.0f;
-        }
-        else if (!captured && m_Captured)
-        {
-            // Flip the flag first so a re-entrant WM_CAPTURECHANGED from
-            // ReleaseCapture() below is a no-op.
-            m_Captured = false;
-
-            RAWINPUTDEVICE rid{};
-            rid.usUsagePage = 0x01;
-            rid.usUsage     = 0x02;
-            rid.dwFlags     = RIDEV_REMOVE;
-            rid.hwndTarget  = nullptr;
-            ::RegisterRawInputDevices(&rid, 1, sizeof(rid));
-
-            ::ClipCursor(nullptr);
-            ::ReleaseCapture();
-            ::SetCursor(LoadCursor(NULL, IDC_ARROW));
-        }
-    }
-
-    void ConsumeMouseDelta(float& dx, float& dy)
-    {
-        dx = m_MouseDX;
-        dy = m_MouseDY;
-        m_MouseDX = m_MouseDY = 0.0f;
-    }
-
-    LRESULT WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam) override
-    {
-        switch (uMsg)
-        {
-        case WM_INPUT:
-            if (m_Captured)
-            {
-                UINT dwSize = sizeof(RAWINPUT);
-                alignas(RAWINPUT) BYTE buffer[sizeof(RAWINPUT)];
-                if (::GetRawInputData(reinterpret_cast<HRAWINPUT>(lParam),
-                        RID_INPUT, buffer, &dwSize, sizeof(RAWINPUTHEADER)) != UINT(-1))
-                {
-                    const auto* raw = reinterpret_cast<const RAWINPUT*>(buffer);
-                    if (raw->header.dwType == RIM_TYPEMOUSE)
-                    {
-                        const RAWMOUSE& mouse = raw->data.mouse;
-                        if (mouse.usFlags & MOUSE_MOVE_ABSOLUTE)
-                        {
-                            float absX, absY;
-                            if (mouse.usFlags & MOUSE_VIRTUAL_DESKTOP)
-                            {
-                                int vdW = ::GetSystemMetrics(SM_CXVIRTUALSCREEN);
-                                int vdH = ::GetSystemMetrics(SM_CYVIRTUALSCREEN);
-                                absX = (mouse.lLastX / 65535.0f) * vdW;
-                                absY = (mouse.lLastY / 65535.0f) * vdH;
-                            }
-                            else
-                            {
-                                absX = (mouse.lLastX / 65535.0f) * ::GetSystemMetrics(SM_CXSCREEN);
-                                absY = (mouse.lLastY / 65535.0f) * ::GetSystemMetrics(SM_CYSCREEN);
-                            }
-                            if (m_HasLastAbsPos)
-                            {
-                                m_MouseDX += absX - m_LastAbsX;
-                                m_MouseDY += absY - m_LastAbsY;
-                            }
-                            m_LastAbsX = absX;
-                            m_LastAbsY = absY;
-                            m_HasLastAbsPos = true;
-                        }
-                        else
-                        {
-                            m_MouseDX += static_cast<float>(mouse.lLastX);
-                            m_MouseDY += static_cast<float>(mouse.lLastY);
-                        }
-                    }
-                }
-                return 0;
-            }
-            break;
-
-        case WM_MOUSEMOVE:
-            if (m_Captured)
-            {
-                ::SetCursor(NULL);
-                return 0;
-            }
-            break;
-
-        case WM_SETCURSOR:
-            if (LOWORD(lParam) == HTCLIENT)
-            {
-                ::SetCursor(m_Captured ? NULL : LoadCursor(NULL, IDC_ARROW));
-                return TRUE;
-            }
-            break;
-
-        case WM_CAPTURECHANGED:
-            // Capture lost externally (Alt+Tab, focus change, ClipCursor reset
-            // by another app, etc.). Run the full release path so the raw-input
-            // device registration and cursor clipping are cleaned up too.
-            if (reinterpret_cast<HWND>(lParam) != m_hWnd)
-                SetMouseCaptured(false);
-            return 0;
-        }
-
-        return CWindow::WindowProc(uMsg, wParam, lParam);
-    }
-
-private:
-    float m_MouseDX = 0.0f;
-    float m_MouseDY = 0.0f;
-    float m_LastAbsX = 0.0f;
-    float m_LastAbsY = 0.0f;
-    bool  m_HasLastAbsPos = false;
-    bool  m_Captured = false;
-};
-
-//-------------------------------------------------------------------------------------------------
 // Day/night cycle helper.
 //
 // Drives two polar-opposite directional lights (sun, moon) plus an ambient
@@ -490,7 +343,8 @@ class CTerrainApp
     std::string m_Title;
     HINSTANCE   m_hInstance;
     Gem::TGemPtr<Canvas::XLogger>           m_pLogger;
-    std::unique_ptr<CViewerWindow>          m_pWindow;
+    Gem::TGemPtr<Canvas::Platform::Win32::XAppWindow> m_pWindow;
+    Gem::TGemPtr<Canvas::Platform::Win32::XRawInput>  m_pInput;
     Gem::TGemPtr<Canvas::XCanvas>           m_pCanvas;
     Gem::TGemPtr<Canvas::XScene>       m_pScene;
     Gem::TGemPtr<Canvas::XCamera>           m_pCamera;
@@ -912,20 +766,19 @@ public:
         try
         {
             initStep = "create_window";
-            auto pWindow = std::make_unique<CViewerWindow>(
-                m_Title.c_str(), m_hInstance, WS_OVERLAPPEDWINDOW);
-
-            pWindow->ShowWindow(nCmdShow);
-            pWindow->UpdateWindow();
+            {
+                Canvas::Platform::Win32::AppWindowDesc wdesc;
+                wdesc.Title     = m_Title.c_str();
+                wdesc.hInstance = m_hInstance;
+                wdesc.Width     = 1280;
+                wdesc.Height    = 768;
+                Gem::ThrowGemError(Canvas::Platform::Win32::CreatePlatformWindow(wdesc, &m_pWindow, &m_pInput));
+            }
+            m_pWindow->Show(nCmdShow);
 
             initStep = "create_canvas";
             Gem::TGemPtr<Canvas::XCanvas> pCanvas;
             Gem::ThrowGemError(Canvas::CreateCanvas(m_pLogger.Get(), &pCanvas));
-
-            // Default windowed size.
-            RECT rcWnd; GetWindowRect(pWindow->m_hWnd, &rcWnd);
-            SetWindowPos(pWindow->m_hWnd, NULL, rcWnd.left, rcWnd.top,
-                1280, 768, SWP_NOZORDER);
 
             initStep = "load_graphics_plugin";
             Gem::TGemPtr<Canvas::XCanvasPlugin> pGfxPlugin;
@@ -949,7 +802,7 @@ public:
             initStep = "create_swap_chain";
             Gem::TGemPtr<Canvas::XGfxSwapChain> pSwap;
             Gem::ThrowGemError(pRq->CreateSwapChain(
-                pWindow->m_hWnd, true, &pSwap,
+                m_pWindow->GetHWND(), true, &pSwap,
                 Canvas::GfxFormat::R16G16B16A16_Float, 4));
 
             initStep = "create_camera";
@@ -1047,7 +900,6 @@ public:
             }
             m_pStatusText->SetText("loading...");
 
-            m_pWindow = std::move(pWindow);
             return true;
         }
         catch (std::bad_alloc&)
@@ -1084,14 +936,11 @@ public:
 
         struct CursorGuard
         {
-            CViewerWindow* p;
-            ~CursorGuard() { if (p) p->SetMouseCaptured(false); }
-        } cursorGuard{m_pWindow.get()};
+            Canvas::Platform::Win32::XAppWindow* p;
+            ~CursorGuard() { p->SetMouseCaptured(false); }
+        } cursorGuard{m_pWindow.Get()};
 
         m_pWindow->SetMouseCaptured(true);
-
-        // Edge-detect helpers for hotkeys.
-        bool prevPause = false, prevScrubBack = false, prevScrubFwd = false, prevWire = false;
 
         for (; running;)
         {
@@ -1112,11 +961,7 @@ public:
             ++frameCount;
 
             // Window focus -> mouse capture management.
-            HWND foreground = GetForegroundWindow();
-            HWND foregroundRoot = foreground ? GetAncestor(foreground, GA_ROOT) : nullptr;
-            const bool hasFocus = (foreground == m_pWindow->m_hWnd) ||
-                                  (foregroundRoot == m_pWindow->m_hWnd) ||
-                                  (foreground && IsChild(m_pWindow->m_hWnd, foreground));
+            const bool hasFocus = m_pWindow->HasFocus();
             if (hasFocus && !m_pWindow->IsMouseCaptured())
                 m_pWindow->SetMouseCaptured(true);
             else if (!hasFocus && m_pWindow->IsMouseCaptured())
@@ -1127,7 +972,7 @@ public:
             bool rotated = false;
             if (m_pWindow->IsMouseCaptured())
             {
-                m_pWindow->ConsumeMouseDelta(dx, dy);
+                m_pInput->GetMouseDelta(dx, dy);
                 if (std::fabs(dx) > 0.0f || std::fabs(dy) > 0.0f)
                 {
                     m_CameraYaw   -= dx * kMouseSensitivity;
@@ -1150,15 +995,15 @@ public:
             if (hasFocus)
             {
                 Canvas::Math::FloatVector4 moveDir(0.0f, 0.0f, 0.0f, 0.0f);
-                if (GetAsyncKeyState('W') & 0x8000) moveDir = moveDir + forward;
-                if (GetAsyncKeyState('S') & 0x8000) moveDir = moveDir - forward;
-                if (GetAsyncKeyState('D') & 0x8000) moveDir = moveDir - right;
-                if (GetAsyncKeyState('A') & 0x8000) moveDir = moveDir + right;
-                if (GetAsyncKeyState(VK_SPACE)   & 0x8000) moveDir = moveDir + Canvas::Math::FloatVector4(0,0,1,0);
-                if (GetAsyncKeyState(VK_CONTROL) & 0x8000) moveDir = moveDir - Canvas::Math::FloatVector4(0,0,1,0);
-                if (GetAsyncKeyState(VK_ESCAPE)  & 0x8000) { running = false; break; }
+                if (m_pInput->IsKeyDown('W'))        moveDir = moveDir + forward;
+                if (m_pInput->IsKeyDown('S'))        moveDir = moveDir - forward;
+                if (m_pInput->IsKeyDown('D'))        moveDir = moveDir - right;
+                if (m_pInput->IsKeyDown('A'))        moveDir = moveDir + right;
+                if (m_pInput->IsKeyDown(VK_SPACE))   moveDir = moveDir + Canvas::Math::FloatVector4(0,0,1,0);
+                if (m_pInput->IsKeyDown(VK_CONTROL)) moveDir = moveDir - Canvas::Math::FloatVector4(0,0,1,0);
+                if (m_pInput->IsKeyDown(VK_ESCAPE))  { running = false; break; }
 
-                const bool fast = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+                const bool fast = m_pInput->IsKeyDown(VK_SHIFT);
                 const float speed = fast ? kMoveSpeedFast : kMoveSpeedSlow;
 
                 float moveMag = std::sqrt(Canvas::Math::DotProduct(moveDir, moveDir));
@@ -1180,20 +1025,15 @@ public:
                 }
 
                 // Day/night hotkeys (edge-triggered).
-                const bool kBack = (GetAsyncKeyState(VK_OEM_4) & 0x8000) != 0; // [
-                const bool kFwd  = (GetAsyncKeyState(VK_OEM_6) & 0x8000) != 0; // ]
-                const bool kPause= (GetAsyncKeyState(VK_OEM_5) & 0x8000) != 0; // backslash
-                const bool kWire = (GetAsyncKeyState(VK_TAB)   & 0x8000) != 0;
-                if (kBack && !prevScrubBack) m_DayNight.ScrubMinutes(-15.0f);
-                if (kFwd  && !prevScrubFwd ) m_DayNight.ScrubMinutes( 15.0f);
-                if (kPause&& !prevPause    ) m_DayNight.TogglePaused();
-                if (kWire && !prevWire     )
+                if (m_pInput->IsKeyPressed(VK_OEM_4)) m_DayNight.ScrubMinutes(-15.0f); // [
+                if (m_pInput->IsKeyPressed(VK_OEM_6)) m_DayNight.ScrubMinutes( 15.0f); // ]
+                if (m_pInput->IsKeyPressed(VK_OEM_5)) m_DayNight.TogglePaused();        // backslash
+                if (m_pInput->IsKeyPressed(VK_TAB))
                 {
                     const bool newState = !m_pGfxRenderQueue->GetGeometryWireframe();
                     m_pGfxRenderQueue->SetGeometryWireframe(newState);
                     Canvas::LogInfo(m_pLogger.Get(), "Wireframe %s", newState ? "ON" : "OFF");
                 }
-                prevScrubBack = kBack; prevScrubFwd = kFwd; prevPause = kPause; prevWire = kWire;
             }
 
             m_DayNight.Update(dtime);
@@ -1229,14 +1069,8 @@ public:
                 continue;
             }
 
-            MSG msg;
-            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
-            {
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
-                if (msg.message == WM_QUIT)
-                    running = false;
-            }
+            if (!m_pWindow->PumpMessages())
+                running = false;
         }
         return 0;
     }
@@ -1416,8 +1250,6 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         scenePath.c_str(), heightmapPath.c_str(), atlasAlbedoPath.c_str(), atlasORMPath.c_str(),
         static_cast<double>(dxy), static_cast<double>(heightScale),
         cycleSeconds, logLevel.c_str());
-
-    ThinWin::CWindow::RegisterWindowClass(hInstance);
 
     auto pathFromUtf8 = [](const std::string& s) {
         return s.empty() ? std::filesystem::path{} : std::filesystem::u8path(s);
