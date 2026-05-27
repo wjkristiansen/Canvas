@@ -30,7 +30,7 @@
 #include "CanvasCore.h"
 #include "CanvasGfx.h"
 #include "HeightField.h"
-#include "ImageLoader.h"
+#include "CanvasPlatformWin32.h"
 
 namespace Canvas
 {
@@ -79,8 +79,8 @@ struct TerrainMaterialOutputs
 Gem::Result BuildTerrainMaterial(
     XGfxDevice*                     pDevice,
     const HeightField::HeightField& field,
-    const ImageRGBA8&               albedoAtlas,
-    const ImageRGBA8&               ormAtlas,
+    const Canvas::Platform::Win32::ImageData& albedoAtlas,
+    const Canvas::Platform::Win32::ImageData& ormAtlas,
     const TerrainMaterialOptions&   opts,
     TerrainMaterialOutputs*         outputs,
     XLogger*                        pLogger = nullptr);

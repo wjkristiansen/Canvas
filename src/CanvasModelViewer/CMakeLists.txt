@@ -59,7 +59,6 @@ if(WIN32)
         odbc32
         odbccp32
         comctl32
-        windowscodecs
     )
     
     # Set subsystem to Windows GUI

@@ -25,7 +25,7 @@ inline float smoothstep01(float edge0, float edge1, float x)
 //
 // Returns the RGBA8 atlas pixel via the per-channel outputs.
 inline void SampleAtlas(
-    const ImageRGBA8& atlas,
+    const Canvas::Platform::Win32::ImageData& atlas,
     uint32_t          slotU,    // 0 or 1
     uint32_t          slotV,    // 0 or 1
     float             atlasU,
@@ -63,8 +63,8 @@ inline void SampleAtlas(
 Gem::Result BuildTerrainMaterial(
     XGfxDevice*                     pDevice,
     const HeightField::HeightField& field,
-    const ImageRGBA8&               albedoAtlas,
-    const ImageRGBA8&               ormAtlas,
+    const Canvas::Platform::Win32::ImageData& albedoAtlas,
+    const Canvas::Platform::Win32::ImageData& ormAtlas,
     const TerrainMaterialOptions&   opts,
     TerrainMaterialOutputs*         outputs,
     XLogger*                        pLogger)

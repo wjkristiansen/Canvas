@@ -21,143 +21,68 @@ namespace
 {
 
 //------------------------------------------------------------------------------------------------
-// WIC texture loader: decodes an FBX-imported texture (file path or embedded
-// bytes) into an XGfxSurface and uploads pixels via the device copy queue.
-// Returns false on any decode failure; caller logs a warning and proceeds
-// without the texture.
+// Decodes an FBX-imported texture (file path or embedded bytes) into an
+// XGfxSurface and uploads pixels via the device copy queue. Returns false on
+// any decode or upload failure; caller logs a warning and proceeds without
+// the texture.
 //------------------------------------------------------------------------------------------------
-class CWicTextureLoader
+bool LoadFbxTexture(
+    Canvas::XGfxDevice*                    pDevice,
+    const Canvas::Fbx::ImportedTextureRef& ref,
+    Gem::TGemPtr<Canvas::XGfxSurface>&     outSurface,
+    Canvas::XLogger*                       pLogger)
 {
-    CComPtr<IWICImagingFactory> m_pFactory;
+    using namespace Canvas::Platform::Win32;
 
-    HRESULT EnsureFactory()
-    {
-        if (m_pFactory)
-            return S_OK;
-        return CoCreateInstance(
-            CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
-            IID_PPV_ARGS(&m_pFactory));
-    }
+    outSurface = nullptr;
 
-    HRESULT CreateMemoryStream(const std::vector<uint8_t>& bytes, IStream** ppStream)
+    ImageData img;
+    if (ref.Embedded && !ref.EmbeddedBytes.empty())
     {
-        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, bytes.size());
-        if (!hMem)
-            return E_OUTOFMEMORY;
-        void* pDst = GlobalLock(hMem);
-        if (!pDst)
+        if (!LoadImageData(ref.EmbeddedBytes.data(), ref.EmbeddedBytes.size(),
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &img, pLogger))
         {
-            GlobalFree(hMem);
-            return E_FAIL;
+            Canvas::LogWarn(pLogger, "LoadFbxTexture: embedded decode failed for '%s'",
+                ref.AbsoluteFilePath.c_str());
+            return false;
         }
-        memcpy(pDst, bytes.data(), bytes.size());
-        GlobalUnlock(hMem);
-        // Stream owns the HGLOBAL after success; on failure we free it.
-        HRESULT hr = CreateStreamOnHGlobal(hMem, TRUE, ppStream);
-        if (FAILED(hr))
-            GlobalFree(hMem);
-        return hr;
+    }
+    else
+    {
+        std::wstring widePath(ref.AbsoluteFilePath.begin(), ref.AbsoluteFilePath.end());
+        if (!LoadImageData(widePath.c_str(), Canvas::GfxFormat::R8G8B8A8_UNorm, &img, pLogger))
+        {
+            Canvas::LogWarn(pLogger, "LoadFbxTexture: file decode failed for '%s'",
+                ref.AbsoluteFilePath.c_str());
+            return false;
+        }
     }
 
-public:
-    bool Load(
-        Canvas::XGfxDevice* pDevice,
-        const Canvas::Fbx::ImportedTextureRef& ref,
-        Gem::TGemPtr<Canvas::XGfxSurface>& outSurface,
-        Canvas::XLogger* pLogger)
+    Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
+        Canvas::GfxFormat::R8G8B8A8_UNorm, img.Width, img.Height,
+        Canvas::SurfaceFlag_ShaderResource);
+    Gem::Result r = pDevice->CreateSurface(desc, &outSurface);
+    if (Gem::Failed(r))
     {
+        Canvas::LogWarn(pLogger, "LoadFbxTexture: CreateSurface failed for '%s'",
+            ref.AbsoluteFilePath.c_str());
         outSurface = nullptr;
-
-        HRESULT hr = EnsureFactory();
-        if (FAILED(hr))
-        {
-            Canvas::LogError(pLogger, "WIC: failed to create imaging factory hr=0x%08X",
-                static_cast<unsigned>(hr));
-            return false;
-        }
-
-        CComPtr<IWICBitmapDecoder> pDecoder;
-        if (ref.Embedded && !ref.EmbeddedBytes.empty())
-        {
-            CComPtr<IStream> pStream;
-            hr = CreateMemoryStream(ref.EmbeddedBytes, &pStream);
-            if (FAILED(hr))
-            {
-                Canvas::LogWarn(pLogger, "WIC: embedded stream failed hr=0x%08X for '%s'",
-                    static_cast<unsigned>(hr), ref.AbsoluteFilePath.c_str());
-                return false;
-            }
-            hr = m_pFactory->CreateDecoderFromStream(pStream, nullptr,
-                WICDecodeMetadataCacheOnDemand, &pDecoder);
-        }
-        else
-        {
-            std::wstring widePath(ref.AbsoluteFilePath.begin(), ref.AbsoluteFilePath.end());
-            hr = m_pFactory->CreateDecoderFromFilename(widePath.c_str(), nullptr,
-                GENERIC_READ, WICDecodeMetadataCacheOnDemand, &pDecoder);
-        }
-        if (FAILED(hr))
-        {
-            Canvas::LogWarn(pLogger, "WIC: decoder creation failed hr=0x%08X for '%s'",
-                static_cast<unsigned>(hr), ref.AbsoluteFilePath.c_str());
-            return false;
-        }
-
-        CComPtr<IWICBitmapFrameDecode> pFrame;
-        hr = pDecoder->GetFrame(0, &pFrame);
-        if (FAILED(hr))
-            return false;
-
-        CComPtr<IWICFormatConverter> pConverter;
-        hr = m_pFactory->CreateFormatConverter(&pConverter);
-        if (FAILED(hr))
-            return false;
-        hr = pConverter->Initialize(pFrame, GUID_WICPixelFormat32bppRGBA,
-            WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
-        if (FAILED(hr))
-        {
-            Canvas::LogWarn(pLogger, "WIC: format converter init failed hr=0x%08X for '%s'",
-                static_cast<unsigned>(hr), ref.AbsoluteFilePath.c_str());
-            return false;
-        }
-
-        UINT width = 0, height = 0;
-        hr = pConverter->GetSize(&width, &height);
-        if (FAILED(hr) || width == 0 || height == 0)
-            return false;
-
-        const UINT rowPitch = width * 4;
-        std::vector<uint8_t> pixels(static_cast<size_t>(rowPitch) * height);
-        hr = pConverter->CopyPixels(nullptr, rowPitch,
-            static_cast<UINT>(pixels.size()), pixels.data());
-        if (FAILED(hr))
-            return false;
-
-        Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
-        Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
-            Canvas::GfxFormat::R8G8B8A8_UNorm, width, height,
-            Canvas::SurfaceFlag_ShaderResource);
-        Gem::Result r = pDevice->CreateSurface(desc, &pSurface);
-        if (Gem::Failed(r))
-        {
-            Canvas::LogWarn(pLogger, "WIC: CreateSurface failed for '%s'",
-                ref.AbsoluteFilePath.c_str());
-            return false;
-        }
-
-        r = pDevice->UploadTextureRegion(pSurface.Get(), 0, 0, 0, width, height,
-            pixels.data(), rowPitch);
-        if (Gem::Failed(r))
-        {
-            Canvas::LogWarn(pLogger, "WIC: UploadTextureRegion failed for '%s'",
-                ref.AbsoluteFilePath.c_str());
-            return false;
-        }
-
-        outSurface = std::move(pSurface);
-        return true;
+        return false;
     }
-};
+
+    const UINT rowPitch = img.Width * img.BytesPerPixel();
+    r = pDevice->UploadTextureRegion(outSurface.Get(), 0, 0, 0, img.Width, img.Height,
+        img.Pixels.data(), rowPitch);
+    if (Gem::Failed(r))
+    {
+        Canvas::LogWarn(pLogger, "LoadFbxTexture: UploadTextureRegion failed for '%s'",
+            ref.AbsoluteFilePath.c_str());
+        outSurface = nullptr;
+        return false;
+    }
+
+    return true;
+}
 
 } // anonymous namespace
 
@@ -497,18 +422,17 @@ class CApp
         // -----------------------------------------------------------------
         // Build XModel from imported FBX data
         // -----------------------------------------------------------------
-        CWicTextureLoader textureLoader;
         Canvas::XLogger *pLocalLogger = m_pLogger.Get();
         Canvas::Fbx::BuildModelOptions buildOpts;
         buildOpts.pModelName = importPath.filename().string().c_str();
         buildOpts.pLogger = pLocalLogger;
-        buildOpts.TextureLoader = [&textureLoader, pLocalLogger](
+        buildOpts.TextureLoader = [pLocalLogger](
             Canvas::XGfxDevice *pDev,
             const Canvas::Fbx::ImportedTextureRef &ref,
             Canvas::XGfxSurface **ppSurface) -> bool
         {
             Gem::TGemPtr<Canvas::XGfxSurface> surface;
-            if (!textureLoader.Load(pDev, ref, surface, pLocalLogger))
+            if (!LoadFbxTexture(pDev, ref, surface, pLocalLogger))
                 return false;
             *ppSurface = surface.Detach();
             return true;

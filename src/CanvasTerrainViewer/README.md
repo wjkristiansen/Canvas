@@ -382,7 +382,6 @@ src/CanvasTerrainViewer/
     CMakeLists.txt
     CanvasTerrainViewer.cpp        (entry point, app shell, day/night cycle)
     HeightField.cpp / .h           (asset loading, CPU mesh builder, mip chain)
-    ImageLoader.cpp / .h           (WIC-based image loading for atlas textures)
     SceneConfig.cpp / .h           (JSON scene file parsing)
     SkyCubeLoader.cpp / .h         (cubemap loading for sky / stars)
     TerrainMaterial.cpp / .h       (terrain material + displacement setup)

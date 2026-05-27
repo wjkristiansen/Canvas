@@ -1,6 +1,5 @@
 #include "pch.h"
 #include "SkyCubeLoader.h"
-#include "ImageLoader.h"
 
 namespace Canvas
 {
@@ -35,14 +34,15 @@ bool LoadSkyCube(
 
     // Load all six faces into RAM first so we can validate dimensions before
     // committing a GPU surface allocation.
-    ImageRGBA8 faces[6];
+    Canvas::Platform::Win32::ImageData faces[6];
     for (uint32_t i = 0; i < 6; ++i)
     {
         char filename[64];
         snprintf(filename, sizeof(filename), "sky_%s_%s.png", presetName, kFaceSuffix[i]);
         const std::filesystem::path facePath = assetsDir / filename;
 
-        if (!LoadImageRGBA8(facePath.wstring().c_str(), &faces[i], pLogger))
+        if (!Canvas::Platform::Win32::LoadImageData(facePath.wstring().c_str(),
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &faces[i], pLogger))
         {
             LogError(pLogger, "LoadSkyCube: failed to load face '%s'",
                 facePath.string().c_str());

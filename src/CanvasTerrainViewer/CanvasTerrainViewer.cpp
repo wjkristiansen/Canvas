@@ -9,7 +9,6 @@
 
 #include "pch.h"
 #include "HeightField.h"
-#include "ImageLoader.h"
 #include "SceneConfig.h"
 #include "SkyCubeLoader.h"
 #include "TerrainMaterial.h"
@@ -423,16 +422,16 @@ class CTerrainApp
             return false;
         }
 
-        Canvas::TerrainViewer::ImageRGBA8 albedoAtlas, ormAtlas;
-        if (!Canvas::TerrainViewer::LoadImageRGBA8(mat.AtlasAlbedo.wstring().c_str(),
-                &albedoAtlas, m_pLogger.Get()))
+        Canvas::Platform::Win32::ImageData albedoAtlas, ormAtlas;
+        if (!Canvas::Platform::Win32::LoadImageData(mat.AtlasAlbedo.wstring().c_str(),
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &albedoAtlas, m_pLogger.Get()))
         {
             Canvas::LogError(m_pLogger.Get(), "Failed to load atlas albedo '%s'",
                 mat.AtlasAlbedo.string().c_str());
             return false;
         }
-        if (!Canvas::TerrainViewer::LoadImageRGBA8(mat.AtlasORM.wstring().c_str(),
-                &ormAtlas, m_pLogger.Get()))
+        if (!Canvas::Platform::Win32::LoadImageData(mat.AtlasORM.wstring().c_str(),
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &ormAtlas, m_pLogger.Get()))
         {
             Canvas::LogError(m_pLogger.Get(), "Failed to load atlas ORM '%s'",
                 mat.AtlasORM.string().c_str());
@@ -650,9 +649,10 @@ class CTerrainApp
         // Moon billboard sprite (2D RGBA).  Composite samples it inside
         // the angular disc around MoonDirection (see GfxBackgroundDesc).
         const std::filesystem::path moonPath = skyDir / "moon.png";
-        Canvas::TerrainViewer::ImageRGBA8 moonImg;
-        if (!Canvas::TerrainViewer::LoadImageRGBA8(
-                moonPath.wstring().c_str(), &moonImg, m_pLogger.Get()))
+        Canvas::Platform::Win32::ImageData moonImg;
+        if (!Canvas::Platform::Win32::LoadImageData(
+                moonPath.wstring().c_str(),
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &moonImg, m_pLogger.Get()))
         {
             Canvas::LogError(m_pLogger.Get(), "LoadSky: failed to load '%s'",
                 moonPath.string().c_str());

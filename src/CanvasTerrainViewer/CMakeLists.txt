@@ -7,8 +7,6 @@ add_executable(CanvasTerrainViewer WIN32
     CanvasTerrainViewer.cpp
     HeightField.cpp
     HeightField.h
-    ImageLoader.cpp
-    ImageLoader.h
     SceneConfig.cpp
     SceneConfig.h
     SkyCubeLoader.cpp
@@ -45,7 +43,6 @@ if(WIN32)
     target_link_libraries(CanvasTerrainViewer PRIVATE
         kernel32 user32 gdi32 winspool comdlg32 advapi32
         shell32 ole32 oleaut32 uuid odbc32 odbccp32 comctl32
-        windowscodecs
     )
 
     set_target_properties(CanvasTerrainViewer PROPERTIES

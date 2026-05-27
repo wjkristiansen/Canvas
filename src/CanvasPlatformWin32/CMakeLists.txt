@@ -1,6 +1,7 @@
 add_library(CanvasPlatformWin32 STATIC
     AppWindow.cpp
     AppWindow.h
+    ImageLoader.cpp
     RawInput.cpp
     RawInput.h
     pch.h
@@ -22,7 +23,7 @@ target_compile_definitions(CanvasPlatformWin32 PRIVATE
     _WINDOWS)
 
 target_link_libraries(CanvasPlatformWin32
-    PUBLIC  GEM
+    PUBLIC  GEM windowscodecs
     PRIVATE ThinWin user32 kernel32)
 
 target_precompile_headers(CanvasPlatformWin32 PRIVATE pch.h)
