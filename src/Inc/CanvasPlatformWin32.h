@@ -49,7 +49,7 @@ struct XRawInput : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-// Platform window — Win32 window lifecycle and FPS mouse capture.
+// Platform window — Win32 window lifecycle and exclusive (relative) mouse capture.
 //------------------------------------------------------------------------------------------------
 struct XAppWindow : public Gem::XGeneric
 {
@@ -68,8 +68,10 @@ struct XAppWindow : public Gem::XGeneric
     // Returns false when WM_QUIT is received.
     GEMMETHOD_(bool, PumpMessages)() = 0;
 
-    // FPS mouse capture: hides cursor, clips it to the client rect, and registers
-    // raw mouse input.
+    // Exclusive (relative) mouse capture: hides the cursor, clips it to the client
+    // rect, and registers raw mouse input.  Suitable for any interaction that wants
+    // unbounded mouse motion (first-person cameras, orbit/pan cameras, modal drag,
+    // painting tools, etc.) — the mechanism itself is policy-free.
     GEMMETHOD_(void, SetMouseCaptured)(bool captured) = 0;
     GEMMETHOD_(bool, IsMouseCaptured)() = 0;
 };

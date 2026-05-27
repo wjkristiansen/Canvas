@@ -5,8 +5,8 @@
 namespace Canvas::Platform::Win32 {
 
 //---------------------------------------------------------------------------------------------
-// CImpl — ThinWin window subclass that manages the HWND, FPS mouse capture, and
-// raw-input forwarding on behalf of the privately bound CRawInput (if any).
+// CImpl — ThinWin window subclass that manages the HWND, exclusive mouse capture,
+// and raw-input forwarding on behalf of the privately bound CRawInput (if any).
 //---------------------------------------------------------------------------------------------
 class CAppWindow::CImpl : public ThinWin::CWindow
 {
