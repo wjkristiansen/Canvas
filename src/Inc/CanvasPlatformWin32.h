@@ -1,7 +1,56 @@
 #pragma once
 #include "Gem.hpp"
+#include "CanvasFormat.h"
+#include <cstdint>
+#include <vector>
+
+namespace Canvas { struct XLogger; }
 
 namespace Canvas::Platform::Win32 {
+
+//------------------------------------------------------------------------------------------------
+// Image loading — WIC-backed loader. Accepts any Canvas::GfxFormat that has a
+// direct WIC IWICFormatConverter mapping; unsupported formats return false.
+// Currently supported: R8G8B8A8_UNorm, R16G16B16A16_Float, R8_UNorm, R16_UNorm.
+//------------------------------------------------------------------------------------------------
+struct ImageData
+{
+    uint32_t              Width  = 0;
+    uint32_t              Height = 0;
+    Canvas::GfxFormat     Format = Canvas::GfxFormat::Unknown;
+    std::vector<uint8_t>  Pixels; // Row-major raw bytes; stride = Width * BytesPerPixel()
+
+    uint32_t BytesPerPixel() const
+    {
+        switch (Format)
+        {
+        case Canvas::GfxFormat::R8G8B8A8_UNorm:        return 4;
+        case Canvas::GfxFormat::R16G16B16A16_Float:    return 8;
+        case Canvas::GfxFormat::R8_UNorm:              return 1;
+        case Canvas::GfxFormat::R16_UNorm:             return 2;
+        default:                                        return 0;
+        }
+    }
+
+    bool IsEmpty() const { return Pixels.empty() || Width == 0 || Height == 0; }
+};
+
+// Load any WIC-decodable image file and convert to the requested pixel format.
+// Returns true on success; on failure outImage is left empty and an error is
+// logged via pLogger (if non-null).
+bool LoadImageData(
+    const wchar_t*     path,
+    Canvas::GfxFormat  format,
+    ImageData*         outImage,
+    Canvas::XLogger*   pLogger = nullptr);
+
+// Memory-based overload: decode from raw image bytes (e.g. an embedded FBX texture).
+bool LoadImageData(
+    const uint8_t*     data,
+    size_t             byteCount,
+    Canvas::GfxFormat  format,
+    ImageData*         outImage,
+    Canvas::XLogger*   pLogger = nullptr);
 
 struct AppWindowDesc
 {
