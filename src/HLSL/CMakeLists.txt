@@ -108,7 +108,7 @@ add_hlsl_shader("PSRect.hlsl" "ps_6_0" "main")
 
 # Displaced-mesh pipeline (VS + HS + DS + PS). Engine selects this
 # pipeline when a material has a GfxDisplacementDesc attached and is
-# paired with a procedural patch-grid mesh. Shaders compile against
+# paired with a PatchList4CP mesh. Shaders compile against
 # HlslTypes.h / Common.hlsli plus Displaced.hlsli for the displaced-
 # pipeline-specific bindings + structs.
 add_hlsl_shader("VSDisplaced.hlsl" "vs_6_0" "VSDisplaced")

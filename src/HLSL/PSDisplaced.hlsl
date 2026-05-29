@@ -2,11 +2,11 @@
 //
 // Writes the DS-supplied world position and normal into the deferred
 // G-buffer, sampling the material atlases (albedo, AO, roughness) by
-// TileUV. The atlases are bound by the engine when a material is paired
-// with a procedural patch-grid mesh; the slope/altitude blend that
-// produces them in the terrain viewer is resolved on the CPU at content
-// build time, so the PS is a straight lookup. PSComposite picks the
-// result up via the existing G-buffer sampling path.
+// TileUV.  The atlases are bound by the engine when a material is paired
+// with a patch-grid mesh; the slope/altitude blend that produces them
+// in the terrain viewer is resolved on the CPU at content build time,
+// so the PS is a straight lookup.  PSComposite picks the result up via
+// the existing G-buffer sampling path.
 
 #include "Displaced.hlsli"
 

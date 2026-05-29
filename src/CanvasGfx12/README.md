@@ -424,17 +424,21 @@ Positions are bound as a root SRV at t0 by GPU virtual address. Remaining vertex
 
 ### Displaced Mesh Drawing (Tessellation Path)
 
-When a mesh instance has a material with a `GfxDisplacementDesc` attached (`XGfxMaterial::SetDisplacement`), the render queue routes it through the displaced-mesh pipeline instead of the standard geometry PSO. This path uses a VS+HS+DS+PS quad-patch pipeline (`PatchList4CP` topology) and no CPU-side vertex buffers — the DS generates world-space geometry by sampling a displacement-map texture.
+When a mesh instance has a material with a `GfxDisplacementDesc` attached (`XGfxMaterial::SetDisplacement`) and the mesh uses `PatchList4CP` topology, the render queue routes it through the displaced-mesh pipeline instead of the standard geometry PSO. This path uses a VS+HS+DS+PS quad-patch pipeline; the VS reads per-CP positions, UVs, and base normals from `StructuredBuffer<float4>`/`StructuredBuffer<float2>`/`StructuredBuffer<float4>` SRVs (t4 / t5 / t6) backed by the mesh's own vertex buffers — no IA bindings.
 
 The displaced PSO root signature:
 - Slot 0: root CBV at b0 for per-frame constants.
-- Slot 1: root CBV at b1 for per-tile `HlslDisplacedConstants` (world transform, tile origin and world size, patch grid dimension, `MapScale`, `MapBias`).
-- Slot 2: descriptor table with SRV[3]: displacement-map texture (t0), albedo atlas (t1), ORM atlas (t2).
+- Slot 1: root CBV at b1 for per-tile `HlslDisplacedConstants` (per-tile world transform, `MapScale`, `MapBias`).
+- Slot 2: descriptor table with SRV[1]: displacement-map texture (t0). Visibility ALL (HS samples for curvature LOD, DS samples for the displacement offset).
+- Slot 3: descriptor table with SRV[3]: albedo / AO / roughness atlases (t1..t3). Visibility PIXEL.
+- Slot 4: descriptor table with SRV[3]: per-CP position + UV0 + normal StructuredBuffer SRVs (t4..t6). Visibility VERTEX.
 - Static sampler s0: linear/clamp for displacement-map and atlas sampling.
 
 `HlslDisplacedConstants` is uploaded to the upload ring once per displaced draw. The displacement-map surface must be in `LAYOUT_SHADER_RESOURCE` before the draw (use `XGfxRenderQueue::FinalizeUploadAsShaderResource` after the initial texture upload).
 
-The VS generates control-point UV coordinates from `SV_VertexID` for a `PatchGridDim × PatchGridDim` quad grid. The HS computes per-edge tessellation factors using a distance × curvature LOD scheme: the distance term is proportional to `edgeWorldLength / distToMidpoint`, and the curvature term samples a coarse mip of the displacement map for the Laplacian second derivative. The DS samples the displacement map at full resolution to lift each tessellated vertex into world space and computes per-vertex normals from central differences. The PS samples the material atlases and writes the standard G-buffer layout, so the deferred lighting and composition passes are unchanged.
+The per-draw world tile rect for shadow / cull aggregation is derived by the engine from the mesh's `XGfxMeshData::GetLocalBounds` plus the owning node's world translation — `GfxDisplacementDesc` carries no world or geometry fields. The CP positions in the mesh's vertex buffer are interpreted in mesh-local space; the per-tile CB's `World` matrix transforms positions (and rotates normals) to world space in the VS. CP UVs are pre-baked in D3D texture-UV space pointing into whatever sub-rect of the bound displacement map the mesh samples (meshes sharing a single displacement map carry per-mesh UV sub-rects this way). CP normals are the world-space directions along which the displacement offsets each CP; supply `(0, 0, 1, 0)` for a classic flat XY-plane heightfield.
+
+The HS computes per-edge tessellation factors using a distance × curvature LOD scheme: the distance term is proportional to `edgeWorldLength / distToMidpoint`, and the curvature term samples a coarse mip of the displacement map for the Laplacian second derivative. The DS bilerps the patch CPs' base positions, UVs, and normals at the output vertex, samples the displacement map for a world-unit scalar, and emits `basePos + sample * baseNormal` as the displaced world position. Per-vertex normals come from the patch's tangent basis (CP0→CP1 spans U, CP0→CP3 spans V) and the displacement-map gradient — the formulation collapses to the classic Z-only "heightfield" result when all CP normals point +Z and the patch sits in the XY plane. The PS samples the material atlases and writes the standard G-buffer layout, so the deferred lighting and composition passes are unchanged.
 
 The displaced shadow PSO shares the VS and HS bytecode (ensuring shadow tessellation matches the scene LOD to prevent Peter Panning) and pairs them with `DSDisplacedShadow`, which writes only `SV_Position` from a `HlslShadowConstants` matrix with no pixel shader.
 

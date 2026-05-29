@@ -64,11 +64,11 @@ float CurvatureWorldUnitsAt(float2 uv)
 // arrive at bit-identical results for a shared edge.
 float EdgeTessFactor(DisplacedControlPoint a, DisplacedControlPoint b, float3 cam)
 {
-    float3 midpos = 0.5 * (a.WorldXY0Z + b.WorldXY0Z);
+    float3 midpos = 0.5 * (a.WorldPos + b.WorldPos);
     float2 miduv  = 0.5 * (a.TileUV    + b.TileUV);
 
     float dist    = max(length(midpos - cam), 1.0);
-    float edgeLen = length(b.WorldXY0Z - a.WorldXY0Z);
+    float edgeLen = length(b.WorldPos - a.WorldPos);
 
     float distanceFactor  = kDistanceLodScale * edgeLen / dist;
     float curvatureFactor = CurvatureWorldUnitsAt(miduv) * kCurvatureLodScale;
@@ -106,23 +106,19 @@ DisplacedPatchConstants HSDisplacedPatchConst(InputPatch<DisplacedControlPoint, 
 
 [domain("quad")]
 [partitioning("integer")]
-// VSDisplaced flips v -> worldY to eliminate the image-vs-bird's-eye
-// mirror (see its header for the full reasoning).  That sign flip makes
-// the 2D (u, v) -> (worldX, worldY) Jacobian determinant negative, which
-// inverts the world-space winding of triangles emitted by the tessellator
-// relative to the same topology on an identity-positive mapping.
+// CP layout in the quad domain is CP0=(0,0), CP1=(1,0), CP2=(1,1),
+// CP3=(0,1).  Callers supply CP positions so that this same 0->1->2->3
+// order traces CCW around the patch when viewed from the direction of
+// the per-CP base normal (for a flat XY-plane patch with normals +Z,
+// this is just CCW from +Z, the standard Canvas front-facing convention).
 //
-// The tessellator emits one triangle whose vertices, in D3D's v-down
-// domain (u-right, v-down), follow the topology winding.  Under v-down,
-// the unsigned-area cross is the negation of the math (v-up) basis, so
-// outputtopology = "triangle_ccw" actually emits triangles that are CW
-// in the standard math basis.  Combined with the det-negative VSDisplaced
-// mapping, those CW-in-math-domain triangles become CCW-front in Canvas
-// world (right-hand normal +Z toward the sky), matching the engine
-// winding contract.  The rasterizer then renders them via
-// FrontCounterClockwise = TRUE (see CanvasGfx12 EnsureDefaultPSO /
-// BuildDisplacedPSODesc).
-[outputtopology("triangle_ccw")]
+// D3D's quad domain is v-down: SV_DomainLocation y grows in the opposite
+// sense from the standard math basis.  outputtopology = "triangle_cw" in
+// that v-down basis emits triangles whose vertex order is CCW in the
+// math (and world) basis, matching the CP convention above.  Combined
+// with the rasterizer's FrontCounterClockwise = TRUE (see
+// BuildDisplacedPSODesc) those triangles render front-facing.
+[outputtopology("triangle_cw")]
 [outputcontrolpoints(4)]
 [patchconstantfunc("HSDisplacedPatchConst")]
 [maxtessfactor(64.0)]

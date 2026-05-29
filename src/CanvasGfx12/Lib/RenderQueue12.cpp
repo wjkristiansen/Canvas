@@ -962,16 +962,16 @@ static void BuildDisplacedPSODesc(D3D12_GRAPHICS_PIPELINE_STATE_DESC &out,
     out.HS = { hsBytecode.data(), hsBytecode.size() };
     out.DS = { dsBytecode.data(), dsBytecode.size() };
     out.PS = { psBytecode.data(), psBytecode.size() };
-    out.InputLayout = { nullptr, 0 };  // CPs generated from SV_VertexID
+    out.InputLayout = { nullptr, 0 };  // CP positions / UVs sourced from t4..t5 SRVs indexed by SV_VertexID
 
     out.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     // See EnsureDefaultPSO for the full winding-contract documentation.
     // Canvas authors CCW-front meshes in RHS world; the world->view bridge
     // has det -1; the resulting clip-space CCW triangles are front-facing.
-    // The procedural patch grid feeding this PSO compensates for the D3D
-    // (u, v) texture handedness via VSDisplaced (v -> worldY sign flip)
-    // and HSDisplaced (triangle_ccw topology) so the world-space geometry
-    // remains CCW-front and feeds this same FCC=TRUE chain.
+    // Callers feeding this PSO bake a v -> worldY flip into the patch's
+    // per-CP UVs (image-top renders at high worldY); paired with the
+    // HSDisplaced triangle_ccw output topology that keeps the resulting
+    // world geometry CCW-front and consistent with this FCC=TRUE chain.
     // The wireframe variant disables culling entirely so wireframe
     // debugging shows both faces of a displaced patch.
     out.RasterizerState.FrontCounterClockwise = TRUE;
@@ -1008,12 +1008,13 @@ void CRenderQueue12::EnsureDisplacedPSO()
     // ---------- Root signature ----------
     if (!m_pDisplacedRootSig)
     {
-        // The displacement map (t0) and the three material atlases (t1..t3)
-        // live in separate descriptor tables so each can carry a tight
-        // shader-visibility scope: DS samples the displacement map, PS
-        // samples the material atlases. All four ranges are DATA_STATIC;
-        // the render queue's FinalizeUploadAsShaderResource gate ensures
-        // their layout transitions have retired before bind time.
+        // Layout:
+        //   t0     -- displacement map  (HS curvature + DS lift)         -- ALL
+        //   t1..t3 -- albedo / AO / roughness atlases                    -- PIXEL
+        //   t4..t6 -- per-CP position + UV0 + normal StructuredBuffer SRVs -- VERTEX
+        // All ranges are DATA_STATIC; the render queue's
+        // FinalizeUploadAsShaderResource gate ensures their layout
+        // transitions have retired before bind time.
         CD3DX12_DESCRIPTOR_RANGE1 mapRange;
         mapRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
             D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t0
@@ -1022,7 +1023,11 @@ void CRenderQueue12::EnsureDisplacedPSO()
         materialRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 1, 0,
             D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t1..t3
 
-        std::vector<CD3DX12_ROOT_PARAMETER1> rootParams(4);
+        CD3DX12_DESCRIPTOR_RANGE1 cpRange;
+        cpRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 4, 0,
+            D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t4..t6
+
+        std::vector<CD3DX12_ROOT_PARAMETER1> rootParams(5);
         rootParams[0].InitAsConstantBufferView(0, 0,
             D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
             D3D12_SHADER_VISIBILITY_ALL);   // b0 PerFrame
@@ -1033,6 +1038,8 @@ void CRenderQueue12::EnsureDisplacedPSO()
             D3D12_SHADER_VISIBILITY_ALL);      // t0 (HS reads for LOD, DS reads for displacement lift)
         rootParams[3].InitAsDescriptorTable(1, &materialRange,
             D3D12_SHADER_VISIBILITY_PIXEL);    // t1..t3
+        rootParams[4].InitAsDescriptorTable(1, &cpRange,
+            D3D12_SHADER_VISIBILITY_VERTEX);   // t4..t5 CP streams
 
         // One static sampler serves both stages. Both the displacement map
         // (DS) and the pre-baked tile-sized material atlases (PS) want
@@ -1150,7 +1157,11 @@ void CRenderQueue12::EnsureDisplacedShadowPSO()
         mapRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
             D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t0
 
-        std::vector<CD3DX12_ROOT_PARAMETER1> rootParams(4);
+        CD3DX12_DESCRIPTOR_RANGE1 cpRange;
+        cpRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 4, 0,
+            D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t4..t6
+
+        std::vector<CD3DX12_ROOT_PARAMETER1> rootParams(5);
         rootParams[0].InitAsConstantBufferView(0, 0,
             D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
             D3D12_SHADER_VISIBILITY_ALL);          // b0 PerFrame (HS LOD)
@@ -1162,6 +1173,8 @@ void CRenderQueue12::EnsureDisplacedShadowPSO()
             D3D12_SHADER_VISIBILITY_DOMAIN);       // b2 Shadow ViewProj
         rootParams[3].InitAsDescriptorTable(1, &mapRange,
             D3D12_SHADER_VISIBILITY_ALL);          // t0 displacement map
+        rootParams[4].InitAsDescriptorTable(1, &cpRange,
+            D3D12_SHADER_VISIBILITY_VERTEX);       // t4..t6 CP streams
 
         CD3DX12_STATIC_SAMPLER_DESC sampler;
         sampler.Init(
@@ -1823,53 +1836,39 @@ Gem::Result CRenderQueue12::DrawMesh(
         if (materialGroupIndex >= pMesh->GetNumMaterialGroups())
             return Gem::Result::InvalidArg;
 
-                // Procedural patch-list mesh + displacement-enabled material is the
-                // displaced-mesh draw path. Translate the material's displacement
-                // desc and the mesh-instance world transform into the engine's
-                // internal displaced-draw queue. Per-tile world dimensions
-                // come from the displacement desc (kept off node scale so child
-                // nodes don't inherit tile-size stretches); origin comes from
-                // the node's translation row.
-                if (pMesh->GetTopology() == Canvas::GfxPrimitiveTopology::PatchList4CP)
+        // PatchList4CP + displacement-equipped material -> displaced-mesh
+        // draw path.  The mesh supplies CP positions (mesh-local) and UVs
+        // (already mapped into the displacement map's UV space) as ordinary
+        // vertex buffers; the engine binds them as StructuredBuffer SRVs
+        // for the displaced VS, applies the node's world transform via the
+        // per-tile CB, and routes the draw through the HS/DS/PS pipeline.
+        if (pMesh->GetTopology() == Canvas::GfxPrimitiveTopology::PatchList4CP)
         {
             Canvas::XGfxMaterial *pMaterialCheck = pMesh->GetMaterial(materialGroupIndex);
             const Canvas::GfxDisplacementDesc *pDisp =
                 pMaterialCheck ? pMaterialCheck->GetDisplacement() : nullptr;
             if (pDisp && pDisp->pDisplacementMap)
             {
-                const uint32_t totalCp = pMesh->GetTotalVertexCount();
-                if (totalCp == 0 || (totalCp % 4u) != 0)
-                    return Gem::Result::InvalidArg;
-                const uint32_t patchCount = totalCp / 4u;
-                // sqrt for square grid; assert squareness via round-trip.
-                uint32_t patchesPerSide = 0;
-                while ((patchesPerSide + 1) * (patchesPerSide + 1) <= patchCount)
-                    ++patchesPerSide;
-                if (patchesPerSide * patchesPerSide != patchCount)
+                auto pPosEntry = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Position);
+                auto pUVEntry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::UV0);
+                auto pNormEntry= pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Normal);
+                if (!pPosEntry  || !pPosEntry->pBuffer  ||
+                    !pUVEntry   || !pUVEntry->pBuffer   ||
+                    !pNormEntry || !pNormEntry->pBuffer)
                     return Gem::Result::InvalidArg;
 
                 DisplacedDrawDesc tdesc = {};
-                // The world matrix in the submission is consumed multiplicatively
-                // after the shader computes world XY from TileOriginAndSize.
-                // Identity here means "the tile origin/size are already in
-                // world space"; the user's translate+scale lives in the
-                // origin/size fields below.
-                tdesc.World = Canvas::Math::FloatMatrix4x4::Identity();
-
-                // Decompose translate+scale from worldTransform. Row-major
-                // convention: translation in row 3; scale on the diagonal.
-                tdesc.OriginX     = worldTransform[3][0];
-                tdesc.OriginY     = worldTransform[3][1];
-                tdesc.WorldSizeX  = pDisp->TileSizeWorldX;
-                tdesc.WorldSizeY  = pDisp->TileSizeWorldY;
-
+                memcpy(&tdesc.World, &worldTransform, sizeof(tdesc.World));
                 tdesc.MapScale         = pDisp->MapScale;
                 tdesc.MapBias          = pDisp->MapBias;
-                tdesc.PatchGridDim     = patchesPerSide;
                 tdesc.pDisplacementMap = pDisp->pDisplacementMap;
-                tdesc.pAlbedo       = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::Albedo);
-                tdesc.pAOMap        = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::AmbientOcclusion);
-                tdesc.pRoughnessMap = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::Roughness);
+                tdesc.pAlbedo          = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::Albedo);
+                tdesc.pAOMap           = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::AmbientOcclusion);
+                tdesc.pRoughnessMap    = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::Roughness);
+                tdesc.pPositions       = static_cast<CBuffer12*>(pPosEntry ->pBuffer.Get());
+                tdesc.pUV0s            = static_cast<CBuffer12*>(pUVEntry  ->pBuffer.Get());
+                tdesc.pNormals         = static_cast<CBuffer12*>(pNormEntry->pBuffer.Get());
+                tdesc.CPVertexCount    = pMesh->GetTotalVertexCount();
 
                 return SubmitDisplacedDraw(tdesc);
             }
@@ -2374,9 +2373,9 @@ Gem::Result CRenderQueue12::SubmitDisplacedDraw(const DisplacedDrawDesc &desc)
 {
     if (!desc.pDisplacementMap || !desc.pAlbedo || !desc.pAOMap || !desc.pRoughnessMap)
         return Gem::Result::InvalidArg;
-    if (desc.PatchGridDim == 0)
+    if (!desc.pPositions || !desc.pUV0s || !desc.pNormals)
         return Gem::Result::InvalidArg;
-    if (desc.WorldSizeX <= 0.0f || desc.WorldSizeY <= 0.0f)
+    if (desc.CPVertexCount == 0 || (desc.CPVertexCount % 4u) != 0)
         return Gem::Result::InvalidArg;
 
     m_DisplacedDraws.push_back(desc);
@@ -2864,27 +2863,27 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     if (!isReady(pMapSurf))
                         continue;
 
-                    // Per-tile world transform (shadow DS reuses the existing
-                    // HlslDisplacedConstants for tile origin / scale / bias).
+                    // Per-tile CB: shadow DS reuses HlslDisplacedConstants
+                    // for the world transform + displacement decode.
                     HlslTypes::HlslDisplacedConstants tileCb = {};
                     memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
-                    tileCb.TileOriginAndSize = { sub.OriginX, sub.OriginY, sub.WorldSizeX, sub.WorldSizeY };
-                    tileCb.PatchGridDim      = sub.PatchGridDim;
-                    tileCb.MapScale          = sub.MapScale;
-                    tileCb.MapBias           = sub.MapBias;
+                    tileCb.MapScale = sub.MapScale;
+                    tileCb.MapBias  = sub.MapBias;
 
                     HostWriteAllocation tileHw;
                     Gem::ThrowGemError(m_UploadRing.AllocateFromRing(displacedCbAlignedSize, tileHw));
                     memcpy(tileHw.pMapped, &tileCb, sizeof(tileCb));
                     const D3D12_GPU_VIRTUAL_ADDRESS perTileCbvAddr = tileHw.GpuAddress;
 
-                    // Displacement map SRV: one slot per shadow draw.  The
-                    // shadow root sig declares t0 DATA_STATIC just like the
-                    // geometry pass; the same readiness gate above keeps the
-                    // static promise honest.
-                    if (m_NextSRVSlot + 1u > NumShaderResourceDescriptors)
+                    // Four contiguous SRV slots: t0 displacement map,
+                    // t4..t6 positions / UVs / normals.  Two descriptor
+                    // tables index into the same block (t0 at base, CP
+                    // streams at base+1..base+3).
+                    constexpr UINT kShadowSRVCount = 4;
+                    if (m_NextSRVSlot + kShadowSRVCount > NumShaderResourceDescriptors)
                         m_NextSRVSlot = 0u;
-                    const UINT srvSlot = m_NextSRVSlot++;
+                    const UINT baseSrvSlot = m_NextSRVSlot;
+                    m_NextSRVSlot += kShadowSRVCount;
                     {
                         ID3D12Resource* pRes = pMapSurf->GetD3DResource();
                         D3D12_RESOURCE_DESC desc = pRes->GetDesc();
@@ -2898,14 +2897,35 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         srv.Texture2D.ResourceMinLODClamp = 0.0f;
                         CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(
                             m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-                            srvSlot, incSize);
+                            baseSrvSlot, incSize);
                         pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
                     }
+                    auto writeStructuredBufSRV = [&](UINT slotOffset, ID3D12Resource* pRes, UINT stride)
+                    {
+                        D3D12_RESOURCE_DESC rd = pRes->GetDesc();
+                        D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
+                        d.Format                  = DXGI_FORMAT_UNKNOWN;
+                        d.ViewDimension           = D3D12_SRV_DIMENSION_BUFFER;
+                        d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                        d.Buffer.NumElements      = static_cast<UINT>(rd.Width / stride);
+                        d.Buffer.StructureByteStride = stride;
+                        CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(
+                            m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                            baseSrvSlot + slotOffset, incSize);
+                        pD3DDevice->CreateShaderResourceView(pRes, &d, cpu);
+                    };
+                    writeStructuredBufSRV(1, sub.pPositions->GetD3DResource(), sizeof(Canvas::Math::FloatVector4));
+                    writeStructuredBufSRV(2, sub.pUV0s     ->GetD3DResource(), sizeof(Canvas::Math::FloatVector2));
+                    writeStructuredBufSRV(3, sub.pNormals  ->GetD3DResource(), sizeof(Canvas::Math::FloatVector4));
+
                     CD3DX12_GPU_DESCRIPTOR_HANDLE mapGpu(
                         m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
-                        srvSlot, incSize);
+                        baseSrvSlot, incSize);
+                    CD3DX12_GPU_DESCRIPTOR_HANDLE cpGpu(
+                        m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+                        baseSrvSlot + 1, incSize);
 
-                    const uint32_t cpVertexCount = sub.PatchGridDim * sub.PatchGridDim * 4u;
+                    const uint32_t cpVertexCount = sub.CPVertexCount;
                     const bool doClear = firstDrawInTile;
                     firstDrawInTile = false;
 
@@ -2920,7 +2940,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
 
                     shadowTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr,
-                                             shadowCbvAddr, mapGpu, cpVertexCount,
+                                             shadowCbvAddr, mapGpu, cpGpu, cpVertexCount,
                                              tileViewport, tileScissor, doClear]
                                             (ID3D12GraphicsCommandList* pCL)
                     {
@@ -2942,6 +2962,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         pCL->SetGraphicsRootConstantBufferView(1, perTileCbvAddr);
                         pCL->SetGraphicsRootConstantBufferView(2, shadowCbvAddr);
                         pCL->SetGraphicsRootDescriptorTable(3, mapGpu);
+                        pCL->SetGraphicsRootDescriptorTable(4, cpGpu);
                         pCL->DrawInstanced(cpVertexCount, 1, 0, 0);
 
                         // Restore the back-buffer viewport + scissor so
@@ -3008,36 +3029,34 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 // ---- Per-tile constant buffer ----
                 HlslTypes::HlslDisplacedConstants tileCb = {};
                 memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
-                tileCb.TileOriginAndSize = { sub.OriginX, sub.OriginY, sub.WorldSizeX, sub.WorldSizeY };
-                tileCb.PatchGridDim      = sub.PatchGridDim;
-                tileCb.MapScale          = sub.MapScale;
-                tileCb.MapBias           = sub.MapBias;
+                tileCb.MapScale = sub.MapScale;
+                tileCb.MapBias  = sub.MapBias;
 
                 HostWriteAllocation tileHw;
                 Gem::ThrowGemError(m_UploadRing.AllocateFromRing(displacedCbSize, tileHw));
                 memcpy(tileHw.pMapped, &tileCb, sizeof(tileCb));
                 D3D12_GPU_VIRTUAL_ADDRESS perTileCbvAddr = tileHw.GpuAddress;
 
-                // ---- SRVs: 4 contiguous slots (displacement map + 3 material atlases) ----
-                // The displaced root sig has two descriptor tables; both point
-                // into this same contiguous block (map at base, atlases
-                // at base+1..base+3). Two tables let us scope visibility to
-                // DOMAIN / PIXEL respectively without splitting the heap.
-                constexpr UINT kDisplacedSRVCount = 4;
+                // ---- SRVs: 7 contiguous slots (displacement map, 3 atlases, 3 CP streams) ----
+                // Three descriptor tables index into this block:
+                //   base+0      -> t0  displacement map     (visibility ALL)
+                //   base+1..+3  -> t1..t3 atlases           (visibility PIXEL)
+                //   base+4..+6  -> t4..t6 pos / UV / normal (visibility VERTEX)
+                constexpr UINT kDisplacedSRVCount = 7;
                 if (m_NextSRVSlot + kDisplacedSRVCount > NumShaderResourceDescriptors)
                     m_NextSRVSlot = 0;
                 UINT baseSrvSlot = m_NextSRVSlot;
                 m_NextSRVSlot += kDisplacedSRVCount;
 
-                CD3DX12_CPU_DESCRIPTOR_HANDLE mapCpu(
-                    m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-                    baseSrvSlot, incSize);
                 CD3DX12_GPU_DESCRIPTOR_HANDLE mapGpu(
                     m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
                     baseSrvSlot, incSize);
                 CD3DX12_GPU_DESCRIPTOR_HANDLE materialGpu(
                     m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
                     baseSrvSlot + 1, incSize);
+                CD3DX12_GPU_DESCRIPTOR_HANDLE cpGpu(
+                    m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+                    baseSrvSlot + 4, incSize);
 
                 auto createTex2DSRV = [&](CSurface12* pSurf, UINT slotOffset)
                 {
@@ -3056,13 +3075,29 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         baseSrvSlot + slotOffset, incSize);
                     pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
                 };
+                auto createStructuredBufSRV = [&](ID3D12Resource* pRes, UINT stride, UINT slotOffset)
+                {
+                    D3D12_RESOURCE_DESC rd = pRes->GetDesc();
+                    D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
+                    d.Format                     = DXGI_FORMAT_UNKNOWN;
+                    d.ViewDimension              = D3D12_SRV_DIMENSION_BUFFER;
+                    d.Shader4ComponentMapping    = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                    d.Buffer.NumElements         = static_cast<UINT>(rd.Width / stride);
+                    d.Buffer.StructureByteStride = stride;
+                    CD3DX12_CPU_DESCRIPTOR_HANDLE cpu(
+                        m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                        baseSrvSlot + slotOffset, incSize);
+                    pD3DDevice->CreateShaderResourceView(pRes, &d, cpu);
+                };
                 createTex2DSRV(pMapSurf,    0);
                 createTex2DSRV(pAlbedoSurf, 1);
                 createTex2DSRV(pAOSurf,     2);
                 createTex2DSRV(pRoughSurf,  3);
+                createStructuredBufSRV(sub.pPositions->GetD3DResource(), sizeof(Canvas::Math::FloatVector4), 4);
+                createStructuredBufSRV(sub.pUV0s     ->GetD3DResource(), sizeof(Canvas::Math::FloatVector2), 5);
+                createStructuredBufSRV(sub.pNormals  ->GetD3DResource(), sizeof(Canvas::Math::FloatVector4), 6);
 
-                const uint32_t patchCount = sub.PatchGridDim * sub.PatchGridDim;
-                const uint32_t cpVertexCount = patchCount * 4u;
+                const uint32_t cpVertexCount = sub.CPVertexCount;
 
                 auto& drawTask = CreateGpuTask("DrawDisplaced");
                 // SYNC_VERTEX_SHADING covers VS / HS / DS / GS under the
@@ -3089,7 +3124,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-                drawTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr, mapGpu, materialGpu, cpVertexCount]
+                drawTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr,
+                                       mapGpu, materialGpu, cpGpu, cpVertexCount]
                                       (ID3D12GraphicsCommandList* pCL)
                 {
                     pCL->SetPipelineState(GetActiveDisplacedPSO());
@@ -3101,6 +3137,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     pCL->SetGraphicsRootConstantBufferView(1, perTileCbvAddr);
                     pCL->SetGraphicsRootDescriptorTable(2, mapGpu);
                     pCL->SetGraphicsRootDescriptorTable(3, materialGpu);
+                    pCL->SetGraphicsRootDescriptorTable(4, cpGpu);
                     pCL->DrawInstanced(cpVertexCount, 1, 0, 0);
                 };
                 m_GpuTaskGraph.InsertTask(drawTask);

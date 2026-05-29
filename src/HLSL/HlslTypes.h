@@ -150,17 +150,16 @@ struct ALIGN16 HlslPerObjectConstants
 
 //------------------------------------------------------------------------------------------------
 // Per-instance constants for the engine's displaced-mesh pipeline
-// (VS/HS/DS/PS in Displaced.hlsli). Populated by the engine from a
-// material's GfxDisplacementDesc, the mesh's procedural patch grid
-// dim, and the mesh instance's world transform.
+// (VS/HS/DS/PS in Displaced.hlsli). Populated by the engine from the
+// mesh instance's world transform and the paired material's
+// GfxDisplacementDesc.
 struct ALIGN16 HlslDisplacedConstants
 {
-    ROW_MAJOR float4x4 World;        // Tile world transform (typically identity)
-    float4 TileOriginAndSize;        // xy = world-space origin of texel (0,0); zw = world-space tile size
-    uint   PatchGridDim;             // Patch count per side; total patches = PatchGridDim^2
+    ROW_MAJOR float4x4 World;        // Per-tile world transform applied to mesh-local CP positions
     float  MapScale;                 // World units per [0, 1] displacement-map sample
     float  MapBias;                  // World units added after scale
     uint   _Pad0;
+    uint   _Pad1;
 };
 
 // Per-draw material flags. Bits are uniform per-draw and used to enable

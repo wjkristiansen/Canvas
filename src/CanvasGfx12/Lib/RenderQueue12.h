@@ -21,28 +21,27 @@
 // Forward declarations
 class CSurface12;
 class CSwapChain12;
+class CBuffer12;
 
 // Private representation of one displaced patch-grid draw queued by
 // CRenderQueue12::DrawMesh during scene walk and drained at EndFrame.
-// Carries everything the GPU-tessellated drain needs: GPU resources,
-// LOD knobs (read from the material's GfxDisplacementDesc), per-tile
-// extents (also from the displacement desc + the node transform), and
-// the patch grid dim derived from the procedural mesh's vertex count.
-// Engine-internal only; not visible through any public API.
+// Carries the GPU resources, the per-tile world transform applied to
+// CP positions, and the displacement decode scalars.  CP data (positions
+// and UVs) is sourced from the mesh's vertex buffers and bound at draw
+// time as StructuredBuffer SRVs.  Engine-internal only.
 struct DisplacedDrawDesc
 {
-    Canvas::XGfxSurface     *pDisplacementMap = nullptr;
-    Canvas::XGfxSurface     *pAlbedo        = nullptr;
-    Canvas::XGfxSurface     *pAOMap         = nullptr;
-    Canvas::XGfxSurface     *pRoughnessMap  = nullptr;
+    Canvas::XGfxSurface         *pDisplacementMap = nullptr;
+    Canvas::XGfxSurface         *pAlbedo          = nullptr;
+    Canvas::XGfxSurface         *pAOMap           = nullptr;
+    Canvas::XGfxSurface         *pRoughnessMap    = nullptr;
+    CBuffer12                   *pPositions       = nullptr;
+    CBuffer12                   *pUV0s            = nullptr;
+    CBuffer12                   *pNormals         = nullptr;
+    uint32_t                     CPVertexCount    = 0;
     Canvas::Math::FloatMatrix4x4 World;
-    float    OriginX       = 0.0f;
-    float    OriginY       = 0.0f;
-    float    WorldSizeX    = 0.0f;
-    float    WorldSizeY    = 0.0f;
-    float    MapScale      = 0.0f;
-    float    MapBias       = 0.0f;
-    uint32_t PatchGridDim  = 64;
+    float                        MapScale         = 0.0f;
+    float                        MapBias          = 0.0f;
 };
 
 // Enable resource usage validation diagnostics (conflict detection, write exclusivity checking)
@@ -699,8 +698,8 @@ public:
     GEMMETHOD(EndFrame)() final;
 
     // Internal: queue a displaced-mesh draw, called by DrawMesh when it
-    // detects a procedural patch-grid mesh paired with a displacement-
-    // enabled material. Not part of the public interface.
+    // detects a PatchList4CP mesh paired with a displacement-enabled
+    // material.  Not part of the public interface.
     Gem::Result SubmitDisplacedDraw(const DisplacedDrawDesc &desc);
 
     // Internal functions

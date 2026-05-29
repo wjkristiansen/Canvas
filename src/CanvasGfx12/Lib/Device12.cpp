@@ -437,18 +437,10 @@ GEMMETHODIMP CDevice12::CreateMeshData(
     if (desc.GroupCount == 0 || desc.pGroups == nullptr)
         return Gem::Result::InvalidArg;
 
-    const bool procedural = (desc.Topology != Canvas::GfxPrimitiveTopology::TriangleList);
-
-    // Validate every group up front. For non-procedural (vertex-buffered)
-    // meshes positions and normals are required and present streams must
-    // have VertexCount entries. For procedural meshes the engine emits
-    // draws directly from SV_VertexID so vertex arrays are not required;
-    // VertexCount is still meaningful (total CP count for the group).
-    //
-    // Any group that supplies positions contributes them to a mesh-local
-    // AABB, regardless of topology -- procedural draws may still want a
-    // real bounds (e.g. a tessellated patch list whose CPs span the
-    // intended draw extent) even though no vertex buffers get uploaded.
+    // Per-topology stream requirements: positions are always required;
+    // TriangleList additionally requires normals; PatchList4CP requires
+    // UV0 (per-CP map UVs) and Normal (per-CP base direction along which
+    // the displacement extends the CP).
     uint32_t totalVertexCount = 0;
     Canvas::Math::AABB meshBounds;
     for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
@@ -456,16 +448,16 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
         if (g.VertexCount == 0)
             return Gem::Result::InvalidArg;
-        if (!procedural)
-        {
-            if (g.pPositions == nullptr || g.pNormals == nullptr)
-                return Gem::Result::InvalidArg;
-        }
-        if (g.pPositions)
-        {
-            for (uint32_t vi = 0; vi < g.VertexCount; ++vi)
-                meshBounds.ExpandToInclude(g.pPositions[vi]);
-        }
+        if (g.pPositions == nullptr)
+            return Gem::Result::InvalidArg;
+        if (desc.Topology == Canvas::GfxPrimitiveTopology::TriangleList &&
+            g.pNormals == nullptr)
+            return Gem::Result::InvalidArg;
+        if (desc.Topology == Canvas::GfxPrimitiveTopology::PatchList4CP &&
+            (g.pUV0 == nullptr || g.pNormals == nullptr))
+            return Gem::Result::InvalidArg;
+        for (uint32_t vi = 0; vi < g.VertexCount; ++vi)
+            meshBounds.ExpandToInclude(g.pPositions[vi]);
         totalVertexCount += g.VertexCount;
     }
 
@@ -475,60 +467,63 @@ GEMMETHODIMP CDevice12::CreateMeshData(
     {
         std::vector<CMeshData12::GroupResources> groups(desc.GroupCount);
 
-        if (!procedural)
+        // Pre-compute a single staging allocation that holds every
+        // stream of every group concatenated, so the upload ring is
+        // amortized across the whole mesh.
+        struct StreamLayout
         {
-            // Pre-compute a single staging allocation that holds every
-            // stream of every group concatenated, so the upload ring is
-            // amortized across the whole mesh.
-            struct StreamLayout
+            uint32_t                                Group;
+            Canvas::GfxVertexBufferType             Type;
+            const void                             *pSrc;
+            uint64_t                                Size;
+            uint64_t                                StagingOffset;
+        };
+
+        std::vector<StreamLayout> streams;
+        streams.reserve(desc.GroupCount * 4);
+
+        uint64_t stagingTotal = 0;
+        for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
+        {
+            const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
+            const uint64_t v4Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector4);
+            const uint64_t v2Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector2);
+
+            // Position is required.  Normal / UV0 / Tangent are uploaded
+            // only when supplied; per-topology requirements are enforced
+            // by the validation pass above.
+            streams.push_back({ gi, Canvas::GfxVertexBufferType::Position, g.pPositions, v4Size, stagingTotal });
+            stagingTotal += v4Size;
+            if (g.pNormals)
             {
-                uint32_t                                Group;
-                Canvas::GfxVertexBufferType             Type;
-                const void                             *pSrc;
-                uint64_t                                Size;
-                uint64_t                                StagingOffset;
-            };
-
-            std::vector<StreamLayout> streams;
-            streams.reserve(desc.GroupCount * 4);
-
-            uint64_t stagingTotal = 0;
-            for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
-            {
-                const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
-                const uint64_t v4Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector4);
-                const uint64_t v2Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector2);
-
-                streams.push_back({ gi, Canvas::GfxVertexBufferType::Position, g.pPositions, v4Size, stagingTotal });
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::Normal, g.pNormals, v4Size, stagingTotal });
                 stagingTotal += v4Size;
-                streams.push_back({ gi, Canvas::GfxVertexBufferType::Normal,   g.pNormals,   v4Size, stagingTotal });
-                stagingTotal += v4Size;
-
-                if (g.pUV0)
-                {
-                    streams.push_back({ gi, Canvas::GfxVertexBufferType::UV0, g.pUV0, v2Size, stagingTotal });
-                    stagingTotal += v2Size;
-                }
-                if (g.pTangents)
-                {
-                    streams.push_back({ gi, Canvas::GfxVertexBufferType::Tangent, g.pTangents, v4Size, stagingTotal });
-                    stagingTotal += v4Size;
-                }
             }
-
-            HostWriteAllocation staging;
-            Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(stagingTotal, staging));
+            if (g.pUV0)
             {
-                uint8_t *dst = static_cast<uint8_t *>(staging.pMapped);
-                for (const StreamLayout &s : streams)
-                    memcpy(dst + s.StagingOffset, s.pSrc, static_cast<size_t>(s.Size));
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::UV0, g.pUV0, v2Size, stagingTotal });
+                stagingTotal += v2Size;
             }
+            if (g.pTangents)
+            {
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::Tangent, g.pTangents, v4Size, stagingTotal });
+                stagingTotal += v4Size;
+            }
+        }
 
-            D3D12_RESOURCE_DESC bufDesc = {};
-            bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
-            bufDesc.Height           = 1;
-            bufDesc.DepthOrArraySize = 1;
-            bufDesc.MipLevels        = 1;
+        HostWriteAllocation staging;
+        Gem::ThrowGemError(m_CopyQueue.GetUploadRing().AllocateFromRing(stagingTotal, staging));
+        {
+            uint8_t *dst = static_cast<uint8_t *>(staging.pMapped);
+            for (const StreamLayout &s : streams)
+                memcpy(dst + s.StagingOffset, s.pSrc, static_cast<size_t>(s.Size));
+        }
+
+        D3D12_RESOURCE_DESC bufDesc = {};
+        bufDesc.Dimension        = D3D12_RESOURCE_DIMENSION_BUFFER;
+        bufDesc.Height           = 1;
+        bufDesc.DepthOrArraySize = 1;
+        bufDesc.MipLevels        = 1;
         bufDesc.SampleDesc.Count = 1;
         bufDesc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
@@ -586,10 +581,8 @@ GEMMETHODIMP CDevice12::CreateMeshData(
             default: break;
             }
         }
-        } // end if (!procedural)
 
-        // Attach materials (if any) to their groups. Procedural meshes
-        // typically leave pMaterial null and acquire it via XMeshInstance.
+        // Attach materials (if any) to their groups.
         for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
             groups[gi].pMaterial = desc.pGroups[gi].pMaterial;
 
@@ -599,8 +592,8 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         pMeshData->SetTopology(desc.Topology);
         pMeshData->SetTotalVertexCount(totalVertexCount);
         // Explicit bounds from the desc override anything we walked from
-        // positions -- callers building procedural geometry from
-        // SV_VertexID supply this since the engine has nothing to measure.
+        // positions -- callers whose drawn geometry extends beyond the CP
+        // positions (e.g. tessellated patch grids) supply this directly.
         pMeshData->SetLocalBounds(desc.LocalBounds.IsEmpty() ? meshBounds : desc.LocalBounds);
 
         *ppMesh = pMeshData.Detach();

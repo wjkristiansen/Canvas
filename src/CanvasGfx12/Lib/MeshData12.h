@@ -39,7 +39,7 @@ public:
     GEMMETHOD_(Canvas::XGfxMaterial*, GetMaterial)(uint32_t materialIndex) override;
     GEMMETHOD_(Canvas::GfxPrimitiveTopology, GetTopology)() override { return m_Topology; }
     GEMMETHOD_(uint32_t, GetTotalVertexCount)() override { return m_TotalVertexCount; }
-    GEMMETHOD_(Canvas::Math::AABB, GetLocalBounds)() override { return m_LocalBounds; }
+    GEMMETHOD_(Canvas::Math::AABB, GetLocalBounds)() override;
 
     // Internal: replace the group table wholesale (used by CDevice12::CreateMeshData).
     void SetGroups(std::vector<GroupResources> &&groups) { m_Groups = std::move(groups); }

@@ -502,29 +502,73 @@ class CTerrainApp
         disp.pDisplacementMap  = m_pHeightmapSurface;
         disp.MapScale          = field.Desc.HeightScale;
         disp.MapBias           = field.Desc.HeightBias;
-        disp.TileSizeWorldX    = field.WorldWidth();
-        disp.TileSizeWorldY    = field.WorldHeight();
         disp.MinTessFactor     = 2.0f;
         disp.MaxTessFactor     = 32.0f;
         disp.DistanceLodScale  = 10.0f;
         disp.CurvatureLodScale = 0.5f;
         m_pTerrainMaterial->SetDisplacement(&disp);
 
-        // Procedural patch-grid mesh: a single-group PatchList4CP draw
-        // with VertexCount = 4 * patchesPerSide^2 control points; the
-        // displaced VS reconstructs per-CP positions from SV_VertexID
-        // using the patch count baked into the per-instance constants.
-        // No vertex buffers are uploaded; LocalBounds is supplied
-        // explicitly to cover the post-displacement tile extent.
+        // Patch-grid mesh: explicit per-CP positions (mesh-local XY,
+        // Z=0), UVs (in D3D texture-UV space; v=0 = image top), and
+        // base normals (all +Z for a flat XY-plane patch grid -- the
+        // DS displaces each CP along this normal by the decoded sample,
+        // which collapses to the classic Z-only heightfield lift).
+        // Per patch the four CPs are emitted in HS quad order:
+        // 0=(0,0), 1=(1,0), 2=(1,1), 3=(0,1) in cpLocal parameter
+        // space.  The (1 - vBase) flip on the V axis preserves the
+        // existing "image-top renders at Canvas-left (high worldY)"
+        // convention.
         const uint32_t patchesPerSide = 64;
+        const float    meshExtentX    = field.WorldWidth();
+        const float    meshExtentY    = field.WorldHeight();
+        const float    invN           = 1.0f / static_cast<float>(patchesPerSide);
+
+        std::vector<Canvas::Math::FloatVector4> patchPositions;
+        std::vector<Canvas::Math::FloatVector2> patchUVs;
+        std::vector<Canvas::Math::FloatVector4> patchNormals;
+        const size_t kCPCount = static_cast<size_t>(patchesPerSide) * patchesPerSide * 4u;
+        patchPositions.reserve(kCPCount);
+        patchUVs     .reserve(kCPCount);
+        patchNormals .reserve(kCPCount);
+
+        static const float kCornerOffsets[4][2] =
+        {
+            { 0.0f, 0.0f },   // CP 0
+            { 1.0f, 0.0f },   // CP 1
+            { 1.0f, 1.0f },   // CP 2
+            { 0.0f, 1.0f },   // CP 3
+        };
+
+        for (uint32_t py = 0; py < patchesPerSide; ++py)
+        {
+            for (uint32_t px = 0; px < patchesPerSide; ++px)
+            {
+                for (int c = 0; c < 4; ++c)
+                {
+                    const float lu = (static_cast<float>(px) + kCornerOffsets[c][0]) * invN;
+                    const float lv = (static_cast<float>(py) + kCornerOffsets[c][1]) * invN;
+                    patchPositions.push_back(Canvas::Math::FloatVector4(
+                        lu * meshExtentX, lv * meshExtentY, 0.0f, 1.0f));
+                    patchUVs.push_back(Canvas::Math::FloatVector2(
+                        lu, 1.0f - lv));
+                    patchNormals.push_back(Canvas::Math::FloatVector4(
+                        0.0f, 0.0f, 1.0f, 0.0f));
+                }
+            }
+        }
+
+        // Pre-displacement patch grid footprint in mesh-local XY; the
+        // engine inflates the bounds by the material's displacement
+        // magnitude.
         const Canvas::Math::AABB tileBounds(
-            Canvas::Math::FloatVector4(0.0f, 0.0f,
-                field.Desc.HeightBias, 0.0f),
-            Canvas::Math::FloatVector4(field.WorldWidth(), field.WorldHeight(),
-                field.Desc.HeightBias + field.Desc.HeightScale, 0.0f));
+            Canvas::Math::FloatVector4(0.0f,        0.0f,        0.0f, 0.0f),
+            Canvas::Math::FloatVector4(meshExtentX, meshExtentY, 0.0f, 0.0f));
 
         Canvas::MeshDataGroupDesc group = {};
-        group.VertexCount = patchesPerSide * patchesPerSide * 4u;
+        group.VertexCount = static_cast<uint32_t>(patchPositions.size());
+        group.pPositions  = patchPositions.data();
+        group.pNormals    = patchNormals.data();
+        group.pUV0        = patchUVs.data();
         group.pMaterial   = m_pTerrainMaterial;
 
         Canvas::MeshDataDesc meshDesc = {};

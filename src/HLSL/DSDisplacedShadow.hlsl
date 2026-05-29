@@ -2,9 +2,9 @@
 // displaced-mesh shadow pass.
 //
 // Mirrors DSDisplaced.hlsl for the world-space position computation
-// (bilinear CP interpolation -> displacement-map sample -> Z lift -> per-tile
-// world transform) but projects with the light's view+proj instead of
-// the camera's, and emits only SV_Position so the PSO can omit the PS
+// (bilerp CP base + sample displacement map + offset along bilerped
+// normal) but projects with the light's view+proj instead of the
+// camera's, and emits only SV_Position so the PSO can omit the PS
 // entirely and write only depth into the shadow atlas tile.
 //
 // Reuses Displaced.hlsli's PerFrame (b0) + PerTile (b1) + DisplacementMap (t0)
@@ -41,19 +41,20 @@ DSShadowOutput DSDisplacedShadow(
         lerp(lerp(patch[0].TileUV, patch[1].TileUV, uv.x),
              lerp(patch[3].TileUV, patch[2].TileUV, uv.x),
              uv.y);
-
-    float3 worldXY0Z =
-        lerp(lerp(patch[0].WorldXY0Z, patch[1].WorldXY0Z, uv.x),
-             lerp(patch[3].WorldXY0Z, patch[2].WorldXY0Z, uv.x),
+    float3 basePos =
+        lerp(lerp(patch[0].WorldPos, patch[1].WorldPos, uv.x),
+             lerp(patch[3].WorldPos, patch[2].WorldPos, uv.x),
              uv.y);
+    float3 baseN = normalize(
+        lerp(lerp(patch[0].Normal, patch[1].Normal, uv.x),
+             lerp(patch[3].Normal, patch[2].Normal, uv.x),
+             uv.y));
 
     float hSample = DisplacementMap.SampleLevel(MapSampler, tileUv, 0);
-    float worldZ  = DecodeDisplacement(hSample);
-
-    float4 worldPos4 = float4(worldXY0Z.x, worldXY0Z.y, worldZ, 1.0);
-    worldPos4 = mul(worldPos4, PerTile.World);
+    float disp    = DecodeDisplacement(hSample);
+    float3 worldPos = basePos + disp * baseN;
 
     DSShadowOutput o;
-    o.ClipPosition = mul(worldPos4, Shadow.ShadowViewProj);
+    o.ClipPosition = mul(float4(worldPos, 1.0), Shadow.ShadowViewProj);
     return o;
 }
