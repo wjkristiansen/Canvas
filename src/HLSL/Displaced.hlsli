@@ -15,10 +15,10 @@ ConstantBuffer<HlslPerFrameConstants> PerFrame : register(b0);
 // Per-instance displaced-mesh constants. One CB per displaced draw.
 ConstantBuffer<HlslDisplacedConstants> PerTile : register(b1);
 
-// Heightmap texture (R16_UNORM, with mip chain). The DS samples it to lift
-// CP-interpolated XY positions into world Z; the HS samples a coarse mip
-// for the curvature term of the LOD computation.
-Texture2D<float> Heightmap : register(t0);
+// Displacement map (single-channel UNORM, with mip chain). The DS samples it
+// to lift CP-interpolated XY positions into world Z; the HS samples a coarse
+// mip for the curvature term of the LOD computation.
+Texture2D<float> DisplacementMap : register(t0);
 
 // Pre-baked material atlases sampled in the pixel shader by tile UV. All
 // three live in the same descriptor table and stay LAYOUT_SHADER_RESOURCE
@@ -27,13 +27,13 @@ Texture2D<float4> AlbedoMap    : register(t1);
 Texture2D<float>  AOMap        : register(t2);
 Texture2D<float>  RoughnessMap : register(t3);
 
-SamplerState HeightSampler : register(s0);
+SamplerState MapSampler : register(s0);
 
 // Patch control-point payload that flows VS -> HS -> DS.
 struct DisplacedControlPoint
 {
-    float2 TileUV    : TILEUV;     // [0,1]^2 across the tile (used by DS to sample heightmap)
-    float3 WorldXY0Z : WORLDXY0Z;  // World-space (x, y, 0) of the CP before height lift
+    float2 TileUV    : TILEUV;     // [0,1]^2 across the tile (used by DS to sample displacement map)
+    float3 WorldXY0Z : WORLDXY0Z;  // World-space (x, y, 0) of the CP before displacement lift
 };
 
 // Patch-constant data emitted by the HS once per patch. Holds the tess
@@ -44,10 +44,11 @@ struct DisplacedPatchConstants
     float InsideTess[2] : SV_InsideTessFactor;
 };
 
-// Decode a heightmap sample to meters using the material's height scale + bias.
-float DecodeHeightMeters(float sample01)
+// Decode a displacement-map sample to world units using the material's
+// scale + bias.
+float DecodeDisplacement(float sample01)
 {
-    return sample01 * PerTile.HeightScale + PerTile.HeightBias;
+    return sample01 * PerTile.MapScale + PerTile.MapBias;
 }
 
 #endif // CANVAS_DISPLACED_HLSLI

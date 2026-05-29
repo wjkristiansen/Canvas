@@ -66,15 +66,16 @@ public:
         {
             m_HasDisplacement = true;
             m_Displacement    = *pDesc;
-            // Hold a strong ref on the heightmap surface so the material
-            // keeps it alive for as long as displacement is configured.
-            m_pDisplacementHeightmap = pDesc->pHeightmap;
+            // Hold a strong ref on the displacement-map surface so the
+            // material keeps it alive for as long as displacement is
+            // configured.
+            m_pDisplacementMap = pDesc->pDisplacementMap;
         }
         else
         {
             m_HasDisplacement = false;
             m_Displacement    = {};
-            m_pDisplacementHeightmap = nullptr;
+            m_pDisplacementMap = nullptr;
         }
     }
     GEMMETHOD_(const Canvas::GfxDisplacementDesc *, GetDisplacement)() const final
@@ -102,13 +103,13 @@ private:
     Canvas::Math::FloatVector4 m_EmissiveFactor     = { 0.0f, 0.0f, 0.0f, 0.0f };
     Canvas::Math::FloatVector4 m_RoughMetalAOFactor = { 1.0f, 0.0f, 1.0f, 0.0f };
 
-    // Displacement extension storage.  m_Displacement.pHeightmap is a raw
-    // observer pointer (XGfxSurface*); m_pDisplacementHeightmap is the
+    // Displacement extension storage.  m_Displacement.pDisplacementMap is
+    // a raw observer pointer (XGfxSurface*); m_pDisplacementMap is the
     // matching strong ref that keeps the surface alive.  Both are
     // populated together by SetDisplacement.
-    bool                              m_HasDisplacement        = false;
+    bool                              m_HasDisplacement = false;
     Canvas::GfxDisplacementDesc       m_Displacement;
-    Gem::TGemPtr<Canvas::XGfxSurface> m_pDisplacementHeightmap;
+    Gem::TGemPtr<Canvas::XGfxSurface> m_pDisplacementMap;
 };
 
 #ifdef _MSC_VER

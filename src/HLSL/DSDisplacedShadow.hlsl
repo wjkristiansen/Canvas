@@ -2,13 +2,13 @@
 // displaced-mesh shadow pass.
 //
 // Mirrors DSDisplaced.hlsl for the world-space position computation
-// (bilinear CP interpolation -> heightmap sample -> Z lift -> per-tile
+// (bilinear CP interpolation -> displacement-map sample -> Z lift -> per-tile
 // world transform) but projects with the light's view+proj instead of
 // the camera's, and emits only SV_Position so the PSO can omit the PS
 // entirely and write only depth into the shadow atlas tile.
 //
-// Reuses Displaced.hlsli's PerFrame (b0) + PerTile (b1) + Heightmap (t0)
-// + HeightSampler (s0) bindings unchanged; adds a tiny b2 carrying just
+// Reuses Displaced.hlsli's PerFrame (b0) + PerTile (b1) + DisplacementMap (t0)
+// + MapSampler (s0) bindings unchanged; adds a tiny b2 carrying just
 // the light's world->shadow-clip matrix.  VSDisplaced and HSDisplaced
 // are reused unchanged (their LOD logic keys off the camera position,
 // which is what we want for shadow tessellation to match receiver
@@ -47,8 +47,8 @@ DSShadowOutput DSDisplacedShadow(
              lerp(patch[3].WorldXY0Z, patch[2].WorldXY0Z, uv.x),
              uv.y);
 
-    float hSample = Heightmap.SampleLevel(HeightSampler, tileUv, 0);
-    float worldZ  = DecodeHeightMeters(hSample);
+    float hSample = DisplacementMap.SampleLevel(MapSampler, tileUv, 0);
+    float worldZ  = DecodeDisplacement(hSample);
 
     float4 worldPos4 = float4(worldXY0Z.x, worldXY0Z.y, worldZ, 1.0);
     worldPos4 = mul(worldPos4, PerTile.World);

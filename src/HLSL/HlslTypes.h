@@ -158,8 +158,8 @@ struct ALIGN16 HlslDisplacedConstants
     ROW_MAJOR float4x4 World;        // Tile world transform (typically identity)
     float4 TileOriginAndSize;        // xy = world-space origin of texel (0,0); zw = world-space tile size
     uint   PatchGridDim;             // Patch count per side; total patches = PatchGridDim^2
-    float  HeightScale;              // Meters per [0, 1] heightmap sample
-    float  HeightBias;               // Meters added after scale
+    float  MapScale;                 // World units per [0, 1] displacement-map sample
+    float  MapBias;                  // World units added after scale
     uint   _Pad0;
 };
 

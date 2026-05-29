@@ -938,7 +938,7 @@ void CRenderQueue12::EnsureDefaultPSO()
 // list. Root signature exposes:
 //   b0: per-frame constants (shared with the rest of the engine)
 //   b1: per-instance constants (HlslDisplacedConstants)
-//   t0: heightmap SRV (HS + DS visible: HS reads coarse mip for curvature,
+//   t0: displacement-map SRV (HS + DS visible: HS reads coarse mip for curvature,
 //       DS reads mip 0 for vertex displacement)
 //   t1..t3: material atlas SRVs (PS visible: albedo / AO / roughness)
 //   s0: static linear-clamp sampler shared by all stages
@@ -1008,14 +1008,14 @@ void CRenderQueue12::EnsureDisplacedPSO()
     // ---------- Root signature ----------
     if (!m_pDisplacedRootSig)
     {
-        // The heightmap (t0) and the three material atlases (t1..t3) live
-        // in separate descriptor tables so each can carry a tight shader-
-        // visibility scope: DS samples the heightmap, PS samples the
-        // material atlases. All four ranges are DATA_STATIC; the render
-        // queue's FinalizeUploadAsShaderResource gate ensures their layout
-        // transitions have retired before bind time.
-        CD3DX12_DESCRIPTOR_RANGE1 heightRange;
-        heightRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
+        // The displacement map (t0) and the three material atlases (t1..t3)
+        // live in separate descriptor tables so each can carry a tight
+        // shader-visibility scope: DS samples the displacement map, PS
+        // samples the material atlases. All four ranges are DATA_STATIC;
+        // the render queue's FinalizeUploadAsShaderResource gate ensures
+        // their layout transitions have retired before bind time.
+        CD3DX12_DESCRIPTOR_RANGE1 mapRange;
+        mapRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
             D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t0
 
         CD3DX12_DESCRIPTOR_RANGE1 materialRange;
@@ -1029,13 +1029,13 @@ void CRenderQueue12::EnsureDisplacedPSO()
         rootParams[1].InitAsConstantBufferView(1, 0,
             D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
             D3D12_SHADER_VISIBILITY_ALL);   // b1 PerTile
-        rootParams[2].InitAsDescriptorTable(1, &heightRange,
-            D3D12_SHADER_VISIBILITY_ALL);      // t0 (HS reads for LOD, DS reads for height lift)
+        rootParams[2].InitAsDescriptorTable(1, &mapRange,
+            D3D12_SHADER_VISIBILITY_ALL);      // t0 (HS reads for LOD, DS reads for displacement lift)
         rootParams[3].InitAsDescriptorTable(1, &materialRange,
             D3D12_SHADER_VISIBILITY_PIXEL);    // t1..t3
 
-        // One static sampler serves both stages. Both the heightmap (DS)
-        // and the pre-baked tile-sized material atlases (PS) want
+        // One static sampler serves both stages. Both the displacement map
+        // (DS) and the pre-baked tile-sized material atlases (PS) want
         // linear-filtered clamp-addressed sampling, so a single ALL-visible
         // sampler keeps the root sig small.
         CD3DX12_STATIC_SAMPLER_DESC sampler;
@@ -1124,9 +1124,9 @@ void CRenderQueue12::EnsureDisplacedPSOWireframe()
 //
 // Root signature:
 //   b0: HlslPerFrameConstants (HS reads CameraWorldPos for LOD)
-//   b1: HlslDisplacedConstants (per-tile world transform + heightmap params)
+//   b1: HlslDisplacedConstants (per-tile world transform + displacement-map params)
 //   b2: HlslShadowConstants    (world->shadow-clip matrix for this light)
-//   t0: heightmap SRV          (HS coarse-mip LOD + DS height lift)
+//   t0: displacement-map SRV   (HS coarse-mip LOD + DS displacement lift)
 //   s0: static linear-clamp sampler
 //
 // Rasterizer state bakes conservative caster-side depth bias defaults
@@ -1146,8 +1146,8 @@ void CRenderQueue12::EnsureDisplacedShadowPSO()
     // ---------- Root signature ----------
     if (!m_pDisplacedShadowRootSig)
     {
-        CD3DX12_DESCRIPTOR_RANGE1 heightRange;
-        heightRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
+        CD3DX12_DESCRIPTOR_RANGE1 mapRange;
+        mapRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0,
             D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);  // t0
 
         std::vector<CD3DX12_ROOT_PARAMETER1> rootParams(4);
@@ -1160,8 +1160,8 @@ void CRenderQueue12::EnsureDisplacedShadowPSO()
         rootParams[2].InitAsConstantBufferView(2, 0,
             D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,
             D3D12_SHADER_VISIBILITY_DOMAIN);       // b2 Shadow ViewProj
-        rootParams[3].InitAsDescriptorTable(1, &heightRange,
-            D3D12_SHADER_VISIBILITY_ALL);          // t0 heightmap
+        rootParams[3].InitAsDescriptorTable(1, &mapRange,
+            D3D12_SHADER_VISIBILITY_ALL);          // t0 displacement map
 
         CD3DX12_STATIC_SAMPLER_DESC sampler;
         sampler.Init(
@@ -1835,7 +1835,7 @@ Gem::Result CRenderQueue12::DrawMesh(
             Canvas::XGfxMaterial *pMaterialCheck = pMesh->GetMaterial(materialGroupIndex);
             const Canvas::GfxDisplacementDesc *pDisp =
                 pMaterialCheck ? pMaterialCheck->GetDisplacement() : nullptr;
-            if (pDisp && pDisp->pHeightmap)
+            if (pDisp && pDisp->pDisplacementMap)
             {
                 const uint32_t totalCp = pMesh->GetTotalVertexCount();
                 if (totalCp == 0 || (totalCp % 4u) != 0)
@@ -1863,10 +1863,10 @@ Gem::Result CRenderQueue12::DrawMesh(
                 tdesc.WorldSizeX  = pDisp->TileSizeWorldX;
                 tdesc.WorldSizeY  = pDisp->TileSizeWorldY;
 
-                tdesc.HeightScale  = pDisp->HeightScale;
-                tdesc.HeightBias   = pDisp->HeightBias;
-                tdesc.PatchGridDim = patchesPerSide;
-                tdesc.pHeightmap   = pDisp->pHeightmap;
+                tdesc.MapScale         = pDisp->MapScale;
+                tdesc.MapBias          = pDisp->MapBias;
+                tdesc.PatchGridDim     = patchesPerSide;
+                tdesc.pDisplacementMap = pDisp->pDisplacementMap;
                 tdesc.pAlbedo       = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::Albedo);
                 tdesc.pAOMap        = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::AmbientOcclusion);
                 tdesc.pRoughnessMap = pMaterialCheck->GetTexture(Canvas::MaterialLayerRole::Roughness);
@@ -2372,7 +2372,7 @@ GEMMETHODIMP_(void) CRenderQueue12::SetBackground(const Canvas::GfxBackgroundDes
 //------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::SubmitDisplacedDraw(const DisplacedDrawDesc &desc)
 {
-    if (!desc.pHeightmap || !desc.pAlbedo || !desc.pAOMap || !desc.pRoughnessMap)
+    if (!desc.pDisplacementMap || !desc.pAlbedo || !desc.pAOMap || !desc.pRoughnessMap)
         return Gem::Result::InvalidArg;
     if (desc.PatchGridDim == 0)
         return Gem::Result::InvalidArg;
@@ -2796,7 +2796,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         // tile).  The first task targeting a given tile clears it; the
         // remaining tasks for that tile just accumulate depth.  Declared
         // resource usage (DEPTH_STENCIL_WRITE on the atlas + SHADER_RESOURCE
-        // on each heightmap) drives automatic barriers; the composite's
+        // on each displacement map) drives automatic barriers; the composite's
         // SHADER_RESOURCE declaration on the atlas downstream finishes
         // the DSV-write -> SRV-read transition.
         //==========================================================================================
@@ -2860,33 +2860,33 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
                 for (const auto& sub : m_DisplacedDraws)
                 {
-                    auto* pHeightSurf = static_cast<CSurface12*>(sub.pHeightmap);
-                    if (!isReady(pHeightSurf))
+                    auto* pMapSurf = static_cast<CSurface12*>(sub.pDisplacementMap);
+                    if (!isReady(pMapSurf))
                         continue;
 
                     // Per-tile world transform (shadow DS reuses the existing
-                    // HlslDisplacedConstants for tile origin / scale / height).
+                    // HlslDisplacedConstants for tile origin / scale / bias).
                     HlslTypes::HlslDisplacedConstants tileCb = {};
                     memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
                     tileCb.TileOriginAndSize = { sub.OriginX, sub.OriginY, sub.WorldSizeX, sub.WorldSizeY };
                     tileCb.PatchGridDim      = sub.PatchGridDim;
-                    tileCb.HeightScale       = sub.HeightScale;
-                    tileCb.HeightBias        = sub.HeightBias;
+                    tileCb.MapScale          = sub.MapScale;
+                    tileCb.MapBias           = sub.MapBias;
 
                     HostWriteAllocation tileHw;
                     Gem::ThrowGemError(m_UploadRing.AllocateFromRing(displacedCbAlignedSize, tileHw));
                     memcpy(tileHw.pMapped, &tileCb, sizeof(tileCb));
                     const D3D12_GPU_VIRTUAL_ADDRESS perTileCbvAddr = tileHw.GpuAddress;
 
-                    // Heightmap SRV: one slot per shadow draw.  The shadow
-                    // root sig declares t0 DATA_STATIC just like the geometry
-                    // pass; the same readiness gate above keeps the static
-                    // promise honest.
+                    // Displacement map SRV: one slot per shadow draw.  The
+                    // shadow root sig declares t0 DATA_STATIC just like the
+                    // geometry pass; the same readiness gate above keeps the
+                    // static promise honest.
                     if (m_NextSRVSlot + 1u > NumShaderResourceDescriptors)
                         m_NextSRVSlot = 0u;
                     const UINT srvSlot = m_NextSRVSlot++;
                     {
-                        ID3D12Resource* pRes = pHeightSurf->GetD3DResource();
+                        ID3D12Resource* pRes = pMapSurf->GetD3DResource();
                         D3D12_RESOURCE_DESC desc = pRes->GetDesc();
                         D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
                         srv.Format                        = desc.Format;
@@ -2901,7 +2901,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                             srvSlot, incSize);
                         pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
                     }
-                    CD3DX12_GPU_DESCRIPTOR_HANDLE heightGpu(
+                    CD3DX12_GPU_DESCRIPTOR_HANDLE mapGpu(
                         m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
                         srvSlot, incSize);
 
@@ -2910,7 +2910,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     firstDrawInTile = false;
 
                     auto& shadowTask = CreateGpuTask("ShadowPass_Displaced");
-                    DeclareGpuTextureUsage(shadowTask, pHeightSurf,
+                    DeclareGpuTextureUsage(shadowTask, pMapSurf,
                         D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                         D3D12_BARRIER_SYNC_VERTEX_SHADING,   // HS + DS sample
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2920,7 +2920,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
 
                     shadowTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr,
-                                             shadowCbvAddr, heightGpu, cpVertexCount,
+                                             shadowCbvAddr, mapGpu, cpVertexCount,
                                              tileViewport, tileScissor, doClear]
                                             (ID3D12GraphicsCommandList* pCL)
                     {
@@ -2941,7 +2941,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
                         pCL->SetGraphicsRootConstantBufferView(1, perTileCbvAddr);
                         pCL->SetGraphicsRootConstantBufferView(2, shadowCbvAddr);
-                        pCL->SetGraphicsRootDescriptorTable(3, heightGpu);
+                        pCL->SetGraphicsRootDescriptorTable(3, mapGpu);
                         pCL->DrawInstanced(cpVertexCount, 1, 0, 0);
 
                         // Restore the back-buffer viewport + scissor so
@@ -2972,21 +2972,21 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
             for (const auto& sub : m_DisplacedDraws)
             {
-                // Don't bind the heightmap until its upload + COMMON->SHADER_RESOURCE
+                // Don't bind the displacement map until its upload + COMMON->SHADER_RESOURCE
                 // fixup CL has fully retired on the GPU. The displaced root sig
-                // declares the heightmap SRV range as DATA_STATIC, which forbids
+                // declares the map SRV range as DATA_STATIC, which forbids
                 // any state change on the resource while a CL with the binding
                 // is in flight. By waiting for the fixup token to retire, we
                 // guarantee the layout transition is in the past relative to
-                // any submission that follows. Tiles whose heightmaps are not
+                // any submission that follows. Tiles whose maps are not
                 // yet ready are simply skipped this frame; the scene graph will
                 // re-submit them next frame.
                 // All four displaced-draw-bound surfaces must have their COMMON ->
                 // SHADER_RESOURCE fixup CL retired on the GPU before we can
-                // bind them as DATA_STATIC SRVs. Tiles whose heightmap or
+                // bind them as DATA_STATIC SRVs. Tiles whose displacement map or
                 // material atlases are not yet ready are simply skipped this
                 // frame; the scene graph re-submits them next frame.
-                auto* pHeightSurf = static_cast<CSurface12*>(sub.pHeightmap);
+                auto* pMapSurf    = static_cast<CSurface12*>(sub.pDisplacementMap);
                 auto* pAlbedoSurf = static_cast<CSurface12*>(sub.pAlbedo);
                 auto* pAOSurf     = static_cast<CSurface12*>(sub.pAOMap);
                 auto* pRoughSurf  = static_cast<CSurface12*>(sub.pRoughnessMap);
@@ -2999,7 +2999,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         pSurf->m_UploadFixupToken.TimelineId);
                     return pFence && pFence->GetCompletedValue() >= pSurf->m_UploadFixupToken.Value;
                 };
-                if (!isReady(pHeightSurf) || !isReady(pAlbedoSurf) ||
+                if (!isReady(pMapSurf)    || !isReady(pAlbedoSurf) ||
                     !isReady(pAOSurf)     || !isReady(pRoughSurf))
                 {
                     continue;
@@ -3010,17 +3010,17 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
                 tileCb.TileOriginAndSize = { sub.OriginX, sub.OriginY, sub.WorldSizeX, sub.WorldSizeY };
                 tileCb.PatchGridDim      = sub.PatchGridDim;
-                tileCb.HeightScale       = sub.HeightScale;
-                tileCb.HeightBias        = sub.HeightBias;
+                tileCb.MapScale          = sub.MapScale;
+                tileCb.MapBias           = sub.MapBias;
 
                 HostWriteAllocation tileHw;
                 Gem::ThrowGemError(m_UploadRing.AllocateFromRing(displacedCbSize, tileHw));
                 memcpy(tileHw.pMapped, &tileCb, sizeof(tileCb));
                 D3D12_GPU_VIRTUAL_ADDRESS perTileCbvAddr = tileHw.GpuAddress;
 
-                // ---- SRVs: 4 contiguous slots (heightmap + 3 material atlases) ----
+                // ---- SRVs: 4 contiguous slots (displacement map + 3 material atlases) ----
                 // The displaced root sig has two descriptor tables; both point
-                // into this same contiguous block (heightmap at base, atlases
+                // into this same contiguous block (map at base, atlases
                 // at base+1..base+3). Two tables let us scope visibility to
                 // DOMAIN / PIXEL respectively without splitting the heap.
                 constexpr UINT kDisplacedSRVCount = 4;
@@ -3029,10 +3029,10 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 UINT baseSrvSlot = m_NextSRVSlot;
                 m_NextSRVSlot += kDisplacedSRVCount;
 
-                CD3DX12_CPU_DESCRIPTOR_HANDLE heightCpu(
+                CD3DX12_CPU_DESCRIPTOR_HANDLE mapCpu(
                     m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
                     baseSrvSlot, incSize);
-                CD3DX12_GPU_DESCRIPTOR_HANDLE heightGpu(
+                CD3DX12_GPU_DESCRIPTOR_HANDLE mapGpu(
                     m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
                     baseSrvSlot, incSize);
                 CD3DX12_GPU_DESCRIPTOR_HANDLE materialGpu(
@@ -3056,7 +3056,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         baseSrvSlot + slotOffset, incSize);
                     pD3DDevice->CreateShaderResourceView(pRes, &srv, cpu);
                 };
-                createTex2DSRV(pHeightSurf, 0);
+                createTex2DSRV(pMapSurf,    0);
                 createTex2DSRV(pAlbedoSurf, 1);
                 createTex2DSRV(pAOSurf,     2);
                 createTex2DSRV(pRoughSurf,  3);
@@ -3066,14 +3066,14 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
 
                 auto& drawTask = CreateGpuTask("DrawDisplaced");
                 // SYNC_VERTEX_SHADING covers VS / HS / DS / GS under the
-                // enhanced-barriers grouping. The heightmap is sampled in
-                // the domain shader; the material atlases are sampled in
+                // enhanced-barriers grouping. The displacement map is sampled
+                // in the domain shader; the material atlases are sampled in
                 // the pixel shader (SYNC_PIXEL_SHADING).
-                DeclareGpuTextureUsage(drawTask, pHeightSurf,
+                DeclareGpuTextureUsage(drawTask, pMapSurf,
                     D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     // SYNC_VERTEX_SHADING covers VS / HS / DS / GS. The HS
-                    // reads the heightmap for distance + curvature LOD, the
-                    // DS reads it for the height lift.
+                    // reads the displacement map for distance + curvature
+                    // LOD, the DS reads it for the displacement lift.
                     D3D12_BARRIER_SYNC_VERTEX_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 DeclareGpuTextureUsage(drawTask, pAlbedoSurf,
@@ -3089,7 +3089,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-                drawTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr, heightGpu, materialGpu, cpVertexCount]
+                drawTask.RecordFunc = [this, frameCBVAddress, perTileCbvAddr, mapGpu, materialGpu, cpVertexCount]
                                       (ID3D12GraphicsCommandList* pCL)
                 {
                     pCL->SetPipelineState(GetActiveDisplacedPSO());
@@ -3099,7 +3099,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
                     pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
                     pCL->SetGraphicsRootConstantBufferView(1, perTileCbvAddr);
-                    pCL->SetGraphicsRootDescriptorTable(2, heightGpu);
+                    pCL->SetGraphicsRootDescriptorTable(2, mapGpu);
                     pCL->SetGraphicsRootDescriptorTable(3, materialGpu);
                     pCL->DrawInstanced(cpVertexCount, 1, 0, 0);
                 };

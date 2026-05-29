@@ -3,8 +3,8 @@
 // Runs per output vertex produced by the fixed-function tessellator. Given
 // barycentric (u, v) in [0, 1]^2 on the quad and the 4 input CPs, computes:
 //   - World-space XYZ of the vertex by bilinearly interpolating the CPs'
-//     TileUV, sampling the heightmap, and lifting Z.
-//   - World-space normal via central differences on the heightmap.
+//     TileUV, sampling the displacement map, and lifting Z.
+//   - World-space normal via central differences on the displacement map.
 //   - Tile-relative UVs for the PS to sample the material atlases.
 //   - Clip-space position for rasterization.
 
@@ -19,17 +19,17 @@ struct DSOutput
 };
 
 // Estimate world-space normal at a tile-UV point by central differences on
-// the heightmap. The horizontal step is one texel of the chosen mip.
+// the displacement map. The horizontal step is one texel of the chosen mip.
 float3 ComputeWorldNormal(float2 tileUv)
 {
     uint w, h, nMips;
-    Heightmap.GetDimensions(0, w, h, nMips);
+    DisplacementMap.GetDimensions(0, w, h, nMips);
 
     float2 texelUv = float2(1.0 / max(w, 1u), 1.0 / max(h, 1u));
-    float hL = DecodeHeightMeters(Heightmap.SampleLevel(HeightSampler, tileUv - float2(texelUv.x, 0), 0));
-    float hR = DecodeHeightMeters(Heightmap.SampleLevel(HeightSampler, tileUv + float2(texelUv.x, 0), 0));
-    float hD = DecodeHeightMeters(Heightmap.SampleLevel(HeightSampler, tileUv - float2(0, texelUv.y), 0));
-    float hU = DecodeHeightMeters(Heightmap.SampleLevel(HeightSampler, tileUv + float2(0, texelUv.y), 0));
+    float hL = DecodeDisplacement(DisplacementMap.SampleLevel(MapSampler, tileUv - float2(texelUv.x, 0), 0));
+    float hR = DecodeDisplacement(DisplacementMap.SampleLevel(MapSampler, tileUv + float2(texelUv.x, 0), 0));
+    float hD = DecodeDisplacement(DisplacementMap.SampleLevel(MapSampler, tileUv - float2(0, texelUv.y), 0));
+    float hU = DecodeDisplacement(DisplacementMap.SampleLevel(MapSampler, tileUv + float2(0, texelUv.y), 0));
 
     // World step that corresponds to one tile-UV texel.
     float2 worldSize = PerTile.TileOriginAndSize.zw;
@@ -63,10 +63,10 @@ DSOutput DSDisplaced(
              lerp(patch[3].WorldXY0Z, patch[2].WorldXY0Z, uv.x),
              uv.y);
 
-    // Sample the heightmap (mip 0 for vertex displacement; the curvature
-    // term in HS uses a coarser mip).
-    float hSample = Heightmap.SampleLevel(HeightSampler, tileUv, 0);
-    float worldZ  = DecodeHeightMeters(hSample);
+    // Sample the displacement map (mip 0 for vertex displacement; the
+    // curvature term in HS uses a coarser mip).
+    float hSample = DisplacementMap.SampleLevel(MapSampler, tileUv, 0);
+    float worldZ  = DecodeDisplacement(hSample);
 
     float4 worldPos4 = float4(worldXY0Z.x, worldXY0Z.y, worldZ, 1.0);
     // Apply per-instance world transform (row-vector convention).

@@ -31,7 +31,7 @@ class CSwapChain12;
 // Engine-internal only; not visible through any public API.
 struct DisplacedDrawDesc
 {
-    Canvas::XGfxSurface     *pHeightmap     = nullptr;
+    Canvas::XGfxSurface     *pDisplacementMap = nullptr;
     Canvas::XGfxSurface     *pAlbedo        = nullptr;
     Canvas::XGfxSurface     *pAOMap         = nullptr;
     Canvas::XGfxSurface     *pRoughnessMap  = nullptr;
@@ -40,8 +40,8 @@ struct DisplacedDrawDesc
     float    OriginY       = 0.0f;
     float    WorldSizeX    = 0.0f;
     float    WorldSizeY    = 0.0f;
-    float    HeightScale   = 0.0f;
-    float    HeightBias    = 0.0f;
+    float    MapScale      = 0.0f;
+    float    MapBias       = 0.0f;
     uint32_t PatchGridDim  = 64;
 };
 

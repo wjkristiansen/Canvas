@@ -424,17 +424,17 @@ Positions are bound as a root SRV at t0 by GPU virtual address. Remaining vertex
 
 ### Displaced Mesh Drawing (Tessellation Path)
 
-When a mesh instance has a material with a `GfxDisplacementDesc` attached (`XGfxMaterial::SetDisplacement`), the render queue routes it through the displaced-mesh pipeline instead of the standard geometry PSO. This path uses a VS+HS+DS+PS quad-patch pipeline (`PatchList4CP` topology) and no CPU-side vertex buffers — the DS generates world-space geometry by sampling a heightmap texture.
+When a mesh instance has a material with a `GfxDisplacementDesc` attached (`XGfxMaterial::SetDisplacement`), the render queue routes it through the displaced-mesh pipeline instead of the standard geometry PSO. This path uses a VS+HS+DS+PS quad-patch pipeline (`PatchList4CP` topology) and no CPU-side vertex buffers — the DS generates world-space geometry by sampling a displacement-map texture.
 
 The displaced PSO root signature:
 - Slot 0: root CBV at b0 for per-frame constants.
-- Slot 1: root CBV at b1 for per-tile `HlslDisplacedConstants` (world transform, tile origin and world size, patch grid dimension, `HeightScale`, `HeightBias`).
-- Slot 2: descriptor table with SRV[3]: heightmap texture (t0), albedo atlas (t1), ORM atlas (t2).
-- Static sampler s0: linear/clamp for heightmap and atlas sampling.
+- Slot 1: root CBV at b1 for per-tile `HlslDisplacedConstants` (world transform, tile origin and world size, patch grid dimension, `MapScale`, `MapBias`).
+- Slot 2: descriptor table with SRV[3]: displacement-map texture (t0), albedo atlas (t1), ORM atlas (t2).
+- Static sampler s0: linear/clamp for displacement-map and atlas sampling.
 
-`HlslDisplacedConstants` is uploaded to the upload ring once per displaced draw. The heightmap surface must be in `LAYOUT_SHADER_RESOURCE` before the draw (use `XGfxRenderQueue::FinalizeUploadAsShaderResource` after the initial texture upload).
+`HlslDisplacedConstants` is uploaded to the upload ring once per displaced draw. The displacement-map surface must be in `LAYOUT_SHADER_RESOURCE` before the draw (use `XGfxRenderQueue::FinalizeUploadAsShaderResource` after the initial texture upload).
 
-The VS generates control-point UV coordinates from `SV_VertexID` for a `PatchGridDim × PatchGridDim` quad grid. The HS computes per-edge tessellation factors using a distance × curvature LOD scheme: the distance term is proportional to `edgeWorldLength / distToMidpoint`, and the curvature term samples a coarse mip of the heightmap for the Laplacian second derivative. The DS samples the heightmap at full resolution to lift each tessellated vertex into world space and computes per-vertex normals from central differences. The PS samples the material atlases and writes the standard G-buffer layout, so the deferred lighting and composition passes are unchanged.
+The VS generates control-point UV coordinates from `SV_VertexID` for a `PatchGridDim × PatchGridDim` quad grid. The HS computes per-edge tessellation factors using a distance × curvature LOD scheme: the distance term is proportional to `edgeWorldLength / distToMidpoint`, and the curvature term samples a coarse mip of the displacement map for the Laplacian second derivative. The DS samples the displacement map at full resolution to lift each tessellated vertex into world space and computes per-vertex normals from central differences. The PS samples the material atlases and writes the standard G-buffer layout, so the deferred lighting and composition passes are unchanged.
 
 The displaced shadow PSO shares the VS and HS bytecode (ensuring shadow tessellation matches the scene LOD to prevent Peter Panning) and pairs them with `DSDisplacedShadow`, which writes only `SV_Position` from a `HlslShadowConstants` matrix with no pixel shader.
 
@@ -450,7 +450,7 @@ For directional lights with `LightFlags::CastsShadows`, `SubmitLight` additional
 4. Writes `ShadowAtlasRectUV`, `ShadowViewProj`, `ShadowFlags`, `ShadowDepthBias`, and `ShadowNormalOffsetTexels` into the light's `HlslLight` entry so the composite can sample without additional CPU plumbing.
 5. Queues a `PendingShadowCaster` record for `EndFrame` to drain.
 
-`EndFrame` then inserts one `ShadowPass_Displaced` `GpuTask` per (shadow caster × ready displaced tile), each declaring DSV-write usage on the atlas and SRV-read usage on the heightmap. The first task into a tile clears it with a scissor-restricted `ClearDepthStencilView(0.0f)` (reverse-Z far plane); subsequent tasks accumulate depth. The composite task downstream declares SRV usage on the atlas, so the `DEPTH_STENCIL_WRITE -> SHADER_RESOURCE` transition is emitted automatically by the task graph.
+`EndFrame` then inserts one `ShadowPass_Displaced` `GpuTask` per (shadow caster × ready displaced tile), each declaring DSV-write usage on the atlas and SRV-read usage on the displacement map. The first task into a tile clears it with a scissor-restricted `ClearDepthStencilView(0.0f)` (reverse-Z far plane); subsequent tasks accumulate depth. The composite task downstream declares SRV usage on the atlas, so the `DEPTH_STENCIL_WRITE -> SHADER_RESOURCE` transition is emitted automatically by the task graph.
 
 The shadow pass uses a dedicated depth-only PSO (`m_pDisplacedShadowPSO`) that reuses the existing `VSDisplaced` + `HSDisplaced` bytecode (so shadow tessellation tracks the camera and matches receiver LOD, preventing Peter Panning) and pairs them with `DSDisplacedShadow` (writes only `SV_Position` from a `b2` `HlslShadowConstants` matrix) with no pixel shader. Conservative caster-side `DepthBias` + `SlopeScaledDepthBias` are baked into the PSO; per-light caster bias values from `XLight::SetShadowDepthBias` are not honoured in v1 (only the receiver-side constant + normal-offset terms vary per light).
 

@@ -34,9 +34,9 @@ GBufferOutput PSDisplaced(PSInput input)
 
     float3 N = normalize(input.Normal);
 
-    float4 albedo    = AlbedoMap.Sample(HeightSampler, input.TexCoord);
-    float  ao        = AOMap.Sample(HeightSampler, input.TexCoord);
-    float  roughness = RoughnessMap.Sample(HeightSampler, input.TexCoord);
+    float4 albedo    = AlbedoMap.Sample(MapSampler, input.TexCoord);
+    float  ao        = AOMap.Sample(MapSampler, input.TexCoord);
+    float  roughness = RoughnessMap.Sample(MapSampler, input.TexCoord);
 
     output.Normals      = float4(N * 0.5 + 0.5, 1.0);
     output.DiffuseColor = float4(albedo.rgb, 1.0);

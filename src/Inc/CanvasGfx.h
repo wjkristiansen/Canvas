@@ -49,18 +49,18 @@ namespace Canvas
     // material instead of the standard lit path.  All shaders, root sigs,
     // and PSOs stay engine-owned; the material only describes intent.
     //
-    // Heightmap is a single-channel UNorm texture sampled per displaced
-    // vertex.  HeightScale / HeightBias decode the [0,1] sample into world
-    // units along the surface normal (for a flat tile mesh this is the
-    // local +Z direction).  Tess factors are computed by the engine using
-    // a distance + curvature LOD scheme parameterized by the four LOD
-    // knobs below; per-edge factors are computed from edge-midpoint
+    // The displacement map is a single-channel UNorm texture sampled per
+    // displaced vertex.  MapScale / MapBias decode the [0,1] sample into
+    // world units along the surface normal (for a flat tile mesh this is
+    // the local +Z direction).  Tess factors are computed by the engine
+    // using a distance + curvature LOD scheme parameterized by the four
+    // LOD knobs below; per-edge factors are computed from edge-midpoint
     // quantities so adjacent patches agree on shared edges.
     struct GfxDisplacementDesc
     {
-        XGfxSurface *pHeightmap        = nullptr;   // single-channel UNorm
-        float        HeightScale       = 1.0f;      // world units per 1.0 sample
-        float        HeightBias        = 0.0f;      // world units added to all samples
+        XGfxSurface *pDisplacementMap  = nullptr;   // single-channel UNorm
+        float        MapScale          = 1.0f;      // world units per 1.0 sample
+        float        MapBias           = 0.0f;      // world units added to all samples
 
         // World-space tile extents along the displaced surface's local X / Y
         // axes.  The procedural patch grid mesh emits unit-square [0,1]^2

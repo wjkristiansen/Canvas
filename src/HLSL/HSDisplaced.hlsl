@@ -7,9 +7,9 @@
 //      far-away patches collapse toward the minimum and near patches push
 //      toward the maximum.
 //
-//   2. Curvature LOD - tessellate more where the heightmap has high local
-//      2nd derivative (ridges, peaks, valleys). Sampled from a coarse mip
-//      so the signal is stable.
+//   2. Curvature LOD - tessellate more where the displacement map has high
+//      local 2nd derivative (ridges, peaks, valleys). Sampled from a
+//      coarse mip so the signal is stable.
 //
 // Crack-free invariant: any quantity added to a shared edge's tess factor
 // must be computable purely from the edge's geometry, so both neighboring
@@ -28,8 +28,8 @@ static const float kMaxTess = 32.0;
 static const float kDistanceLodScale = 10.0;
 
 // Curvature signal weight. 2nd-derivative samples are in [0, 1] before
-// HeightScale; HeightScale converts to meters of curvature per coarse-mip
-// texel, then this constant maps meters to tess-factor units.
+// MapScale; MapScale converts to world units of curvature per coarse-mip
+// texel, then this constant maps those world units to tess-factor units.
 static const float kCurvatureLodScale = 0.5;
 
 // Coarse mip for the curvature read. Large enough to give a stable,
@@ -37,26 +37,26 @@ static const float kCurvatureLodScale = 0.5;
 // represented.
 static const float kCurvatureMipLevel = 4.0;
 
-// Heightmap texel size in tile UV at the chosen curvature mip.
+// Displacement-map texel size in tile UV at the chosen curvature mip.
 float CurvatureTexelUv()
 {
     uint w, h, nMips;
-    Heightmap.GetDimensions(0, w, h, nMips);
+    DisplacementMap.GetDimensions(0, w, h, nMips);
     return exp2(kCurvatureMipLevel) / float(max(w, h));
 }
 
-// 5-tap Laplacian curvature at a tile-UV point, returned in meters.
-float CurvatureMetersAt(float2 uv)
+// 5-tap Laplacian curvature at a tile-UV point, returned in world units.
+float CurvatureWorldUnitsAt(float2 uv)
 {
     float texelUv = CurvatureTexelUv();
-    float hC = Heightmap.SampleLevel(HeightSampler, uv,                              kCurvatureMipLevel);
-    float hL = Heightmap.SampleLevel(HeightSampler, uv - float2(texelUv, 0), kCurvatureMipLevel);
-    float hR = Heightmap.SampleLevel(HeightSampler, uv + float2(texelUv, 0), kCurvatureMipLevel);
-    float hD = Heightmap.SampleLevel(HeightSampler, uv - float2(0, texelUv), kCurvatureMipLevel);
-    float hU = Heightmap.SampleLevel(HeightSampler, uv + float2(0, texelUv), kCurvatureMipLevel);
+    float hC = DisplacementMap.SampleLevel(MapSampler, uv,                              kCurvatureMipLevel);
+    float hL = DisplacementMap.SampleLevel(MapSampler, uv - float2(texelUv, 0), kCurvatureMipLevel);
+    float hR = DisplacementMap.SampleLevel(MapSampler, uv + float2(texelUv, 0), kCurvatureMipLevel);
+    float hD = DisplacementMap.SampleLevel(MapSampler, uv - float2(0, texelUv), kCurvatureMipLevel);
+    float hU = DisplacementMap.SampleLevel(MapSampler, uv + float2(0, texelUv), kCurvatureMipLevel);
     float d2x = abs(hR + hL - 2.0 * hC);
     float d2y = abs(hU + hD - 2.0 * hC);
-    return (d2x + d2y) * PerTile.HeightScale;
+    return (d2x + d2y) * PerTile.MapScale;
 }
 
 // Per-edge factor combining distance and curvature, computed purely from
@@ -71,7 +71,7 @@ float EdgeTessFactor(DisplacedControlPoint a, DisplacedControlPoint b, float3 ca
     float edgeLen = length(b.WorldXY0Z - a.WorldXY0Z);
 
     float distanceFactor  = kDistanceLodScale * edgeLen / dist;
-    float curvatureFactor = CurvatureMetersAt(miduv) * kCurvatureLodScale;
+    float curvatureFactor = CurvatureWorldUnitsAt(miduv) * kCurvatureLodScale;
 
     return clamp(distanceFactor + curvatureFactor, kMinTess, kMaxTess);
 }

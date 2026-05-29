@@ -11,8 +11,8 @@
 //
 // The CP carries:
 //   - TileUV: [0, 1]^2 across the whole tile; DS uses this to sample the
-//     heightmap directly (D3D texture sampling: v=0 is image top row).
-//   - WorldXY0Z: world-space (x, y, 0) before the height lift in DS.
+//     displacement map directly (D3D texture sampling: v=0 is image top row).
+//   - WorldXY0Z: world-space (x, y, 0) before the displacement lift in DS.
 //
 // Coordinate handedness reconciliation:
 //   D3D texture (u, v) has v growing top-to-bottom; viewed normally,
@@ -21,8 +21,8 @@
 //   from above, cross(worldX_hat, worldY_hat) points UP (toward the
 //   bird's-eye viewer).  These two "natural viewer normals" point in
 //   opposite directions, so a straight identity-positive (u, v) ->
-//   (worldX, worldY) mapping would render the terrain as a vertical
-//   mirror of the source heightmap.  To eliminate that mirror the 2D
+//   (worldX, worldY) mapping would render the surface as a vertical
+//   mirror of the source map.  To eliminate that mirror the 2D
 //   image-to-world Jacobian must have determinant -1.  Here we flip
 //   the v -> worldY mapping (image top row, v=0, maps to worldY =
 //   +worldSize.y/2 = Canvas-left, which is "up" in a north-up
@@ -51,7 +51,7 @@ DisplacedControlPoint VSDisplaced(uint vertexId : SV_VertexID)
     if (cornerIdx == 3u) cornerOff = uint2(0u, 1u);
 
     // Tile-space (u, v) of this CP.  v stays in D3D texture orientation
-    // (v=0 = image top) so heightmap sampling in DS uses TileUV directly.
+    // (v=0 = image top) so displacement-map sampling in DS uses TileUV directly.
     float2 cpTile = float2(patchX + cornerOff.x, patchY + cornerOff.y) / float(pgrid);
 
     // World-space XY.  worldX grows with u (image-left -> Canvas-back,

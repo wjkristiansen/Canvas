@@ -499,9 +499,9 @@ class CTerrainApp
         m_pTerrainMaterial->SetTexture(Canvas::MaterialLayerRole::Roughness,        matOutputs.pRoughness);
 
         Canvas::GfxDisplacementDesc disp = {};
-        disp.pHeightmap        = m_pHeightmapSurface;
-        disp.HeightScale       = field.Desc.HeightScale;
-        disp.HeightBias        = field.Desc.HeightBias;
+        disp.pDisplacementMap  = m_pHeightmapSurface;
+        disp.MapScale          = field.Desc.HeightScale;
+        disp.MapBias           = field.Desc.HeightBias;
         disp.TileSizeWorldX    = field.WorldWidth();
         disp.TileSizeWorldY    = field.WorldHeight();
         disp.MinTessFactor     = 2.0f;
