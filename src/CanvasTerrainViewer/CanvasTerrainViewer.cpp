@@ -358,9 +358,10 @@ class CTerrainApp
     Gem::TGemPtr<Canvas::XGfxSurface>       m_pSkyCubeStars;
     Gem::TGemPtr<Canvas::XGfxSurface>       m_pMoonTexture;
     Gem::TGemPtr<Canvas::XGfxMaterial>      m_pTerrainMaterial;
-    Gem::TGemPtr<Canvas::XGfxMeshData>      m_pTerrainPatchMesh;
-    Gem::TGemPtr<Canvas::XMeshInstance>     m_pTerrainInstance;
-    Gem::TGemPtr<Canvas::XSceneGraphNode>   m_pTerrainNode;
+    Gem::TGemPtr<Canvas::XSceneGraphNode>   m_pTerrainRootNode;
+    std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>>    m_SubtileMeshes;
+    std::vector<Gem::TGemPtr<Canvas::XMeshInstance>>   m_SubtileInstances;
+    std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> m_SubtileNodes;
     Gem::TGemPtr<Canvas::XFont>             m_pFont;
     Gem::TGemPtr<Canvas::XFont>             m_pFontMono;
     Gem::TGemPtr<Canvas::XUIGraph>          m_pUIGraph;
@@ -508,93 +509,146 @@ class CTerrainApp
         disp.CurvatureLodScale = 0.5f;
         m_pTerrainMaterial->SetDisplacement(&disp);
 
-        // Patch-grid mesh: explicit per-CP positions (mesh-local XY,
-        // Z=0), UVs (in D3D texture-UV space; v=0 = image top), and
-        // base normals (all +Z for a flat XY-plane patch grid -- the
-        // DS displaces each CP along this normal by the decoded sample,
-        // which collapses to the classic Z-only heightfield lift).
-        // Per patch the four CPs are emitted in HS quad order:
-        // 0=(0,0), 1=(1,0), 2=(1,1), 3=(0,1) in cpLocal parameter
-        // space.  The (1 - vBase) flip on the V axis preserves the
-        // existing "image-top renders at Canvas-left (high worldY)"
-        // convention.
-        const uint32_t patchesPerSide = 64;
-        const float    meshExtentX    = field.WorldWidth();
-        const float    meshExtentY    = field.WorldHeight();
-        const float    invN           = 1.0f / static_cast<float>(patchesPerSide);
+        // Break the terrain into an N x N grid of subtile scene-graph
+        // nodes, each a smaller PatchList4CP mesh covering one slice of
+        // the shared displacement map.  Each subtile gets its own
+        // LocalBounds and so becomes an independent target for engine
+        // frustum culling.  All subtiles share the heightmap surface
+        // and material -- only the per-CP positions / UVs and the node
+        // translation differ.
+        static constexpr uint32_t kSubtileCellsPerSide = 128;
+        static constexpr uint32_t kPatchesPerSideTotal = 64;
 
-        std::vector<Canvas::Math::FloatVector4> patchPositions;
-        std::vector<Canvas::Math::FloatVector2> patchUVs;
-        std::vector<Canvas::Math::FloatVector4> patchNormals;
-        const size_t kCPCount = static_cast<size_t>(patchesPerSide) * patchesPerSide * 4u;
-        patchPositions.reserve(kCPCount);
-        patchUVs     .reserve(kCPCount);
-        patchNormals .reserve(kCPCount);
+        const uint32_t srcCells = field.Desc.Width - 1;   // assumes square heightmap
+        if (srcCells == 0 || (srcCells % kSubtileCellsPerSide) != 0)
+        {
+            Canvas::LogError(m_pLogger.Get(),
+                "Heightmap cell count (%u) must be a positive multiple of subtile cells (%u)",
+                srcCells, kSubtileCellsPerSide);
+            return false;
+        }
+        const uint32_t N = srcCells / kSubtileCellsPerSide;
+        if (N == 0 || (kPatchesPerSideTotal % N) != 0)
+        {
+            Canvas::LogError(m_pLogger.Get(),
+                "Total patches per side (%u) must divide evenly by subtile count per side (%u)",
+                kPatchesPerSideTotal, N);
+            return false;
+        }
+        const uint32_t subPatchesPerSide = kPatchesPerSideTotal / N;
+        const float    subSizeWorld      = kSubtileCellsPerSide * field.Desc.DxyMeters;
+        const float    invSubPatches     = 1.0f / static_cast<float>(subPatchesPerSide);
+        const float    invN              = 1.0f / static_cast<float>(N);
 
+        // Subtile CP corners in subtile-local parametric space (quad HS order:
+        // 0=(0,0), 1=(1,0), 2=(1,1), 3=(0,1)).
         static const float kCornerOffsets[4][2] =
         {
-            { 0.0f, 0.0f },   // CP 0
-            { 1.0f, 0.0f },   // CP 1
-            { 1.0f, 1.0f },   // CP 2
-            { 0.0f, 1.0f },   // CP 3
+            { 0.0f, 0.0f },
+            { 1.0f, 0.0f },
+            { 1.0f, 1.0f },
+            { 0.0f, 1.0f },
         };
 
-        for (uint32_t py = 0; py < patchesPerSide; ++py)
+        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&m_pTerrainRootNode, "TerrainRoot"));
+        m_pTerrainRootNode->SetLocalTranslation(
+            Canvas::Math::FloatVector4{ matOpts.OriginX, matOpts.OriginY, 0.0f, 1.0f });
+        m_pScene->GetRootNode()->AddChild(m_pTerrainRootNode);
+
+        m_SubtileMeshes   .reserve(static_cast<size_t>(N) * N);
+        m_SubtileInstances.reserve(static_cast<size_t>(N) * N);
+        m_SubtileNodes    .reserve(static_cast<size_t>(N) * N);
+
+        const size_t cpPerSubtile = static_cast<size_t>(subPatchesPerSide) * subPatchesPerSide * 4u;
+        std::vector<Canvas::Math::FloatVector4> cpPositions;
+        std::vector<Canvas::Math::FloatVector2> cpUVs;
+        std::vector<Canvas::Math::FloatVector4> cpNormals;
+        cpPositions.reserve(cpPerSubtile);
+        cpUVs      .reserve(cpPerSubtile);
+        cpNormals  .reserve(cpPerSubtile);
+
+        for (uint32_t ty = 0; ty < N; ++ty)
         {
-            for (uint32_t px = 0; px < patchesPerSide; ++px)
+            for (uint32_t tx = 0; tx < N; ++tx)
             {
-                for (int c = 0; c < 4; ++c)
+                cpPositions.clear();
+                cpUVs      .clear();
+                cpNormals  .clear();
+
+                for (uint32_t py = 0; py < subPatchesPerSide; ++py)
                 {
-                    const float lu = (static_cast<float>(px) + kCornerOffsets[c][0]) * invN;
-                    const float lv = (static_cast<float>(py) + kCornerOffsets[c][1]) * invN;
-                    patchPositions.push_back(Canvas::Math::FloatVector4(
-                        lu * meshExtentX, lv * meshExtentY, 0.0f, 1.0f));
-                    patchUVs.push_back(Canvas::Math::FloatVector2(
-                        lu, 1.0f - lv));
-                    patchNormals.push_back(Canvas::Math::FloatVector4(
-                        0.0f, 0.0f, 1.0f, 0.0f));
+                    for (uint32_t px = 0; px < subPatchesPerSide; ++px)
+                    {
+                        for (int c = 0; c < 4; ++c)
+                        {
+                            // Subtile-local parametric coords in [0, 1].
+                            const float lu = (static_cast<float>(px) + kCornerOffsets[c][0]) * invSubPatches;
+                            const float lv = (static_cast<float>(py) + kCornerOffsets[c][1]) * invSubPatches;
+
+                            // Mesh-local XY (Z=0); node translation places the subtile.
+                            cpPositions.push_back(Canvas::Math::FloatVector4(
+                                lu * subSizeWorld, lv * subSizeWorld, 0.0f, 1.0f));
+
+                            // UV into the shared full displacement map.  U grows with
+                            // tx + lu; V uses the standard image-top-to-Canvas-left flip
+                            // (image v=0 maps to high worldY, i.e. high ty + lv).
+                            cpUVs.push_back(Canvas::Math::FloatVector2(
+                                (static_cast<float>(tx) + lu)        * invN,
+                                1.0f - (static_cast<float>(ty) + lv) * invN));
+
+                            cpNormals.push_back(Canvas::Math::FloatVector4(
+                                0.0f, 0.0f, 1.0f, 0.0f));
+                        }
+                    }
                 }
+
+                char meshName[64];
+                snprintf(meshName, sizeof(meshName), "TerrainSubtile_%u_%u", tx, ty);
+
+                Canvas::MeshDataGroupDesc group = {};
+                group.VertexCount = static_cast<uint32_t>(cpPositions.size());
+                group.pPositions  = cpPositions.data();
+                group.pNormals    = cpNormals.data();
+                group.pUV0        = cpUVs.data();
+                group.pMaterial   = m_pTerrainMaterial;
+
+                Canvas::MeshDataDesc meshDesc = {};
+                meshDesc.pGroups    = &group;
+                meshDesc.GroupCount = 1;
+                meshDesc.pName      = meshName;
+                meshDesc.Topology   = Canvas::GfxPrimitiveTopology::PatchList4CP;
+                // LocalBounds left empty: engine computes from CP positions
+                // and inflates by the material's displacement magnitude.
+
+                Gem::TGemPtr<Canvas::XGfxMeshData> pMesh;
+                Gem::ThrowGemError(m_pGfxDevice->CreateMeshData(meshDesc, &pMesh));
+
+                Gem::TGemPtr<Canvas::XMeshInstance> pInstance;
+                Gem::ThrowGemError(m_pCanvas->CreateMeshInstance(&pInstance, meshName));
+                pInstance->SetMeshData(pMesh);
+
+                Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
+                Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pNode, meshName));
+                // Subtile placement is relative to the terrain root, which
+                // carries the heightfield's world origin.
+                pNode->SetLocalTranslation(Canvas::Math::FloatVector4{
+                    static_cast<float>(tx) * subSizeWorld,
+                    static_cast<float>(ty) * subSizeWorld,
+                    0.0f, 1.0f });
+                pNode->BindElement(pInstance);
+                m_pTerrainRootNode->AddChild(pNode);
+
+                m_SubtileMeshes   .push_back(std::move(pMesh));
+                m_SubtileInstances.push_back(std::move(pInstance));
+                m_SubtileNodes    .push_back(std::move(pNode));
             }
         }
 
-        // Pre-displacement patch grid footprint in mesh-local XY; the
-        // engine inflates the bounds by the material's displacement
-        // magnitude.
-        const Canvas::Math::AABB tileBounds(
-            Canvas::Math::FloatVector4(0.0f,        0.0f,        0.0f, 0.0f),
-            Canvas::Math::FloatVector4(meshExtentX, meshExtentY, 0.0f, 0.0f));
-
-        Canvas::MeshDataGroupDesc group = {};
-        group.VertexCount = static_cast<uint32_t>(patchPositions.size());
-        group.pPositions  = patchPositions.data();
-        group.pNormals    = patchNormals.data();
-        group.pUV0        = patchUVs.data();
-        group.pMaterial   = m_pTerrainMaterial;
-
-        Canvas::MeshDataDesc meshDesc = {};
-        meshDesc.pGroups     = &group;
-        meshDesc.GroupCount  = 1;
-        meshDesc.pName       = "TerrainPatchMesh_64x64";
-        meshDesc.Topology    = Canvas::GfxPrimitiveTopology::PatchList4CP;
-        meshDesc.LocalBounds = tileBounds;
-
-        Gem::ThrowGemError(m_pGfxDevice->CreateMeshData(meshDesc, &m_pTerrainPatchMesh));
-
-        char tileName[64];
-        snprintf(tileName, sizeof(tileName), "Tile_%d_%d",
-            static_cast<int>(std::round(matOpts.OriginX / std::max(1.0f, field.WorldWidth()))),
-            static_cast<int>(std::round(matOpts.OriginY / std::max(1.0f, field.WorldHeight()))));
-        Gem::ThrowGemError(m_pCanvas->CreateMeshInstance(&m_pTerrainInstance, tileName));
-        m_pTerrainInstance->SetMeshData(m_pTerrainPatchMesh);
-
-        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&m_pTerrainNode, "TerrainNode"));
-        // Only translation on the node - the tile's world dimensions live
-        // on the material's displacement desc so children attached to this
-        // node (e.g. trees, markers) don't inherit a 1024x scale factor.
-        m_pTerrainNode->SetLocalTranslation(
-            Canvas::Math::FloatVector4{ matOpts.OriginX, matOpts.OriginY, 0.0f, 1.0f });
-        m_pTerrainNode->BindElement(m_pTerrainInstance);
-        m_pScene->GetRootNode()->AddChild(m_pTerrainNode);
+        Canvas::LogInfo(m_pLogger.Get(),
+            "Terrain subtile grid: %ux%u subtiles, %u cells/side, %u patches/side per subtile (%zu subtiles total, %zu patches total)",
+            N, N, kSubtileCellsPerSide, subPatchesPerSide,
+            m_SubtileNodes.size(),
+            m_SubtileNodes.size() * subPatchesPerSide * subPatchesPerSide);
 
         // Camera start pose from the scene config.
         const Canvas::TerrainViewer::SceneCamera& sc = m_SceneConfig.Camera;
