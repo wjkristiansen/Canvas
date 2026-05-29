@@ -10,7 +10,7 @@
     {
       "heightmap":   "default_heightmap.png",
       "dxy":         1.0,
-      "heightScale": 64.0,
+      "heightScale": 128.0,
       "originXY":    [0, 0]
     }
   ],
