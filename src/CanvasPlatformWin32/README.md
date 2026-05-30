@@ -51,10 +51,11 @@ Gem::Result CreateAppWindow(const AppWindowDesc& desc,
 
 `XAppWindow::PumpMessages` is the per-frame entry point:
 
-1. If a raw-input object is bound, call `XRawInput::Update` — this latches the previous frame's key/button state for edge detection and zeros the mouse-delta accumulator.
+1. If a raw-input object is bound, call `XRawInput::Update` — this latches the previous frame's key/button state for edge detection, zeros the mouse-delta accumulator, and samples whether a Remote Desktop session is active.
 2. Drain the Win32 message queue with `PeekMessageW` / `TranslateMessage` / `DispatchMessage`. `WM_INPUT` is forwarded into the raw-input object by the window's `WindowProc`.
-3. If the mouse is currently captured, warp the cursor back to the centre of the client rect. This prevents `MOUSE_MOVE_ABSOLUTE`-style raw input (touchpads, remote-desktop sessions, some virtual mice) from clamping at the screen edge; the absolute baseline is reset every `Update` so the next sample produces a small delta from centre rather than a spurious jump.
-4. Return `false` on `WM_QUIT`, otherwise `true`.
+3. Return `false` on `WM_QUIT`, otherwise `true`.
+
+No per-frame cursor warp is performed. Local devices send position-independent `MOUSE_MOVE_RELATIVE` deltas, so `ClipCursor` alone contains the hidden cursor; under Remote Desktop the cursor is recentred on demand inside `ProcessRawInput` (see [Remote Desktop](#remote-desktop)).
 
 The intent is that callers drive the application from a single `while (pWindow->PumpMessages()) { /* simulate + render */ }` loop without writing any Win32 plumbing themselves.
 
@@ -65,7 +66,6 @@ The intent is that callers drive the application from a single `while (pWindow->
 - `SetCapture` routes mouse messages to the window even when the cursor leaves it.
 - The cursor is hidden and clipped to the client rect with `ClipCursor`.
 - A `RAWINPUTDEVICE` for the generic mouse (usage page 0x01, usage 0x02) is registered against the window's `HWND`, so high-resolution movement deltas arrive via `WM_INPUT`.
-- Each `PumpMessages` warps the cursor back to the client-rect centre, so absolute-mode raw input never clamps at a screen edge (see [Message Loop](#message-loop)).
 
 `SetMouseCaptured(false)` reverses each step: unregisters the raw mouse device, releases `ClipCursor` / `ReleaseCapture`, and restores the arrow cursor. Capture is also released automatically on `WM_CAPTURECHANGED` (when another window steals capture) and on `WM_ACTIVATEAPP` with `wParam == FALSE` (when the app loses focus). The latter additionally calls `XRawInput::ClearState` so no key or button appears stuck-down when focus returns.
 
@@ -86,7 +86,23 @@ The keyboard raw-input device (usage page 0x01, usage 0x06) is registered uncond
 | `GetMouseDelta(dx, dy)`     | Accumulated mouse motion in pixels since the previous `Update`.  |
 | `ConsumeScrollDelta()`      | Accumulated wheel ticks; reads and zeroes in one call.           |
 
-Mouse motion accepts both `MOUSE_MOVE_RELATIVE` and `MOUSE_MOVE_ABSOLUTE` raw packets. Absolute samples are converted to virtual-desktop or primary-screen pixels (per the `MOUSE_VIRTUAL_DESKTOP` flag) and differenced against the previous sample, with the baseline reset each `Update` to keep the cursor centre-warp in `PumpMessages` artefact-free.
+Mouse motion accepts both `MOUSE_MOVE_RELATIVE` and `MOUSE_MOVE_ABSOLUTE` raw packets. Local pointing devices send `MOUSE_MOVE_RELATIVE` deltas, which come straight from the device independent of cursor position and are accumulated directly — no cursor warp is required, so capture relies on `ClipCursor` alone to contain the hidden cursor. Local absolute devices (tablets/digitizers) send `MOUSE_MOVE_ABSOLUTE` samples that are converted to virtual-desktop or primary-screen pixels (per the `MOUSE_VIRTUAL_DESKTOP` flag) and differenced against the previous sample, with the baseline reset each `Update`.
+
+### Remote Desktop
+
+Over Remote Desktop (RDP) the mouse is delivered as a stream of *absolute* virtual-desktop positions rather than relative deltas, and two RDP-specific OS behaviours break a naive centre-warp:
+
+1. **A hidden cursor stops `SetCursorPos` from working.** Hiding the captured cursor with `SetCursor(NULL)` causes the per-frame recentre warp to silently no-op under RDP, so the client cursor drifts to the virtual-desktop edge where absolute packets clamp and mouse-look freezes. The implementation therefore installs a fully **transparent cursor** (`CreateCursor` with an all-ones AND mask) while captured instead of removing the cursor.
+2. **Identical `SetCursorPos` targets are coalesced and dropped.** Warping to the exact same centre every frame is ignored by RDP. The recentre (`CRawInput::WarpToWindowCentre`) therefore **jitters** the target by a pixel across frames and issues the call repeatedly (`x`, `x+1`, `x`) to defeat the coalescing.
+
+Detection is via `GetSystemMetrics(SM_REMOTESESSION)`, sampled each `Update` so it tracks live connect/disconnect transitions. When a remote session is active, motion handling follows the same approach SDL uses for relative mouse over RDP:
+
+- A **persistent baseline** (not reset per frame) is differenced against each absolute sample to produce relative motion.
+- When the cursor nears any screen edge (within 1%, or `y < 32` to catch the RDP title strip) it is **recentred instead of emitting motion**.
+- The large jump produced by a recentre is rejected via a `screenHeight / 6` motion clamp, so the warp never leaks into the camera.
+- The local path performs no warp at all; under RDP the recentre is edge-triggered inside `ProcessRawInput`.
+
+This keeps mouse-look sensitivity identical to the local case while remaining usable over a multi-monitor RDP session. Frame rate over RDP is still poor; for latency-sensitive work a game-streaming protocol (Parsec, Sunshine/Moonlight, Steam Remote Play) remains preferable, but mouse-look is no longer the limiting factor.
 
 `Update` is called for you by `XAppWindow::PumpMessages` when both objects were created via `CreatePlatformWindow`. Call it yourself only when driving a custom message loop. `ClearState` exists for callers that need to drop all held-key / held-button state explicitly — for example, after a modal dialog or some other focus excursion that bypasses the normal `WM_ACTIVATEAPP` path.
 
