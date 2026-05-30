@@ -19,12 +19,39 @@ public:
 
     bool IsMouseCaptured() const { return m_Captured; }
 
+    // A fully transparent cursor used while the mouse is captured.  Hiding the
+    // cursor with SetCursor(NULL) breaks SetCursorPos() under Remote Desktop —
+    // the recentre warp silently no-ops and the cursor drifts to the desktop
+    // edge — so we install an invisible cursor instead of removing it.
+    HCURSOR BlankCursor()
+    {
+        if (!m_BlankCursor)
+        {
+            int cx = ::GetSystemMetrics(SM_CXCURSOR);
+            int cy = ::GetSystemMetrics(SM_CYCURSOR);
+            if (cx <= 0) cx = 32;
+            if (cy <= 0) cy = 32;
+
+            const int planeBytes = (cx * cy) / 8;
+            BYTE andPlane[1024];   // AND = 1 everywhere -> transparent
+            BYTE xorPlane[1024];   // XOR = 0 everywhere -> no inversion
+            if (planeBytes <= static_cast<int>(sizeof(andPlane)))
+            {
+                ::memset(andPlane, 0xFF, planeBytes);
+                ::memset(xorPlane, 0x00, planeBytes);
+                m_BlankCursor = ::CreateCursor(
+                    ::GetModuleHandleA(nullptr), 0, 0, cx, cy, andPlane, xorPlane);
+            }
+        }
+        return m_BlankCursor;
+    }
+
     void SetMouseCaptured(bool captured)
     {
         if (captured && !m_Captured)
         {
             ::SetCapture(m_hWnd);
-            ::SetCursor(NULL);
+            ::SetCursor(BlankCursor());
 
             RECT rc;
             ::GetClientRect(m_hWnd, &rc);
@@ -38,6 +65,7 @@ public:
             rid.hwndTarget  = m_hWnd;
             ::RegisterRawInputDevices(&rid, 1, sizeof(rid));
 
+            if (m_RawInput) m_RawInput->ResetRemoteBaseline();
             m_Captured = true;
         }
         else if (!captured && m_Captured)
@@ -51,6 +79,7 @@ public:
             rid.hwndTarget  = nullptr;
             ::RegisterRawInputDevices(&rid, 1, sizeof(rid));
 
+            if (m_RawInput) m_RawInput->ResetRemoteBaseline();
             ::ClipCursor(nullptr);
             ::ReleaseCapture();
             ::SetCursor(LoadCursor(NULL, IDC_ARROW));
@@ -64,17 +93,17 @@ protected:
         {
         case WM_INPUT:
             if (m_RawInput)
-                m_RawInput->ProcessRawInput(wParam, lParam);
+                m_RawInput->ProcessRawInput(m_hWnd, wParam, lParam);
             break;
 
         case WM_MOUSEMOVE:
-            if (m_Captured) { ::SetCursor(NULL); return 0; }
+            if (m_Captured) { ::SetCursor(BlankCursor()); return 0; }
             break;
 
         case WM_SETCURSOR:
             if (LOWORD(lParam) == HTCLIENT)
             {
-                ::SetCursor(m_Captured ? NULL : LoadCursor(NULL, IDC_ARROW));
+                ::SetCursor(m_Captured ? BlankCursor() : LoadCursor(NULL, IDC_ARROW));
                 return TRUE;
             }
             break;
@@ -103,6 +132,14 @@ protected:
 private:
     CRawInput* const m_RawInput;  // raw pointer; CAppWindow::m_pRawInput TGemPtr guarantees lifetime
     bool        m_Captured = false;
+    HCURSOR     m_BlankCursor = NULL;
+
+public:
+    ~CImpl() override
+    {
+        if (m_BlankCursor)
+            ::DestroyCursor(m_BlankCursor);
+    }
 };
 
 //---------------------------------------------------------------------------------------------
@@ -174,18 +211,12 @@ GEMMETHODIMP_(bool) CAppWindow::PumpMessages()
             return false;
     }
 
-    // Warp cursor to window centre after draining so absolute-mode deltas are never
-    // constrained by screen boundaries.  m_HasLastAbsPos was reset by Update() above,
-    // so the next absolute WM_INPUT sets a fresh baseline near centre rather than
-    // generating a spurious large delta.
-    if (m_pImpl->IsMouseCaptured())
-    {
-        RECT rc;
-        ::GetClientRect(m_pImpl->m_hWnd, &rc);
-        POINT c = { (rc.left + rc.right) / 2, (rc.top + rc.bottom) / 2 };
-        ::ClientToScreen(m_pImpl->m_hWnd, &c);
-        ::SetCursorPos(c.x, c.y);
-    }
+    // No per-frame cursor warp is needed.  Local pointing devices deliver
+    // MOUSE_MOVE_RELATIVE raw deltas that are independent of cursor position, so
+    // ClipCursor alone (set in SetMouseCaptured) is enough to contain the hidden
+    // cursor.  Under Remote Desktop the recentre is edge-triggered inside
+    // ProcessRawInput.  A blanket SetCursorPos here was vestigial warp-mode
+    // behaviour and is exactly what broke relative motion over RDP.
 
     return true;
 }
