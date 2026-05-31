@@ -713,6 +713,15 @@ public:
     // Flush: compute final layouts, update committed state, close/submit CL
     void Flush();
 
+    // Blocks until the GPU has completed all work submitted so far.  Used
+    // before destructive operations such as swap-chain back-buffer resize.
+    void WaitForIdle()
+    {
+        UINT64 fenceValue = ++m_FenceValue;
+        m_pCommandQueue->Signal(m_pFence, fenceValue);
+        WaitForGpuFence(fenceValue);
+    }
+
     D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
     D3D12_CPU_DESCRIPTOR_HANDLE CreateDepthStencilView(class CSurface12 *pSurface);
     

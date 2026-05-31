@@ -368,10 +368,16 @@ class CTerrainApp
     Gem::TGemPtr<Canvas::XUIRectElement>    m_pHudPanel;
     Gem::TGemPtr<Canvas::XUITextElement>    m_pTitleText;
     Gem::TGemPtr<Canvas::XUITextElement>    m_pStatusText;
+    Gem::TGemPtr<Canvas::XUITextElement>    m_pModeText;
 
     CDayNightCycle    m_DayNight;
     int               m_exitFrameCount;
     bool              m_logFps;
+    bool              m_startFullscreen = false;
+    bool              m_cameraActive = true;   // ACTIVE: cursor hidden + camera control; FREE: cursor visible
+    std::string       m_modeString;
+    int               m_lastClientW = 0;
+    int               m_lastClientH = 0;
     float             m_fps = 0.0f;
     std::string       m_statusString;
     Canvas::TerrainViewer::SceneConfig m_SceneConfig;
@@ -845,12 +851,14 @@ public:
         int       exitFrameCount,
         bool      logFps,
         Canvas::TerrainViewer::SceneConfig scene,
-        float     cycleSeconds)
+        float     cycleSeconds,
+        bool      startFullscreen = false)
         : m_Title(szTitle)
         , m_hInstance(hInstance)
         , m_pLogger(pLogger)
         , m_exitFrameCount(exitFrameCount)
         , m_logFps(logFps)
+        , m_startFullscreen(startFullscreen)
         , m_SceneConfig(std::move(scene))
         , m_CycleSeconds(cycleSeconds)
     {
@@ -873,6 +881,11 @@ public:
                 Gem::ThrowGemError(Canvas::Platform::Win32::CreatePlatformWindow(wdesc, &m_pWindow, &m_pInput));
             }
             m_pWindow->Show(nCmdShow);
+
+            // Apply startup fullscreen before the swap chain is created so the
+            // back buffers are sized to the monitor from the outset.
+            if (m_startFullscreen)
+                m_pWindow->SetFullscreen(true);
 
             initStep = "create_canvas";
             Gem::TGemPtr<Canvas::XCanvas> pCanvas;
@@ -971,7 +984,7 @@ public:
 
             Gem::ThrowGemError(pDevice->CreateRectElement(&m_pHudPanel));
             pHudNode->BindElement(m_pHudPanel);
-            m_pHudPanel->SetSize(Canvas::Math::FloatVector2(380.0f, 90.0f));
+            m_pHudPanel->SetSize(Canvas::Math::FloatVector2(380.0f, 116.0f));
             m_pHudPanel->SetFillColor(Canvas::Math::FloatVector4(0.10f, 0.10f, 0.12f, 0.78f));
 
             Gem::ThrowGemError(pDevice->CreateTextElement(&m_pTitleText));
@@ -997,6 +1010,18 @@ public:
                 m_pStatusText->SetLayoutConfig(cfg);
             }
             m_pStatusText->SetText("loading...");
+
+            Gem::ThrowGemError(pDevice->CreateTextElement(&m_pModeText));
+            pHudNode->BindElement(m_pModeText);
+            m_pModeText->SetLocalOffset(Canvas::Math::FloatVector2(8.0f, 66.0f));
+            m_pModeText->SetFont(m_pFontMono);
+            {
+                Canvas::TextLayoutConfig cfg;
+                cfg.FontSize = 16.0f;
+                cfg.Color = Canvas::Math::FloatVector4(0.4f, 1.0f, 0.4f, 1.0f);
+                m_pModeText->SetLayoutConfig(cfg);
+            }
+            m_pModeText->SetText("Camera: ACTIVE (Tab to release)");
 
             return true;
         }
@@ -1058,11 +1083,39 @@ public:
             ++fpsCounter;
             ++frameCount;
 
-            // Window focus -> mouse capture management.
+            // Keep swap-chain back buffers + camera aspect in sync with the
+            // window client area (manual resize and Alt+Enter / --fullscreen).
+            {
+                int cw = 0, ch = 0;
+                m_pWindow->GetClientSize(cw, ch);
+                if (cw > 0 && ch > 0 && (cw != m_lastClientW || ch != m_lastClientH))
+                {
+                    m_pGfxSwapChain->ResizeBuffers(static_cast<uint32_t>(cw), static_cast<uint32_t>(ch));
+                    if (m_pCamera.Get())
+                        m_pCamera->SetAspectRatio(static_cast<float>(cw) / static_cast<float>(ch));
+                    m_lastClientW = cw;
+                    m_lastClientH = ch;
+                }
+            }
+
+            // Window focus + camera-mode -> mouse capture management.
             const bool hasFocus = m_pWindow->HasFocus();
-            if (hasFocus && !m_pWindow->IsMouseCaptured())
+
+            // Alt+Enter toggles borderless fullscreen.  Edge-detected via raw input
+            // (IsKeyPressed fires once per physical press), so holding the combo
+            // does not repeatedly toggle.
+            if (hasFocus && m_pInput->IsKeyDown(VK_MENU) && m_pInput->IsKeyPressed(VK_RETURN))
+                m_pWindow->SetFullscreen(!m_pWindow->IsFullscreen());
+
+            // TAB toggles camera control mode: ACTIVE (cursor hidden + camera
+            // control) vs FREE (cursor visible, no control).
+            if (hasFocus && m_pInput->IsKeyPressed(VK_TAB))
+                m_cameraActive = !m_cameraActive;
+
+            const bool wantCapture = hasFocus && m_cameraActive;
+            if (wantCapture && !m_pWindow->IsMouseCaptured())
                 m_pWindow->SetMouseCaptured(true);
-            else if (!hasFocus && m_pWindow->IsMouseCaptured())
+            else if (!wantCapture && m_pWindow->IsMouseCaptured())
                 m_pWindow->SetMouseCaptured(false);
 
             // Camera mouse-look.
@@ -1090,7 +1143,9 @@ public:
             const auto cameraQuat = Canvas::Math::QuaternionFromRotationMatrix(rotMat);
             Canvas::Math::FloatVector4 right = rotMat[1];
 
-            if (hasFocus)
+            if (hasFocus && m_pInput->IsKeyDown(VK_ESCAPE)) { running = false; break; }
+
+            if (hasFocus && m_cameraActive)
             {
                 Canvas::Math::FloatVector4 moveDir(0.0f, 0.0f, 0.0f, 0.0f);
                 if (m_pInput->IsKeyDown('W'))        moveDir = moveDir + forward;
@@ -1099,7 +1154,6 @@ public:
                 if (m_pInput->IsKeyDown('A'))        moveDir = moveDir + right;
                 if (m_pInput->IsKeyDown(VK_SPACE))   moveDir = moveDir + Canvas::Math::FloatVector4(0,0,1,0);
                 if (m_pInput->IsKeyDown(VK_CONTROL)) moveDir = moveDir - Canvas::Math::FloatVector4(0,0,1,0);
-                if (m_pInput->IsKeyDown(VK_ESCAPE))  { running = false; break; }
 
                 const bool fast = m_pInput->IsKeyDown(VK_SHIFT);
                 const float speed = fast ? kMoveSpeedFast : kMoveSpeedSlow;
@@ -1126,7 +1180,7 @@ public:
                 if (m_pInput->IsKeyPressed(VK_OEM_4)) m_DayNight.ScrubMinutes(-15.0f); // [
                 if (m_pInput->IsKeyPressed(VK_OEM_6)) m_DayNight.ScrubMinutes( 15.0f); // ]
                 if (m_pInput->IsKeyPressed(VK_OEM_5)) m_DayNight.TogglePaused();        // backslash
-                if (m_pInput->IsKeyPressed(VK_TAB))
+                if (m_pInput->IsKeyPressed('G'))                                        // wireframe toggle
                 {
                     const bool newState = !m_pGfxRenderQueue->GetGeometryWireframe();
                     m_pGfxRenderQueue->SetGeometryWireframe(newState);
@@ -1152,6 +1206,24 @@ public:
             {
                 m_statusString = buf;
                 m_pStatusText->SetText(buf);
+            }
+
+            // Camera-mode indicator.
+            {
+                const char* modeStr = m_cameraActive
+                    ? "Camera: ACTIVE (Tab to release)"
+                    : "Camera: FREE (Tab to control)";
+                if (m_modeString != modeStr)
+                {
+                    m_modeString = modeStr;
+                    m_pModeText->SetText(modeStr);
+                    Canvas::TextLayoutConfig cfg;
+                    cfg.FontSize = 16.0f;
+                    cfg.Color = m_cameraActive
+                        ? Canvas::Math::FloatVector4(0.4f, 1.0f, 0.4f, 1.0f)
+                        : Canvas::Math::FloatVector4(1.0f, 0.8f, 0.3f, 1.0f);
+                    m_pModeText->SetLayoutConfig(cfg);
+                }
             }
 
             m_pUIGraph->Update();
@@ -1207,6 +1279,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     std::string atlasAlbedoPath;
     std::string atlasORMPath;
     int         exitFrameCount = -1;
+    bool        fullscreen     = false;
     // Float sentinels: NaN means "user did not supply this flag" so we know
     // whether to override the corresponding scene field.
     constexpr float kFltUnset = std::numeric_limits<float>::quiet_NaN();
@@ -1251,6 +1324,10 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         rootCmd.AddOption(InCommand::OptionType::Variable, "cycleseconds")
             .SetDescription("Day/night cycle length in seconds (default 300)")
             .BindTo(cycleSeconds);
+
+        rootCmd.AddOption(InCommand::OptionType::Switch, "fullscreen")
+            .SetDescription("Start in borderless fullscreen mode (toggle at runtime with Alt+Enter)")
+            .BindTo(fullscreen);
 
         auto& logCmd = rootCmd.AddSubCommand("log");
         logCmd.SetDescription("Configure logging output");
@@ -1344,10 +1421,10 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     Canvas::LogInfo(pLogger.Get(), "Log file: %s", logFilePath.string().c_str());
     Canvas::LogInfo(pLogger.Get(),
         "Startup: --scene='%s' --heightmap='%s' --atlas-albedo='%s' --atlas-orm='%s' "
-        "--dxy=%g --heightscale=%g --cycleseconds=%.1f log='%s'",
+        "--dxy=%g --heightscale=%g --cycleseconds=%.1f --fullscreen=%d log='%s'",
         scenePath.c_str(), heightmapPath.c_str(), atlasAlbedoPath.c_str(), atlasORMPath.c_str(),
         static_cast<double>(dxy), static_cast<double>(heightScale),
-        cycleSeconds, logLevel.c_str());
+        cycleSeconds, fullscreen ? 1 : 0, logLevel.c_str());
 
     auto pathFromUtf8 = [](const std::string& s) {
         return s.empty() ? std::filesystem::path{} : std::filesystem::u8path(s);
@@ -1405,7 +1482,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     auto pApp = std::make_unique<CTerrainApp>(
         hInstance, "CanvasTerrainViewer", pLogger,
         exitFrameCount, logFps,
-        std::move(scene), cycleSeconds);
+        std::move(scene), cycleSeconds, fullscreen);
 
     if (!pApp->Initialize(nCmdShow))
     {

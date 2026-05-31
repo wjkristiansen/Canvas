@@ -24,6 +24,10 @@ public:
     GEMMETHOD_(bool, PumpMessages)() final;
     GEMMETHOD_(void, SetMouseCaptured)(bool captured) final;
     GEMMETHOD_(bool, IsMouseCaptured)() final;
+    GEMMETHOD_(void, SetWindowSize)(int width, int height) final;
+    GEMMETHOD_(void, GetClientSize)(int& width, int& height) final;
+    GEMMETHOD_(void, SetFullscreen)(bool fullscreen) final;
+    GEMMETHOD_(bool, IsFullscreen)() final;
 
 private:
     class CImpl;

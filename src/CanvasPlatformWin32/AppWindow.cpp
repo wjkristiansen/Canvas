@@ -5,7 +5,7 @@
 namespace Canvas::Platform::Win32 {
 
 //---------------------------------------------------------------------------------------------
-// CImpl — ThinWin window subclass that manages the HWND, exclusive mouse capture,
+// CImpl - ThinWin window subclass that manages the HWND, exclusive mouse capture,
 // and raw-input forwarding on behalf of the privately bound CRawInput (if any).
 //---------------------------------------------------------------------------------------------
 class CAppWindow::CImpl : public ThinWin::CWindow
@@ -20,9 +20,9 @@ public:
     bool IsMouseCaptured() const { return m_Captured; }
 
     // A fully transparent cursor used while the mouse is captured.  Hiding the
-    // cursor with SetCursor(NULL) breaks SetCursorPos() under Remote Desktop —
+    // cursor with SetCursor(NULL) breaks SetCursorPos() under Remote Desktop -
     // the recentre warp silently no-ops and the cursor drifts to the desktop
-    // edge — so we install an invisible cursor instead of removing it.
+    // edge - so we install an invisible cursor instead of removing it.
     HCURSOR BlankCursor()
     {
         if (!m_BlankCursor)
@@ -53,10 +53,7 @@ public:
             ::SetCapture(m_hWnd);
             ::SetCursor(BlankCursor());
 
-            RECT rc;
-            ::GetClientRect(m_hWnd, &rc);
-            ::MapWindowPoints(m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
-            ::ClipCursor(&rc);
+            ClipCursorToClient();
 
             RAWINPUTDEVICE rid{};
             rid.usUsagePage = 0x01; // HID_USAGE_PAGE_GENERIC
@@ -86,6 +83,79 @@ public:
         }
     }
 
+    // Clips the cursor to the current client rect.  Used both when capture is
+    // first enabled and whenever the window is resized / toggled fullscreen
+    // while capture is active (the old clip rect would otherwise be stale).
+    void ClipCursorToClient()
+    {
+        RECT rc;
+        ::GetClientRect(m_hWnd, &rc);
+        ::MapWindowPoints(m_hWnd, nullptr, reinterpret_cast<POINT*>(&rc), 2);
+        ::ClipCursor(&rc);
+    }
+
+    void SetWindowSize(int width, int height)
+    {
+        if (m_Fullscreen || width <= 0 || height <= 0)
+            return;
+
+        RECT rc{ 0, 0, width, height };
+        const DWORD style   = static_cast<DWORD>(::GetWindowLongPtrW(m_hWnd, GWL_STYLE));
+        const DWORD exStyle = static_cast<DWORD>(::GetWindowLongPtrW(m_hWnd, GWL_EXSTYLE));
+        ::AdjustWindowRectEx(&rc, style, FALSE, exStyle);
+        ::SetWindowPos(m_hWnd, nullptr, 0, 0,
+            rc.right - rc.left, rc.bottom - rc.top,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+
+        if (m_Captured) ClipCursorToClient();
+    }
+
+    bool IsFullscreen() const { return m_Fullscreen; }
+
+    void SetFullscreen(bool fullscreen)
+    {
+        if (fullscreen == m_Fullscreen)
+            return;
+
+        if (fullscreen)
+        {
+            // Save windowed style and placement so they can be restored on exit.
+            m_SavedStyle   = ::GetWindowLongPtrW(m_hWnd, GWL_STYLE);
+            m_SavedExStyle = ::GetWindowLongPtrW(m_hWnd, GWL_EXSTYLE);
+            m_SavedPlacement.length = sizeof(m_SavedPlacement);
+            ::GetWindowPlacement(m_hWnd, &m_SavedPlacement);
+
+            MONITORINFO mi{};
+            mi.cbSize = sizeof(mi);
+            ::GetMonitorInfo(::MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST), &mi);
+
+            ::SetWindowLongPtrW(m_hWnd, GWL_STYLE,
+                (m_SavedStyle & ~static_cast<LONG_PTR>(WS_OVERLAPPEDWINDOW)) | WS_POPUP);
+            ::SetWindowLongPtrW(m_hWnd, GWL_EXSTYLE,
+                m_SavedExStyle & ~static_cast<LONG_PTR>(WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_DLGMODALFRAME));
+
+            ::SetWindowPos(m_hWnd, HWND_TOP,
+                mi.rcMonitor.left, mi.rcMonitor.top,
+                mi.rcMonitor.right - mi.rcMonitor.left,
+                mi.rcMonitor.bottom - mi.rcMonitor.top,
+                SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+
+            m_Fullscreen = true;
+        }
+        else
+        {
+            ::SetWindowLongPtrW(m_hWnd, GWL_STYLE,   m_SavedStyle);
+            ::SetWindowLongPtrW(m_hWnd, GWL_EXSTYLE, m_SavedExStyle);
+            ::SetWindowPlacement(m_hWnd, &m_SavedPlacement);
+            ::SetWindowPos(m_hWnd, nullptr, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+            m_Fullscreen = false;
+        }
+
+        if (m_Captured) ClipCursorToClient();
+    }
+
 protected:
     LRESULT WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam) override
     {
@@ -95,6 +165,9 @@ protected:
             if (m_RawInput)
                 m_RawInput->ProcessRawInput(m_hWnd, wParam, lParam);
             break;
+
+        case WM_SYSCHAR:
+            // Swallow the system character to suppress it.            return 0;
 
         case WM_MOUSEMOVE:
             if (m_Captured) { ::SetCursor(BlankCursor()); return 0; }
@@ -133,6 +206,12 @@ private:
     CRawInput* const m_RawInput;  // raw pointer; CAppWindow::m_pRawInput TGemPtr guarantees lifetime
     bool        m_Captured = false;
     HCURSOR     m_BlankCursor = NULL;
+
+    // Borderless-fullscreen state: windowed style/placement saved on entry.
+    bool            m_Fullscreen = false;
+    LONG_PTR        m_SavedStyle = 0;
+    LONG_PTR        m_SavedExStyle = 0;
+    WINDOWPLACEMENT m_SavedPlacement{};
 
 public:
     ~CImpl() override
@@ -229,6 +308,34 @@ GEMMETHODIMP_(void) CAppWindow::SetMouseCaptured(bool captured)
 GEMMETHODIMP_(bool) CAppWindow::IsMouseCaptured()
 {
     return m_pImpl && m_pImpl->IsMouseCaptured();
+}
+
+GEMMETHODIMP_(void) CAppWindow::SetWindowSize(int width, int height)
+{
+    if (m_pImpl) m_pImpl->SetWindowSize(width, height);
+}
+
+GEMMETHODIMP_(void) CAppWindow::GetClientSize(int& width, int& height)
+{
+    width = 0;
+    height = 0;
+    if (m_pImpl && m_pImpl->m_hWnd)
+    {
+        RECT rc{};
+        ::GetClientRect(m_pImpl->m_hWnd, &rc);
+        width  = rc.right - rc.left;
+        height = rc.bottom - rc.top;
+    }
+}
+
+GEMMETHODIMP_(void) CAppWindow::SetFullscreen(bool fullscreen)
+{
+    if (m_pImpl) m_pImpl->SetFullscreen(fullscreen);
+}
+
+GEMMETHODIMP_(bool) CAppWindow::IsFullscreen()
+{
+    return m_pImpl && m_pImpl->IsFullscreen();
 }
 
 //---------------------------------------------------------------------------------------------
