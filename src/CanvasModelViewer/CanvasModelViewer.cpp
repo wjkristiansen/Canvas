@@ -94,7 +94,7 @@ extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 616; }
 extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = ".\\D3D12\\"; }
 
 //------------------------------------------------------------------------------------------------
-// CConsole — allocates a dedicated console window for live log output.
+// CConsole - allocates a dedicated console window for live log output.
 // Only created when the "log --console" option is specified.  Never
 // attaches to the parent terminal, avoiding the console-mode corruption
 // that plagued earlier versions.
@@ -185,8 +185,14 @@ class CApp
     Gem::TGemPtr<Canvas::XUIRectElement> m_pHudPanel;
     Gem::TGemPtr<Canvas::XUITextElement> m_pTitleText;
     Gem::TGemPtr<Canvas::XUITextElement> m_pFpsText;
+    Gem::TGemPtr<Canvas::XUITextElement> m_pModeText;
+    int m_lastClientW = 0;   // last back-buffer size, for resize detection
+    int m_lastClientH = 0;
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
     bool m_logFps;
+    bool m_startFullscreen = false;
+    bool m_cameraActive = true;   // true: cursor hidden + camera control; false: cursor free
+    std::string m_modeString;
     float m_fps = 0.0f;
     std::string m_fpsString;
     std::filesystem::path m_ModelPath;
@@ -442,7 +448,7 @@ class CApp
         Gem::ThrowGemError(Canvas::Fbx::BuildModel(pCanvas, pDevice, imported, buildOpts, &pModel));
 
         // Store model bounds
-        // (SetBounds is on CModel, not the interface — we set it here since
+        // (SetBounds is on CModel, not the interface - we set it here since
         // the model doesn't compute bounds automatically yet)
 
         // -----------------------------------------------------------------
@@ -543,12 +549,14 @@ public:
         Gem::TGemPtr<Canvas::XLogger> pLogger,
         int exitFrameCount = -1,
         bool logFps = false,
-        std::filesystem::path modelPath = {}) :
+        std::filesystem::path modelPath = {},
+        bool startFullscreen = false) :
         m_pLogger(pLogger),
         m_Title(szTitle),
         m_hInstance(hInstance),
         m_exitFrameCount(exitFrameCount),
         m_logFps(logFps),
+        m_startFullscreen(startFullscreen),
         m_ModelPath(std::move(modelPath))
         {
         }
@@ -575,6 +583,11 @@ public:
                 Gem::ThrowGemError(Canvas::Platform::Win32::CreatePlatformWindow(wdesc, &m_pWindow, &m_pInput));
             }
             m_pWindow->Show(nCmdShow);
+
+            // Apply startup fullscreen before the swap chain is created so the
+            // back buffers are sized to the monitor from the outset.
+            if (m_startFullscreen)
+                m_pWindow->SetFullscreen(true);
 
             initStep = "create_canvas";
             Gem::TGemPtr<Canvas::XCanvas> pCanvas;
@@ -704,7 +717,7 @@ public:
             Gem::TGemPtr<Canvas::XUIRectElement> pHudPanel;
             Gem::ThrowGemError(pDevice->CreateRectElement(&pHudPanel));
             pHudNode->BindElement(pHudPanel);
-            pHudPanel->SetSize(Canvas::Math::FloatVector2(340.0f, 70.0f));
+            pHudPanel->SetSize(Canvas::Math::FloatVector2(340.0f, 96.0f));
             pHudPanel->SetFillColor(Canvas::Math::FloatVector4(0.125f, 0.125f, 0.125f, 0.75f));
 
             // Title text
@@ -735,6 +748,20 @@ public:
             }
             pFpsText->SetText("FPS: --");
 
+            // Camera-mode indicator text
+            Gem::TGemPtr<Canvas::XUITextElement> pModeText;
+            Gem::ThrowGemError(pDevice->CreateTextElement(&pModeText));
+            pHudNode->BindElement(pModeText);
+            pModeText->SetLocalOffset(Canvas::Math::FloatVector2(4.0f, 64.0f));
+            pModeText->SetFont(pFontMono);
+            {
+                Canvas::TextLayoutConfig modeConfig;
+                modeConfig.FontSize = 18.0f;
+                modeConfig.Color = Canvas::Math::FloatVector4(0.4f, 1.0f, 0.4f, 1.0f);
+                pModeText->SetLayoutConfig(modeConfig);
+            }
+            pModeText->SetText("Camera: ACTIVE (Tab to release)");
+
             initStep = "finalize_members";
             m_pGfxPlugin.Attach(pGfxPlugin.Detach());
             m_pGfxDevice.Attach(pDevice.Detach());
@@ -750,6 +777,7 @@ public:
             m_pHudPanel.Attach(pHudPanel.Detach());
             m_pTitleText.Attach(pTitleText.Detach());
             m_pFpsText.Attach(pFpsText.Detach());
+            m_pModeText.Attach(pModeText.Detach());
 
             return true;
         }
@@ -817,14 +845,45 @@ public:
             ++frameCount;
 
             //==================================================================
+            // Resize handling: keep the swap-chain back buffers and camera
+            // aspect ratio in sync with the window client area (covers manual
+            // resize and Alt+Enter / --fullscreen toggles).
+            //==================================================================
+            {
+                int cw = 0, ch = 0;
+                m_pWindow->GetClientSize(cw, ch);
+                if (cw > 0 && ch > 0 && (cw != m_lastClientW || ch != m_lastClientH))
+                {
+                    m_pGfxSwapChain->ResizeBuffers(static_cast<uint32_t>(cw), static_cast<uint32_t>(ch));
+                    if (m_pCamera.Get())
+                        m_pCamera->SetAspectRatio(static_cast<float>(cw) / static_cast<float>(ch));
+                    m_lastClientW = cw;
+                    m_lastClientH = ch;
+                }
+            }
+
+            //==================================================================
             // Camera controller: mouse look + WASD movement
             //==================================================================
-            
-            // Track focus changes — release/acquire mouse capture as needed
+
+            // Track focus changes - release/acquire mouse capture as needed
             const bool hasFocus = m_pWindow->HasFocus();
-            if (hasFocus && !m_pWindow->IsMouseCaptured())
+
+            // Alt+Enter toggles borderless fullscreen.  Edge-detected via raw input
+            // (IsKeyPressed fires once per physical press), so holding the combo
+            // does not repeatedly toggle.
+            if (hasFocus && m_pInput->IsKeyDown(VK_MENU) && m_pInput->IsKeyPressed(VK_RETURN))
+                m_pWindow->SetFullscreen(!m_pWindow->IsFullscreen());
+
+            // TAB toggles camera control mode: ACTIVE (cursor hidden + mouse /
+            // keyboard drive the camera) vs FREE (cursor visible, no control).
+            if (hasFocus && m_pInput->IsKeyPressed(VK_TAB))
+                m_cameraActive = !m_cameraActive;
+
+            const bool wantCapture = hasFocus && m_cameraActive;
+            if (wantCapture && !m_pWindow->IsMouseCaptured())
                 m_pWindow->SetMouseCaptured(true);
-            else if (!hasFocus && m_pWindow->IsMouseCaptured())
+            else if (!wantCapture && m_pWindow->IsMouseCaptured())
                 m_pWindow->SetMouseCaptured(false);
 
             float dx = 0.0f;
@@ -859,9 +918,11 @@ public:
             // Right vector for WASD strafing (from the rotation matrix)
             Canvas::Math::FloatVector4 right = rotMat[1];
 
-            if (hasFocus)
+            if (hasFocus && m_pInput->IsKeyDown(VK_ESCAPE)) { running = false; break; }
+
+            if (hasFocus && m_cameraActive)
             {
-                // WASD movement in camera-local space (works regardless of mouse capture state).
+                // WASD movement in camera-local space.
                 Canvas::Math::FloatVector4 moveDir(0.0f, 0.0f, 0.0f, 0.0f);
                 if (m_pInput->IsKeyDown('W'))        moveDir = moveDir + forward;
                 if (m_pInput->IsKeyDown('S'))        moveDir = moveDir - forward;
@@ -870,7 +931,6 @@ public:
                 if (m_pInput->IsKeyDown(VK_SPACE))   moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
                 if (m_pInput->IsKeyDown(VK_SHIFT))   moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
                 if (m_pInput->IsKeyDown(VK_CONTROL)) moveDir = moveDir - Canvas::Math::FloatVector4(0, 0, 1, 0);
-                if (m_pInput->IsKeyDown(VK_ESCAPE))  { running = false; break; }
 
                 float moveMag = sqrtf(Canvas::Math::DotProduct(moveDir, moveDir));
                 bool moved = false;
@@ -906,6 +966,24 @@ public:
                 {
                     m_fpsString = fpsBuf;
                     m_pFpsText->SetText(fpsBuf);
+                }
+            }
+
+            // Update camera-mode indicator only when it changes.
+            {
+                const char* modeStr = m_cameraActive
+                    ? "Camera: ACTIVE (Tab to release)"
+                    : "Camera: FREE (Tab to control)";
+                if (m_modeString != modeStr)
+                {
+                    m_modeString = modeStr;
+                    m_pModeText->SetText(modeStr);
+                    Canvas::TextLayoutConfig modeConfig;
+                    modeConfig.FontSize = 18.0f;
+                    modeConfig.Color = m_cameraActive
+                        ? Canvas::Math::FloatVector4(0.4f, 1.0f, 0.4f, 1.0f)
+                        : Canvas::Math::FloatVector4(1.0f, 0.8f, 0.3f, 1.0f);
+                    m_pModeText->SetLayoutConfig(modeConfig);
                 }
             }
 
@@ -972,6 +1050,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     bool logFps = false;
     std::string fbxPath;
     int exitFrameCount = -1;  // -1 means don't exit automatically
+    bool fullscreen = false;
 
     try
     {
@@ -988,7 +1067,11 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
             .SetDescription("Path to an FBX file to import at startup")
             .BindTo(fbxPath);
 
-        // "log" subcommand — all logging configuration lives here
+        rootCmd.AddOption(InCommand::OptionType::Switch, "fullscreen")
+            .SetDescription("Start in borderless fullscreen mode (toggle at runtime with Alt+Enter)")
+            .BindTo(fullscreen);
+
+        // "log" subcommand - all logging configuration lives here
         //   CanvasModelViewer.exe log --level debug --file mylog.txt --console --fps
         auto& logCmd = rootCmd.AddSubCommand("log");
         logCmd.SetDescription("Configure logging output");
@@ -1010,7 +1093,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
             .SetDescription("Log FPS to the log output")
             .BindTo(logFps);
 
-        // Capture help text to a stream — no console is attached to write to directly
+        // Capture help text to a stream - no console is attached to write to directly
         std::ostringstream helpStream;
         cmdParser.EnableAutoHelp("help", 'h', helpStream);
         
@@ -1069,7 +1152,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     else if (logLevel == "off")
         qlogLevel = QLog::Level::Off;
 
-    // Determine log file path — default to a timestamped file next to the executable
+    // Determine log file path - default to a timestamped file next to the executable
     wchar_t exePathBuf[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exePathBuf, MAX_PATH);
     std::filesystem::path logFilePath;
@@ -1092,7 +1175,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     if (logConsole)
         pConsole = std::make_unique<CConsole>();
 
-    // Initialize logger — writes to OutputDebugString always, log file, and optional console
+    // Initialize logger - writes to OutputDebugString always, log file, and optional console
     CLogSink logSink(logFilePath, logConsole);
     auto qlogLogger = std::make_unique<QLog::Logger>(logSink, qlogLevel);
     
@@ -1104,8 +1187,8 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     pAdapter->QueryInterface(&pLogger);
 
     Canvas::LogInfo(pLogger.Get(), "Log file: %s", logFilePath.string().c_str());
-    Canvas::LogInfo(pLogger.Get(), "Startup options: --fbx='%s', --exitframecount=%d, log level='%s'",
-        fbxPath.c_str(), exitFrameCount, logLevel.c_str());
+    Canvas::LogInfo(pLogger.Get(), "Startup options: --fbx='%s', --exitframecount=%d, --fullscreen=%d, log level='%s'",
+        fbxPath.c_str(), exitFrameCount, fullscreen ? 1 : 0, logLevel.c_str());
 
     std::error_code cwdEc;
     const std::filesystem::path cwdPath = std::filesystem::current_path(cwdEc);
@@ -1120,7 +1203,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     if (!fbxPath.empty())
         modelPath = std::filesystem::u8path(fbxPath);
 
-    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps, modelPath));
+    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps, modelPath, fullscreen));
 
     // Initialize the application
     if (!pApp->Initialize(nCmdShow))

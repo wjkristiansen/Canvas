@@ -123,6 +123,19 @@ struct XAppWindow : public Gem::XGeneric
     // painting tools, etc.) — the mechanism itself is policy-free.
     GEMMETHOD_(void, SetMouseCaptured)(bool captured) = 0;
     GEMMETHOD_(bool, IsMouseCaptured)() = 0;
+
+    // Resizes the window so its client area matches the requested dimensions.
+    // No-op while the window is in fullscreen mode.
+    GEMMETHOD_(void, SetWindowSize)(int width, int height) = 0;
+
+    // Returns the current client-area size in pixels.
+    GEMMETHOD_(void, GetClientSize)(int& width, int& height) = 0;
+
+    // Toggles borderless-fullscreen mode.  Entering fullscreen saves the current
+    // window style and placement and resizes the window to cover its monitor;
+    // exiting restores them.  Alt+Enter performs the same toggle automatically.
+    GEMMETHOD_(void, SetFullscreen)(bool fullscreen) = 0;
+    GEMMETHOD_(bool, IsFullscreen)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

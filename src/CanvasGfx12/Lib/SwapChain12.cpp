@@ -128,3 +128,43 @@ GEMMETHODIMP CSwapChain12::WaitForLastPresent()
     CloseHandle(hEvent);
     return Gem::Result::Success;
 }
+
+GEMMETHODIMP CSwapChain12::ResizeBuffers(uint32_t width, uint32_t height)
+{
+    Canvas::CFunctionSentinel sentinel("XGfxSwapChain::ResizeBuffers", m_pRenderQueue->GetDevice()->GetLogger());
+    try
+    {
+        if (width == 0 || height == 0)
+            return Gem::Result::Success;
+
+        std::unique_lock<std::mutex> Lock(m_mutex);
+
+        DXGI_SWAP_CHAIN_DESC1 desc{};
+        ThrowFailedHResult(m_pSwapChain->GetDesc1(&desc));
+        if (desc.Width == width && desc.Height == height)
+            return Gem::Result::Success;
+
+        // The GPU must be finished with the current back buffers, and every CPU
+        // reference to them must be released, before ResizeBuffers can succeed.
+        m_pRenderQueue->WaitForIdle();
+        m_pSurface->Rename(nullptr);
+
+        ThrowFailedHResult(m_pSwapChain->ResizeBuffers(
+            desc.BufferCount, width, height, desc.Format, desc.Flags));
+
+        // Reacquire the (new) current back buffer into the existing surface.
+        CComPtr<ID3D12Resource> pBackBuffer;
+        UINT bbindex = m_pSwapChain->GetCurrentBackBufferIndex();
+        ThrowFailedHResult(m_pSwapChain->GetBuffer(bbindex, IID_PPV_ARGS(&pBackBuffer)));
+        m_pSurface->Rename(pBackBuffer);
+        m_pSurface->m_CurrentLayout =
+            SubresourceLayout(D3D12_BARRIER_LAYOUT_COMMON, m_pSurface->m_NumSubresources);
+    }
+    catch (_com_error &e)
+    {
+        sentinel.SetResultCode(ResultFromHRESULT(e.Error()));
+        return ResultFromHRESULT(e.Error());
+    }
+
+    return Gem::Result::Success;
+}

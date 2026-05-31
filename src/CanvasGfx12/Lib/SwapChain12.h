@@ -43,6 +43,7 @@ public:
 
     GEMMETHOD(GetSurface)(Canvas::XGfxSurface **ppSurface) final;
     GEMMETHOD(WaitForLastPresent)() final;
+    GEMMETHOD(ResizeBuffers)(uint32_t width, uint32_t height) final;
 
     // Internal functions
     Gem::Result Present();

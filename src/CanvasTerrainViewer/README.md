@@ -45,6 +45,23 @@ not throwaway.
 
 ---
 
+## Controls
+
+| Input            | Action                                                                 |
+|------------------|------------------------------------------------------------------------|
+| `Tab`            | Toggle camera mode: **ACTIVE** (cursor hidden, mouse-look + WASD) <-> **FREE** (cursor visible, camera locked). The HUD shows the current mode. |
+| `W A S D`        | Move (active mode). `Space` / `Ctrl` raise / lower; `Shift` for fast.  |
+| Mouse            | Look around (active mode, cursor captured).                            |
+| `Alt+Enter`      | Toggle borderless fullscreen on the monitor that most-contains the window. |
+| `G`              | Toggle wireframe.                                                      |
+| `[` / `]`        | Scrub day/night -/+15 minutes.                                         |
+| `\`              | Pause / resume the day/night cycle.                                    |
+| `Esc`            | Quit.                                                                  |
+
+Pass `--fullscreen` on the command line to start in borderless fullscreen.
+
+---
+
 ## Design
 
 ### Density - 1 m / texel (configurable)

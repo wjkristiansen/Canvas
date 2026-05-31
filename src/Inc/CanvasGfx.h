@@ -341,6 +341,11 @@ namespace Canvas
 
         GEMMETHOD(GetSurface)(XGfxSurface **ppSurface) = 0;
         GEMMETHOD(WaitForLastPresent)() = 0;
+
+        // Resizes the swap-chain back buffers to the given pixel dimensions
+        // (typically the window client size after a resize or fullscreen
+        // toggle).  A no-op when the size is  unchanged or either dimension is zero.
+        GEMMETHOD(ResizeBuffers)(uint32_t width, uint32_t height) = 0;
     };
 
     //------------------------------------------------------------------------------------------------
