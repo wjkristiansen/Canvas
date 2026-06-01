@@ -1466,6 +1466,119 @@ namespace Canvas
             }
         };
 
+        //------------------------------------------------------------------------------------------------
+        // View frustum represented as 6 outward-pointing inequality planes.
+        //
+        // Plane encoding: each plane is stored as (nx, ny, nz, d) in a
+        // FloatVector4.  A point p is INSIDE the half-space iff
+        //     dot(p.xyz, n) + d >= 0.
+        // The frustum interior is the intersection of all 6 half-spaces.
+        // Plane normals are NOT renormalized -- they retain whatever length
+        // falls out of Gribb-Hartmann extraction.  This is correct for
+        // half-space sign tests (positive scaling preserves the sign) and
+        // intentionally avoids a sqrt per plane during extraction.  Code
+        // that needs signed Euclidean distances must normalize first.
+        //
+        // Matrix convention: Canvas uses ROW VECTORS (clip = world * VP), so
+        // plane coefficients are derived from COLUMNS of the view-projection
+        // matrix (see FromViewProjection below).  Passing a column-vector
+        // matrix here will silently produce a degenerate frustum.
+        struct Frustum
+        {
+            enum PlaneIndex
+            {
+                Left = 0,
+                Right,
+                Bottom,
+                Top,
+                Near,
+                Far,
+                PlaneCount
+            };
+
+            FloatVector4 Planes[PlaneCount];
+
+            // Extract clip-volume planes from a row-vector view-projection
+            // matrix.  reverseZ=true assumes the projection maps the near
+            // plane to clip-space z=w and the far plane to z=0 (matches
+            // Canvas::Math::PerspectiveReverseZ).  reverseZ=false assumes
+            // the standard z=0 near / z=w far mapping
+            // (matches PerspectiveForwardZ).  The only difference between
+            // the two paths is which column combination becomes Near vs Far.
+            static Frustum FromViewProjection(const FloatMatrix4x4& vp, bool reverseZ = true)
+            {
+                // With row vectors, clip.c = world_h . column_c(vp).
+                // Half-space "clip.c + clip.w >= 0" becomes
+                // "world_h . (column_c + column_3) >= 0", so the plane
+                // coefficients are simply that column sum/difference.
+                auto col = [&](int c) {
+                    return FloatVector4(vp.M[0][c], vp.M[1][c], vp.M[2][c], vp.M[3][c]);
+                };
+                const FloatVector4 c0 = col(0);
+                const FloatVector4 c1 = col(1);
+                const FloatVector4 c2 = col(2);
+                const FloatVector4 c3 = col(3);
+
+                auto add = [](const FloatVector4& a, const FloatVector4& b) {
+                    return FloatVector4(a.V[0] + b.V[0], a.V[1] + b.V[1], a.V[2] + b.V[2], a.V[3] + b.V[3]);
+                };
+                auto sub = [](const FloatVector4& a, const FloatVector4& b) {
+                    return FloatVector4(a.V[0] - b.V[0], a.V[1] - b.V[1], a.V[2] - b.V[2], a.V[3] - b.V[3]);
+                };
+
+                Frustum f;
+                f.Planes[Left]   = add(c3, c0); // clip.x + clip.w >= 0
+                f.Planes[Right]  = sub(c3, c0); // clip.w - clip.x >= 0
+                f.Planes[Bottom] = add(c3, c1); // clip.y + clip.w >= 0
+                f.Planes[Top]    = sub(c3, c1); // clip.w - clip.y >= 0
+                if (reverseZ)
+                {
+                    // Reverse-Z: near at z=w (clip.w - clip.z >= 0),
+                    //            far  at z=0 (clip.z >= 0).
+                    f.Planes[Near] = sub(c3, c2);
+                    f.Planes[Far]  = c2;
+                }
+                else
+                {
+                    // Forward-Z: near at z=0 (clip.z >= 0),
+                    //            far  at z=w (clip.w - clip.z >= 0).
+                    f.Planes[Near] = c2;
+                    f.Planes[Far]  = sub(c3, c2);
+                }
+                return f;
+            }
+
+            // Conservative AABB-vs-frustum overlap test using the
+            // p-vertex (positive vertex) trick: for each plane, the AABB
+            // corner most aligned with the plane normal is the last point
+            // to leave the positive half-space.  If that corner is outside
+            // (signed distance < 0) for ANY plane, the AABB cannot overlap
+            // the frustum and we early-out.  This may return true for boxes
+            // that straddle every plane but actually miss the frustum at a
+            // corner -- accepted false positive in renderer culling.
+            //
+            // Empty AABBs return false (nothing to draw, nothing to cull
+            // in).  Invalid (inside-out, non-sentinel) AABBs are treated as
+            // their corner positions describe -- garbage in, garbage out;
+            // construction-side bug, not this code's job to mask.
+            bool IntersectsAABB(const AABB& box) const
+            {
+                if (box.IsEmpty())
+                    return false;
+                for (int i = 0; i < PlaneCount; ++i)
+                {
+                    const FloatVector4& p = Planes[i];
+                    // Positive vertex: per-axis pick Max if normal >= 0 else Min.
+                    const float px = (p.V[0] >= 0.0f) ? box.Max.V[0] : box.Min.V[0];
+                    const float py = (p.V[1] >= 0.0f) ? box.Max.V[1] : box.Min.V[1];
+                    const float pz = (p.V[2] >= 0.0f) ? box.Max.V[2] : box.Min.V[2];
+                    const float signedDist = p.V[0] * px + p.V[1] * py + p.V[2] * pz + p.V[3];
+                    if (signedDist < 0.0f)
+                        return false;
+                }
+                return true;
+            }
+        };
 
     }
 }

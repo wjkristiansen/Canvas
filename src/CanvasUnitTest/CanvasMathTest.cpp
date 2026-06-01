@@ -1128,5 +1128,98 @@ namespace CanvasUnitTest
             Assert::IsTrue(std::abs(cY.X - 0.0f) < 1e-5f);
             Assert::IsTrue(std::abs(cY.Y - (-1.0f)) < 1e-5f);
         }
+
+        // ----------------------------------------------------------------
+        // Frustum extraction + AABB intersection tests.
+        //
+        // Camera view space: LHS, +X right, +Y up, +Z forward.  Tests use
+        // view = identity so the projection matrix alone defines the
+        // frustum, letting us reason about points/AABBs directly in view
+        // coordinates without an extra matrix layer to debug.
+        // ----------------------------------------------------------------
+
+        // Reverse-Z perspective is Canvas's default.  These tests pin the
+        // sign convention of FromViewProjection: points truly inside the
+        // view frustum must produce IntersectsAABB == true; points outside
+        // any single plane must produce false.
+        TEST_METHOD(FrustumReverseZPerspectiveInsideOutside)
+        {
+            const float fovY = float(g_PI * 0.5);  // 90 deg
+            const float aspect = 1.0f;
+            const float nearZ = 1.0f;
+            const float farZ  = 100.0f;
+            FloatMatrix4x4 proj = PerspectiveReverseZ<float>(fovY, aspect, nearZ, farZ);
+            Frustum f = Frustum::FromViewProjection(proj, /*reverseZ*/ true);
+
+            auto pointAABB = [](float x, float y, float z) {
+                FloatVector4 p(x, y, z, 0.0f);
+                return AABB(p, p);
+            };
+
+            // Squarely inside.
+            Assert::IsTrue(f.IntersectsAABB(pointAABB(0.0f, 0.0f, 10.0f)));
+
+            // Behind the near plane (z < nearZ): outside near.
+            Assert::IsFalse(f.IntersectsAABB(pointAABB(0.0f, 0.0f, 0.5f)));
+
+            // Behind the camera entirely.
+            Assert::IsFalse(f.IntersectsAABB(pointAABB(0.0f, 0.0f, -10.0f)));
+
+            // Beyond the far plane.
+            Assert::IsFalse(f.IntersectsAABB(pointAABB(0.0f, 0.0f, 200.0f)));
+
+            // Off to the right past the 90-deg side plane (x > z at z=10).
+            Assert::IsFalse(f.IntersectsAABB(pointAABB(50.0f, 0.0f, 10.0f)));
+
+            // Above the top plane (y > z at z=10 for 90deg fov).
+            Assert::IsFalse(f.IntersectsAABB(pointAABB(0.0f, 50.0f, 10.0f)));
+
+            // AABB straddling the near plane: must overlap.
+            AABB straddleNear(FloatVector4(-0.5f, -0.5f, 0.5f, 0.0f),
+                              FloatVector4( 0.5f,  0.5f, 2.0f, 0.0f));
+            Assert::IsTrue(f.IntersectsAABB(straddleNear));
+
+            // Large AABB enclosing the camera: positive-vertex test is
+            // conservative and accepts this (every plane has SOME corner
+            // on the inside).  Documents the known false-positive regime.
+            AABB enclosing(FloatVector4(-1000.0f, -1000.0f, -1000.0f, 0.0f),
+                           FloatVector4( 1000.0f,  1000.0f,  1000.0f, 0.0f));
+            Assert::IsTrue(f.IntersectsAABB(enclosing));
+
+            // Empty AABB: never intersects.
+            Assert::IsFalse(f.IntersectsAABB(AABB{}));
+        }
+
+        // Forward-Z swap: only Near/Far plane assignment differs.  Same
+        // points should yield the same inside/outside verdicts because
+        // both extractions describe the same world-space frustum.
+        TEST_METHOD(FrustumForwardZPerspectiveAgreesWithReverseZ)
+        {
+            const float fovY = float(g_PI * 0.5);
+            const float aspect = 16.0f / 9.0f;
+            const float nearZ = 0.5f;
+            const float farZ  = 50.0f;
+
+            Frustum fRev = Frustum::FromViewProjection(
+                PerspectiveReverseZ<float>(fovY, aspect, nearZ, farZ), true);
+            Frustum fFwd = Frustum::FromViewProjection(
+                PerspectiveForwardZ<float>(fovY, aspect, nearZ, farZ), false);
+
+            const FloatVector4 inside (0.0f, 0.0f, 10.0f, 0.0f);
+            const FloatVector4 tooNear(0.0f, 0.0f,  0.1f, 0.0f);
+            const FloatVector4 tooFar (0.0f, 0.0f, 99.0f, 0.0f);
+
+            AABB bIn (inside,  inside);
+            AABB bN  (tooNear, tooNear);
+            AABB bF  (tooFar,  tooFar);
+
+            Assert::AreEqual(fRev.IntersectsAABB(bIn), fFwd.IntersectsAABB(bIn));
+            Assert::AreEqual(fRev.IntersectsAABB(bN),  fFwd.IntersectsAABB(bN));
+            Assert::AreEqual(fRev.IntersectsAABB(bF),  fFwd.IntersectsAABB(bF));
+
+            Assert::IsTrue (fRev.IntersectsAABB(bIn));
+            Assert::IsFalse(fRev.IntersectsAABB(bN));
+            Assert::IsFalse(fRev.IntersectsAABB(bF));
+        }
 	};
 }
