@@ -1555,12 +1555,9 @@ namespace Canvas
             // (signed distance < 0) for ANY plane, the AABB cannot overlap
             // the frustum and we early-out.  This may return true for boxes
             // that straddle every plane but actually miss the frustum at a
-            // corner -- accepted false positive in renderer culling.
+            // corner - an accepted false positive in renderer culling.
             //
-            // Empty AABBs return false (nothing to draw, nothing to cull
-            // in).  Invalid (inside-out, non-sentinel) AABBs are treated as
-            // their corner positions describe -- garbage in, garbage out;
-            // construction-side bug, not this code's job to mask.
+            // Empty AABBs return false.
             bool IntersectsAABB(const AABB& box) const
             {
                 if (box.IsEmpty())

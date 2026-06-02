@@ -325,17 +325,20 @@ XSceneGraphElement : public XCanvasElement
 
     GEMMETHOD(Update)(float dtime) = 0;
 
-    // Element-local axis-aligned bounding box of the element's GEOMETRY.
+    // Element-local axis-aligned bounding box of the element's RENDERED
+    // EXTENT.
     //
     // Returned in node-local coordinates -- transformed through the
     // attached node's global matrix to obtain a world-space AABB for
     // shadow-caster aggregation, frustum culling of renderables, or
-    // spatial subdivision of scene geometry.
+    // spatial subdivision of the scene.
     //
-    // "Geometry" here is the element's physical extent: a mesh's vertex
-    // envelope, a model's union-of-meshes envelope.  Non-geometric
-    // elements (XLight, XCamera, ambient) return an empty AABB so they
-    // contribute nothing to geometric aggregates.
+    // The extent here is the element's physical region in space: a
+    // mesh's vertex envelope, a model's union-of-meshes envelope, a
+    // future particle system's emitter+lifetime envelope, a decal's
+    // projector volume.  Non-renderable elements (XLight, XCamera,
+    // ambient) return an empty AABB so they contribute nothing to
+    // renderable aggregates.
     //
     // Their AREAS OF INFLUENCE -- point/spot light attenuation volumes,
     // camera view frusta -- are a separate concept reported by
@@ -345,13 +348,14 @@ XSceneGraphElement : public XCanvasElement
 
     // Element-local axis-aligned bounding box of the element's AREA OF
     // INFLUENCE: the spatial region in which this element affects
-    // rendering or simulation, but does not itself occupy as geometry.
+    // rendering or simulation, but does not itself occupy as a
+    // renderable.
     //
     //   Point light  -> attenuation cutoff sphere -> AABB
     //   Spot light   -> attenuation + cone        -> AABB
     //   Camera       -> view frustum              -> AABB
     //   Directional / ambient light -> empty (infinite, no spatial bound)
-    //   XMeshInstance / XModel      -> empty (geometry-only, no influence)
+    //   XMeshInstance / XModel      -> empty (renderable-only, no influence)
     //
     // Aggregating shadow casters and aggregating light influences are
     // distinct queries served by separate methods (GetLocalBounds vs
@@ -476,6 +480,16 @@ XScene : public XCanvasElement
 
     GEMMETHOD(Update)(float dtime) = 0;
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
+
+    // Rebuild the scene's BVH over renderable scene elements.  Today:
+    // static-only, called explicitly after scene construction / load
+    // (e.g. asset bake step or end of viewer scene-setup).  The first
+    // SubmitRenderables call also auto-builds the BVH lazily if it has
+    // not been built yet, so omitting this call is correctness-safe --
+    // it just shifts the build cost to frame 1.  Calling BuildBVH
+    // again after scene topology changes is also safe; it discards any
+    // prior state.
+    GEMMETHOD_(void, BuildBVH)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

@@ -50,6 +50,19 @@ GEMMETHODIMP CScene::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
 
         pRenderQueue->SetBackground(&m_Background);
 
+        // Auto-build if the caller didn't invoke BuildBVH() at load
+        // time.  Eats the first-frame cost rather than failing.
+        if (!m_SceneBVH.IsBuilt())
+            m_SceneBVH.Build(m_pRoot.Get());
+
+        // Visibility filter: renderable nodes are gated by frustum
+        // visibility; non-renderable nodes (lights, cameras) always
+        // pass through.  No active camera => empty visible set =>
+        // nothing renderable is submitted.
+        m_VisibleNodeScratch.clear();
+        if (m_pActiveCamera)
+            m_SceneBVH.QueryFrustum(m_pActiveCamera.Get(), m_VisibleNodeScratch);
+
         // Iterative depth-first traversal using persistent stack (no per-frame allocation)
         m_TraversalStack.clear();
         m_TraversalStack.push_back(m_pRoot.Get());
@@ -59,9 +72,17 @@ GEMMETHODIMP CScene::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
             XSceneGraphNode *pNode = m_TraversalStack.back();
             m_TraversalStack.pop_back();
 
-            // Submit this node for rendering (render queue handles its elements)
+            // Skip only when the node is renderable AND not in the
+            // visible set.  Non-renderable nodes pass through; so do
+            // renderable nodes the BVH has never seen (e.g. added
+            // after Build), so a stale BVH never hides geometry.
             if (pNode->GetBoundElementCount() > 0)
-                Gem::ThrowGemError(pRenderQueue->SubmitForRender(pNode));
+            {
+                const bool renderable = m_SceneBVH.IsRenderableNode(pNode);
+                const bool visible    = !renderable || m_VisibleNodeScratch.count(pNode) > 0;
+                if (visible)
+                    Gem::ThrowGemError(pRenderQueue->SubmitForRender(pNode));
+            }
 
             // Push children onto stack for traversal
             for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))

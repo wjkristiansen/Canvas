@@ -15,6 +15,8 @@ add_library(CanvasCore SHARED
     FontImpl.cpp
     TextLayout.cpp
     UIGraph.cpp
+    BVH.cpp
+    SceneBVH.cpp
     
     # Header files (for IDE organization)
     ../Inc/CanvasCore.h
@@ -35,6 +37,8 @@ add_library(CanvasCore SHARED
     ScopedUtils.h
     Timeline.h
     Timer.h
+    BVH.h
+    SceneBVH.h
     pch.h
     targetver.h
 )
