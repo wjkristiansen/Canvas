@@ -35,10 +35,10 @@ public:
         return Gem::Result::Success;
     }
 
-    // Default returns an empty AABB.  Geometric elements (CMeshInstance,
+    // Default returns an empty AABB.  Renderable elements (CMeshInstance,
     // CModel, ...) override with their node-local vertex envelope.
-    // Non-geometric elements -- lights, cameras, ambient -- inherit
-    // this default so they contribute nothing to geometric aggregates.
+    // Non-renderable elements -- lights, cameras, ambient -- inherit
+    // this default so they contribute nothing to renderable aggregates.
     GEMMETHOD_(Math::AABB, GetLocalBounds)() const
     {
         return Math::AABB{};
@@ -47,7 +47,7 @@ public:
     // Default returns an empty AABB.  Elements that affect a bounded
     // region of space (finite-range XLight, XCamera) override with
     // their node-local influence volume.  Infinite-influence elements
-    // (directional / ambient lights) and pure-geometry elements
+    // (directional / ambient lights) and pure-renderable elements
     // (XMeshInstance, XModel) inherit this default.
     GEMMETHOD_(Math::AABB, GetLocalInfluenceBounds)() const
     {

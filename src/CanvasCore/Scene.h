@@ -6,6 +6,7 @@
 
 #include "Canvas.h"
 #include "SceneGraph.h"
+#include "SceneBVH.h"
 
 namespace Canvas
 {
@@ -19,6 +20,18 @@ private:
     Gem::TGemPtr<XSceneGraphNode> m_pRoot;
     Gem::TGemPtr<XCamera> m_pActiveCamera;
     std::vector<XSceneGraphNode*> m_TraversalStack;  // Reused across frames to avoid allocation
+
+    // BVH over the world-space AABB of every renderable scene element
+    // bound to a node in the scene graph (one primitive per
+    // [node, element] pair whose element returns a non-empty
+    // GetLocalBounds()).  Non-renderable elements (lights, cameras)
+    // honor the empty-AABB contract and contribute no primitives; they
+    // continue to flow through SubmitRenderables unfiltered.  Built
+    // explicitly via BuildBVH(), or lazily on the first
+    // SubmitRenderables when not yet built.  See SceneBVH for the
+    // current scope and capabilities.
+    SceneBVH m_SceneBVH;
+    mutable std::unordered_set<XSceneGraphNode*> m_VisibleNodeScratch; // reused per frame
 
     // Background storage.  Every scene has a background; default-constructed
     // GfxBackgroundDesc is opaque black with no cubemap.  pSkyboxCubemapA/B
@@ -85,6 +98,11 @@ public: // XScene methods
     }
 
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) final;
+
+    GEMMETHOD_(void, BuildBVH)() final
+    {
+        m_SceneBVH.Build(m_pRoot.Get());
+    }
 };
 
 }

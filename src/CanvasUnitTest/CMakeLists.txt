@@ -10,6 +10,7 @@ add_library(CanvasUnitTest SHARED
     CanvasTextTest.cpp
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
+    BVHTest.cpp
     pch.h
     targetver.h
 )
