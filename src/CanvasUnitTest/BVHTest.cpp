@@ -290,6 +290,283 @@ public:
         bvh.QueryFrustum(primitives.data(), f, visible);
         Assert::AreEqual(size_t(0), visible.size());
     }
+
+        // ============================================================
+        // QuerySphere / QueryCone / QueryAABB tests.
+        //
+        // Same contract as the frustum tests: BVH output must equal the
+        // brute-force-scan output for the same shape predicate (modulo
+        // sort).  The shape tests are exact at the per-primitive tier --
+        // the only conservatism is in the cone test, where AABBs are
+        // bounded by their outer sphere; the brute force comparator
+        // therefore must use the same test on the per-primitive AABB, not
+        // a tighter cone-AABB test, to remain an apples-to-apples
+        // reference.
+        // ============================================================
+
+        TEST_METHOD(QuerySphereBruteForceEquivalence)
+        {
+            std::mt19937 rng(0xB0BACAFE);
+            std::uniform_real_distribution<float> posDist(-30.0f, 30.0f);
+            std::uniform_real_distribution<float> halfDist(0.25f, 2.0f);
+            std::uniform_real_distribution<float> rDist(1.0f, 15.0f);
+
+            std::vector<BVHPrimitive> primitives;
+            primitives.reserve(300);
+            for (int i = 0; i < 300; ++i)
+            {
+                const float cx = posDist(rng), cy = posDist(rng), cz = posDist(rng);
+                const float hx = halfDist(rng), hy = halfDist(rng), hz = halfDist(rng);
+                primitives.push_back(MakeBoxPrimitive(
+                    FloatVector4(cx - hx, cy - hy, cz - hz, 0.0f),
+                    FloatVector4(cx + hx, cy + hy, cz + hz, 0.0f),
+                    uint32_t(i)));
+            }
+
+            BVH bvh;
+            bvh.Build(primitives.data(), primitives.size());
+
+            // Reference closest-point sphere-AABB test, kept local so the
+            // assertion is decoupled from the implementation under test.
+            auto ref = [](const FloatVector4& c, float r, const AABB& b) {
+                if (b.IsEmpty() || r <= 0.0f) return false;
+                float d2 = 0.0f;
+                for (int i = 0; i < 3; ++i)
+                {
+                    if (c.V[i] < b.Min.V[i]) { float d = b.Min.V[i] - c.V[i]; d2 += d*d; }
+                    else if (c.V[i] > b.Max.V[i]) { float d = c.V[i] - b.Max.V[i]; d2 += d*d; }
+                }
+                return d2 <= r * r;
+            };
+
+            for (int q = 0; q < 30; ++q)
+            {
+                FloatVector4 c(posDist(rng), posDist(rng), posDist(rng), 0.0f);
+                float r = rDist(rng);
+
+                std::vector<uint32_t> bvhOut;
+                bvh.QuerySphere(primitives.data(), c, r, bvhOut);
+
+                std::vector<uint32_t> bfOut;
+                for (uint32_t i = 0; i < primitives.size(); ++i)
+                    if (ref(c, r, primitives[i].WorldBounds))
+                        bfOut.push_back(i);
+
+                auto a = SortedCopy(bvhOut);
+                auto b = SortedCopy(bfOut);
+                if (a != b)
+                {
+                    std::wstringstream ss;
+                    ss << L"QuerySphere mismatch q=" << q
+                       << L" bvh=" << a.size() << L" bf=" << b.size();
+                    Assert::Fail(ss.str().c_str());
+                }
+            }
+        }
+
+        TEST_METHOD(QuerySphereEmptyAndDegenerate)
+        {
+            std::vector<BVHPrimitive> primitives;
+            for (uint32_t i = 0; i < 5; ++i)
+                primitives.push_back(MakePointPrimitive(float(i), 0, 0, i));
+            BVH bvh;
+            bvh.Build(primitives.data(), primitives.size());
+
+            // r <= 0 must short-circuit to no results.
+            std::vector<uint32_t> out;
+            bvh.QuerySphere(primitives.data(), FloatVector4(0,0,0,0), 0.0f, out);
+            Assert::AreEqual(size_t(0), out.size());
+            bvh.QuerySphere(primitives.data(), FloatVector4(0,0,0,0), -1.0f, out);
+            Assert::AreEqual(size_t(0), out.size());
+
+            // Sphere enclosing every primitive must return all 5.
+            out.clear();
+            bvh.QuerySphere(primitives.data(), FloatVector4(2.0f,0,0,0), 100.0f, out);
+            Assert::AreEqual(size_t(5), out.size());
+        }
+
+        TEST_METHOD(QueryAABBBruteForceEquivalence)
+        {
+            std::mt19937 rng(0xFEEDFACE);
+            std::uniform_real_distribution<float> posDist(-30.0f, 30.0f);
+            std::uniform_real_distribution<float> halfDist(0.25f, 2.0f);
+            std::uniform_real_distribution<float> boxHalf(1.0f, 12.0f);
+
+            std::vector<BVHPrimitive> primitives;
+            primitives.reserve(400);
+            for (int i = 0; i < 400; ++i)
+            {
+                const float cx = posDist(rng), cy = posDist(rng), cz = posDist(rng);
+                const float hx = halfDist(rng), hy = halfDist(rng), hz = halfDist(rng);
+                primitives.push_back(MakeBoxPrimitive(
+                    FloatVector4(cx - hx, cy - hy, cz - hz, 0.0f),
+                    FloatVector4(cx + hx, cy + hy, cz + hz, 0.0f),
+                    uint32_t(i)));
+            }
+
+            BVH bvh;
+            bvh.Build(primitives.data(), primitives.size());
+
+            auto refOverlap = [](const AABB& a, const AABB& b) {
+                if (a.IsEmpty() || b.IsEmpty()) return false;
+                return !(a.Max.V[0] < b.Min.V[0] || a.Min.V[0] > b.Max.V[0]
+                      || a.Max.V[1] < b.Min.V[1] || a.Min.V[1] > b.Max.V[1]
+                      || a.Max.V[2] < b.Min.V[2] || a.Min.V[2] > b.Max.V[2]);
+            };
+
+            for (int q = 0; q < 30; ++q)
+            {
+                const float cx = posDist(rng), cy = posDist(rng), cz = posDist(rng);
+                const float hx = boxHalf(rng), hy = boxHalf(rng), hz = boxHalf(rng);
+                AABB box(FloatVector4(cx-hx, cy-hy, cz-hz, 0),
+                         FloatVector4(cx+hx, cy+hy, cz+hz, 0));
+
+                std::vector<uint32_t> bvhOut;
+                bvh.QueryAABB(primitives.data(), box, bvhOut);
+
+                std::vector<uint32_t> bfOut;
+                for (uint32_t i = 0; i < primitives.size(); ++i)
+                    if (refOverlap(box, primitives[i].WorldBounds))
+                        bfOut.push_back(i);
+
+                auto a = SortedCopy(bvhOut);
+                auto b = SortedCopy(bfOut);
+                if (a != b)
+                {
+                    std::wstringstream ss;
+                    ss << L"QueryAABB mismatch q=" << q
+                       << L" bvh=" << a.size() << L" bf=" << b.size();
+                    Assert::Fail(ss.str().c_str());
+                }
+            }
+
+            // Empty query box must be a no-op.
+            std::vector<uint32_t> out;
+            bvh.QueryAABB(primitives.data(), AABB{}, out);
+            Assert::AreEqual(size_t(0), out.size());
+        }
+
+        TEST_METHOD(QueryConeAcceptsKnownInside)
+        {
+            // Hand-built case: cone along +Z, apex at origin, half-angle 30
+            // deg, range 20.  Primitives along the axis must be returned;
+            // a primitive well off-axis must NOT be returned.
+            std::vector<BVHPrimitive> primitives;
+            primitives.push_back(MakePointPrimitive(0, 0,  1, 0));  // on axis
+            primitives.push_back(MakePointPrimitive(0, 0, 10, 1));  // on axis
+            primitives.push_back(MakePointPrimitive(0, 0, 19, 2));  // near range end
+            primitives.push_back(MakePointPrimitive(0, 0, 25, 3));  // past range
+            primitives.push_back(MakePointPrimitive(0, 0, -1, 4));  // behind apex
+            primitives.push_back(MakePointPrimitive(15, 0, 5, 5));  // way off-axis
+            BVH bvh;
+            bvh.Build(primitives.data(), primitives.size());
+
+            Math::Cone cone = Math::Cone::FromAxisAndAngle(
+                FloatVector4(0,0,0,0),
+                FloatVector4(0,0,1,0),
+                20.0f,
+                float(3.14159 / 6)); // 30 deg
+
+            std::vector<uint32_t> out;
+            bvh.QueryCone(primitives.data(), cone, out);
+            auto sorted = SortedCopy(out);
+
+            // Must include the three on-axis points within range.
+            Assert::IsTrue(std::find(sorted.begin(), sorted.end(), 0u) != sorted.end());
+            Assert::IsTrue(std::find(sorted.begin(), sorted.end(), 1u) != sorted.end());
+            Assert::IsTrue(std::find(sorted.begin(), sorted.end(), 2u) != sorted.end());
+            // Must NOT include points past range or behind apex by more than a sphere-radius.
+            Assert::IsTrue(std::find(sorted.begin(), sorted.end(), 3u) == sorted.end());
+            Assert::IsTrue(std::find(sorted.begin(), sorted.end(), 4u) == sorted.end());
+            // Way off-axis must be rejected.
+            Assert::IsTrue(std::find(sorted.begin(), sorted.end(), 5u) == sorted.end());
+        }
+
+        TEST_METHOD(QueryConeBruteForceEquivalence)
+        {
+            // Conservatism contract: QueryCone uses the AABB outer sphere
+            // at the primitive tier, so the brute-force reference uses the
+            // SAME sphere-cone test on each per-primitive AABB.  Anything
+            // tighter would over-reject relative to the BVH.
+            std::mt19937 rng(0xDEADC0DE);
+            std::uniform_real_distribution<float> posDist(-25.0f, 25.0f);
+            std::uniform_real_distribution<float> halfDist(0.25f, 2.0f);
+            std::uniform_real_distribution<float> rangeDist(8.0f, 30.0f);
+            std::uniform_real_distribution<float> angleDist(0.15f, 1.0f); // ~9 to 57 deg
+            std::uniform_real_distribution<float> dirDist(-1.0f, 1.0f);
+
+            std::vector<BVHPrimitive> primitives;
+            primitives.reserve(250);
+            for (int i = 0; i < 250; ++i)
+            {
+                const float cx = posDist(rng), cy = posDist(rng), cz = posDist(rng);
+                const float hx = halfDist(rng), hy = halfDist(rng), hz = halfDist(rng);
+                primitives.push_back(MakeBoxPrimitive(
+                    FloatVector4(cx - hx, cy - hy, cz - hz, 0.0f),
+                    FloatVector4(cx + hx, cy + hy, cz + hz, 0.0f),
+                    uint32_t(i)));
+            }
+
+            BVH bvh;
+            bvh.Build(primitives.data(), primitives.size());
+
+            // Local sphere-cone reference matching the implementation under test.
+            auto refSphereCone = [](const FloatVector4& c, float r,
+                                    const FloatVector4& apex, const FloatVector4& dir,
+                                    float range, float tanT, float invCosT) {
+                const float vx = c.V[0] - apex.V[0];
+                const float vy = c.V[1] - apex.V[1];
+                const float vz = c.V[2] - apex.V[2];
+                const float distAxis = vx * dir.V[0] + vy * dir.V[1] + vz * dir.V[2];
+                if (distAxis > range + r) return false;
+                if (distAxis < -r) return false;
+                const float vLenSq = vx*vx + vy*vy + vz*vz;
+                const float perpSq = vLenSq - distAxis * distAxis;
+                const float perp = (perpSq > 0.0f) ? std::sqrt(perpSq) : 0.0f;
+                const float t = (distAxis > 0.0f) ? distAxis : 0.0f;
+                return perp <= t * tanT + r * invCosT;
+            };
+
+            auto refConeAABB = [&](const AABB& b, const Math::Cone& cone) {
+                if (b.IsEmpty()) return false;
+                const FloatVector4 center = b.GetCenter();
+                const FloatVector4 ext    = b.GetExtents();
+                const float radius = std::sqrt(ext.V[0]*ext.V[0] + ext.V[1]*ext.V[1] + ext.V[2]*ext.V[2]);
+                return refSphereCone(center, radius,
+                                     cone.Apex, cone.AxisDir,
+                                     cone.Range, cone.TanHalfAngle, cone.InvCosHalfAngle);
+            };
+
+            for (int q = 0; q < 30; ++q)
+            {
+                FloatVector4 apex(posDist(rng), posDist(rng), posDist(rng), 0.0f);
+                FloatVector4 dir(dirDist(rng), dirDist(rng), dirDist(rng), 0.0f);
+                // Avoid degenerate axis: FromAxisAndAngle defends with
+                // length>epsilon, but we want a real cone for the test.
+                if (std::abs(dir.V[0]) + std::abs(dir.V[1]) + std::abs(dir.V[2]) < 0.01f)
+                    dir = FloatVector4(0, 0, 1, 0);
+
+                Math::Cone cone = Math::Cone::FromAxisAndAngle(apex, dir, rangeDist(rng), angleDist(rng));
+
+                std::vector<uint32_t> bvhOut;
+                bvh.QueryCone(primitives.data(), cone, bvhOut);
+
+                std::vector<uint32_t> bfOut;
+                for (uint32_t i = 0; i < primitives.size(); ++i)
+                    if (refConeAABB(primitives[i].WorldBounds, cone))
+                        bfOut.push_back(i);
+
+                auto a = SortedCopy(bvhOut);
+                auto b = SortedCopy(bfOut);
+                if (a != b)
+                {
+                    std::wstringstream ss;
+                    ss << L"QueryCone mismatch q=" << q
+                       << L" bvh=" << a.size() << L" bf=" << b.size();
+                    Assert::Fail(ss.str().c_str());
+                }
+            }
+        }
 };
 
 } // namespace CanvasUnitTest

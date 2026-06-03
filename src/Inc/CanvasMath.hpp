@@ -1464,6 +1464,51 @@ namespace Canvas
                 }
                 return out;
             }
+
+            // Trivial axis-aligned overlap test against another AABB.
+            // Empty boxes never overlap anything (consistent with the
+            // empty-sentinel contract documented on IsEmpty).
+            bool Intersects(const AABB& other) const
+            {
+                if (IsEmpty() || other.IsEmpty())
+                    return false;
+                return !(Max.V[0] < other.Min.V[0] || Min.V[0] > other.Max.V[0]
+                      || Max.V[1] < other.Min.V[1] || Min.V[1] > other.Max.V[1]
+                      || Max.V[2] < other.Min.V[2] || Min.V[2] > other.Max.V[2]);
+            }
+        };
+
+        //------------------------------------------------------------------------------------------------
+        // Geometric sphere: center + radius.  Center.w is ignored.  A
+        // sphere with Radius <= 0 is the empty set and intersects
+        // nothing; defenders short-circuit on that.
+        struct Sphere
+        {
+            FloatVector4 Center;
+            float        Radius = 0.0f;
+
+            Sphere() = default;
+            Sphere(const FloatVector4& center, float radius)
+                : Center(center), Radius(radius) {}
+
+            // Exact closest-point sphere-vs-AABB overlap test: the
+            // sphere overlaps the box iff the squared distance from
+            // the center to its closest point on the box is <= r^2.
+            bool IntersectsAABB(const AABB& box) const
+            {
+                if (box.IsEmpty() || Radius <= 0.0f)
+                    return false;
+                float distSq = 0.0f;
+                for (int i = 0; i < 3; ++i)
+                {
+                    const float c  = Center.V[i];
+                    const float lo = box.Min.V[i];
+                    const float hi = box.Max.V[i];
+                    if      (c < lo) { const float d = lo - c; distSq += d * d; }
+                    else if (c > hi) { const float d = c - hi; distSq += d * d; }
+                }
+                return distSq <= Radius * Radius;
+            }
         };
 
         //------------------------------------------------------------------------------------------------
@@ -1574,6 +1619,114 @@ namespace Canvas
                         return false;
                 }
                 return true;
+            }
+        };
+
+        //------------------------------------------------------------------------------------------------
+        // Bounded cone (frustum-of-revolution truncated at a finite
+        // range).  The cone is the set of points p satisfying
+        //     0 <= (p - Apex) . AxisDir <= Range
+        //     angle((p - Apex), AxisDir) <= HalfAngle
+        // AxisDir MUST be unit-length; construct via FromAxisAndAngle
+        // to keep the cached trig consistent with the half-angle.
+        //
+        // Intended use: spot-light influence volumes, shadow-caster
+        // bounding cones, picking/selection volumes.  The trig fields
+        // are precomputed so repeated tests (e.g. one cone vs many
+        // AABBs in a BVH walk) avoid per-query transcendentals.
+        struct Cone
+        {
+            FloatVector4 Apex;
+            FloatVector4 AxisDir;        // unit
+            float Range           = 0.0f;
+            float CosHalfAngle    = 1.0f;
+            float SinHalfAngle    = 0.0f;
+            float TanHalfAngle    = 0.0f;
+            float InvCosHalfAngle = 1.0f; // 1 / CosHalfAngle, cached for hot path
+
+            // Convenience builder.  axisDir is normalized defensively so
+            // a non-unit input cannot silently bias intersection tests.
+            // halfAngle is clamped into (0, pi/2 - epsilon) so cos > 0
+            // and tan stays finite; a half-angle >= 90 deg is degenerate
+            // (cone becomes a half-space or worse) and is treated as a
+            // near-half-space where the range slab dominates.
+            static Cone FromAxisAndAngle(const FloatVector4& apex,
+                                         const FloatVector4& axisDir,
+                                         float range,
+                                         float halfAngleRadians)
+            {
+                const float lx = axisDir.V[0];
+                const float ly = axisDir.V[1];
+                const float lz = axisDir.V[2];
+                const float lenSq = lx * lx + ly * ly + lz * lz;
+                const float invLen = (lenSq > 1e-20f) ? 1.0f / std::sqrt(lenSq) : 0.0f;
+
+                constexpr float kMaxHalf = 1.5707f; // pi/2 - small epsilon
+                float ha = halfAngleRadians;
+                if (ha < 0.0f)     ha = 0.0f;
+                if (ha > kMaxHalf) ha = kMaxHalf;
+
+                Cone c;
+                c.Apex            = apex;
+                c.AxisDir         = FloatVector4(lx * invLen, ly * invLen, lz * invLen, 0.0f);
+                c.Range           = (range > 0.0f) ? range : 0.0f;
+                c.CosHalfAngle    = std::cos(ha);
+                c.SinHalfAngle    = std::sin(ha);
+                c.TanHalfAngle    = c.SinHalfAngle / c.CosHalfAngle;
+                c.InvCosHalfAngle = 1.0f / c.CosHalfAngle;
+                return c;
+            }
+
+            // Akenine-Möller sphere-vs-bounded-cone test.  Sphere
+            // overlaps the cone iff it overlaps any of: the cone's
+            // lateral surface, the range cap, or the apex point.
+            // Conservative at the boundary by a fraction of the sphere
+            // radius so borderline cases are admitted.
+            bool IntersectsSphere(const Sphere& sphere) const
+            {
+                if (Range <= 0.0f || sphere.Radius <= 0.0f)
+                    return false;
+
+                const float vx = sphere.Center.V[0] - Apex.V[0];
+                const float vy = sphere.Center.V[1] - Apex.V[1];
+                const float vz = sphere.Center.V[2] - Apex.V[2];
+                const float distAxis = vx * AxisDir.V[0]
+                                     + vy * AxisDir.V[1]
+                                     + vz * AxisDir.V[2];
+
+                // Range slab cull (sphere-padded on both ends).
+                if (distAxis > Range + sphere.Radius) return false;
+                if (distAxis < -sphere.Radius)        return false;
+
+                // Perpendicular distance from sphere center to cone axis.
+                const float vLenSq = vx * vx + vy * vy + vz * vz;
+                const float perpSq = vLenSq - distAxis * distAxis;
+                const float perp   = (perpSq > 0.0f) ? std::sqrt(perpSq) : 0.0f;
+
+                // Padded cone radius at axial distance t.  We clamp t at
+                // 0 (apex side): a sphere straddling the apex is admitted
+                // because it overlaps the apex point itself.
+                const float t = (distAxis > 0.0f) ? distAxis : 0.0f;
+                const float allowed = t * TanHalfAngle + sphere.Radius * InvCosHalfAngle;
+                return perp <= allowed;
+            }
+
+            // Conservative cone-vs-AABB test using the AABB's outer
+            // sphere as the bounding proxy.  Looseness is bounded by
+            // (AABB diagonal / 2); acceptable for BVH-tier culling
+            // where false positives are normal, false negatives forbidden.
+            // Callers that need a tight test should add a follow-up
+            // cone-vs-OBB or SAT refinement after this admits the AABB.
+            bool IntersectsAABB(const AABB& box) const
+            {
+                if (box.IsEmpty())
+                    return false;
+                const FloatVector4 center = box.GetCenter();
+                const FloatVector4 ext    = box.GetExtents();
+                const float radius = std::sqrt(ext.V[0] * ext.V[0]
+                                             + ext.V[1] * ext.V[1]
+                                             + ext.V[2] * ext.V[2]);
+                return IntersectsSphere(Sphere(center, radius));
             }
         };
 
