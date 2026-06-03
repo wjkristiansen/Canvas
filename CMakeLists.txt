@@ -137,6 +137,7 @@ add_subdirectory(src/CanvasFbx)
 add_subdirectory(src/CanvasConsole)
 add_subdirectory(src/CanvasModelViewer)
 add_subdirectory(src/CanvasTerrainViewer)
+add_subdirectory(src/CanvasLightGarden)
 add_subdirectory(src/CanvasUnitTest)
 # Allocators tests - conditionally include based on option
 if(ALLOCATORS_BUILD_TESTS)
