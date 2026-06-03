@@ -39,9 +39,6 @@ constexpr uint32_t kMaxPrimitivesPerLeaf = 4;    // small-leaf cutoff; below thi
                                                  // rarely beats keeping a leaf node
 constexpr float    kTraversalCost        = 1.0f; // SAH constants in arbitrary units; only
 constexpr float    kIntersectCost        = 1.0f; // ratios matter for split-vs-leaf decisions
-constexpr uint32_t kMaxTraversalStack    = 64;   // BVH depth ~1.44*log2(N); 64 covers any
-                                                 // plausible scene by a wide margin
-
 } // anonymous namespace
 
 void BVH::Build(const BVHPrimitive* primitives, size_t count)
@@ -245,50 +242,48 @@ void BVH::QueryFrustum(const BVHPrimitive* primitives,
                        const Math::Frustum& frustum,
                        std::vector<uint32_t>& outVisiblePrimitiveIndices) const
 {
-    if (m_Nodes.empty())
+    // Per-primitive retest is non-optional: a leaf node's union bounds
+    // can pass the frustum test even when none of its individual
+    // primitives do.  The shared Traverse helper applies `test` at both
+    // node and primitive tiers, so passing the same lambda is correct.
+    Traverse(primitives,
+             [&](const Math::AABB& b) { return frustum.IntersectsAABB(b); },
+             outVisiblePrimitiveIndices);
+}
+
+void BVH::QuerySphere(const BVHPrimitive* primitives,
+                      const Math::FloatVector4& center,
+                      float radius,
+                      std::vector<uint32_t>& outVisiblePrimitiveIndices) const
+{
+    if (radius <= 0.0f)
         return;
+    const Math::Sphere sphere(center, radius);
+    Traverse(primitives,
+             [&](const Math::AABB& b) { return sphere.IntersectsAABB(b); },
+             outVisiblePrimitiveIndices);
+}
 
-    // Fixed-size stack: BVH depth grows like ~1.44*log2(N), so 64 covers
-    // any plausible scene by a wide margin.  Overflow would corrupt
-    // traversal; if it ever becomes possible, add an assert here and
-    // grow the stack.
-    uint32_t stack[kMaxTraversalStack];
-    int top = 0;
-    stack[top++] = 0; // root
+void BVH::QueryCone(const BVHPrimitive* primitives,
+                    const Math::Cone& cone,
+                    std::vector<uint32_t>& outVisiblePrimitiveIndices) const
+{
+    if (cone.Range <= 0.0f)
+        return;
+    Traverse(primitives,
+             [&](const Math::AABB& b) { return cone.IntersectsAABB(b); },
+             outVisiblePrimitiveIndices);
+}
 
-    while (top > 0)
-    {
-        const uint32_t idx = stack[--top];
-        const BVHNode& n = m_Nodes[idx];
-
-        if (!frustum.IntersectsAABB(n.Bounds))
-            continue;
-
-        if (n.IsLeaf())
-        {
-            // Per-primitive retest: a leaf node's union bounds may pass
-            // the frustum test even when individual primitives do not.
-            // Skipping this step produces false-positive visibility.
-            const uint32_t first = n.LeftOrFirst;
-            const uint32_t end   = first + n.PrimitiveCount;
-            for (uint32_t i = first; i < end; ++i)
-            {
-                const uint32_t primIdx = m_PrimitiveIndices[i];
-                if (frustum.IntersectsAABB(primitives[primIdx].WorldBounds))
-                    outVisiblePrimitiveIndices.push_back(primIdx);
-            }
-        }
-        else
-        {
-            // Children are contiguous; push both.  No ordering preference
-            // for frustum cull (unlike ray queries which want front-to-
-            // back) -- the visibility set is unordered.
-            const uint32_t left  = n.LeftOrFirst;
-            const uint32_t right = left + 1;
-            stack[top++] = left;
-            stack[top++] = right;
-        }
-    }
+void BVH::QueryAABB(const BVHPrimitive* primitives,
+                    const Math::AABB& box,
+                    std::vector<uint32_t>& outVisiblePrimitiveIndices) const
+{
+    if (box.IsEmpty())
+        return;
+    Traverse(primitives,
+             [&](const Math::AABB& b) { return box.Intersects(b); },
+             outVisiblePrimitiveIndices);
 }
 
 } // namespace Canvas

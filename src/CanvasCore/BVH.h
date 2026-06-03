@@ -9,8 +9,10 @@
 // BVH's internal index array is permuted, so caller-held
 // BVHPrimitiveIds remain valid across rebuilds.
 //
-// Traversal: iterative depth-first with a fixed-size node stack.
-// Frustum culling is the only supported query today.
+// Traversal: iterative depth-first with a fixed-size node stack,
+// shared by every Query* via a templated shape predicate.  Supported
+// queries: frustum (view culling), sphere (point-light influence),
+// bounded cone (spot-light influence), and AABB (tile / world-box).
 //================================================================================================
 
 #pragma once
@@ -81,7 +83,7 @@ public:
     // (Re)build the BVH from the supplied primitive array.  The
     // primitive array is read-only here; only the BVH's internal index
     // permutation is modified.  Empty input produces an empty BVH;
-    // calling QueryFrustum on an empty BVH yields no results.
+    // calling any Query* on an empty BVH yields no results.
     // Primitives whose WorldBounds.IsEmpty() are silently skipped to
     // honor the AABB sentinel contract documented on AABB::IsEmpty().
     CANVAS_API void Build(const BVHPrimitive* primitives, size_t count);
@@ -104,6 +106,35 @@ public:
                                  const Math::Frustum& frustum,
                                  std::vector<uint32_t>& outVisiblePrimitiveIndices) const;
 
+    // Iterative sphere overlap query.  Exact at the per-primitive
+    // tier: a primitive is returned iff its WorldBounds is within
+    // `radius` of `center` (closest-point AABB test).  Same output /
+    // aliasing contract as QueryFrustum.  Intended for point-light
+    // influence culling.
+    //
+    // radius <= 0 yields no results.
+    CANVAS_API void QuerySphere(const BVHPrimitive* primitives,
+                                const Math::FloatVector4& center,
+                                float radius,
+                                std::vector<uint32_t>& outVisiblePrimitiveIndices) const;
+
+    // Iterative bounded-cone overlap query.  Conservative: each AABB
+    // (node or primitive) is bounded by its outer sphere and tested
+    // against the cone via Math::Cone::IntersectsAABB.  False positives
+    // are possible at the BVH culling tier but never false negatives.
+    // Intended for spot-light influence culling.
+    CANVAS_API void QueryCone(const BVHPrimitive* primitives,
+                              const Math::Cone& cone,
+                              std::vector<uint32_t>& outVisiblePrimitiveIndices) const;
+
+    // Iterative AABB overlap query.  Exact axis-aligned overlap test
+    // at both the node and primitive tier (no looseness introduced).
+    // Empty query box yields no results.  Intended for tile-frustum
+    // pre-binning and any caller that already has a world-space box.
+    CANVAS_API void QueryAABB(const BVHPrimitive* primitives,
+                              const Math::AABB& box,
+                              std::vector<uint32_t>& outVisiblePrimitiveIndices) const;
+
     bool Empty() const { return m_Nodes.empty(); }
     size_t NodeCount() const { return m_Nodes.size(); }
     size_t PrimitiveCount() const { return m_PrimitiveIndices.size(); }
@@ -111,6 +142,54 @@ public:
     const std::vector<uint32_t>& GetPrimitiveIndices() const { return m_PrimitiveIndices; }
 
 private:
+    // BVH depth grows like ~1.44*log2(N); 64 covers any plausible scene
+    // by a wide margin.
+    static constexpr uint32_t kMaxTraversalStack = 64;
+
+    // Shared iterative traversal.  `test(aabb) -> bool` is invoked both
+    // for node bounds (to prune subtrees) and for per-primitive bounds
+    // (to filter false positives within accepted leaves).  Inline so
+    // each query specializes the test at the call site without an
+    // indirect call.
+    template <typename ShapeTest>
+    void Traverse(const BVHPrimitive* primitives,
+                  ShapeTest&& test,
+                  std::vector<uint32_t>& out) const
+    {
+        if (m_Nodes.empty())
+            return;
+
+        uint32_t stack[kMaxTraversalStack];
+        int top = 0;
+        stack[top++] = 0; // root
+
+        while (top > 0)
+        {
+            const uint32_t idx = stack[--top];
+            const BVHNode& n = m_Nodes[idx];
+
+            if (!test(n.Bounds))
+                continue;
+
+            if (n.IsLeaf())
+            {
+                const uint32_t first = n.LeftOrFirst;
+                const uint32_t end   = first + n.PrimitiveCount;
+                for (uint32_t i = first; i < end; ++i)
+                {
+                    const uint32_t primIdx = m_PrimitiveIndices[i];
+                    if (test(primitives[primIdx].WorldBounds))
+                        out.push_back(primIdx);
+                }
+            }
+            else
+            {
+                stack[top++] = n.LeftOrFirst;
+                stack[top++] = n.LeftOrFirst + 1;
+            }
+        }
+    }
+
     // Recursive SAH binned split.  Operates on m_PrimitiveIndices in
     // place over [first, first+count); produces m_Nodes[nodeIndex] and
     // (when split) two child nodes appended at the back of m_Nodes.
