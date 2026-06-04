@@ -1450,7 +1450,8 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // Composite root signature:
-    //   Slot 0: Root CBV (b0) -- per-frame constants (camera, sky params, light count)
+    //   Slot 0: Root CBV (b0) -- per-frame constants (camera, sky params, light count,
+    //           tile grid dimensions).
     //   Slot 1: Descriptor table with SRV[8] at t0-t7:
     //             t0-t2 = G-buffer (normals, diffuse, world pos) [Texture2D]
     //             t3-t4 = optional skybox cubes A / B            [TextureCube]
@@ -1465,6 +1466,13 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     //           per-frame light table.  Sized to PerFrame.LightCount;
     //           always bound (a single dummy element when no lights
     //           are visible so the SRV slot is never null).
+    //   Slot 3: Root SRV (t9) -- StructuredBuffer<uint> per-tile light
+    //           count for Forward+ tile binning.  One uint per tile in
+    //           row-major order (tile (x, y) at index y * TileCountX + x).
+    //   Slot 4: Root SRV (t10) -- StructuredBuffer<uint> per-tile
+    //           packed light-index lists, MAX_LIGHTS_PER_TILE uints per
+    //           tile (fixed stride).  Indexed by tile-base + i, with
+    //           i < TileLightCounts[tile].
     //   Static sampler s0: point/clamp  (exact G-buffer texel fetch)
     //   Static sampler s1: linear/wrap  (cube sampling for skybox + stars)
     //   Static sampler s2: linear/clamp (moon billboard quad)
@@ -1508,7 +1516,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 8, 0, 0,  // SRV[8] at t0-t7, space0
                   D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 
-    std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(3);
+    std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(5);
     compositeRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                     D3D12_SHADER_VISIBILITY_PIXEL);
     compositeRootParams[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -1517,6 +1525,12 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     // supplies the element shape.  DATA_VOLATILE matches the upload
     // ring's per-frame lifecycle (contents change every submit).
     compositeRootParams[2].InitAsShaderResourceView(8, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
+                                                    D3D12_SHADER_VISIBILITY_PIXEL);
+    // Per-tile light counts (t9) and packed indices (t10) for the
+    // Forward+ binner.  Both rebuilt and re-uploaded each frame.
+    compositeRootParams[3].InitAsShaderResourceView(9, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
+                                                    D3D12_SHADER_VISIBILITY_PIXEL);
+    compositeRootParams[4].InitAsShaderResourceView(10, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                     D3D12_SHADER_VISIBILITY_PIXEL);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC compositeRootSigDesc(
@@ -2501,7 +2515,7 @@ Canvas::Math::FloatMatrix4x4 CRenderQueue12::BuildDirectionalShadowMatrixFromBou
 //------------------------------------------------------------------------------------------------
 Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
 {
-    if (!pLight || m_LightCount >= MAX_LIGHTS_PER_REGION)
+    if (!pLight)
         return Gem::Result::Success;
 
     // Skip disabled lights
@@ -2510,9 +2524,9 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
 
     // Per-frame visibility filter (installed by Scene from the
     // LightBVH frustum cull).  When active, only lights present in
-    // the allowlist consume a slot; the rest are silently dropped
-    // just like the cap above.  Inactive filter -> every enabled
-    // light passes through in submission order.
+    // the allowlist consume a slot; the rest are silently dropped.
+    // Inactive filter -> every enabled light passes through in
+    // submission order.
     if (m_HasVisibleLightFilter && m_VisibleLightFilter.find(pLight) == m_VisibleLightFilter.end())
         return Gem::Result::Success;
 
@@ -2646,6 +2660,155 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
 }
 
 //------------------------------------------------------------------------------------------------
+void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
+                                         uint32_t framebufferHeight,
+                                         const Canvas::Math::FloatMatrix4x4& viewProj)
+{
+    using Canvas::Math::AABB;
+    using Canvas::Math::Frustum;
+    using Canvas::Math::FloatVector4;
+    using Canvas::Math::FloatMatrix4x4;
+
+    if (framebufferWidth == 0 || framebufferHeight == 0)
+    {
+        m_LightTileCountX = 0;
+        m_LightTileCountY = 0;
+        m_TileLightCounts.clear();
+        m_TileLightIndices.clear();
+        return;
+    }
+
+    constexpr uint32_t kTileSize = LIGHT_TILE_SIZE_PIXELS;
+    constexpr uint32_t kPerTile  = MAX_LIGHTS_PER_TILE;
+    m_LightTileCountX = (framebufferWidth  + kTileSize - 1) / kTileSize;
+    m_LightTileCountY = (framebufferHeight + kTileSize - 1) / kTileSize;
+    const uint32_t totalTiles = m_LightTileCountX * m_LightTileCountY;
+
+    m_TileLightCounts.assign(totalTiles, 0);
+    m_TileLightIndices.assign(static_cast<size_t>(totalTiles) * kPerTile, 0);
+
+    if (m_LightCount == 0)
+        return;
+
+    // Split the per-frame light table into:
+    //   alwaysIndices   -- ambient / directional / area (no spatial
+    //                      bound; copied into every tile),
+    //   spatialIndices  -- point / spot (gated by per-tile frustum).
+    // Influence AABBs for spatial lights are derived from HlslLight
+    // fields (DirectionOrPosition.xyz as the apex/center,
+    // AttenuationAndRange.w as the cutoff distance, which is already
+    // the precomputed range CPU-side).  For spot lights this uses the
+    // bounding sphere of the cone -- conservative at the tile tier,
+    // tightened later if profiling shows it matters.
+    std::vector<uint32_t> alwaysIndices;
+    std::vector<uint32_t> spatialIndices;
+    std::vector<AABB>     spatialBoxes;
+    alwaysIndices.reserve(m_LightCount);
+    spatialIndices.reserve(m_LightCount);
+    spatialBoxes.reserve(m_LightCount);
+
+    for (uint32_t i = 0; i < m_LightCount; ++i)
+    {
+        const HlslTypes::HlslLight& L = m_Lights[i];
+        const bool spatial =
+            (L.Type == LIGHT_POINT) || (L.Type == LIGHT_SPOT);
+
+        if (!spatial)
+        {
+            alwaysIndices.push_back(i);
+            continue;
+        }
+
+        const float r = L.AttenuationAndRange.w;
+        if (r <= 0.0f)
+            continue; // zero-cutoff light -- contributes nothing anywhere
+
+        const float cx = L.DirectionOrPosition.x;
+        const float cy = L.DirectionOrPosition.y;
+        const float cz = L.DirectionOrPosition.z;
+        spatialIndices.push_back(i);
+        spatialBoxes.emplace_back(
+            FloatVector4(cx - r, cy - r, cz - r, 0.0f),
+            FloatVector4(cx + r, cy + r, cz + r, 0.0f));
+    }
+
+    // Seed every tile with the always-on lights (capped at kPerTile;
+    // in practice a scene has at most a handful, so the cap is never
+    // a real constraint here -- the loop just defends against
+    // pathological inputs).
+    const uint32_t alwaysToCopy = std::min<uint32_t>(
+        static_cast<uint32_t>(alwaysIndices.size()), kPerTile);
+    for (uint32_t t = 0; t < totalTiles; ++t)
+    {
+        uint32_t* dst = &m_TileLightIndices[static_cast<size_t>(t) * kPerTile];
+        for (uint32_t a = 0; a < alwaysToCopy; ++a)
+            dst[a] = alwaysIndices[a];
+        m_TileLightCounts[t] = alwaysToCopy;
+    }
+
+    if (spatialIndices.empty())
+        return;
+
+    // Per-tile binning.  Build a sub-frustum from the camera's view-
+    // projection scaled to each tile's NDC sub-rect and test each
+    // spatial light's influence AABB against it.  The sub-rect remap
+    // matrix R rescales clip-space xy from [xMin,xMax] x [yMin,yMax]
+    // to [-1,+1]^2 so the existing Frustum::FromViewProjection plane
+    // extraction works unchanged.  Reverse-Z near/far are inherited
+    // from the camera projection.
+    const float fbW = static_cast<float>(framebufferWidth);
+    const float fbH = static_cast<float>(framebufferHeight);
+
+    for (uint32_t ty = 0; ty < m_LightTileCountY; ++ty)
+    {
+        for (uint32_t tx = 0; tx < m_LightTileCountX; ++tx)
+        {
+            const float xPxMin = static_cast<float>(tx * kTileSize);
+            const float xPxMax = std::min<float>(static_cast<float>((tx + 1) * kTileSize), fbW);
+            const float yPxMin = static_cast<float>(ty * kTileSize);
+            const float yPxMax = std::min<float>(static_cast<float>((ty + 1) * kTileSize), fbH);
+
+            // Screen-pixel origin is top-left; NDC y is bottom-up, so
+            // flip the y mapping.
+            const float xNdcMin = (xPxMin / fbW) * 2.0f - 1.0f;
+            const float xNdcMax = (xPxMax / fbW) * 2.0f - 1.0f;
+            const float yNdcMax = 1.0f - (yPxMin / fbH) * 2.0f;
+            const float yNdcMin = 1.0f - (yPxMax / fbH) * 2.0f;
+
+            const float cx = (xNdcMin + xNdcMax) * 0.5f;
+            const float cy = (yNdcMin + yNdcMax) * 0.5f;
+            const float sx = (xNdcMax - xNdcMin);
+            const float sy = (yNdcMax - yNdcMin);
+            // Guard against zero-size tiles at the framebuffer edge.
+            if (sx <= 0.0f || sy <= 0.0f)
+                continue;
+
+            FloatMatrix4x4 R = Canvas::Math::IdentityMatrix<float, 4, 4>();
+            R[0][0] =  2.0f / sx;
+            R[1][1] =  2.0f / sy;
+            R[3][0] = -2.0f * cx / sx;
+            R[3][1] = -2.0f * cy / sy;
+
+            const FloatMatrix4x4 tileVP = viewProj * R;
+            const Frustum tileFrustum = Frustum::FromViewProjection(tileVP, /*reverseZ*/ true);
+
+            const uint32_t tileIdx = ty * m_LightTileCountX + tx;
+            uint32_t*      dst     = &m_TileLightIndices[static_cast<size_t>(tileIdx) * kPerTile];
+            uint32_t       cnt     = m_TileLightCounts[tileIdx];
+
+            for (size_t si = 0; si < spatialIndices.size(); ++si)
+            {
+                if (cnt >= kPerTile)
+                    break;
+                if (tileFrustum.IntersectsAABB(spatialBoxes[si]))
+                    dst[cnt++] = spatialIndices[si];
+            }
+            m_TileLightCounts[tileIdx] = cnt;
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 void CRenderQueue12::ResolveShadowCasters()
 {
     // No geometry bounds -> no shadow region this frame.  Casters
@@ -2750,6 +2913,23 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         frameConstants.LightCount = m_LightCount;
         frameConstants.LightCullThreshold = kDefaultLightCullThreshold;
 
+        // Forward+ tile binning.  Must run after SubmitLight has
+        // finished populating m_Lights (so spatial lights have valid
+        // positions) and after ResolveShadowCasters has written its
+        // bookkeeping back into m_Lights[].  The resulting tile grid
+        // is uploaded below alongside the per-frame light table.
+        {
+            Canvas::Math::FloatMatrix4x4 vp{};
+            if (m_pActiveCamera)
+                vp = m_pActiveCamera->GetViewProjectionMatrix();
+            const uint32_t fbW = static_cast<uint32_t>(m_BackBufferViewport.Width);
+            const uint32_t fbH = static_cast<uint32_t>(m_BackBufferViewport.Height);
+            BuildTileLightLists(fbW, fbH, vp);
+        }
+        frameConstants.LightTileCountX     = m_LightTileCountX;
+        frameConstants.LightTileCountY     = m_LightTileCountY;
+        frameConstants.LightTileSizePixels = LIGHT_TILE_SIZE_PIXELS;
+
         // Scene background -> per-frame constants.  The cube SRVs themselves
         // are bound below as part of the composite descriptor table.
         {
@@ -2816,6 +2996,38 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         else
             memset(lightsHw.pMapped, 0, sizeof(HlslTypes::HlslLight));
         const D3D12_GPU_VIRTUAL_ADDRESS lightsSRVAddress = lightsHw.GpuAddress;
+
+        // Per-tile light counts and packed indices for Forward+ tile
+        // binning -- both rebuilt each frame by BuildTileLightLists
+        // above.  Always allocate at least one element each so the
+        // root SRVs are never bound to a null GPU address (the shader
+        // gates reads by LightTileCountX/Y, so unused tail entries
+        // are never sampled).
+        const uint32_t totalTiles = m_LightTileCountX * m_LightTileCountY;
+        const uint32_t tileCountElems = (totalTiles > 0) ? totalTiles : 1u;
+        const uint64_t tileCountsBytes =
+            static_cast<uint64_t>(tileCountElems) * sizeof(uint32_t);
+        HostWriteAllocation tileCountsHw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(tileCountsBytes, tileCountsHw));
+        if (totalTiles > 0)
+            memcpy(tileCountsHw.pMapped, m_TileLightCounts.data(),
+                   static_cast<size_t>(totalTiles) * sizeof(uint32_t));
+        else
+            memset(tileCountsHw.pMapped, 0, sizeof(uint32_t));
+        const D3D12_GPU_VIRTUAL_ADDRESS tileCountsSRVAddress = tileCountsHw.GpuAddress;
+
+        const uint32_t tileIndicesElems =
+            (totalTiles > 0) ? (totalTiles * MAX_LIGHTS_PER_TILE) : 1u;
+        const uint64_t tileIndicesBytes =
+            static_cast<uint64_t>(tileIndicesElems) * sizeof(uint32_t);
+        HostWriteAllocation tileIndicesHw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(tileIndicesBytes, tileIndicesHw));
+        if (totalTiles > 0)
+            memcpy(tileIndicesHw.pMapped, m_TileLightIndices.data(),
+                   static_cast<size_t>(totalTiles) * MAX_LIGHTS_PER_TILE * sizeof(uint32_t));
+        else
+            memset(tileIndicesHw.pMapped, 0, sizeof(uint32_t));
+        const D3D12_GPU_VIRTUAL_ADDRESS tileIndicesSRVAddress = tileIndicesHw.GpuAddress;
 
         // Upload per-frame constants and bind to root CBV (slot 0, register b0)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
@@ -3397,7 +3609,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
                 D3D12_BARRIER_ACCESS_RENDER_TARGET);
-            compositeTask.RecordFunc = [frameCBVAddress, lightsSRVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
+            compositeTask.RecordFunc = [frameCBVAddress, lightsSRVAddress, tileCountsSRVAddress, tileIndicesSRVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
             {
                 // No clear: every back-buffer pixel is written by the composite PS
                 // (background fills empty G-buffer pixels).
@@ -3411,6 +3623,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
                 pCL->SetGraphicsRootDescriptorTable(1, baseGpuHandle);
                 pCL->SetGraphicsRootShaderResourceView(2, lightsSRVAddress);
+                pCL->SetGraphicsRootShaderResourceView(3, tileCountsSRVAddress);
+                pCL->SetGraphicsRootShaderResourceView(4, tileIndicesSRVAddress);
                 pCL->DrawInstanced(3, 1, 0, 0);
             };
             m_GpuTaskGraph.InsertTask(compositeTask);
@@ -3483,6 +3697,10 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         m_HasVisibleLightFilter = false;
         m_Lights.clear();
         m_LightCount = 0;
+        m_TileLightCounts.clear();
+        m_TileLightIndices.clear();
+        m_LightTileCountX = 0;
+        m_LightTileCountY = 0;
         m_pCurrentSwapChain = nullptr;
         m_pActiveCamera = nullptr;
         return e.Result();
@@ -3492,6 +3710,10 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     m_pActiveCamera = nullptr;
     m_LightCount = 0;
     m_Lights.clear();
+    m_TileLightCounts.clear();
+    m_TileLightIndices.clear();
+    m_LightTileCountX = 0;
+    m_LightTileCountY = 0;
     m_NextShadowTileIndex = 0;
     m_PendingShadowCasters.clear();
     m_FrameWorldBounds.Reset();

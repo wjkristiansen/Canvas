@@ -377,9 +377,11 @@ All PSOs are created lazily on first use and cached for the lifetime of the rend
 - 5 render targets matching the G-buffer formats. D32_Float depth with reverse-Z.
 
 **Composition pass**:
-- Slot 0: root CBV at b0 for per-frame constants (camera, light count, shadow atlas parameters, sky/background parameters).
+- Slot 0: root CBV at b0 for per-frame constants (camera, light count, tile-grid dimensions, shadow atlas parameters, sky/background parameters).
 - Slot 1: descriptor table with SRV[8] at t0-t7: G-buffer (normals t0, diffuse t1, world position t2), optional skybox cube A (t3), optional skybox cube B (t4), optional stars cube (t5), optional moon billboard texture (t6), optional shadow atlas (t7). Unbound slots hold null SRVs; shader flags select active branches.
 - Slot 2: root SRV at t8 for `StructuredBuffer<HlslLight>` (the per-frame light table, sized to `PerFrame.LightCount`). Always bound; a one-element dummy is uploaded when no lights are visible so the slot is never null.
+- Slot 3: root SRV at t9 for `StructuredBuffer<uint>` — per-tile active light count (one uint per screen tile in row-major order).
+- Slot 4: root SRV at t10 for `StructuredBuffer<uint>` — packed per-tile light indices, `MAX_LIGHTS_PER_TILE` uints per tile (fixed stride). Indexed as `tile * MAX_LIGHTS_PER_TILE + i` for `i < TileLightCounts[tile]`. Both tile buffers are rebuilt by `BuildTileLightLists` each frame and uploaded into the ring; a one-element dummy is bound when the framebuffer has no tiles.
 - Static samplers: s0 = point/clamp (G-buffer texel fetch), s1 = linear/wrap (cubemap / stars sampling), s2 = linear/clamp (moon billboard), s3 = hardware PCF comparison sampler (GREATER_EQUAL reverse-Z, OPAQUE_WHITE border for shadow atlas).
 - Single render target at back-buffer format. No depth.
 
@@ -445,7 +447,9 @@ The displaced shadow PSO shares the VS and HS bytecode (ensuring shadow tessella
 
 ### Light Submission
 
-Lights are accumulated during scene graph traversal (gated by the LightBVH-driven visibility filter that `XScene::SubmitRenderables` installs via `XGfxRenderQueue::SetVisibleLights`). Each light's attenuation and cull distance are pre-computed on the CPU and packed into an `HlslLight` struct. The packed lights are uploaded each frame as a `StructuredBuffer<HlslLight>` (bound at root slot 2 / shader register `t8`), sized to the actual visible-light count up to a defensive engine cap of `MAX_LIGHTS_PER_REGION` (1024). The composite shader iterates the buffer in a single loop bounded by `PerFrame.LightCount`.
+Lights are accumulated during scene graph traversal (gated by the LightBVH-driven visibility filter that `XScene::SubmitRenderables` installs via `XGfxRenderQueue::SetVisibleLights`). Each light's attenuation and cull distance are pre-computed on the CPU and packed into an `HlslLight` struct. The packed lights are uploaded each frame as a `StructuredBuffer<HlslLight>` (bound at root slot 2 / shader register `t8`), sized to the actual visible-light count — no fixed cap; the count scales with scene complexity the same way mesh-instance count does.
+
+After SubmitLight aggregation and `ResolveShadowCasters`, `BuildTileLightLists` divides the framebuffer into `LIGHT_TILE_SIZE_PIXELS` × `LIGHT_TILE_SIZE_PIXELS` (32×32) screen tiles, constructs each tile's sub-frustum by remapping the camera view-projection to the tile's NDC sub-rect, and bins each spatial light's influence AABB against it. Always-on lights (ambient / directional) are pre-baked into every tile's list. The resulting per-tile counts and packed indices are uploaded as two `StructuredBuffer<uint>`s (root slots 3 / 4 at `t9` / `t10`) capped at `MAX_LIGHTS_PER_TILE` (32) per tile. The composite shader picks the owning tile from `SV_Position`, reads its count, and iterates only those light indices — turning the per-pixel cost from O(visible lights) into O(tile lights).
 
 For directional lights with `LightFlags::CastsShadows`, `SubmitLight` additionally:
 
@@ -635,7 +639,7 @@ Shaders are compiled offline from HLSL source to CSO files using DXC. CMake cust
 
 `HlslTypes.h` is included by both C++ and HLSL code. It defines the constant buffer layouts that cross the CPU/GPU boundary:
 
-**HlslPerFrameConstants** (register b0): view-projection matrix, camera world position and basis vectors (for fullscreen view-ray reconstruction), light count, exposure multiplier, shadow atlas global parameters (`ShadowAtlasSize`, `ShadowPcfTexelStep`), and scene background parameters (solid color, skybox cubemap flags and blend factor, orientation quaternion, intensity, stars parameters, procedural sun disc parameters, moon billboard parameters). The per-frame light table itself is **not** in this CB; it lives in a separate `StructuredBuffer<HlslLight>` bound at `t8` and sized to `LightCount`.
+**HlslPerFrameConstants** (register b0): view-projection matrix, camera world position and basis vectors (for fullscreen view-ray reconstruction), light count, exposure multiplier, shadow atlas global parameters (`ShadowAtlasSize`, `ShadowPcfTexelStep`), Forward+ tile-grid parameters (`LightTileCountX`, `LightTileCountY`, `LightTileSizePixels`), and scene background parameters (solid color, skybox cubemap flags and blend factor, orientation quaternion, intensity, stars parameters, procedural sun disc parameters, moon billboard parameters). The per-frame light table itself is **not** in this CB; it lives in a separate `StructuredBuffer<HlslLight>` bound at `t8` and sized to `LightCount`. The tile-binning indirection lives in two more `StructuredBuffer<uint>`s at `t9` / `t10`.
 
 **HlslPerObjectConstants** (register b1): world transform, inverse-transpose for normals, base color / emissive / roughness-metallic-AO factors, and material flag bits.
 
