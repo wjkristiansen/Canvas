@@ -44,6 +44,18 @@ ConstantBuffer<HlslPerFrameConstants> PerFrame : register(b0);
 // composite stays at 8).
 StructuredBuffer<HlslLight> Lights : register(t8);
 
+// Forward+ tile data.  Together with PerFrame.LightTileCountX /
+// LightTileSizePixels these let a pixel resolve the (up to
+// MAX_LIGHTS_PER_TILE) light indices that actually influence its
+// screen tile.  TileLightCounts[t] holds the active index count for
+// tile t; TileLightIndices[t * MAX_LIGHTS_PER_TILE + i] is the i-th
+// index (into the Lights buffer above) for that tile.  Always-on
+// lights (ambient / directional) are pre-baked into every tile's list
+// by the engine, so the shader's per-tile loop is the sole light
+// iteration -- no separate "global" pass.
+StructuredBuffer<uint> TileLightCounts  : register(t9);
+StructuredBuffer<uint> TileLightIndices : register(t10);
+
 static const float PI = 3.14159265358979323846;
 static const float INV_PI = 1.0 / PI;
 static const float INV_FOUR_PI = 1.0 / (4.0 * PI);
@@ -305,9 +317,24 @@ float4 PSComposite(FSInput input) : SV_Target0
     // Accumulate lighting from all active lights
     float3 totalLight = float3(0.0, 0.0, 0.0);
 
-    for (uint i = 0; i < PerFrame.LightCount; ++i)
+    // Forward+: find the screen tile owning this pixel, read its
+    // light-index count, and iterate only the lights the engine binned
+    // into this tile.  Always-on lights (ambient / directional) are
+    // already present in every tile's list, so this single loop covers
+    // them too.  The clamp guards pixels that fall exactly on the
+    // right/bottom edge of the framebuffer (SV_Position.xy is the
+    // pixel center, so within-bounds pixels never trip it, but
+    // out-of-range framebuffer sizes or partial tiles might).
+    uint2 tileXY = uint2(input.Position.xy) / PerFrame.LightTileSizePixels;
+    tileXY.x = min(tileXY.x, PerFrame.LightTileCountX - 1);
+    tileXY.y = min(tileXY.y, PerFrame.LightTileCountY - 1);
+    uint tileIdx  = tileXY.y * PerFrame.LightTileCountX + tileXY.x;
+    uint tileBase = tileIdx * MAX_LIGHTS_PER_TILE;
+    uint tileCount = TileLightCounts[tileIdx];
+
+    for (uint i = 0; i < tileCount; ++i)
     {
-        HlslLight light = Lights[i];
+        HlslLight light = Lights[TileLightIndices[tileBase + i]];
 
         if (light.Type == LIGHT_DIRECTIONAL)
         {

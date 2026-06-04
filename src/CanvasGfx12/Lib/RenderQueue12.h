@@ -617,6 +617,19 @@ public:
     std::unordered_set<Canvas::XLight*> m_VisibleLightFilter;
     bool                                m_HasVisibleLightFilter = false;
 
+    // Forward+ tile binning state.  Built each frame by
+    // BuildTileLightLists() after SubmitLight has finished
+    // accumulating m_Lights; uploaded as two structured buffers
+    // (counts at t9, indices at t10) consumed by the composite PS.
+    // Sizes scale with framebuffer dimensions: m_LightTileCountX/Y =
+    // ceil(W/H over LIGHT_TILE_SIZE_PIXELS), m_TileLightCounts has
+    // one uint per tile, m_TileLightIndices has MAX_LIGHTS_PER_TILE
+    // uints per tile (fixed-stride layout).
+    std::vector<uint32_t> m_TileLightCounts;
+    std::vector<uint32_t> m_TileLightIndices;
+    uint32_t              m_LightTileCountX = 0;
+    uint32_t              m_LightTileCountY = 0;
+
     // Shadow-caster intents recorded by SubmitLight (one per enabled
     // directional light with LightFlags::CastsShadows).  Resolved at
     // EndFrame, after scene traversal is complete and m_FrameWorldBounds
@@ -936,6 +949,18 @@ private:
     // from EndFrame after scene traversal has completed and before
     // per-frame constants are uploaded.
     void ResolveShadowCasters();
+
+    // Build the per-frame Forward+ tile light-index lists from the
+    // accumulated m_Lights and the current framebuffer dimensions.
+    // Constructs an off-center sub-frustum per screen tile (computed
+    // from the active camera's view-projection), intersects each
+    // light's influence AABB against it, and packs the resulting
+    // indices into m_TileLightCounts / m_TileLightIndices.  Always-on
+    // lights (ambient / directional) are pre-baked into every tile's
+    // list so the composite PS only runs one loop per pixel.
+    void BuildTileLightLists(uint32_t framebufferWidth,
+                             uint32_t framebufferHeight,
+                             const Canvas::Math::FloatMatrix4x4& viewProj);
 
     // Build a texel-snapped world-to-shadow-clip matrix for a directional
     // light, fitting the ortho box to a world-space scene AABB.  Projects

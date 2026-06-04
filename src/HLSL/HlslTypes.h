@@ -26,7 +26,12 @@ typedef uint32_t uint;
 #define LIGHT_SPOT        3
 #define LIGHT_AREA        4
 
-#define MAX_LIGHTS_PER_REGION 1024
+// Forward+ tile parameters.  The composite shader divides
+// SV_Position.xy by LIGHT_TILE_SIZE_PIXELS to find the screen tile
+// owning a pixel; that tile's row in TileLightIndices lists up to
+// MAX_LIGHTS_PER_TILE indices into the per-frame Lights buffer.
+#define LIGHT_TILE_SIZE_PIXELS 32
+#define MAX_LIGHTS_PER_TILE     32
 
 #ifdef __cplusplus
 namespace HlslTypes {
@@ -131,6 +136,16 @@ struct ALIGN16 HlslPerFrameConstants
     float  _MoonPad0;
     float  _MoonPad1;
     float  _MoonPad2;
+
+    // Forward+ tile-binning parameters.  LightTileCountX/Y give the
+    // grid dimensions for the current framebuffer (ceil(W / tileSize),
+    // ceil(H / tileSize)); LightTileSizePixels is the square tile edge
+    // length and matches LIGHT_TILE_SIZE_PIXELS.  The shader uses these
+    // to index TileLightCounts (t9) and TileLightIndices (t10).
+    uint   LightTileCountX;
+    uint   LightTileCountY;
+    uint   LightTileSizePixels;
+    uint   _LightTilePad0;
 
     // Per-frame lights live in a separate StructuredBuffer<HlslLight>
     // bound at t8, sized to LightCount.  Kept out of this CB so the
