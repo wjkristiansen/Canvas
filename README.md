@@ -245,11 +245,17 @@ The `CanvasUnitTest` target uses GoogleTest and covers:
 - **CanvasTextTest**: font loading and text layout
 - **D3D12ResourceUtilsTest**: graphics-layer resource helpers
 - **GpuTaskGraphTest**: barrier resolution and task-graph correctness
+- **BVHTest**: scene BVH build and frustum/sphere/cone/AABB query equivalence vs. brute force
+- **LightBVHTest**: per-light influence culling and tracked/untracked classification
+
+Tests are discovered automatically via `gtest_discover_tests`, so each `TEST(...)` case shows up as an individual CTest entry:
 
 ```bash
 cd build
 ctest --build-config Release --output-on-failure
 ```
+
+To run a single test or filter by name, invoke the executable directly (it lives under the shared runtime directory, e.g. `build/runtime/Release/CanvasUnitTest.exe`) and use the standard GoogleTest flags, for example `--gtest_filter=BVHTest.*` or `--gtest_list_tests`.
 
 ## Repository Structure
 

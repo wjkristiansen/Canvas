@@ -1,10 +1,19 @@
-# CanvasUnitTest - Unit tests for Canvas 3D Graphics Engine
+# CanvasUnitTest - Unit tests for Canvas 3D Graphics Engine (GoogleTest)
 cmake_minimum_required(VERSION 3.24)
 
-# This project uses Microsoft CppUnitTestFramework
+include(FetchContent)
 
-# Define the test library (Microsoft Test Framework requires DLL)
-add_library(CanvasUnitTest SHARED
+# Fetch GoogleTest (same version used by sibling deps to avoid duplicate fetches)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(googletest)
+
+# Define the test executable (GoogleTest)
+add_executable(CanvasUnitTest
     CanvasInterfacesTest.cpp
     CanvasMathTest.cpp
     CanvasTextTest.cpp
@@ -47,7 +56,7 @@ if(WIN32)
         WIN32
         _CONSOLE
     )
-    
+
     # Link with Windows libraries (excluding d3d12/dxgi/d3dcompiler - inherited from D3D12ResourceUtils)
     target_link_libraries(CanvasUnitTest PRIVATE
         kernel32
@@ -63,7 +72,6 @@ if(WIN32)
         odbc32
         odbccp32
     )
-
 endif()
 
 # Link with Canvas libraries
@@ -72,98 +80,26 @@ target_link_libraries(CanvasUnitTest PRIVATE
     CanvasText
     RectanglePacker
     D3D12ResourceUtils
+    GTest::gtest
+    GTest::gtest_main
 )
-
-# Use Microsoft CppUnitTestFramework
-target_compile_definitions(CanvasUnitTest PRIVATE
-    _WINDLL
-)
-
-# Link with Microsoft Test Framework
-find_library(MS_UNITTEST_FRAMEWORK
-    NAMES Microsoft.VisualStudio.TestTools.CppUnitTestFramework
-    PATHS
-        "$ENV{VCInstallDir}Auxiliary/VS/UnitTest/lib"
-        "$ENV{VSINSTALLDIR}VC/Auxiliary/VS/UnitTest/lib"
-    PATH_SUFFIXES x64
-    REQUIRED
-)
-
-target_link_libraries(CanvasUnitTest PRIVATE ${MS_UNITTEST_FRAMEWORK})
 
 # Use precompiled headers
 target_precompile_headers(CanvasUnitTest PRIVATE pch.h)
 
-# Register tests with CTest using vstest.console.exe for Microsoft Test Framework
+# Register tests with CTest via GoogleTest discovery.
 enable_testing()
-
-# For Microsoft Test Framework, find vstest.console.exe using more robust methods
-find_program(VSTEST_CONSOLE
-    NAMES vstest.console.exe
-    HINTS
-        # Try environment variables first (most reliable)
-        "$ENV{VSINSTALLDIR}Common7/IDE/CommonExtensions/Microsoft/TestWindow"
-        "$ENV{DevEnvDir}CommonExtensions/Microsoft/TestWindow"
-    PATHS
-        # Use vswhere.exe to find Visual Studio installations dynamically
-        [HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7;15.0]/Common7/IDE/CommonExtensions/Microsoft/TestWindow
-        [HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7;16.0]/Common7/IDE/CommonExtensions/Microsoft/TestWindow  
-        [HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\VisualStudio\\SxS\\VS7;17.0]/Common7/IDE/CommonExtensions/Microsoft/TestWindow
-    PATH_SUFFIXES
-        Common7/IDE/CommonExtensions/Microsoft/TestWindow
-    DOC "Visual Studio Test Console executable"
-)
-
-# If not found, try using vswhere.exe to locate Visual Studio
-if(NOT VSTEST_CONSOLE AND WIN32)
-    find_program(VSWHERE_EXE
-        NAMES vswhere.exe
-        PATHS
-            "$ENV{ProgramFiles(x86)}/Microsoft Visual Studio/Installer"
-            "${CMAKE_CURRENT_SOURCE_DIR}/tools"
-        DOC "Visual Studio Locator tool"
-    )
-    
-    if(VSWHERE_EXE)
-        execute_process(
-            COMMAND ${VSWHERE_EXE} -latest -property installationPath
-            OUTPUT_VARIABLE VS_INSTALL_PATH
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-        
-        if(VS_INSTALL_PATH)
-            find_program(VSTEST_CONSOLE
-                NAMES vstest.console.exe
-                PATHS "${VS_INSTALL_PATH}/Common7/IDE/CommonExtensions/Microsoft/TestWindow"
-                NO_DEFAULT_PATH
-            )
-        endif()
-    endif()
-endif()
-
-if(VSTEST_CONSOLE)
-    # Run tests from the shared runtime image directory — all DLLs are already there.
-    add_test(NAME CanvasUnitTests 
-        COMMAND ${VSTEST_CONSOLE} "$<TARGET_FILE:CanvasUnitTest>" "--logger:console;verbosity=normal"
-        WORKING_DIRECTORY "${CANVAS_RUNTIME_DIR}"
-    )
-    message(STATUS "Found VSTest Console: ${VSTEST_CONSOLE}")
-    
-    set_tests_properties(CanvasUnitTests PROPERTIES
+include(GoogleTest)
+gtest_discover_tests(CanvasUnitTest
+    WORKING_DIRECTORY "${CANVAS_RUNTIME_DIR}"
+    PROPERTIES
         TIMEOUT 300
-        LABELS "UnitTest;Microsoft"
-    )
-else()
-    message(WARNING "VSTest Console not found - CanvasUnitTest will not be runnable via CTest")
-    message(STATUS "You can still run the tests manually using Visual Studio Test Explorer")
-    message(STATUS "Or run: vstest.console.exe ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/CanvasUnitTest.dll")
-endif()
+        LABELS "UnitTest"
+)
 
 # Installation
 install(TARGETS CanvasUnitTest
     RUNTIME DESTINATION ${CANVAS_INSTALL_DEST}/bin
-    LIBRARY DESTINATION ${CANVAS_INSTALL_DEST}/bin
 )
 
 # Install PDB files for debugging
