@@ -366,6 +366,29 @@ namespace Canvas
         GEMMETHOD(SubmitForUIRender)(XUIGraphNode *pNode) = 0;
         GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
 
+        // Per-frame light visibility allowlist.  Once called, SubmitLight
+        // accepts only XLight pointers present in the supplied array
+        // and silently drops every other call; the engine still
+        // applies its own per-frame light cap on top.  count == 0 is a
+        // valid "drop every light this frame" state -- the filter is
+        // installed even when the array is empty, so a scene with no
+        // visible lights does not accidentally pass unculled lights
+        // through.
+        //
+        // Callers that never call SetVisibleLights see the no-filter
+        // default: SubmitLight accepts every call up to the engine cap
+        // in submission order.
+        //
+        // The render queue takes no reference on the supplied lights;
+        // pointers are observer references valid for the current frame
+        // only (typically the scene graph holds the strong refs).  The
+        // filter is auto-cleared at EndFrame back to the no-filter
+        // state, so the next frame's defaults apply automatically.
+        //
+        // Pointer comparison is by raw XLight*.  Two light objects with
+        // identical state but different addresses are distinct here.
+        GEMMETHOD_(void, SetVisibleLights)(XLight* const* ppLights, size_t count) = 0;
+
         // Set the scene background used by the composite pass to fill
         // pixels with no geometry.  Pass nullptr to clear back to opaque
         // black with no skybox.  The render queue takes its own strong

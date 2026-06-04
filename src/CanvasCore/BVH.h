@@ -129,8 +129,8 @@ public:
 
     // Iterative AABB overlap query.  Exact axis-aligned overlap test
     // at both the node and primitive tier (no looseness introduced).
-    // Empty query box yields no results.  Intended for tile-frustum
-    // pre-binning and any caller that already has a world-space box.
+    // Empty query box yields no results.  Intended for callers that
+    // already have a world-space box (e.g. spatial-region selections).
     CANVAS_API void QueryAABB(const BVHPrimitive* primitives,
                               const Math::AABB& box,
                               std::vector<uint32_t>& outVisiblePrimitiveIndices) const;

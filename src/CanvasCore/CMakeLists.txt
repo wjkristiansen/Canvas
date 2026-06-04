@@ -17,6 +17,7 @@ add_library(CanvasCore SHARED
     UIGraph.cpp
     BVH.cpp
     SceneBVH.cpp
+    LightBVH.cpp
     
     # Header files (for IDE organization)
     ../Inc/CanvasCore.h
@@ -39,6 +40,7 @@ add_library(CanvasCore SHARED
     Timer.h
     BVH.h
     SceneBVH.h
+    LightBVH.h
     pch.h
     targetver.h
 )

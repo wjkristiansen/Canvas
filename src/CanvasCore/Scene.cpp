@@ -54,6 +54,8 @@ GEMMETHODIMP CScene::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
         // time.  Eats the first-frame cost rather than failing.
         if (!m_SceneBVH.IsBuilt())
             m_SceneBVH.Build(m_pRoot.Get());
+        if (!m_LightBVH.IsBuilt())
+            m_LightBVH.Build(m_pRoot.Get());
 
         // Visibility filter: renderable nodes are gated by frustum
         // visibility; non-renderable nodes (lights, cameras) always
@@ -62,6 +64,33 @@ GEMMETHODIMP CScene::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
         m_VisibleNodeScratch.clear();
         if (m_pActiveCamera)
             m_SceneBVH.QueryFrustum(m_pActiveCamera.Get(), m_VisibleNodeScratch);
+
+        // Light visibility: union of untracked lights (ambient /
+        // directional / area -- always relevant) and frustum-culled
+        // tracked lights.  Order within the list is unspecified; the
+        // renderer's filter is set-membership, not rank-keyed.
+        m_VisibleLightsScratch.clear();
+        const std::vector<XLight*>& untracked = m_LightBVH.GetUntrackedLights();
+        m_VisibleLightsScratch.insert(m_VisibleLightsScratch.end(),
+                                      untracked.begin(), untracked.end());
+
+        m_VisibleTrackedLightsScratch.clear();
+        if (m_pActiveCamera)
+            m_LightBVH.QueryFrustum(m_pActiveCamera.Get(), m_VisibleTrackedLightsScratch);
+
+        m_VisibleLightsScratch.insert(m_VisibleLightsScratch.end(),
+                                      m_VisibleTrackedLightsScratch.begin(),
+                                      m_VisibleTrackedLightsScratch.end());
+
+        // Always install the filter, even when the visible-lights
+        // list is empty -- the renderer's contract treats an empty
+        // filter as "drop every light this frame," which is the right
+        // behavior when culling finds nothing visible (preventing
+        // out-of-frustum lights from leaking through SubmitForRender's
+        // natural traversal order).
+        pRenderQueue->SetVisibleLights(
+            m_VisibleLightsScratch.empty() ? nullptr : m_VisibleLightsScratch.data(),
+            m_VisibleLightsScratch.size());
 
         // Iterative depth-first traversal using persistent stack (no per-frame allocation)
         m_TraversalStack.clear();
