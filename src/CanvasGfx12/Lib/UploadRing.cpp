@@ -13,6 +13,8 @@ void CUploadRing::Initialize(CDevice12* pDevice, uint64_t initialSize)
     m_Size = initialSize;
     m_WriteOffset = 0;
     m_ReadOffset = 0;
+    m_InFlightBytes = 0;
+    m_BytesAllocatedThisFrame = 0;
     m_LastCompletedFenceValue = 0;
     m_FrameMarkers.clear();
     // Resource creation is lazy — EnsureResource() on first allocate.
@@ -31,6 +33,8 @@ void CUploadRing::Shutdown()
     m_Size = 0;
     m_WriteOffset = 0;
     m_ReadOffset = 0;
+    m_InFlightBytes = 0;
+    m_BytesAllocatedThisFrame = 0;
     m_FrameMarkers.clear();
     m_pDevice = nullptr;
 }
@@ -82,10 +86,10 @@ Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocat
 
         EnsureResource();
 
+        // Single source of truth.  No head==tail ambiguity: full <=>
+        // m_InFlightBytes == m_Size; empty <=> m_InFlightBytes == 0.
         auto availableBytes = [&]() -> uint64_t {
-            if (m_WriteOffset >= m_ReadOffset)
-                return m_Size - m_WriteOffset + m_ReadOffset;
-            return m_ReadOffset - m_WriteOffset;
+            return m_Size - m_InFlightBytes;
         };
 
         // Pad m_WriteOffset up to the requested alignment before measuring fit.
@@ -96,17 +100,15 @@ Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocat
         uint64_t writeOffset = alignedWrite();
         uint64_t padHead     = writeOffset - m_WriteOffset;
         uint64_t needed      = padHead + alignedSize;
-        uint64_t available   = availableBytes();
 
         // Try reclaiming completed submissions first.
-        if (needed > available)
+        if (needed > availableBytes())
         {
             Reclaim(m_LastCompletedFenceValue);
-            available = availableBytes();
         }
 
         // Grow if still insufficient.
-        if (needed > available)
+        if (needed > availableBytes())
         {
             uint64_t target = m_Size ? m_Size : (alignedSize + alignment);
             while (target < alignedSize + alignment)
@@ -116,7 +118,13 @@ Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocat
             padHead     = writeOffset - m_WriteOffset;
         }
 
-        // Handle wrap-around (the aligned start + payload doesn't fit before m_Size).
+        // Handle wrap-around (the aligned start + payload doesn't fit
+        // before m_Size).  The slack from m_WriteOffset to m_Size is
+        // abandoned by the wrap; charge it to in-flight bytes so it is
+        // reclaimed alongside this frame's data (one MarkSubmissionEnd
+        // later) rather than appearing as free space that doesn't
+        // exist.
+        uint64_t wrapSlack = 0;
         if (writeOffset + alignedSize > m_Size)
         {
             if (alignedSize + alignment > m_ReadOffset)
@@ -126,8 +134,9 @@ Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocat
             }
             else
             {
+                wrapSlack    = m_Size - m_WriteOffset;
                 m_WriteOffset = 0;
-                writeOffset = 0;  // already a multiple of alignment
+                writeOffset   = 0;  // already a multiple of alignment
             }
             padHead = writeOffset - m_WriteOffset;
         }
@@ -139,6 +148,9 @@ Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocat
         out.ResourceOffset = writeOffset;
 
         m_WriteOffset = writeOffset + alignedSize;
+        const uint64_t bytesConsumed = padHead + alignedSize + wrapSlack;
+        m_InFlightBytes           += bytesConsumed;
+        m_BytesAllocatedThisFrame += bytesConsumed;
         return Gem::Result::Success;
     }
     catch (const Gem::GemError& e) { return e.Result(); }
@@ -148,7 +160,8 @@ Gem::Result CUploadRing::AllocateFromRing(uint64_t sizeInBytes, HostWriteAllocat
 //------------------------------------------------------------------------------------------------
 void CUploadRing::MarkSubmissionEnd(UINT64 fenceValue)
 {
-    m_FrameMarkers.push_back({ fenceValue, m_WriteOffset });
+    m_FrameMarkers.push_back({ fenceValue, m_WriteOffset, m_BytesAllocatedThisFrame });
+    m_BytesAllocatedThisFrame = 0;
 
     // Tag any retired resources whose retiring submission is the one we're
     // about to signal. A retired resource may have been referenced by commands
@@ -165,12 +178,21 @@ void CUploadRing::MarkSubmissionEnd(UINT64 fenceValue)
 void CUploadRing::Reclaim(UINT64 completedFenceValue)
 {
     m_LastCompletedFenceValue = completedFenceValue;
+    // Advance the read pointer (and shrink the in-flight count) by the
+    // size of each fully-retired frame's footprint.  Using BytesInFrame
+    // instead of jumping m_ReadOffset to the marker's recorded
+    // WriteOffset keeps the read pointer monotonically advancing through
+    // the ring (modulo wrap), which prevents the post-wrap regression
+    // that the WriteOffset-jump approach suffered from when a wrap'd
+    // frame's offset was numerically smaller than the previous
+    // frame's.
     while (!m_FrameMarkers.empty())
     {
         auto& oldest = m_FrameMarkers.front();
         if (oldest.FenceValue > completedFenceValue)
             break;
-        m_ReadOffset = oldest.WriteOffset;
+        m_InFlightBytes -= oldest.BytesInFrame;
+        m_ReadOffset     = (m_ReadOffset + oldest.BytesInFrame) % m_Size;
         m_FrameMarkers.pop_front();
     }
 
@@ -206,6 +228,12 @@ void CUploadRing::GrowTo(uint64_t newSize)
     m_Size = newSize;
     m_WriteOffset = 0;
     m_ReadOffset = 0;
+    // New ring starts fully empty.  Any in-flight bytes from the old
+    // ring are tracked separately via m_RetiredResources -- the new
+    // ring has no relation to that memory and accounts only for its
+    // own allocations from here on.
+    m_InFlightBytes = 0;
+    m_BytesAllocatedThisFrame = 0;
     m_FrameMarkers.clear();
     EnsureResource();
 }
