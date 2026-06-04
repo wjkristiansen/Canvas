@@ -2553,28 +2553,37 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
     if (pNode)
     {
         auto world = pNode->GetGlobalMatrix();
-        if (pLight->GetType() == Canvas::LightType::Directional || pLight->GetType() == Canvas::LightType::Spot)
+        if (pLight->GetType() == Canvas::LightType::Directional)
         {
             Canvas::Math::FloatVector4 dir(world[0][0], world[0][1], world[0][2], 0.0f);
             dir = dir.Normalize();
             gpu.DirectionOrPosition = { dir[0], dir[1], dir[2], 0.0f };
+        }
+        else if (pLight->GetType() == Canvas::LightType::Spot)
+        {
+            // Spot lights need both the world-space apex (consumed as
+            // DirectionOrPosition by the shader's `toLight = pos - P`
+            // computation) and a unit forward axis for the cone test.
+            // The axis goes into DirectionAndSpot below; the position
+            // belongs here.
+            gpu.DirectionOrPosition = { world[3][0], world[3][1], world[3][2], 1.0f };
 
-            if (pLight->GetType() == Canvas::LightType::Spot)
-            {
-                float innerAngle = 0.785398f;
-                float outerAngle = 1.047198f;
-                pLight->GetSpotAngles(&innerAngle, &outerAngle);
-                if (innerAngle > outerAngle)
-                    std::swap(innerAngle, outerAngle);
+            Canvas::Math::FloatVector4 dir(world[0][0], world[0][1], world[0][2], 0.0f);
+            dir = dir.Normalize();
 
-                gpu.DirectionAndSpot = {
-                    dir[0],
-                    dir[1],
-                    dir[2],
-                    std::cos(outerAngle * 0.5f)
-                };
-                gpu.Color.w = std::cos(innerAngle * 0.5f);
-            }
+            float innerAngle = 0.785398f;
+            float outerAngle = 1.047198f;
+            pLight->GetSpotAngles(&innerAngle, &outerAngle);
+            if (innerAngle > outerAngle)
+                std::swap(innerAngle, outerAngle);
+
+            gpu.DirectionAndSpot = {
+                dir[0],
+                dir[1],
+                dir[2],
+                std::cos(outerAngle * 0.5f)
+            };
+            gpu.Color.w = std::cos(innerAngle * 0.5f);
         }
         else
         {
@@ -2583,8 +2592,10 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
     }
     else
     {
-        if (pLight->GetType() == Canvas::LightType::Directional || pLight->GetType() == Canvas::LightType::Spot)
+        if (pLight->GetType() == Canvas::LightType::Directional)
             gpu.DirectionOrPosition = { 0.0f, 1.0f, 0.0f, 0.0f };
+        else if (pLight->GetType() == Canvas::LightType::Spot)
+            gpu.DirectionOrPosition = { 0.0f, 0.0f, 0.0f, 1.0f };
     }
 
     if (pLight->GetType() == Canvas::LightType::Directional)
