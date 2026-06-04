@@ -13,9 +13,10 @@
 #include <atlbase.h>
 #include <comdef.h>
 
-// Headers for CppUnitTest
+// GoogleTest framework
+#include <gtest/gtest.h>
+
 #include "Gem.hpp"
-#include "CppUnitTest.h"
 #include "CanvasMath.hpp"
 #include "CanvasCore.h"
 #include "CanvasGfx.h"
@@ -35,13 +36,10 @@ inline void CreateTestCanvasAndDevice(
     Gem::TGemPtr<Canvas::XCanvas>& pCanvas,
     Gem::TGemPtr<Canvas::XGfxDevice>& pDevice)
 {
-    using Microsoft::VisualStudio::CppUnitTestFramework::Assert;
-    Assert::IsTrue(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
+    ASSERT_TRUE(Succeeded(Canvas::CreateCanvas(nullptr, &pCanvas)));
     Gem::TGemPtr<Canvas::XCanvasPlugin> pPlugin;
-    Assert::IsTrue(Succeeded(pCanvas->LoadPlugin("CanvasGfx12.dll", &pPlugin)));
-    Assert::IsTrue(Succeeded(pPlugin->CreateCanvasElement(
+    ASSERT_TRUE(Succeeded(pCanvas->LoadPlugin("CanvasGfx12.dll", &pPlugin)));
+    ASSERT_TRUE(Succeeded(pPlugin->CreateCanvasElement(
         pCanvas, Canvas::TypeId::TypeId_GfxDevice, "TestDevice",
         Canvas::XGfxDevice::IId, reinterpret_cast<void**>(&pDevice))));
 }
-
-// TODO: reference additional headers your program requires here
