@@ -596,7 +596,13 @@ public:
     Gem::TGemPtr<Canvas::XGfxSurface> m_pSkyCubeB;
     Gem::TGemPtr<Canvas::XGfxSurface> m_pStarsCube;
     Gem::TGemPtr<Canvas::XGfxSurface> m_pMoonTexture;
-    HlslTypes::HlslLight m_Lights[MAX_LIGHTS_PER_REGION] = {};
+    // Per-frame light table accumulated by SubmitLight and uploaded as
+    // a StructuredBuffer<HlslLight> at the composite root SRV slot.
+    // Reserved up-front so SubmitLight is push_back-only without
+    // routinely reallocating; reused (not freed) across frames via
+    // clear() in EndFrame.
+    std::vector<HlslTypes::HlslLight> m_Lights;
+    // Mirrors m_Lights.size() and indexes PendingShadowCaster::LightSlotIndex.
     uint32_t m_LightCount = 0;
 
     // Optional per-frame light visibility filter installed via

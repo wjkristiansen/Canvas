@@ -37,6 +37,13 @@ SamplerComparisonState ShadowCmpSampler  : register(s3);
 
 ConstantBuffer<HlslPerFrameConstants> PerFrame : register(b0);
 
+// Per-frame light table.  Sized to PerFrame.LightCount; uploaded by
+// the engine each frame from the visible-light set produced by the
+// Scene's LightBVH cull + importance sort.  Bound as a root SRV (no
+// descriptor table entry, so the descriptor heap slot count for the
+// composite stays at 8).
+StructuredBuffer<HlslLight> Lights : register(t8);
+
 static const float PI = 3.14159265358979323846;
 static const float INV_PI = 1.0 / PI;
 static const float INV_FOUR_PI = 1.0 / (4.0 * PI);
@@ -298,9 +305,9 @@ float4 PSComposite(FSInput input) : SV_Target0
     // Accumulate lighting from all active lights
     float3 totalLight = float3(0.0, 0.0, 0.0);
 
-    for (uint i = 0; i < PerFrame.LightCount && i < MAX_LIGHTS_PER_REGION; ++i)
+    for (uint i = 0; i < PerFrame.LightCount; ++i)
     {
-        HlslLight light = PerFrame.Lights[i];
+        HlslLight light = Lights[i];
 
         if (light.Type == LIGHT_DIRECTIONAL)
         {

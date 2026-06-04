@@ -1450,7 +1450,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // Composite root signature:
-    //   Slot 0: Root CBV (b0) -- per-frame constants (camera, lights, sky params)
+    //   Slot 0: Root CBV (b0) -- per-frame constants (camera, sky params, light count)
     //   Slot 1: Descriptor table with SRV[8] at t0-t7:
     //             t0-t2 = G-buffer (normals, diffuse, world pos) [Texture2D]
     //             t3-t4 = optional skybox cubes A / B            [TextureCube]
@@ -1461,6 +1461,10 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     //           SkyHasCubemap / HasStars / HasMoon / per-light ShadowFlags
     //           flags select active branches.  The sun has no texture
     //           (procedural disc).
+    //   Slot 2: Root SRV (t8) -- StructuredBuffer<HlslLight> for the
+    //           per-frame light table.  Sized to PerFrame.LightCount;
+    //           always bound (a single dummy element when no lights
+    //           are visible so the SRV slot is never null).
     //   Static sampler s0: point/clamp  (exact G-buffer texel fetch)
     //   Static sampler s1: linear/wrap  (cube sampling for skybox + stars)
     //   Static sampler s2: linear/clamp (moon billboard quad)
@@ -1504,10 +1508,16 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 8, 0, 0,  // SRV[8] at t0-t7, space0
                   D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 
-    std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(2);
+    std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(3);
     compositeRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                     D3D12_SHADER_VISIBILITY_PIXEL);
     compositeRootParams[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+    // Lights structured buffer as a root SRV at t8.  Root SRVs are
+    // untyped; the shader's `StructuredBuffer<HlslLight>` declaration
+    // supplies the element shape.  DATA_VOLATILE matches the upload
+    // ring's per-frame lifecycle (contents change every submit).
+    compositeRootParams[2].InitAsShaderResourceView(8, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
+                                                    D3D12_SHADER_VISIBILITY_PIXEL);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC compositeRootSigDesc(
         static_cast<UINT>(compositeRootParams.size()),
@@ -2506,7 +2516,14 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
     if (m_HasVisibleLightFilter && m_VisibleLightFilter.find(pLight) == m_VisibleLightFilter.end())
         return Gem::Result::Success;
 
-    HlslTypes::HlslLight& gpu = m_Lights[m_LightCount++];
+    // Reserve to a reasonable capacity on first push so typical scenes
+    // hit at most one allocation per process lifetime.
+    if (m_Lights.empty())
+        m_Lights.reserve(64);
+
+    m_Lights.emplace_back();
+    HlslTypes::HlslLight& gpu = m_Lights.back();
+    ++m_LightCount;
     gpu = {};
     gpu.Type = static_cast<uint32_t>(pLight->GetType());
 
@@ -2770,8 +2787,24 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             ? (1.0f / static_cast<float>(m_ShadowAtlasSize))
             : 0.0f;
 
+        // Per-frame light table -- uploaded into the ring as a
+        // structured buffer and bound to the composite root SRV at
+        // slot 2 (t8).  Always allocate at least one element so the
+        // root SRV is never bound to a null address (D3D12 validation
+        // tolerates it but it's a sharper contract to keep the buffer
+        // always valid; the shader's loop is gated by LightCount so
+        // the dummy element is never read).
+        const uint32_t lightUploadCount = (m_LightCount > 0) ? m_LightCount : 1u;
+        const uint64_t lightUploadBytes =
+            static_cast<uint64_t>(lightUploadCount) * sizeof(HlslTypes::HlslLight);
+        HostWriteAllocation lightsHw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(lightUploadBytes, lightsHw));
         if (m_LightCount > 0)
-            memcpy(frameConstants.Lights, m_Lights, m_LightCount * sizeof(HlslTypes::HlslLight));
+            memcpy(lightsHw.pMapped, m_Lights.data(),
+                   static_cast<size_t>(m_LightCount) * sizeof(HlslTypes::HlslLight));
+        else
+            memset(lightsHw.pMapped, 0, sizeof(HlslTypes::HlslLight));
+        const D3D12_GPU_VIRTUAL_ADDRESS lightsSRVAddress = lightsHw.GpuAddress;
 
         // Upload per-frame constants and bind to root CBV (slot 0, register b0)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
@@ -3353,7 +3386,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
                 D3D12_BARRIER_ACCESS_RENDER_TARGET);
-            compositeTask.RecordFunc = [frameCBVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
+            compositeTask.RecordFunc = [frameCBVAddress, lightsSRVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
             {
                 // No clear: every back-buffer pixel is written by the composite PS
                 // (background fills empty G-buffer pixels).
@@ -3366,6 +3399,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
                 pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
                 pCL->SetGraphicsRootDescriptorTable(1, baseGpuHandle);
+                pCL->SetGraphicsRootShaderResourceView(2, lightsSRVAddress);
                 pCL->DrawInstanced(3, 1, 0, 0);
             };
             m_GpuTaskGraph.InsertTask(compositeTask);
@@ -3436,6 +3470,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         m_FrameWorldBounds.Reset();
         m_VisibleLightFilter.clear();
         m_HasVisibleLightFilter = false;
+        m_Lights.clear();
+        m_LightCount = 0;
         m_pCurrentSwapChain = nullptr;
         m_pActiveCamera = nullptr;
         return e.Result();
@@ -3444,6 +3480,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     m_pCurrentSwapChain = nullptr;
     m_pActiveCamera = nullptr;
     m_LightCount = 0;
+    m_Lights.clear();
     m_NextShadowTileIndex = 0;
     m_PendingShadowCasters.clear();
     m_FrameWorldBounds.Reset();

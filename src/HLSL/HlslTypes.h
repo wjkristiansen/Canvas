@@ -26,7 +26,7 @@ typedef uint32_t uint;
 #define LIGHT_SPOT        3
 #define LIGHT_AREA        4
 
-#define MAX_LIGHTS_PER_REGION 16
+#define MAX_LIGHTS_PER_REGION 1024
 
 #ifdef __cplusplus
 namespace HlslTypes {
@@ -132,7 +132,11 @@ struct ALIGN16 HlslPerFrameConstants
     float  _MoonPad1;
     float  _MoonPad2;
 
-    HlslLight Lights[MAX_LIGHTS_PER_REGION];
+    // Per-frame lights live in a separate StructuredBuffer<HlslLight>
+    // bound at t8, sized to LightCount.  Kept out of this CB so the
+    // per-frame constants stay small and LightCount can scale beyond
+    // a fixed-size CB array.  See PSComposite.hlsl for the buffer
+    // declaration.
 };
 
 struct ALIGN16 HlslPerObjectConstants
