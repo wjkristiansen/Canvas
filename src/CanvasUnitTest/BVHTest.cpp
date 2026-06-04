@@ -363,12 +363,18 @@ TEST(BVHTest, QuerySphereEmptyAndDegenerate)
     BVH bvh;
     bvh.Build(primitives.data(), primitives.size());
 
-    // r <= 0 must short-circuit to no results.
+    // r < 0 must short-circuit to no results.  r == 0 is a valid
+    // degenerate (point) sphere and must return primitives whose
+    // bounds contain the query point.
     std::vector<uint32_t> out;
-    bvh.QuerySphere(primitives.data(), FloatVector4(0,0,0,0), 0.0f, out);
-    EXPECT_EQ(size_t(0), out.size());
     bvh.QuerySphere(primitives.data(), FloatVector4(0,0,0,0), -1.0f, out);
     EXPECT_EQ(size_t(0), out.size());
+
+    // Query point at (2,0,0) coincides with primitive 2's point AABB.
+    out.clear();
+    bvh.QuerySphere(primitives.data(), FloatVector4(2.0f,0,0,0), 0.0f, out);
+    ASSERT_EQ(size_t(1), out.size());
+    EXPECT_EQ(2u, out[0]);
 
     // Sphere enclosing every primitive must return all 5.
     out.clear();
