@@ -1479,9 +1479,11 @@ namespace Canvas
         };
 
         //------------------------------------------------------------------------------------------------
-        // Geometric sphere: center + radius.  Center.w is ignored.  A
-        // sphere with Radius <= 0 is the empty set and intersects
-        // nothing; defenders short-circuit on that.
+        // Geometric sphere: center + radius.  Center.w is ignored.
+        // Radius == 0 is a valid degenerate sphere (a single point) and
+        // participates in intersection tests like any other sphere.
+        // Radius < 0 is the empty set and intersects nothing; defenders
+        // short-circuit on that.
         struct Sphere
         {
             FloatVector4 Center;
@@ -1496,7 +1498,7 @@ namespace Canvas
             // the center to its closest point on the box is <= r^2.
             bool IntersectsAABB(const AABB& box) const
             {
-                if (box.IsEmpty() || Radius <= 0.0f)
+                if (box.IsEmpty() || Radius < 0.0f)
                     return false;
                 float distSq = 0.0f;
                 for (int i = 0; i < 3; ++i)
@@ -1681,34 +1683,17 @@ namespace Canvas
             // overlaps the cone iff it overlaps any of: the cone's
             // lateral surface, the range cap, or the apex point.
             // Conservative at the boundary by a fraction of the sphere
-            // radius so borderline cases are admitted.
+            // radius so borderline cases are admitted.  Degenerate
+            // inputs (radius == 0 point spheres, Range == 0 apex-only
+            // cones, HalfAngle == 0 line-segment cones) are
+            // mathematically valid and produce sensible (possibly
+            // conservative) results.  Only strictly negative Radius /
+            // Range short-circuit to no-intersection.
             bool IntersectsSphere(const Sphere& sphere) const
             {
-                if (Range <= 0.0f || sphere.Radius <= 0.0f)
+                if (Range < 0.0f || sphere.Radius < 0.0f)
                     return false;
-
-                const float vx = sphere.Center.V[0] - Apex.V[0];
-                const float vy = sphere.Center.V[1] - Apex.V[1];
-                const float vz = sphere.Center.V[2] - Apex.V[2];
-                const float distAxis = vx * AxisDir.V[0]
-                                     + vy * AxisDir.V[1]
-                                     + vz * AxisDir.V[2];
-
-                // Range slab cull (sphere-padded on both ends).
-                if (distAxis > Range + sphere.Radius) return false;
-                if (distAxis < -sphere.Radius)        return false;
-
-                // Perpendicular distance from sphere center to cone axis.
-                const float vLenSq = vx * vx + vy * vy + vz * vz;
-                const float perpSq = vLenSq - distAxis * distAxis;
-                const float perp   = (perpSq > 0.0f) ? std::sqrt(perpSq) : 0.0f;
-
-                // Padded cone radius at axial distance t.  We clamp t at
-                // 0 (apex side): a sphere straddling the apex is admitted
-                // because it overlaps the apex point itself.
-                const float t = (distAxis > 0.0f) ? distAxis : 0.0f;
-                const float allowed = t * TanHalfAngle + sphere.Radius * InvCosHalfAngle;
-                return perp <= allowed;
+                return OverlapsPaddedPoint(sphere.Center, sphere.Radius);
             }
 
             // Conservative cone-vs-AABB test using the AABB's outer
@@ -1719,14 +1704,48 @@ namespace Canvas
             // cone-vs-OBB or SAT refinement after this admits the AABB.
             bool IntersectsAABB(const AABB& box) const
             {
-                if (box.IsEmpty())
+                if (Range < 0.0f || box.IsEmpty())
                     return false;
                 const FloatVector4 center = box.GetCenter();
                 const FloatVector4 ext    = box.GetExtents();
                 const float radius = std::sqrt(ext.V[0] * ext.V[0]
                                              + ext.V[1] * ext.V[1]
                                              + ext.V[2] * ext.V[2]);
-                return IntersectsSphere(Sphere(center, radius));
+                return OverlapsPaddedPoint(center, radius);
+            }
+
+        private:
+            // Shared cone-vs-padded-point math used by both
+            // IntersectsSphere and IntersectsAABB.  Caller guarantees
+            // Range >= 0 and radius >= 0; degenerate values are
+            // mathematically valid and handled naturally by the
+            // formulation (radius == 0 collapses padding, Range == 0
+            // collapses the slab to {apex}, HalfAngle == 0 collapses
+            // the lateral surface to the axis ray).
+            bool OverlapsPaddedPoint(const FloatVector4& center, float radius) const
+            {
+                const float vx = center.V[0] - Apex.V[0];
+                const float vy = center.V[1] - Apex.V[1];
+                const float vz = center.V[2] - Apex.V[2];
+                const float distAxis = vx * AxisDir.V[0]
+                                     + vy * AxisDir.V[1]
+                                     + vz * AxisDir.V[2];
+
+                // Range slab cull (padded on both ends).
+                if (distAxis > Range + radius) return false;
+                if (distAxis < -radius)        return false;
+
+                // Perpendicular distance from center to cone axis.
+                const float vLenSq = vx * vx + vy * vy + vz * vz;
+                const float perpSq = vLenSq - distAxis * distAxis;
+                const float perp   = (perpSq > 0.0f) ? std::sqrt(perpSq) : 0.0f;
+
+                // Padded cone radius at axial distance t.  We clamp t at
+                // 0 (apex side): a sample straddling the apex is admitted
+                // because it overlaps the apex point itself.
+                const float t = (distAxis > 0.0f) ? distAxis : 0.0f;
+                const float allowed = t * TanHalfAngle + radius * InvCosHalfAngle;
+                return perp <= allowed;
             }
         };
 

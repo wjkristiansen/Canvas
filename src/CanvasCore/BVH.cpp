@@ -256,7 +256,7 @@ void BVH::QuerySphere(const BVHPrimitive* primitives,
                       float radius,
                       std::vector<uint32_t>& outVisiblePrimitiveIndices) const
 {
-    if (radius <= 0.0f)
+    if (radius < 0.0f)
         return;
     const Math::Sphere sphere(center, radius);
     Traverse(primitives,
@@ -268,7 +268,7 @@ void BVH::QueryCone(const BVHPrimitive* primitives,
                     const Math::Cone& cone,
                     std::vector<uint32_t>& outVisiblePrimitiveIndices) const
 {
-    if (cone.Range <= 0.0f)
+    if (cone.Range < 0.0f)
         return;
     Traverse(primitives,
              [&](const Math::AABB& b) { return cone.IntersectsAABB(b); },
