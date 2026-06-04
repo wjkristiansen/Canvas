@@ -330,7 +330,7 @@ public:
             const float py = cy + propOffset(rng) * 0.3f;
             const float px = cx + propOffset(rng) * 0.3f;
             AddPointLight(FloatVector4(px, py, h * 0.85f, 1),
-                          color, 6.0f, cfg.CellMeters * 0.9f,
+                          color, 8.0f, cfg.CellMeters * 0.9f,
                           cfg.ShadowsAll);
 
             // ~30% of cells: a spot light angled at a prop.
@@ -342,10 +342,22 @@ public:
                     std::cos(yaw) * std::cos(pitch),
                     std::sin(yaw) * std::cos(pitch),
                     std::sin(pitch), 0.0f);
+                // Spot palette mirrors the point palette but stays
+                // closer to white -- spots read as accent fixtures,
+                // not the cell's primary ambience.
+                const float spotWarmness = u01(rng);
+                const FloatVector4 spotColor = Lerp(
+                    FloatVector4(0.70f, 0.85f, 1.00f, 1.0f),   // cool
+                    FloatVector4(1.00f, 0.85f, 0.55f, 1.0f),   // warm
+                    spotWarmness);
                 AddSpotLight(FloatVector4(cx, cy, h * 1.1f, 1),
                              dir.Normalize(),
-                             FloatVector4(1.0f, 1.0f, 0.9f, 1.0f),
-                             8.0f,
+                             spotColor,
+                             // Authored as cone-flux: the shader divides by the
+                             // outer-cone solid angle, so 0.5 here lands at a
+                             // peak radiance on the same order as the point
+                             // lights above (which divide by 4*pi instead).
+                             0.5f,
                              cfg.CellMeters * 1.2f,
                              /*innerDeg*/ 18.0f,
                              /*outerDeg*/ 28.0f,
