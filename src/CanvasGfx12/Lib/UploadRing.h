@@ -83,12 +83,22 @@ private:
     uint64_t m_Size        = 0;
     uint64_t m_WriteOffset = 0;
     uint64_t m_ReadOffset  = 0;
+    // Authoritative fill level.  Removes the head==tail full-vs-empty
+    // ambiguity that the head/tail-only model suffered from: the head
+    // (m_WriteOffset) and tail (m_ReadOffset) are cached convenience
+    // positions, but every free-space query reads m_InFlightBytes.
+    // Invariant: m_WriteOffset == (m_ReadOffset + m_InFlightBytes) % m_Size.
+    uint64_t m_InFlightBytes           = 0;
+    // Bytes consumed since the most recent MarkSubmissionEnd, recorded
+    // into the next FrameMarker so Reclaim can decrement the right amount.
+    uint64_t m_BytesAllocatedThisFrame = 0;
     UINT64   m_LastCompletedFenceValue = 0;
 
     struct FrameMarker
     {
-        UINT64 FenceValue;
-        uint64_t WriteOffset;
+        UINT64   FenceValue;
+        uint64_t WriteOffset;     // m_WriteOffset at the time of MarkSubmissionEnd (kept for debugging)
+        uint64_t BytesInFrame;    // amount to decrement m_InFlightBytes by when this marker is reclaimed
     };
     std::deque<FrameMarker> m_FrameMarkers;
 
