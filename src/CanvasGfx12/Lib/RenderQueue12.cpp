@@ -2348,6 +2348,30 @@ GEMMETHODIMP_(void) CRenderQueue12::SetActiveCamera(Canvas::XCamera *pCamera)
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CRenderQueue12::SetVisibleLights(Canvas::XLight* const* ppLights, size_t count)
+{
+    // The filter is ALWAYS installed by this call -- including when
+    // count == 0, which expresses "no light is visible this frame,
+    // drop every SubmitLight."  Callers that never invoke
+    // SetVisibleLights leave the filter inactive (the default), in
+    // which case SubmitLight accepts every enabled light in
+    // submission order up to the cap.  EndFrame restores the
+    // inactive state so each frame starts clean.
+    m_VisibleLightFilter.clear();
+    m_HasVisibleLightFilter = true;
+
+    if (ppLights == nullptr || count == 0)
+        return;
+
+    m_VisibleLightFilter.reserve(count);
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (ppLights[i])
+            m_VisibleLightFilter.insert(ppLights[i]);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(void) CRenderQueue12::SetBackground(const Canvas::GfxBackgroundDesc *pDesc)
 {
     if (pDesc)
@@ -2472,6 +2496,14 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
 
     // Skip disabled lights
     if (!(pLight->GetFlags() & Canvas::LightFlags::Enabled))
+        return Gem::Result::Success;
+
+    // Per-frame visibility filter (installed by Scene from the
+    // LightBVH frustum cull).  When active, only lights present in
+    // the allowlist consume a slot; the rest are silently dropped
+    // just like the cap above.  Inactive filter -> every enabled
+    // light passes through in submission order.
+    if (m_HasVisibleLightFilter && m_VisibleLightFilter.find(pLight) == m_VisibleLightFilter.end())
         return Gem::Result::Success;
 
     HlslTypes::HlslLight& gpu = m_Lights[m_LightCount++];
@@ -3402,6 +3434,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         m_DisplacedDraws.clear();
         m_PendingShadowCasters.clear();
         m_FrameWorldBounds.Reset();
+        m_VisibleLightFilter.clear();
+        m_HasVisibleLightFilter = false;
         m_pCurrentSwapChain = nullptr;
         m_pActiveCamera = nullptr;
         return e.Result();
@@ -3413,5 +3447,10 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     m_NextShadowTileIndex = 0;
     m_PendingShadowCasters.clear();
     m_FrameWorldBounds.Reset();
+    // Light visibility filter is per-frame: clear here so the next
+    // frame starts in "no filter" mode unless Scene installs one
+    // again.  Matches the contract documented on SetVisibleLights.
+    m_VisibleLightFilter.clear();
+    m_HasVisibleLightFilter = false;
     return Gem::Result::Success;
 }

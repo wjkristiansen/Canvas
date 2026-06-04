@@ -599,6 +599,18 @@ public:
     HlslTypes::HlslLight m_Lights[MAX_LIGHTS_PER_REGION] = {};
     uint32_t m_LightCount = 0;
 
+    // Optional per-frame light visibility filter installed via
+    // XGfxRenderQueue::SetVisibleLights and consulted by SubmitLight.
+    // When m_HasVisibleLightFilter is true, only XLight pointers
+    // present in m_VisibleLightFilter are accepted (an empty set with
+    // the flag true means "drop all"); when false (the default and
+    // post-EndFrame state) SubmitLight accepts every call up to the
+    // light cap.  The Scene installs this with the frustum-culled
+    // visible-light set so the GPU only sees lights that can affect
+    // visible pixels.
+    std::unordered_set<Canvas::XLight*> m_VisibleLightFilter;
+    bool                                m_HasVisibleLightFilter = false;
+
     // Shadow-caster intents recorded by SubmitLight (one per enabled
     // directional light with LightFlags::CastsShadows).  Resolved at
     // EndFrame, after scene traversal is complete and m_FrameWorldBounds
@@ -691,6 +703,7 @@ public:
     GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
     GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
+    GEMMETHOD_(void, SetVisibleLights)(Canvas::XLight* const* ppLights, size_t count) final;
     GEMMETHOD_(void, SetBackground)(const Canvas::GfxBackgroundDesc *pDesc) final;
     GEMMETHOD_(void, SetGeometryWireframe)(bool wireframe) final;
     GEMMETHOD_(bool, GetGeometryWireframe)() const final;

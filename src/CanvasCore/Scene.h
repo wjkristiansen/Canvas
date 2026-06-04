@@ -7,6 +7,7 @@
 #include "Canvas.h"
 #include "SceneGraph.h"
 #include "SceneBVH.h"
+#include "LightBVH.h"
 
 namespace Canvas
 {
@@ -32,6 +33,16 @@ private:
     // current scope and capabilities.
     SceneBVH m_SceneBVH;
     mutable std::unordered_set<XSceneGraphNode*> m_VisibleNodeScratch; // reused per frame
+
+    // BVH over per-light influence volumes.  Built alongside the
+    // SceneBVH (same lifecycle rules); consumed by SubmitRenderables
+    // to compute a frustum-culled visible-light list that gets pushed
+    // to the render queue via SetVisibleLights.  See LightBVH for
+    // tracked vs untracked light handling and the per-light
+    // influence-AABB derivation.
+    LightBVH m_LightBVH;
+    mutable std::vector<XLight*> m_VisibleTrackedLightsScratch;
+    mutable std::vector<XLight*> m_VisibleLightsScratch;
 
     // Background storage.  Every scene has a background; default-constructed
     // GfxBackgroundDesc is opaque black with no cubemap.  pSkyboxCubemapA/B
@@ -102,6 +113,7 @@ public: // XScene methods
     GEMMETHOD_(void, BuildBVH)() final
     {
         m_SceneBVH.Build(m_pRoot.Get());
+        m_LightBVH.Build(m_pRoot.Get());
     }
 };
 

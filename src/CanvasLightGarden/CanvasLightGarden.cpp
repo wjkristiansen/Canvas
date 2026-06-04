@@ -8,13 +8,10 @@
 // cells) one spot light, both seeded from a fixed PRNG so the layout
 // is bit-identical across runs.
 //
-// The sample exists to give the BVH + tiled-lighting work a target
-// scene that is heavy on light count and instance count but trivial
-// on art-asset dependencies.  Today it renders with the engine's
-// existing per-frame light list (directional sun gets shadows; point
-// and spot lights run shadow-free pending engine support).  As the
-// engine grows a light-influence BVH and view-space tiling, this app
-// is the first place those features will pay off visibly.
+// The sample exists as a stress test for light culling, view-space
+// tiling, and shadow culling: heavy on light count and instance count
+// but trivial on art-asset dependencies.  Directional sun gets
+// shadows; point and spot lights run shadow-free.
 //
 // Controls:
 //   WASD / Space-Ctrl : move
@@ -224,7 +221,7 @@ struct GardenConfig
     uint32_t Seed         = 0xC0FFEEu;
     float    SpotChance   = 0.30f;   // P(spot light per cell)
     uint32_t MaxPropsCell = 3;
-    bool     ShadowsAll   = false;   // future: enable per-light shadows
+    bool     ShadowsAll   = false;   // request shadows on every light (no-op for point/spot)
 };
 
 class GardenBuilder
