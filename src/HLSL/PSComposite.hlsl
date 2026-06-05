@@ -56,6 +56,12 @@ StructuredBuffer<HlslLight> Lights : register(t8);
 StructuredBuffer<uint> TileLightCounts  : register(t9);
 StructuredBuffer<uint> TileLightIndices : register(t10);
 
+// Indices of always-on lights (ambient / directional / area).  These
+// affect every lit pixel and live outside the per-tile spatial loop,
+// so they do not consume MAX_LIGHTS_PER_TILE slots in TileLightIndices.
+// Sized to PerFrame.AlwaysOnLightCount.
+StructuredBuffer<uint> AlwaysOnLightIndices : register(t11);
+
 static const float PI = 3.14159265358979323846;
 static const float INV_PI = 1.0 / PI;
 static const float INV_FOUR_PI = 1.0 / (4.0 * PI);
@@ -284,6 +290,82 @@ float4 SampleMoonBillboard(float3 viewDir)
                   tex.a   * intensity);
 }
 
+// Per-light shading contribution.  Returns the additive radiance the
+// given light deposits onto surface point P with normal N and albedo
+// already factored in by the caller.  Returns 0 for lights outside
+// their cutoff distance or outside a spot cone.
+float3 ShadeLight(HlslLight light, float3 P, float3 N)
+{
+    if (light.Type == LIGHT_DIRECTIONAL)
+    {
+        // Directional lights store their forward/emission direction.
+        // Lambert needs the vector from surface toward the light source.
+        float3 L = normalize(-light.DirectionOrPosition.xyz);
+        float NdotL = saturate(dot(N, L));
+        float shadow = SampleDirectionalShadow(light, P, N);
+        return light.Color.rgb * (NdotL * shadow);
+    }
+    else if (light.Type == LIGHT_POINT)
+    {
+        float3 toLight = light.DirectionOrPosition.xyz - P;
+        float distSq = dot(toLight, toLight);
+        if (distSq <= 1e-8)
+            return float3(0.0, 0.0, 0.0);
+
+        float dist = sqrt(distSq);
+        float cutoffDist = light.AttenuationAndRange.w;
+        if (cutoffDist <= 0.0 || dist > cutoffDist)
+            return float3(0.0, 0.0, 0.0);
+
+        float3 L = toLight / dist;
+        float NdotL = saturate(dot(N, L));
+        float attenuation = ComputeAttenuation(light.AttenuationAndRange, dist, distSq);
+
+        // Blender/FBX point light power is flux-like. Convert isotropic flux to
+        // directional intensity by dividing by 4*pi before distance attenuation.
+        attenuation *= INV_FOUR_PI;
+        return light.Color.rgb * (NdotL * attenuation);
+    }
+    else if (light.Type == LIGHT_SPOT)
+    {
+        float3 toLight = light.DirectionOrPosition.xyz - P;
+        float distSq = dot(toLight, toLight);
+        if (distSq <= 1e-8)
+            return float3(0.0, 0.0, 0.0);
+
+        float dist = sqrt(distSq);
+        float cutoffDist = light.AttenuationAndRange.w;
+        if (cutoffDist <= 0.0 || dist > cutoffDist)
+            return float3(0.0, 0.0, 0.0);
+
+        float3 L = toLight / dist;
+        float NdotL = saturate(dot(N, L));
+        if (NdotL <= 0.0)
+            return float3(0.0, 0.0, 0.0);
+
+        float3 lightForward = normalize(light.DirectionAndSpot.xyz);
+        float cosTheta = dot(-L, lightForward);
+        float outerCos = light.DirectionAndSpot.w;
+        float innerCos = light.Color.w;
+        float cone = smoothstep(outerCos, max(innerCos, outerCos + 1e-4), cosTheta);
+        if (cone <= 0.0)
+            return float3(0.0, 0.0, 0.0);
+
+        float attenuation = ComputeAttenuation(light.AttenuationAndRange, dist, distSq);
+
+        // Treat spot light intensity as total cone flux. Convert to directional
+        // intensity using cone solid angle: Omega = 2*pi*(1-cos(theta_outer)).
+        float coneSolidAngle = max(2.0 * PI * (1.0 - outerCos), 1e-4);
+        attenuation *= rcp(coneSolidAngle);
+        return light.Color.rgb * (NdotL * cone * attenuation);
+    }
+    else if (light.Type == LIGHT_AMBIENT)
+    {
+        return light.Color.rgb;
+    }
+    return float3(0.0, 0.0, 0.0);
+}
+
 float4 PSComposite(FSInput input) : SV_Target0
 {
     // Sample G-buffers
@@ -317,14 +399,21 @@ float4 PSComposite(FSInput input) : SV_Target0
     // Accumulate lighting from all active lights
     float3 totalLight = float3(0.0, 0.0, 0.0);
 
+    // Always-on lights (ambient / directional / area).  Iterated once
+    // per pixel ahead of the per-tile loop so they do not consume
+    // MAX_LIGHTS_PER_TILE slots.
+    for (uint a = 0; a < PerFrame.AlwaysOnLightCount; ++a)
+    {
+        HlslLight light = Lights[AlwaysOnLightIndices[a]];
+        totalLight += ShadeLight(light, P, N);
+    }
+
     // Forward+: find the screen tile owning this pixel, read its
-    // light-index count, and iterate only the lights the engine binned
-    // into this tile.  Always-on lights (ambient / directional) are
-    // already present in every tile's list, so this single loop covers
-    // them too.  The clamp guards pixels that fall exactly on the
-    // right/bottom edge of the framebuffer (SV_Position.xy is the
-    // pixel center, so within-bounds pixels never trip it, but
-    // out-of-range framebuffer sizes or partial tiles might).
+    // spatial light-index count, and iterate only those lights.  The
+    // clamp guards pixels that fall exactly on the right/bottom edge
+    // of the framebuffer (SV_Position.xy is the pixel center, so
+    // within-bounds pixels never trip it, but out-of-range framebuffer
+    // sizes or partial tiles might).
     uint2 tileXY = uint2(input.Position.xy) / PerFrame.LightTileSizePixels;
     tileXY.x = min(tileXY.x, PerFrame.LightTileCountX - 1);
     tileXY.y = min(tileXY.y, PerFrame.LightTileCountY - 1);
@@ -335,80 +424,7 @@ float4 PSComposite(FSInput input) : SV_Target0
     for (uint i = 0; i < tileCount; ++i)
     {
         HlslLight light = Lights[TileLightIndices[tileBase + i]];
-
-        if (light.Type == LIGHT_DIRECTIONAL)
-        {
-            // Directional lights store their forward/emission direction.
-            // Lambert needs the vector from surface toward the light source.
-            float3 L = normalize(-light.DirectionOrPosition.xyz);
-            float NdotL = saturate(dot(N, L));
-            float shadow = SampleDirectionalShadow(light, P, N);
-            totalLight += light.Color.rgb * (NdotL * shadow);
-        }
-        else if (light.Type == LIGHT_POINT)
-        {
-            float3 toLight = light.DirectionOrPosition.xyz - P;
-            float distSq = dot(toLight, toLight);
-            if (distSq <= 1e-8)
-                continue;
-
-            float dist = sqrt(distSq);
-
-            // Cutoff distance is precomputed on the CPU and stored in .w
-            float cutoffDist = light.AttenuationAndRange.w;
-            if (cutoffDist <= 0.0 || dist > cutoffDist)
-                continue;
-
-            float3 L = toLight / dist;
-            float NdotL = saturate(dot(N, L));
-            float attenuation = ComputeAttenuation(light.AttenuationAndRange, dist, distSq);
-
-            // Blender/FBX point light power is flux-like. Convert isotropic flux to
-            // directional intensity by dividing by 4*pi before distance attenuation.
-            attenuation *= INV_FOUR_PI;
-
-            totalLight += light.Color.rgb * (NdotL * attenuation);
-        }
-        else if (light.Type == LIGHT_SPOT)
-        {
-            float3 toLight = light.DirectionOrPosition.xyz - P;
-            float distSq = dot(toLight, toLight);
-            if (distSq <= 1e-8)
-                continue;
-
-            float dist = sqrt(distSq);
-
-            // Cutoff distance is precomputed on the CPU and stored in .w
-            float cutoffDist = light.AttenuationAndRange.w;
-            if (cutoffDist <= 0.0 || dist > cutoffDist)
-                continue;
-
-            float3 L = toLight / dist;
-            float NdotL = saturate(dot(N, L));
-            if (NdotL <= 0.0)
-                continue;
-
-            float3 lightForward = normalize(light.DirectionAndSpot.xyz);
-            float cosTheta = dot(-L, lightForward);
-            float outerCos = light.DirectionAndSpot.w;
-            float innerCos = light.Color.w;
-            float cone = smoothstep(outerCos, max(innerCos, outerCos + 1e-4), cosTheta);
-            if (cone <= 0.0)
-                continue;
-
-            float attenuation = ComputeAttenuation(light.AttenuationAndRange, dist, distSq);
-
-            // Treat spot light intensity as total cone flux. Convert to directional
-            // intensity using cone solid angle: Omega = 2*pi*(1-cos(theta_outer)).
-            float coneSolidAngle = max(2.0 * PI * (1.0 - outerCos), 1e-4);
-            attenuation *= rcp(coneSolidAngle);
-
-            totalLight += light.Color.rgb * (NdotL * cone * attenuation);
-        }
-        else if (light.Type == LIGHT_AMBIENT)
-        {
-            totalLight += light.Color.rgb;
-        }
+        totalLight += ShadeLight(light, P, N);
     }
 
     // Lambertian diffuse BRDF term.

@@ -142,10 +142,12 @@ struct ALIGN16 HlslPerFrameConstants
     // ceil(H / tileSize)); LightTileSizePixels is the square tile edge
     // length and matches LIGHT_TILE_SIZE_PIXELS.  The shader uses these
     // to index TileLightCounts (t9) and TileLightIndices (t10).
+    // AlwaysOnLightCount sizes the separate per-pixel always-on light
+    // loop (ambient/directional) sourced from AlwaysOnLightIndices (t11).
     uint   LightTileCountX;
     uint   LightTileCountY;
     uint   LightTileSizePixels;
-    uint   _LightTilePad0;
+    uint   AlwaysOnLightCount;
 
     // Per-frame lights live in a separate StructuredBuffer<HlslLight>
     // bound at t8, sized to LightCount.  Kept out of this CB so the

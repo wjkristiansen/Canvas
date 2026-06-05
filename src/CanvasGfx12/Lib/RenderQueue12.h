@@ -630,6 +630,12 @@ public:
     uint32_t              m_LightTileCountX = 0;
     uint32_t              m_LightTileCountY = 0;
 
+    // Always-on light indices (ambient / directional / area).  Iterated
+    // by the composite PS once per pixel before the per-tile spatial
+    // loop, so these lights do not consume MAX_LIGHTS_PER_TILE slots
+    // and do not appear in m_TileLightIndices.
+    std::vector<uint32_t> m_AlwaysOnLightIndices;
+
     // Per-row / per-column tile frustum planes, precomputed once per
     // frame by BuildTileLightLists and combined with shared Near/Far
     // to assemble each tile's frustum without a 4x4 matmul.  Sized to

@@ -1473,6 +1473,11 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     //           packed light-index lists, MAX_LIGHTS_PER_TILE uints per
     //           tile (fixed stride).  Indexed by tile-base + i, with
     //           i < TileLightCounts[tile].
+    //   Slot 5: Root SRV (t11) -- StructuredBuffer<uint> indices of
+    //           always-on lights (ambient / directional / area).  Sized
+    //           to PerFrame.AlwaysOnLightCount; the composite PS
+    //           iterates it once per lit pixel before the per-tile
+    //           spatial loop.
     //   Static sampler s0: point/clamp  (exact G-buffer texel fetch)
     //   Static sampler s1: linear/wrap  (cube sampling for skybox + stars)
     //   Static sampler s2: linear/clamp (moon billboard quad)
@@ -1516,7 +1521,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 8, 0, 0,  // SRV[8] at t0-t7, space0
                   D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 
-    std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(5);
+    std::vector<CD3DX12_ROOT_PARAMETER1> compositeRootParams(6);
     compositeRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                     D3D12_SHADER_VISIBILITY_PIXEL);
     compositeRootParams[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -1531,6 +1536,10 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     compositeRootParams[3].InitAsShaderResourceView(9, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                     D3D12_SHADER_VISIBILITY_PIXEL);
     compositeRootParams[4].InitAsShaderResourceView(10, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
+                                                    D3D12_SHADER_VISIBILITY_PIXEL);
+    // Always-on light indices (t11).  Sized to AlwaysOnLightCount;
+    // iterated once per pixel ahead of the per-tile loop.
+    compositeRootParams[5].InitAsShaderResourceView(11, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                     D3D12_SHADER_VISIBILITY_PIXEL);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC compositeRootSigDesc(
@@ -2676,6 +2685,7 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
         m_LightTileCountY = 0;
         m_TileLightCounts.clear();
         m_TileLightIndices.clear();
+        m_AlwaysOnLightIndices.clear();
         return;
     }
 
@@ -2687,14 +2697,19 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
 
     m_TileLightCounts.assign(totalTiles, 0);
     m_TileLightIndices.assign(static_cast<size_t>(totalTiles) * kPerTile, 0);
+    m_AlwaysOnLightIndices.clear();
 
     if (m_LightCount == 0)
         return;
 
     // Split the per-frame light table into:
-    //   alwaysIndices   -- ambient / directional / area (no spatial
-    //                      bound; copied into every tile),
-    //   spatialIndices  -- point / spot (gated by per-tile frustum).
+    //   m_AlwaysOnLightIndices -- ambient / directional / area lights
+    //                             that affect every lit pixel.  The
+    //                             composite PS iterates them once per
+    //                             pixel before the per-tile loop, so
+    //                             they consume no per-tile slots.
+    //   spatialIndices         -- point / spot lights gated by per-tile
+    //                             frustum binning.
     // Spatial influence AABBs come from HlslLight fields:
     //   DirectionOrPosition.xyz = apex/center,
     //   AttenuationAndRange.w   = cutoff distance (CPU-precomputed
@@ -2703,10 +2718,9 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
     // tighter cone AABB (apex + axis + half-angle = acos(cosOuter)),
     // which keeps narrow / angled spots from inflating to a full
     // sphere around the apex.
-    std::vector<uint32_t> alwaysIndices;
     std::vector<uint32_t> spatialIndices;
     std::vector<AABB>     spatialBoxes;
-    alwaysIndices.reserve(m_LightCount);
+    m_AlwaysOnLightIndices.reserve(m_LightCount);
     spatialIndices.reserve(m_LightCount);
     spatialBoxes.reserve(m_LightCount);
 
@@ -2718,7 +2732,7 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
 
         if (!spatial)
         {
-            alwaysIndices.push_back(i);
+            m_AlwaysOnLightIndices.push_back(i);
             continue;
         }
 
@@ -2755,20 +2769,6 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
                 FloatVector4(cx - r, cy - r, cz - r, 0.0f),
                 FloatVector4(cx + r, cy + r, cz + r, 0.0f));
         }
-    }
-
-    // Seed every tile with the always-on lights (capped at kPerTile;
-    // in practice a scene has at most a handful, so the cap is never
-    // a real constraint here -- the loop just defends against
-    // pathological inputs).
-    const uint32_t alwaysToCopy = std::min<uint32_t>(
-        static_cast<uint32_t>(alwaysIndices.size()), kPerTile);
-    for (uint32_t t = 0; t < totalTiles; ++t)
-    {
-        uint32_t* dst = &m_TileLightIndices[static_cast<size_t>(t) * kPerTile];
-        for (uint32_t a = 0; a < alwaysToCopy; ++a)
-            dst[a] = alwaysIndices[a];
-        m_TileLightCounts[t] = alwaysToCopy;
     }
 
     if (spatialIndices.empty())
@@ -3068,6 +3068,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         frameConstants.LightTileCountX     = m_LightTileCountX;
         frameConstants.LightTileCountY     = m_LightTileCountY;
         frameConstants.LightTileSizePixels = LIGHT_TILE_SIZE_PIXELS;
+        frameConstants.AlwaysOnLightCount  =
+            static_cast<uint32_t>(m_AlwaysOnLightIndices.size());
 
         // Scene background -> per-frame constants.  The cube SRVs themselves
         // are bound below as part of the composite descriptor table.
@@ -3167,6 +3169,23 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         else
             memset(tileIndicesHw.pMapped, 0, sizeof(uint32_t));
         const D3D12_GPU_VIRTUAL_ADDRESS tileIndicesSRVAddress = tileIndicesHw.GpuAddress;
+
+        // Always-on light indices.  Sized to AlwaysOnLightCount; always
+        // allocate at least one element so the root SRV is never bound
+        // to a null GPU address (the shader gates reads by
+        // AlwaysOnLightCount so the dummy tail entry is never sampled).
+        const uint32_t alwaysOnCount = static_cast<uint32_t>(m_AlwaysOnLightIndices.size());
+        const uint32_t alwaysOnElems = (alwaysOnCount > 0) ? alwaysOnCount : 1u;
+        const uint64_t alwaysOnBytes =
+            static_cast<uint64_t>(alwaysOnElems) * sizeof(uint32_t);
+        HostWriteAllocation alwaysOnHw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(alwaysOnBytes, alwaysOnHw));
+        if (alwaysOnCount > 0)
+            memcpy(alwaysOnHw.pMapped, m_AlwaysOnLightIndices.data(),
+                   static_cast<size_t>(alwaysOnCount) * sizeof(uint32_t));
+        else
+            memset(alwaysOnHw.pMapped, 0, sizeof(uint32_t));
+        const D3D12_GPU_VIRTUAL_ADDRESS alwaysOnSRVAddress = alwaysOnHw.GpuAddress;
 
         // Upload per-frame constants and bind to root CBV (slot 0, register b0)
         constexpr uint64_t cbAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
@@ -3748,7 +3767,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
                 D3D12_BARRIER_ACCESS_RENDER_TARGET);
-            compositeTask.RecordFunc = [frameCBVAddress, lightsSRVAddress, tileCountsSRVAddress, tileIndicesSRVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
+            compositeTask.RecordFunc = [frameCBVAddress, lightsSRVAddress, tileCountsSRVAddress, tileIndicesSRVAddress, alwaysOnSRVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
             {
                 // No clear: every back-buffer pixel is written by the composite PS
                 // (background fills empty G-buffer pixels).
@@ -3764,6 +3783,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 pCL->SetGraphicsRootShaderResourceView(2, lightsSRVAddress);
                 pCL->SetGraphicsRootShaderResourceView(3, tileCountsSRVAddress);
                 pCL->SetGraphicsRootShaderResourceView(4, tileIndicesSRVAddress);
+                pCL->SetGraphicsRootShaderResourceView(5, alwaysOnSRVAddress);
                 pCL->DrawInstanced(3, 1, 0, 0);
             };
             m_GpuTaskGraph.InsertTask(compositeTask);
@@ -3838,6 +3858,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         m_LightCount = 0;
         m_TileLightCounts.clear();
         m_TileLightIndices.clear();
+        m_AlwaysOnLightIndices.clear();
         m_LightTileCountX = 0;
         m_LightTileCountY = 0;
         m_pCurrentSwapChain = nullptr;
@@ -3851,6 +3872,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     m_Lights.clear();
     m_TileLightCounts.clear();
     m_TileLightIndices.clear();
+    m_AlwaysOnLightIndices.clear();
     m_LightTileCountX = 0;
     m_LightTileCountY = 0;
     m_NextShadowTileIndex = 0;
