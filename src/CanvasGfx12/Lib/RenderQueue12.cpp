@@ -2749,26 +2749,18 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
     if (spatialIndices.empty())
         return;
 
-    // Per-tile binning.  Conceptually we build a sub-frustum from the
-    // camera's view-projection scaled to each tile's NDC sub-rect and
-    // test each spatial light's influence AABB against it.  The naive
-    // version (matrix-remap + Frustum::FromViewProjection per tile)
-    // recomputes 6 planes via a full 4x4 matmul + column-sum extraction
-    // for every tile -- O(tilesX * tilesY) matmuls at 1080p / 32 px
-    // tiles is ~2000 matmuls per frame.
-    //
-    // Exploit the structure of the tile remap: with row vectors and
-    // tileVP = vp * R, the per-tile Gribb-Hartmann planes simplify to
+    // Per-tile sub-frustum planes for binning spatial lights.  A tile's
+    // 6 Gribb-Hartmann planes derived from the row-vector tile-VP
+    // (tileVP = vp * tile-NDC-remap) factor by tile axis:
     //   Left[tx]   =  vp_col0 - xNdcMin(tx) * vp_col3
     //   Right[tx]  = -vp_col0 + xNdcMax(tx) * vp_col3
     //   Bottom[ty] =  vp_col1 - yNdcMin(ty) * vp_col3
     //   Top[ty]    = -vp_col1 + yNdcMax(ty) * vp_col3
     //   Near (reverseZ) = vp_col3 - vp_col2     // tile-independent
     //   Far  (reverseZ) = vp_col2                // tile-independent
-    // (Positive sx/sy scale factors absorbed -- sign-only test.)
-    // So Left/Right are functions of tx alone and Bottom/Top of ty
-    // alone, and we drop from O(tilesX*tilesY) plane derivations to
-    // O(tilesX + tilesY).
+    // Positive sx/sy scale factors are dropped because IntersectsAABB
+    // is sign-only.  Left/Right depend on tx alone and Bottom/Top on
+    // ty alone, so the plane tables are sized O(tilesX + tilesY).
     const float fbW = static_cast<float>(framebufferWidth);
     const float fbH = static_cast<float>(framebufferHeight);
 
@@ -2832,31 +2824,100 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
             -vc1.V[3] + yNdcMax * vc3.V[3]);
     }
 
-    for (uint32_t ty = 0; ty < m_LightTileCountY; ++ty)
+    // For each spatial light, project its world-space influence AABB
+    // to a screen-tile rectangle and bin the light into the tiles
+    // inside that rectangle.  Per-tile membership is confirmed by the
+    // 6-plane sign test using the precomputed per-row/col planes; the
+    // rectangle just shrinks the candidate tile set from "all tiles"
+    // to "tiles the AABB's screen projection covers".
+    //
+    // When any AABB corner has clip.w <= kNearW the AABB straddles or
+    // surrounds the camera, so the 2D NDC bound has no meaning.  The
+    // light falls back to the full tile grid; the per-tile frustum
+    // confirm still rejects tiles the AABB cannot reach.
+    constexpr float kNearW = 1e-4f;
+    for (size_t li = 0; li < spatialIndices.size(); ++li)
     {
-        Frustum tileFrustum;
-        tileFrustum.Planes[Frustum::Bottom] = m_TileBottomPlanes[ty];
-        tileFrustum.Planes[Frustum::Top]    = m_TileTopPlanes[ty];
-        tileFrustum.Planes[Frustum::Near]   = nearPlane;
-        tileFrustum.Planes[Frustum::Far]    = farPlane;
+        const AABB&    box      = spatialBoxes[li];
+        const uint32_t lightIdx = spatialIndices[li];
 
-        for (uint32_t tx = 0; tx < m_LightTileCountX; ++tx)
+        float ndcXMin = FLT_MAX,  ndcXMax = -FLT_MAX;
+        float ndcYMin = FLT_MAX,  ndcYMax = -FLT_MAX;
+        bool  nearStraddle = false;
+        for (int c = 0; c < 8; ++c)
         {
-            tileFrustum.Planes[Frustum::Left]  = m_TileLeftPlanes[tx];
-            tileFrustum.Planes[Frustum::Right] = m_TileRightPlanes[tx];
+            const float x = (c & 1) ? box.Max.V[0] : box.Min.V[0];
+            const float y = (c & 2) ? box.Max.V[1] : box.Min.V[1];
+            const float z = (c & 4) ? box.Max.V[2] : box.Min.V[2];
+            const float clipW =
+                x * vc3.V[0] + y * vc3.V[1] + z * vc3.V[2] + vc3.V[3];
+            if (clipW <= kNearW) { nearStraddle = true; break; }
+            const float clipX =
+                x * vc0.V[0] + y * vc0.V[1] + z * vc0.V[2] + vc0.V[3];
+            const float clipY =
+                x * vc1.V[0] + y * vc1.V[1] + z * vc1.V[2] + vc1.V[3];
+            const float invW = 1.0f / clipW;
+            const float ndcX = clipX * invW;
+            const float ndcY = clipY * invW;
+            if (ndcX < ndcXMin) ndcXMin = ndcX;
+            if (ndcX > ndcXMax) ndcXMax = ndcX;
+            if (ndcY < ndcYMin) ndcYMin = ndcY;
+            if (ndcY > ndcYMax) ndcYMax = ndcY;
+        }
 
-            const uint32_t tileIdx = ty * m_LightTileCountX + tx;
-            uint32_t*      dst     = &m_TileLightIndices[static_cast<size_t>(tileIdx) * kPerTile];
-            uint32_t       cnt     = m_TileLightCounts[tileIdx];
+        uint32_t txLo, txHi, tyLo, tyHi;
+        if (nearStraddle)
+        {
+            txLo = 0; txHi = m_LightTileCountX - 1;
+            tyLo = 0; tyHi = m_LightTileCountY - 1;
+        }
+        else
+        {
+            // Entirely off-screen.
+            if (ndcXMax < -1.0f || ndcXMin > 1.0f ||
+                ndcYMax < -1.0f || ndcYMin > 1.0f)
+                continue;
+            ndcXMin = (std::max)(ndcXMin, -1.0f);
+            ndcXMax = (std::min)(ndcXMax,  1.0f);
+            ndcYMin = (std::max)(ndcYMin, -1.0f);
+            ndcYMax = (std::min)(ndcYMax,  1.0f);
+            // NDC -> pixel.  Y is flipped (NDC max y = pixel min y).
+            const float xPxLo = (ndcXMin * 0.5f + 0.5f) * fbW;
+            const float xPxHi = (ndcXMax * 0.5f + 0.5f) * fbW;
+            const float yPxLo = (0.5f - ndcYMax * 0.5f) * fbH;
+            const float yPxHi = (0.5f - ndcYMin * 0.5f) * fbH;
+            txLo = (std::min)(static_cast<uint32_t>(xPxLo / kTileSize),
+                              m_LightTileCountX - 1);
+            txHi = (std::min)(static_cast<uint32_t>(xPxHi / kTileSize),
+                              m_LightTileCountX - 1);
+            tyLo = (std::min)(static_cast<uint32_t>(yPxLo / kTileSize),
+                              m_LightTileCountY - 1);
+            tyHi = (std::min)(static_cast<uint32_t>(yPxHi / kTileSize),
+                              m_LightTileCountY - 1);
+        }
 
-            for (size_t si = 0; si < spatialIndices.size(); ++si)
+        for (uint32_t ty = tyLo; ty <= tyHi; ++ty)
+        {
+            Frustum tileFrustum;
+            tileFrustum.Planes[Frustum::Bottom] = m_TileBottomPlanes[ty];
+            tileFrustum.Planes[Frustum::Top]    = m_TileTopPlanes[ty];
+            tileFrustum.Planes[Frustum::Near]   = nearPlane;
+            tileFrustum.Planes[Frustum::Far]    = farPlane;
+
+            for (uint32_t tx = txLo; tx <= txHi; ++tx)
             {
+                tileFrustum.Planes[Frustum::Left]  = m_TileLeftPlanes[tx];
+                tileFrustum.Planes[Frustum::Right] = m_TileRightPlanes[tx];
+                if (!tileFrustum.IntersectsAABB(box))
+                    continue;
+
+                const uint32_t tileIdx = ty * m_LightTileCountX + tx;
+                uint32_t&      cnt     = m_TileLightCounts[tileIdx];
                 if (cnt >= kPerTile)
-                    break;
-                if (tileFrustum.IntersectsAABB(spatialBoxes[si]))
-                    dst[cnt++] = spatialIndices[si];
+                    continue;
+                m_TileLightIndices[static_cast<size_t>(tileIdx) * kPerTile + cnt++] =
+                    lightIdx;
             }
-            m_TileLightCounts[tileIdx] = cnt;
         }
     }
 }
