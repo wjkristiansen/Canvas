@@ -28,10 +28,10 @@ typedef uint32_t uint;
 
 // Forward+ tile parameters.  The composite shader divides
 // SV_Position.xy by LIGHT_TILE_SIZE_PIXELS to find the screen tile
-// owning a pixel; that tile's row in TileLightIndices lists up to
-// MAX_LIGHTS_PER_TILE indices into the per-frame Lights buffer.
+// owning a pixel; that tile's range in TileLightIndices (bounded by
+// TileLightOffsets[tile] .. TileLightOffsets[tile + 1]) lists the
+// indices into the per-frame Lights buffer that influence it.
 #define LIGHT_TILE_SIZE_PIXELS 32
-#define MAX_LIGHTS_PER_TILE     32
 
 #ifdef __cplusplus
 namespace HlslTypes {

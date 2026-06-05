@@ -45,21 +45,19 @@ ConstantBuffer<HlslPerFrameConstants> PerFrame : register(b0);
 StructuredBuffer<HlslLight> Lights : register(t8);
 
 // Forward+ tile data.  Together with PerFrame.LightTileCountX /
-// LightTileSizePixels these let a pixel resolve the (up to
-// MAX_LIGHTS_PER_TILE) light indices that actually influence its
-// screen tile.  TileLightCounts[t] holds the active index count for
-// tile t; TileLightIndices[t * MAX_LIGHTS_PER_TILE + i] is the i-th
-// index (into the Lights buffer above) for that tile.  Always-on
-// lights (ambient / directional) are pre-baked into every tile's list
-// by the engine, so the shader's per-tile loop is the sole light
-// iteration -- no separate "global" pass.
-StructuredBuffer<uint> TileLightCounts  : register(t9);
+// LightTileSizePixels these let a pixel resolve the light indices
+// that influence its screen tile.  Tile t's index range in
+// TileLightIndices is [TileLightOffsets[t], TileLightOffsets[t + 1]);
+// each entry indexes the Lights buffer above.  Always-on lights
+// (ambient / directional) are iterated separately via
+// AlwaysOnLightIndices below and do not appear in TileLightIndices.
+StructuredBuffer<uint> TileLightOffsets : register(t9);
 StructuredBuffer<uint> TileLightIndices : register(t10);
 
 // Indices of always-on lights (ambient / directional / area).  These
 // affect every lit pixel and live outside the per-tile spatial loop,
-// so they do not consume MAX_LIGHTS_PER_TILE slots in TileLightIndices.
-// Sized to PerFrame.AlwaysOnLightCount.
+// so they do not consume per-tile slots in TileLightIndices.  Sized
+// to PerFrame.AlwaysOnLightCount.
 StructuredBuffer<uint> AlwaysOnLightIndices : register(t11);
 
 static const float PI = 3.14159265358979323846;
@@ -400,30 +398,30 @@ float4 PSComposite(FSInput input) : SV_Target0
     float3 totalLight = float3(0.0, 0.0, 0.0);
 
     // Always-on lights (ambient / directional / area).  Iterated once
-    // per pixel ahead of the per-tile loop so they do not consume
-    // MAX_LIGHTS_PER_TILE slots.
+    // per pixel ahead of the per-tile loop so they consume no per-tile
+    // slots.
     for (uint a = 0; a < PerFrame.AlwaysOnLightCount; ++a)
     {
         HlslLight light = Lights[AlwaysOnLightIndices[a]];
         totalLight += ShadeLight(light, P, N);
     }
 
-    // Forward+: find the screen tile owning this pixel, read its
-    // spatial light-index count, and iterate only those lights.  The
-    // clamp guards pixels that fall exactly on the right/bottom edge
-    // of the framebuffer (SV_Position.xy is the pixel center, so
+    // Forward+: find the screen tile owning this pixel and iterate its
+    // packed spatial light-index range [offsets[t], offsets[t + 1]).
+    // The clamp guards pixels that fall exactly on the right/bottom
+    // edge of the framebuffer (SV_Position.xy is the pixel center, so
     // within-bounds pixels never trip it, but out-of-range framebuffer
     // sizes or partial tiles might).
     uint2 tileXY = uint2(input.Position.xy) / PerFrame.LightTileSizePixels;
     tileXY.x = min(tileXY.x, PerFrame.LightTileCountX - 1);
     tileXY.y = min(tileXY.y, PerFrame.LightTileCountY - 1);
-    uint tileIdx  = tileXY.y * PerFrame.LightTileCountX + tileXY.x;
-    uint tileBase = tileIdx * MAX_LIGHTS_PER_TILE;
-    uint tileCount = TileLightCounts[tileIdx];
+    uint tileIdx   = tileXY.y * PerFrame.LightTileCountX + tileXY.x;
+    uint tileStart = TileLightOffsets[tileIdx];
+    uint tileEnd   = TileLightOffsets[tileIdx + 1];
 
-    for (uint i = 0; i < tileCount; ++i)
+    for (uint i = tileStart; i < tileEnd; ++i)
     {
-        HlslLight light = Lights[TileLightIndices[tileBase + i]];
+        HlslLight light = Lights[TileLightIndices[i]];
         totalLight += ShadeLight(light, P, N);
     }
 

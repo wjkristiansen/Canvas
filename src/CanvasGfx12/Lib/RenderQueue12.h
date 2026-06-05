@@ -620,20 +620,28 @@ public:
     // Forward+ tile binning state.  Built each frame by
     // BuildTileLightLists() after SubmitLight has finished
     // accumulating m_Lights; uploaded as two structured buffers
-    // (counts at t9, indices at t10) consumed by the composite PS.
-    // Sizes scale with framebuffer dimensions: m_LightTileCountX/Y =
-    // ceil(W/H over LIGHT_TILE_SIZE_PIXELS), m_TileLightCounts has
-    // one uint per tile, m_TileLightIndices has MAX_LIGHTS_PER_TILE
-    // uints per tile (fixed-stride layout).
-    std::vector<uint32_t> m_TileLightCounts;
-    std::vector<uint32_t> m_TileLightIndices;
+    // (offsets at t9, packed indices at t10) consumed by the
+    // composite PS.
+    //   m_TileLightOffsets        - size (totalTiles + 1); tile t's
+    //                               packed-indices range is
+    //                               [offsets[t], offsets[t + 1]).
+    //                               offsets[totalTiles] = total pair count.
+    //   m_TileLightIndicesPacked  - flat concatenation of per-tile
+    //                               light indices, length =
+    //                               offsets[totalTiles].
+    //   m_TileBinFillCursor       - per-tile write cursor used only
+    //                               during the scatter pass; persistent
+    //                               across frames to avoid reallocation.
+    std::vector<uint32_t> m_TileLightOffsets;
+    std::vector<uint32_t> m_TileLightIndicesPacked;
+    std::vector<uint32_t> m_TileBinFillCursor;
     uint32_t              m_LightTileCountX = 0;
     uint32_t              m_LightTileCountY = 0;
 
     // Always-on light indices (ambient / directional / area).  Iterated
     // by the composite PS once per pixel before the per-tile spatial
-    // loop, so these lights do not consume MAX_LIGHTS_PER_TILE slots
-    // and do not appear in m_TileLightIndices.
+    // loop, so these lights do not consume per-tile slots and do not
+    // appear in m_TileLightIndicesPacked.
     std::vector<uint32_t> m_AlwaysOnLightIndices;
 
     // Per-row / per-column tile frustum planes, precomputed once per

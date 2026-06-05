@@ -1467,12 +1467,12 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     //           always bound (a single dummy element when no lights
     //           are visible so the SRV slot is never null).
     //   Slot 3: Root SRV (t9) -- StructuredBuffer<uint> per-tile light
-    //           count for Forward+ tile binning.  One uint per tile in
-    //           row-major order (tile (x, y) at index y * TileCountX + x).
-    //   Slot 4: Root SRV (t10) -- StructuredBuffer<uint> per-tile
-    //           packed light-index lists, MAX_LIGHTS_PER_TILE uints per
-    //           tile (fixed stride).  Indexed by tile-base + i, with
-    //           i < TileLightCounts[tile].
+    //           offsets for Forward+ tile binning.  Sized to
+    //           totalTiles + 1; tile t's light-index range in
+    //           TileLightIndices is [offsets[t], offsets[t + 1]).
+    //   Slot 4: Root SRV (t10) -- StructuredBuffer<uint> packed
+    //           per-tile light indices.  Length = offsets[totalTiles];
+    //           the per-tile range bounds are read from t9.
     //   Slot 5: Root SRV (t11) -- StructuredBuffer<uint> indices of
     //           always-on lights (ambient / directional / area).  Sized
     //           to PerFrame.AlwaysOnLightCount; the composite PS
@@ -1531,7 +1531,7 @@ void CRenderQueue12::EnsureCompositePSO(DXGI_FORMAT rtvFormat)
     // ring's per-frame lifecycle (contents change every submit).
     compositeRootParams[2].InitAsShaderResourceView(8, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                     D3D12_SHADER_VISIBILITY_PIXEL);
-    // Per-tile light counts (t9) and packed indices (t10) for the
+    // Per-tile light offsets (t9) and packed indices (t10) for the
     // Forward+ binner.  Both rebuilt and re-uploaded each frame.
     compositeRootParams[3].InitAsShaderResourceView(9, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                     D3D12_SHADER_VISIBILITY_PIXEL);
@@ -2683,20 +2683,24 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
     {
         m_LightTileCountX = 0;
         m_LightTileCountY = 0;
-        m_TileLightCounts.clear();
-        m_TileLightIndices.clear();
+        m_TileLightOffsets.clear();
+        m_TileLightIndicesPacked.clear();
         m_AlwaysOnLightIndices.clear();
         return;
     }
 
     constexpr uint32_t kTileSize = LIGHT_TILE_SIZE_PIXELS;
-    constexpr uint32_t kPerTile  = MAX_LIGHTS_PER_TILE;
     m_LightTileCountX = (framebufferWidth  + kTileSize - 1) / kTileSize;
     m_LightTileCountY = (framebufferHeight + kTileSize - 1) / kTileSize;
     const uint32_t totalTiles = m_LightTileCountX * m_LightTileCountY;
 
-    m_TileLightCounts.assign(totalTiles, 0);
-    m_TileLightIndices.assign(static_cast<size_t>(totalTiles) * kPerTile, 0);
+    // Offsets buffer carries one extra trailing element so the shader
+    // can read both start and end as offsets[t] / offsets[t + 1] with
+    // no edge case at the last tile.  Zero-initialized -- a frame with
+    // no spatial lights leaves every offsets[t] == 0 == offsets[t + 1],
+    // which the shader reads as "no lights in this tile".
+    m_TileLightOffsets.assign(static_cast<size_t>(totalTiles) + 1, 0);
+    m_TileLightIndicesPacked.clear();
     m_AlwaysOnLightIndices.clear();
 
     if (m_LightCount == 0)
@@ -2849,22 +2853,22 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
             -vc1.V[3] + yNdcMax * vc3.V[3]);
     }
 
-    // For each spatial light, project its world-space influence AABB
-    // to a screen-tile rectangle and bin the light into the tiles
-    // inside that rectangle.  Per-tile membership is confirmed by the
-    // 6-plane sign test using the precomputed per-row/col planes; the
-    // rectangle just shrinks the candidate tile set from "all tiles"
-    // to "tiles the AABB's screen projection covers".
-    //
-    // When any AABB corner has clip.w <= kNearW the AABB straddles or
-    // surrounds the camera, so the 2D NDC bound has no meaning.  The
-    // light falls back to the full tile grid; the per-tile frustum
-    // confirm still rejects tiles the AABB cannot reach.
+    // Per-light screen-tile rectangle.  For each spatial light, project
+    // its world-space influence AABB to NDC, derive the smallest tile
+    // rectangle that covers the projection, and stash it for the two
+    // binning passes below.  A near-plane straddler (any AABB corner
+    // with clip.w <= kNearW) falls back to the full tile grid because
+    // the 2D NDC bound is meaningless when the AABB wraps the camera;
+    // the per-tile frustum confirm still rejects unreachable tiles.
+    // Off-screen lights are flagged with txLo > txHi and skipped.
+    struct TileRect { uint32_t txLo, txHi, tyLo, tyHi; };
+    std::vector<TileRect> tileRects;
+    tileRects.reserve(spatialIndices.size());
+
     constexpr float kNearW = 1e-4f;
     for (size_t li = 0; li < spatialIndices.size(); ++li)
     {
-        const AABB&    box      = spatialBoxes[li];
-        const uint32_t lightIdx = spatialIndices[li];
+        const AABB& box = spatialBoxes[li];
 
         float ndcXMin = FLT_MAX,  ndcXMax = -FLT_MAX;
         float ndcYMin = FLT_MAX,  ndcYMax = -FLT_MAX;
@@ -2890,18 +2894,19 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
             if (ndcY > ndcYMax) ndcYMax = ndcY;
         }
 
-        uint32_t txLo, txHi, tyLo, tyHi;
+        TileRect r;
         if (nearStraddle)
         {
-            txLo = 0; txHi = m_LightTileCountX - 1;
-            tyLo = 0; tyHi = m_LightTileCountY - 1;
+            r = { 0, m_LightTileCountX - 1, 0, m_LightTileCountY - 1 };
+        }
+        else if (ndcXMax < -1.0f || ndcXMin > 1.0f ||
+                 ndcYMax < -1.0f || ndcYMin > 1.0f)
+        {
+            // Off-screen sentinel: txLo > txHi disables both passes.
+            r = { 1u, 0u, 1u, 0u };
         }
         else
         {
-            // Entirely off-screen.
-            if (ndcXMax < -1.0f || ndcXMin > 1.0f ||
-                ndcYMax < -1.0f || ndcYMin > 1.0f)
-                continue;
             ndcXMin = (std::max)(ndcXMin, -1.0f);
             ndcXMax = (std::min)(ndcXMax,  1.0f);
             ndcYMin = (std::max)(ndcYMin, -1.0f);
@@ -2911,37 +2916,87 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
             const float xPxHi = (ndcXMax * 0.5f + 0.5f) * fbW;
             const float yPxLo = (0.5f - ndcYMax * 0.5f) * fbH;
             const float yPxHi = (0.5f - ndcYMin * 0.5f) * fbH;
-            txLo = (std::min)(static_cast<uint32_t>(xPxLo / kTileSize),
-                              m_LightTileCountX - 1);
-            txHi = (std::min)(static_cast<uint32_t>(xPxHi / kTileSize),
-                              m_LightTileCountX - 1);
-            tyLo = (std::min)(static_cast<uint32_t>(yPxLo / kTileSize),
-                              m_LightTileCountY - 1);
-            tyHi = (std::min)(static_cast<uint32_t>(yPxHi / kTileSize),
-                              m_LightTileCountY - 1);
+            r.txLo = (std::min)(static_cast<uint32_t>(xPxLo / kTileSize),
+                                m_LightTileCountX - 1);
+            r.txHi = (std::min)(static_cast<uint32_t>(xPxHi / kTileSize),
+                                m_LightTileCountX - 1);
+            r.tyLo = (std::min)(static_cast<uint32_t>(yPxLo / kTileSize),
+                                m_LightTileCountY - 1);
+            r.tyHi = (std::min)(static_cast<uint32_t>(yPxHi / kTileSize),
+                                m_LightTileCountY - 1);
         }
+        tileRects.push_back(r);
+    }
 
-        for (uint32_t ty = tyLo; ty <= tyHi; ++ty)
+    // Pass 1: count.  For each (light, tile-in-rect) that survives the
+    // per-tile frustum confirm, bump the tile's slot in
+    // m_TileLightOffsets.  The +1 indexing turns the count buffer into
+    // the prefix-scan input below: offsets[t + 1] holds the count of
+    // tile t, which after scan becomes the start of tile t + 1.
+    for (size_t li = 0; li < spatialIndices.size(); ++li)
+    {
+        const TileRect& r = tileRects[li];
+        if (r.txLo > r.txHi)
+            continue;
+        const AABB& box = spatialBoxes[li];
+
+        for (uint32_t ty = r.tyLo; ty <= r.tyHi; ++ty)
         {
             Frustum tileFrustum;
             tileFrustum.Planes[Frustum::Bottom] = m_TileBottomPlanes[ty];
             tileFrustum.Planes[Frustum::Top]    = m_TileTopPlanes[ty];
             tileFrustum.Planes[Frustum::Near]   = nearPlane;
             tileFrustum.Planes[Frustum::Far]    = farPlane;
-
-            for (uint32_t tx = txLo; tx <= txHi; ++tx)
+            for (uint32_t tx = r.txLo; tx <= r.txHi; ++tx)
             {
                 tileFrustum.Planes[Frustum::Left]  = m_TileLeftPlanes[tx];
                 tileFrustum.Planes[Frustum::Right] = m_TileRightPlanes[tx];
                 if (!tileFrustum.IntersectsAABB(box))
                     continue;
-
                 const uint32_t tileIdx = ty * m_LightTileCountX + tx;
-                uint32_t&      cnt     = m_TileLightCounts[tileIdx];
-                if (cnt >= kPerTile)
+                ++m_TileLightOffsets[tileIdx + 1];
+            }
+        }
+    }
+
+    // Prefix scan in place: after this, m_TileLightOffsets[t] is the
+    // start index of tile t in the packed buffer, and
+    // m_TileLightOffsets[totalTiles] is the total pair count.
+    for (uint32_t t = 1; t <= totalTiles; ++t)
+        m_TileLightOffsets[t] += m_TileLightOffsets[t - 1];
+
+    const uint32_t totalPairs = m_TileLightOffsets[totalTiles];
+    m_TileLightIndicesPacked.resize(totalPairs);
+
+    // Pass 2: scatter.  A per-tile fill cursor tracks where the next
+    // index for that tile lands; combined with m_TileLightOffsets it
+    // gives the destination slot for each (tile, light) pair.  Order
+    // within a tile is unspecified (light shading is commutative).
+    m_TileBinFillCursor.assign(totalTiles, 0);
+    for (size_t li = 0; li < spatialIndices.size(); ++li)
+    {
+        const TileRect& r = tileRects[li];
+        if (r.txLo > r.txHi)
+            continue;
+        const AABB&    box      = spatialBoxes[li];
+        const uint32_t lightIdx = spatialIndices[li];
+
+        for (uint32_t ty = r.tyLo; ty <= r.tyHi; ++ty)
+        {
+            Frustum tileFrustum;
+            tileFrustum.Planes[Frustum::Bottom] = m_TileBottomPlanes[ty];
+            tileFrustum.Planes[Frustum::Top]    = m_TileTopPlanes[ty];
+            tileFrustum.Planes[Frustum::Near]   = nearPlane;
+            tileFrustum.Planes[Frustum::Far]    = farPlane;
+            for (uint32_t tx = r.txLo; tx <= r.txHi; ++tx)
+            {
+                tileFrustum.Planes[Frustum::Left]  = m_TileLeftPlanes[tx];
+                tileFrustum.Planes[Frustum::Right] = m_TileRightPlanes[tx];
+                if (!tileFrustum.IntersectsAABB(box))
                     continue;
-                m_TileLightIndices[static_cast<size_t>(tileIdx) * kPerTile + cnt++] =
-                    lightIdx;
+                const uint32_t tileIdx = ty * m_LightTileCountX + tx;
+                m_TileLightIndicesPacked[m_TileLightOffsets[tileIdx]
+                                       + m_TileBinFillCursor[tileIdx]++] = lightIdx;
             }
         }
     }
@@ -3138,34 +3193,39 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             memset(lightsHw.pMapped, 0, sizeof(HlslTypes::HlslLight));
         const D3D12_GPU_VIRTUAL_ADDRESS lightsSRVAddress = lightsHw.GpuAddress;
 
-        // Per-tile light counts and packed indices for Forward+ tile
+        // Per-tile light offsets and packed indices for Forward+ tile
         // binning -- both rebuilt each frame by BuildTileLightLists
-        // above.  Always allocate at least one element each so the
-        // root SRVs are never bound to a null GPU address (the shader
-        // gates reads by LightTileCountX/Y, so unused tail entries
-        // are never sampled).
+        // above.  Always allocate at least one element each so the root
+        // SRVs are never bound to a null GPU address (the shader gates
+        // reads by LightTileCountX/Y and the offsets-derived per-tile
+        // range, so unused tail entries are never sampled).
+        //   Offsets buffer has (totalTiles + 1) entries: the trailing
+        //   element holds the total packed-index count so the shader
+        //   can read offsets[t + 1] without a tile-count branch.
+        //   Packed-indices buffer has offsets[totalTiles] entries
+        //   (the actual sum of per-tile light counts).
         const uint32_t totalTiles = m_LightTileCountX * m_LightTileCountY;
-        const uint32_t tileCountElems = (totalTiles > 0) ? totalTiles : 1u;
-        const uint64_t tileCountsBytes =
-            static_cast<uint64_t>(tileCountElems) * sizeof(uint32_t);
-        HostWriteAllocation tileCountsHw;
-        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(tileCountsBytes, tileCountsHw));
+        const uint32_t offsetsCount = (totalTiles > 0) ? (totalTiles + 1u) : 1u;
+        const uint64_t tileOffsetsBytes =
+            static_cast<uint64_t>(offsetsCount) * sizeof(uint32_t);
+        HostWriteAllocation tileOffsetsHw;
+        Gem::ThrowGemError(m_UploadRing.AllocateFromRing(tileOffsetsBytes, tileOffsetsHw));
         if (totalTiles > 0)
-            memcpy(tileCountsHw.pMapped, m_TileLightCounts.data(),
-                   static_cast<size_t>(totalTiles) * sizeof(uint32_t));
+            memcpy(tileOffsetsHw.pMapped, m_TileLightOffsets.data(),
+                   static_cast<size_t>(totalTiles + 1u) * sizeof(uint32_t));
         else
-            memset(tileCountsHw.pMapped, 0, sizeof(uint32_t));
-        const D3D12_GPU_VIRTUAL_ADDRESS tileCountsSRVAddress = tileCountsHw.GpuAddress;
+            memset(tileOffsetsHw.pMapped, 0, sizeof(uint32_t));
+        const D3D12_GPU_VIRTUAL_ADDRESS tileOffsetsSRVAddress = tileOffsetsHw.GpuAddress;
 
-        const uint32_t tileIndicesElems =
-            (totalTiles > 0) ? (totalTiles * MAX_LIGHTS_PER_TILE) : 1u;
+        const uint32_t packedCount = static_cast<uint32_t>(m_TileLightIndicesPacked.size());
+        const uint32_t packedElems = (packedCount > 0) ? packedCount : 1u;
         const uint64_t tileIndicesBytes =
-            static_cast<uint64_t>(tileIndicesElems) * sizeof(uint32_t);
+            static_cast<uint64_t>(packedElems) * sizeof(uint32_t);
         HostWriteAllocation tileIndicesHw;
         Gem::ThrowGemError(m_UploadRing.AllocateFromRing(tileIndicesBytes, tileIndicesHw));
-        if (totalTiles > 0)
-            memcpy(tileIndicesHw.pMapped, m_TileLightIndices.data(),
-                   static_cast<size_t>(totalTiles) * MAX_LIGHTS_PER_TILE * sizeof(uint32_t));
+        if (packedCount > 0)
+            memcpy(tileIndicesHw.pMapped, m_TileLightIndicesPacked.data(),
+                   static_cast<size_t>(packedCount) * sizeof(uint32_t));
         else
             memset(tileIndicesHw.pMapped, 0, sizeof(uint32_t));
         const D3D12_GPU_VIRTUAL_ADDRESS tileIndicesSRVAddress = tileIndicesHw.GpuAddress;
@@ -3767,7 +3827,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                 D3D12_BARRIER_SYNC_RENDER_TARGET,
                 D3D12_BARRIER_ACCESS_RENDER_TARGET);
-            compositeTask.RecordFunc = [frameCBVAddress, lightsSRVAddress, tileCountsSRVAddress, tileIndicesSRVAddress, alwaysOnSRVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
+            compositeTask.RecordFunc = [frameCBVAddress, lightsSRVAddress, tileOffsetsSRVAddress, tileIndicesSRVAddress, alwaysOnSRVAddress, baseGpuHandle, this](ID3D12GraphicsCommandList* pCL)
             {
                 // No clear: every back-buffer pixel is written by the composite PS
                 // (background fills empty G-buffer pixels).
@@ -3781,7 +3841,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 pCL->SetGraphicsRootConstantBufferView(0, frameCBVAddress);
                 pCL->SetGraphicsRootDescriptorTable(1, baseGpuHandle);
                 pCL->SetGraphicsRootShaderResourceView(2, lightsSRVAddress);
-                pCL->SetGraphicsRootShaderResourceView(3, tileCountsSRVAddress);
+                pCL->SetGraphicsRootShaderResourceView(3, tileOffsetsSRVAddress);
                 pCL->SetGraphicsRootShaderResourceView(4, tileIndicesSRVAddress);
                 pCL->SetGraphicsRootShaderResourceView(5, alwaysOnSRVAddress);
                 pCL->DrawInstanced(3, 1, 0, 0);
@@ -3856,8 +3916,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         m_HasVisibleLightFilter = false;
         m_Lights.clear();
         m_LightCount = 0;
-        m_TileLightCounts.clear();
-        m_TileLightIndices.clear();
+        m_TileLightOffsets.clear();
+        m_TileLightIndicesPacked.clear();
         m_AlwaysOnLightIndices.clear();
         m_LightTileCountX = 0;
         m_LightTileCountY = 0;
@@ -3870,8 +3930,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     m_pActiveCamera = nullptr;
     m_LightCount = 0;
     m_Lights.clear();
-    m_TileLightCounts.clear();
-    m_TileLightIndices.clear();
+    m_TileLightOffsets.clear();
+    m_TileLightIndicesPacked.clear();
     m_AlwaysOnLightIndices.clear();
     m_LightTileCountX = 0;
     m_LightTileCountY = 0;
