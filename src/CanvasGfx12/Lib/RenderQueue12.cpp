@@ -2749,48 +2749,101 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
     if (spatialIndices.empty())
         return;
 
-    // Per-tile binning.  Build a sub-frustum from the camera's view-
-    // projection scaled to each tile's NDC sub-rect and test each
-    // spatial light's influence AABB against it.  The sub-rect remap
-    // matrix R rescales clip-space xy from [xMin,xMax] x [yMin,yMax]
-    // to [-1,+1]^2 so the existing Frustum::FromViewProjection plane
-    // extraction works unchanged.  Reverse-Z near/far are inherited
-    // from the camera projection.
+    // Per-tile binning.  Conceptually we build a sub-frustum from the
+    // camera's view-projection scaled to each tile's NDC sub-rect and
+    // test each spatial light's influence AABB against it.  The naive
+    // version (matrix-remap + Frustum::FromViewProjection per tile)
+    // recomputes 6 planes via a full 4x4 matmul + column-sum extraction
+    // for every tile -- O(tilesX * tilesY) matmuls at 1080p / 32 px
+    // tiles is ~2000 matmuls per frame.
+    //
+    // Exploit the structure of the tile remap: with row vectors and
+    // tileVP = vp * R, the per-tile Gribb-Hartmann planes simplify to
+    //   Left[tx]   =  vp_col0 - xNdcMin(tx) * vp_col3
+    //   Right[tx]  = -vp_col0 + xNdcMax(tx) * vp_col3
+    //   Bottom[ty] =  vp_col1 - yNdcMin(ty) * vp_col3
+    //   Top[ty]    = -vp_col1 + yNdcMax(ty) * vp_col3
+    //   Near (reverseZ) = vp_col3 - vp_col2     // tile-independent
+    //   Far  (reverseZ) = vp_col2                // tile-independent
+    // (Positive sx/sy scale factors absorbed -- sign-only test.)
+    // So Left/Right are functions of tx alone and Bottom/Top of ty
+    // alone, and we drop from O(tilesX*tilesY) plane derivations to
+    // O(tilesX + tilesY).
     const float fbW = static_cast<float>(framebufferWidth);
     const float fbH = static_cast<float>(framebufferHeight);
 
+    auto vpCol = [&](int c) {
+        return FloatVector4(viewProj.M[0][c], viewProj.M[1][c],
+                            viewProj.M[2][c], viewProj.M[3][c]);
+    };
+    const FloatVector4 vc0 = vpCol(0);
+    const FloatVector4 vc1 = vpCol(1);
+    const FloatVector4 vc2 = vpCol(2);
+    const FloatVector4 vc3 = vpCol(3);
+
+    // Near/Far are shared across all tiles for reverse-Z.
+    const FloatVector4 nearPlane(vc3.V[0] - vc2.V[0], vc3.V[1] - vc2.V[1],
+                                 vc3.V[2] - vc2.V[2], vc3.V[3] - vc2.V[3]);
+    const FloatVector4 farPlane = vc2;
+
+    // Per-column Left/Right planes (size = m_LightTileCountX).
+    m_TileLeftPlanes.resize(m_LightTileCountX);
+    m_TileRightPlanes.resize(m_LightTileCountX);
+    for (uint32_t tx = 0; tx < m_LightTileCountX; ++tx)
+    {
+        const float xPxMin = static_cast<float>(tx * kTileSize);
+        const float xPxMax = std::min<float>(static_cast<float>((tx + 1) * kTileSize), fbW);
+        const float xNdcMin = (xPxMin / fbW) * 2.0f - 1.0f;
+        const float xNdcMax = (xPxMax / fbW) * 2.0f - 1.0f;
+
+        m_TileLeftPlanes[tx]  = FloatVector4(
+             vc0.V[0] - xNdcMin * vc3.V[0],
+             vc0.V[1] - xNdcMin * vc3.V[1],
+             vc0.V[2] - xNdcMin * vc3.V[2],
+             vc0.V[3] - xNdcMin * vc3.V[3]);
+        m_TileRightPlanes[tx] = FloatVector4(
+            -vc0.V[0] + xNdcMax * vc3.V[0],
+            -vc0.V[1] + xNdcMax * vc3.V[1],
+            -vc0.V[2] + xNdcMax * vc3.V[2],
+            -vc0.V[3] + xNdcMax * vc3.V[3]);
+    }
+
+    // Per-row Bottom/Top planes (size = m_LightTileCountY).  Screen-pixel
+    // origin is top-left; NDC y is bottom-up, so flip the y mapping --
+    // pixel-min maps to NDC-max and vice versa.
+    m_TileBottomPlanes.resize(m_LightTileCountY);
+    m_TileTopPlanes.resize(m_LightTileCountY);
     for (uint32_t ty = 0; ty < m_LightTileCountY; ++ty)
     {
+        const float yPxMin = static_cast<float>(ty * kTileSize);
+        const float yPxMax = std::min<float>(static_cast<float>((ty + 1) * kTileSize), fbH);
+        const float yNdcMax = 1.0f - (yPxMin / fbH) * 2.0f;
+        const float yNdcMin = 1.0f - (yPxMax / fbH) * 2.0f;
+
+        m_TileBottomPlanes[ty] = FloatVector4(
+             vc1.V[0] - yNdcMin * vc3.V[0],
+             vc1.V[1] - yNdcMin * vc3.V[1],
+             vc1.V[2] - yNdcMin * vc3.V[2],
+             vc1.V[3] - yNdcMin * vc3.V[3]);
+        m_TileTopPlanes[ty]    = FloatVector4(
+            -vc1.V[0] + yNdcMax * vc3.V[0],
+            -vc1.V[1] + yNdcMax * vc3.V[1],
+            -vc1.V[2] + yNdcMax * vc3.V[2],
+            -vc1.V[3] + yNdcMax * vc3.V[3]);
+    }
+
+    for (uint32_t ty = 0; ty < m_LightTileCountY; ++ty)
+    {
+        Frustum tileFrustum;
+        tileFrustum.Planes[Frustum::Bottom] = m_TileBottomPlanes[ty];
+        tileFrustum.Planes[Frustum::Top]    = m_TileTopPlanes[ty];
+        tileFrustum.Planes[Frustum::Near]   = nearPlane;
+        tileFrustum.Planes[Frustum::Far]    = farPlane;
+
         for (uint32_t tx = 0; tx < m_LightTileCountX; ++tx)
         {
-            const float xPxMin = static_cast<float>(tx * kTileSize);
-            const float xPxMax = std::min<float>(static_cast<float>((tx + 1) * kTileSize), fbW);
-            const float yPxMin = static_cast<float>(ty * kTileSize);
-            const float yPxMax = std::min<float>(static_cast<float>((ty + 1) * kTileSize), fbH);
-
-            // Screen-pixel origin is top-left; NDC y is bottom-up, so
-            // flip the y mapping.
-            const float xNdcMin = (xPxMin / fbW) * 2.0f - 1.0f;
-            const float xNdcMax = (xPxMax / fbW) * 2.0f - 1.0f;
-            const float yNdcMax = 1.0f - (yPxMin / fbH) * 2.0f;
-            const float yNdcMin = 1.0f - (yPxMax / fbH) * 2.0f;
-
-            const float cx = (xNdcMin + xNdcMax) * 0.5f;
-            const float cy = (yNdcMin + yNdcMax) * 0.5f;
-            const float sx = (xNdcMax - xNdcMin);
-            const float sy = (yNdcMax - yNdcMin);
-            // Guard against zero-size tiles at the framebuffer edge.
-            if (sx <= 0.0f || sy <= 0.0f)
-                continue;
-
-            FloatMatrix4x4 R = Canvas::Math::IdentityMatrix<float, 4, 4>();
-            R[0][0] =  2.0f / sx;
-            R[1][1] =  2.0f / sy;
-            R[3][0] = -2.0f * cx / sx;
-            R[3][1] = -2.0f * cy / sy;
-
-            const FloatMatrix4x4 tileVP = viewProj * R;
-            const Frustum tileFrustum = Frustum::FromViewProjection(tileVP, /*reverseZ*/ true);
+            tileFrustum.Planes[Frustum::Left]  = m_TileLeftPlanes[tx];
+            tileFrustum.Planes[Frustum::Right] = m_TileRightPlanes[tx];
 
             const uint32_t tileIdx = ty * m_LightTileCountX + tx;
             uint32_t*      dst     = &m_TileLightIndices[static_cast<size_t>(tileIdx) * kPerTile];

@@ -630,6 +630,17 @@ public:
     uint32_t              m_LightTileCountX = 0;
     uint32_t              m_LightTileCountY = 0;
 
+    // Per-row / per-column tile frustum planes, precomputed once per
+    // frame by BuildTileLightLists and combined with shared Near/Far
+    // to assemble each tile's frustum without a 4x4 matmul.  Sized to
+    // m_LightTileCountX / m_LightTileCountY respectively; persistent
+    // across frames to avoid reallocating ~tilesX+tilesY FloatVector4s
+    // every frame at 1080p.
+    std::vector<Canvas::Math::FloatVector4> m_TileLeftPlanes;
+    std::vector<Canvas::Math::FloatVector4> m_TileRightPlanes;
+    std::vector<Canvas::Math::FloatVector4> m_TileBottomPlanes;
+    std::vector<Canvas::Math::FloatVector4> m_TileTopPlanes;
+
     // Shadow-caster intents recorded by SubmitLight (one per enabled
     // directional light with LightFlags::CastsShadows).  Resolved at
     // EndFrame, after scene traversal is complete and m_FrameWorldBounds
