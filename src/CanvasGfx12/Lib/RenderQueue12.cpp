@@ -2668,6 +2668,7 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
     using Canvas::Math::Frustum;
     using Canvas::Math::FloatVector4;
     using Canvas::Math::FloatMatrix4x4;
+    using Canvas::Math::Cone;
 
     if (framebufferWidth == 0 || framebufferHeight == 0)
     {
@@ -2694,12 +2695,14 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
     //   alwaysIndices   -- ambient / directional / area (no spatial
     //                      bound; copied into every tile),
     //   spatialIndices  -- point / spot (gated by per-tile frustum).
-    // Influence AABBs for spatial lights are derived from HlslLight
-    // fields (DirectionOrPosition.xyz as the apex/center,
-    // AttenuationAndRange.w as the cutoff distance, which is already
-    // the precomputed range CPU-side).  For spot lights this uses the
-    // bounding sphere of the cone -- conservative at the tile tier,
-    // tightened later if profiling shows it matters.
+    // Spatial influence AABBs come from HlslLight fields:
+    //   DirectionOrPosition.xyz = apex/center,
+    //   AttenuationAndRange.w   = cutoff distance (CPU-precomputed
+    //                             from peak intensity + attenuation).
+    // Point lights use the cutoff-sphere AABB; spot lights use the
+    // tighter cone AABB (apex + axis + half-angle = acos(cosOuter)),
+    // which keeps narrow / angled spots from inflating to a full
+    // sphere around the apex.
     std::vector<uint32_t> alwaysIndices;
     std::vector<uint32_t> spatialIndices;
     std::vector<AABB>     spatialBoxes;
@@ -2726,10 +2729,32 @@ void CRenderQueue12::BuildTileLightLists(uint32_t framebufferWidth,
         const float cx = L.DirectionOrPosition.x;
         const float cy = L.DirectionOrPosition.y;
         const float cz = L.DirectionOrPosition.z;
-        spatialIndices.push_back(i);
-        spatialBoxes.emplace_back(
-            FloatVector4(cx - r, cy - r, cz - r, 0.0f),
-            FloatVector4(cx + r, cy + r, cz + r, 0.0f));
+
+        if (L.Type == LIGHT_SPOT)
+        {
+            // Outer half-angle recovered from the stored cosine.  Clamped
+            // to [-1, +1] in case CPU writes drift slightly out of range.
+            float cosOuter = L.DirectionAndSpot.w;
+            if (cosOuter >  1.0f) cosOuter =  1.0f;
+            if (cosOuter < -1.0f) cosOuter = -1.0f;
+            const float outerHalf = std::acos(cosOuter);
+            const Cone cone = Cone::FromAxisAndAngle(
+                FloatVector4(cx, cy, cz, 1.0f),
+                FloatVector4(L.DirectionAndSpot.x,
+                             L.DirectionAndSpot.y,
+                             L.DirectionAndSpot.z, 0.0f),
+                r,
+                outerHalf);
+            spatialIndices.push_back(i);
+            spatialBoxes.push_back(cone.ComputeAABB());
+        }
+        else // LIGHT_POINT
+        {
+            spatialIndices.push_back(i);
+            spatialBoxes.emplace_back(
+                FloatVector4(cx - r, cy - r, cz - r, 0.0f),
+                FloatVector4(cx + r, cy + r, cz + r, 0.0f));
+        }
     }
 
     // Seed every tile with the always-on lights (capped at kPerTile;

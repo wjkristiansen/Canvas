@@ -1714,6 +1714,75 @@ namespace Canvas
                 return OverlapsPaddedPoint(center, radius);
             }
 
+            // Conservative AABB enclosing the bounded cone (apex + range
+            // cap + lateral surface).  Samples the apex, the axial
+            // endpoint, and the 4 cardinal rim points (right/up basis
+            // derived from the axis) and takes their AABB.  Looser than
+            // the analytical extremes of an oriented cone but cheap and
+            // always conservative -- intended for BVH-tier and tile-bin
+            // culling where false positives are normal, false negatives
+            // forbidden.  Range == 0 collapses to the apex point.
+            AABB ComputeAABB() const
+            {
+                AABB box;
+                box.ExpandToInclude(Apex);
+                if (Range <= 0.0f)
+                    return box;
+
+                // Pick any helper vector not parallel to the axis to derive
+                // an orthonormal (axis, right, up) basis for the rim ring.
+                const float ax = AxisDir.V[0], ay = AxisDir.V[1], az = AxisDir.V[2];
+                const FloatVector4 helper = (std::abs(ax) < 0.9f)
+                    ? FloatVector4(1.0f, 0.0f, 0.0f, 0.0f)
+                    : FloatVector4(0.0f, 1.0f, 0.0f, 0.0f);
+
+                FloatVector4 right(
+                    ay * helper.V[2] - az * helper.V[1],
+                    az * helper.V[0] - ax * helper.V[2],
+                    ax * helper.V[1] - ay * helper.V[0],
+                    0.0f);
+                {
+                    const float rlen = std::sqrt(right.V[0] * right.V[0]
+                                               + right.V[1] * right.V[1]
+                                               + right.V[2] * right.V[2]);
+                    if (rlen > 1e-6f)
+                    {
+                        right.V[0] /= rlen;
+                        right.V[1] /= rlen;
+                        right.V[2] /= rlen;
+                    }
+                }
+                const FloatVector4 up(
+                    ay * right.V[2] - az * right.V[1],
+                    az * right.V[0] - ax * right.V[2],
+                    ax * right.V[1] - ay * right.V[0],
+                    0.0f);
+
+                const float rimDist = Range * TanHalfAngle;
+                const FloatVector4 axialEnd(
+                    Apex.V[0] + ax * Range,
+                    Apex.V[1] + ay * Range,
+                    Apex.V[2] + az * Range,
+                    0.0f);
+                box.ExpandToInclude(axialEnd);
+
+                for (int sign : { -1, +1 })
+                {
+                    const float s = static_cast<float>(sign);
+                    box.ExpandToInclude(FloatVector4(
+                        axialEnd.V[0] + s * rimDist * right.V[0],
+                        axialEnd.V[1] + s * rimDist * right.V[1],
+                        axialEnd.V[2] + s * rimDist * right.V[2],
+                        0.0f));
+                    box.ExpandToInclude(FloatVector4(
+                        axialEnd.V[0] + s * rimDist * up.V[0],
+                        axialEnd.V[1] + s * rimDist * up.V[1],
+                        axialEnd.V[2] + s * rimDist * up.V[2],
+                        0.0f));
+                }
+                return box;
+            }
+
         private:
             // Shared cone-vs-padded-point math used by both
             // IntersectsSphere and IntersectsAABB.  Caller guarantees
