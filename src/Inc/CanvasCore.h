@@ -43,6 +43,7 @@ struct XMeshInstance;
 struct XModel;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
+struct XAnimationController;
 struct XGfxRenderQueue;
 struct XGfxDevice;
 struct XFont;
@@ -221,6 +222,97 @@ XCanvasElement : public XNamedElement
 };
 
 //------------------------------------------------------------------------------------------------
+// Animation clip descriptors — ABI-safe POD; no STL types.
+// All pointer fields must remain valid for the duration of the AddAnimationClip call.
+// CModel copies the data into its internal storage immediately.
+//------------------------------------------------------------------------------------------------
+
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatQuaternion is alignas(16))
+// One TRS keyframe. Rotation is always stored as a unit quaternion.
+struct AnimationKeyframe
+{
+    float                   Time;           // seconds from clip start
+    Math::FloatVector4      Translation;    // W = 0
+    Math::FloatQuaternion   Rotation;       // unit quaternion (Canvas space)
+    Math::FloatVector4      Scale;          // W = 0
+};
+#pragma warning(pop)
+
+// All keyframes for one node's track within a clip.
+// NodeName is matched against the cloned XSceneGraphNode names in XModel::Instantiate.
+struct AnimationTrackDesc
+{
+    const char*                 NodeName;       // null-terminated
+    const AnimationKeyframe*    Keyframes;      // KeyframeCount entries, sorted ascending by Time
+    uint32_t                    KeyframeCount;
+};
+
+// One animation clip (== one FBX AnimationStack / Blender Action).
+struct AnimationClipDesc
+{
+    const char*                 Name;           // null-terminated
+    float                       Duration;       // seconds
+    const AnimationTrackDesc*   Tracks;         // TrackCount entries
+    uint32_t                    TrackCount;
+};
+
+// Sentinel returned by XAnimationController::FindClip when no clip matches the name.
+static constexpr uint32_t InvalidClipIndex = UINT32_MAX;
+
+//------------------------------------------------------------------------------------------------
+// XAnimationController — a behavior that drives the transforms of a subtree of scene-graph
+// nodes from baked animation clips.  It is NOT a spatial element: it does not describe a
+// node's presence in space (no bounds, no attachment).  Instead a scene-graph node holds
+// a typed reference to one via XSceneGraphNode::SetAnimationController, and the node's
+// Update(dtime) ticks the controller before its spatial elements and children, so animated
+// transforms are in place before they propagate down the hierarchy.
+//
+// One controller is created per XModel::Instantiate call and holds its own playback state
+// (time, active clip, blend), while the heavy keyframe data is shared on the XModel.  This
+// makes it cheap to have many instances of one model animating independently — e.g. a
+// hillside of windmills or a hallway of zombies each at a different point in the same clip.
+//
+// Supports immediate clip switching and cross-fade blending.  ResetToBindPose restores the
+// subtree to its instantiation-time pose (useful for editing tools and debugging).
+//------------------------------------------------------------------------------------------------
+struct
+XAnimationController : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XAnimationController, 0xA7C3F2B841DE9506);
+
+    // Advance playback by dtime seconds and write the resulting pose onto the driven nodes.
+    // Normally called for you by the owning node's Update(); call directly only if you are
+    // ticking a controller outside the scene-graph cascade.
+    GEMMETHOD(Update)(float dtime) = 0;
+
+    // Returns true if every node this controller drives is a descendant of pRoot (or IS pRoot).
+    // Called by XSceneGraphNode::SetAnimationController before accepting the assignment.
+    GEMMETHOD_(bool, ValidateForNode)(_In_ XSceneGraphNode *pRoot) = 0;
+
+    // Query clips available from the model template (indices 0..GetClipCount()-1).
+    // FindClip returns InvalidClipIndex when no clip matches the name.
+    GEMMETHOD_(uint32_t, GetClipCount)() = 0;
+    GEMMETHOD_(PCSTR,    GetClipName)(uint32_t index) = 0;
+    GEMMETHOD_(uint32_t, FindClip)(PCSTR name) = 0;
+
+    // Playback.  blendDuration > 0 crossfades from the current pose.  Clips loop.
+    // Returns InvalidArg if clipIndex >= GetClipCount() or clipName is not found.
+    GEMMETHOD(Play)(uint32_t clipIndex, float blendDuration) = 0;
+    GEMMETHOD(PlayByName)(PCSTR clipName, float blendDuration) = 0;
+    GEMMETHOD_(void, Stop)() = 0;           // freeze at current pose
+
+    // Restore every animated node to its bind-pose TRS (the pose at instantiation time).
+    GEMMETHOD_(void, ResetToBindPose)() = 0;
+
+    // Time / state
+    GEMMETHOD_(uint32_t, GetActiveClipIndex)() = 0;
+    GEMMETHOD_(float,    GetTime)() = 0;
+    GEMMETHOD_(void,     SetTime)(float seconds) = 0;
+    GEMMETHOD_(bool,     IsPlaying)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
 enum class AnimationAttribute
 {
     // Transform attributes
@@ -301,6 +393,14 @@ XSceneGraphNode : public XCanvasElement
     // Element iteration (bound elements on this node)
     GEMMETHOD_(UINT, GetBoundElementCount)() = 0;
     GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(UINT index) = 0;
+
+    // Assign or clear (nullptr) the animation controller for this subtree.
+    // The controller's driven nodes must all be descendants of this node; SetAnimationController
+    // calls XAnimationController::ValidateForNode and returns InvalidArg if they are not.
+    GEMMETHOD(SetAnimationController)(_In_opt_ XAnimationController *pController) = 0;
+
+    // Returns the animation controller currently driving this node's subtree, or null if none.
+    GEMMETHOD_(XAnimationController *, GetAnimationController)() = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
 };
@@ -506,8 +606,9 @@ XMeshInstance : public XSceneGraphElement
 // Result of model instantiation — returned by XModel::Instantiate()
 struct ModelInstantiateResult
 {
-    XSceneGraphNode *pInstanceRoot = nullptr;   // Synthetic root of the cloned subtree
-    XCamera *pActiveCamera = nullptr;           // Cloned active camera (null if model has none)
+    XSceneGraphNode      *pInstanceRoot        = nullptr;   // Synthetic root of the cloned subtree
+    XCamera              *pActiveCamera        = nullptr;   // Cloned active camera (null if model has none)
+    XAnimationController *pAnimationController = nullptr;   // Null if model has no animation clips
 };
 
 //------------------------------------------------------------------------------------------------
@@ -544,10 +645,17 @@ XModel : public XCanvasElement
     GEMMETHOD_(void, SetActiveCameraNode)(XSceneGraphNode *pNode) = 0;
     GEMMETHOD_(XSceneGraphNode *, GetActiveCameraNode)() = 0;
 
+    // Animation clip library — clips added here are shared across all instances.
+    // Each clip corresponds to one FBX AnimationStack (Blender Action).
+    GEMMETHOD(AddAnimationClip)(const AnimationClipDesc* pClip) = 0;
+    GEMMETHOD_(uint32_t, GetAnimationClipCount)() = 0;
+    GEMMETHOD_(PCSTR,    GetAnimationClipName)(uint32_t index) = 0;
+
     // Instantiate: deep-clone the model's node hierarchy into the
     // target scene graph.  A synthetic instance root is always
     // created under pTargetParent.  If pResult is non-null, it
-    // receives the instance root and the cloned active camera.
+    // receives the instance root, the cloned active camera, and
+    // (when clips are present) an XAnimationController bound to the root.
     GEMMETHOD(Instantiate)(XSceneGraphNode *pTargetParent, ModelInstantiateResult *pResult = nullptr) = 0;
 
     // Axis-aligned bounding box of the model template

@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.24)
 # Define the library
 add_library(CanvasCore SHARED
     # Source files
+    Animation.cpp
     Camera.cpp
     CanvasCore.cpp
     dllmain.cpp
@@ -18,11 +19,12 @@ add_library(CanvasCore SHARED
     BVH.cpp
     SceneBVH.cpp
     LightBVH.cpp
-    
+
     # Header files (for IDE organization)
     ../Inc/CanvasCore.h
     ../Inc/CanvasGfx.h
     ../Inc/CanvasMath.hpp
+    Animation.h
     Camera.h
     Canvas.h
     UIElement.h

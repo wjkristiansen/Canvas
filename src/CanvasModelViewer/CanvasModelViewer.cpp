@@ -186,6 +186,7 @@ class CApp
     Gem::TGemPtr<Canvas::XUITextElement> m_pTitleText;
     Gem::TGemPtr<Canvas::XUITextElement> m_pFpsText;
     Gem::TGemPtr<Canvas::XUITextElement> m_pModeText;
+    Gem::TGemPtr<Canvas::XUITextElement> m_pAnimText;
     int m_lastClientW = 0;   // last back-buffer size, for resize detection
     int m_lastClientH = 0;
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
@@ -199,10 +200,31 @@ class CApp
 
     Gem::TGemPtr<Canvas::XModel> m_pModel;
     Gem::TGemPtr<Canvas::XSceneGraphNode> m_pInstanceRoot;
+    Gem::TGemPtr<Canvas::XAnimationController> m_pAnimCtrl;
+    bool m_inBindPose = true;
 
     // Camera controller state
     float m_CameraYaw = 0.0f;    // Radians, around world Z (up)
     float m_CameraPitch = 0.0f;  // Radians, around camera right
+
+    void UpdateAnimText()
+    {
+        if (!m_pAnimText) return;
+        char buf[256];
+        const bool hasClips = m_pAnimCtrl && m_pAnimCtrl->GetClipCount() > 0;
+        if (m_inBindPose || !hasClips)
+        {
+            const char* hint = hasClips ? "  (Enter = next)" : "";
+            snprintf(buf, sizeof(buf), "Animation: Bind Pose%s", hint);
+            m_pAnimText->SetText(buf);
+        }
+        else
+        {
+            PCSTR name = m_pAnimCtrl->GetClipName(m_pAnimCtrl->GetActiveClipIndex());
+            snprintf(buf, sizeof(buf), "Animation: %s  (Enter = next)", name ? name : "?");
+            m_pAnimText->SetText(buf);
+        }
+    }
 
     void FrameCameraToBounds(
         Canvas::XCamera *pCamera,
@@ -460,6 +482,19 @@ class CApp
         m_pModel = pModel;
         m_pInstanceRoot = result.pInstanceRoot;
 
+        // Store animation controller (null for static models with no clips)
+        if (result.pAnimationController)
+        {
+            m_pAnimCtrl = result.pAnimationController;
+            m_pAnimCtrl->ResetToBindPose();
+            m_inBindPose = true;
+        }
+        else
+        {
+            m_pAnimCtrl = nullptr;
+            m_inBindPose = true;
+        }
+
         // -----------------------------------------------------------------
         // Camera selection from instantiate result
         // -----------------------------------------------------------------
@@ -513,12 +548,14 @@ class CApp
             Canvas::LogError(m_pLogger.Get(), "No usable camera available after import");
             return false;
         }
-        Canvas::LogInfo(m_pLogger.Get(), "Loaded FBX scene '%s' (%zu meshes, %zu lights, %zu cameras, %zu nodes)",
+        Canvas::LogInfo(m_pLogger.Get(), "Loaded FBX scene '%s' (%zu meshes, %zu lights, %zu cameras, %zu nodes, %zu animation clips)",
             m_ModelPath.string().c_str(),
             imported.Meshes.size(),
             imported.Lights.size(),
             imported.Cameras.size(),
-            imported.Nodes.size());
+            imported.Nodes.size(),
+            imported.AnimationClips.size());
+        UpdateAnimText();
         return true;
         }
         catch (const std::bad_alloc&)
@@ -717,7 +754,7 @@ public:
             Gem::TGemPtr<Canvas::XUIRectElement> pHudPanel;
             Gem::ThrowGemError(pDevice->CreateRectElement(&pHudPanel));
             pHudNode->BindElement(pHudPanel);
-            pHudPanel->SetSize(Canvas::Math::FloatVector2(340.0f, 96.0f));
+            pHudPanel->SetSize(Canvas::Math::FloatVector2(420.0f, 116.0f));
             pHudPanel->SetFillColor(Canvas::Math::FloatVector4(0.125f, 0.125f, 0.125f, 0.75f));
 
             // Title text
@@ -762,6 +799,20 @@ public:
             }
             pModeText->SetText("Camera: ACTIVE (Tab to release)");
 
+            // Animation indicator text
+            Gem::TGemPtr<Canvas::XUITextElement> pAnimText;
+            Gem::ThrowGemError(pDevice->CreateTextElement(&pAnimText));
+            pHudNode->BindElement(pAnimText);
+            pAnimText->SetLocalOffset(Canvas::Math::FloatVector2(4.0f, 84.0f));
+            pAnimText->SetFont(pFontMono);
+            {
+                Canvas::TextLayoutConfig animConfig;
+                animConfig.FontSize = 18.0f;
+                animConfig.Color = Canvas::Math::FloatVector4(0.8f, 0.8f, 0.4f, 1.0f);
+                pAnimText->SetLayoutConfig(animConfig);
+            }
+            pAnimText->SetText("Animation: (none)");
+
             initStep = "finalize_members";
             m_pGfxPlugin.Attach(pGfxPlugin.Detach());
             m_pGfxDevice.Attach(pDevice.Detach());
@@ -778,6 +829,9 @@ public:
             m_pTitleText.Attach(pTitleText.Detach());
             m_pFpsText.Attach(pFpsText.Detach());
             m_pModeText.Attach(pModeText.Detach());
+            m_pAnimText.Attach(pAnimText.Detach());
+
+            UpdateAnimText();  // now that m_pAnimText is live, set the correct initial text
 
             return true;
         }
@@ -879,6 +933,34 @@ public:
             // keyboard drive the camera) vs FREE (cursor visible, no control).
             if (hasFocus && m_pInput->IsKeyPressed(VK_TAB))
                 m_cameraActive = !m_cameraActive;
+
+            // Enter cycles through available animation clips
+            if (hasFocus && m_pInput->IsKeyPressed(VK_RETURN) && m_pAnimCtrl)
+            {
+                if (m_inBindPose)
+                {
+                    if (m_pAnimCtrl->GetClipCount() > 0)
+                    {
+                        if (Gem::Succeeded(m_pAnimCtrl->Play(0, 0.2f)))
+                            m_inBindPose = false;
+                    }
+                }
+                else
+                {
+                    const uint32_t next = m_pAnimCtrl->GetActiveClipIndex() + 1;
+                    if (next >= m_pAnimCtrl->GetClipCount())
+                    {
+                        m_pAnimCtrl->ResetToBindPose();
+                        m_inBindPose = true;
+                    }
+                    else
+                    {
+                        if (Gem::Failed(m_pAnimCtrl->Play(next, 0.2f)))
+                            Canvas::LogWarn(m_pLogger.Get(), "Animation: Play(%u) failed", next);
+                    }
+                }
+                UpdateAnimText();
+            }
 
             const bool wantCapture = hasFocus && m_cameraActive;
             if (wantCapture && !m_pWindow->IsMouseCaptured())

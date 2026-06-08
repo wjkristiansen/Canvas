@@ -95,6 +95,9 @@ protected:
 
     std::vector<Gem::TGemPtr<XSceneGraphElement>> m_Elements;
 
+    // Optional animation controller driving this subtree (not a spatial element).
+    Gem::TGemPtr<XAnimationController> m_pAnimController;
+
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
@@ -120,6 +123,19 @@ public: // XSceneGraphNode methods
 
     GEMMETHOD_(UINT, GetBoundElementCount)() final { return static_cast<UINT>(m_Elements.size()); }
     GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(UINT index) final { return m_Elements[index].Get(); }
+
+    GEMMETHOD(SetAnimationController)(_In_opt_ XAnimationController *pController) final
+    {
+        if (pController && !pController->ValidateForNode(this))
+            return Gem::Result::InvalidArg;
+        m_pAnimController = pController;
+        return Gem::Result::Success;
+    }
+
+    GEMMETHOD_(XAnimationController *, GetAnimationController)() final
+    {
+        return m_pAnimController.Get();
+    }
 
     GEMMETHOD_(const Math::FloatQuaternion &, GetLocalRotation)() const final
     {

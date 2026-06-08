@@ -5,6 +5,7 @@
 #include "pch.h"
 
 #include "Model.h"
+#include "Animation.h"
 #include "CanvasGfx.h"
 
 namespace Canvas
@@ -61,6 +62,43 @@ GEMMETHODIMP CModel::AddTexture(XGfxSurface *pTexture)
         return Gem::Result::BadPointer;
 
     m_Textures.push_back(pTexture);
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CModel::AddAnimationClip(const AnimationClipDesc* pDesc)
+{
+    if (!pDesc)
+        return Gem::Result::BadPointer;
+
+    // Validate the descriptor's nested arrays before building anything: a positive count
+    // with a null pointer is a caller error, and forming (nullptr + count) would be
+    // undefined behavior even when the count is zero.
+    if (pDesc->TrackCount > 0 && !pDesc->Tracks)
+        return Gem::Result::BadPointer;
+
+    for (uint32_t ti = 0; ti < pDesc->TrackCount; ++ti)
+    {
+        if (pDesc->Tracks[ti].KeyframeCount > 0 && !pDesc->Tracks[ti].Keyframes)
+            return Gem::Result::BadPointer;
+    }
+
+    CAnimationClip clip;
+    clip.Name     = pDesc->Name     ? pDesc->Name     : "";
+    clip.Duration = pDesc->Duration;
+    clip.Tracks.reserve(pDesc->TrackCount);
+
+    for (uint32_t ti = 0; ti < pDesc->TrackCount; ++ti)
+    {
+        const AnimationTrackDesc& td = pDesc->Tracks[ti];
+        AnimNodeTrack track;
+        track.NodeName = td.NodeName ? td.NodeName : "";
+        if (td.KeyframeCount > 0)
+            track.Keyframes.assign(td.Keyframes, td.Keyframes + td.KeyframeCount);
+        clip.Tracks.push_back(std::move(track));
+    }
+
+    m_AnimClips.push_back(std::move(clip));
     return Gem::Result::Success;
 }
 
@@ -231,6 +269,25 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             {
                 stack.push_back({*it, pClonedNode.Get()});
             }
+        }
+
+        // Create animation controller when the model has clips
+        if (!m_AnimClips.empty())
+        {
+            CAnimationController* pRaw = nullptr;
+            Gem::ThrowGemError(
+                TCanvasElement<XAnimationController>::CreateAndRegister<CAnimationController>(
+                    &pRaw, m_pCanvas, "AnimationController"));
+            Gem::TGemPtr<CAnimationController> pCtrl;
+            pCtrl.Attach(pRaw);
+
+            pCtrl->BuildFromModel(this, m_AnimClips, cloneMap);
+            // All driven nodes are descendants of pInstanceRoot by construction, so
+            // ValidateForNode will always succeed here.
+            Gem::ThrowGemError(pInstanceRoot->SetAnimationController(pCtrl.Get()));
+
+            if (pResult)
+                pResult->pAnimationController = pCtrl.Get();
         }
 
         // Attach instance root to target parent
