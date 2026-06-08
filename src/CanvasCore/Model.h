@@ -7,6 +7,7 @@
 #include "pch.h"
 #include "Canvas.h"
 #include "CanvasElement.h"
+#include "Animation.h"
 
 namespace Canvas
 {
@@ -26,6 +27,8 @@ class CModel :
 
     // The node in the model's hierarchy that carries the "default" camera.
     XSceneGraphNode *m_pActiveCameraNode = nullptr; // Weak pointer
+
+    std::vector<CAnimationClip> m_AnimClips;    // shared, immutable after build
 
     Math::AABB m_Bounds;
 
@@ -122,6 +125,19 @@ public: // XModel methods
     GEMMETHOD_(XSceneGraphNode *, GetActiveCameraNode)() final
     {
         return m_pActiveCameraNode;
+    }
+
+    // Animation clip library
+    GEMMETHOD(AddAnimationClip)(const AnimationClipDesc* pDesc) final;
+
+    GEMMETHOD_(uint32_t, GetAnimationClipCount)() final
+    {
+        return static_cast<uint32_t>(m_AnimClips.size());
+    }
+
+    GEMMETHOD_(PCSTR, GetAnimationClipName)(uint32_t index) final
+    {
+        return (index < m_AnimClips.size()) ? m_AnimClips[index].Name.c_str() : nullptr;
     }
 
     // Instantiation

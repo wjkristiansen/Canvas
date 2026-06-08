@@ -235,12 +235,14 @@ Math::FloatVector4 ComputeTriangleTangent(
 bool ImportMesh(
     _In_ const ufbx_mesh *pMesh,
     _In_ bool triangulate,
+    _In_ const std::unordered_map<const ufbx_node*, int32_t>& nodeMap,
     _Inout_ ImportedMesh *pOut,
     _Inout_ ImportedScene *pScene)
 {
     pOut->Name = ToStdString(pMesh->name);
     pOut->Parts.clear();
     pOut->Bounds.Reset();
+    pOut->Skin = ImportedSkin{};
 
     if (!pMesh->vertex_position.exists)
     {
@@ -253,6 +255,33 @@ bool ImportMesh(
     const bool hasTangents  = pMesh->vertex_tangent.exists && pMesh->vertex_bitangent.exists && hasUVs;
     bool warnedInvalidNormal = false;
     std::vector<uint32_t> triIndices(pMesh->max_face_triangles * 3);
+
+    // Skin deformer: build bone list and per-vertex influence data.
+    // We use only the first skin deformer; multiple deformers on one mesh are rare.
+    const ufbx_skin_deformer* pSkin = nullptr;
+    if (pMesh->skin_deformers.count > 0)
+        pSkin = pMesh->skin_deformers.data[0];
+
+    if (pSkin)
+    {
+        pOut->Skin.HasSkin = true;
+        pOut->Skin.BoneNodeIndices.reserve(pSkin->clusters.count);
+        pOut->Skin.InvBindPoses.reserve(pSkin->clusters.count);
+
+        for (size_t ci = 0; ci < pSkin->clusters.count; ++ci)
+        {
+            const ufbx_skin_cluster* pCluster = pSkin->clusters.data[ci];
+            int32_t nodeIdx = -1;
+            if (pCluster->bone_node)
+            {
+                auto it = nodeMap.find(pCluster->bone_node);
+                if (it != nodeMap.end())
+                    nodeIdx = it->second;
+            }
+            pOut->Skin.BoneNodeIndices.push_back(nodeIdx);
+            pOut->Skin.InvBindPoses.push_back(ToCanvasAffineMatrix(pCluster->geometry_to_bone));
+        }
+    }
 
     // ufbx always produces material_parts (one entry per material partition; a
     // single dummy entry covering all faces when the mesh has no materials).
@@ -289,6 +318,8 @@ bool ImportMesh(
             outPart.UV0.reserve(estimatedVertexCount);
         if (hasUVs)  // tangent stream needs UVs to be meaningful
             outPart.Tangents.reserve(estimatedVertexCount);
+        if (pSkin)
+            outPart.SkinVertices.reserve(estimatedVertexCount);
 
         for (size_t fii = 0; fii < part.num_faces; ++fii)
         {
@@ -419,6 +450,40 @@ bool ImportMesh(
                 pOut->Bounds.ExpandToInclude(p0);
                 pOut->Bounds.ExpandToInclude(p1);
                 pOut->Bounds.ExpandToInclude(p2);
+
+                if (pSkin)
+                {
+                    const uint32_t corners[3] = { i0, i1, i2 };
+                    for (uint32_t ci = 0; ci < 3; ++ci)
+                    {
+                        const uint32_t vertIdx = pMesh->vertex_position.indices[corners[ci]];
+                        ImportedSkinVertex sv;
+
+                        if (vertIdx < pSkin->vertices.count)
+                        {
+                            const ufbx_skin_vertex& sv_src = pSkin->vertices.data[vertIdx];
+                            const uint32_t numW = std::min(sv_src.num_weights, (uint32_t)4);
+
+                            float totalWeight = 0.0f;
+                            for (uint32_t wi = 0; wi < numW; ++wi)
+                            {
+                                const ufbx_skin_weight& w = pSkin->weights.data[sv_src.weight_begin + wi];
+                                sv.BoneIndices[wi] = static_cast<uint8_t>(
+                                    std::min(w.cluster_index, (uint32_t)255));
+                                sv.Weights[wi] = static_cast<float>(w.weight);
+                                totalWeight += sv.Weights[wi];
+                            }
+                            // Normalise
+                            if (totalWeight > 1e-6f)
+                            {
+                                const float invTotal = 1.0f / totalWeight;
+                                for (uint32_t wi = 0; wi < numW; ++wi)
+                                    sv.Weights[wi] *= invTotal;
+                            }
+                        }
+                        outPart.SkinVertices.push_back(sv);
+                    }
+                }
             }
         }
 
@@ -766,6 +831,205 @@ std::unordered_map<const ufbx_material *, int32_t> ImportMaterials(
     return materialMap;
 }
 
+//------------------------------------------------------------------------------------------------
+// Accumulated scale of all strict ancestors (parent, grandparent, ...) up to but not
+// including the root node.
+//
+// Canvas's scene graph composes child transforms as parent_rotation * child_local_T +
+// parent_translation -- it does NOT propagate parent SCALE to child translations.  The
+// importer also drops per-node scale (geometry already carries it under MODIFY_GEOMETRY).
+//
+// FBX/Blender stores the unit conversion (e.g. metre->cm = x100) as a per-object scale on
+// top-level nodes.  A child node's local translation is therefore expressed in the parent's
+// pre-scale space.  To land children at the correct world offset in Canvas's scale-free
+// hierarchy, we bake the parent's accumulated scale into each child's local translation
+// (and into its animation keyframes).
+//
+// NOTE: This assumes parent scale is not itself animated -- a limitation inherent to a
+// scene graph without hierarchical scale.
+Math::FloatVector4 ComputeParentAccumScale(_In_ const ufbx_node* pNode)
+{
+    Math::FloatVector4 s(1.0f, 1.0f, 1.0f, 0.0f);
+    for (const ufbx_node* p = pNode->parent; p && !p->is_root; p = p->parent)
+    {
+        s.X *= static_cast<float>(p->local_transform.scale.x);
+        s.Y *= static_cast<float>(p->local_transform.scale.y);
+        s.Z *= static_cast<float>(p->local_transform.scale.z);
+    }
+    return s;
+}
+
+//------------------------------------------------------------------------------------------------
+// Extract the "action name" from a Blender-style "ObjectName|ActionName" AnimationStack name.
+// Returns the full name when no '|' separator is present (non-Blender exporters).
+static std::string ExtractActionName(const std::string& stackName)
+{
+    const auto pos = stackName.find('|');
+    return (pos != std::string::npos) ? stackName.substr(pos + 1) : stackName;
+}
+
+//------------------------------------------------------------------------------------------------
+// Convert one ufbx_baked_node's keyframes into an ImportedAnimationTrack.
+// Rotation keys are quaternions (ufbx_baked_quat); T/S keys are vec3.
+// The union of all authored key times across T, R, and S channels is built and
+// evaluated using ufbx's baked-keyframe interpolation helpers.
+static void BakedNodeToTrack(
+    _In_  const ufbx_baked_node&    bn,
+    _In_  double                    clipBegin,
+    _In_  const Math::FloatVector4& translationScale, // unit_meters * parent accumulated scale
+    _In_  const Math::FloatVector4& restScale,        // node's rest local scale (phantom unit scale)
+    _Out_ ImportedAnimationTrack*   pOut)
+{
+    std::vector<double> times;
+    times.reserve(bn.translation_keys.count + bn.rotation_keys.count + bn.scale_keys.count);
+    for (size_t i = 0; i < bn.translation_keys.count; ++i)
+        times.push_back(bn.translation_keys.data[i].time);
+    for (size_t i = 0; i < bn.rotation_keys.count; ++i)
+        times.push_back(bn.rotation_keys.data[i].time);
+    for (size_t i = 0; i < bn.scale_keys.count; ++i)
+        times.push_back(bn.scale_keys.data[i].time);
+
+    std::sort(times.begin(), times.end());
+    times.erase(std::unique(times.begin(), times.end()), times.end());
+
+    pOut->Keyframes.reserve(times.size());
+    for (double absTime : times)
+    {
+        const ufbx_vec3 t = ufbx_evaluate_baked_vec3(bn.translation_keys, absTime);
+        const ufbx_quat r = ufbx_evaluate_baked_quat(bn.rotation_keys,    absTime);
+        const ufbx_vec3 s = ufbx_evaluate_baked_vec3(bn.scale_keys,       absTime);
+
+        // Scale is normalised against the node's rest scale so the phantom unit-baking
+        // scale (e.g. 100 from a Blender cm export) cancels to 1 -- matching the static
+        // import, which drops node scale entirely.  Genuine scale animation survives as a
+        // ratio relative to rest.  Guard against a zero rest component.
+        const float invRx = (std::abs(restScale.X) > 1e-8f) ? 1.0f / restScale.X : 0.0f;
+        const float invRy = (std::abs(restScale.Y) > 1e-8f) ? 1.0f / restScale.Y : 0.0f;
+        const float invRz = (std::abs(restScale.Z) > 1e-8f) ? 1.0f / restScale.Z : 0.0f;
+
+        ImportedAnimationKeyframe kf;
+        kf.Time        = static_cast<float>(absTime - clipBegin);
+        kf.Translation = Math::FloatVector4(
+            static_cast<float>(t.x) * translationScale.X,
+            static_cast<float>(t.y) * translationScale.Y,
+            static_cast<float>(t.z) * translationScale.Z, 0.0f);
+        kf.Rotation    = ToCanvasQuaternion(r);
+        kf.Scale       = Math::FloatVector4(
+            static_cast<float>(s.x) * invRx,
+            static_cast<float>(s.y) * invRy,
+            static_cast<float>(s.z) * invRz, 0.0f);
+        pOut->Keyframes.push_back(kf);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+// Bake all FBX AnimationStacks and append to pScene->AnimationClips.
+//
+// Blender (and some DCC tools) exports each object's action as a separate AnimationStack
+// named "ObjectName|ActionName".  Stacks sharing the same action-name suffix are merged
+// into a single ImportedAnimationClip so e.g. "Cube|Walk" + "Sphere|Walk" become one
+// "Walk" clip that drives both nodes simultaneously.
+//
+// Uses ufbx_bake_anim: rotation keyframes are stored as quaternions (ufbx_baked_quat)
+// so all rotation orders (including UFBX_ROTATION_ORDER_SPHERIC) are handled correctly.
+void ImportAnimationClips(
+    _In_ const ufbx_scene* pLoaded,
+    _In_ float sceneDistanceScale,
+    _In_ const std::unordered_map<const ufbx_node*, int32_t>& nodeMap,
+    _Inout_ ImportedScene* pScene)
+{
+    // Pass 1 — group stacks by action name and create one ImportedAnimationClip per action.
+    std::unordered_map<std::string, size_t> clipIndexByAction;
+
+    for (size_t si = 0; si < pLoaded->anim_stacks.count; ++si)
+    {
+        const ufbx_anim_stack* pStack = pLoaded->anim_stacks.data[si];
+        if (!pStack) continue;
+
+        const std::string actionName = ExtractActionName(ToStdString(pStack->name));
+        if (clipIndexByAction.find(actionName) == clipIndexByAction.end())
+        {
+            clipIndexByAction[actionName] = pScene->AnimationClips.size();
+            pScene->AnimationClips.emplace_back();
+            pScene->AnimationClips.back().Name = actionName;
+        }
+    }
+
+    // Pass 2 — bake each stack and append its tracks to the matching clip.
+    for (size_t si = 0; si < pLoaded->anim_stacks.count; ++si)
+    {
+        const ufbx_anim_stack* pStack = pLoaded->anim_stacks.data[si];
+        if (!pStack || !pStack->anim) continue;
+
+        const std::string actionName = ExtractActionName(ToStdString(pStack->name));
+        ImportedAnimationClip& clip = pScene->AnimationClips[clipIndexByAction.at(actionName)];
+
+        const float duration = static_cast<float>(pStack->time_end - pStack->time_begin);
+        if (duration <= 0.0f)
+        {
+            AddDiag(pScene, DiagLevel::Warning,
+                "AnimationStack '" + ToStdString(pStack->name) + "' has zero/negative duration; skipping");
+            continue;
+        }
+        clip.DurationSeconds = std::max(clip.DurationSeconds, duration);
+
+        ufbx_bake_opts bakeOpts = { 0 };
+        ufbx_error bakeErr = { 0 };
+        ufbx_baked_anim* pBaked = ufbx_bake_anim(pLoaded, pStack->anim, &bakeOpts, &bakeErr);
+        if (!pBaked)
+        {
+            AddDiag(pScene, DiagLevel::Warning,
+                "Failed to bake '" + ToStdString(pStack->name) + "': " +
+                std::string(bakeErr.description.data, bakeErr.description.length));
+            continue;
+        }
+
+        for (size_t ni = 0; ni < pBaked->nodes.count; ++ni)
+        {
+            const ufbx_baked_node& bn = pBaked->nodes.data[ni];
+            if (bn.constant_translation && bn.constant_rotation && bn.constant_scale)
+                continue;
+
+            if (bn.typed_id >= pLoaded->nodes.count) continue;
+            const ufbx_node* pNode = pLoaded->nodes.data[bn.typed_id];
+            if (!pNode || pNode->is_root) continue;
+
+            const auto itNode = nodeMap.find(pNode);
+            if (itNode == nodeMap.end()) continue;
+
+            // Keyframe translations need the same factor as the bind pose:
+            // unit_meters (source-unit -> metres) * parent's accumulated scale.
+            const Math::FloatVector4 parentScale = ComputeParentAccumScale(pNode);
+            const Math::FloatVector4 translationScale(
+                sceneDistanceScale * parentScale.X,
+                sceneDistanceScale * parentScale.Y,
+                sceneDistanceScale * parentScale.Z, 0.0f);
+
+            // Rest scale used to normalise the node's own animated scale (drops the
+            // phantom unit-baking scale to match the static import).
+            const Math::FloatVector4 restScale(
+                static_cast<float>(pNode->local_transform.scale.x),
+                static_cast<float>(pNode->local_transform.scale.y),
+                static_cast<float>(pNode->local_transform.scale.z), 0.0f);
+
+            ImportedAnimationTrack track;
+            track.NodeIndex = itNode->second;
+            BakedNodeToTrack(bn, pBaked->playback_time_begin, translationScale, restScale, &track);
+
+            if (!track.Keyframes.empty())
+                clip.Tracks.push_back(std::move(track));
+        }
+
+        ufbx_free_baked_anim(pBaked);
+    }
+
+    // Remove clips that produced no animated tracks (e.g. all-constant stacks).
+    pScene->AnimationClips.erase(
+        std::remove_if(pScene->AnimationClips.begin(), pScene->AnimationClips.end(),
+            [](const ImportedAnimationClip& c) { return c.Tracks.empty(); }),
+        pScene->AnimationClips.end());
+}
+
 } // anonymous namespace
 
 HRESULT ImportScene(
@@ -852,11 +1116,12 @@ HRESULT ImportScene(
         return E_FAIL;
     }
 
+    // Distance/unit scale applied to node translations.  FBX stores positions in the
+    // source unit (often centimetres for Blender exports); unit_meters converts to metres
+    // to match the geometry scale used elsewhere in the renderer.
     float sceneDistanceScale = 1.0f;
     if (pLoaded->settings.unit_meters > 0.0)
-    {
         sceneDistanceScale = static_cast<float>(pLoaded->settings.unit_meters);
-    }
 
     std::unordered_map<const ufbx_node*, int32_t> nodeMap;
     nodeMap.reserve(pLoaded->nodes.count);
@@ -877,10 +1142,16 @@ HRESULT ImportScene(
             node.Name = "Node_" + std::to_string(ni);
 
         const Math::FloatMatrix4x4 localMatrix = ToCanvasAffineMatrix(pNode->node_to_parent);
+
+        // Bake the parent's accumulated scale into the child's local translation so it
+        // lands correctly in Canvas's scale-free scene-graph hierarchy. (See
+        // ComputeParentAccumScale.)  Top-level nodes have an empty parent chain, so this
+        // is the identity for them.
+        const Math::FloatVector4 parentScale = ComputeParentAccumScale(pNode);
         node.Translation = Math::FloatVector4(
-            localMatrix[3][0] * sceneDistanceScale,
-            localMatrix[3][1] * sceneDistanceScale,
-            localMatrix[3][2] * sceneDistanceScale,
+            localMatrix[3][0] * sceneDistanceScale * parentScale.X,
+            localMatrix[3][1] * sceneDistanceScale * parentScale.Y,
+            localMatrix[3][2] * sceneDistanceScale * parentScale.Z,
             0.0f);
         node.Rotation = ToCanvasNodeRotation(pNode, pScene);
         node.Scale = ExtractCanvasScale(localMatrix);
@@ -920,7 +1191,7 @@ HRESULT ImportScene(
             if (itMesh == meshMap.end())
             {
                 ImportedMesh importedMesh;
-                if (ImportMesh(pMesh, options.Triangulate, &importedMesh, pScene))
+                if (ImportMesh(pMesh, options.Triangulate, nodeMap, &importedMesh, pScene))
                 {
                     // Remap mesh-local material indices (= mesh part index) into
                     // scene-wide indices via materialMap. ImportMesh stored the
@@ -1008,6 +1279,22 @@ HRESULT ImportScene(
     {
         const ufbx_warning &w = pLoaded->metadata.warnings[wi];
         AddDiag(pScene, DiagLevel::Warning, ToStdString(w.description));
+    }
+
+    // Extract animation clips (FBX AnimationStacks / Blender Actions).
+    // Must happen before ufbx_free_scene while the ufbx data is still live.
+    ImportAnimationClips(pLoaded, sceneDistanceScale, nodeMap, pScene);
+
+    if (!pScene->AnimationClips.empty())
+    {
+        AddDiag(pScene, DiagLevel::Info,
+            "Imported " + std::to_string(pScene->AnimationClips.size()) + " animation clip(s):");
+        for (const auto& clip : pScene->AnimationClips)
+        {
+            AddDiag(pScene, DiagLevel::Info,
+                "  '" + clip.Name + "'  duration=" + std::to_string(clip.DurationSeconds) + "s"
+                "  tracks=" + std::to_string(clip.Tracks.size()));
+        }
     }
 
     ufbx_free_scene(pLoaded);
@@ -1356,6 +1643,55 @@ Gem::Result BuildModel(
                 break;
             }
         }
+    }
+
+    // Forward animation clips from the imported scene into the model.
+    // Build POD descriptors in local vectors (lifetime covers the AddAnimationClip call).
+    for (const ImportedAnimationClip& srcClip : scene.AnimationClips)
+    {
+        // Build the flat keyframe arrays and track descriptors.
+        std::vector<std::vector<Canvas::AnimationKeyframe>> keyframeArrays;
+        std::vector<Canvas::AnimationTrackDesc>             trackDescs;
+        keyframeArrays.reserve(srcClip.Tracks.size());
+        trackDescs.reserve(srcClip.Tracks.size());
+
+        for (const ImportedAnimationTrack& srcTrack : srcClip.Tracks)
+        {
+            if (srcTrack.NodeIndex < 0 ||
+                static_cast<size_t>(srcTrack.NodeIndex) >= scene.Nodes.size())
+                continue;
+
+            keyframeArrays.emplace_back();
+            auto& kfBuf = keyframeArrays.back();
+            kfBuf.reserve(srcTrack.Keyframes.size());
+
+            for (const ImportedAnimationKeyframe& kf : srcTrack.Keyframes)
+            {
+                Canvas::AnimationKeyframe akf;
+                akf.Time        = kf.Time;
+                akf.Translation = kf.Translation;
+                akf.Rotation    = kf.Rotation;
+                akf.Scale       = kf.Scale;
+                kfBuf.push_back(akf);
+            }
+
+            Canvas::AnimationTrackDesc td{};
+            td.NodeName      = scene.Nodes[static_cast<size_t>(srcTrack.NodeIndex)].Name.c_str();
+            td.Keyframes     = kfBuf.data();
+            td.KeyframeCount = static_cast<uint32_t>(kfBuf.size());
+            trackDescs.push_back(td);
+        }
+
+        Canvas::AnimationClipDesc desc{};
+        desc.Name       = srcClip.Name.c_str();
+        desc.Duration   = srcClip.DurationSeconds;
+        desc.Tracks     = trackDescs.data();
+        desc.TrackCount = static_cast<uint32_t>(trackDescs.size());
+
+        gr = pModel->AddAnimationClip(&desc);
+        if (Gem::Failed(gr))
+            Canvas::LogWarn(pLogger, "BuildModel: failed to add animation clip '%s'",
+                srcClip.Name.c_str());
     }
 
     *ppModel = pModel.Detach();

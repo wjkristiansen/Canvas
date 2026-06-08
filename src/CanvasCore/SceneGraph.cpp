@@ -48,6 +48,7 @@ void CSceneGraphNode::Uninitialize()
     m_pFirstChild = nullptr;
     m_pLastChild = nullptr;
     m_ChildMap.clear();
+    m_pAnimController = nullptr;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -55,6 +56,13 @@ GEMMETHODIMP CSceneGraphNode::Update(float dtime)
 {
     try
     {
+        // Tick the animation controller first so the transforms it writes onto this
+        // subtree are in place before spatial elements and children observe them.
+        if (m_pAnimController)
+        {
+            Gem::ThrowGemError(m_pAnimController->Update(dtime));
+        }
+
         for (auto& element : m_Elements)
         {
             Gem::ThrowGemError(element->Update(dtime));

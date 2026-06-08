@@ -87,6 +87,16 @@ struct ImportedMaterial
 #pragma warning(pop)
 
 //------------------------------------------------------------------------------------------------
+// Per-vertex skin influences (up to 4 bones).
+// Weights are normalised to sum to 1.  BoneIndices index into ImportedSkin::BoneNodeIndices.
+//------------------------------------------------------------------------------------------------
+struct ImportedSkinVertex
+{
+    uint8_t BoneIndices[4] = { 0, 0, 0, 0 };
+    float   Weights[4]     = { 1.0f, 0.0f, 0.0f, 0.0f };
+};
+
+//------------------------------------------------------------------------------------------------
 // One material partition of an imported mesh. Each part holds its own
 // expanded, non-indexed vertex streams (triangle-list topology) so it can be
 // uploaded as a self-contained vertex range. UV0 and Tangents are empty when
@@ -104,8 +114,32 @@ struct ImportedMeshPart
     std::vector<Math::FloatVector4>     Normals;            // W = 0, unit length
     std::vector<Math::FloatVector2>     UV0;                // empty when missing
     std::vector<Math::FloatVector4>     Tangents;           // xyz = T, w = bitangent sign; empty when missing
+    std::vector<ImportedSkinVertex>     SkinVertices;       // one per vertex; empty when no skin deformer
 
     uint32_t GetVertexCount() const { return static_cast<uint32_t>(Positions.size()); }
+};
+#pragma warning(pop)
+
+//------------------------------------------------------------------------------------------------
+// Imported mesh geometry. A mesh always has at least one ImportedMeshPart.
+// Multi-material source meshes produce one part per material partition; the
+// runtime is expected to render them as N XMeshInstance instances sharing one
+// XGfxMeshData with N material groups.
+//------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------
+// Skinning binding for one mesh: bone list + inverse bind-pose matrices.
+// BoneNodeIndices[i] → ImportedScene::Nodes[i] (the scene node that is the bone).
+// InvBindPoses[i]   transforms a vertex from mesh/geometry space into bone i's local space
+//                   at the time the skin was bound.
+// When HasSkin == false the vectors are empty and SkinVertices in each mesh part is empty.
+//------------------------------------------------------------------------------------------------
+#pragma warning(push)
+#pragma warning(disable: 4324)
+struct ImportedSkin
+{
+    bool                                HasSkin = false;
+    std::vector<int32_t>                BoneNodeIndices;    // one per cluster
+    std::vector<Math::FloatMatrix4x4>   InvBindPoses;       // one per cluster, Canvas row-vector space
 };
 #pragma warning(pop)
 
@@ -120,6 +154,7 @@ struct ImportedMesh
     std::string                         Name;
     std::vector<ImportedMeshPart>       Parts;      // always >= 1 entry on success
     Math::AABB                          Bounds;     // AABB across all parts (Canvas space)
+    ImportedSkin                        Skin;       // empty (HasSkin==false) when no skin deformer
 };
 
 //------------------------------------------------------------------------------------------------
@@ -183,6 +218,43 @@ struct ImportedNode
 #pragma warning(pop)
 
 //------------------------------------------------------------------------------------------------
+// One TRS keyframe, sampled from FBX FCurves at an authored key time.
+// Rotation is always stored as a quaternion (ufbx converts Euler→quat internally).
+//------------------------------------------------------------------------------------------------
+#pragma warning(push)
+#pragma warning(disable: 4324)
+struct ImportedAnimationKeyframe
+{
+    float                   Time;           // seconds from clip start
+    Math::FloatVector4      Translation;    // W = 0
+    Math::FloatQuaternion   Rotation;       // unit quaternion (Canvas space)
+    Math::FloatVector4      Scale;          // W = 0
+};
+#pragma warning(pop)
+
+//------------------------------------------------------------------------------------------------
+// All keyframes for one scene node within a clip.
+// A "track" covers the full TRS for one node (T + R + S sampled at the union of all
+// FCurve key times for that node in this AnimationStack).
+//------------------------------------------------------------------------------------------------
+struct ImportedAnimationTrack
+{
+    int32_t                                 NodeIndex;   // → ImportedScene::Nodes
+    std::vector<ImportedAnimationKeyframe>  Keyframes;   // sorted ascending by Time
+};
+
+//------------------------------------------------------------------------------------------------
+// One FBX AnimationStack (== one Blender Action).
+// A file may contain zero or more of these.
+//------------------------------------------------------------------------------------------------
+struct ImportedAnimationClip
+{
+    std::string                         Name;               // from stack->name (Blender Action name)
+    float                               DurationSeconds;
+    std::vector<ImportedAnimationTrack> Tracks;             // one per animated node
+};
+
+//------------------------------------------------------------------------------------------------
 // Complete result of an import operation
 //------------------------------------------------------------------------------------------------
 struct ImportedScene
@@ -193,15 +265,17 @@ struct ImportedScene
     std::vector<ImportedMaterial>       Materials;
     std::vector<ImportedTextureRef>     Textures;
     std::vector<ImportedNode>           Nodes;
+    std::vector<ImportedAnimationClip>  AnimationClips;     // one per FBX AnimationStack / Blender Action
     std::vector<ImportDiag>             Diagnostics;
     Math::AABB                          SceneBounds;    // union of all mesh bounds (Canvas space)
     int32_t                             ActiveCameraNodeIndex = -1;
 
-    bool HasMeshes()    const { return !Meshes.empty(); }
-    bool HasLights()    const { return !Lights.empty(); }
-    bool HasCameras()   const { return !Cameras.empty(); }
-    bool HasMaterials() const { return !Materials.empty(); }
-    bool HasErrors()    const;
+    bool HasMeshes()     const { return !Meshes.empty(); }
+    bool HasLights()     const { return !Lights.empty(); }
+    bool HasCameras()    const { return !Cameras.empty(); }
+    bool HasMaterials()  const { return !Materials.empty(); }
+    bool HasAnimations() const { return !AnimationClips.empty(); }
+    bool HasErrors()     const;
 };
 
 //------------------------------------------------------------------------------------------------
