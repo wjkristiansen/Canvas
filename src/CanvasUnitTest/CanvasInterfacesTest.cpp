@@ -172,12 +172,14 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
     EXPECT_TRUE(AlmostEqual(tA_g, FloatVector4(1.0f, 2.0f, 0.0f, 1.0f)));
     EXPECT_TRUE(AlmostEqual(tB_g, FloatVector4(1.0f, 3.0f, 0.0f, 1.0f)));
 
-    // Global matrices: Mg = Mparent * Mlocal (row-vector convention)
+    // Global matrices: Mg = Mlocal * Mparent. Row-vector convention (v' = v*M)
+    // applies the local transform first, so the product is local * parent. This
+    // is consistent with GetGlobalRotation (qA * qB) and GetGlobalTranslation above.
     auto mA_global = pA->GetGlobalMatrix();
     auto mB_global = pB->GetGlobalMatrix();
     auto mRoot = FloatMatrix4x4::Identity();
-    auto mA_global_expected = mRoot * mA_local; // root is identity
-    auto mB_global_expected = mA_global_expected * mB_local;
+    auto mA_global_expected = mA_local * mRoot; // root is identity
+    auto mB_global_expected = mB_local * mA_global_expected;
     EXPECT_TRUE(AlmostEqual(mA_global, mA_global_expected));
     EXPECT_TRUE(AlmostEqual(mB_global, mB_global_expected));
 
@@ -224,9 +226,9 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
     tB_expected_moved.W = 1.0f;
     EXPECT_TRUE(AlmostEqual(tB_g_moved, tB_expected_moved));
 
-    // Expected matrix: C_global * B_local
+    // Expected matrix: B_local * C_global (local-first, row-vector convention)
     auto mC_global = pC->GetGlobalMatrix();
-    auto mB_global_expected_moved = mC_global * mB_local;
+    auto mB_global_expected_moved = mB_local * mC_global;
     EXPECT_TRUE(AlmostEqual(mB_global_moved, mB_global_expected_moved));
 
     // Verify that A's child is no longer B (B was moved to C)
@@ -252,9 +254,9 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
     auto mB_after_translation = pB->GetGlobalMatrix();
     EXPECT_FALSE(AlmostEqual(mB_before_parent_change, mB_after_translation));
 
-    // Verify the new value is correct: C_new_global * B_local
+    // Verify the new value is correct: B_local * C_new_global (local-first)
     auto mC_global_new = pC->GetGlobalMatrix();
-    auto mB_expected_new = mC_global_new * mB_local_saved;
+    auto mB_expected_new = mB_local_saved * mC_global_new;
     EXPECT_TRUE(AlmostEqual(mB_after_translation, mB_expected_new));
 
     // Change C's rotation
@@ -267,7 +269,7 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
 
     // Verify correctness after rotation change
     auto mC_global_final = pC->GetGlobalMatrix();
-    auto mB_expected_final = mC_global_final * mB_local_saved;
+    auto mB_expected_final = mB_local_saved * mC_global_final;
     EXPECT_TRUE(AlmostEqual(mB_after_rotation, mB_expected_final));
 }
 
@@ -768,10 +770,10 @@ TEST(CanvasInterfacesTest, LightTransformPropagation)
     EXPECT_FALSE(AlmostEqual(lightTranslation1, lightTranslation2));
 
     // Verify the light's world transform is computed correctly
-    // Row vectors: world = parent_global * light_local
+    // Row vectors (v' = v*M): world = light_local * parent_global (local applied first)
     auto parentGlobal = pParent->GetGlobalMatrix();
     auto lightLocal = pLightNode->GetLocalMatrix();
-    auto expectedLightGlobal = parentGlobal * lightLocal;
+    auto expectedLightGlobal = lightLocal * parentGlobal;
     auto actualLightGlobal = pLightNode->GetGlobalMatrix();
     EXPECT_TRUE(AlmostEqual(expectedLightGlobal, actualLightGlobal));
 
@@ -785,7 +787,7 @@ TEST(CanvasInterfacesTest, LightTransformPropagation)
 
     // Verify correctness again after rotation change
     auto parentGlobal2 = pParent->GetGlobalMatrix();
-    auto expectedLightGlobal2 = parentGlobal2 * lightLocal;
+    auto expectedLightGlobal2 = lightLocal * parentGlobal2;
     auto actualLightGlobal2 = pLightNode->GetGlobalMatrix();
     EXPECT_TRUE(AlmostEqual(expectedLightGlobal2, actualLightGlobal2));
 }
@@ -1211,6 +1213,62 @@ TEST(CanvasInterfacesTest, ModelInstantiateNullTargetFails)
 
     // Null target should fail
     EXPECT_TRUE(Gem::Failed(pModel->Instantiate(nullptr)));
+}
+
+TEST(CanvasInterfacesTest, SkinBindingRoundTrip)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pBone0, pBone1;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBone0, "Bone0")));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBone1, "Bone1")));
+
+    Gem::TGemPtr<Canvas::XMeshInstance> pMeshInst;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateMeshInstance(&pMeshInst, "SkinnedMesh")));
+
+    // Unbound instance reports no skin and tolerates out-of-range queries.
+    EXPECT_EQ(0u, pMeshInst->GetSkinBoneCount());
+    EXPECT_EQ(nullptr, pMeshInst->GetSkinBoneNode(0));
+    EXPECT_EQ(nullptr, pMeshInst->GetSkinInvBindPose(0));
+
+    Canvas::XSceneGraphNode* bones[] = { pBone0.Get(), pBone1.Get() };
+    FloatMatrix4x4 invBinds[2] = { FloatMatrix4x4::Identity(), FloatMatrix4x4::Identity() };
+    invBinds[1][3][0] = 5.0f; // distinguish the second pose
+
+    Canvas::SkinBindingDesc desc{};
+    desc.BoneCount     = 2;
+    desc.ppBoneNodes   = bones;
+    desc.pInvBindPoses = invBinds;
+    EXPECT_TRUE(Succeeded(pMeshInst->SetSkinBinding(&desc)));
+
+    EXPECT_EQ(2u, pMeshInst->GetSkinBoneCount());
+    EXPECT_EQ(pBone0.Get(), pMeshInst->GetSkinBoneNode(0));
+    EXPECT_EQ(pBone1.Get(), pMeshInst->GetSkinBoneNode(1));
+    EXPECT_EQ(nullptr, pMeshInst->GetSkinBoneNode(2)); // out of range
+
+    const FloatMatrix4x4* pPose1 = pMeshInst->GetSkinInvBindPose(1);
+    ASSERT_NE(pPose1, nullptr);
+    EXPECT_FLOAT_EQ(5.0f, (*pPose1)[3][0]);
+
+    // Inverse-bind poses are copied (SetSkinBinding contract): mutating the
+    // source array after binding must not change the stored pose.
+    invBinds[1][3][0] = 99.0f;
+    EXPECT_FLOAT_EQ(5.0f, (*pMeshInst->GetSkinInvBindPose(1))[3][0]);
+
+    // BoneCount == 0 clears the binding.
+    Canvas::SkinBindingDesc clearDesc{};
+    clearDesc.BoneCount = 0;
+    EXPECT_TRUE(Succeeded(pMeshInst->SetSkinBinding(&clearDesc)));
+    EXPECT_EQ(0u, pMeshInst->GetSkinBoneCount());
+    EXPECT_EQ(nullptr, pMeshInst->GetSkinBoneNode(0));
+
+    // A null descriptor also clears (no-op when already cleared).
+    EXPECT_TRUE(Succeeded(pMeshInst->SetSkinBinding(nullptr)));
+    EXPECT_EQ(0u, pMeshInst->GetSkinBoneCount());
 }
 
 }

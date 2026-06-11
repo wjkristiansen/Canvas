@@ -165,16 +165,27 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     // A single static sampler s0 (LinearWrap, anisotropic mip filter) covers
     // all material texture sampling.
 
+    // Default root signature layout:
+    //   Param 0: Root CBV  b0        — per-frame constants
+    //   Param 1: Root SRV  t0        — vertex positions
+    //   Param 2: Root UAV  u0        — (unused)
+    //   Param 3: Descriptor table
+    //     CBV[2]  b1, b2             — per-object CB + null
+    //     SRV[11] t1..t11            — normals(t1), UV0(t2), tangents(t3),
+    //                                  albedo(t4..t9), boneIndices(t10), boneWeights(t11)
+    //     UAV[2]  u1, u2             — null
+    //   Param 4: Root SRV  t12       — bone matrix palette (per-draw, uploaded to upload ring)
     std::vector<CD3DX12_DESCRIPTOR_RANGE1> DefaultDescriptorRanges(3);
-    DefaultDescriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
-    DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
-    DefaultDescriptorRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 11);
+    DefaultDescriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2,  1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
+    DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 11, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
+    DefaultDescriptorRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2,  1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 13);
 
-    std::vector<CD3DX12_ROOT_PARAMETER1> DefaultRootParams(4);
-    DefaultRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
-    DefaultRootParams[1].InitAsShaderResourceView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL);
-    DefaultRootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+    std::vector<CD3DX12_ROOT_PARAMETER1> DefaultRootParams(5);
+    DefaultRootParams[0].InitAsConstantBufferView(0,  0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,   D3D12_SHADER_VISIBILITY_ALL);
+    DefaultRootParams[1].InitAsShaderResourceView(0,  0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,   D3D12_SHADER_VISIBILITY_ALL);
+    DefaultRootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE,          D3D12_SHADER_VISIBILITY_ALL);
     DefaultRootParams[3].InitAsDescriptorTable(static_cast<UINT>(DefaultDescriptorRanges.size()), DefaultDescriptorRanges.data(), D3D12_SHADER_VISIBILITY_ALL);
+    DefaultRootParams[4].InitAsShaderResourceView(12, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_VERTEX);
 
     CD3DX12_STATIC_SAMPLER_DESC DefaultStaticSamplers[1] = {};
     DefaultStaticSamplers[0].Init(
@@ -185,7 +196,7 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
         D3D12_TEXTURE_ADDRESS_MODE_WRAP);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc(
-        4U, DefaultRootParams.data(),
+        5U, DefaultRootParams.data(),
         _countof(DefaultStaticSamplers), DefaultStaticSamplers,
         D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -1848,7 +1859,8 @@ GEMMETHODIMP CRenderQueue12::BeginFrame(
 Gem::Result CRenderQueue12::DrawMesh(
     Canvas::XGfxMeshData *pMeshData,
     uint32_t materialGroupIndex,
-    const Canvas::Math::FloatMatrix4x4 &worldTransform)
+    const Canvas::Math::FloatMatrix4x4 &worldTransform,
+    Canvas::XMeshInstance *pMeshInstance)
 {
     try
     {
@@ -1900,21 +1912,22 @@ Gem::Result CRenderQueue12::DrawMesh(
 
         // Fetch all per-group vertex streams. Position is required; the rest
         // are optional and gated by MATERIAL_FLAG_HAS_* bits in the per-object CB.
-        auto pPosEntry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Position);
-        auto pNormEntry = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Normal);
-        auto pUV0Entry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::UV0);
-        auto pTanEntry  = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Tangent);
+        auto pPosEntry      = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Position);
+        auto pNormEntry     = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Normal);
+        auto pUV0Entry      = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::UV0);
+        auto pTanEntry      = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::Tangent);
+        auto pBoneWEntry    = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::BoneWeights);
+        auto pBoneIEntry    = pMesh->GetVertexBuffer(materialGroupIndex, Canvas::GfxVertexBufferType::BoneIndices);
 
         if (!pPosEntry || !pPosEntry->pBuffer)
             return Gem::Result::InvalidArg;
-        
-        auto pPosBuf  = static_cast<CBuffer12*>(pPosEntry->pBuffer.Get());
-        CBuffer12* pNormBuf = (pNormEntry && pNormEntry->pBuffer)
-            ? static_cast<CBuffer12*>(pNormEntry->pBuffer.Get()) : nullptr;
-        CBuffer12* pUV0Buf  = (pUV0Entry && pUV0Entry->pBuffer)
-            ? static_cast<CBuffer12*>(pUV0Entry->pBuffer.Get()) : nullptr;
-        CBuffer12* pTanBuf  = (pTanEntry && pTanEntry->pBuffer)
-            ? static_cast<CBuffer12*>(pTanEntry->pBuffer.Get()) : nullptr;
+
+        auto pPosBuf      = static_cast<CBuffer12*>(pPosEntry->pBuffer.Get());
+        CBuffer12* pNormBuf  = (pNormEntry  && pNormEntry->pBuffer)  ? static_cast<CBuffer12*>(pNormEntry->pBuffer.Get())  : nullptr;
+        CBuffer12* pUV0Buf   = (pUV0Entry   && pUV0Entry->pBuffer)   ? static_cast<CBuffer12*>(pUV0Entry->pBuffer.Get())   : nullptr;
+        CBuffer12* pTanBuf   = (pTanEntry   && pTanEntry->pBuffer)   ? static_cast<CBuffer12*>(pTanEntry->pBuffer.Get())   : nullptr;
+        CBuffer12* pBoneWBuf = (pBoneWEntry && pBoneWEntry->pBuffer) ? static_cast<CBuffer12*>(pBoneWEntry->pBuffer.Get()) : nullptr;
+        CBuffer12* pBoneIBuf = (pBoneIEntry && pBoneIEntry->pBuffer) ? static_cast<CBuffer12*>(pBoneIEntry->pBuffer.Get()) : nullptr;
 
         // Resolve material (may be null) and gather texture surfaces by role.
         Canvas::XGfxMaterial *pMaterial = pMesh->GetMaterial(materialGroupIndex);
@@ -1949,17 +1962,44 @@ Gem::Result CRenderQueue12::DrawMesh(
 
         // Build MaterialFlags. Texture flags are gated by mesh capability
         // (no UV → no albedo/normal/emissive/PBR sampling; no tangent → no normal map).
-        const bool hasUV      = (pUV0Buf != nullptr);
-        const bool hasTangent = (pTanBuf != nullptr);
+        const bool hasUV      = (pUV0Buf  != nullptr);
+        const bool hasTangent = (pTanBuf  != nullptr);
+        const bool hasSkin    = (pBoneWBuf != nullptr) && (pBoneIBuf != nullptr) &&
+                                 (pMeshInstance != nullptr) && (pMeshInstance->GetSkinBoneCount() > 0);
         uint32_t materialFlags = 0;
         if (hasUV)      materialFlags |= MATERIAL_FLAG_HAS_UV;
         if (hasTangent) materialFlags |= MATERIAL_FLAG_HAS_TANGENT;
-        if (hasUV && pTextures[0])              materialFlags |= MATERIAL_FLAG_HAS_ALBEDO_TEX;
+        if (hasSkin)    materialFlags |= MATERIAL_FLAG_HAS_SKIN;
+        if (hasUV && pTextures[0])               materialFlags |= MATERIAL_FLAG_HAS_ALBEDO_TEX;
         if (hasUV && hasTangent && pTextures[1]) materialFlags |= MATERIAL_FLAG_HAS_NORMAL_TEX;
-        if (hasUV && pTextures[2])              materialFlags |= MATERIAL_FLAG_HAS_EMISSIVE_TEX;
-        if (hasUV && pTextures[3])              materialFlags |= MATERIAL_FLAG_HAS_ROUGH_TEX;
-        if (hasUV && pTextures[4])              materialFlags |= MATERIAL_FLAG_HAS_METAL_TEX;
-        if (hasUV && pTextures[5])              materialFlags |= MATERIAL_FLAG_HAS_AO_TEX;
+        if (hasUV && pTextures[2])               materialFlags |= MATERIAL_FLAG_HAS_EMISSIVE_TEX;
+        if (hasUV && pTextures[3])               materialFlags |= MATERIAL_FLAG_HAS_ROUGH_TEX;
+        if (hasUV && pTextures[4])               materialFlags |= MATERIAL_FLAG_HAS_METAL_TEX;
+        if (hasUV && pTextures[5])               materialFlags |= MATERIAL_FLAG_HAS_AO_TEX;
+
+        // Compute and upload bone matrices when skinning is active.
+        // Each matrix = InvBindPose[i] * boneNode[i].GetGlobalMatrix() — maps bind-pose
+        // geometry space directly to world space for the current frame's bone pose.
+        D3D12_GPU_VIRTUAL_ADDRESS boneMatricesGpuAddr = pPosBuf->GetD3DResource()->GetGPUVirtualAddress();
+        if (hasSkin)
+        {
+            const uint32_t boneCount = pMeshInstance->GetSkinBoneCount();
+            const uint64_t boneMatSize = static_cast<uint64_t>(boneCount) * sizeof(Canvas::Math::FloatMatrix4x4);
+            HostWriteAllocation boneHw;
+            Gem::ThrowGemError(m_UploadRing.AllocateFromRing(boneMatSize, boneHw));
+            auto* pMats = static_cast<Canvas::Math::FloatMatrix4x4*>(boneHw.pMapped);
+            for (uint32_t i = 0; i < boneCount; ++i)
+            {
+                Canvas::XSceneGraphNode*          pBone    = pMeshInstance->GetSkinBoneNode(i);
+                const Canvas::Math::FloatMatrix4x4* pInvBind = pMeshInstance->GetSkinInvBindPose(i);
+                // Skin bindings are fully resolved and validated at instantiation time
+                // (XModel::Instantiate and CMeshInstance::SetSkinBinding reject unresolved
+                // bones), so both pointers are guaranteed valid for an active skin here.
+                assert(pBone && pInvBind);
+                pMats[i] = *pInvBind * pBone->GetGlobalMatrix();
+            }
+            boneMatricesGpuAddr = boneHw.GpuAddress;
+        }
 
         // Pack per-object constants
         HlslTypes::HlslPerObjectConstants objectConstants = {};
@@ -1983,12 +2023,12 @@ Gem::Result CRenderQueue12::DrawMesh(
         Gem::ThrowGemError(m_UploadRing.AllocateFromRing(cbSize, hw));
         memcpy(hw.pMapped, &objectConstants, sizeof(HlslTypes::HlslPerObjectConstants));
         
-        // Allocate a contiguous block of 13 descriptors:
-        //   slots 0-1 : CBV[2] @ b1, b2
-        //   slots 2-10: SRV[9] @ t1..t9 (normals, UV0, tangents, albedo, normalMap,
-        //                                emissive, roughness, metallic, AO)
-        //   slots 11-12: UAV[2] @ u1, u2 (currently null)
-        constexpr UINT kDescCount = 13;
+        // Allocate a contiguous block of 15 descriptors:
+        //   slots 0-1  : CBV[2] @ b1, b2
+        //   slots 2-12 : SRV[11] @ t1..t11 (normals, UV0, tangents, albedo..AO,
+        //                                    boneIndices, boneWeights)
+        //   slots 13-14: UAV[2] @ u1, u2 (null)
+        constexpr UINT kDescCount = 15;
         if (m_NextSRVSlot + kDescCount > NumShaderResourceDescriptors)
             m_NextSRVSlot = 0;
         UINT baseSlot = m_NextSRVSlot;
@@ -2061,9 +2101,9 @@ Gem::Result CRenderQueue12::DrawMesh(
         
         // SRV t1: normals (slot 2)
         WriteStructuredBufSRV(2, pNormBuf, sizeof(Canvas::Math::FloatVector4));
-        // SRV t2: UV0 (slot 3) - FloatVector2
+        // SRV t2: UV0 (slot 3)
         WriteStructuredBufSRV(3, pUV0Buf, sizeof(Canvas::Math::FloatVector2));
-        // SRV t3: tangents (slot 4) - FloatVector4 (xyz=T, w=bitangent sign)
+        // SRV t3: tangents (slot 4)
         WriteStructuredBufSRV(4, pTanBuf, sizeof(Canvas::Math::FloatVector4));
         // SRV t4..t9: material textures (slots 5..10)
         WriteTexture2DSRV(5,  pTextures[0]); // Albedo
@@ -2072,12 +2112,15 @@ Gem::Result CRenderQueue12::DrawMesh(
         WriteTexture2DSRV(8,  pTextures[3]); // Roughness
         WriteTexture2DSRV(9,  pTextures[4]); // Metallic
         WriteTexture2DSRV(10, pTextures[5]); // AO
-        
-        // UAVs u1, u2: null (slots 11, 12)
+        // SRV t10: bone indices (slot 11); SRV t11: bone weights (slot 12)
+        WriteStructuredBufSRV(11, pBoneIBuf, sizeof(Canvas::Math::UIntVector4));
+        WriteStructuredBufSRV(12, pBoneWBuf, sizeof(Canvas::Math::FloatVector4));
+
+        // UAVs u1, u2: null (slots 13, 14)
         D3D12_UNORDERED_ACCESS_VIEW_DESC nullUavDesc = {};
         nullUavDesc.Format = DXGI_FORMAT_R32_FLOAT;
         nullUavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-        for (UINT i = 11; i <= 12; ++i)
+        for (UINT i = 13; i <= 14; ++i)
             pD3DDevice->CreateUnorderedAccessView(nullptr, nullptr, &nullUavDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, i, incSize));
         
         // Set root SRV (param 1) for positions (t0)
@@ -2099,6 +2142,12 @@ Gem::Result CRenderQueue12::DrawMesh(
         if (pTanBuf)
             m_GpuTaskGraph.DeclareBufferUsage(drawTask, pTanBuf,
                 D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if (pBoneIBuf)
+            m_GpuTaskGraph.DeclareBufferUsage(drawTask, pBoneIBuf,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if (pBoneWBuf)
+            m_GpuTaskGraph.DeclareBufferUsage(drawTask, pBoneWBuf,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         for (UINT i = 0; i < 6; ++i)
         {
             if (pTextures[i])
@@ -2109,7 +2158,7 @@ Gem::Result CRenderQueue12::DrawMesh(
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             }
         }
-        drawTask.RecordFunc = [posGpuAddr, baseGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [posGpuAddr, boneMatricesGpuAddr, baseGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
             pCL->SetPipelineState(GetActiveDefaultPSO());
             pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
@@ -2118,6 +2167,7 @@ Gem::Result CRenderQueue12::DrawMesh(
             pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
             pCL->SetGraphicsRootShaderResourceView(1, posGpuAddr);
             pCL->SetGraphicsRootDescriptorTable(3, baseGpuHandle);
+            pCL->SetGraphicsRootShaderResourceView(4, boneMatricesGpuAddr);
             pCL->DrawInstanced(vertexCount, 1, 0, 0);
         };
         m_GpuTaskGraph.InsertTask(drawTask);
@@ -3066,7 +3116,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                         const auto& worldMatrix = pNode->GetGlobalMatrix();
                         for (uint32_t g = 0; g < groupCount; ++g)
                         {
-                            Gem::ThrowGemError(DrawMesh(pMeshData, g, worldMatrix));
+                            Gem::ThrowGemError(DrawMesh(pMeshData, g, worldMatrix, pMeshInstance.Get()));
                         }
                     }
                     continue;

@@ -719,6 +719,48 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
+        // Inverse of a 4x4 affine matrix in Canvas's row-vector convention (v' = v * M):
+        // the upper-left 3x3 is the linear (rotation/scale/shear) block and row 3 is the
+        // translation. Handles any invertible linear block. For a pure rotation this reduces
+        // to [ R^T | 0 ; -t*R^T | 1 ]. Returns identity when the linear block is singular.
+        template<class _Type>
+        TMatrix<_Type, 4, 4> AffineInverse(const TMatrix<_Type, 4, 4> &m)
+        {
+            const _Type a00 = m[0][0], a01 = m[0][1], a02 = m[0][2];
+            const _Type a10 = m[1][0], a11 = m[1][1], a12 = m[1][2];
+            const _Type a20 = m[2][0], a21 = m[2][1], a22 = m[2][2];
+
+            const _Type c00 =  (a11 * a22 - a12 * a21);
+            const _Type c01 = -(a10 * a22 - a12 * a20);
+            const _Type c02 =  (a10 * a21 - a11 * a20);
+            const _Type det = a00 * c00 + a01 * c01 + a02 * c02;
+
+            TMatrix<_Type, 4, 4> inv = TMatrix<_Type, 4, 4>::Identity();
+            if (std::abs(det) < static_cast<_Type>(1e-12))
+                return inv;
+
+            const _Type invDet = static_cast<_Type>(1) / det;
+
+            // inv 3x3 = (linear block)^-1 (adjugate / det).
+            inv[0][0] = c00 * invDet;
+            inv[0][1] = (a02 * a21 - a01 * a22) * invDet;
+            inv[0][2] = (a01 * a12 - a02 * a11) * invDet;
+            inv[1][0] = c01 * invDet;
+            inv[1][1] = (a00 * a22 - a02 * a20) * invDet;
+            inv[1][2] = (a02 * a10 - a00 * a12) * invDet;
+            inv[2][0] = c02 * invDet;
+            inv[2][1] = (a01 * a20 - a00 * a21) * invDet;
+            inv[2][2] = (a00 * a11 - a01 * a10) * invDet;
+
+            // Translation row: -t * (linear block)^-1.
+            const _Type tx = m[3][0], ty = m[3][1], tz = m[3][2];
+            inv[3][0] = -(tx * inv[0][0] + ty * inv[1][0] + tz * inv[2][0]);
+            inv[3][1] = -(tx * inv[0][1] + ty * inv[1][1] + tz * inv[2][1]);
+            inv[3][2] = -(tx * inv[0][2] + ty * inv[1][2] + tz * inv[2][2]);
+            return inv;
+        }
+
+        //------------------------------------------------------------------------------------------------
         using FloatMatrix2x2 = TMatrix<float, 2, 2>;
         using FloatMatrix3x3 = TMatrix<float, 3, 3>;
         using FloatMatrix4x4 = TMatrix<float, 4, 4>;

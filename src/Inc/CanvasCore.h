@@ -5,7 +5,7 @@
 //
 // - Vectors are row vectors: v' = v * M (not M * v)
 // - Translation is stored in the BOTTOM ROW: matrix[3][0], matrix[3][1], matrix[3][2]
-// - Matrix concatenation: child_to_world = parent_to_world * child_to_parent
+// - Matrix concatenation: child_to_world = child_to_parent * parent_to_world
 // - For view matrices: world * view = identity (not view * world)
 //
 // This convention is used consistently across all Canvas math operations, scene graph
@@ -593,6 +593,16 @@ XScene : public XCanvasElement
 };
 
 //------------------------------------------------------------------------------------------------
+// Skin binding: connects a mesh instance to its animated bone nodes + inverse bind poses.
+// ppBoneNodes / pInvBindPoses are BoneCount entries; they are copied on SetSkinBinding.
+struct SkinBindingDesc
+{
+    uint32_t                        BoneCount     = 0;
+    XSceneGraphNode* const*         ppBoneNodes   = nullptr;
+    const Math::FloatMatrix4x4*     pInvBindPoses = nullptr;
+};
+
+//------------------------------------------------------------------------------------------------
 struct
 XMeshInstance : public XSceneGraphElement
 {
@@ -600,6 +610,12 @@ XMeshInstance : public XSceneGraphElement
 
     GEMMETHOD_(XGfxMeshData *, GetMeshData)() = 0;
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) = 0;
+
+    // Skin binding; pass nullptr or BoneCount==0 to clear.
+    GEMMETHOD(SetSkinBinding)(const SkinBindingDesc *pDesc) = 0;
+    GEMMETHOD_(uint32_t, GetSkinBoneCount)() const = 0;
+    GEMMETHOD_(XSceneGraphNode*, GetSkinBoneNode)(uint32_t index) const = 0;
+    GEMMETHOD_(const Math::FloatMatrix4x4*, GetSkinInvBindPose)(uint32_t index) const = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -648,6 +664,20 @@ XModel : public XCanvasElement
     // Animation clip library — clips added here are shared across all instances.
     // Each clip corresponds to one FBX AnimationStack (Blender Action).
     GEMMETHOD(AddAnimationClip)(const AnimationClipDesc* pClip) = 0;
+
+    // Skin binding registration — called by BuildModel for each skinned mesh.
+    // pMeshNode is the model-template node carrying the skinned XMeshInstance.
+    // ppBoneNodes / pInvBindPoses are BoneCount entries (copied internally).
+    // On Instantiate(), bone nodes are resolved via the clone map and
+    // SetSkinBinding is called on the cloned XMeshInstance.
+    struct MeshSkinDesc
+    {
+        XSceneGraphNode*            pMeshNode     = nullptr;
+        uint32_t                    BoneCount     = 0;
+        XSceneGraphNode* const*     ppBoneNodes   = nullptr;
+        const Math::FloatMatrix4x4* pInvBindPoses = nullptr;
+    };
+    GEMMETHOD(AddMeshSkin)(const MeshSkinDesc *pDesc) = 0;
     GEMMETHOD_(uint32_t, GetAnimationClipCount)() = 0;
     GEMMETHOD_(PCSTR,    GetAnimationClipName)(uint32_t index) = 0;
 

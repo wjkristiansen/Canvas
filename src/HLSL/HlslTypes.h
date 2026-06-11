@@ -192,6 +192,7 @@ struct ALIGN16 HlslDisplacedConstants
 #define MATERIAL_FLAG_HAS_ROUGH_TEX   (1u << 5)
 #define MATERIAL_FLAG_HAS_METAL_TEX   (1u << 6)
 #define MATERIAL_FLAG_HAS_AO_TEX      (1u << 7)
+#define MATERIAL_FLAG_HAS_SKIN        (1u << 8)
 
 #ifdef __cplusplus
 } // namespace HlslTypes

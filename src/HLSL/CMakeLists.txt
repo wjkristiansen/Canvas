@@ -55,6 +55,7 @@ function(add_hlsl_shader SHADER_FILE PROFILE ENTRY_POINT)
             COMMAND ${SHADER_COMPILER}
                 -T ${PROFILE}
                 -E ${ENTRY_POINT}
+                -Zpr
                 -Fo ${OUTPUT_FILE}
                 -I ${CMAKE_CURRENT_SOURCE_DIR}
                 ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}
@@ -70,6 +71,7 @@ function(add_hlsl_shader SHADER_FILE PROFILE ENTRY_POINT)
             COMMAND ${SHADER_COMPILER}
                 /T ${PROFILE}
                 /E ${ENTRY_POINT}
+                /Zpr
                 /Fo ${OUTPUT_FILE}
                 /I ${CMAKE_CURRENT_SOURCE_DIR}
                 ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILE}

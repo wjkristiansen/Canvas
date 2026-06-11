@@ -23,9 +23,11 @@ public:
     {
         Canvas::GfxResourceAllocation       PositionVB;
         Canvas::GfxResourceAllocation       NormalVB;
-        Canvas::GfxResourceAllocation       UV0VB;       // empty when absent
-        Canvas::GfxResourceAllocation       TangentVB;   // empty when absent
-        Gem::TGemPtr<Canvas::XGfxMaterial>  pMaterial;   // may be null
+        Canvas::GfxResourceAllocation       UV0VB;          // empty when absent
+        Canvas::GfxResourceAllocation       TangentVB;      // empty when absent
+        Canvas::GfxResourceAllocation       BoneWeightsVB;  // empty when not skinned
+        Canvas::GfxResourceAllocation       BoneIndicesVB;  // empty when not skinned
+        Gem::TGemPtr<Canvas::XGfxMaterial>  pMaterial;      // may be null
     };
 
     CMeshData12(Canvas::XCanvas* pCanvas, PCSTR name = nullptr);
