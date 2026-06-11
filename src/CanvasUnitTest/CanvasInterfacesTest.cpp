@@ -1271,5 +1271,198 @@ TEST(CanvasInterfacesTest, SkinBindingRoundTrip)
     EXPECT_EQ(0u, pMeshInst->GetSkinBoneCount());
 }
 
+// A skin binding with an unresolved (null) bone is rejected; rendering dereferences
+// every bone node, so this must fail at bind time rather than at draw time.
+TEST(CanvasInterfacesTest, SkinBindingRejectsNullBone)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pBone0;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBone0, "Bone0")));
+
+    Gem::TGemPtr<Canvas::XMeshInstance> pMeshInst;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateMeshInstance(&pMeshInst, "SkinnedMesh")));
+
+    Canvas::XSceneGraphNode* bones[] = { pBone0.Get(), nullptr }; // second bone unresolved
+    FloatMatrix4x4 invBinds[2] = { FloatMatrix4x4::Identity(), FloatMatrix4x4::Identity() };
+
+    Canvas::SkinBindingDesc desc{};
+    desc.BoneCount     = 2;
+    desc.ppBoneNodes   = bones;
+    desc.pInvBindPoses = invBinds;
+    EXPECT_TRUE(Gem::Failed(pMeshInst->SetSkinBinding(&desc)));
+
+    // The rejected call leaves the instance unbound.
+    EXPECT_EQ(0u, pMeshInst->GetSkinBoneCount());
+}
+
+namespace {
+
+// Builds an AnimationKeyframe with an identity rotation and unit scale, varying only
+// the translation - enough to exercise the controller's TRS evaluation.
+static Canvas::AnimationKeyframe TranslateKey(float time, const Canvas::Math::FloatVector4& t)
+{
+    Canvas::AnimationKeyframe k{};
+    k.Time        = time;
+    k.Translation = t;
+    k.Rotation    = Canvas::Math::FloatQuaternion();                       // identity (0,0,0,1)
+    k.Scale       = Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 0.0f);
+    return k;
+}
+
+} // anonymous namespace
+
+// Exercises the per-instance controller's playback, clip-time looping at the Duration
+// boundary, and bind-pose restoration.  Also confirms the controller keeps the model's
+// shared clip data alive after the caller releases its own model reference.
+TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    // Model with a single joint authored at a distinctive bind pose.
+    Gem::TGemPtr<Canvas::XModel> pModel;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "AnimModel")));
+
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pJoint;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pJoint, "Joint")));
+    pJoint->SetLocalTranslation(FloatVector4(7.0f, 7.0f, 7.0f, 1.0f)); // bind pose
+    EXPECT_TRUE(Succeeded(pModel->GetRootNode()->AddChild(pJoint)));
+
+    // One clip translating X from 0 to 40 over 2 seconds.
+    Canvas::AnimationKeyframe keys[2] = {
+        TranslateKey(0.0f, FloatVector4(0.0f,  0.0f, 0.0f, 0.0f)),
+        TranslateKey(2.0f, FloatVector4(40.0f, 0.0f, 0.0f, 0.0f)),
+    };
+    Canvas::AnimationTrackDesc track{};
+    track.NodeName      = "Joint";
+    track.Keyframes     = keys;
+    track.KeyframeCount = 2;
+
+    Canvas::AnimationClipDesc clip{};
+    clip.Name       = "Slide";
+    clip.Duration   = 2.0f;
+    clip.Tracks     = &track;
+    clip.TrackCount = 1;
+    EXPECT_TRUE(Succeeded(pModel->AddAnimationClip(&clip)));
+
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "AnimScene")));
+
+    Canvas::ModelInstantiateResult result{};
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    ASSERT_NE(result.pAnimationController, nullptr);
+    ASSERT_NE(result.pInstanceRoot, nullptr);
+
+    Canvas::XAnimationController* pCtrl        = result.pAnimationController;
+    Canvas::XSceneGraphNode*      pClonedJoint = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pClonedJoint, nullptr);
+
+    // Releasing the caller's model reference must not invalidate the controller's clips:
+    // the controller holds its own strong reference to the model.
+    pModel = nullptr;
+
+    EXPECT_EQ(1u, pCtrl->GetClipCount());
+    EXPECT_EQ(0u, pCtrl->FindClip("Slide"));
+    EXPECT_STREQ("Slide", pCtrl->GetClipName(0));
+    EXPECT_EQ(Canvas::InvalidClipIndex, pCtrl->FindClip("Missing"));
+    EXPECT_FALSE(pCtrl->IsPlaying());
+
+    // Play and advance to the midpoint: X interpolates to 20.
+    EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
+    EXPECT_TRUE(pCtrl->IsPlaying());
+    EXPECT_TRUE(Succeeded(pCtrl->Update(1.0f)));
+    EXPECT_FLOAT_EQ(1.0f, pCtrl->GetTime());
+    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+                            FloatVector4(20.0f, 0.0f, 0.0f, 0.0f)));
+
+    // Advancing past Duration wraps the clip time back into [0, Duration).
+    EXPECT_TRUE(Succeeded(pCtrl->Update(1.5f)));   // 1.0 + 1.5 = 2.5 -> 0.5
+    EXPECT_FLOAT_EQ(0.5f, pCtrl->GetTime());
+    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+                            FloatVector4(10.0f, 0.0f, 0.0f, 0.0f)));
+
+    // ResetToBindPose restores the instantiation-time TRS and stops playback.
+    pCtrl->ResetToBindPose();
+    EXPECT_FALSE(pCtrl->IsPlaying());
+    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+                            FloatVector4(7.0f, 7.0f, 7.0f, 1.0f)));
+}
+
+// Exercises cross-fade blending between two clips: the pose interpolates from the
+// pre-blend snapshot toward the new clip, and snaps fully to the new clip once the
+// blend duration elapses.
+TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XModel> pModel;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "BlendModel")));
+
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pJoint;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pJoint, "Joint")));
+    EXPECT_TRUE(Succeeded(pModel->GetRootNode()->AddChild(pJoint)));
+
+    // Two single-key clips that hold the joint at constant, distinct translations.
+    Canvas::AnimationKeyframe keyA = TranslateKey(0.0f, FloatVector4(0.0f,   0.0f, 0.0f, 0.0f));
+    Canvas::AnimationTrackDesc trackA{};
+    trackA.NodeName = "Joint"; trackA.Keyframes = &keyA; trackA.KeyframeCount = 1;
+    Canvas::AnimationClipDesc clipA{};
+    clipA.Name = "A"; clipA.Duration = 10.0f; clipA.Tracks = &trackA; clipA.TrackCount = 1;
+    EXPECT_TRUE(Succeeded(pModel->AddAnimationClip(&clipA)));
+
+    Canvas::AnimationKeyframe keyB = TranslateKey(0.0f, FloatVector4(100.0f, 0.0f, 0.0f, 0.0f));
+    Canvas::AnimationTrackDesc trackB{};
+    trackB.NodeName = "Joint"; trackB.Keyframes = &keyB; trackB.KeyframeCount = 1;
+    Canvas::AnimationClipDesc clipB{};
+    clipB.Name = "B"; clipB.Duration = 10.0f; clipB.Tracks = &trackB; clipB.TrackCount = 1;
+    EXPECT_TRUE(Succeeded(pModel->AddAnimationClip(&clipB)));
+
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "BlendScene")));
+
+    Canvas::ModelInstantiateResult result{};
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    ASSERT_NE(result.pAnimationController, nullptr);
+
+    Canvas::XAnimationController* pCtrl        = result.pAnimationController;
+    Canvas::XSceneGraphNode*      pClonedJoint = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pClonedJoint, nullptr);
+
+    // Settle on clip A (X = 0).
+    EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->Update(0.1f)));
+    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+                            FloatVector4(0.0f, 0.0f, 0.0f, 0.0f)));
+
+    // Cross-fade to clip B (X = 100) over 1 second; halfway through, X is the 50/50 blend.
+    EXPECT_TRUE(Succeeded(pCtrl->PlayByName("B", 1.0f)));
+    EXPECT_EQ(1u, pCtrl->GetActiveClipIndex());
+    EXPECT_TRUE(Succeeded(pCtrl->Update(0.5f)));
+    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+                            FloatVector4(50.0f, 0.0f, 0.0f, 0.0f)));
+
+    // Once the blend duration elapses the pose snaps fully to clip B.
+    EXPECT_TRUE(Succeeded(pCtrl->Update(0.6f)));   // blend time 1.1 >= 1.0
+    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+                            FloatVector4(100.0f, 0.0f, 0.0f, 0.0f)));
+
+    // Subsequent updates keep applying clip B directly (blend state cleared).
+    EXPECT_TRUE(Succeeded(pCtrl->Update(0.1f)));
+    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+                            FloatVector4(100.0f, 0.0f, 0.0f, 0.0f)));
+}
+
 }
 
