@@ -34,40 +34,41 @@ bool LoadSkyCube(
 
     // Load all six faces into RAM first so we can validate dimensions before
     // committing a GPU surface allocation.
-    Canvas::Platform::Win32::ImageData faces[6];
+    Gem::TGemPtr<Canvas::Platform::Win32::XImage> faces[6];
     for (uint32_t i = 0; i < 6; ++i)
     {
         char filename[64];
         snprintf(filename, sizeof(filename), "sky_%s_%s.png", presetName, kFaceSuffix[i]);
         const std::filesystem::path facePath = assetsDir / filename;
 
-        if (!Canvas::Platform::Win32::LoadImageData(facePath.wstring().c_str(),
-                Canvas::GfxFormat::R8G8B8A8_UNorm, &faces[i], pLogger))
+        if (Gem::Failed(Canvas::Platform::Win32::LoadImageData(facePath.wstring().c_str(),
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &faces[i], pLogger)))
         {
             LogError(pLogger, "LoadSkyCube: failed to load face '%s'",
                 facePath.string().c_str());
             return false;
         }
-        if (faces[i].Width != faces[0].Width || faces[i].Height != faces[0].Height)
+        if (faces[i]->GetWidth() != faces[0]->GetWidth() ||
+            faces[i]->GetHeight() != faces[0]->GetHeight())
         {
             LogError(pLogger,
                 "LoadSkyCube: face '%s' dimensions %ux%u do not match face 0 (%ux%u)",
                 facePath.string().c_str(),
-                faces[i].Width, faces[i].Height,
-                faces[0].Width, faces[0].Height);
+                faces[i]->GetWidth(), faces[i]->GetHeight(),
+                faces[0]->GetWidth(), faces[0]->GetHeight());
             return false;
         }
     }
 
-    if (faces[0].Width != faces[0].Height)
+    if (faces[0]->GetWidth() != faces[0]->GetHeight())
     {
         LogError(pLogger,
             "LoadSkyCube: preset '%s' faces are not square (%ux%u)",
-            presetName, faces[0].Width, faces[0].Height);
+            presetName, faces[0]->GetWidth(), faces[0]->GetHeight());
         return false;
     }
 
-    const uint32_t faceSize = faces[0].Width;
+    const uint32_t faceSize = faces[0]->GetWidth();
 
     GfxSurfaceDesc desc = GfxSurfaceDesc::SurfaceDescCube(
         GfxFormat::R8G8B8A8_UNorm,
@@ -94,7 +95,7 @@ bool LoadSkyCube(
             /*subresourceIndex*/ i,
             /*dstX*/ 0, /*dstY*/ 0,
             faceSize, faceSize,
-            faces[i].Pixels.data(), rowPitchBytes);
+            faces[i]->GetPixels(), rowPitchBytes);
         if (Gem::Failed(hr))
         {
             LogError(pLogger,

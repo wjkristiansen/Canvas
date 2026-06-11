@@ -13,7 +13,7 @@ CanvasPlatformWin32 publishes two interfaces from `CanvasPlatformWin32.h` in the
 
 It also exposes a free-function image-loading API in the same namespace:
 
-- **`LoadImageData`** - decodes an image from a file path or in-memory buffer into a tightly-packed `ImageData` pixel block of a caller-chosen `Canvas::GfxFormat`. Implemented on top of the Windows Imaging Component (WIC).
+- **`LoadImageData`** - decodes an image from a file path or in-memory buffer into a tightly-packed `XImage` of a caller-chosen `Canvas::GfxFormat`. Implemented on top of the Windows Imaging Component (WIC).
 
 Both GEM interfaces derive from `Gem::XGeneric`. GEM is the lightweight COM-style object model used throughout Canvas; it provides reference counting (`AddRef`/`Release`), interface discovery (`QueryInterface`), and 64-bit interface IDs. Smart pointers (`Gem::TGemPtr<T>`) automate lifetime management. See the [GEM repository](../../deps/GEM) for details.
 
@@ -130,27 +130,30 @@ This keeps mouse-look sensitivity identical to the local case while remaining us
 
 ## Image Loading
 
-`LoadImageData` decodes an image into a CPU-side pixel buffer suitable for handing to `XGfxDevice::UploadTextureRegion` or any other consumer that wants raw pixels. Two overloads are provided:
+`LoadImageData` decodes an image into a CPU-side pixel buffer suitable for handing to `XGfxDevice::UploadTextureRegion` or any other consumer that wants raw pixels. The decoded image is returned as an `XImage` GEM object; the pixel storage lives entirely inside the implementation, so no STL container crosses the DLL boundary. Two overloads are provided:
 
 ```cpp
-struct ImageData
+struct XImage : public Gem::XGeneric
 {
-    uint32_t              Width  = 0;
-    uint32_t              Height = 0;
-    Canvas::GfxFormat     Format = Canvas::GfxFormat::Unknown;
-    std::vector<uint8_t>  Pixels;   // tightly packed, row pitch = Width * bytesPerPixel
+    GEMMETHOD_(uint32_t, GetWidth)() = 0;
+    GEMMETHOD_(uint32_t, GetHeight)() = 0;
+    GEMMETHOD_(Canvas::GfxFormat, GetFormat)() = 0;
+    GEMMETHOD_(uint32_t, GetBytesPerPixel)() = 0;
+    GEMMETHOD_(const uint8_t*, GetPixels)() = 0;       // tightly packed, row pitch = Width * GetBytesPerPixel()
+    GEMMETHOD_(size_t, GetPixelByteCount)() = 0;
+    GEMMETHOD_(bool, IsEmpty)() = 0;
 };
 
-bool LoadImageData(const wchar_t*    path,
-                   Canvas::GfxFormat format,
-                   ImageData*        outImage,
-                   Canvas::XLogger*  pLogger);
+Gem::Result LoadImageData(const wchar_t*    path,
+                          Canvas::GfxFormat format,
+                          XImage**          ppImage,
+                          Canvas::XLogger*  pLogger);
 
-bool LoadImageData(const uint8_t*    data,
-                   size_t            byteCount,
-                   Canvas::GfxFormat format,
-                   ImageData*        outImage,
-                   Canvas::XLogger*  pLogger);
+Gem::Result LoadImageData(const uint8_t*    data,
+                          size_t            byteCount,
+                          Canvas::GfxFormat format,
+                          XImage**          ppImage,
+                          Canvas::XLogger*  pLogger);
 ```
 
 The path overload opens the file directly via `IWICImagingFactory::CreateDecoderFromFilename`; the memory overload copies the bytes into an `HGLOBAL`-backed `IStream` and decodes via `CreateDecoderFromStream`. Both paths funnel through the same WIC `IWICFormatConverter` step, so the output is always tightly packed in the requested `GfxFormat` regardless of the source pixel layout.
@@ -164,9 +167,9 @@ Supported target formats:
 | `R8_UNorm`             | `GUID_WICPixelFormat8bppGray`       | 1             |
 | `R16_UNorm`            | `GUID_WICPixelFormat16bppGray`      | 2             |
 
-Any other `GfxFormat` value is rejected with an `XLogger` error and `false` return; if you need a new format, extend the switch in `ImageLoader.cpp`.
+Any other `GfxFormat` value is rejected with an `XLogger` error and a failing `Gem::Result`; if you need a new format, extend the switch in `ImageLoader.cpp`.
 
-Both overloads return `false` on any failure (null/empty input, unsupported format, file-open error, decoder error, format-converter error, `CopyPixels` error) and leave `*outImage` cleared. On failure they log an error through the supplied `XLogger`; on success they log an info line with the decoded dimensions and source. A null `XLogger` is allowed - log calls are routed through the standard `LogError` / `LogInfo` helpers, which no-op when the logger is null.
+Both overloads return a failing `Gem::Result` on any failure (null/empty input, unsupported format, file-open error, decoder error, format-converter error, `CopyPixels` error) and leave `*ppImage` null. On failure they log an error through the supplied `XLogger`; on success they log an info line with the decoded dimensions and source. A null `XLogger` is allowed - log calls are routed through the standard `LogError` / `LogInfo` helpers, which no-op when the logger is null.
 
 **COM apartment.** WIC requires COM to be initialized on the calling thread. CanvasPlatformWin32 does **not** call `CoInitializeEx` for you; consumers that decode images off the main thread are responsible for initializing COM on those threads themselves.
 
@@ -215,11 +218,11 @@ while (pWindow->PumpMessages())
 }
 
 // Decode a texture from disk into a tightly-packed RGBA8 pixel block.
-ImageData img;
-if (LoadImageData(L"assets/diffuse.png",
-                  Canvas::GfxFormat::R8G8B8A8_UNorm, &img, pLogger))
+Gem::TGemPtr<XImage> img;
+if (Gem::Succeeded(LoadImageData(L"assets/diffuse.png",
+                  Canvas::GfxFormat::R8G8B8A8_UNorm, &img, pLogger)))
 {
-    // img.Width / img.Height / img.Pixels.data() ready to hand to
+    // img->GetWidth() / img->GetHeight() / img->GetPixels() ready to hand to
     // XGfxDevice::UploadTextureRegion.
 }
 ```
