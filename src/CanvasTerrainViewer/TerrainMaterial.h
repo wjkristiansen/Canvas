@@ -79,8 +79,8 @@ struct TerrainMaterialOutputs
 Gem::Result BuildTerrainMaterial(
     XGfxDevice*                     pDevice,
     const HeightField::HeightField& field,
-    const Canvas::Platform::Win32::ImageData& albedoAtlas,
-    const Canvas::Platform::Win32::ImageData& ormAtlas,
+    Canvas::Platform::Win32::XImage* albedoAtlas,
+    Canvas::Platform::Win32::XImage* ormAtlas,
     const TerrainMaterialOptions&   opts,
     TerrainMaterialOutputs*         outputs,
     XLogger*                        pLogger = nullptr);

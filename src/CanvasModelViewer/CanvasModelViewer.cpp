@@ -36,11 +36,11 @@ bool LoadFbxTexture(
 
     outSurface = nullptr;
 
-    ImageData img;
+    Gem::TGemPtr<XImage> img;
     if (ref.Embedded && !ref.EmbeddedBytes.empty())
     {
-        if (!LoadImageData(ref.EmbeddedBytes.data(), ref.EmbeddedBytes.size(),
-                Canvas::GfxFormat::R8G8B8A8_UNorm, &img, pLogger))
+        if (Gem::Failed(LoadImageData(ref.EmbeddedBytes.data(), ref.EmbeddedBytes.size(),
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &img, pLogger)))
         {
             Canvas::LogWarn(pLogger, "LoadFbxTexture: embedded decode failed for '%s'",
                 ref.AbsoluteFilePath.c_str());
@@ -50,7 +50,7 @@ bool LoadFbxTexture(
     else
     {
         std::wstring widePath(ref.AbsoluteFilePath.begin(), ref.AbsoluteFilePath.end());
-        if (!LoadImageData(widePath.c_str(), Canvas::GfxFormat::R8G8B8A8_UNorm, &img, pLogger))
+        if (Gem::Failed(LoadImageData(widePath.c_str(), Canvas::GfxFormat::R8G8B8A8_UNorm, &img, pLogger)))
         {
             Canvas::LogWarn(pLogger, "LoadFbxTexture: file decode failed for '%s'",
                 ref.AbsoluteFilePath.c_str());
@@ -59,7 +59,7 @@ bool LoadFbxTexture(
     }
 
     Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
-        Canvas::GfxFormat::R8G8B8A8_UNorm, img.Width, img.Height,
+        Canvas::GfxFormat::R8G8B8A8_UNorm, img->GetWidth(), img->GetHeight(),
         Canvas::SurfaceFlag_ShaderResource);
     Gem::Result r = pDevice->CreateSurface(desc, &outSurface);
     if (Gem::Failed(r))
@@ -70,9 +70,9 @@ bool LoadFbxTexture(
         return false;
     }
 
-    const UINT rowPitch = img.Width * img.BytesPerPixel();
-    r = pDevice->UploadTextureRegion(outSurface.Get(), 0, 0, 0, img.Width, img.Height,
-        img.Pixels.data(), rowPitch);
+    const UINT rowPitch = img->GetWidth() * img->GetBytesPerPixel();
+    r = pDevice->UploadTextureRegion(outSurface.Get(), 0, 0, 0, img->GetWidth(), img->GetHeight(),
+        img->GetPixels(), rowPitch);
     if (Gem::Failed(r))
     {
         Canvas::LogWarn(pLogger, "LoadFbxTexture: UploadTextureRegion failed for '%s'",

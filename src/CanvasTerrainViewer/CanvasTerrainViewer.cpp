@@ -429,16 +429,16 @@ class CTerrainApp
             return false;
         }
 
-        Canvas::Platform::Win32::ImageData albedoAtlas, ormAtlas;
-        if (!Canvas::Platform::Win32::LoadImageData(mat.AtlasAlbedo.wstring().c_str(),
-                Canvas::GfxFormat::R8G8B8A8_UNorm, &albedoAtlas, m_pLogger.Get()))
+        Gem::TGemPtr<Canvas::Platform::Win32::XImage> albedoAtlas, ormAtlas;
+        if (Gem::Failed(Canvas::Platform::Win32::LoadImageData(mat.AtlasAlbedo.wstring().c_str(),
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &albedoAtlas, m_pLogger.Get())))
         {
             Canvas::LogError(m_pLogger.Get(), "Failed to load atlas albedo '%s'",
                 mat.AtlasAlbedo.string().c_str());
             return false;
         }
-        if (!Canvas::Platform::Win32::LoadImageData(mat.AtlasORM.wstring().c_str(),
-                Canvas::GfxFormat::R8G8B8A8_UNorm, &ormAtlas, m_pLogger.Get()))
+        if (Gem::Failed(Canvas::Platform::Win32::LoadImageData(mat.AtlasORM.wstring().c_str(),
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &ormAtlas, m_pLogger.Get())))
         {
             Canvas::LogError(m_pLogger.Get(), "Failed to load atlas ORM '%s'",
                 mat.AtlasORM.string().c_str());
@@ -753,10 +753,10 @@ class CTerrainApp
         // Moon billboard sprite (2D RGBA).  Composite samples it inside
         // the angular disc around MoonDirection (see GfxBackgroundDesc).
         const std::filesystem::path moonPath = skyDir / "moon.png";
-        Canvas::Platform::Win32::ImageData moonImg;
-        if (!Canvas::Platform::Win32::LoadImageData(
+        Gem::TGemPtr<Canvas::Platform::Win32::XImage> moonImg;
+        if (Gem::Failed(Canvas::Platform::Win32::LoadImageData(
                 moonPath.wstring().c_str(),
-                Canvas::GfxFormat::R8G8B8A8_UNorm, &moonImg, m_pLogger.Get()))
+                Canvas::GfxFormat::R8G8B8A8_UNorm, &moonImg, m_pLogger.Get())))
         {
             Canvas::LogError(m_pLogger.Get(), "LoadSky: failed to load '%s'",
                 moonPath.string().c_str());
@@ -765,13 +765,13 @@ class CTerrainApp
         {
             Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
                 Canvas::GfxFormat::R8G8B8A8_UNorm,
-                moonImg.Width, moonImg.Height,
+                moonImg->GetWidth(), moonImg->GetHeight(),
                 Canvas::SurfaceFlag_ShaderResource);
             Gem::ThrowGemError(m_pGfxDevice->CreateSurface(desc, &m_pMoonTexture));
             Gem::ThrowGemError(m_pGfxDevice->UploadTextureRegion(
                 m_pMoonTexture, 0, 0, 0,
-                moonImg.Width, moonImg.Height,
-                moonImg.Pixels.data(), moonImg.Width * 4));
+                moonImg->GetWidth(), moonImg->GetHeight(),
+                moonImg->GetPixels(), moonImg->GetWidth() * 4));
             Gem::ThrowGemError(m_pGfxRenderQueue->FinalizeUploadAsShaderResource(m_pMoonTexture.Get()));
         }
         return true;

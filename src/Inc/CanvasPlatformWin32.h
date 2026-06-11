@@ -2,54 +2,56 @@
 #include "Gem.hpp"
 #include "CanvasFormat.h"
 #include <cstdint>
-#include <vector>
 
 namespace Canvas { struct XLogger; }
 
 namespace Canvas::Platform::Win32 {
 
 //------------------------------------------------------------------------------------------------
-// Image loading — WIC-backed loader. Accepts any Canvas::GfxFormat that has a
-// direct WIC IWICFormatConverter mapping; unsupported formats return false.
-// Currently supported: R8G8B8A8_UNorm, R16G16B16A16_Float, R8_UNorm, R16_UNorm.
+// XImage - a decoded image returned by LoadImageData. The pixel storage lives entirely inside
+// the implementation, so no STL container crosses the DLL boundary. Pixels are row-major; the
+// row stride is GetWidth() * GetBytesPerPixel() bytes.
 //------------------------------------------------------------------------------------------------
-struct ImageData
+struct XImage : public Gem::XGeneric
 {
-    uint32_t              Width  = 0;
-    uint32_t              Height = 0;
-    Canvas::GfxFormat     Format = Canvas::GfxFormat::Unknown;
-    std::vector<uint8_t>  Pixels; // Row-major raw bytes; stride = Width * BytesPerPixel()
+    GEM_INTERFACE_DECLARE(XImage, 0x7A1C39E6D2840FB5);
 
-    uint32_t BytesPerPixel() const
-    {
-        switch (Format)
-        {
-        case Canvas::GfxFormat::R8G8B8A8_UNorm:        return 4;
-        case Canvas::GfxFormat::R16G16B16A16_Float:    return 8;
-        case Canvas::GfxFormat::R8_UNorm:              return 1;
-        case Canvas::GfxFormat::R16_UNorm:             return 2;
-        default:                                        return 0;
-        }
-    }
+    GEMMETHOD_(uint32_t, GetWidth)() = 0;
+    GEMMETHOD_(uint32_t, GetHeight)() = 0;
+    GEMMETHOD_(Canvas::GfxFormat, GetFormat)() = 0;
+    GEMMETHOD_(uint32_t, GetBytesPerPixel)() = 0;
 
-    bool IsEmpty() const { return Pixels.empty() || Width == 0 || Height == 0; }
+    // Pointer to the row-major pixel bytes, valid for the lifetime of this object.
+    // Returns nullptr when the image is empty.
+    GEMMETHOD_(const uint8_t*, GetPixels)() = 0;
+
+    // Total size of the pixel buffer in bytes (Height * GetWidth() * GetBytesPerPixel()).
+    GEMMETHOD_(size_t, GetPixelByteCount)() = 0;
+
+    // True when no pixels are present (zero dimensions or an empty buffer).
+    GEMMETHOD_(bool, IsEmpty)() = 0;
 };
 
-// Load any WIC-decodable image file and convert to the requested pixel format.
-// Returns true on success; on failure outImage is left empty and an error is
-// logged via pLogger (if non-null).
-bool LoadImageData(
+//------------------------------------------------------------------------------------------------
+// Image loading - WIC-backed loader. Accepts any Canvas::GfxFormat that has a direct WIC
+// IWICFormatConverter mapping; unsupported formats fail.
+// Currently supported: R8G8B8A8_UNorm, R16G16B16A16_Float, R8_UNorm, R16_UNorm.
+//
+// On success *ppImage receives a new XImage (the caller owns the reference); on failure
+// *ppImage is set to null and an error is logged via pLogger (if non-null).
+//------------------------------------------------------------------------------------------------
+Gem::Result LoadImageData(
     const wchar_t*     path,
     Canvas::GfxFormat  format,
-    ImageData*         outImage,
+    XImage**           ppImage,
     Canvas::XLogger*   pLogger = nullptr);
 
 // Memory-based overload: decode from raw image bytes (e.g. an embedded FBX texture).
-bool LoadImageData(
+Gem::Result LoadImageData(
     const uint8_t*     data,
     size_t             byteCount,
     Canvas::GfxFormat  format,
-    ImageData*         outImage,
+    XImage**           ppImage,
     Canvas::XLogger*   pLogger = nullptr);
 
 struct AppWindowDesc

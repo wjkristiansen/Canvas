@@ -18,6 +18,15 @@ inline float smoothstep01(float edge0, float edge1, float x)
     return t * t * (3.0f - 2.0f * t);
 }
 
+// Raw view of a decoded RGBA8 atlas. Built once from an XImage so the per-texel
+// sampling loop reads pixels directly instead of paying a virtual call per access.
+struct AtlasView
+{
+    const uint8_t* Pixels;
+    uint32_t       Width;
+    uint32_t       Height;
+};
+
 // Sample an atlas slot at world-relative UV. The atlas is 2x2 of equal-sized
 // slots; slotU/slotV in {0, 1} pick the slot. (atlasU, atlasV) are world UVs
 // in [0, 1) coordinates *within a single slot* (modulo the slot's repeat
@@ -25,7 +34,7 @@ inline float smoothstep01(float edge0, float edge1, float x)
 //
 // Returns the RGBA8 atlas pixel via the per-channel outputs.
 inline void SampleAtlas(
-    const Canvas::Platform::Win32::ImageData& atlas,
+    const AtlasView&  atlas,
     uint32_t          slotU,    // 0 or 1
     uint32_t          slotV,    // 0 or 1
     float             atlasU,
@@ -63,23 +72,26 @@ inline void SampleAtlas(
 Gem::Result BuildTerrainMaterial(
     XGfxDevice*                     pDevice,
     const HeightField::HeightField& field,
-    const Canvas::Platform::Win32::ImageData& albedoAtlas,
-    const Canvas::Platform::Win32::ImageData& ormAtlas,
+    Canvas::Platform::Win32::XImage* albedoAtlas,
+    Canvas::Platform::Win32::XImage* ormAtlas,
     const TerrainMaterialOptions&   opts,
     TerrainMaterialOutputs*         outputs,
     XLogger*                        pLogger)
 {
-    if (!pDevice || !outputs)
+    if (!pDevice || !outputs || !albedoAtlas || !ormAtlas)
         return Gem::Result::InvalidArg;
     *outputs = TerrainMaterialOutputs{};
-    if (field.IsEmpty() || albedoAtlas.IsEmpty() || ormAtlas.IsEmpty())
+    if (field.IsEmpty() || albedoAtlas->IsEmpty() || ormAtlas->IsEmpty())
         return Gem::Result::InvalidArg;
-    if ((albedoAtlas.Width & 1u) || (albedoAtlas.Height & 1u) ||
-        (ormAtlas.Width    & 1u) || (ormAtlas.Height    & 1u))
+    if ((albedoAtlas->GetWidth() & 1u) || (albedoAtlas->GetHeight() & 1u) ||
+        (ormAtlas->GetWidth()    & 1u) || (ormAtlas->GetHeight()    & 1u))
     {
         LogError(pLogger, "BuildTerrainMaterial: atlas dimensions must be even (2x2 packing)");
         return Gem::Result::InvalidArg;
     }
+
+    const AtlasView albedoView{ albedoAtlas->GetPixels(), albedoAtlas->GetWidth(), albedoAtlas->GetHeight() };
+    const AtlasView ormView   { ormAtlas->GetPixels(),    ormAtlas->GetWidth(),    ormAtlas->GetHeight() };
 
     const uint32_t W = field.Desc.Width;
     const uint32_t H = field.Desc.Height;
@@ -152,19 +164,19 @@ Gem::Result BuildTerrainMaterial(
             const float aV = wy * invRepeat;
 
             // Sample each slot once from each atlas (4 samples per atlas).
-            uint8_t gR, gG, gB; SampleAtlas(albedoAtlas, kGrassU, kGrassV, aU, aV, gR, gG, gB);
-            uint8_t rR, rG, rB; SampleAtlas(albedoAtlas, kRockU,  kRockV,  aU, aV, rR, rG, rB);
-            uint8_t sR, sG, sB; SampleAtlas(albedoAtlas, kSandU,  kSandV,  aU, aV, sR, sG, sB);
-            uint8_t nR, nG, nB; SampleAtlas(albedoAtlas, kSnowU,  kSnowV,  aU, aV, nR, nG, nB);
+            uint8_t gR, gG, gB; SampleAtlas(albedoView, kGrassU, kGrassV, aU, aV, gR, gG, gB);
+            uint8_t rR, rG, rB; SampleAtlas(albedoView, kRockU,  kRockV,  aU, aV, rR, rG, rB);
+            uint8_t sR, sG, sB; SampleAtlas(albedoView, kSandU,  kSandV,  aU, aV, sR, sG, sB);
+            uint8_t nR, nG, nB; SampleAtlas(albedoView, kSnowU,  kSnowV,  aU, aV, nR, nG, nB);
 
             uint8_t go_ao, go_rough, go_metal; (void)go_metal;
-            SampleAtlas(ormAtlas, kGrassU, kGrassV, aU, aV, go_ao, go_rough, go_metal);
+            SampleAtlas(ormView, kGrassU, kGrassV, aU, aV, go_ao, go_rough, go_metal);
             uint8_t ro_ao, ro_rough, ro_metal; (void)ro_metal;
-            SampleAtlas(ormAtlas, kRockU,  kRockV,  aU, aV, ro_ao, ro_rough, ro_metal);
+            SampleAtlas(ormView, kRockU,  kRockV,  aU, aV, ro_ao, ro_rough, ro_metal);
             uint8_t so_ao, so_rough, so_metal; (void)so_metal;
-            SampleAtlas(ormAtlas, kSandU,  kSandV,  aU, aV, so_ao, so_rough, so_metal);
+            SampleAtlas(ormView, kSandU,  kSandV,  aU, aV, so_ao, so_rough, so_metal);
             uint8_t no_ao, no_rough, no_metal; (void)no_metal;
-            SampleAtlas(ormAtlas, kSnowU,  kSnowV,  aU, aV, no_ao, no_rough, no_metal);
+            SampleAtlas(ormView, kSnowU,  kSnowV,  aU, aV, no_ao, no_rough, no_metal);
 
             // Blend.
             const float rF = wGrass * gR + wRock * rR + wSand * sR + wSnow * nR;
