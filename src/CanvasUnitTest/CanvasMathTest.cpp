@@ -219,6 +219,49 @@ TEST(CanvasMathTest, MatrixRotation)
     EXPECT_TRUE(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 }
 
+TEST(CanvasMathTest, AffineInverse)
+{
+    // Affine transform in Canvas's row-vector convention: non-uniform scale on the
+    // 3x3 rows, a rotation, and a translation in row 3. Exercises the general
+    // (scaled, non-orthonormal) path, not just pure rotation.
+    FloatMatrix4x4 m = ZRotationMatrix<float>(0.7f);
+    const float sx = 2.0f, sy = 0.5f, sz = 3.0f;
+    for (int c = 0; c < 3; ++c)
+    {
+        m[0][c] *= sx;
+        m[1][c] *= sy;
+        m[2][c] *= sz;
+    }
+    m[3][0] = 4.0f; m[3][1] = -7.0f; m[3][2] = 11.0f; m[3][3] = 1.0f;
+
+    const FloatMatrix4x4 inv = Canvas::Math::AffineInverse(m);
+
+    // Tolerance-based identity check (a scaled inverse accumulates float error
+    // well above the file's FLT_EPSILON-on-squared-error AlmostEqual).
+    auto ExpectIdentity = [](const FloatMatrix4x4 &p)
+    {
+        for (int r = 0; r < 4; ++r)
+            for (int c = 0; c < 4; ++c)
+                EXPECT_NEAR(p[r][c], (r == c) ? 1.0f : 0.0f, 1e-4f);
+    };
+
+    // Inverse on both sides.
+    ExpectIdentity(m * inv);
+    ExpectIdentity(inv * m);
+
+    // A point round-trips: (p * M) * M^-1 == p  (row-vector v * M).
+    const FloatVector4 p(1.5f, -2.0f, 0.25f, 1.0f);
+    const FloatVector4 back = (p * m) * inv;
+    EXPECT_NEAR(back.X, p.X, 1e-4f);
+    EXPECT_NEAR(back.Y, p.Y, 1e-4f);
+    EXPECT_NEAR(back.Z, p.Z, 1e-4f);
+
+    // Singular linear block returns identity (documented fallback).
+    FloatMatrix4x4 singular = FloatMatrix4x4::Identity();
+    singular[0][0] = singular[1][1] = singular[2][2] = 0.0f;
+    ExpectIdentity(Canvas::Math::AffineInverse(singular));
+}
+
 TEST(CanvasMathTest, LookAt)
 {
     // ComposePointToBasisVectors is a general utility that works with any coordinate system.

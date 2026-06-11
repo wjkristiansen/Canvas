@@ -35,11 +35,13 @@ GEMMETHODIMP_(Canvas::GfxResourceAllocation*) CMeshData12::GetVertexBuffer(uint3
 
     switch (type)
     {
-    case Canvas::GfxVertexBufferType::Position: return pickIfPresent(group.PositionVB);
-    case Canvas::GfxVertexBufferType::Normal:   return pickIfPresent(group.NormalVB);
-    case Canvas::GfxVertexBufferType::UV0:      return pickIfPresent(group.UV0VB);
-    case Canvas::GfxVertexBufferType::Tangent:  return pickIfPresent(group.TangentVB);
-    default:                                    return nullptr;
+    case Canvas::GfxVertexBufferType::Position:    return pickIfPresent(group.PositionVB);
+    case Canvas::GfxVertexBufferType::Normal:      return pickIfPresent(group.NormalVB);
+    case Canvas::GfxVertexBufferType::UV0:         return pickIfPresent(group.UV0VB);
+    case Canvas::GfxVertexBufferType::Tangent:     return pickIfPresent(group.TangentVB);
+    case Canvas::GfxVertexBufferType::BoneWeights: return pickIfPresent(group.BoneWeightsVB);
+    case Canvas::GfxVertexBufferType::BoneIndices: return pickIfPresent(group.BoneIndicesVB);
+    default:                                       return nullptr;
     }
 }
 

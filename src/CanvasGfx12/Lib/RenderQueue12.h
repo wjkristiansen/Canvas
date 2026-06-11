@@ -740,7 +740,11 @@ public:
     UINT64 GetFenceValue() const { return m_FenceValue; }
 
     // Internal mesh drawing (called from EndFrame, not on any public interface)
-    Gem::Result DrawMesh(Canvas::XGfxMeshData *pMeshData, uint32_t materialGroupIndex, const Canvas::Math::FloatMatrix4x4 &worldTransform);
+    Gem::Result DrawMesh(
+        Canvas::XGfxMeshData *pMeshData,
+        uint32_t materialGroupIndex,
+        const Canvas::Math::FloatMatrix4x4 &worldTransform,
+        Canvas::XMeshInstance *pMeshInstance = nullptr);
 
     // Flush: compute final layouts, update committed state, close/submit CL
     void Flush();

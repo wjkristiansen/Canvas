@@ -30,6 +30,14 @@ class CModel :
 
     std::vector<CAnimationClip> m_AnimClips;    // shared, immutable after build
 
+    struct MeshSkinEntry
+    {
+        XSceneGraphNode*                    pMeshNode;   // weak, model owns the node
+        std::vector<XSceneGraphNode*>       BoneNodes;   // weak, model owns the nodes
+        std::vector<Math::FloatMatrix4x4>   InvBindPoses;
+    };
+    std::vector<MeshSkinEntry> m_MeshSkins;
+
     Math::AABB m_Bounds;
 
 public:
@@ -129,6 +137,8 @@ public: // XModel methods
 
     // Animation clip library
     GEMMETHOD(AddAnimationClip)(const AnimationClipDesc* pDesc) final;
+
+    GEMMETHOD(AddMeshSkin)(const MeshSkinDesc *pDesc) final;
 
     GEMMETHOD_(uint32_t, GetAnimationClipCount)() final
     {

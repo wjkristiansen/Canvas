@@ -61,11 +61,14 @@ Math::FloatVector4 ToCanvasNormal(ufbx_vec3 v)
 //------------------------------------------------------------------------------------------------
 Math::FloatQuaternion ToCanvasQuaternion(ufbx_quat q)
 {
+    // Canvas uses row-vector math (v' = v*M). ufbx bakes quaternions for the
+    // column-vector convention (v' = M*v), which is the conjugate of the
+    // equivalent row-vector (Canvas) quaternion. Negate XYZ (keep W) to convert.
     return Math::FloatQuaternion(
-        static_cast<float>(q.x),
-        static_cast<float>(q.y),
-        static_cast<float>(q.z),
-        static_cast<float>(q.w));
+        -static_cast<float>(q.x),
+        -static_cast<float>(q.y),
+        -static_cast<float>(q.z),
+         static_cast<float>(q.w));
 }
 
 //------------------------------------------------------------------------------------------------
@@ -468,8 +471,7 @@ bool ImportMesh(
                             for (uint32_t wi = 0; wi < numW; ++wi)
                             {
                                 const ufbx_skin_weight& w = pSkin->weights.data[sv_src.weight_begin + wi];
-                                sv.BoneIndices[wi] = static_cast<uint8_t>(
-                                    std::min(w.cluster_index, (uint32_t)255));
+                                sv.BoneIndices[wi] = w.cluster_index;
                                 sv.Weights[wi] = static_cast<float>(w.weight);
                                 totalWeight += sv.Weights[wi];
                             }
@@ -941,12 +943,18 @@ void ImportAnimationClips(
     // Pass 1 — group stacks by action name and create one ImportedAnimationClip per action.
     std::unordered_map<std::string, size_t> clipIndexByAction;
 
+    AddDiag(pScene, DiagLevel::Info,
+        "Anim: " + std::to_string(pLoaded->anim_stacks.count) + " anim_stack(s) in file");
+
     for (size_t si = 0; si < pLoaded->anim_stacks.count; ++si)
     {
         const ufbx_anim_stack* pStack = pLoaded->anim_stacks.data[si];
         if (!pStack) continue;
 
         const std::string actionName = ExtractActionName(ToStdString(pStack->name));
+        AddDiag(pScene, DiagLevel::Info,
+            "Anim:   stack[" + std::to_string(si) + "] name='" + ToStdString(pStack->name) +
+            "' -> action='" + actionName + "'");
         if (clipIndexByAction.find(actionName) == clipIndexByAction.end())
         {
             clipIndexByAction[actionName] = pScene->AnimationClips.size();
@@ -1017,7 +1025,22 @@ void ImportAnimationClips(
             BakedNodeToTrack(bn, pBaked->playback_time_begin, translationScale, restScale, &track);
 
             if (!track.Keyframes.empty())
-                clip.Tracks.push_back(std::move(track));
+            {
+                // Each action maps to a single AnimationStack, so a node should be
+                // authored only once per clip. Warn if two same-action stacks drive the
+                // same node (e.g. a stray hidden action on the object) and keep the first.
+                bool duplicate = false;
+                for (const ImportedAnimationTrack& existing : clip.Tracks)
+                    if (existing.NodeIndex == track.NodeIndex) { duplicate = true; break; }
+
+                if (duplicate)
+                    AddDiag(pScene, DiagLevel::Warning,
+                        "Clip '" + clip.Name + "' has more than one stack animating node '" +
+                        std::string(pNode->name.data, pNode->name.length) +
+                        "'; keeping the first. Check for a stray action on this object.");
+                else
+                    clip.Tracks.push_back(std::move(track));
+            }
         }
 
         ufbx_free_baked_anim(pBaked);
@@ -1285,18 +1308,6 @@ HRESULT ImportScene(
     // Must happen before ufbx_free_scene while the ufbx data is still live.
     ImportAnimationClips(pLoaded, sceneDistanceScale, nodeMap, pScene);
 
-    if (!pScene->AnimationClips.empty())
-    {
-        AddDiag(pScene, DiagLevel::Info,
-            "Imported " + std::to_string(pScene->AnimationClips.size()) + " animation clip(s):");
-        for (const auto& clip : pScene->AnimationClips)
-        {
-            AddDiag(pScene, DiagLevel::Info,
-                "  '" + clip.Name + "'  duration=" + std::to_string(clip.DurationSeconds) + "s"
-                "  tracks=" + std::to_string(clip.Tracks.size()));
-        }
-    }
-
     ufbx_free_scene(pLoaded);
 
     if (!pScene->HasMeshes())
@@ -1436,7 +1447,13 @@ Gem::Result BuildModel(
         }
 
         std::vector<Canvas::MeshDataGroupDesc> groups;
+        // Per-part bone index/weight arrays; must outlive the CreateMeshData call.
+        std::vector<std::vector<Canvas::Math::UIntVector4>>  allBoneIndices;
+        std::vector<std::vector<Canvas::Math::FloatVector4>> allBoneWeights;
         groups.reserve(srcMesh.Parts.size());
+        allBoneIndices.reserve(srcMesh.Parts.size());
+        allBoneWeights.reserve(srcMesh.Parts.size());
+
         for (size_t partIndex = 0; partIndex < srcMesh.Parts.size(); ++partIndex)
         {
             const ImportedMeshPart &part = srcMesh.Parts[partIndex];
@@ -1460,6 +1477,27 @@ Gem::Result BuildModel(
             {
                 group.pMaterial = materials[static_cast<size_t>(part.MaterialIndex)].Get();
             }
+
+            // Bone weight streams — convert uint8 indices to uint32 for GPU upload
+            allBoneIndices.emplace_back();
+            allBoneWeights.emplace_back();
+            if (srcMesh.Skin.HasSkin && part.SkinVertices.size() == vertexCount)
+            {
+                auto& bi = allBoneIndices.back();
+                auto& bw = allBoneWeights.back();
+                bi.resize(vertexCount);
+                bw.resize(vertexCount);
+                for (uint32_t v = 0; v < vertexCount; ++v)
+                {
+                    const ImportedSkinVertex& sv = part.SkinVertices[v];
+                    bi[v] = { sv.BoneIndices[0], sv.BoneIndices[1],
+                              sv.BoneIndices[2], sv.BoneIndices[3] };
+                    bw[v] = { sv.Weights[0], sv.Weights[1], sv.Weights[2], sv.Weights[3] };
+                }
+                group.pBoneIndices = bi.data();
+                group.pBoneWeights = bw.data();
+            }
+
             groups.push_back(group);
         }
 
@@ -1643,6 +1681,74 @@ Gem::Result BuildModel(
                 break;
             }
         }
+    }
+
+    // Register skin bindings — now that all nodes exist, resolve bone node ptrs and
+    // register each skinned mesh's skin descriptor with the model so Instantiate()
+    // can wire up cloned bone nodes at runtime.
+    for (size_t meshIndex = 0; meshIndex < scene.Meshes.size(); ++meshIndex)
+    {
+        const ImportedMesh& srcMesh = scene.Meshes[meshIndex];
+        if (!srcMesh.Skin.HasSkin)
+            continue;
+        Canvas::XGfxMeshData* pMeshData = meshDataByIndex[meshIndex].Get();
+        if (!pMeshData)
+            continue;
+
+        // Find the node whose MeshIndex references this mesh
+        Canvas::XSceneGraphNode* pMeshNode = nullptr;
+        for (size_t ni = 0; ni < scene.Nodes.size(); ++ni)
+        {
+            if (scene.Nodes[ni].MeshIndex == static_cast<int32_t>(meshIndex) && nodes[ni])
+            {
+                pMeshNode = nodes[ni].Get();
+                break;
+            }
+        }
+        if (!pMeshNode)
+            continue;
+
+        // Collect bone node pointers (may be null for out-of-range indices)
+        const uint32_t boneCount = static_cast<uint32_t>(srcMesh.Skin.BoneNodeIndices.size());
+        std::vector<Canvas::XSceneGraphNode*> boneNodes;
+        boneNodes.reserve(boneCount);
+        for (int32_t bni : srcMesh.Skin.BoneNodeIndices)
+        {
+            Canvas::XSceneGraphNode* pBone = nullptr;
+            if (bni >= 0 && static_cast<size_t>(bni) < nodes.size())
+                pBone = nodes[static_cast<size_t>(bni)].Get();
+            boneNodes.push_back(pBone);
+        }
+
+        // Compute InvBindPose from Canvas node matrices so the bone matrices are
+        // consistent with GetGlobalMatrix() at draw time (same coordinate system,
+        // no ufbx-scale baked in). The nodes currently hold their rest (default) pose,
+        // loaded by BuildModel from the FBX node transforms; for this asset rest == bind,
+        // so the rest global matrix is the bind matrix.
+        //
+        // InvBind[i] = G_mesh_canvas * inverse(G_bone_canvas_bindpose)
+        // → at bind pose: InvBind[i] * G_bone_canvas = G_mesh_canvas ✓
+        //
+        // (Using the FBX cluster geometry_to_bone directly was tried and broke the static
+        // pose: it is authored in a frame that does not match Canvas node-world space.)
+        const Canvas::Math::FloatMatrix4x4 meshWorld = pMeshNode->GetGlobalMatrix();
+        std::vector<Canvas::Math::FloatMatrix4x4> invBindPoses(boneCount);
+        for (uint32_t i = 0; i < boneCount; ++i)
+        {
+            if (boneNodes[i])
+                invBindPoses[i] = meshWorld * Canvas::Math::AffineInverse(boneNodes[i]->GetGlobalMatrix());
+            else
+                invBindPoses[i] = Canvas::Math::FloatMatrix4x4::Identity();
+        }
+
+        Canvas::XModel::MeshSkinDesc skinDesc{};
+        skinDesc.pMeshNode    = pMeshNode;
+        skinDesc.BoneCount    = boneCount;
+        skinDesc.ppBoneNodes  = boneNodes.data();
+        skinDesc.pInvBindPoses = invBindPoses.data();
+        gr = pModel->AddMeshSkin(&skinDesc);
+        if (Gem::Failed(gr))
+            Canvas::LogWarn(pLogger, "BuildModel: failed to add skin for mesh '%s'", srcMesh.Name.c_str());
     }
 
     // Forward animation clips from the imported scene into the model.

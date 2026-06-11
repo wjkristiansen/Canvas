@@ -271,6 +271,59 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             }
         }
 
+        // Resolve skin bindings: for each skinned mesh entry, find the cloned mesh
+        // instance and connect it to the cloned bone nodes.
+        for (const MeshSkinEntry& skin : m_MeshSkins)
+        {
+            auto meshNodeIt = cloneMap.find(skin.pMeshNode);
+            if (meshNodeIt == cloneMap.end())
+                continue;
+            XSceneGraphNode* pClonedMeshNode = meshNodeIt->second.Get();
+
+            // Find the XMeshInstance bound to the cloned node
+            const UINT elementCount = pClonedMeshNode->GetBoundElementCount();
+            for (UINT ei = 0; ei < elementCount; ++ei)
+            {
+                XSceneGraphElement* pEl = pClonedMeshNode->GetBoundElement(ei);
+                Gem::TGemPtr<XMeshInstance> pMeshInst;
+                if (Gem::Failed(pEl->QueryInterface(&pMeshInst)))
+                    continue;
+
+                // Resolve each bone node through the clone map.  Every bone a skinned mesh
+                // binds must exist in the model hierarchy; an unresolved bone is a malformed
+                // asset and is reported as an error here, at instantiation time, rather than
+                // silently producing a degenerate bone matrix during rendering.
+                std::vector<XSceneGraphNode*> clonedBones;
+                clonedBones.reserve(skin.BoneNodes.size());
+                for (XSceneGraphNode* pBone : skin.BoneNodes)
+                {
+                    XSceneGraphNode* pClonedBone = nullptr;
+                    if (pBone)
+                    {
+                        auto it = cloneMap.find(pBone);
+                        if (it != cloneMap.end())
+                            pClonedBone = it->second.Get();
+                    }
+                    if (!pClonedBone)
+                    {
+                        Canvas::LogError(m_pCanvas->GetLogger(),
+                            "XModel::Instantiate: skinned mesh on node '%s' references a bone "
+                            "that is not part of the model hierarchy",
+                            pClonedMeshNode->GetName() ? pClonedMeshNode->GetName() : "<unnamed>");
+                        Gem::ThrowGemError(Gem::Result::InvalidArg);
+                    }
+                    clonedBones.push_back(pClonedBone);
+                }
+
+                SkinBindingDesc desc{};
+                desc.BoneCount     = static_cast<uint32_t>(clonedBones.size());
+                desc.ppBoneNodes   = clonedBones.data();
+                desc.pInvBindPoses = skin.InvBindPoses.data();
+                Gem::ThrowGemError(pMeshInst->SetSkinBinding(&desc));
+                break;
+            }
+        }
+
         // Create animation controller when the model has clips
         if (!m_AnimClips.empty())
         {
@@ -307,6 +360,22 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
         return e.Result();
     }
 
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CModel::AddMeshSkin(const MeshSkinDesc *pDesc)
+{
+    if (!pDesc || !pDesc->pMeshNode || pDesc->BoneCount == 0)
+        return Gem::Result::InvalidArg;
+    if (!pDesc->ppBoneNodes || !pDesc->pInvBindPoses)
+        return Gem::Result::BadPointer;
+
+    MeshSkinEntry entry;
+    entry.pMeshNode = pDesc->pMeshNode;
+    entry.BoneNodes.assign(pDesc->ppBoneNodes, pDesc->ppBoneNodes + pDesc->BoneCount);
+    entry.InvBindPoses.assign(pDesc->pInvBindPoses, pDesc->pInvBindPoses + pDesc->BoneCount);
+    m_MeshSkins.push_back(std::move(entry));
     return Gem::Result::Success;
 }
 

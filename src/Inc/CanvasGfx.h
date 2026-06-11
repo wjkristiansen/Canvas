@@ -221,7 +221,8 @@ namespace Canvas
         UV3,                // FloatVector2 array
         UVW0,               // FloatVector3 array
         UVW1,               // FloatVector3 array
-        BoneWeights,        // Structured array
+        BoneWeights,        // Structured array (float4 per vertex: weights[0..3])
+        BoneIndices,        // Structured array (uint4 per vertex: bone indices[0..3])
     };
 
     //------------------------------------------------------------------------------------------------
@@ -298,6 +299,8 @@ namespace Canvas
         const Canvas::Math::FloatVector2 *pUV0        = nullptr;   // optional
         const Canvas::Math::FloatVector4 *pTangents   = nullptr;   // optional, xyz=T, w=bitangent sign
         XGfxMaterial                    *pMaterial    = nullptr;   // optional
+        const Canvas::Math::UIntVector4  *pBoneIndices = nullptr;  // optional, one per vertex
+        const Canvas::Math::FloatVector4 *pBoneWeights = nullptr;  // optional, one per vertex
     };
 
     //------------------------------------------------------------------------------------------------

@@ -479,19 +479,22 @@ GEMMETHODIMP CDevice12::CreateMeshData(
             uint64_t                                StagingOffset;
         };
 
+        // Each group contributes up to 6 vertex streams: Position (required) plus
+        // optional Normal, UV0, Tangent, BoneWeights, BoneIndices (see push_back
+        // calls below). Reserve the worst case to avoid reallocation during fill.
+        constexpr uint32_t kMaxStreamsPerGroup = 6;
         std::vector<StreamLayout> streams;
-        streams.reserve(desc.GroupCount * 4);
+        streams.reserve(desc.GroupCount * kMaxStreamsPerGroup);
 
         uint64_t stagingTotal = 0;
         for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
         {
             const Canvas::MeshDataGroupDesc &g = desc.pGroups[gi];
-            const uint64_t v4Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector4);
-            const uint64_t v2Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector2);
+            const uint64_t v4Size  = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector4);
+            const uint64_t v2Size  = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::FloatVector2);
+            const uint64_t ui4Size = static_cast<uint64_t>(g.VertexCount) * sizeof(Canvas::Math::UIntVector4);
 
-            // Position is required.  Normal / UV0 / Tangent are uploaded
-            // only when supplied; per-topology requirements are enforced
-            // by the validation pass above.
+            // Position is required.  All others uploaded only when supplied.
             streams.push_back({ gi, Canvas::GfxVertexBufferType::Position, g.pPositions, v4Size, stagingTotal });
             stagingTotal += v4Size;
             if (g.pNormals)
@@ -508,6 +511,16 @@ GEMMETHODIMP CDevice12::CreateMeshData(
             {
                 streams.push_back({ gi, Canvas::GfxVertexBufferType::Tangent, g.pTangents, v4Size, stagingTotal });
                 stagingTotal += v4Size;
+            }
+            if (g.pBoneWeights)
+            {
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::BoneWeights, g.pBoneWeights, v4Size, stagingTotal });
+                stagingTotal += v4Size;
+            }
+            if (g.pBoneIndices)
+            {
+                streams.push_back({ gi, Canvas::GfxVertexBufferType::BoneIndices, g.pBoneIndices, ui4Size, stagingTotal });
+                stagingTotal += ui4Size;
             }
         }
 
@@ -531,11 +544,13 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         {
             switch (t)
             {
-            case Canvas::GfxVertexBufferType::Position: return "_Positions";
-            case Canvas::GfxVertexBufferType::Normal:   return "_Normals";
-            case Canvas::GfxVertexBufferType::UV0:      return "_UV0";
-            case Canvas::GfxVertexBufferType::Tangent:  return "_Tangents";
-            default:                                    return "_Stream";
+            case Canvas::GfxVertexBufferType::Position:    return "_Positions";
+            case Canvas::GfxVertexBufferType::Normal:      return "_Normals";
+            case Canvas::GfxVertexBufferType::UV0:         return "_UV0";
+            case Canvas::GfxVertexBufferType::Tangent:     return "_Tangents";
+            case Canvas::GfxVertexBufferType::BoneWeights: return "_BoneWeights";
+            case Canvas::GfxVertexBufferType::BoneIndices: return "_BoneIndices";
+            default:                                       return "_Stream";
             }
         };
 
@@ -574,10 +589,12 @@ GEMMETHODIMP CDevice12::CreateMeshData(
             CMeshData12::GroupResources &group = groups[s.Group];
             switch (s.Type)
             {
-            case Canvas::GfxVertexBufferType::Position: group.PositionVB = vb; break;
-            case Canvas::GfxVertexBufferType::Normal:   group.NormalVB   = vb; break;
-            case Canvas::GfxVertexBufferType::UV0:      group.UV0VB      = vb; break;
-            case Canvas::GfxVertexBufferType::Tangent:  group.TangentVB  = vb; break;
+            case Canvas::GfxVertexBufferType::Position:    group.PositionVB    = vb; break;
+            case Canvas::GfxVertexBufferType::Normal:      group.NormalVB      = vb; break;
+            case Canvas::GfxVertexBufferType::UV0:         group.UV0VB         = vb; break;
+            case Canvas::GfxVertexBufferType::Tangent:     group.TangentVB     = vb; break;
+            case Canvas::GfxVertexBufferType::BoneWeights: group.BoneWeightsVB = vb; break;
+            case Canvas::GfxVertexBufferType::BoneIndices: group.BoneIndicesVB = vb; break;
             default: break;
             }
         }
