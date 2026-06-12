@@ -374,6 +374,7 @@ class CTerrainApp
     int               m_exitFrameCount;
     bool              m_logFps;
     bool              m_startFullscreen = false;
+    Canvas::GfxDebugSeverity m_gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning;
     bool              m_cameraActive = true;   // ACTIVE: cursor hidden + camera control; FREE: cursor visible
     std::string       m_modeString;
     int               m_lastClientW = 0;
@@ -852,13 +853,15 @@ public:
         bool      logFps,
         Canvas::TerrainViewer::SceneConfig scene,
         float     cycleSeconds,
-        bool      startFullscreen = false)
+        bool      startFullscreen = false,
+        Canvas::GfxDebugSeverity gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning)
         : m_Title(szTitle)
         , m_hInstance(hInstance)
         , m_pLogger(pLogger)
         , m_exitFrameCount(exitFrameCount)
         , m_logFps(logFps)
         , m_startFullscreen(startFullscreen)
+        , m_gfxDebugSeverity(gfxDebugSeverity)
         , m_SceneConfig(std::move(scene))
         , m_CycleSeconds(cycleSeconds)
     {
@@ -901,6 +904,10 @@ public:
                 pCanvas, Canvas::TypeId::TypeId_GfxDevice,
                 "TerrainDevice", Canvas::XGfxDevice::IId,
                 reinterpret_cast<void**>(&pDevice)));
+
+            // Cap graphics debug-layer verbosity per the --gfx-max-sev option
+            // (no-op in release builds / on backends without a debug layer).
+            pDevice->SetDebugMessageSeverity(m_gfxDebugSeverity);
 
             initStep = "create_scene";
             Gem::TGemPtr<Canvas::XScene> pScene;
@@ -1274,6 +1281,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     std::string logFile;
     bool        logConsole = false;
     bool        logFps     = false;
+    std::string gfxMaxSev  = "warning";
     std::string scenePath;
     std::string heightmapPath;
     std::string atlasAlbedoPath;
@@ -1344,6 +1352,10 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         logCmd.AddOption(InCommand::OptionType::Switch, "fps")
             .SetDescription("Log FPS to log output")
             .BindTo(logFps);
+        logCmd.AddOption(InCommand::OptionType::Variable, "gfx-max-sev")
+            .SetDescription("Cap graphics debug-layer verbosity, independent of the Canvas log level (debug builds only)")
+            .SetDomain({"off", "corruption", "error", "warning", "info", "verbose"})
+            .BindTo(gfxMaxSev);
 
         std::ostringstream helpStream;
         cmdParser.EnableAutoHelp("help", 'h', helpStream);
@@ -1388,6 +1400,14 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     else if (logLevel == "error")    qlogLevel = QLog::Level::Error;
     else if (logLevel == "critical") qlogLevel = QLog::Level::Critical;
     else if (logLevel == "off")      qlogLevel = QLog::Level::Off;
+
+    Canvas::GfxDebugSeverity gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning;
+    if      (gfxMaxSev == "off")        gfxDebugSeverity = Canvas::GfxDebugSeverity::Off;
+    else if (gfxMaxSev == "corruption") gfxDebugSeverity = Canvas::GfxDebugSeverity::Corruption;
+    else if (gfxMaxSev == "error")      gfxDebugSeverity = Canvas::GfxDebugSeverity::Error;
+    else if (gfxMaxSev == "warning")    gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning;
+    else if (gfxMaxSev == "info")       gfxDebugSeverity = Canvas::GfxDebugSeverity::Info;
+    else if (gfxMaxSev == "verbose")    gfxDebugSeverity = Canvas::GfxDebugSeverity::Verbose;
 
     wchar_t exePathBuf[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exePathBuf, MAX_PATH);
@@ -1482,7 +1502,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     auto pApp = std::make_unique<CTerrainApp>(
         hInstance, "CanvasTerrainViewer", pLogger,
         exitFrameCount, logFps,
-        std::move(scene), cycleSeconds, fullscreen);
+        std::move(scene), cycleSeconds, fullscreen, gfxDebugSeverity);
 
     if (!pApp->Initialize(nCmdShow))
     {

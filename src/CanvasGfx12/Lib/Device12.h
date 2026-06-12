@@ -124,6 +124,8 @@ public:
     GEMMETHOD(CreateTextElement)(Canvas::XUITextElement **ppElement) final;
     GEMMETHOD(CreateRectElement)(Canvas::XUIRectElement **ppElement) final;
 
+    GEMMETHOD_(void, SetDebugMessageSeverity)(Canvas::GfxDebugSeverity maxSeverity) final;
+
     Canvas::XGfxSurface* GetGlyphAtlasSurface();
     Canvas::CGlyphCache& GetGlyphCache() { return m_GlyphCache; }
 

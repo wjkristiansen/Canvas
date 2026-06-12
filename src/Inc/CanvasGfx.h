@@ -511,6 +511,23 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    // Verbosity threshold for a backend's debug / validation layer, ordered from
+    // least to most verbose.  A given level reports messages of that severity and
+    // all more-severe ones; e.g. Warning reports Warning/Error/Corruption and
+    // suppresses Info/Verbose.  This is independent of the Canvas log level - it
+    // caps how much the underlying graphics debug layer emits in the first place.
+    // Backends without a debug layer treat SetDebugMessageSeverity as a no-op.
+    enum class GfxDebugSeverity
+    {
+        Off,         // suppress all debug-layer messages
+        Corruption,  // report corruption only (most severe)
+        Error,       // report error and above
+        Warning,     // report warning and above (default)
+        Info,        // report info and above
+        Verbose,     // report everything the debug layer emits
+    };
+
+    //------------------------------------------------------------------------------------------------
     // Interface to a graphics device
     struct XGfxDevice : public XCanvasElement
     {
@@ -586,6 +603,12 @@ namespace Canvas
         // UI element creation (device wires GPU resources internally)
         GEMMETHOD(CreateTextElement)(XUITextElement **ppElement) = 0;
         GEMMETHOD(CreateRectElement)(XUIRectElement **ppElement) = 0;
+
+        // Cap the verbosity of the backend's debug / validation layer (see
+        // GfxDebugSeverity).  Best-effort: a no-op on backends with no debug
+        // layer or in builds where one is not active.  May be called any time
+        // after device creation.
+        GEMMETHOD_(void, SetDebugMessageSeverity)(GfxDebugSeverity maxSeverity) = 0;
     };
 }
 
