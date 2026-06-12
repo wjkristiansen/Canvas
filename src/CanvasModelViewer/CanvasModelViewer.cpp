@@ -192,6 +192,7 @@ class CApp
     int m_exitFrameCount;  // -1 means don't exit automatically; >= 0 means exit after N frames
     bool m_logFps;
     bool m_startFullscreen = false;
+    Canvas::GfxDebugSeverity m_gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning;
     bool m_cameraActive = true;   // true: cursor hidden + camera control; false: cursor free
     std::string m_modeString;
     float m_fps = 0.0f;
@@ -587,13 +588,15 @@ public:
         int exitFrameCount = -1,
         bool logFps = false,
         std::filesystem::path modelPath = {},
-        bool startFullscreen = false) :
+        bool startFullscreen = false,
+        Canvas::GfxDebugSeverity gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning) :
         m_pLogger(pLogger),
         m_Title(szTitle),
         m_hInstance(hInstance),
         m_exitFrameCount(exitFrameCount),
         m_logFps(logFps),
         m_startFullscreen(startFullscreen),
+        m_gfxDebugSeverity(gfxDebugSeverity),
         m_ModelPath(std::move(modelPath))
         {
         }
@@ -644,6 +647,10 @@ public:
                 "MainDevice",
                 Canvas::XGfxDevice::IId,
                 (void**)&pDevice));
+
+            // Cap graphics debug-layer verbosity per the --gfx-max-sev option
+            // (no-op in release builds / on backends without a debug layer).
+            pDevice->SetDebugMessageSeverity(m_gfxDebugSeverity);
 
             initStep = "create_scene";
             Gem::TGemPtr<Canvas::XScene> pScene;
@@ -1130,6 +1137,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     std::string logFile;
     bool logConsole = false;
     bool logFps = false;
+    std::string gfxMaxSev = "warning";
     std::string fbxPath;
     int exitFrameCount = -1;  // -1 means don't exit automatically
     bool fullscreen = false;
@@ -1174,6 +1182,11 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         logCmd.AddOption(InCommand::OptionType::Switch, "fps")
             .SetDescription("Log FPS to the log output")
             .BindTo(logFps);
+
+        logCmd.AddOption(InCommand::OptionType::Variable, "gfx-max-sev")
+            .SetDescription("Cap graphics debug-layer verbosity, independent of the Canvas log level (debug builds only)")
+            .SetDomain({"off", "corruption", "error", "warning", "info", "verbose"})
+            .BindTo(gfxMaxSev);
 
         // Capture help text to a stream - no console is attached to write to directly
         std::ostringstream helpStream;
@@ -1234,6 +1247,21 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     else if (logLevel == "off")
         qlogLevel = QLog::Level::Off;
 
+    // Map the graphics debug-layer verbosity cap to the engine enum.
+    Canvas::GfxDebugSeverity gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning;
+    if (gfxMaxSev == "off")
+        gfxDebugSeverity = Canvas::GfxDebugSeverity::Off;
+    else if (gfxMaxSev == "corruption")
+        gfxDebugSeverity = Canvas::GfxDebugSeverity::Corruption;
+    else if (gfxMaxSev == "error")
+        gfxDebugSeverity = Canvas::GfxDebugSeverity::Error;
+    else if (gfxMaxSev == "warning")
+        gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning;
+    else if (gfxMaxSev == "info")
+        gfxDebugSeverity = Canvas::GfxDebugSeverity::Info;
+    else if (gfxMaxSev == "verbose")
+        gfxDebugSeverity = Canvas::GfxDebugSeverity::Verbose;
+
     // Determine log file path - default to a timestamped file next to the executable
     wchar_t exePathBuf[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exePathBuf, MAX_PATH);
@@ -1285,7 +1313,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     if (!fbxPath.empty())
         modelPath = std::filesystem::u8path(fbxPath);
 
-    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps, modelPath, fullscreen));
+    std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps, modelPath, fullscreen, gfxDebugSeverity));
 
     // Initialize the application
     if (!pApp->Initialize(nCmdShow))

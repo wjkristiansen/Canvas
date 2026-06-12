@@ -527,6 +527,7 @@ class CApp
     GardenConfig m_GardenConfig;
     int m_exitFrameCount;
     bool m_startFullscreen;
+    Canvas::GfxDebugSeverity m_gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning;
     bool m_cameraActive = true;
     int m_lastClientW = 0, m_lastClientH = 0;
 
@@ -539,10 +540,12 @@ public:
     CApp(HINSTANCE hInstance, PCSTR title,
          Gem::TGemPtr<Canvas::XLogger> pLogger,
          const GardenConfig& gardenConfig,
-         int exitFrameCount, bool fullscreen)
+         int exitFrameCount, bool fullscreen,
+         Canvas::GfxDebugSeverity gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning)
         : m_Title(title), m_hInstance(hInstance), m_pLogger(std::move(pLogger)),
           m_GardenConfig(gardenConfig),
-          m_exitFrameCount(exitFrameCount), m_startFullscreen(fullscreen) {}
+          m_exitFrameCount(exitFrameCount), m_startFullscreen(fullscreen),
+          m_gfxDebugSeverity(gfxDebugSeverity) {}
 
     bool Initialize(int nCmdShow)
     {
@@ -571,6 +574,10 @@ public:
                 m_pCanvas, Canvas::TypeId::TypeId_GfxDevice,
                 "MainDevice", Canvas::XGfxDevice::IId,
                 reinterpret_cast<void**>(&m_pDevice)));
+
+            // Cap graphics debug-layer verbosity per the --gfx-max-sev option
+            // (no-op in release builds / on backends without a debug layer).
+            m_pDevice->SetDebugMessageSeverity(m_gfxDebugSeverity);
 
             step = "create_scene";
             Gem::ThrowGemError(m_pCanvas->CreateScene(m_pDevice, &m_pScene, "LightGarden"));
@@ -884,6 +891,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     bool fullscreen = false;
     bool logConsole = false;
     std::string logLevel = "warn";
+    std::string gfxMaxSev = "warning";
 
     try
     {
@@ -910,6 +918,10 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         logCmd.AddOption(InCommand::OptionType::Variable, "level", 'l')
             .SetDomain({"trace","debug","info","warn","error","critical","off"}).BindTo(logLevel);
         logCmd.AddOption(InCommand::OptionType::Switch, "console", 'c').BindTo(logConsole);
+        logCmd.AddOption(InCommand::OptionType::Variable, "gfx-max-sev")
+            .SetDescription("Cap graphics debug-layer verbosity, independent of the Canvas log level (debug builds only)")
+            .SetDomain({"off", "corruption", "error", "warning", "info", "verbose"})
+            .BindTo(gfxMaxSev);
 
         std::ostringstream helpStream;
         parser.EnableAutoHelp("help", 'h', helpStream);
@@ -949,6 +961,14 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     else if (logLevel == "critical") qlogLevel = QLog::Level::Critical;
     else if (logLevel == "off")      qlogLevel = QLog::Level::Off;
 
+    Canvas::GfxDebugSeverity gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning;
+    if      (gfxMaxSev == "off")        gfxDebugSeverity = Canvas::GfxDebugSeverity::Off;
+    else if (gfxMaxSev == "corruption") gfxDebugSeverity = Canvas::GfxDebugSeverity::Corruption;
+    else if (gfxMaxSev == "error")      gfxDebugSeverity = Canvas::GfxDebugSeverity::Error;
+    else if (gfxMaxSev == "warning")    gfxDebugSeverity = Canvas::GfxDebugSeverity::Warning;
+    else if (gfxMaxSev == "info")       gfxDebugSeverity = Canvas::GfxDebugSeverity::Info;
+    else if (gfxMaxSev == "verbose")    gfxDebugSeverity = Canvas::GfxDebugSeverity::Verbose;
+
     wchar_t exeBuf[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exeBuf, MAX_PATH);
     auto now = std::chrono::system_clock::now();
@@ -976,7 +996,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     int result = 0;
     {
         CApp app(hInstance, "CanvasLightGarden",
-                 pLogger, gardenConfig, exitFrameCount, fullscreen);
+                 pLogger, gardenConfig, exitFrameCount, fullscreen, gfxDebugSeverity);
         if (!app.Initialize(nCmdShow))
         {
             MessageBoxA(nullptr, "Initialization failed; see log for details.",

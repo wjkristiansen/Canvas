@@ -145,12 +145,14 @@ Gem::Result CDevice12::Initialize()
             DWORD cookie = 0;
             if (m_pDebugLogger && SUCCEEDED(pInfoQueue1->RegisterMessageCallback(
                 D3D12DebugMessageCallback,
-                D3D12_MESSAGE_CALLBACK_IGNORE_FILTERS,
+                D3D12_MESSAGE_CALLBACK_FLAG_NONE,
                 static_cast<Canvas::XLogger*>(m_pDebugLogger),
                 &cookie)))
             {
                 m_pInfoQueue1 = pInfoQueue1;
                 m_debugCallbackCookie = cookie;
+                // Default the storage filter to warnings-and-above
+                SetDebugMessageSeverity(Canvas::GfxDebugSeverity::Warning);
                 Canvas::LogInfo(GetLogger(), "D3D12 debug message callback registered");
             }
             else
@@ -825,4 +827,51 @@ GEMMETHODIMP CDevice12::CreateRectElement(Canvas::XUIRectElement **ppElement)
         return result;
     *ppElement = pElement.Detach();
     return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CDevice12::SetDebugMessageSeverity(Canvas::GfxDebugSeverity maxSeverity)
+{
+#if defined(_DEBUG)
+    // No-op when the debug layer / info queue is unavailable (e.g. the debug
+    // layer was not enabled, or RegisterMessageCallback failed during init).
+    if (!m_pInfoQueue1)
+        return;
+
+    // D3D severities run most-severe (CORRUPTION=0) to least-severe (MESSAGE=4).
+    // Translate the requested threshold into the least-severe D3D value we still
+    // allow; everything with a larger value is denied.  Off allows nothing.
+    int allowDownTo;
+    switch (maxSeverity)
+    {
+    case Canvas::GfxDebugSeverity::Off:        allowDownTo = -1;                                break;
+    case Canvas::GfxDebugSeverity::Corruption: allowDownTo = D3D12_MESSAGE_SEVERITY_CORRUPTION; break;
+    case Canvas::GfxDebugSeverity::Error:      allowDownTo = D3D12_MESSAGE_SEVERITY_ERROR;      break;
+    case Canvas::GfxDebugSeverity::Warning:    allowDownTo = D3D12_MESSAGE_SEVERITY_WARNING;    break;
+    case Canvas::GfxDebugSeverity::Info:       allowDownTo = D3D12_MESSAGE_SEVERITY_INFO;       break;
+    case Canvas::GfxDebugSeverity::Verbose:    allowDownTo = D3D12_MESSAGE_SEVERITY_MESSAGE;    break;
+    default:                                   allowDownTo = D3D12_MESSAGE_SEVERITY_WARNING;    break;
+    }
+
+    D3D12_MESSAGE_SEVERITY denied[D3D12_MESSAGE_SEVERITY_MESSAGE + 1];
+    UINT denyCount = 0;
+    for (int s = D3D12_MESSAGE_SEVERITY_CORRUPTION; s <= D3D12_MESSAGE_SEVERITY_MESSAGE; ++s)
+    {
+        if (s > allowDownTo)
+            denied[denyCount++] = static_cast<D3D12_MESSAGE_SEVERITY>(s);
+    }
+
+    // Replace any existing storage filter with the new deny list.  An empty deny
+    // list (Verbose) leaves the filter cleared so everything passes.
+    m_pInfoQueue1->ClearStorageFilter();
+    if (denyCount > 0)
+    {
+        D3D12_INFO_QUEUE_FILTER filter = {};
+        filter.DenyList.NumSeverities = denyCount;
+        filter.DenyList.pSeverityList = denied;
+        m_pInfoQueue1->AddStorageFilterEntries(&filter);
+    }
+#else
+    (void)maxSeverity;
+#endif
 }
