@@ -106,11 +106,12 @@ private:
 
     CDevice12* m_pDevice = nullptr;
 
-    CComPtr<ID3D12CommandQueue>     m_pCommandQueue;
-    CComPtr<ID3D12Fence>            m_pFence;
-    CCommandAllocatorPool           m_AllocatorPool;
-    CComPtr<ID3D12CommandAllocator> m_pAllocator;   // recycled across flushes via the pool
-    CUploadRing                     m_UploadRing;
+    CComPtr<ID3D12CommandQueue>        m_pCommandQueue;
+    CComPtr<ID3D12Fence>               m_pFence;
+    CCommandAllocatorPool              m_AllocatorPool;
+    CComPtr<ID3D12CommandAllocator>    m_pAllocator;     // recycled across flushes via the pool
+    CComPtr<ID3D12GraphicsCommandList> m_pCommandList;   // created once, Reset() and reused each flush
+    CUploadRing                        m_UploadRing;
 
     uint32_t m_TimelineId       = FenceToken::kInvalidTimelineId;
     UINT64   m_LastSignaledValue = 0;

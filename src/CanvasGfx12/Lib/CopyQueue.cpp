@@ -30,6 +30,10 @@ void CCopyQueue::Initialize(CDevice12* pDevice)
     m_AllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_COPY);
     m_AllocatorPool.SwapAllocator(m_pAllocator, 0, 0);
 
+    Gem::ThrowGemError(ResultFromHRESULT(m_pDevice->GetD3DDevice()->CreateCommandList1(
+        0, D3D12_COMMAND_LIST_TYPE_COPY, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&m_pCommandList))));
+    SetD3D12DebugName(m_pCommandList, "CopyQueue_CommandList");
+
     // 1 MB initial — same as the render queue's ring; grows on demand.
     m_UploadRing.Initialize(pDevice, 1 * 1024 * 1024);
 
@@ -55,6 +59,7 @@ void CCopyQueue::Shutdown()
     }
 
     m_UploadRing.Shutdown();
+    m_pCommandList.Release();
     m_pAllocator.Release();
     m_pFence.Release();
     m_pCommandQueue.Release();
@@ -148,10 +153,8 @@ std::optional<FenceToken> CCopyQueue::FlushIfPending()
 
     const UINT64 completedValue = m_pFence->GetCompletedValue();
 
-    CComPtr<ID3D12GraphicsCommandList> pCL;
-    Gem::ThrowGemError(ResultFromHRESULT(m_pDevice->GetD3DDevice()->CreateCommandList(
-        0, D3D12_COMMAND_LIST_TYPE_COPY, m_pAllocator, nullptr, IID_PPV_ARGS(&pCL))));
-    SetD3D12DebugName(pCL, "CopyQueue_CommandList");
+    Gem::ThrowGemError(ResultFromHRESULT(m_pCommandList->Reset(m_pAllocator, nullptr)));
+    ID3D12GraphicsCommandList* pCL = m_pCommandList;
 
     for (const auto& op : bufferOps)
         pCL->CopyBufferRegion(op.pDst, op.DstOffset, op.pSrc, op.SrcOffset, op.Size);
