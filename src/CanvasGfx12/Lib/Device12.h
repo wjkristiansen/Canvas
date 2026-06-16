@@ -176,6 +176,23 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE GetSrvCpuHandle(UINT slot) const;
     D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpuHandle(UINT slot) const;
 
+    // Write one persistent descriptor at absolute heap slot `slot`.  A null resource writes a
+    // null SRV of the matching kind so the table slot stays well-defined.  Used by meshes and
+    // materials to populate their persistent per-resource descriptor blocks.
+    void WriteStructuredBufferSRV(UINT slot, class CBuffer12* pBuffer, UINT stride);
+    void WriteTexture2DSRV(UINT slot, class CSurface12* pSurface);
+
+    // Sizes of a per-mesh-group vertex-stream descriptor block and a per-material texture
+    // descriptor block.  The slot-to-stream / slot-to-role mappings are defined where the blocks
+    // are filled (CDevice12::CreateMeshData and CMaterial12::PopulateDescriptors) and matched by
+    // the default root signature in CRenderQueue12.
+    static constexpr UINT kMeshStreamDescriptorCount = 5;
+    static constexpr UINT kMaterialDescriptorCount   = 6;
+
+    // GPU handle of the shared all-null material texture block, bound by DrawMesh for groups that
+    // legitimately have no material (reserved once in InitializeDescriptorHeap).
+    D3D12_GPU_DESCRIPTOR_HANDLE GetDefaultMaterialTableHandle();
+
 private:
     // Create the shared shader-visible heap and initialize the persistent allocator.
     void InitializeDescriptorHeap();
@@ -184,6 +201,7 @@ private:
     UINT m_CbvSrvUavIncrement = 0;
     CDescriptorHeapAllocator m_PersistentSrvAllocator;
     bool m_TransientSrvRangeClaimed = false;  // see AcquireTransientSrvRange
+    UINT m_DefaultMaterialSlot = CDescriptorHeapAllocator::kInvalidSlot;  // null block for null-material groups
 
     Canvas::CGlyphCache m_GlyphCache;
     Gem::TGemPtr<Canvas::XGfxSurface> m_pGlyphAtlasSurface;

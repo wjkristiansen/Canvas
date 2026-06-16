@@ -9,6 +9,9 @@
 #pragma once
 
 #include "CanvasGfx12.h"
+#include "DescriptorHeapAllocator.h"
+
+class CDevice12;
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -24,10 +27,18 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CMaterial12(Canvas::XCanvas *pCanvas, PCSTR name = nullptr);
+    // pDevice (the owning device, which holds the shared descriptor heap) is required and never
+    // changes.  The ctor allocates + populates this material's persistent texture descriptor
+    // block (kMaterialDescriptorCount SRVs, one per SupportedRole) and throws
+    // Gem::Result::OutOfMemory if the persistent region is exhausted.
+    CMaterial12(Canvas::XCanvas *pCanvas, CDevice12 *pDevice, PCSTR name = nullptr);
+    ~CMaterial12();
 
     Gem::Result Initialize() { return Gem::Result::Success; }
     void Uninitialize() {}
+
+    // GPU handle of the material's persistent texture table, bound by DrawMesh.
+    D3D12_GPU_DESCRIPTOR_HANDLE GetTextureTableHandle();
 
     // XGfxMaterial
     GEMMETHOD(SetTexture)(Canvas::MaterialLayerRole role, Canvas::XGfxSurface *pSurface) final;
@@ -97,6 +108,13 @@ private:
     };
 
     static bool MapRole(Canvas::MaterialLayerRole role, SupportedRole &out);
+
+    // (Re)write this material's persistent texture SRVs from m_Textures, in material-table slot
+    // order (defined by the blockOrder table in PopulateDescriptors).
+    void PopulateDescriptors();
+
+    CDevice12* m_pDevice = nullptr;  // owns the shared descriptor heap
+    UINT       m_DescriptorBase = CDescriptorHeapAllocator::kInvalidSlot;  // base of the persistent texture block (kMaterialDescriptorCount SRVs)
 
     Gem::TGemPtr<Canvas::XGfxSurface> m_Textures[Role_Count];
     Canvas::Math::FloatVector4 m_BaseColorFactor    = { 1.0f, 1.0f, 1.0f, 1.0f };
