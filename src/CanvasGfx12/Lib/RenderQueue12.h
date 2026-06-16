@@ -10,6 +10,7 @@
 #include "CommandAllocatorPool.h"
 #include "ResourceManager.h"
 #include "UploadRing.h"
+#include "DescriptorRing.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -522,7 +523,6 @@ public:
     Gem::TGemPtr<CSurface12> m_pDepthBuffer;
     UINT m_DepthBufferWidth = 0;
     UINT m_DepthBufferHeight = 0;
-    UINT m_NextDSVSlot = 0;
 
     // Shadow atlas.  One engine-internal R32_TYPELESS surface shared by
     // every shadow-casting directional light this frame.  Sub-allocated
@@ -682,15 +682,21 @@ public:
     // UI graph nodes enqueued during UI graph submission, dispatched during EndFrame
     std::vector<Canvas::XUIGraphNode*> m_UIRenderableQueue;
 
-    // SRV descriptor allocation for per-draw structured buffers
-    UINT m_NextSRVSlot = 0;
-
-    static const UINT NumShaderResourceDescriptors = 65536;
+    // The shader-visible CBV/SRV/UAV heap is device-owned (CDevice12) and shared across
+    // queues; its size and partitioning live there.  RTV/DSV heaps remain per-queue.
     static const UINT NumSamplerDescriptors = 1024;
     static const UINT NumRTVDescriptors = 64;
     static const UINT NumDSVDescriptors = 64;
 
-    UINT m_NextRTVSlot = 0;
+    // Fence-protected ring allocators.  Each hands out contiguous slot runs and refuses to
+    // reuse a slot until the GPU work that referenced it has retired, so wrap-around can no
+    // longer overwrite a descriptor still in flight.  Advanced one submission per frame
+    // (MarkSubmissionEnd in Flush, Reclaim in ProcessCompletedWork), mirroring m_UploadRing.
+    // m_RTVRing / m_DSVRing manage their whole per-queue heaps; m_SRVRing manages only the
+    // transient upper partition of the shared device heap.
+    CDescriptorRing m_RTVRing;
+    CDescriptorRing m_DSVRing;
+    CDescriptorRing m_SRVRing;
 
     UINT m_CbvSrvUavIncrement = 0;
     UINT m_SamplerIncrement   = 0;
@@ -760,6 +766,13 @@ public:
 
     D3D12_CPU_DESCRIPTOR_HANDLE CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice);
     D3D12_CPU_DESCRIPTOR_HANDLE CreateDepthStencilView(class CSurface12 *pSurface);
+
+    // Reserve a contiguous run of slots from a descriptor ring, blocking on this queue's
+    // fence (and reclaiming completed submissions) when a slot still referenced by in-flight
+    // GPU work would otherwise be overwritten.  Return the base slot index.
+    UINT AllocateRTVSlots(UINT count) { return m_RTVRing.Allocate(count, [this](UINT64 fv) { WaitForGpuFence(fv); }); }
+    UINT AllocateDSVSlots(UINT count) { return m_DSVRing.Allocate(count, [this](UINT64 fv) { WaitForGpuFence(fv); }); }
+    UINT AllocateSRVSlots(UINT count) { return m_SRVRing.Allocate(count, [this](UINT64 fv) { WaitForGpuFence(fv); }); }
     
     // Create or resize the depth buffer to match the given dimensions
     void EnsureDepthBuffer(UINT width, UINT height);

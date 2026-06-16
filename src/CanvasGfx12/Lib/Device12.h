@@ -18,6 +18,7 @@
 #include "UploadRing.h"
 #include "CopyQueue.h"
 #include "GlyphAtlas.h"
+#include "DescriptorHeapAllocator.h"
 
 inline constexpr D3D12_HEAP_TYPE GfxMemoryUsageToD3D12HeapType(Canvas::GfxMemoryUsage usage)
 {
@@ -129,7 +130,61 @@ public:
     Canvas::XGfxSurface* GetGlyphAtlasSurface();
     Canvas::CGlyphCache& GetGlyphCache() { return m_GlyphCache; }
 
+    //--------------------------------------------------------------------------------------------
+    // Shared shader-visible CBV/SRV/UAV descriptor heap.
+    //
+    // One heap per device so per-resource descriptors (mesh vertex-stream SRVs, material
+    // texture SRVs) have a stable home that any render queue can bind by GPU handle.  The heap
+    // is partitioned: a low persistent region [0, kNumPersistentSrvDescriptors) owned by
+    // m_PersistentSrvAllocator (lifetime-scoped per-resource blocks), and a high transient
+    // region that each render queue's CDescriptorRing recycles per frame for dynamic
+    // per-draw descriptors.  Sizes are a tunable split of the fixed heap capacity.
+    //--------------------------------------------------------------------------------------------
+    static constexpr UINT kNumShaderResourceDescriptors = 65536;
+    static constexpr UINT kNumPersistentSrvDescriptors  = 32768;
+    static constexpr UINT kNumTransientSrvDescriptors   =
+        kNumShaderResourceDescriptors - kNumPersistentSrvDescriptors;
+
+    ID3D12DescriptorHeap* GetShaderResourceDescriptorHeap() const { return m_pShaderResourceDescriptorHeap; }
+    UINT GetCbvSrvUavIncrement() const { return m_CbvSrvUavIncrement; }
+
+    // Claim the shared heap's transient partition for a render queue's per-frame SRV ring.
+    // Only one render queue per device is supported: a GPU has a single rendering engine, so
+    // there is never a second render queue in practice, and the transient ring's fence-gated
+    // reclaim is keyed to exactly one queue's fence.  The first call hands out the whole
+    // transient partition; a second call throws (Gem::Result::Unavailable) rather than let two
+    // rings hand out overlapping slots in the shared heap.  The owning queue releases the
+    // claim at teardown.
+    //
+    // FUTURE (compute queues): physics / work-graph / other compute workloads are expected to
+    // address resources through the persistent region (stable per-resource indices) or through
+    // root descriptors (GPU VA, no heap slot) -- NOT this transient ring.  If a compute queue
+    // ever genuinely needs transient heap slots, give it its own disjoint sub-range; do not
+    // share this ring.  A shared ring would let a long-running compute submission stall
+    // rendering (the ring blocks on a fence to reclaim slots) and could set up a fence lock
+    // inversion (render waiting on compute while compute waits on render).  Keep the render
+    // and compute transient lifetimes independent.
+    void AcquireTransientSrvRange(UINT& baseSlotOut, UINT& countOut);
+    void ReleaseTransientSrvRange() { m_TransientSrvRangeClaimed = false; }
+
+    // Persistent per-resource descriptor blocks.  Allocate returns an absolute heap slot (or
+    // CDescriptorHeapAllocator::kInvalidSlot when the persistent region is exhausted); Free
+    // returns the run.  GetSrv*Handle map a slot to a CPU handle (to write the descriptor) or
+    // a GPU handle (to bind the table).
+    UINT AllocatePersistentDescriptors(UINT count) { return m_PersistentSrvAllocator.Allocate(count); }
+    void FreePersistentDescriptors(UINT baseSlot, UINT count) { m_PersistentSrvAllocator.Free(baseSlot, count); }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetSrvCpuHandle(UINT slot) const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpuHandle(UINT slot) const;
+
 private:
+    // Create the shared shader-visible heap and initialize the persistent allocator.
+    void InitializeDescriptorHeap();
+
+    CComPtr<ID3D12DescriptorHeap> m_pShaderResourceDescriptorHeap;
+    UINT m_CbvSrvUavIncrement = 0;
+    CDescriptorHeapAllocator m_PersistentSrvAllocator;
+    bool m_TransientSrvRangeClaimed = false;  // see AcquireTransientSrvRange
+
     Canvas::CGlyphCache m_GlyphCache;
     Gem::TGemPtr<Canvas::XGfxSurface> m_pGlyphAtlasSurface;
 };

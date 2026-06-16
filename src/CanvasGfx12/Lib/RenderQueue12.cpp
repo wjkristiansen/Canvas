@@ -105,7 +105,7 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     // Initialize allocator pool (grows on demand as allocators are needed)
     m_AllocatorPool.Init(pDevice, D3D12_COMMAND_LIST_TYPE_DIRECT);
 
-    // Initialize task graphs — all start with work CLs closed
+    // Initialize task graphs - all start with work CLs closed
     m_GpuTaskGraph.Init(pD3DDevice, pCQ, &m_AllocatorPool);
     m_UIGpuTaskGraph.Init(pD3DDevice, pCQ, &m_AllocatorPool);
     m_PresentGpuTaskGraph.Init(pD3DDevice, pCQ, &m_AllocatorPool);
@@ -121,14 +121,12 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
         SetD3D12DebugName(m_PresentGpuTaskGraph.GetFixupCommandList(),name, "Present_FixupCL");
     }
 
-    CComPtr<ID3D12DescriptorHeap> pResDH;
-    D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
-    DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    DHDesc.NumDescriptors = NumShaderResourceDescriptors; // BUGBUG: This needs to be a well-known constant
-    Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pResDH))));
-
+    // The shader-visible CBV/SRV/UAV heap is owned by the device and shared across render
+    // queues so per-resource descriptors (mesh streams, material textures) have a stable home.
+    // This queue caches a ref to it and binds it; its transient SRV ring carves the heap's
+    // upper partition (the lower partition is the device's persistent allocator).
     CComPtr<ID3D12DescriptorHeap> pSamplerDH;
+    D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
     DHDesc.NumDescriptors = NumSamplerDescriptors; // BUGBUG: This needs to be a well-known constant
@@ -157,7 +155,7 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
 
     // The default root descriptor table is laid out as follows:
     //  CBV[2]  @ b1, b2  (data static)
-    //  SRV[9]  @ t1..t9  (data static) — t1=normals, t2=UV0, t3=tangents,
+    //  SRV[9]  @ t1..t9  (data static) - t1=normals, t2=UV0, t3=tangents,
     //                    t4=albedo, t5=normalMap, t6=emissive,
     //                    t7=roughness, t8=metallic, t9=ambient occlusion
     //  UAV[2]  @ u1, u2  (descriptor static)
@@ -166,15 +164,15 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     // all material texture sampling.
 
     // Default root signature layout:
-    //   Param 0: Root CBV  b0        — per-frame constants
-    //   Param 1: Root SRV  t0        — vertex positions
-    //   Param 2: Root UAV  u0        — (unused)
+    //   Param 0: Root CBV  b0        - per-frame constants
+    //   Param 1: Root SRV  t0        - vertex positions
+    //   Param 2: Root UAV  u0        - (unused)
     //   Param 3: Descriptor table
-    //     CBV[2]  b1, b2             — per-object CB + null
-    //     SRV[11] t1..t11            — normals(t1), UV0(t2), tangents(t3),
+    //     CBV[2]  b1, b2             - per-object CB + null
+    //     SRV[11] t1..t11            - normals(t1), UV0(t2), tangents(t3),
     //                                  albedo(t4..t9), boneIndices(t10), boneWeights(t11)
-    //     UAV[2]  u1, u2             — null
-    //   Param 4: Root SRV  t12       — bone matrix palette (per-draw, uploaded to upload ring)
+    //     UAV[2]  u1, u2             - null
+    //   Param 4: Root SRV  t12       - bone matrix palette (per-draw, uploaded to upload ring)
     std::vector<CD3DX12_DESCRIPTOR_RANGE1> DefaultDescriptorRanges(3);
     DefaultDescriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2,  1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
     DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 11, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
@@ -207,7 +205,7 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     pD3DDevice->CreateRootSignature(1, pRSBlob->GetBufferPointer(), pRSBlob->GetBufferSize(), IID_PPV_ARGS(&pDefaultRootSig));
 
     m_pDefaultRootSig.Attach(pDefaultRootSig.Detach());
-    m_pShaderResourceDescriptorHeap.Attach(pResDH.Detach());
+    m_pShaderResourceDescriptorHeap = m_pDevice->GetShaderResourceDescriptorHeap();  // shared, ref-counted
     m_pSamplerDescriptorHeap.Attach(pSamplerDH.Detach());
     m_pRTVDescriptorHeap.Attach(pRTVDH.Detach());
     m_pDSVDescriptorHeap.Attach(pDSVDH.Detach());
@@ -219,7 +217,8 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     {
         SetD3D12DebugName(m_pCommandQueue,                name, "CommandQueue");
         SetD3D12DebugName(m_pFence,                       name, "Fence");
-        SetD3D12DebugName(m_pShaderResourceDescriptorHeap,name, "SRV_DescHeap");
+        // m_pShaderResourceDescriptorHeap is the device-owned shared heap; it is named once
+        // at device init, not per queue.
         SetD3D12DebugName(m_pSamplerDescriptorHeap,       name, "Sampler_DescHeap");
         SetD3D12DebugName(m_pRTVDescriptorHeap,           name, "RTV_DescHeap");
         SetD3D12DebugName(m_pDSVDescriptorHeap,           name, "DSV_DescHeap");
@@ -236,6 +235,18 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
 
     // Per-queue upload ring (1 MB initial, grows on demand).
     m_UploadRing.Initialize(pDevice, 1 * 1024 * 1024);
+
+    // Fence-protected descriptor ring allocators.  They gate slot reuse on this queue's fence
+    // so wrap-around cannot overwrite descriptors still referenced by in-flight GPU work.
+    // RTV/DSV heaps are per-queue and fully ring-managed from slot 0.  The SRV ring carves
+    // only the transient upper partition of the shared device heap; the lower partition is the
+    // device's persistent per-resource allocator.  Claiming the transient partition throws if
+    // a second render queue is created on this device (see CDevice12::AcquireTransientSrvRange).
+    m_RTVRing.Initialize(0, NumRTVDescriptors);
+    m_DSVRing.Initialize(0, NumDSVDescriptors);
+    UINT srvBase = 0, srvCount = 0;
+    m_pDevice->AcquireTransientSrvRange(srvBase, srvCount);
+    m_SRVRing.Initialize(srvBase, srvCount);
 
     // Register this queue's fence with the device-level resource manager so
     // pooled buffers and deferred releases can be tracked queue-agnostically.
@@ -268,8 +279,7 @@ GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::X
 //------------------------------------------------------------------------------------------------
 D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateRenderTargetView(class CSurface12 *pSurface, UINT ArraySlice, UINT MipSlice, UINT PlaneSlice)
 {
-    UINT slot = m_NextRTVSlot;
-    m_NextRTVSlot = (m_NextRTVSlot + 1) % NumRTVDescriptors;
+    UINT slot = AllocateRTVSlots(1);
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_pRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_RtvIncrement);
     D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
     rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
@@ -294,7 +304,7 @@ void CRenderQueue12::Flush()
             m_pCommandQueue->Wait(pFence, token->Value);
     }
 
-    // Dispatch order: scene → UI
+    // Dispatch order: scene -> UI
     if (m_TaskGraphActive)
         m_GpuTaskGraph.Dispatch();
 
@@ -309,6 +319,13 @@ void CRenderQueue12::Flush()
 
     // Record ring buffer usage for this frame
     m_UploadRing.MarkSubmissionEnd(m_FenceValue);
+
+    // Tag this frame's descriptor slots with the fence just signalled; they become
+    // reclaimable once the GPU passes it.  All RTV/DSV (BeginFrame) and SRV (EndFrame)
+    // allocations for this frame are consumed by the scene + UI work signalled above.
+    m_RTVRing.MarkSubmissionEnd(m_FenceValue);
+    m_DSVRing.MarkSubmissionEnd(m_FenceValue);
+    m_SRVRing.MarkSubmissionEnd(m_FenceValue);
 
     // Reset scene and UI graphs for next frame
     UINT64 completedFenceValue = m_pFence->GetCompletedValue();
@@ -328,7 +345,7 @@ GEMMETHODIMP CRenderQueue12::FlushAndPresent(Canvas::XGfxSwapChain *pSwapChain)
         // Dispatch scene and UI graphs first
         Flush();
 
-        // Back buffer → COMMON for Present. Always dispatched last via the present graph.
+        // Back buffer -> COMMON for Present. Always dispatched last via the present graph.
         if (pIntSwapChain->m_BackBufferModified)
         {
             CSurface12* pBackBuffer = pIntSwapChain->m_pSurface;
@@ -384,12 +401,12 @@ void CRenderQueue12::Uninitialize()
         }
     }
 
-    // GPU is idle — drain any remaining deferred resources.
+    // GPU is idle - drain any remaining deferred resources.
     ProcessCompletedWork();
 
     // Unregister this queue's timeline from the device-level resource manager.
     // Drains and drops any retired buffers / deferred refs owned by this timeline.
-    // The shared bucketed pool stays alive — it is owned by the device and torn
+    // The shared bucketed pool stays alive - it is owned by the device and torn
     // down when the device is destroyed (or by the last surviving queue's release
     // chain via CDevice12::~CDevice12).
     if (m_TimelineId != FenceToken::kInvalidTimelineId)
@@ -400,6 +417,10 @@ void CRenderQueue12::Uninitialize()
 
     // Release the per-queue upload ring now that the GPU is idle.
     m_UploadRing.Shutdown();
+
+    // Release the shared heap's transient partition so a future render queue on this device
+    // can claim it.
+    m_pDevice->ReleaseTransientSrvRange();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -506,6 +527,11 @@ void CRenderQueue12::ProcessCompletedWork()
     
     // Reclaim upload ring buffer space in bulk
     m_UploadRing.Reclaim(completedValue);
+
+    // Release descriptor slots whose referencing GPU work has retired.
+    m_RTVRing.Reclaim(completedValue);
+    m_DSVRing.Reclaim(completedValue);
+    m_SRVRing.Reclaim(completedValue);
 
     // Reclaim pooled buffers and (later) deferred releases across all timelines.
     m_pDevice->GetResourceManager().Reclaim();
@@ -788,9 +814,8 @@ void CRenderQueue12::EnsureGBuffers(UINT width, UINT height)
 D3D12_CPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateDepthStencilView(CSurface12 *pSurface)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-    UINT slot = m_NextDSVSlot;
-    m_NextDSVSlot = (m_NextDSVSlot + 1) % NumDSVDescriptors;
-    
+    UINT slot = AllocateDSVSlots(1);
+
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_pDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_DsvIncrement);
     
     D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
@@ -811,9 +836,8 @@ D3D12_GPU_DESCRIPTOR_HANDLE CRenderQueue12::CreateShaderResourceView(
     ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc)
 {
     ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-    UINT slot = m_NextSRVSlot;
-    m_NextSRVSlot = (m_NextSRVSlot + 1) % NumShaderResourceDescriptors;
-    
+    UINT slot = AllocateSRVSlots(1);
+
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_CbvSrvUavIncrement);
     
     pD3DDevice->CreateShaderResourceView(pResource, &srvDesc, cpuHandle);
@@ -919,7 +943,7 @@ void CRenderQueue12::EnsureDefaultPSO()
     // Blend state (opaque)
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     
-    // Depth-stencil state (reverse-Z: near=1.0, far=0.0 → GREATER_EQUAL)
+    // Depth-stencil state (reverse-Z: near=1.0, far=0.0 -> GREATER_EQUAL)
     psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
     psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL;
     psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
@@ -927,7 +951,7 @@ void CRenderQueue12::EnsureDefaultPSO()
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     
-    // MRT: five G-buffer render targets — Normals, Diffuse, WorldPos, PBR, Emissive
+    // MRT: five G-buffer render targets - Normals, Diffuse, WorldPos, PBR, Emissive
     psoDesc.NumRenderTargets = 5;
     psoDesc.RTVFormats[0] = CanvasFormatToDXGIFormat(m_GBufferNormalsFormat);
     psoDesc.RTVFormats[1] = CanvasFormatToDXGIFormat(m_GBufferDiffuseFormat);
@@ -1283,10 +1307,10 @@ void CRenderQueue12::EnsureTextPSO(DXGI_FORMAT rtvFormat)
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // Text root signature:
-    //   Slot 0: Root CBV(b0) – HlslTextConstants (screen size, offset, text color)
-    //   Slot 1: Root SRV(t0) – StructuredBuffer<HlslGlyphInstance>
-    //   Slot 2: Descriptor table with SRV[1] at t1 – SDFAtlas texture
-    //   Static sampler at s0 – linear, clamp
+    //   Slot 0: Root CBV(b0) - HlslTextConstants (screen size, offset, text color)
+    //   Slot 1: Root SRV(t0) - StructuredBuffer<HlslGlyphInstance>
+    //   Slot 2: Descriptor table with SRV[1] at t1 - SDFAtlas texture
+    //   Static sampler at s0 - linear, clamp
     CD3DX12_STATIC_SAMPLER_DESC linearSampler(
         0,                               // shader register s0
         D3D12_FILTER_MIN_MAG_MIP_LINEAR,
@@ -1380,8 +1404,8 @@ void CRenderQueue12::EnsureRectPSO(DXGI_FORMAT rtvFormat)
     ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
 
     // Rect root signature:
-    //   Slot 0: Root CBV(b0) – HlslRectConstants (screen size, element offset, rect size, fill color)
-    // No vertex buffer — the vertex shader derives the quad from SV_VertexID + constants.
+    //   Slot 0: Root CBV(b0) - HlslRectConstants (screen size, element offset, rect size, fill color)
+    // No vertex buffer - the vertex shader derives the quad from SV_VertexID + constants.
     std::vector<CD3DX12_ROOT_PARAMETER1> rectRootParams(1);
     rectRootParams[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE,
                                                D3D12_SHADER_VISIBILITY_VERTEX);
@@ -1961,7 +1985,7 @@ Gem::Result CRenderQueue12::DrawMesh(
         }
 
         // Build MaterialFlags. Texture flags are gated by mesh capability
-        // (no UV → no albedo/normal/emissive/PBR sampling; no tangent → no normal map).
+        // (no UV -> no albedo/normal/emissive/PBR sampling; no tangent -> no normal map).
         const bool hasUV      = (pUV0Buf  != nullptr);
         const bool hasTangent = (pTanBuf  != nullptr);
         const bool hasSkin    = (pBoneWBuf != nullptr) && (pBoneIBuf != nullptr) &&
@@ -1978,7 +2002,7 @@ Gem::Result CRenderQueue12::DrawMesh(
         if (hasUV && pTextures[5])               materialFlags |= MATERIAL_FLAG_HAS_AO_TEX;
 
         // Compute and upload bone matrices when skinning is active.
-        // Each matrix = InvBindPose[i] * boneNode[i].GetGlobalMatrix() — maps bind-pose
+        // Each matrix = InvBindPose[i] * boneNode[i].GetGlobalMatrix() - maps bind-pose
         // geometry space directly to world space for the current frame's bone pose.
         D3D12_GPU_VIRTUAL_ADDRESS boneMatricesGpuAddr = pPosBuf->GetD3DResource()->GetGPUVirtualAddress();
         if (hasSkin)
@@ -2029,10 +2053,7 @@ Gem::Result CRenderQueue12::DrawMesh(
         //                                    boneIndices, boneWeights)
         //   slots 13-14: UAV[2] @ u1, u2 (null)
         constexpr UINT kDescCount = 15;
-        if (m_NextSRVSlot + kDescCount > NumShaderResourceDescriptors)
-            m_NextSRVSlot = 0;
-        UINT baseSlot = m_NextSRVSlot;
-        m_NextSRVSlot += kDescCount;
+        UINT baseSlot = AllocateSRVSlots(kDescCount);
         
         const UINT incSize = m_CbvSrvUavIncrement;
         ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
@@ -2220,9 +2241,7 @@ Gem::Result CRenderQueue12::DrawUIText(
 
         ID3D12Device* pD3DDevice = m_pDevice->GetD3DDevice();
         const UINT incSize = m_CbvSrvUavIncrement;
-        if (m_NextSRVSlot + 1 > NumShaderResourceDescriptors)
-            m_NextSRVSlot = 0;
-        UINT srvSlot = m_NextSRVSlot++;
+        UINT srvSlot = AllocateSRVSlots(1);
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE srvCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), srvSlot, incSize);
         CD3DX12_GPU_DESCRIPTOR_HANDLE srvGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), srvSlot, incSize);
@@ -2231,7 +2250,7 @@ Gem::Result CRenderQueue12::DrawUIText(
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
         D3D12_GPU_VIRTUAL_ADDRESS glyphAddr = pGlyphBuf->GetD3DResource()->GetGPUVirtualAddress() + glyphSRV.Offset;
 
-        // All resources ready — now create the GPU task
+        // All resources ready - now create the GPU task
         auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIText");
         m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pAtlas,
             D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
@@ -2344,7 +2363,7 @@ Gem::Result CRenderQueue12::DrawUIRect(
 
         D3D12_GPU_VIRTUAL_ADDRESS cbvAddr = hw.GpuAddress;
 
-        // All resources ready — now create the GPU task
+        // All resources ready - now create the GPU task
         auto& drawTask = m_UIGpuTaskGraph.CreateTask("DrawUIRect");
         m_UIGpuTaskGraph.DeclareTextureUsage(drawTask, pBackBuffer,
             D3D12_BARRIER_LAYOUT_RENDER_TARGET,
@@ -3019,7 +3038,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             frameConstants.HasMoon = m_pMoonTexture ? 1u : 0u;
         }
 
-        // Add shadow-atlas global constants — composite needs the atlas
+        // Add shadow-atlas global constants - composite needs the atlas
         // size and texel step to do PCF.  These are 0 / 0 when no shadow
         // atlas was allocated this frame, which the composite treats as
         // "no shadows" and short-circuits the sample.
@@ -3145,7 +3164,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         {
             EnsureDisplacedShadowPSO();
             // Re-create the atlas DSV every frame.  The DSV descriptor heap
-            // is round-robin (m_NextDSVSlot mod 64), and a cached handle
+            // is a fence-protected ring (m_DSVRing), and a cached handle
             // from a long-lived resource would eventually be overwritten by
             // a new DSV pointing to a different resource (m_pDepthBuffer in
             // particular) -- after that the shadow tasks would write the
@@ -3218,10 +3237,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     // tables index into the same block (t0 at base, CP
                     // streams at base+1..base+3).
                     constexpr UINT kShadowSRVCount = 4;
-                    if (m_NextSRVSlot + kShadowSRVCount > NumShaderResourceDescriptors)
-                        m_NextSRVSlot = 0u;
-                    const UINT baseSrvSlot = m_NextSRVSlot;
-                    m_NextSRVSlot += kShadowSRVCount;
+                    const UINT baseSrvSlot = AllocateSRVSlots(kShadowSRVCount);
                     {
                         ID3D12Resource* pRes = pMapSurf->GetD3DResource();
                         D3D12_RESOURCE_DESC desc = pRes->GetDesc();
@@ -3381,10 +3397,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 //   base+1..+3  -> t1..t3 atlases           (visibility PIXEL)
                 //   base+4..+6  -> t4..t6 pos / UV / normal (visibility VERTEX)
                 constexpr UINT kDisplacedSRVCount = 7;
-                if (m_NextSRVSlot + kDisplacedSRVCount > NumShaderResourceDescriptors)
-                    m_NextSRVSlot = 0;
-                UINT baseSrvSlot = m_NextSRVSlot;
-                m_NextSRVSlot += kDisplacedSRVCount;
+                UINT baseSrvSlot = AllocateSRVSlots(kDisplacedSRVCount);
 
                 CD3DX12_GPU_DESCRIPTOR_HANDLE mapGpu(
                     m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
@@ -3501,10 +3514,7 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             const UINT incSize = m_CbvSrvUavIncrement;
 
             constexpr UINT kCompositeSRVCount = 8;
-            if (m_NextSRVSlot + kCompositeSRVCount > NumShaderResourceDescriptors)
-                m_NextSRVSlot = 0;
-            UINT baseSlot = m_NextSRVSlot;
-            m_NextSRVSlot += kCompositeSRVCount;
+            UINT baseSlot = AllocateSRVSlots(kCompositeSRVCount);
 
             CD3DX12_CPU_DESCRIPTOR_HANDLE baseCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), baseSlot, incSize);
             CD3DX12_GPU_DESCRIPTOR_HANDLE baseGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), baseSlot, incSize);
@@ -3680,10 +3690,10 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
             m_GpuTaskGraph.InsertTask(compositeTask);
         }
 
-        // Flush pending glyph atlas uploads (SDF bitmaps → GPU texture)
+        // Flush pending glyph atlas uploads (SDF bitmaps -> GPU texture)
         FlushPendingGlyphUploads();
 
-        // Draw UI elements (pure draw — uploads already staged by SubmitRenderables)
+        // Draw UI elements (pure draw - uploads already staged by SubmitRenderables)
         for (auto* pNode : m_UIRenderableQueue)
         {
             UINT elemCount = pNode->GetBoundElementCount();
@@ -3774,3 +3784,4 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
     m_HasVisibleLightFilter = false;
     return Gem::Result::Success;
 }
+
