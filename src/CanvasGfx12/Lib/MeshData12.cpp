@@ -8,11 +8,30 @@
 #include <algorithm>
 
 //------------------------------------------------------------------------------------------------
-CMeshData12::CMeshData12(Canvas::XCanvas* pCanvas, PCSTR name) :
-    TGfxElement(pCanvas)
+CMeshData12::CMeshData12(Canvas::XCanvas* pCanvas, CDevice12* pDevice, PCSTR name) :
+    TGfxElement(pCanvas),
+    m_pDevice(pDevice)
 {
     if (name != nullptr)
         SetName(name);
+}
+
+//------------------------------------------------------------------------------------------------
+CMeshData12::~CMeshData12()
+{
+    // Return each group's persistent mesh-stream descriptor block to the device allocator.
+    if (m_pDevice)
+    {
+        for (auto& group : m_Groups)
+        {
+            if (group.StreamDescriptorBase != CDescriptorHeapAllocator::kInvalidSlot)
+            {
+                m_pDevice->FreePersistentDescriptors(group.StreamDescriptorBase,
+                                                     CDevice12::kMeshStreamDescriptorCount);
+                group.StreamDescriptorBase = CDescriptorHeapAllocator::kInvalidSlot;
+            }
+        }
+    }
 }
 
 //------------------------------------------------------------------------------------------------

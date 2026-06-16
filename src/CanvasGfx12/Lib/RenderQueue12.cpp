@@ -14,6 +14,7 @@
 #include "Surface12.h"
 #include "SwapChain12.h"
 #include "MeshData12.h"
+#include "Material12.h"
 #include "UITextElement12.h"
 
 #include <filesystem>
@@ -147,43 +148,40 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     CComPtr<ID3D12Fence> pFence;
     Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateFence(m_FenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pFence))));
 
-    // The default root signature uses the following parameters
-    //  Root CBV (descriptor static)
-    //  Root SRV (descriptor static)
-    //  Root UAV (descriptor static)
-    //  Root descriptor table
-
-    // The default root descriptor table is laid out as follows:
-    //  CBV[2]  @ b1, b2  (data static)
-    //  SRV[9]  @ t1..t9  (data static) - t1=normals, t2=UV0, t3=tangents,
-    //                    t4=albedo, t5=normalMap, t6=emissive,
-    //                    t7=roughness, t8=metallic, t9=ambient occlusion
-    //  UAV[2]  @ u1, u2  (descriptor static)
+    // Default root signature layout.  Per-resource SRVs (mesh streams, material
+    // textures) live in persistent descriptor-heap blocks owned by the mesh / material
+    // and are bound by GPU handle as two descriptor tables; nothing is allocated per draw.
     //
-    // A single static sampler s0 (LinearWrap, anisotropic mip filter) covers
-    // all material texture sampling.
+    //   Param 0: Root CBV  b0   - per-frame constants
+    //   Param 1: Root SRV  t0   - vertex positions (per draw)
+    //   Param 2: Root CBV  b1   - per-object constants (per draw, uploaded to upload ring)
+    //   Param 3: Descriptor table (VS) - mesh-stream block: SRV t1..t3 (normals, UV0,
+    //            tangents) + t10,t11 (bone indices, bone weights)
+    //   Param 4: Descriptor table (PS) - material block: SRV t4..t9 (albedo, normal,
+    //            emissive, roughness, metallic, ambient occlusion)
+    //   Param 5: Root SRV  t12  - bone matrix palette (per draw, uploaded to upload ring)
+    //
+    // A single static sampler s0 (LinearWrap, anisotropic mip filter) covers all
+    // material texture sampling.
+    // Mesh-stream table: vertex-stream SRVs that live in a persistent per-mesh-group block.
+    // Two ranges over the block's contiguous slots -> t1,t2,t3 (normals, UV0, tangents) then
+    // t10,t11 (bone indices, bone weights).  Vertex-shader visible.
+    CD3DX12_DESCRIPTOR_RANGE1 MeshStreamRanges[2];
+    MeshStreamRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 1,  0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
+    MeshStreamRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 10, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 3);
 
-    // Default root signature layout:
-    //   Param 0: Root CBV  b0        - per-frame constants
-    //   Param 1: Root SRV  t0        - vertex positions
-    //   Param 2: Root UAV  u0        - (unused)
-    //   Param 3: Descriptor table
-    //     CBV[2]  b1, b2             - per-object CB + null
-    //     SRV[11] t1..t11            - normals(t1), UV0(t2), tangents(t3),
-    //                                  albedo(t4..t9), boneIndices(t10), boneWeights(t11)
-    //     UAV[2]  u1, u2             - null
-    //   Param 4: Root SRV  t12       - bone matrix palette (per-draw, uploaded to upload ring)
-    std::vector<CD3DX12_DESCRIPTOR_RANGE1> DefaultDescriptorRanges(3);
-    DefaultDescriptorRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2,  1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
-    DefaultDescriptorRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 11, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 2);
-    DefaultDescriptorRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2,  1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 13);
+    // Material table: texture SRVs t4..t9 (albedo, normal, emissive, roughness, metallic, AO)
+    // in a persistent per-material block.  Pixel-shader visible.
+    CD3DX12_DESCRIPTOR_RANGE1 MaterialRanges[1];
+    MaterialRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 6, 4, 0, D3D12_DESCRIPTOR_RANGE_FLAG_NONE, 0);
 
-    std::vector<CD3DX12_ROOT_PARAMETER1> DefaultRootParams(5);
-    DefaultRootParams[0].InitAsConstantBufferView(0,  0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,   D3D12_SHADER_VISIBILITY_ALL);
-    DefaultRootParams[1].InitAsShaderResourceView(0,  0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,   D3D12_SHADER_VISIBILITY_ALL);
-    DefaultRootParams[2].InitAsUnorderedAccessView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE,          D3D12_SHADER_VISIBILITY_ALL);
-    DefaultRootParams[3].InitAsDescriptorTable(static_cast<UINT>(DefaultDescriptorRanges.size()), DefaultDescriptorRanges.data(), D3D12_SHADER_VISIBILITY_ALL);
-    DefaultRootParams[4].InitAsShaderResourceView(12, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_VERTEX);
+    std::vector<CD3DX12_ROOT_PARAMETER1> DefaultRootParams(6);
+    DefaultRootParams[0].InitAsConstantBufferView(0,  0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,                 D3D12_SHADER_VISIBILITY_ALL);    // b0 per-frame
+    DefaultRootParams[1].InitAsShaderResourceView(0,  0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC,                 D3D12_SHADER_VISIBILITY_ALL);    // t0 positions
+    DefaultRootParams[2].InitAsConstantBufferView(1,  0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE, D3D12_SHADER_VISIBILITY_ALL);  // b1 per-object
+    DefaultRootParams[3].InitAsDescriptorTable(_countof(MeshStreamRanges), MeshStreamRanges, D3D12_SHADER_VISIBILITY_VERTEX); // mesh-stream table
+    DefaultRootParams[4].InitAsDescriptorTable(_countof(MaterialRanges),   MaterialRanges,   D3D12_SHADER_VISIBILITY_PIXEL);  // material table
+    DefaultRootParams[5].InitAsShaderResourceView(12, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_VOLATILE, D3D12_SHADER_VISIBILITY_VERTEX); // t12 bone palette
 
     CD3DX12_STATIC_SAMPLER_DESC DefaultStaticSamplers[1] = {};
     DefaultStaticSamplers[0].Init(
@@ -194,7 +192,7 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
         D3D12_TEXTURE_ADDRESS_MODE_WRAP);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC DefaultRootSigDesc(
-        5U, DefaultRootParams.data(),
+        static_cast<UINT>(DefaultRootParams.size()), DefaultRootParams.data(),
         _countof(DefaultStaticSamplers), DefaultStaticSamplers,
         D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -2047,103 +2045,20 @@ Gem::Result CRenderQueue12::DrawMesh(
         Gem::ThrowGemError(m_UploadRing.AllocateFromRing(cbSize, hw));
         memcpy(hw.pMapped, &objectConstants, sizeof(HlslTypes::HlslPerObjectConstants));
         
-        // Allocate a contiguous block of 15 descriptors:
-        //   slots 0-1  : CBV[2] @ b1, b2
-        //   slots 2-12 : SRV[11] @ t1..t11 (normals, UV0, tangents, albedo..AO,
-        //                                    boneIndices, boneWeights)
-        //   slots 13-14: UAV[2] @ u1, u2 (null)
-        constexpr UINT kDescCount = 15;
-        UINT baseSlot = AllocateSRVSlots(kDescCount);
-        
-        const UINT incSize = m_CbvSrvUavIncrement;
-        ID3D12Device *pD3DDevice = m_pDevice->GetD3DDevice();
-        CD3DX12_CPU_DESCRIPTOR_HANDLE baseCpuHandle(m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), baseSlot, incSize);
-        CD3DX12_GPU_DESCRIPTOR_HANDLE baseGpuHandle(m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), baseSlot, incSize);
-        
-        // CBV b1: per-object constants
-        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = hw.GpuAddress;
-        cbvDesc.SizeInBytes = static_cast<UINT>(cbSize);
-        pD3DDevice->CreateConstantBufferView(&cbvDesc, baseCpuHandle);
-        
-        // CBV b2: null placeholder
-        D3D12_CONSTANT_BUFFER_VIEW_DESC nullCbvDesc = {};
-        pD3DDevice->CreateConstantBufferView(&nullCbvDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, 1, incSize));
-        
-        // Helper lambdas for null fallbacks
-        D3D12_SHADER_RESOURCE_VIEW_DESC nullBufSrvDesc = {};
-        nullBufSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
-        nullBufSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-        nullBufSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        
-        D3D12_SHADER_RESOURCE_VIEW_DESC nullTex2DSrvDesc = {};
-        nullTex2DSrvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        nullTex2DSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        nullTex2DSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        nullTex2DSrvDesc.Texture2D.MipLevels = 1;
-        
-        auto WriteStructuredBufSRV = [&](UINT tableSlot, CBuffer12* pBuf, UINT stride)
-        {
-            CD3DX12_CPU_DESCRIPTOR_HANDLE h(baseCpuHandle, tableSlot, incSize);
-            if (pBuf)
-            {
-                D3D12_RESOURCE_DESC rd = pBuf->GetD3DResource()->GetDesc();
-                D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
-                d.Format = DXGI_FORMAT_UNKNOWN;
-                d.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-                d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-                d.Buffer.NumElements = static_cast<UINT>(rd.Width / stride);
-                d.Buffer.StructureByteStride = stride;
-                pD3DDevice->CreateShaderResourceView(pBuf->GetD3DResource(), &d, h);
-            }
-            else
-            {
-                pD3DDevice->CreateShaderResourceView(nullptr, &nullBufSrvDesc, h);
-            }
-        };
-        auto WriteTexture2DSRV = [&](UINT tableSlot, CSurface12* pSurf)
-        {
-            CD3DX12_CPU_DESCRIPTOR_HANDLE h(baseCpuHandle, tableSlot, incSize);
-            if (pSurf)
-            {
-                D3D12_RESOURCE_DESC rd = pSurf->GetD3DResource()->GetDesc();
-                D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
-                d.Format = rd.Format;
-                d.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-                d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-                d.Texture2D.MipLevels = rd.MipLevels ? rd.MipLevels : 1;
-                pD3DDevice->CreateShaderResourceView(pSurf->GetD3DResource(), &d, h);
-            }
-            else
-            {
-                pD3DDevice->CreateShaderResourceView(nullptr, &nullTex2DSrvDesc, h);
-            }
-        };
-        
-        // SRV t1: normals (slot 2)
-        WriteStructuredBufSRV(2, pNormBuf, sizeof(Canvas::Math::FloatVector4));
-        // SRV t2: UV0 (slot 3)
-        WriteStructuredBufSRV(3, pUV0Buf, sizeof(Canvas::Math::FloatVector2));
-        // SRV t3: tangents (slot 4)
-        WriteStructuredBufSRV(4, pTanBuf, sizeof(Canvas::Math::FloatVector4));
-        // SRV t4..t9: material textures (slots 5..10)
-        WriteTexture2DSRV(5,  pTextures[0]); // Albedo
-        WriteTexture2DSRV(6,  pTextures[1]); // Normal map
-        WriteTexture2DSRV(7,  pTextures[2]); // Emissive
-        WriteTexture2DSRV(8,  pTextures[3]); // Roughness
-        WriteTexture2DSRV(9,  pTextures[4]); // Metallic
-        WriteTexture2DSRV(10, pTextures[5]); // AO
-        // SRV t10: bone indices (slot 11); SRV t11: bone weights (slot 12)
-        WriteStructuredBufSRV(11, pBoneIBuf, sizeof(Canvas::Math::UIntVector4));
-        WriteStructuredBufSRV(12, pBoneWBuf, sizeof(Canvas::Math::FloatVector4));
+        // Per-resource SRVs live in persistent descriptor blocks owned by the mesh group
+        // (vertex streams) and the material (textures); bind them by GPU handle, nothing is
+        // allocated per draw.  The group always has a stream block (CreateMeshData fails the whole
+        // mesh otherwise).  A group with no material is a deliberate, supported state, bound to the
+        // device's all-null texture block.
+        const UINT streamBase = pMesh->GetStreamDescriptorBase(materialGroupIndex);
+        D3D12_GPU_DESCRIPTOR_HANDLE meshStreamHandle = m_pDevice->GetSrvGpuHandle(streamBase);
+        D3D12_GPU_DESCRIPTOR_HANDLE materialHandle =
+            pMaterial ? static_cast<CMaterial12*>(pMaterial)->GetTextureTableHandle()
+                      : m_pDevice->GetDefaultMaterialTableHandle();
 
-        // UAVs u1, u2: null (slots 13, 14)
-        D3D12_UNORDERED_ACCESS_VIEW_DESC nullUavDesc = {};
-        nullUavDesc.Format = DXGI_FORMAT_R32_FLOAT;
-        nullUavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-        for (UINT i = 13; i <= 14; ++i)
-            pD3DDevice->CreateUnorderedAccessView(nullptr, nullptr, &nullUavDesc, CD3DX12_CPU_DESCRIPTOR_HANDLE(baseCpuHandle, i, incSize));
-        
+        // Per-object constants are bound as a root CBV (b1) directly from the upload ring.
+        D3D12_GPU_VIRTUAL_ADDRESS perObjectCbvAddr = hw.GpuAddress;
+
         // Set root SRV (param 1) for positions (t0)
         D3D12_GPU_VIRTUAL_ADDRESS posGpuAddr = pPosBuf->GetD3DResource()->GetGPUVirtualAddress();
         D3D12_RESOURCE_DESC posDesc = pPosBuf->GetD3DResource()->GetDesc();
@@ -2179,16 +2094,18 @@ Gem::Result CRenderQueue12::DrawMesh(
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             }
         }
-        drawTask.RecordFunc = [posGpuAddr, boneMatricesGpuAddr, baseGpuHandle, vertexCount, this](ID3D12GraphicsCommandList* pCL)
+        drawTask.RecordFunc = [posGpuAddr, perObjectCbvAddr, meshStreamHandle, materialHandle, boneMatricesGpuAddr, vertexCount, this](ID3D12GraphicsCommandList* pCL)
         {
             pCL->SetPipelineState(GetActiveDefaultPSO());
             pCL->SetGraphicsRootSignature(m_pDefaultRootSig);
             pCL->OMSetRenderTargets(5, m_GBufferRTVs, FALSE, &m_CurrentDSV);
             pCL->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             pCL->SetDescriptorHeaps(2, m_DescriptorHeapsArray);
-            pCL->SetGraphicsRootShaderResourceView(1, posGpuAddr);
-            pCL->SetGraphicsRootDescriptorTable(3, baseGpuHandle);
-            pCL->SetGraphicsRootShaderResourceView(4, boneMatricesGpuAddr);
+            pCL->SetGraphicsRootShaderResourceView(1, posGpuAddr);           // t0 positions
+            pCL->SetGraphicsRootConstantBufferView(2, perObjectCbvAddr);     // b1 per-object
+            pCL->SetGraphicsRootDescriptorTable(3, meshStreamHandle);        // t1-t3, t10-t11
+            pCL->SetGraphicsRootDescriptorTable(4, materialHandle);          // t4-t9 material
+            pCL->SetGraphicsRootShaderResourceView(5, boneMatricesGpuAddr);  // t12 bone palette
             pCL->DrawInstanced(vertexCount, 1, 0, 0);
         };
         m_GpuTaskGraph.InsertTask(drawTask);

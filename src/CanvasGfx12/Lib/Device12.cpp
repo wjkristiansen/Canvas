@@ -201,6 +201,12 @@ void CDevice12::InitializeDescriptorHeap()
 
     // Persistent allocator owns the low region; render-queue rings own the high region.
     m_PersistentSrvAllocator.Initialize(0, kNumPersistentSrvDescriptors);
+
+    // Reserve the shared all-null material block up front, bound by DrawMesh for groups that
+    // legitimately have no material (MeshDataGroupDesc::pMaterial is documented optional).
+    m_DefaultMaterialSlot = m_PersistentSrvAllocator.Allocate(kMaterialDescriptorCount);
+    for (UINT i = 0; i < kMaterialDescriptorCount; ++i)
+        WriteTexture2DSRV(m_DefaultMaterialSlot + i, nullptr);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -231,6 +237,62 @@ D3D12_GPU_DESCRIPTOR_HANDLE CDevice12::GetSrvGpuHandle(UINT slot) const
 {
     return CD3DX12_GPU_DESCRIPTOR_HANDLE(
         m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), slot, m_CbvSrvUavIncrement);
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::WriteStructuredBufferSRV(UINT slot, CBuffer12* pBuffer, UINT stride)
+{
+    D3D12_CPU_DESCRIPTOR_HANDLE h = GetSrvCpuHandle(slot);
+    if (pBuffer && stride > 0)
+    {
+        D3D12_RESOURCE_DESC rd = pBuffer->GetD3DResource()->GetDesc();
+        D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
+        d.Format                     = DXGI_FORMAT_UNKNOWN;
+        d.ViewDimension              = D3D12_SRV_DIMENSION_BUFFER;
+        d.Shader4ComponentMapping    = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        d.Buffer.NumElements         = static_cast<UINT>(rd.Width / stride);
+        d.Buffer.StructureByteStride = stride;
+        m_pD3DDevice->CreateShaderResourceView(pBuffer->GetD3DResource(), &d, h);
+    }
+    else
+    {
+        D3D12_SHADER_RESOURCE_VIEW_DESC nullDesc = {};
+        nullDesc.Format                  = DXGI_FORMAT_R32_FLOAT;
+        nullDesc.ViewDimension           = D3D12_SRV_DIMENSION_BUFFER;
+        nullDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        m_pD3DDevice->CreateShaderResourceView(nullptr, &nullDesc, h);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::WriteTexture2DSRV(UINT slot, CSurface12* pSurface)
+{
+    D3D12_CPU_DESCRIPTOR_HANDLE h = GetSrvCpuHandle(slot);
+    if (pSurface)
+    {
+        D3D12_RESOURCE_DESC rd = pSurface->GetD3DResource()->GetDesc();
+        D3D12_SHADER_RESOURCE_VIEW_DESC d = {};
+        d.Format                  = rd.Format;
+        d.ViewDimension           = D3D12_SRV_DIMENSION_TEXTURE2D;
+        d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        d.Texture2D.MipLevels     = rd.MipLevels ? rd.MipLevels : 1;
+        m_pD3DDevice->CreateShaderResourceView(pSurface->GetD3DResource(), &d, h);
+    }
+    else
+    {
+        D3D12_SHADER_RESOURCE_VIEW_DESC nullDesc = {};
+        nullDesc.Format                  = DXGI_FORMAT_R8G8B8A8_UNORM;
+        nullDesc.ViewDimension           = D3D12_SRV_DIMENSION_TEXTURE2D;
+        nullDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        nullDesc.Texture2D.MipLevels     = 1;
+        m_pD3DDevice->CreateShaderResourceView(nullptr, &nullDesc, h);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+D3D12_GPU_DESCRIPTOR_HANDLE CDevice12::GetDefaultMaterialTableHandle()
+{
+    return GetSrvGpuHandle(m_DefaultMaterialSlot);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -266,7 +328,7 @@ GEMMETHODIMP CDevice12::CreateMaterial(Canvas::XGfxMaterial **ppMaterial)
     {
         Gem::TGemPtr<CMaterial12> pMaterial;
         Gem::ThrowGemError(TGfxElement<Canvas::XGfxMaterial>::CreateAndRegister<CMaterial12>(
-            &pMaterial, GetCanvas(), "Material"));
+            &pMaterial, GetCanvas(), this, "Material"));
         *ppMaterial = pMaterial.Detach();
         return Gem::Result::Success;
     }
@@ -664,8 +726,37 @@ GEMMETHODIMP CDevice12::CreateMeshData(
         for (uint32_t gi = 0; gi < desc.GroupCount; ++gi)
             groups[gi].pMaterial = desc.pGroups[gi].pMaterial;
 
+        // Populate each group's persistent mesh-stream descriptor block: kMeshStreamDescriptorCount
+        // contiguous SRVs in the shared heap (normals t1, UV0 t2, tangents t3, bone indices t10,
+        // bone weights t11),
+        // null where the stream is absent.  Created once here and bound by GPU handle every draw.
+        for (size_t gi = 0; gi < groups.size(); ++gi)
+        {
+            auto& group = groups[gi];
+            const UINT base = AllocatePersistentDescriptors(kMeshStreamDescriptorCount);
+            if (base == CDescriptorHeapAllocator::kInvalidSlot)
+            {
+                // Roll back the blocks already taken for earlier groups: the CMeshData12 that frees
+                // them on destruction has not been created yet, so nothing else owns them.
+                for (size_t gj = 0; gj < gi; ++gj)
+                    FreePersistentDescriptors(groups[gj].StreamDescriptorBase, kMeshStreamDescriptorCount);
+                throw Gem::GemError(Gem::Result::OutOfMemory);
+            }
+            group.StreamDescriptorBase = base;
+
+            auto bufOf = [](Canvas::GfxResourceAllocation& a) -> CBuffer12*
+            {
+                return a.pBuffer ? static_cast<CBuffer12*>(a.pBuffer.Get()) : nullptr;
+            };
+            WriteStructuredBufferSRV(base + 0, bufOf(group.NormalVB),      sizeof(Canvas::Math::FloatVector4));
+            WriteStructuredBufferSRV(base + 1, bufOf(group.UV0VB),         sizeof(Canvas::Math::FloatVector2));
+            WriteStructuredBufferSRV(base + 2, bufOf(group.TangentVB),     sizeof(Canvas::Math::FloatVector4));
+            WriteStructuredBufferSRV(base + 3, bufOf(group.BoneIndicesVB), sizeof(Canvas::Math::UIntVector4));
+            WriteStructuredBufferSRV(base + 4, bufOf(group.BoneWeightsVB), sizeof(Canvas::Math::FloatVector4));
+        }
+
         Gem::TGemPtr<CMeshData12> pMeshData;
-        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas(), baseName));
+        Gem::ThrowGemError(TGfxElement<Canvas::XGfxMeshData>::CreateAndRegister(&pMeshData, GetCanvas(), this, baseName));
         pMeshData->SetGroups(std::move(groups));
         pMeshData->SetTopology(desc.Topology);
         pMeshData->SetTotalVertexCount(totalVertexCount);
