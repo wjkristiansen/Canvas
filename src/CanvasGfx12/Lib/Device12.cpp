@@ -171,7 +171,66 @@ Gem::Result CDevice12::Initialize()
     m_ResourceManager.Initialize(this);
     m_CopyQueue.Initialize(this);
 
+    try
+    {
+        InitializeDescriptorHeap();
+    }
+    catch (Gem::GemError& e)
+    {
+        return e.Result();
+    }
+    catch (_com_error& e)
+    {
+        return ResultFromHRESULT(e.Error());
+    }
+
     return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::InitializeDescriptorHeap()
+{
+    D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+    desc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    desc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    desc.NumDescriptors = kNumShaderResourceDescriptors;
+    ThrowFailedHResult(m_pD3DDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_pShaderResourceDescriptorHeap)));
+    SetD3D12DebugName(m_pShaderResourceDescriptorHeap, "Device_SRV_DescHeap");
+
+    m_CbvSrvUavIncrement = m_pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    // Persistent allocator owns the low region; render-queue rings own the high region.
+    m_PersistentSrvAllocator.Initialize(0, kNumPersistentSrvDescriptors);
+}
+
+//------------------------------------------------------------------------------------------------
+void CDevice12::AcquireTransientSrvRange(UINT& baseSlotOut, UINT& countOut)
+{
+    if (m_TransientSrvRangeClaimed)
+    {
+        Canvas::LogError(GetLogger(),
+            "CDevice12: the shared descriptor heap's transient partition is already owned by a "
+            "render queue; only one render queue per device is supported.");
+        throw Gem::GemError(Gem::Result::Unavailable);
+    }
+
+    m_TransientSrvRangeClaimed = true;
+    baseSlotOut = kNumPersistentSrvDescriptors;
+    countOut    = kNumTransientSrvDescriptors;
+}
+
+//------------------------------------------------------------------------------------------------
+D3D12_CPU_DESCRIPTOR_HANDLE CDevice12::GetSrvCpuHandle(UINT slot) const
+{
+    return CD3DX12_CPU_DESCRIPTOR_HANDLE(
+        m_pShaderResourceDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), slot, m_CbvSrvUavIncrement);
+}
+
+//------------------------------------------------------------------------------------------------
+D3D12_GPU_DESCRIPTOR_HANDLE CDevice12::GetSrvGpuHandle(UINT slot) const
+{
+    return CD3DX12_GPU_DESCRIPTOR_HANDLE(
+        m_pShaderResourceDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), slot, m_CbvSrvUavIncrement);
 }
 
 //------------------------------------------------------------------------------------------------

@@ -350,18 +350,35 @@ The split into three graphs is a design choice, not a correctness requirement. E
 
 ### Descriptor Heap Management
 
-Four descriptor heaps are created at initialization:
+The shader-visible **CBV/SRV/UAV heap is owned by the device** (`CDevice12`) and shared across all render queues, so per-resource descriptors have a single stable home that any queue can bind. The sampler, RTV, and DSV heaps remain per-render-queue.
 
-| Heap | Type | Count | Visibility |
+| Heap | Type | Count | Visibility | Owner |
+|---|---|---|---|---|
+| CBV/SRV/UAV | Shader resource | 65,536 | Shader-visible | Device (shared) |
+| Sampler | Sampler | 1,024 | Shader-visible | Render queue |
+| RTV | Render target view | 64 | CPU-only | Render queue |
+| DSV | Depth stencil view | 64 | CPU-only | Render queue |
+
+#### Shared CBV/SRV/UAV heap partitioning
+
+The shared heap is split into two regions managed by different allocators:
+
+| Region | Slots | Allocator | Lifetime |
 |---|---|---|---|
-| CBV/SRV/UAV | Shader resource | 65,536 | Shader-visible |
-| Sampler | Sampler | 1,024 | Shader-visible |
-| RTV | Render target view | 64 | CPU-only |
-| DSV | Depth stencil view | 64 | CPU-only |
+| Persistent | `[0, 32768)` | `CDescriptorHeapAllocator` (free-list) | Per-resource — freed when the resource is destroyed |
+| Transient | `[32768, 65536)` | `CDescriptorRing` (per queue) | Per-frame — recycled once the GPU retires the frame |
 
-The shader-visible heap is used as a cycling allocator: `m_NextSRVSlot` advances with each draw and wraps at 65,536. Each mesh draw allocates 13 contiguous descriptors: 2 CBVs, 9 SRVs, and 2 UAVs. RTV and DSV slots wrap at 64.
+The split is a tunable constant (`CDevice12::kNumPersistentSrvDescriptors`).
 
-The cycling allocator does not check for overflow within a single frame. If a frame exceeds roughly 5,000 mesh draws the slot counter wraps and overwrites descriptors from earlier in the same frame. In practice this has not been an issue at current scene complexity, but it is a known limitation. A future improvement could add a per-frame high-water-mark check or switch to a more robust ring allocator.
+**Persistent region** (`CDescriptorHeapAllocator`): size-segregated free lists (one per block size) plus a bump pointer, giving O(1) allocate/free with exact-fit reuse and no rounding waste. It hands out contiguous slot runs which live until explicitly freed, and is the home for descriptors that are created once and bound by GPU handle every draw — vertex-stream and material-texture SRVs that scale with the number of *live resources*, not draw calls.
+
+**Transient region** (`CDescriptorRing`): a fence-protected ring for dynamic per-draw / per-frame descriptors. Slots are handed out as contiguous runs and advance through the region as a ring; a slot is not reused until the GPU work that referenced it has retired. The ring records a per-submission `{fenceValue, slotCount}` marker each frame (`MarkSubmissionEnd` in `Flush`) and releases completed submissions in `ProcessCompletedWork` (`Reclaim`), mirroring `CUploadRing`. The RTV and DSV heaps are each managed by their own `CDescriptorRing` over the whole per-queue heap (base slot 0); the SRV ring is given a base offset so it manages only the transient partition of the shared heap.
+
+When wrap-around would overwrite a slot still referenced by in-flight GPU work, the ring blocks on this queue's fence and reclaims completed submissions before reusing those slots, so a descriptor in flight can never be overwritten. Because a descriptor heap cannot be resized, a single frame that demands more transient slots than the partition holds cannot be satisfied and raises `OutOfMemory` rather than silently corrupting in-flight descriptors.
+
+The transient partition is owned by a **single render queue**, claimed via `CDevice12::AcquireTransientSrvRange` when the queue is created and released at teardown. A GPU has one rendering engine, so there is never a second render queue in practice; creating one on the same device fails fast (`Gem::Result::Unavailable`) rather than letting two rings hand out overlapping slots. Future compute queues (physics, work graphs) are expected to address resources through the persistent region or root descriptors, not this transient ring — sharing it could let a long-running compute submission stall rendering or create a render/compute fence lock inversion.
+
+> Migration in progress: per-resource residency (moving mesh vertex-stream and material-texture SRVs into the persistent region, and the per-object constant buffer to a root CBV) is being wired up. Until it lands, the geometry path still allocates its per-draw descriptor table from the transient ring, so the transient `OutOfMemory` ceiling above still bounds draws per frame. Persistent residency removes that ceiling because geometry stops consuming transient slots entirely.
 
 ### Root Signatures and Pipeline States
 

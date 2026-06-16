@@ -6,6 +6,8 @@ add_library(CanvasGfx12 SHARED
     CanvasGfx12.cpp
     CommandAllocatorPool.cpp
     CopyQueue.cpp
+    DescriptorHeapAllocator.cpp
+    DescriptorRing.cpp
     Device12.cpp
     GpuTask.cpp
     RenderQueue12.cpp
