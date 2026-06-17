@@ -37,7 +37,7 @@ inline Gem::Result ResultFromHRESULT(HRESULT hr)
 }
 
 //================================================================================================
-// D3D12 debug naming — UTF-8 via SetPrivateData(WKPDID_D3DDebugObjectName)
+// D3D12 debug naming - UTF-8 via SetPrivateData(WKPDID_D3DDebugObjectName)
 //================================================================================================
 
 inline void SetD3D12DebugName(ID3D12Object* pObject, const char* name)

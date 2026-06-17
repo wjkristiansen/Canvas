@@ -290,7 +290,7 @@ const TaskBarriers& CGpuTaskGraph::PrepareTask(CGpuTask& taskData)
             auto& assumed = m_ExpectedInitialLayouts[pD3DResource];
             if (assumed.m_UniformLayout == D3D12_BARRIER_LAYOUT_UNDEFINED && assumed.m_AllSame)
             {
-                // First time seeing this resource — initialize from required layout
+                // First time seeing this resource - initialize from required layout
                 assumed = SubresourceLayout(texUsage.RequiredLayout, texUsage.pSurface->m_NumSubresources);
             }
             else if (texUsage.Subresources != 0xFFFFFFFF)
@@ -502,7 +502,7 @@ void CGpuTaskGraph::Dispatch()
     if (m_pWorkCL)
         m_pWorkCL->Close();
 
-    // Compute fixup barriers FIRST — before ComputeFinalLayouts overwrites committed state.
+    // Compute fixup barriers FIRST - before ComputeFinalLayouts overwrites committed state.
     // The fixup CL bridges the gap between actual committed layout (on CSurface12) and the
     // assumed initial layout that the work CL was recorded against.
     std::vector<D3D12_TEXTURE_BARRIER> d3dBarriers;
@@ -534,7 +534,7 @@ void CGpuTaskGraph::Dispatch()
 
         if (committed.m_AllSame && assumedLayouts.m_AllSame)
         {
-            // Both uniform — at most one barrier for all subresources
+            // Both uniform - at most one barrier for all subresources
             if (committed.m_UniformLayout != assumedLayouts.m_UniformLayout)
             {
                 D3D12_TEXTURE_BARRIER tb = {};
@@ -552,7 +552,7 @@ void CGpuTaskGraph::Dispatch()
         }
         else
         {
-            // At least one side is per-subresource — compare each subresource
+            // At least one side is per-subresource - compare each subresource
             UINT numSub = pSurface->m_NumSubresources;
             for (UINT sub = 0; sub < numSub; ++sub)
             {
@@ -641,7 +641,7 @@ void CGpuTaskGraph::ComputeFinalLayouts()
                 // Per-subresource usage: update only the targeted subresource
                 if (it == finals.end())
                 {
-                    // First time seeing this resource — start from committed state
+                    // First time seeing this resource - start from committed state
                     finals[pD3DResource] = { tex.pSurface, tex.pSurface->m_CurrentLayout };
                     it = finals.find(pD3DResource);
                 }
@@ -683,9 +683,9 @@ void CGpuTaskGraph::Reset(UINT64 fenceValue, UINT64 completedFenceValue)
     {
         if (!m_Dispatched)
         {
-            // Work CL was never dispatched — logic error in the caller's frame lifecycle.
+            // Work CL was never dispatched - logic error in the caller's frame lifecycle.
             m_pWorkCL->Close();
-            assert(false && "CGpuTaskGraph::Reset called without Dispatch — work CL was still open");
+            assert(false && "CGpuTaskGraph::Reset called without Dispatch - work CL was still open");
         }
         // Reset allocator + CL, then close. CL opened lazily before first InsertTask.
         m_pWorkAllocator->Reset();
@@ -717,3 +717,4 @@ void CGpuTaskGraph::ReleaseMemory()
 }
 
 } // namespace Canvas
+

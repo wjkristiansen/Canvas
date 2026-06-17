@@ -222,7 +222,7 @@ XCanvasElement : public XNamedElement
 };
 
 //------------------------------------------------------------------------------------------------
-// Animation clip descriptors — ABI-safe POD; no STL types.
+// Animation clip descriptors - ABI-safe POD; no STL types.
 // All pointer fields must remain valid for the duration of the AddAnimationClip call.
 // CModel copies the data into its internal storage immediately.
 //------------------------------------------------------------------------------------------------
@@ -261,7 +261,7 @@ struct AnimationClipDesc
 static constexpr uint32_t InvalidClipIndex = UINT32_MAX;
 
 //------------------------------------------------------------------------------------------------
-// XAnimationController — a behavior that drives the transforms of a subtree of scene-graph
+// XAnimationController - a behavior that drives the transforms of a subtree of scene-graph
 // nodes from baked animation clips.  It is NOT a spatial element: it does not describe a
 // node's presence in space (no bounds, no attachment).  Instead a scene-graph node holds
 // a typed reference to one via XSceneGraphNode::SetAnimationController, and the node's
@@ -270,7 +270,7 @@ static constexpr uint32_t InvalidClipIndex = UINT32_MAX;
 //
 // One controller is created per XModel::Instantiate call and holds its own playback state
 // (time, active clip, blend), while the heavy keyframe data is shared on the XModel.  This
-// makes it cheap to have many instances of one model animating independently — e.g. a
+// makes it cheap to have many instances of one model animating independently - e.g. a
 // hillside of windmills or a hallway of zombies each at a different point in the same clip.
 //
 // Supports immediate clip switching and cross-fade blending.  ResetToBindPose restores the
@@ -619,7 +619,7 @@ XMeshInstance : public XSceneGraphElement
 };
 
 //------------------------------------------------------------------------------------------------
-// Result of model instantiation — returned by XModel::Instantiate()
+// Result of model instantiation - returned by XModel::Instantiate()
 struct ModelInstantiateResult
 {
     XSceneGraphNode      *pInstanceRoot        = nullptr;   // Synthetic root of the cloned subtree
@@ -636,12 +636,12 @@ XModel : public XCanvasElement
     // Device that owns this model's GPU resources
     GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
 
-    // Node hierarchy authoring — the model's internal root node.
+    // Node hierarchy authoring - the model's internal root node.
     // Build the model by creating nodes/elements via XCanvas and
     // adding them as children of this root.
     GEMMETHOD_(XSceneGraphNode *, GetRootNode)() = 0;
 
-    // Shared GPU resource library — resources added here are kept
+    // Shared GPU resource library - resources added here are kept
     // alive by the model and shared across all instances.
     GEMMETHOD_(uint32_t, GetMeshDataCount)() = 0;
     GEMMETHOD_(XGfxMeshData *, GetMeshData)(uint32_t index) = 0;
@@ -655,17 +655,17 @@ XModel : public XCanvasElement
     GEMMETHOD_(XGfxSurface *, GetTexture)(uint32_t index) = 0;
     GEMMETHOD(AddTexture)(XGfxSurface *pTexture) = 0;
 
-    // Active camera designation — set to the node in the model's
+    // Active camera designation - set to the node in the model's
     // hierarchy that carries the "default" camera.  Instantiate()
     // will map it to the cloned counterpart in the result.
     GEMMETHOD_(void, SetActiveCameraNode)(XSceneGraphNode *pNode) = 0;
     GEMMETHOD_(XSceneGraphNode *, GetActiveCameraNode)() = 0;
 
-    // Animation clip library — clips added here are shared across all instances.
+    // Animation clip library - clips added here are shared across all instances.
     // Each clip corresponds to one FBX AnimationStack (Blender Action).
     GEMMETHOD(AddAnimationClip)(const AnimationClipDesc* pClip) = 0;
 
-    // Skin binding registration — called by BuildModel for each skinned mesh.
+    // Skin binding registration - called by BuildModel for each skinned mesh.
     // pMeshNode is the model-template node carrying the skinned XMeshInstance.
     // ppBoneNodes / pInvBindPoses are BoneCount entries (copied internally).
     // On Instantiate(), bone nodes are resolved via the clone map and
@@ -891,5 +891,6 @@ public:
 }
 
 using FnCreateCanvasPlugin = Gem::Result (*)(Canvas::XCanvasPlugin**);
+
 
 

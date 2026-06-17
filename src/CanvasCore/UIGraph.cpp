@@ -43,7 +43,7 @@ Gem::Result CUIGraph::RemoveElement(XUIElement* pElement)
     if (!pElement)
         return Gem::Result::BadPointer;
 
-    // Unbind from node — vertex allocation stays with the element
+    // Unbind from node - vertex allocation stays with the element
     XUIGraphNode* pNode = pElement->GetAttachedNode();
     if (pNode)
     {
@@ -130,3 +130,4 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
 }
 
 } // namespace Canvas
+

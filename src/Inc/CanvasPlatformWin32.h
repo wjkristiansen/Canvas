@@ -66,7 +66,7 @@ struct AppWindowDesc
 };
 
 //------------------------------------------------------------------------------------------------
-// Raw input interface — keyboard, mouse delta, buttons, and scroll.
+// Raw input interface - keyboard, mouse delta, buttons, and scroll.
 // Neither interface holds a public reference to the other; the impl-level wiring
 // is established atomically by CreatePlatformWindow.
 //------------------------------------------------------------------------------------------------
@@ -82,7 +82,7 @@ struct XRawInput : public Gem::XGeneric
     // Clears all key and button state (e.g. after an unexpected focus loss).
     GEMMETHOD_(void, ClearState)() = 0;
 
-    // Keyboard — level query (held) and edge queries (valid for one frame after Update).
+    // Keyboard - level query (held) and edge queries (valid for one frame after Update).
     GEMMETHOD_(bool, IsKeyDown)(int vk) = 0;
     GEMMETHOD_(bool, IsKeyPressed)(int vk) = 0;   // went down this frame
     GEMMETHOD_(bool, IsKeyReleased)(int vk) = 0;  // went up this frame
@@ -95,12 +95,12 @@ struct XRawInput : public Gem::XGeneric
     GEMMETHOD_(bool, IsMouseButtonPressed)(int button) = 0;
     GEMMETHOD_(bool, IsMouseButtonReleased)(int button) = 0;
 
-    // Scroll wheel — returns accumulated ticks and zeroes the counter.
+    // Scroll wheel - returns accumulated ticks and zeroes the counter.
     GEMMETHOD_(int, ConsumeScrollDelta)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-// Platform window — Win32 window lifecycle and exclusive (relative) mouse capture.
+// Platform window - Win32 window lifecycle and exclusive (relative) mouse capture.
 //------------------------------------------------------------------------------------------------
 struct XAppWindow : public Gem::XGeneric
 {
@@ -122,7 +122,7 @@ struct XAppWindow : public Gem::XGeneric
     // Exclusive (relative) mouse capture: hides the cursor, clips it to the client
     // rect, and registers raw mouse input.  Suitable for any interaction that wants
     // unbounded mouse motion (first-person cameras, orbit/pan cameras, modal drag,
-    // painting tools, etc.) — the mechanism itself is policy-free.
+    // painting tools, etc.) - the mechanism itself is policy-free.
     GEMMETHOD_(void, SetMouseCaptured)(bool captured) = 0;
     GEMMETHOD_(bool, IsMouseCaptured)() = 0;
 
@@ -141,13 +141,14 @@ struct XAppWindow : public Gem::XGeneric
 };
 
 //------------------------------------------------------------------------------------------------
-// CreatePlatformWindow — atomically creates a window and a bound raw-input object.
+// CreatePlatformWindow - atomically creates a window and a bound raw-input object.
 // The impl classes are privately wired; neither public interface exposes the other.
 // Both objects must remain alive simultaneously.
 //
-// CreateAppWindow — creates a window with no raw-input binding (e.g. UI-only tools).
+// CreateAppWindow - creates a window with no raw-input binding (e.g. UI-only tools).
 //------------------------------------------------------------------------------------------------
 Gem::Result CreatePlatformWindow(const AppWindowDesc& desc, XAppWindow** ppWindow, XRawInput** ppInput);
 Gem::Result CreateAppWindow(const AppWindowDesc& desc, XAppWindow** ppWindow);
 
 } // namespace Canvas::Platform::Win32
+

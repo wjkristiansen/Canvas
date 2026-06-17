@@ -63,7 +63,7 @@ public:
     CResourceManager() = default;
     ~CResourceManager();
 
-    // Non-copyable / non-movable — pinned by pointer from CDevice12.
+    // Non-copyable / non-movable - pinned by pointer from CDevice12.
     CResourceManager(const CResourceManager&) = delete;
     CResourceManager& operator=(const CResourceManager&) = delete;
 
@@ -95,7 +95,7 @@ public:
     //--------------------------------------------------------------------------------------------
     // Buffer pool (power-of-2 bucketed recycling for short-lived buffers).
     //
-    // Pooled allocations are buffers only — textures must use placed/committed allocation.
+    // Pooled allocations are buffers only - textures must use placed/committed allocation.
     //--------------------------------------------------------------------------------------------
 
     // Try to acquire a buffer with capacity >= sizeInBytes from the available pool.
@@ -147,8 +147,9 @@ private:
 
     std::vector<std::unique_ptr<FenceTimeline>> m_Timelines;  // indexed by TimelineId; entries may be null after Unregister
 
-    // Shared free pool — populated by Reclaim() when retired buffers complete.
+    // Shared free pool - populated by Reclaim() when retired buffers complete.
     std::vector<Canvas::GfxResourceAllocation> m_Available[kNumBuckets];
 
     std::mutex m_Mutex;
 };
+

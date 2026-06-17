@@ -17,7 +17,7 @@ void CUploadRing::Initialize(CDevice12* pDevice, uint64_t initialSize)
     m_BytesAllocatedThisFrame = 0;
     m_LastCompletedFenceValue = 0;
     m_FrameMarkers.clear();
-    // Resource creation is lazy — EnsureResource() on first allocate.
+    // Resource creation is lazy - EnsureResource() on first allocate.
 }
 
 //------------------------------------------------------------------------------------------------
@@ -237,3 +237,4 @@ void CUploadRing::GrowTo(uint64_t newSize)
     m_FrameMarkers.clear();
     EnsureResource();
 }
+

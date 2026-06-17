@@ -14,7 +14,7 @@ CResourceManager::~CResourceManager()
     // Safety net: if someone forgot to call Shutdown explicitly, clear here.
     // At this point the device is being destroyed, so every queue must already
     // have been uninitialized and drained.  Move out under the lock then drop
-    // the lock before destroying contents — CBuffer12 dtors call back into
+    // the lock before destroying contents - CBuffer12 dtors call back into
     // Free() which takes the same mutex.
     std::vector<std::unique_ptr<FenceTimeline>> timelines;
     std::vector<Canvas::GfxResourceAllocation> available[kNumBuckets];
@@ -39,7 +39,7 @@ void CResourceManager::Shutdown()
 {
     // Move state out while holding the lock, then drop the lock before the
     // destructors run.  CBuffer12::~CBuffer12 calls back into Free() which
-    // takes m_Mutex — destructing under the lock would deadlock.
+    // takes m_Mutex - destructing under the lock would deadlock.
     std::vector<std::unique_ptr<FenceTimeline>> timelines;
     std::vector<Canvas::GfxResourceAllocation> available[kNumBuckets];
     {
@@ -93,7 +93,7 @@ void CResourceManager::UnregisterTimeline(uint32_t timelineId)
         if (timelineId >= m_Timelines.size() || !m_Timelines[timelineId])
             return;
 
-        // Detach — caller guarantees the GPU is idle on this timeline.
+        // Detach - caller guarantees the GPU is idle on this timeline.
         dead = std::move(m_Timelines[timelineId]);
     }
     // dead's RetiredBuffers destruct here without the lock held (Free reentrancy safe).
@@ -119,7 +119,7 @@ void CResourceManager::Reclaim()
             const UINT64 completed = pTimeline->pFence->GetCompletedValue();
             pTimeline->CompletedValue = completed;
 
-            // Drain retired buffers — recycle into the available pool when there's room.
+            // Drain retired buffers - recycle into the available pool when there's room.
             while (!pTimeline->RetiredBuffers.empty()
                 && pTimeline->RetiredBuffers.front().Value <= completed)
             {
@@ -131,7 +131,7 @@ void CResourceManager::Reclaim()
                 pTimeline->RetiredBuffers.pop_front();
             }
 
-            // Drain deferred resources — move refs out, destruct outside the lock.
+            // Drain deferred resources - move refs out, destruct outside the lock.
             while (!pTimeline->DeferredResources.empty()
                 && pTimeline->DeferredResources.front().Value <= completed)
             {
@@ -201,13 +201,13 @@ void CResourceManager::RetireBuffer(Canvas::GfxResourceAllocation&& alloc, Fence
     uint32_t bucket = BucketIndex(capacity);
 
     if (bucket >= kNumBuckets)
-        return;  // Too large to pool — drop the ref; CBuffer12 destructor frees the allocator block.
+        return;  // Too large to pool - drop the ref; CBuffer12 destructor frees the allocator block.
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
     if (!token.IsValid() || token.TimelineId >= m_Timelines.size() || !m_Timelines[token.TimelineId])
     {
-        // No valid timeline (or timeline already torn down) — drop the buffer immediately.
+        // No valid timeline (or timeline already torn down) - drop the buffer immediately.
         // Caller is responsible for having drained the GPU before unregistering a timeline.
         return;
     }
@@ -226,7 +226,7 @@ void CResourceManager::DeferRelease(Gem::TGemPtr<Gem::XGeneric>&& pResource, Fen
 
     if (!token.IsValid() || token.TimelineId >= m_Timelines.size() || !m_Timelines[token.TimelineId])
     {
-        // No valid timeline — drop the ref immediately.  Caller is responsible
+        // No valid timeline - drop the ref immediately.  Caller is responsible
         // for draining before tearing down the timeline.
         return;
     }
@@ -242,7 +242,7 @@ Gem::Result CResourceManager::Alloc(
     ResourceAllocation& out,
     const char* name)
 {
-    // CResourceAllocator is unsynchronized (matches pre-migration behavior —
+    // CResourceAllocator is unsynchronized (matches pre-migration behavior -
     // callers must external-serialize Alloc/Free, typically on the device init
     // thread for persistent buffers).
     return m_Allocator.Alloc(desc, initialLayout, out, name);
@@ -253,3 +253,4 @@ void CResourceManager::Free(ResourceAllocation& allocation)
 {
     m_Allocator.Free(allocation);
 }
+

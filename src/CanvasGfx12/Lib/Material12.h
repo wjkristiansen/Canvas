@@ -2,7 +2,7 @@
 // Material12 - XGfxMaterial implementation for the D3D12 backend.
 //
 // Phase 3 scope: pure CPU-side property bag (textures + factors). The
-// RenderQueue does not yet read these into GPU descriptor tables — that
+// RenderQueue does not yet read these into GPU descriptor tables - that
 // plumbing is paired with the HLSL changes in Phase 4.
 //================================================================================================
 
@@ -133,3 +133,4 @@ private:
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
+

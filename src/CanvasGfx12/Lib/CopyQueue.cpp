@@ -34,7 +34,7 @@ void CCopyQueue::Initialize(CDevice12* pDevice)
         0, D3D12_COMMAND_LIST_TYPE_COPY, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&m_pCommandList))));
     SetD3D12DebugName(m_pCommandList, "CopyQueue_CommandList");
 
-    // 1 MB initial — same as the render queue's ring; grows on demand.
+    // 1 MB initial - same as the render queue's ring; grows on demand.
     m_UploadRing.Initialize(pDevice, 1 * 1024 * 1024);
 
     m_TimelineId = pDevice->GetResourceManager().RegisterTimeline(m_pFence);
@@ -233,3 +233,4 @@ std::optional<FenceToken> CCopyQueue::FlushIfPending()
 
     return token;
 }
+

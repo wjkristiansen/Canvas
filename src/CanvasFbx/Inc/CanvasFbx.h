@@ -1,5 +1,5 @@
 //================================================================================================
-// CanvasFbx — Scene importer interface
+// CanvasFbx - Scene importer interface
 //
 // Defines the data contracts returned by the importer so that consumers (e.g.
 // CanvasModelViewer) can create Canvas scene-graph objects without knowing
@@ -128,7 +128,7 @@ struct ImportedMeshPart
 //------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------
 // Skinning binding for one mesh: bone list + inverse bind-pose matrices.
-// BoneNodeIndices[i] → ImportedScene::Nodes[i] (the scene node that is the bone).
+// BoneNodeIndices[i] -> ImportedScene::Nodes[i] (the scene node that is the bone).
 // InvBindPoses[i]   transforms a vertex from mesh/geometry space into bone i's local space
 //                   at the time the skin was bound.
 // When HasSkin == false the vectors are empty and SkinVertices in each mesh part is empty.
@@ -211,15 +211,15 @@ struct ImportedNode
     Math::FloatVector4      Scale           = { 1.0f, 1.0f, 1.0f, 0.0f };
 
     // Payload binding (-1 = none)
-    int32_t                 MeshIndex       = -1;       // → ImportedScene::Meshes[i]
-    int32_t                 LightIndex      = -1;       // → ImportedScene::Lights[i]
-    int32_t                 CameraIndex     = -1;       // → ImportedScene::Cameras[i]
+    int32_t                 MeshIndex       = -1;       // -> ImportedScene::Meshes[i]
+    int32_t                 LightIndex      = -1;       // -> ImportedScene::Lights[i]
+    int32_t                 CameraIndex     = -1;       // -> ImportedScene::Cameras[i]
 };
 #pragma warning(pop)
 
 //------------------------------------------------------------------------------------------------
 // One TRS keyframe, sampled from FBX FCurves at an authored key time.
-// Rotation is always stored as a quaternion (ufbx converts Euler→quat internally).
+// Rotation is always stored as a quaternion (ufbx converts Euler->quat internally).
 //------------------------------------------------------------------------------------------------
 #pragma warning(push)
 #pragma warning(disable: 4324)
@@ -239,7 +239,7 @@ struct ImportedAnimationKeyframe
 //------------------------------------------------------------------------------------------------
 struct ImportedAnimationTrack
 {
-    int32_t                                 NodeIndex;   // → ImportedScene::Nodes
+    int32_t                                 NodeIndex;   // -> ImportedScene::Nodes
     std::vector<ImportedAnimationKeyframe>  Keyframes;   // sorted ascending by Time
 };
 
@@ -300,7 +300,7 @@ CANVASFBX_API HRESULT ImportScene(
 );
 
 //================================================================================================
-// BuildModel — convert an ImportedScene into a fully populated XModel
+// BuildModel - convert an ImportedScene into a fully populated XModel
 //
 // Creates an XModel containing GPU mesh data, materials, textures, lights,
 // cameras, and the full node hierarchy from the imported scene.  The caller
@@ -335,8 +335,8 @@ using TextureLoadFn = std::function<bool(
 //------------------------------------------------------------------------------------------------
 struct BuildModelOptions
 {
-    TextureLoadFn       TextureLoader;              // optional; null → textures are not loaded
-    const char         *pModelName      = nullptr;  // optional; name given to the XModel (nullptr → "ImportedModel")
+    TextureLoadFn       TextureLoader;              // optional; null -> textures are not loaded
+    const char         *pModelName      = nullptr;  // optional; name given to the XModel (nullptr -> "ImportedModel")
     Canvas::XLogger    *pLogger         = nullptr;  // optional; receives warnings for skipped data
 };
 
@@ -350,3 +350,4 @@ CANVASFBX_API Gem::Result BuildModel(
 
 } // namespace Fbx
 } // namespace Canvas
+

@@ -513,7 +513,7 @@ public:
     FenceToken MakeFenceToken() const { return FenceToken{ m_TimelineId, m_FenceValue }; }
 
     // Per-queue upload ring for host-write staging (UPLOAD heap).
-    // Private to this queue — only touched by this queue's thread — so its
+    // Private to this queue - only touched by this queue's thread - so its
     // fence-value markers are unambiguous bare UINT64s on this fence.
     CUploadRing m_UploadRing;
 
@@ -865,7 +865,7 @@ public:
     //
     // Tasks are GPU operations (render passes). Each has a recording function and declares
     // resource usage. InsertGpuTask resolves barriers, emits them into the work CL, and
-    // invokes the recording function — all atomically.
+    // invokes the recording function - all atomically.
     //
     // Usage:
     //   auto& task = CreateGpuTask("ShadowPass");
@@ -990,7 +990,7 @@ private:
         const Canvas::Math::AABB&         sceneBounds,
         UINT                              resolution);
     
-    // GPU Task Graphs — three graphs dispatched in order: scene → UI → present
+    // GPU Task Graphs - three graphs dispatched in order: scene -> UI -> present
     Canvas::CGpuTaskGraph m_GpuTaskGraph;        // Scene: geometry, composite
     Canvas::CGpuTaskGraph m_UIGpuTaskGraph;       // UI: text, HUD overlays
     Canvas::CGpuTaskGraph m_PresentGpuTaskGraph;  // Present: back buffer -> COMMON
@@ -1000,3 +1000,4 @@ private:
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
+

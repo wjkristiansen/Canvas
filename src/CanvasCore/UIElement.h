@@ -1,7 +1,7 @@
 //================================================================================================
 // UIElement - UI graph node implementation
 //
-// CUIGraphNodeImpl: XUIGraphNode implementation — tree structure and screen-space position
+// CUIGraphNodeImpl: XUIGraphNode implementation - tree structure and screen-space position
 //================================================================================================
 
 #pragma once
@@ -73,3 +73,4 @@ private:
 };
 
 } // namespace Canvas
+

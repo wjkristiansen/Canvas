@@ -658,7 +658,7 @@ bool CTrueTypeFont::ParseCompositeGlyph(uint32_t offset, uint32_t endOffset, Gly
         else
         {
             // Arguments are point indices (match points between parent/child);
-            // skip them — uncommon for basic Latin glyphs.
+            // skip them - uncommon for basic Latin glyphs.
             if (flags & ARG_1_AND_2_ARE_WORDS)
                 offset += 4;
             else
@@ -712,3 +712,4 @@ bool CTrueTypeFont::ParseCompositeGlyph(uint32_t offset, uint32_t endOffset, Gly
 }
 
 } // namespace Canvas
+
