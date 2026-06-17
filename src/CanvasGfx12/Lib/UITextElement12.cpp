@@ -4,6 +4,8 @@
 
 #include "pch.h"
 #include "UITextElement12.h"
+#include "Device12.h"
+#include "RenderQueue12.h"
 
 //------------------------------------------------------------------------------------------------
 void CUITextElement12::SetText(PCSTR utf8Text)
@@ -15,7 +17,7 @@ void CUITextElement12::SetText(PCSTR utf8Text)
         return;
 
     m_Text = utf8Text;
-    m_Dirty = true;
+    m_GlyphState = GlyphState::RegeneratePending;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -25,7 +27,7 @@ void CUITextElement12::SetFont(Canvas::XFont* pFont)
         return;
 
     m_pFont = pFont;
-    m_Dirty = true;
+    m_GlyphState = GlyphState::RegeneratePending;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -38,7 +40,7 @@ void CUITextElement12::SetLayoutConfig(const Canvas::TextLayoutConfig& config)
     m_Config = config;
 
     if (geometryChanged)
-        m_Dirty = true;
+        m_GlyphState = GlyphState::RegeneratePending;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -51,7 +53,7 @@ GEMMETHODIMP CUITextElement12::Detach()
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CUITextElement12::Update()
 {
-    if (!m_Dirty)
+    if (m_GlyphState != GlyphState::RegeneratePending)
         return Gem::Result::Success;
 
     return RegenerateGlyphs();
@@ -61,7 +63,7 @@ GEMMETHODIMP CUITextElement12::Update()
 Gem::Result CUITextElement12::RegenerateGlyphs()
 {
     m_CachedGlyphs.clear();
-    m_Dirty = false;
+    m_GlyphState = GlyphState::UploadPending;
 
     if (m_Text.empty())
         return Gem::Result::Success;
@@ -134,4 +136,16 @@ Gem::Result CUITextElement12::RegenerateGlyphs()
     }
 
     return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+void CUITextElement12::EnsureGlyphBufferUploaded(CDevice12 *pDevice, CRenderQueue12 *pRQ)
+{
+    if (m_GlyphState == GlyphState::UploadPending)
+    {
+        Gem::ThrowGemError(pDevice->AllocateStructuredBuffer(
+            GetGlyphCount(), sizeof(HlslTypes::HlslGlyphInstance),
+            GetGlyphData(), pRQ, m_GlyphSRV));
+        m_GlyphState = GlyphState::Ready;
+    }
 }

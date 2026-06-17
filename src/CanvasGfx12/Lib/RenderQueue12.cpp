@@ -3643,11 +3643,17 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     auto* pTextImpl = static_cast<CUITextElement12*>(static_cast<Canvas::XUITextElement*>(pElem));
                     if (pTextImpl->GetGlyphCount() > 0)
                     {
+                        pTextImpl->EnsureGlyphBufferUploaded(m_pDevice, this);
+
                         Canvas::GfxResourceAllocation glyphSRV = pTextImpl->GetGlyphBuffer();
-                        Gem::ThrowGemError(m_pDevice->AllocateStructuredBuffer(
-                            pTextImpl->GetGlyphCount(), sizeof(HlslTypes::HlslGlyphInstance),
-                            pTextImpl->GetGlyphData(), this, glyphSRV));
-                        pTextImpl->SetGlyphBuffer(glyphSRV);
+                        assert(glyphSRV.pBuffer && "text element has glyphs but no uploaded glyph buffer");
+                        if (!glyphSRV.pBuffer)
+                        {
+                            Canvas::LogError(m_pDevice->GetLogger(),
+                                "Text element has %u glyphs but no uploaded glyph buffer; skipping draw",
+                                pTextImpl->GetGlyphCount());
+                            Gem::ThrowGemError(Gem::Result::Uninitialized);
+                        }
 
                         DeferRelease(glyphSRV.pBuffer.Get());
 
