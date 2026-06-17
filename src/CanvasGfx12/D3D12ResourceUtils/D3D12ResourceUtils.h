@@ -77,7 +77,7 @@ struct SubresourceLayout
     }
 
     // Set layout for a subresource, or 0xFFFFFFFF for all subresources.
-    // Handles uniform→per-subresource expansion transparently.
+    // Handles uniform->per-subresource expansion transparently.
     // numSubresources is required when setting an individual subresource (for expansion).
     void SetLayout(UINT Subresource, D3D12_BARRIER_LAYOUT Layout, UINT numSubresources = 0)
     {
@@ -191,3 +191,4 @@ public:
         return m_CurrentLayout.GetLayout(Subresource);
     }
 };
+

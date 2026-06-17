@@ -92,7 +92,7 @@ Gem::Result CResourceAllocator::Alloc(
         uint64_t size      = allocInfo.SizeInBytes;
         uint64_t alignment = allocInfo.Alignment;
 
-        // Route: small pool → large pool → committed
+        // Route: small pool -> large pool -> committed
         if (size <= m_SmallPool.HeapSizeInBytes && alignment <= m_SmallPool.UnitSize)
         {
             out.AllocatorTier = 1;
@@ -226,7 +226,7 @@ void CResourceAllocator::Free(ResourceAllocation& allocation)
     allocation.pResource = nullptr;
 
     if (allocation.AllocationKey == 0)
-        return;     // Committed — heap freed implicitly with resource
+        return;     // Committed - heap freed implicitly with resource
 
     uint32_t blockStart, tier, sizeInUnits;
     ResourceAllocation::DecodeKey(allocation.AllocationKey, blockStart, tier, sizeInUnits);
@@ -307,3 +307,4 @@ void CResourceAllocator::SetResourceName(ID3D12Resource* pResource, const char* 
 {
     SetD3D12DebugName(pResource, name);
 }
+

@@ -64,7 +64,7 @@ CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
 CDevice12::~CDevice12()
 {
 #if defined(_DEBUG)
-    // Unregister the debug callback first — the spec guarantees this will not
+    // Unregister the debug callback first - the spec guarantees this will not
     // return until any outstanding callbacks have completed, so it is safe to
     // release the cached logger immediately afterwards.
     if (m_pInfoQueue1 && m_debugCallbackCookie != 0)
@@ -77,7 +77,7 @@ CDevice12::~CDevice12()
 #endif
 
     // Drain the copy queue and unregister its timeline before tearing down the
-    // resource manager — the copy queue defers releases through the manager's
+    // resource manager - the copy queue defers releases through the manager's
     // per-timeline queues which Shutdown() will then drain.
     m_CopyQueue.Shutdown();
 
@@ -136,7 +136,7 @@ Gem::Result CDevice12::Initialize()
 
 #if defined(_DEBUG)
         // Register a debug layer message callback so D3D12 validation messages
-        // are routed through the Canvas logger. This is best-effort — older
+        // are routed through the Canvas logger. This is best-effort - older
         // runtimes that lack ID3D12InfoQueue1 will simply skip registration.
         CComPtr<ID3D12InfoQueue1> pInfoQueue1;
         if (SUCCEEDED(m_pD3DDevice->QueryInterface(IID_PPV_ARGS(&pInfoQueue1))))
@@ -810,7 +810,7 @@ GEMMETHODIMP CDevice12::AllocateStructuredBuffer(uint32_t elementCount, uint32_t
         // Try to reuse a pooled buffer.
         if (!m_ResourceManager.AcquireBuffer(dataSize, inOut))
         {
-            // Pool miss — allocate a new buffer.  Use power-of-2 capacity for
+            // Pool miss - allocate a new buffer.  Use power-of-2 capacity for
             // poolable sizes so the buffer fits a bucket exactly when retired.
             uint64_t capacity = dataSize;
             if (CResourceManager::IsPoolableSize(dataSize))
@@ -1025,3 +1025,4 @@ GEMMETHODIMP_(void) CDevice12::SetDebugMessageSeverity(Canvas::GfxDebugSeverity 
     (void)maxSeverity;
 #endif
 }
+

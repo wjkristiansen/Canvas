@@ -84,7 +84,7 @@ float CSDFGenerator::SignedDistanceToCurve(float px, float py,
 }
 
 //------------------------------------------------------------------------------------------------
-// Winding-number contribution from a straight line segment (x0,y0)→(x2,y2).
+// Winding-number contribution from a straight line segment (x0,y0)->(x2,y2).
 // Uses a half-open y-interval to avoid double-counting shared endpoints.
 //------------------------------------------------------------------------------------------------
 static int LineWindingCrossing(float px, float py,
@@ -101,7 +101,7 @@ static int LineWindingCrossing(float px, float py,
 }
 
 //------------------------------------------------------------------------------------------------
-// Winding-number contribution from a quadratic Bezier P0→Pctrl→P2.
+// Winding-number contribution from a quadratic Bezier P0->Pctrl->P2.
 // Solves B_y(t) = py analytically (at most 2 roots), accumulates sign(B_y'(t)) at each
 // crossing where px < B_x(t).  Uses t ∈ [0,1) to avoid double-counting shared vertices.
 //------------------------------------------------------------------------------------------------
@@ -121,7 +121,7 @@ static int QuadBezierWindingCrossing(float px, float py,
 
     if (std::abs(a) < 1e-8f)
     {
-        // Degenerate (linear) — single root
+        // Degenerate (linear) - single root
         if (std::abs(b) > 1e-8f)
         {
             float t = -c0 / b;
@@ -158,8 +158,8 @@ static int QuadBezierWindingCrossing(float px, float py,
 
 //------------------------------------------------------------------------------------------------
 // Compute winding number for point-in-polygon test.
-// Decodes TrueType quadratic outlines the same way ContourMinDist does — same on-curve /
-// off-curve logic, same implicit midpoint handling — so inside/outside is correct for
+// Decodes TrueType quadratic outlines the same way ContourMinDist does - same on-curve /
+// off-curve logic, same implicit midpoint handling - so inside/outside is correct for
 // every glyph, including those with curved strokes whose control points fall outside the ink.
 //------------------------------------------------------------------------------------------------
 
@@ -253,7 +253,7 @@ void CSDFGenerator::TransformPoint(float &x, float &y,
 }
 
 //------------------------------------------------------------------------------------------------
-// Analytic minimum distance from point (px, py) to a quadratic Bezier P0→Pctrl→P2.
+// Analytic minimum distance from point (px, py) to a quadratic Bezier P0->Pctrl->P2.
 //
 // Minimises |B(t) - P|² where B(t) = (1-t)²P0 + 2t(1-t)C + t²P2.
 // Setting the derivative to zero yields a cubic in t:
@@ -315,8 +315,8 @@ static float QuadBezierMinDist(float px, float py,
 //------------------------------------------------------------------------------------------------
 // Compute minimum distance from (px, py) to all edges in one contour.
 // Handles TrueType quadratic outlines:
-//   on → on          : straight line segment
-//   on → off → on    : quadratic Bezier
+//   on -> on          : straight line segment
+//   on -> off -> on    : quadratic Bezier
 //   consecutive offs  : implicit on-curve at their midpoint splits them into two Beziers
 //------------------------------------------------------------------------------------------------
 static float ContourMinDist(float px, float py, const Canvas::GlyphContour &contour)
@@ -353,7 +353,7 @@ static float ContourMinDist(float px, float py, const Canvas::GlyphContour &cont
 
             if (offCount == 0)
             {
-                // Straight segment — inline point-to-segment distance
+                // Straight segment - inline point-to-segment distance
                 float edgeDx = ex - sx, edgeDy = ey - sy;
                 float lenSq  = edgeDx*edgeDx + edgeDy*edgeDy;
                 float d;
@@ -432,7 +432,7 @@ bool CSDFGenerator::Generate(const GlyphOutline &outline, const CTrueTypeFont &f
     outBitmap.MaxX = font.NormalizeX(outline.XMax);
     outBitmap.MaxY = font.NormalizeY(outline.YMax);
     
-    // Glyph bounds in font units (same space as contour points — do NOT normalize here)
+    // Glyph bounds in font units (same space as contour points - do NOT normalize here)
     float fXMin = outline.XMin;
     float fYMax = outline.YMax;
     float fWidth  = outline.XMax - outline.XMin;
@@ -520,3 +520,4 @@ bool CSDFGenerator::Generate(const GlyphOutline &outline, const CTrueTypeFont &f
 }
 
 } // namespace Canvas
+

@@ -7,7 +7,7 @@
 // resource usage transitions.
 //
 // Key properties:
-//   - Tasks are purely declarative — they describe resource usage, not commands
+//   - Tasks are purely declarative - they describe resource usage, not commands
 //   - Tasks CAN be recorded into separate command lists, provided the caller executes
 //     them in task creation order within the same ECL call
 //   - Dependencies must reference tasks already created in the same graph
@@ -18,7 +18,7 @@
 //   CGpuTaskGraph graph;
 //   graph.SetInitialLayout(pShadowMap, committedLayout);
 //
-//   // Shadow pass — writes shadow map
+//   // Shadow pass - writes shadow map
 //   auto& shadowPass = graph.CreateTask("ShadowMap");
 //   graph.DeclareTextureUsage(shadowPass, pShadowMap,
 //       D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
@@ -28,7 +28,7 @@
 //   EmitBarriers(pCL, barriers);
 //   RecordShadowPass(pCL);
 //
-//   // Main pass — reads shadow map, depends on shadow pass
+//   // Main pass - reads shadow map, depends on shadow pass
 //   auto& mainPass = graph.CreateTask("MainPass");
 //   graph.AddDependency(mainPass, shadowPass);
 //   graph.DeclareTextureUsage(mainPass, pShadowMap,
@@ -39,7 +39,7 @@
 //   EmitBarriers(pCL, barriers2);
 //   RecordMainPass(pCL);
 //
-//   // Finalize — update committed state
+//   // Finalize - update committed state
 //   graph.ComputeFinalLayouts();
 //   UpdateCommittedState(graph.GetFinalLayouts());
 //   graph.Reset();
@@ -88,7 +88,7 @@ struct GpuTextureUsage
 
     bool IsRead() const
     {
-        // ACCESS_COMMON (0) is a wildcard — treat as read for barrier resolution
+        // ACCESS_COMMON (0) is a wildcard - treat as read for barrier resolution
         if (Access == D3D12_BARRIER_ACCESS_COMMON)
             return true;
         return (Access & (D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
@@ -119,7 +119,7 @@ struct GpuBufferUsage
 
     bool IsRead() const
     {
-        // ACCESS_COMMON (0) is a wildcard — treat as read for barrier resolution
+        // ACCESS_COMMON (0) is a wildcard - treat as read for barrier resolution
         if (Access == D3D12_BARRIER_ACCESS_COMMON)
             return true;
         return (Access & (D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
@@ -131,7 +131,7 @@ struct GpuBufferUsage
 };
 
 //------------------------------------------------------------------------------------------------
-// Inherited resource state entry — tracks the last known sync/access/layout for a
+// Inherited resource state entry - tracks the last known sync/access/layout for a
 // specific subresource through a task's dependency chain. Keyed by (pResource, Subresource).
 // Subresource 0xFFFFFFFF means "all subresources not otherwise specified" (uniform default).
 // Table invariant: entries are kept sorted by (pResource, Subresource) ascending.
@@ -148,7 +148,7 @@ struct ResourceStateEntry
 };
 
 //------------------------------------------------------------------------------------------------
-// A single GPU task — a discrete GPU operation with declared resource usage and dependencies
+// A single GPU task - a discrete GPU operation with declared resource usage and dependencies
 //
 // Each task has a recording function that records GPU commands into the graph's work CL.
 // The graph resolves barriers and invokes the recording function atomically at insertion time.
@@ -160,19 +160,19 @@ struct CGpuTask
     std::vector<GpuTextureUsage> TextureUsages;
     std::vector<GpuBufferUsage> BufferUsages;
 
-    // Recording function — invoked synchronously by InsertTask after barriers are emitted.
+    // Recording function - invoked synchronously by InsertTask after barriers are emitted.
     // Receives the graph's work CL for command recording.
     //
     // IMPORTANT: Capture only raw pointers and plain-old-data (GPU addresses, offsets, counts).
     // Do NOT capture ref-counting smart pointers (TGemPtr, GfxResourceAllocation, etc.).
-    // The lambda is invoked inline by InsertTask — the caller's stack keeps objects alive.
+    // The lambda is invoked inline by InsertTask - the caller's stack keeps objects alive.
     // Captured TGemPtrs create hidden refs that survive in the task deque after Reset(),
     // causing resource leaks.
     //
     // May be null for transition-only tasks (e.g. PresentTransition).
     std::function<void(ID3D12GraphicsCommandList*)> RecordFunc;
 
-    // Inherited resource state table — populated by PrepareTask/InsertTask().
+    // Inherited resource state table - populated by PrepareTask/InsertTask().
     std::vector<ResourceStateEntry> ResourceStates;
 };
 
@@ -225,12 +225,12 @@ struct TaskBarriers
 // At dispatch time, fixup barriers bridge committed device state to assumed initial layouts.
 //
 // Lifecycle:
-//   1. Init(device, workAllocator, fixupAllocator) — creates owned CLs
+//   1. Init(device, workAllocator, fixupAllocator) - creates owned CLs
 //   2. For each operation:
 //      a. CreateTask() + AddDependency() + DeclareTextureUsage/DeclareBufferUsage()
 //      b. Set task.RecordFunc (optional for transition-only tasks)
-//      c. InsertTask() — resolves barriers, emits, invokes recording function
-//   3. Dispatch(committedLayouts) — closes work CL, fixup barriers, closes fixup CL
+//      c. InsertTask() - resolves barriers, emits, invokes recording function
+//   3. Dispatch(committedLayouts) - closes work CL, fixup barriers, closes fixup CL
 //   4. Caller submits [GetFixupCommandList(), GetWorkCommandList()] via ECL
 //   5. Caller updates committed state from GetFinalLayouts()
 //   6. Reset(workAlloc, fixupAlloc) for next frame
@@ -359,23 +359,23 @@ private:
     CComPtr<ID3D12GraphicsCommandList> m_pFixupCL;
     CComPtr<ID3D12GraphicsCommandList7> m_pFixupCL7;
 
-    // Command queue for ECL submission (not owned — provided at Init)
+    // Command queue for ECL submission (not owned - provided at Init)
     ID3D12CommandQueue* m_pCommandQueue = nullptr;
 
-    // Allocator pool (not owned — provided at Init, used at Reset/Dispatch)
+    // Allocator pool (not owned - provided at Init, used at Reset/Dispatch)
     CCommandAllocatorPool* m_pAllocatorPool = nullptr;
 
     // Current allocators (pulled from pools)
     CComPtr<ID3D12CommandAllocator> m_pWorkAllocator;
     CComPtr<ID3D12CommandAllocator> m_pFixupAllocator;
 
-    // Task pool — grow-only deque (references remain valid across push_back).
+    // Task pool - grow-only deque (references remain valid across push_back).
     // Reused across frames via m_TaskCount.
     std::deque<CGpuTask> m_Tasks;
     uint32_t m_TaskCount = 0;
 
     // Surfaces used by this graph (for initial/final layout tracking)
-    // Maps ID3D12Resource* → CSurface12* for committed layout access.
+    // Maps ID3D12Resource* -> CSurface12* for committed layout access.
     std::unordered_map<ID3D12Resource*, CSurface12*> m_Surfaces;
 
     // Initial assumed layouts (recorded by first-use semantics for fixup barrier computation).
@@ -433,7 +433,7 @@ private:
 };
 
 //------------------------------------------------------------------------------------------------
-// Predefined usage helpers — correct sync/access/layout for common patterns.
+// Predefined usage helpers - correct sync/access/layout for common patterns.
 // Prefer DIRECT_QUEUE-specific layouts for optimal performance on direct queues.
 //------------------------------------------------------------------------------------------------
 
@@ -493,3 +493,4 @@ inline GpuBufferUsage BufferUsageIndirectArgument(CBuffer12* p) {
 }
 
 } // namespace Canvas
+

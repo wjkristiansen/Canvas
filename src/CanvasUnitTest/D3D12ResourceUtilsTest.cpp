@@ -92,7 +92,7 @@ TEST(D3D12ResourceUtilsTest, SubresourceLayout_TryCollapse_AllMatch)
     layout.ExpandToPerSubresource(4);
     EXPECT_FALSE(layout.m_AllSame);
 
-    // All subresources are COMMON — should collapse
+    // All subresources are COMMON - should collapse
     layout.TryCollapse();
     EXPECT_TRUE(layout.m_AllSame);
     EXPECT_TRUE(layout.m_UniformLayout == D3D12_BARRIER_LAYOUT_COMMON);
@@ -105,7 +105,7 @@ TEST(D3D12ResourceUtilsTest, SubresourceLayout_TryCollapse_Mismatch)
     layout.SetLayout(2, D3D12_BARRIER_LAYOUT_COPY_SOURCE, 4);
     EXPECT_FALSE(layout.m_AllSame);
 
-    // Subresources differ — should NOT collapse
+    // Subresources differ - should NOT collapse
     layout.TryCollapse();
     EXPECT_FALSE(layout.m_AllSame);
 }
@@ -130,7 +130,7 @@ TEST(D3D12ResourceUtilsTest, CTextureResource_InitLayout)
     HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice));
     if (FAILED(hr))
     {
-        FAIL() << "No D3D12 device available — skipping hardware test";
+        FAIL() << "No D3D12 device available - skipping hardware test";
         return;
     }
 
@@ -161,3 +161,4 @@ TEST(D3D12ResourceUtilsTest, CTextureResource_InitLayout)
 }
 
 }
+

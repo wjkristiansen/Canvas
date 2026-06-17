@@ -132,7 +132,7 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pInstanceRoot, instanceName.c_str()));
         }
 
-        // Map from model node → cloned node (for parent-child wiring and active camera lookup)
+        // Map from model node -> cloned node (for parent-child wiring and active camera lookup)
         std::unordered_map<XSceneGraphNode *, Gem::TGemPtr<XSceneGraphNode>> cloneMap;
 
         // Cloned camera that corresponds to the active camera node (if any)
@@ -245,7 +245,7 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
                     continue;
                 }
 
-                // Unknown element type — warn and skip
+                // Unknown element type - warn and skip
                 Canvas::LogWarn(m_pCanvas->GetLogger(),
                     "XModel::Instantiate: unsupported element type '%s' on node '%s'; skipping",
                     pElement->GetTypeName(),
@@ -380,3 +380,4 @@ GEMMETHODIMP CModel::AddMeshSkin(const MeshSkinDesc *pDesc)
 }
 
 }
+

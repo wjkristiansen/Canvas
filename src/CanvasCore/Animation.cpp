@@ -12,7 +12,7 @@ namespace Canvas
 {
 
 //================================================================================================
-// CAnimationController — helpers
+// CAnimationController - helpers
 //================================================================================================
 
 // Spherical-linear interpolation between two unit quaternions.
@@ -178,7 +178,7 @@ void CAnimationController::BuildFromModel(
     m_BoundClips.clear();
     m_BindPose.clear();
 
-    // Build a name→cloned-node lookup from cloneMap
+    // Build a name->cloned-node lookup from cloneMap
     std::unordered_map<std::string, XSceneGraphNode*> nodeByName;
     for (const auto& kv : cloneMap)
     {
@@ -190,7 +190,7 @@ void CAnimationController::BuildFromModel(
         }
     }
 
-    // Bind pose snapshot — collect all uniquely animated nodes first
+    // Bind pose snapshot - collect all uniquely animated nodes first
     std::unordered_map<XSceneGraphNode*, bool> seenForBindPose;
 
     for (const CAnimationClip& def : clipDefs)
@@ -326,7 +326,7 @@ GEMMETHODIMP_(void) CAnimationController::ResetToBindPose()
 }
 
 //================================================================================================
-// Update — called each frame by CSceneGraphNode::Update
+// Update - called each frame by CSceneGraphNode::Update
 //================================================================================================
 
 GEMMETHODIMP CAnimationController::Update(float dtime)
@@ -372,3 +372,4 @@ GEMMETHODIMP CAnimationController::Update(float dtime)
 }
 
 } // namespace Canvas
+

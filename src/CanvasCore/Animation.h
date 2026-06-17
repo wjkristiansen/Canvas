@@ -1,5 +1,5 @@
 //================================================================================================
-// Animation — runtime clip storage and per-instance animation controller
+// Animation - runtime clip storage and per-instance animation controller
 //
 // CAnimationClip   : immutable, shared clip data stored on CModel (one per FBX AnimationStack
 //                    / Blender Action).  All instances of a model share the same clip data.
@@ -24,7 +24,7 @@ namespace Canvas
 {
 
 //================================================================================================
-// CAnimationClip — immutable clip data (shared across instances)
+// CAnimationClip - immutable clip data (shared across instances)
 //================================================================================================
 
 struct AnimNodeTrack
@@ -41,7 +41,7 @@ struct CAnimationClip
 };
 
 //================================================================================================
-// CAnimationController — per-instance evaluator
+// CAnimationController - per-instance evaluator
 //================================================================================================
 
 class CAnimationController :
@@ -186,3 +186,4 @@ public:
 };
 
 } // namespace Canvas
+

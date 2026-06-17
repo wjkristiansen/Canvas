@@ -26,17 +26,17 @@ public:
     GEMMETHOD_(bool, IsMouseButtonReleased)(int button) final;
     GEMMETHOD_(int, ConsumeScrollDelta)() final;
 
-    // Internal — called by CImpl::WindowProc when WM_INPUT arrives.  hwnd is the
+    // Internal - called by CImpl::WindowProc when WM_INPUT arrives.  hwnd is the
     // window that owns the capture; needed as the recentre target under RDP.
     void ProcessRawInput(HWND hwnd, WPARAM wParam, LPARAM lParam);
 
-    // Internal — true when running inside a Remote Desktop session.  Sampled by
+    // Internal - true when running inside a Remote Desktop session.  Sampled by
     // Update() each frame so it tracks RDP connect/disconnect transitions.  When
     // true, CAppWindow::PumpMessages must NOT issue its own per-frame warp; the
     // recentre is driven from ProcessRawInput's safe-area logic instead.
     bool IsRemoteSession() const { return m_IsRemoteSession; }
 
-    // Internal — drop the persistent RDP baseline so the next absolute sample
+    // Internal - drop the persistent RDP baseline so the next absolute sample
     // re-seeds without emitting a spurious delta.  Called on capture changes.
     void ResetRemoteBaseline() { m_HasRawPos = false; }
 
@@ -64,3 +64,4 @@ private:
 };
 
 } // namespace Canvas::Platform::Win32
+

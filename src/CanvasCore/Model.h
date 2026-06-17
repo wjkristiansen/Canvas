@@ -19,7 +19,7 @@ class CModel :
     Gem::TGemPtr<XGfxDevice> m_pDevice;
     Gem::TGemPtr<XSceneGraphNode> m_pRoot;
 
-    // Shared GPU resource libraries — kept alive by the model,
+    // Shared GPU resource libraries - kept alive by the model,
     // shared across all instantiated copies.
     std::vector<Gem::TGemPtr<XGfxMeshData>> m_MeshData;
     std::vector<Gem::TGemPtr<XGfxMaterial>> m_Materials;
@@ -102,7 +102,7 @@ public: // XModel methods
 
     GEMMETHOD(AddTexture)(XGfxSurface *pTexture) final;
 
-    // Active camera node — must be a node within this model's hierarchy.
+    // Active camera node - must be a node within this model's hierarchy.
     // Passing a node that is not a descendant of GetRootNode() is
     // undefined; a debug assertion guards against this.
     GEMMETHOD_(void, SetActiveCameraNode)(XSceneGraphNode *pNode) final
@@ -166,3 +166,4 @@ public: // XModel methods
 };
 
 }
+

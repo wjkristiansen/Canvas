@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <cstring>
 
-// Windows.h pollutes the global namespace with GetGlyphOutline → GetGlyphOutlineA/W.
+// Windows.h pollutes the global namespace with GetGlyphOutline -> GetGlyphOutlineA/W.
 // Undo it so our method name is not mangled.
 #ifdef GetGlyphOutline
 #undef GetGlyphOutline
@@ -239,3 +239,4 @@ inline float Canvas::CTrueTypeFont::NormalizeY(float fontUnits) const
 {
     return fontUnits / m_UnitsPerEm;
 }
+

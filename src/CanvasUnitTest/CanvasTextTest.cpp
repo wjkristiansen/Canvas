@@ -79,7 +79,7 @@ TEST(TextUTF8DecodeTest, PlainASCII)
 
 TEST(TextUTF8DecodeTest, SpacePreserved)
 {
-    // Space (0x20) must survive decoding – it was the root cause of the blank-screen bug
+    // Space (0x20) must survive decoding - it was the root cause of the blank-screen bug
     std::vector<uint32_t> codepoints;
     EXPECT_TRUE(Succeeded(CTextLayout::DecodeUtf8("A B", codepoints)));
     EXPECT_EQ((size_t)3, codepoints.size());
@@ -116,7 +116,7 @@ TEST(TextUTF8DecodeTest, ThreeByteUTF8)
 
 TEST(TextUTF8DecodeTest, MixedASCIIAndMultibyte)
 {
-    // "Hi" + U+00E9 + "!" → 4 codepoints
+    // "Hi" + U+00E9 + "!" -> 4 codepoints
     const char utf8[] = { 'H', 'i', '\xC3', '\xA9', '!', '\0' };
     std::vector<uint32_t> codepoints;
     EXPECT_TRUE(Succeeded(CTextLayout::DecodeUtf8(utf8, codepoints)));
@@ -159,7 +159,7 @@ TEST(TextLayoutGlyphTest, NormalGlyphProduces6Vertices)
 
 TEST(TextLayoutGlyphTest, ZeroSizeGlyphProducesNoVertices)
 {
-    // BitmapWidth/Height == 0 → whitespace glyph, no quad should be emitted
+    // BitmapWidth/Height == 0 -> whitespace glyph, no quad should be emitted
     GlyphAtlasEntry entry = MakeEntry(0.0f, 0.0f);
     Math::FloatVector3 pos(0.0f, 0.0f, 0.0f);
     std::vector<TextVertex> verts;
@@ -282,7 +282,7 @@ TEST(TextRectanglePackerTest, OverflowReturnsFalse)
     CRectanglePacker packer(64, 64);
     CRectanglePacker::Rect r;
     EXPECT_TRUE(packer.Allocate(64, 64, r));
-    // Atlas is full — next allocation must fail
+    // Atlas is full - next allocation must fail
     EXPECT_FALSE(packer.Allocate(1, 1, r)) << "Allocation must fail when atlas is full";
 }
 
@@ -469,3 +469,4 @@ TEST(TextFontLoadTest, NormalizeXDividesUnitsPerEm)
 }
 
 } // namespace CanvasUnitTest
+

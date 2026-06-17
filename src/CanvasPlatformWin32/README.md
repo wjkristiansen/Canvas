@@ -100,11 +100,11 @@ Changing the window size - whether via `SetWindowSize`, entering or leaving full
 | Query                       | Meaning                                                          |
 |-----------------------------|------------------------------------------------------------------|
 | `IsKeyDown(vk)`             | Key is currently held.                                           |
-| `IsKeyPressed(vk)`          | Key transitioned up → down since the previous `Update`.          |
-| `IsKeyReleased(vk)`         | Key transitioned down → up since the previous `Update`.          |
+| `IsKeyPressed(vk)`          | Key transitioned up -> down since the previous `Update`.         |
+| `IsKeyReleased(vk)`         | Key transitioned down -> up since the previous `Update`.         |
 | `IsMouseButtonDown(b)`      | Button is currently held (`b` is 0=L, 1=R, 2=M, 3=X1, 4=X2).     |
-| `IsMouseButtonPressed(b)`   | Button transitioned up → down since the previous `Update`.       |
-| `IsMouseButtonReleased(b)`  | Button transitioned down → up since the previous `Update`.       |
+| `IsMouseButtonPressed(b)`   | Button transitioned up -> down since the previous `Update`.      |
+| `IsMouseButtonReleased(b)`  | Button transitioned down -> up since the previous `Update`.      |
 | `GetMouseDelta(dx, dy)`     | Accumulated mouse motion in pixels since the previous `Update`.  |
 | `ConsumeScrollDelta()`      | Accumulated wheel ticks; reads and zeroes in one call.           |
 
@@ -228,3 +228,4 @@ if (Gem::Succeeded(LoadImageData(L"assets/diffuse.png",
 ```
 
 Consumers in this repository include [`CanvasModelViewer`](../CanvasModelViewer) and [`CanvasTerrainViewer`](../CanvasTerrainViewer).
+

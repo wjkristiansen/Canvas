@@ -104,16 +104,16 @@ public:
 
     // Flush any pending upload work on the device's copy queue and return the
     // FenceToken consumers must Wait() on before reading the destinations.
-    // Returns nullopt when no upload work is pending — the fast path on every
+    // Returns nullopt when no upload work is pending - the fast path on every
     // frame after the first.
     std::optional<FenceToken> EnsureUploadsRetired() { return m_CopyQueue.FlushIfPending(); }
 
-    // Vertex buffer suballocation (XGfxDevice interface — alloc + upload)
+    // Vertex buffer suballocation (XGfxDevice interface - alloc + upload)
     GEMMETHOD(AllocateStructuredBuffer)(uint32_t elementCount, uint32_t elementStride, const void* pInitialData, Canvas::XGfxRenderQueue* pRQ, Canvas::GfxResourceAllocation& inOut) final;
 
     GEMMETHOD(FlushUploads)() final;
 
-    // Texture upload (XGfxDevice interface — copy queue staging)
+    // Texture upload (XGfxDevice interface - copy queue staging)
     GEMMETHOD(UploadTextureRegion)(
         Canvas::XGfxSurface *pDstSurface,
         uint32_t subresourceIndex,
@@ -206,3 +206,4 @@ private:
     Canvas::CGlyphCache m_GlyphCache;
     Gem::TGemPtr<Canvas::XGfxSurface> m_pGlyphAtlasSurface;
 };
+

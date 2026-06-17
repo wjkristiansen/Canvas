@@ -940,7 +940,7 @@ void ImportAnimationClips(
     _In_ const std::unordered_map<const ufbx_node*, int32_t>& nodeMap,
     _Inout_ ImportedScene* pScene)
 {
-    // Pass 1 — group stacks by action name and create one ImportedAnimationClip per action.
+    // Pass 1 - group stacks by action name and create one ImportedAnimationClip per action.
     std::unordered_map<std::string, size_t> clipIndexByAction;
 
     AddDiag(pScene, DiagLevel::Info,
@@ -963,7 +963,7 @@ void ImportAnimationClips(
         }
     }
 
-    // Pass 2 — bake each stack and append its tracks to the matching clip.
+    // Pass 2 - bake each stack and append its tracks to the matching clip.
     for (size_t si = 0; si < pLoaded->anim_stacks.count; ++si)
     {
         const ufbx_anim_stack* pStack = pLoaded->anim_stacks.data[si];
@@ -1330,14 +1330,14 @@ HRESULT ImportScene(
 
     (void)options;
     *pScene = {};
-    pScene->Diagnostics.push_back({ DiagLevel::Error, "CanvasFbx built without ufbx — import unavailable" });
+    pScene->Diagnostics.push_back({ DiagLevel::Error, "CanvasFbx built without ufbx - import unavailable" });
     return E_NOTIMPL;
 }
 
 #endif
 
 //================================================================================================
-// BuildModel — convert an ImportedScene into a fully populated XModel
+// BuildModel - convert an ImportedScene into a fully populated XModel
 //================================================================================================
 
 Gem::Result BuildModel(
@@ -1478,7 +1478,7 @@ Gem::Result BuildModel(
                 group.pMaterial = materials[static_cast<size_t>(part.MaterialIndex)].Get();
             }
 
-            // Bone weight streams — convert uint8 indices to uint32 for GPU upload
+            // Bone weight streams - convert uint8 indices to uint32 for GPU upload
             allBoneIndices.emplace_back();
             allBoneWeights.emplace_back();
             if (srcMesh.Skin.HasSkin && part.SkinVertices.size() == vertexCount)
@@ -1683,7 +1683,7 @@ Gem::Result BuildModel(
         }
     }
 
-    // Register skin bindings — now that all nodes exist, resolve bone node ptrs and
+    // Register skin bindings - now that all nodes exist, resolve bone node ptrs and
     // register each skinned mesh's skin descriptor with the model so Instantiate()
     // can wire up cloned bone nodes at runtime.
     for (size_t meshIndex = 0; meshIndex < scene.Meshes.size(); ++meshIndex)
@@ -1727,7 +1727,7 @@ Gem::Result BuildModel(
         // so the rest global matrix is the bind matrix.
         //
         // InvBind[i] = G_mesh_canvas * inverse(G_bone_canvas_bindpose)
-        // → at bind pose: InvBind[i] * G_bone_canvas = G_mesh_canvas ✓
+        // -> at bind pose: InvBind[i] * G_bone_canvas = G_mesh_canvas ✓
         //
         // (Using the FBX cluster geometry_to_bone directly was tried and broke the static
         // pose: it is authored in a frame that does not match Canvas node-world space.)
@@ -1806,3 +1806,4 @@ Gem::Result BuildModel(
 
 } // namespace Fbx
 } // namespace Canvas
+

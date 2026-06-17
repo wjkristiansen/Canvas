@@ -365,18 +365,18 @@ The shared heap is split into two regions managed by different allocators:
 
 | Region | Slots | Allocator | Lifetime |
 |---|---|---|---|
-| Persistent | `[0, 32768)` | `CDescriptorHeapAllocator` (free-list) | Per-resource — freed when the resource is destroyed |
-| Transient | `[32768, 65536)` | `CDescriptorRing` (per queue) | Per-frame — recycled once the GPU retires the frame |
+| Persistent | `[0, 32768)` | `CDescriptorHeapAllocator` (free-list) | Per-resource - freed when the resource is destroyed |
+| Transient | `[32768, 65536)` | `CDescriptorRing` (per queue) | Per-frame - recycled once the GPU retires the frame |
 
 The split is a tunable constant (`CDevice12::kNumPersistentSrvDescriptors`).
 
-**Persistent region** (`CDescriptorHeapAllocator`): size-segregated free lists (one per block size) plus a bump pointer, giving O(1) allocate/free with exact-fit reuse and no rounding waste. It hands out contiguous slot runs which live until explicitly freed, and is the home for descriptors that are created once and bound by GPU handle every draw — vertex-stream and material-texture SRVs that scale with the number of *live resources*, not draw calls.
+**Persistent region** (`CDescriptorHeapAllocator`): size-segregated free lists (one per block size) plus a bump pointer, giving O(1) allocate/free with exact-fit reuse and no rounding waste. It hands out contiguous slot runs which live until explicitly freed, and is the home for descriptors that are created once and bound by GPU handle every draw - vertex-stream and material-texture SRVs that scale with the number of *live resources*, not draw calls.
 
 **Transient region** (`CDescriptorRing`): a fence-protected ring for dynamic per-draw / per-frame descriptors. Slots are handed out as contiguous runs and advance through the region as a ring; a slot is not reused until the GPU work that referenced it has retired. The ring records a per-submission `{fenceValue, slotCount}` marker each frame (`MarkSubmissionEnd` in `Flush`) and releases completed submissions in `ProcessCompletedWork` (`Reclaim`), mirroring `CUploadRing`. The RTV and DSV heaps are each managed by their own `CDescriptorRing` over the whole per-queue heap (base slot 0); the SRV ring is given a base offset so it manages only the transient partition of the shared heap.
 
 When wrap-around would overwrite a slot still referenced by in-flight GPU work, the ring blocks on this queue's fence and reclaims completed submissions before reusing those slots, so a descriptor in flight can never be overwritten. Because a descriptor heap cannot be resized, a single frame that demands more transient slots than the partition holds cannot be satisfied and raises `OutOfMemory` rather than silently corrupting in-flight descriptors.
 
-The transient partition is owned by a **single render queue**, claimed via `CDevice12::AcquireTransientSrvRange` when the queue is created and released at teardown. A GPU has one rendering engine, so there is never a second render queue in practice; creating one on the same device fails fast (`Gem::Result::Unavailable`) rather than letting two rings hand out overlapping slots. Future compute queues (physics, work graphs) are expected to address resources through the persistent region or root descriptors, not this transient ring — sharing it could let a long-running compute submission stall rendering or create a render/compute fence lock inversion.
+The transient partition is owned by a **single render queue**, claimed via `CDevice12::AcquireTransientSrvRange` when the queue is created and released at teardown. A GPU has one rendering engine, so there is never a second render queue in practice; creating one on the same device fails fast (`Gem::Result::Unavailable`) rather than letting two rings hand out overlapping slots. Future compute queues (physics, work graphs) are expected to address resources through the persistent region or root descriptors, not this transient ring - sharing it could let a long-running compute submission stall rendering or create a render/compute fence lock inversion.
 
 > Migration in progress: per-resource residency (moving mesh vertex-stream and material-texture SRVs into the persistent region, and the per-object constant buffer to a root CBV) is being wired up. Until it lands, the geometry path still allocates its per-draw descriptor table from the transient ring, so the transient `OutOfMemory` ceiling above still bounds draws per frame. Persistent residency removes that ceiling because geometry stops consuming transient slots entirely.
 
@@ -397,8 +397,8 @@ All PSOs are created lazily on first use and cached for the lifetime of the rend
 - Slot 0: root CBV at b0 for per-frame constants (camera, light count, tile-grid dimensions, shadow atlas parameters, sky/background parameters).
 - Slot 1: descriptor table with SRV[8] at t0-t7: G-buffer (normals t0, diffuse t1, world position t2), optional skybox cube A (t3), optional skybox cube B (t4), optional stars cube (t5), optional moon billboard texture (t6), optional shadow atlas (t7). Unbound slots hold null SRVs; shader flags select active branches.
 - Slot 2: root SRV at t8 for `StructuredBuffer<HlslLight>` (the per-frame light table, sized to `PerFrame.LightCount`). Always bound; a one-element dummy is uploaded when no lights are visible so the slot is never null.
-- Slot 3: root SRV at t9 for `StructuredBuffer<uint>` — per-tile active light count (one uint per screen tile in row-major order).
-- Slot 4: root SRV at t10 for `StructuredBuffer<uint>` — packed per-tile light indices, `MAX_LIGHTS_PER_TILE` uints per tile (fixed stride). Indexed as `tile * MAX_LIGHTS_PER_TILE + i` for `i < TileLightCounts[tile]`. Both tile buffers are rebuilt by `BuildTileLightLists` each frame and uploaded into the ring; a one-element dummy is bound when the framebuffer has no tiles.
+- Slot 3: root SRV at t9 for `StructuredBuffer<uint>` - per-tile active light count (one uint per screen tile in row-major order).
+- Slot 4: root SRV at t10 for `StructuredBuffer<uint>` - packed per-tile light indices, `MAX_LIGHTS_PER_TILE` uints per tile (fixed stride). Indexed as `tile * MAX_LIGHTS_PER_TILE + i` for `i < TileLightCounts[tile]`. Both tile buffers are rebuilt by `BuildTileLightLists` each frame and uploaded into the ring; a one-element dummy is bound when the framebuffer has no tiles.
 - Static samplers: s0 = point/clamp (G-buffer texel fetch), s1 = linear/wrap (cubemap / stars sampling), s2 = linear/clamp (moon billboard), s3 = hardware PCF comparison sampler (GREATER_EQUAL reverse-Z, OPAQUE_WHITE border for shadow atlas).
 - Single render target at back-buffer format. No depth.
 
@@ -412,7 +412,7 @@ All PSOs are created lazily on first use and cached for the lifetime of the rend
 
 **Rect pass**:
 - Slot 0: root CBV at b0 for `HlslRectConstants` (screen size, element offset, rect size, fill color).
-- No vertex buffer — the vertex shader derives the quad from `SV_VertexID` and the constants.
+- No vertex buffer - the vertex shader derives the quad from `SV_VertexID` and the constants.
 - Alpha blending: `SRC_ALPHA / INV_SRC_ALPHA`.
 
 ### G-Buffer
@@ -444,7 +444,7 @@ Positions are bound as a root SRV at t0 by GPU virtual address. Remaining vertex
 
 ### Displaced Mesh Drawing (Tessellation Path)
 
-When a mesh instance has a material with a `GfxDisplacementDesc` attached (`XGfxMaterial::SetDisplacement`) and the mesh uses `PatchList4CP` topology, the render queue routes it through the displaced-mesh pipeline instead of the standard geometry PSO. This path uses a VS+HS+DS+PS quad-patch pipeline; the VS reads per-CP positions, UVs, and base normals from `StructuredBuffer<float4>`/`StructuredBuffer<float2>`/`StructuredBuffer<float4>` SRVs (t4 / t5 / t6) backed by the mesh's own vertex buffers — no IA bindings.
+When a mesh instance has a material with a `GfxDisplacementDesc` attached (`XGfxMaterial::SetDisplacement`) and the mesh uses `PatchList4CP` topology, the render queue routes it through the displaced-mesh pipeline instead of the standard geometry PSO. This path uses a VS+HS+DS+PS quad-patch pipeline; the VS reads per-CP positions, UVs, and base normals from `StructuredBuffer<float4>`/`StructuredBuffer<float2>`/`StructuredBuffer<float4>` SRVs (t4 / t5 / t6) backed by the mesh's own vertex buffers - no IA bindings.
 
 The displaced PSO root signature:
 - Slot 0: root CBV at b0 for per-frame constants.
@@ -456,27 +456,27 @@ The displaced PSO root signature:
 
 `HlslDisplacedConstants` is uploaded to the upload ring once per displaced draw. The displacement-map surface must be in `LAYOUT_SHADER_RESOURCE` before the draw (use `XGfxRenderQueue::FinalizeUploadAsShaderResource` after the initial texture upload).
 
-The per-draw world tile rect for shadow / cull aggregation is derived by the engine from the mesh's `XGfxMeshData::GetLocalBounds` plus the owning node's world translation — `GfxDisplacementDesc` carries no world or geometry fields. The CP positions in the mesh's vertex buffer are interpreted in mesh-local space; the per-tile CB's `World` matrix transforms positions (and rotates normals) to world space in the VS. CP UVs are pre-baked in D3D texture-UV space pointing into whatever sub-rect of the bound displacement map the mesh samples (meshes sharing a single displacement map carry per-mesh UV sub-rects this way). CP normals are the world-space directions along which the displacement offsets each CP; supply `(0, 0, 1, 0)` for a classic flat XY-plane heightfield.
+The per-draw world tile rect for shadow / cull aggregation is derived by the engine from the mesh's `XGfxMeshData::GetLocalBounds` plus the owning node's world translation - `GfxDisplacementDesc` carries no world or geometry fields. The CP positions in the mesh's vertex buffer are interpreted in mesh-local space; the per-tile CB's `World` matrix transforms positions (and rotates normals) to world space in the VS. CP UVs are pre-baked in D3D texture-UV space pointing into whatever sub-rect of the bound displacement map the mesh samples (meshes sharing a single displacement map carry per-mesh UV sub-rects this way). CP normals are the world-space directions along which the displacement offsets each CP; supply `(0, 0, 1, 0)` for a classic flat XY-plane heightfield.
 
-The HS computes per-edge tessellation factors using a distance × curvature LOD scheme: the distance term is proportional to `edgeWorldLength / distToMidpoint`, and the curvature term samples a coarse mip of the displacement map for the Laplacian second derivative. The DS bilerps the patch CPs' base positions, UVs, and normals at the output vertex, samples the displacement map for a world-unit scalar, and emits `basePos + sample * baseNormal` as the displaced world position. Per-vertex normals come from the patch's tangent basis (CP0→CP1 spans U, CP0→CP3 spans V) and the displacement-map gradient — the formulation collapses to the classic Z-only "heightfield" result when all CP normals point +Z and the patch sits in the XY plane. The PS samples the material atlases and writes the standard G-buffer layout, so the deferred lighting and composition passes are unchanged.
+The HS computes per-edge tessellation factors using a distance * curvature LOD scheme: the distance term is proportional to `edgeWorldLength / distToMidpoint`, and the curvature term samples a coarse mip of the displacement map for the Laplacian second derivative. The DS bilerps the patch CPs' base positions, UVs, and normals at the output vertex, samples the displacement map for a world-unit scalar, and emits `basePos + sample * baseNormal` as the displaced world position. Per-vertex normals come from the patch's tangent basis (CP0->CP1 spans U, CP0->CP3 spans V) and the displacement-map gradient - the formulation collapses to the classic Z-only "heightfield" result when all CP normals point +Z and the patch sits in the XY plane. The PS samples the material atlases and writes the standard G-buffer layout, so the deferred lighting and composition passes are unchanged.
 
 The displaced shadow PSO shares the VS and HS bytecode (ensuring shadow tessellation matches the scene LOD to prevent Peter Panning) and pairs them with `DSDisplacedShadow`, which writes only `SV_Position` from a `HlslShadowConstants` matrix with no pixel shader.
 
 ### Light Submission
 
-Lights are accumulated during scene graph traversal (gated by the LightBVH-driven visibility filter that `XScene::SubmitRenderables` installs via `XGfxRenderQueue::SetVisibleLights`). Each light's attenuation and cull distance are pre-computed on the CPU and packed into an `HlslLight` struct. The packed lights are uploaded each frame as a `StructuredBuffer<HlslLight>` (bound at root slot 2 / shader register `t8`), sized to the actual visible-light count — no fixed cap; the count scales with scene complexity the same way mesh-instance count does.
+Lights are accumulated during scene graph traversal (gated by the LightBVH-driven visibility filter that `XScene::SubmitRenderables` installs via `XGfxRenderQueue::SetVisibleLights`). Each light's attenuation and cull distance are pre-computed on the CPU and packed into an `HlslLight` struct. The packed lights are uploaded each frame as a `StructuredBuffer<HlslLight>` (bound at root slot 2 / shader register `t8`), sized to the actual visible-light count - no fixed cap; the count scales with scene complexity the same way mesh-instance count does.
 
-After SubmitLight aggregation and `ResolveShadowCasters`, `BuildTileLightLists` divides the framebuffer into `LIGHT_TILE_SIZE_PIXELS` × `LIGHT_TILE_SIZE_PIXELS` (32×32) screen tiles, constructs each tile's sub-frustum by remapping the camera view-projection to the tile's NDC sub-rect, and bins each spatial light's influence AABB against it. Always-on lights (ambient / directional) are pre-baked into every tile's list. The resulting per-tile counts and packed indices are uploaded as two `StructuredBuffer<uint>`s (root slots 3 / 4 at `t9` / `t10`) capped at `MAX_LIGHTS_PER_TILE` (32) per tile. The composite shader picks the owning tile from `SV_Position`, reads its count, and iterates only those light indices — turning the per-pixel cost from O(visible lights) into O(tile lights).
+After SubmitLight aggregation and `ResolveShadowCasters`, `BuildTileLightLists` divides the framebuffer into `LIGHT_TILE_SIZE_PIXELS` * `LIGHT_TILE_SIZE_PIXELS` (32x32) screen tiles, constructs each tile's sub-frustum by remapping the camera view-projection to the tile's NDC sub-rect, and bins each spatial light's influence AABB against it. Always-on lights (ambient / directional) are pre-baked into every tile's list. The resulting per-tile counts and packed indices are uploaded as two `StructuredBuffer<uint>`s (root slots 3 / 4 at `t9` / `t10`) capped at `MAX_LIGHTS_PER_TILE` (32) per tile. The composite shader picks the owning tile from `SV_Position`, reads its count, and iterates only those light indices - turning the per-pixel cost from O(visible lights) into O(tile lights).
 
 For directional lights with `LightFlags::CastsShadows`, `SubmitLight` additionally:
 
-1. Lazily allocates the shadow atlas (one `D32_Float` surface with both `DepthStencil` and `ShaderResource` usage, 4096 px per side, divided into a fixed 2×2 grid of 2048² tiles — up to four shadow casters per frame).
+1. Lazily allocates the shadow atlas (one `D32_Float` surface with both `DepthStencil` and `ShaderResource` usage, 4096 px per side, divided into a fixed 2x2 grid of 2048^2 tiles - up to four shadow casters per frame).
 2. Picks the next free atlas tile.
 3. Builds a texel-snapped, reverse-Z orthographic `world -> shadow-clip` matrix via `BuildDirectionalShadowMatrix`, centring the frustum on the active camera so receivers near the viewer fall into the high-resolution slab. Snapping the focus point to the atlas texel grid removes shimmer when the camera moves.
 4. Writes `ShadowAtlasRectUV`, `ShadowViewProj`, `ShadowFlags`, `ShadowDepthBias`, and `ShadowNormalOffsetTexels` into the light's `HlslLight` entry so the composite can sample without additional CPU plumbing.
 5. Queues a `PendingShadowCaster` record for `EndFrame` to drain.
 
-`EndFrame` then inserts one `ShadowPass_Displaced` `GpuTask` per (shadow caster × ready displaced tile), each declaring DSV-write usage on the atlas and SRV-read usage on the displacement map. The first task into a tile clears it with a scissor-restricted `ClearDepthStencilView(0.0f)` (reverse-Z far plane); subsequent tasks accumulate depth. The composite task downstream declares SRV usage on the atlas, so the `DEPTH_STENCIL_WRITE -> SHADER_RESOURCE` transition is emitted automatically by the task graph.
+`EndFrame` then inserts one `ShadowPass_Displaced` `GpuTask` per (shadow caster * ready displaced tile), each declaring DSV-write usage on the atlas and SRV-read usage on the displacement map. The first task into a tile clears it with a scissor-restricted `ClearDepthStencilView(0.0f)` (reverse-Z far plane); subsequent tasks accumulate depth. The composite task downstream declares SRV usage on the atlas, so the `DEPTH_STENCIL_WRITE -> SHADER_RESOURCE` transition is emitted automatically by the task graph.
 
 The shadow pass uses a dedicated depth-only PSO (`m_pDisplacedShadowPSO`) that reuses the existing `VSDisplaced` + `HSDisplaced` bytecode (so shadow tessellation tracks the camera and matches receiver LOD, preventing Peter Panning) and pairs them with `DSDisplacedShadow` (writes only `SV_Position` from a `b2` `HlslShadowConstants` matrix) with no pixel shader. Conservative caster-side `DepthBias` + `SlopeScaledDepthBias` are baked into the PSO; per-light caster bias values from `XLight::SetShadowDepthBias` are not honoured in v1 (only the receiver-side constant + normal-offset terms vary per light).
 
@@ -502,7 +502,7 @@ For pixels with no geometry, the composition shader falls back to the scene back
 
 - **Solid color fallback**: when no skybox is bound, the scene fills empty pixels with `SolidColor`. This is the default for newly created scenes (opaque black).
 - **Skybox cubemap**: when `pSkyboxCubemapA` is set, empty pixels are filled by sampling the cubemap in the world-space view direction, rotated by the inverse of `Orientation`. `Intensity` is a linear multiplier on the sample.
-- **Cubemap crossfade**: when both `pSkyboxCubemapA` and `pSkyboxCubemapB` are set, the result is `lerp(A, B, BlendFactor)`, enabling smooth transitions between authored sky presets (day → dusk → night) without per-frame CPU rebaking.
+- **Cubemap crossfade**: when both `pSkyboxCubemapA` and `pSkyboxCubemapB` are set, the result is `lerp(A, B, BlendFactor)`, enabling smooth transitions between authored sky presets (day -> dusk -> night) without per-frame CPU rebaking.
 - **Stars cubemap**: an optional RGBA cubemap (`pStarsCubemap`) is additively blended over the skybox, rotated independently by `StarsOrientation`. The lower hemisphere (view direction z < 0) is clipped so stars never appear below the ground. Apps drive sidereal motion by updating `StarsOrientation` each frame.
 - **Procedural sun disc**: rendered as a soft-edged disc in the composite shader, driven by `SunDirection` (the same unit vector the app uses for the sun's directional light, keeping a single source of truth for the sun's position). Enabled when `SunColor.a > 0`.
 - **Moon billboard**: an optional 2D texture (`pMoonTexture`) rendered as a billboard centred on `MoonDirection` within an angular disc of radius `MoonAngularRadius`. Both celestial bodies are naturally clipped below the horizon.
@@ -511,10 +511,10 @@ All background parameters are packed into `HlslPerFrameConstants` and uploaded o
 
 Shadow sampling lives in this same loop. The directional-light branch calls `SampleDirectionalShadow(light, P, N)` whenever `light.ShadowFlags & SHADOW_FLAG_HAS_SHADOW` is set. The helper:
 
-1. Pushes `P` along `N` by `ShadowNormalOffsetTexels` (in shadow-atlas texels, converted to world meters via `ShadowPcfTexelStep / tileUvWidth`) — combats grazing-angle acne that pure depth bias cannot remove.
+1. Pushes `P` along `N` by `ShadowNormalOffsetTexels` (in shadow-atlas texels, converted to world meters via `ShadowPcfTexelStep / tileUvWidth`) - combats grazing-angle acne that pure depth bias cannot remove.
 2. Projects the biased position through `light.ShadowViewProj` and remaps NDC.xy into atlas UV via `light.ShadowAtlasRectUV`.
 3. Adds `ShadowDepthBias` to the projected NDC z (receiver-side bias in reverse-Z space).
-4. Does a 2×2 hardware PCF lookup with a `SamplerComparisonState` (s3) configured `GREATER_EQUAL` (reverse-Z) and `D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE` so receivers outside the shadow frustum read as fully lit.
+4. Does a 2x2 hardware PCF lookup with a `SamplerComparisonState` (s3) configured `GREATER_EQUAL` (reverse-Z) and `D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE` so receivers outside the shadow frustum read as fully lit.
 
 The shadow atlas itself is bound at `t7`. When no shadow casters exist in a frame, a null SRV is bound there and every light's `ShadowFlags == 0`, so the PCF path is short-circuited.
 
@@ -703,7 +703,7 @@ Text rendering spans CanvasText, CanvasCore, and CanvasGfx12.
 
 **CanvasCore** provides `CTextLayout` for standalone text measurement and layout, and `CFont` which wraps the CanvasText `CTrueTypeFont` behind the `XFont` GEM interface.
 
-**CanvasGfx12** owns the glyph cache instance (`CGlyphCache` is a member of `CDevice12`) and the concrete UI element implementations. `CUITextElement12` generates a compact `HlslGlyphInstance` array (32 bytes per glyph) during `Update()`, which the render queue uploads to a structured buffer and the vertex shader expands to quads on the GPU. `CUIRectElement12` carries only size and color — geometry is derived entirely on the GPU from per-draw constants.
+**CanvasGfx12** owns the glyph cache instance (`CGlyphCache` is a member of `CDevice12`) and the concrete UI element implementations. `CUITextElement12` generates a compact `HlslGlyphInstance` array (32 bytes per glyph) during `Update()`, which the render queue uploads to a structured buffer and the vertex shader expands to quads on the GPU. `CUIRectElement12` carries only size and color - geometry is derived entirely on the GPU from per-draw constants.
 
 UI elements are created exclusively via `XGfxDevice::CreateTextElement` and `XGfxDevice::CreateRectElement`. Each element has a local 2D offset relative to its parent `XUIGraphNode`. The glyph atlas surface is lazily created by `CDevice12::GetGlyphAtlasSurface`. Pending glyph uploads are flushed during `EndFrame` before UI drawing begins.
 
@@ -719,7 +719,7 @@ During `Update`, the scene graph marks dirty transforms and propagates them down
 
 ### UI Graph
 
-`XUIGraph` is a 2D overlay graph with position inheritance and dirty-tracked update. Each `XUIGraphNode` can have one or more bound `XUIElement` instances — text elements, rect elements, or a mix. Each element carries a signed 2D offset relative to its parent node.
+`XUIGraph` is a 2D overlay graph with position inheritance and dirty-tracked update. Each `XUIGraphNode` can have one or more bound `XUIElement` instances - text elements, rect elements, or a mix. Each element carries a signed 2D offset relative to its parent node.
 
 Text elements (`CUITextElement12`) regenerate glyph instance buffers via `Update()` when dirty. The render queue allocates a structured buffer and uploads the glyph data at draw time. Rect elements (`CUIRectElement12`) carry size and color properties that are passed directly to the GPU as per-draw constants, requiring no buffer. Both element types are created via `XGfxDevice::CreateTextElement` and `XGfxDevice::CreateRectElement`.
 
@@ -802,3 +802,4 @@ CanvasGfx12 is under active development. The architecture is intended to support
 - Alternative graphics backends leveraging the same CanvasCore interfaces.
 
 None of these are committed plans. They represent directions the current design leaves room for.
+

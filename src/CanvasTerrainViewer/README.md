@@ -320,7 +320,7 @@ Shipped (v1):
   `SetDirectionalShadowExtent(256 m, 1024 m)`, and the default bias
   triple (`SetShadowDepthBias(1e-4, 2.0, 0.5 texels)`).
 - The backend's shadow atlas is a single `D32_Float` surface (DSV +
-  SRV) divided into a fixed 2×2 grid of 2048² tiles -- room for up
+  SRV) divided into a fixed 2x2 grid of 2048^2 tiles -- room for up
   to four directional shadow casters per frame.  See
   `src/CanvasGfx12/README.md` "Light Submission" + "Composition" for
   the engine-side flow (atlas allocation, depth-only displaced PSO,
@@ -331,7 +331,7 @@ Shipped (v1):
   receiver-side constant bias + world-space normal-offset apply at
   composite sample time and are tunable per light via
   `XLight::SetShadowDepthBias`.
-- 2×2 hardware PCF via a `SamplerComparisonState` (s3) configured
+- 2x2 hardware PCF via a `SamplerComparisonState` (s3) configured
   `GREATER_EQUAL` (reverse-Z) and `OPAQUE_WHITE` border so receivers
   outside the shadow frustum read as fully lit rather than fully
   shadowed.
@@ -344,7 +344,7 @@ Future work:
   near dawn/dusk.
 - Skip the moon's shadow pass when its intensity gate is near zero,
   saving the cost during full daylight.  The frame cost is already
-  small (one 2048² depth fill of the terrain) but the saving is
+  small (one 2048^2 depth fill of the terrain) but the saving is
   free with one branch.
 - Per-light caster-side rasterizer bias (currently baked into the
   shared shadow PSO).  Either via `RSSetDepthBias` or one PSO
@@ -358,7 +358,7 @@ The terrain needs something behind it.
 
 The sky is integrated into `PSComposite` (not a separate sky shader) via the engine's `GfxBackgroundDesc` / `XScene::SetBackground` API. The viewer configures:
 
-- **Up to two cubemaps** (`pSkyboxCubemapA`, `pSkyboxCubemapB`) with a CPU-driven `BlendFactor` for crossfading between presets (e.g. day → dusk → night). Both cubemaps can be bound simultaneously; the composite lerps between them in the shader so transitions are smooth without per-frame texture authoring.
+- **Up to two cubemaps** (`pSkyboxCubemapA`, `pSkyboxCubemapB`) with a CPU-driven `BlendFactor` for crossfading between presets (e.g. day -> dusk -> night). Both cubemaps can be bound simultaneously; the composite lerps between them in the shader so transitions are smooth without per-frame texture authoring.
 - **Stars cubemap** (`pStarsCubemap`): additively blended over the sky, lower hemisphere clipped, driven by `StarsOrientation` for sidereal-motion animation.
 - **Procedural sun disc** (`SunDirection`, `SunColor`): a soft-edged disc rendered analytically in the composite shader, driven by the same unit vector used for the sun's directional light.
 - **Moon billboard** (`pMoonTexture`, `MoonDirection`): a 2D RGBA texture blended as a billboard at the angular position of the moon's directional light.
@@ -409,7 +409,7 @@ src/CanvasTerrainViewer/
     assets/
         default_heightmap.png      (sample fbm heightfield)
         scene.json                 (default scene configuration)
-        terrain_atlas_albedo.png   (2048×2048, four 1024×1024 slots: grass/rock/sand/snow)
+        terrain_atlas_albedo.png   (2048x2048, four 1024x1024 slots: grass/rock/sand/snow)
         terrain_atlas_orm.png      (matching ORM atlas)
         sky/                       (per-preset PNG face images and moon sprite)
 
@@ -486,7 +486,7 @@ Flags: `--seed`, `--tile-size 1024`, `--materials grass,rock,sand,snow`,
 ### `gen_skycube.py`
 
 Placeholder sky cubemaps. Per `--preset` (`day`, `night`, `dusk`):
-fills each face with a per-preset vertical gradient (zenith → horizon)
+fills each face with a per-preset vertical gradient (zenith -> horizon)
 and saves as 6 PNG faces. Pass `--moon` to also emit a soft-edged
 disc moon sprite (`moon.png`).
 
@@ -509,3 +509,4 @@ driven by `StarsOrientation` for sidereal-motion animation.
   policy - to be designed when the viewer can render multiple tiles.
 - Water surface (animated, with reflections) is captured as a future
   todo and will likely warrant its own README.
+

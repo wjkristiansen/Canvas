@@ -1,4 +1,4 @@
-// HlslTypes.h — Shared between C++ and HLSL
+// HlslTypes.h - Shared between C++ and HLSL
 // Defines GPU-visible struct layouts and constants used by both shader and CPU code.
 #pragma once
 
@@ -199,7 +199,7 @@ struct ALIGN16 HlslDisplacedConstants
 #endif
 
 //------------------------------------------------------------------------------------------------
-// UI rendering types — shared between UI shaders and the graphics backend.
+// UI rendering types - shared between UI shaders and the graphics backend.
 // These live outside the HlslTypes namespace in HLSL but inside it in C++.
 //------------------------------------------------------------------------------------------------
 
@@ -256,3 +256,4 @@ static_assert(sizeof(HlslTypes::HlslLight) == 160, "HlslLight must be 160 bytes"
 #pragma warning(pop)
 #endif
 #endif
+
