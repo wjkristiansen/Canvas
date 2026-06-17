@@ -28,19 +28,6 @@ add_compile_definitions(
 # DirectX 12 and Graphics Libraries
 # =============================================================================
 
-# Find DirectX 12 libraries (required for graphics engine)
-find_library(D3D12_LIB d3d12 REQUIRED)
-find_library(DXGI_LIB dxgi REQUIRED)
-find_library(D3DCOMPILER_LIB d3dcompiler REQUIRED)
-
-if(D3D12_LIB AND DXGI_LIB AND D3DCOMPILER_LIB)
-    message(STATUS "Found DirectX 12 libraries:")
-    message(STATUS "  d3d12: ${D3D12_LIB}")
-    message(STATUS "  dxgi: ${DXGI_LIB}")
-    message(STATUS "  d3dcompiler: ${D3DCOMPILER_LIB}")
-else()
-    message(FATAL_ERROR "DirectX 12 libraries not found. Please install Windows SDK.")
-endif()
 
 # =============================================================================
 # Standard Windows System Libraries
