@@ -17,6 +17,9 @@
 
 using GlyphInstance = HlslTypes::HlslGlyphInstance;
 
+class CDevice12;
+class CRenderQueue12;
+
 class CUITextElement12 : public TGfxElement<Canvas::XUITextElement>
 {
     // Content
@@ -31,7 +34,15 @@ class CUITextElement12 : public TGfxElement<Canvas::XUITextElement>
     Canvas::Math::FloatVector2 m_LocalOffset = {};
     Canvas::GfxResourceAllocation m_GlyphSRV;
     bool m_Visible = true;
-    bool m_Dirty = true;
+
+    enum class GlyphState
+    {
+        Ready,
+        RegeneratePending,
+        UploadPending,
+    };
+
+    GlyphState m_GlyphState = GlyphState::Ready;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -74,7 +85,8 @@ public:
     uint32_t GetGlyphCount() const { return static_cast<uint32_t>(m_CachedGlyphs.size()); }
     const void* GetGlyphData() const { return m_CachedGlyphs.data(); }
     const Canvas::GfxResourceAllocation& GetGlyphBuffer() const { return m_GlyphSRV; }
-    void SetGlyphBuffer(const Canvas::GfxResourceAllocation& buffer) { m_GlyphSRV = buffer; }
+
+    void EnsureGlyphBufferUploaded(CDevice12 *pDevice, CRenderQueue12 *pRQ);
 
 private:
     Gem::Result RegenerateGlyphs();
