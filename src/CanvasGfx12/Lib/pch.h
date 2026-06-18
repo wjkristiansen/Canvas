@@ -12,8 +12,6 @@
 #include <assert.h>
 
 
-// TODO: reference additional headers your program requires here
-
 // D3D
 #include <d3d12.h>
 #include <d3dx12.h>
