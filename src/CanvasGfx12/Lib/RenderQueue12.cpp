@@ -130,19 +130,19 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCS
     D3D12_DESCRIPTOR_HEAP_DESC DHDesc = {};
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-    DHDesc.NumDescriptors = NumSamplerDescriptors; // BUGBUG: This needs to be a well-known constant
+    DHDesc.NumDescriptors = NumSamplerDescriptors;
     Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pSamplerDH))));
 
     CComPtr<ID3D12DescriptorHeap> pRTVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    DHDesc.NumDescriptors = NumRTVDescriptors; // BUGBUG: This needs to be a well-known constant
+    DHDesc.NumDescriptors = NumRTVDescriptors;
     Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pRTVDH))));
 
     CComPtr<ID3D12DescriptorHeap> pDSVDH;
     DHDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     DHDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    DHDesc.NumDescriptors = NumDSVDescriptors; // BUGBUG: This needs to be a well-known constant
+    DHDesc.NumDescriptors = NumDSVDescriptors;
     Gem::ThrowGemError(ResultFromHRESULT(pD3DDevice->CreateDescriptorHeap(&DHDesc, IID_PPV_ARGS(&pDSVDH))));
 
     CComPtr<ID3D12Fence> pFence;
