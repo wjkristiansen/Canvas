@@ -40,7 +40,7 @@ CSwapChain12::CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, c
     swapChainDesc.Scaling = DXGI_SCALING_NONE;
     swapChainDesc.Width = 0;
     swapChainDesc.Height = 0;
-    swapChainDesc.Format = Format; // BUGBUG: Need to use GfxFormat
+    swapChainDesc.Format = Format;
     DXGI_SWAP_CHAIN_FULLSCREEN_DESC swapChainDescFS = {};
     swapChainDescFS.RefreshRate.Denominator = 1;
     swapChainDescFS.Windowed = Windowed;
