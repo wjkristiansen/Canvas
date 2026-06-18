@@ -6,6 +6,14 @@
 #include "ResourceAllocator.h"
 #include "Device12.h"
 
+namespace
+{
+    constexpr uint32_t kSmallTightUnitSize    = 256;
+    constexpr uint64_t kSmallTightHeapSize    = 512 * 1024;
+    constexpr uint64_t kSmallStandardHeapSize = 4 * 1024 * 1024;
+    constexpr uint64_t kLargeHeapSize         = 64 * 1024 * 1024;
+}
+
 //------------------------------------------------------------------------------------------------
 CResourceAllocator::~CResourceAllocator()
 {
@@ -50,20 +58,20 @@ void CResourceAllocator::Initialize(CDevice12* pDevice)
     // Small pool: 256B units / 512KB heaps when tight, else 64KB units / 4MB heaps
     if (m_TightAlignmentSupported)
     {
-        m_SmallPool.UnitSize        = 256;
-        m_SmallPool.HeapSizeInBytes = 512 * 1024;
+        m_SmallPool.UnitSize        = kSmallTightUnitSize;
+        m_SmallPool.HeapSizeInBytes = kSmallTightHeapSize;
     }
     else
     {
-        m_SmallPool.UnitSize        = 65536;
-        m_SmallPool.HeapSizeInBytes = 4 * 1024 * 1024;
+        m_SmallPool.UnitSize        = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+        m_SmallPool.HeapSizeInBytes = kSmallStandardHeapSize;
     }
     m_SmallPool.HeapCapacityInUnits = static_cast<uint32_t>(
         m_SmallPool.HeapSizeInBytes / m_SmallPool.UnitSize);
 
     // Large pool: 64KB units / 64MB heaps
-    m_LargePool.UnitSize            = 65536;
-    m_LargePool.HeapSizeInBytes     = 64 * 1024 * 1024;
+    m_LargePool.UnitSize            = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+    m_LargePool.HeapSizeInBytes     = kLargeHeapSize;
     m_LargePool.HeapCapacityInUnits = static_cast<uint32_t>(
         m_LargePool.HeapSizeInBytes / m_LargePool.UnitSize);
 
