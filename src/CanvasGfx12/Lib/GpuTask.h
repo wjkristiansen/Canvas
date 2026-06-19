@@ -166,8 +166,6 @@ struct CGpuTask
     // IMPORTANT: Capture only raw pointers and plain-old-data (GPU addresses, offsets, counts).
     // Do NOT capture ref-counting smart pointers (TGemPtr, GfxResourceAllocation, etc.).
     // The lambda is invoked inline by InsertTask - the caller's stack keeps objects alive.
-    // Captured TGemPtrs create hidden refs that survive in the task deque after Reset(),
-    // causing resource leaks.
     //
     // May be null for transition-only tasks (e.g. PresentTransition).
     std::function<void(ID3D12GraphicsCommandList*)> RecordFunc;

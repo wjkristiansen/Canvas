@@ -664,6 +664,13 @@ void CGpuTaskGraph::ComputeFinalLayouts()
 
 void CGpuTaskGraph::Reset(UINT64 fenceValue, UINT64 completedFenceValue)
 {
+    // Release each active task's recording function so any objects it captured are
+    // freed at the frame boundary. The task deque is grow-only, so without this a
+    // lambda (and anything it captured) would survive until its slot is reused by a
+    // later CreateTask or until the graph is destroyed.
+    for (uint32_t i = 0; i < m_TaskCount; ++i)
+        m_Tasks[i].RecordFunc = nullptr;
+
     m_TaskCount = 0;
     m_Surfaces.clear();
     m_ExpectedInitialLayouts.clear();
