@@ -222,12 +222,7 @@ GEMMETHODIMP CCanvas::CreateUIGraph(XGfxDevice* pDevice, XUIGraph** ppGraph)
     if (!pDevice || !ppGraph)
         return Gem::Result::BadPointer;
 
-    Gem::TGemPtr<CUIGraph> pGraph = new Gem::TGenericImpl<CUIGraph>();
-    pGraph->SetName("UIGraph");
-    pGraph->Register(this);
-    pGraph->SetDevice(pDevice);
-    *ppGraph = pGraph.Detach();
-    return Gem::Result::Success;
+    return CreateElement<CUIGraph>(ppGraph, "UIGraph", pDevice);
 }
 
 //------------------------------------------------------------------------------------------------

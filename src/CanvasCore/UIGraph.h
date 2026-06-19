@@ -21,12 +21,10 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CUIGraph() = default;
-    CUIGraph(XCanvas* pCanvas) : TCanvasElement(pCanvas) {}
+    CUIGraph(XCanvas* pCanvas, XGfxDevice* pDevice) : TCanvasElement(pCanvas), m_pDevice(pDevice) {}
 
     void Initialize() {}
     void Uninitialize() {}
-
-    void SetDevice(XGfxDevice* pDevice) { m_pDevice = pDevice; }
 
     GEMMETHOD_(XGfxDevice*, GetDevice)() override { return m_pDevice.Get(); }
     GEMMETHOD(RemoveElement)(XUIElement* pElement) override;
