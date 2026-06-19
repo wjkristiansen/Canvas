@@ -949,10 +949,8 @@ GEMMETHODIMP CDevice12::CreateTextElement(Canvas::XUITextElement **ppElement)
     if (!pCanvas)
         return Gem::Result::NotFound;
 
-    Gem::TGemPtr<CUITextElement12> pElement =
-        new Gem::TGenericImpl<CUITextElement12>(pCanvas, &m_GlyphCache);
-    pElement->SetName("UITextElement");
-    Gem::Result result = pCanvas->RegisterElement(pElement.Get());
+    Gem::TGemPtr<CUITextElement12> pElement;
+    Gem::Result result = CreateAndRegister<CUITextElement12>(&pElement, pCanvas, &m_GlyphCache, "UITextElement");
     if (Gem::Failed(result))
         return result;
     *ppElement = pElement.Detach();
@@ -969,10 +967,8 @@ GEMMETHODIMP CDevice12::CreateRectElement(Canvas::XUIRectElement **ppElement)
     if (!pCanvas)
         return Gem::Result::NotFound;
 
-    Gem::TGemPtr<CUIRectElement12> pElement =
-        new Gem::TGenericImpl<CUIRectElement12>(pCanvas);
-    pElement->SetName("UIRectElement");
-    Gem::Result result = pCanvas->RegisterElement(pElement.Get());
+    Gem::TGemPtr<CUIRectElement12> pElement;
+    Gem::Result result = CreateAndRegister<CUIRectElement12>(&pElement, pCanvas, "UIRectElement");
     if (Gem::Failed(result))
         return result;
     *ppElement = pElement.Detach();

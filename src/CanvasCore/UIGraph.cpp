@@ -13,9 +13,7 @@ GEMMETHODIMP_(XUIGraphNode*) CUIGraph::GetRootNode()
 {
     if (!m_pRootNode)
     {
-        m_pRootNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
-        m_pRootNode->SetName("UIRoot");
-        if (m_pCanvas) m_pRootNode->Register(m_pCanvas);
+        Gem::ThrowGemError(CreateAndRegister(&m_pRootNode, m_pCanvas, "UIRoot"));
     }
     return m_pRootNode.Get();
 }
@@ -28,10 +26,11 @@ Gem::Result CUIGraph::CreateNode(XUIGraphNode* pParent, XUIGraphNode** ppNode)
 
     XUIGraphNode* pParentNode = pParent ? pParent : GetRootNode();
 
-    Gem::TGemPtr<CUIGraphNodeImpl> pNode = new Gem::TGenericImpl<CUIGraphNodeImpl>();
-    pNode->SetName("UINode");
-    if (m_pCanvas) pNode->Register(m_pCanvas);
-    pParentNode->AddChild(pNode);
+    Gem::TGemPtr<CUIGraphNodeImpl> pNode;
+    Gem::Result result = CreateAndRegister(&pNode, m_pCanvas, "UINode");
+    if (Gem::Failed(result))
+        return result;
+    pParentNode->AddChild(pNode.Get());
 
     *ppNode = pNode.Detach();
     return Gem::Result::Success;
