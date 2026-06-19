@@ -53,10 +53,12 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CUITextElement12() = default;
-    CUITextElement12(Canvas::XCanvas* pCanvas, Canvas::CGlyphCache* pGlyphCache)
+    CUITextElement12(Canvas::XCanvas* pCanvas, Canvas::CGlyphCache* pGlyphCache, PCSTR name = nullptr)
         : TGfxElement(pCanvas)
         , m_pGlyphCache(pGlyphCache)
-    {}
+    {
+        if (name) SetName(name);
+    }
 
     void Initialize() {}
     void Uninitialize() {}
