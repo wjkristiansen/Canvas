@@ -46,6 +46,11 @@ CSwapChain12::CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, c
     swapChainDescFS.Windowed = Windowed;
     ThrowFailedHResult(pFactory->CreateSwapChainForHwnd(pRenderQueue->GetD3DCommandQueue(), hWnd, &swapChainDesc, &swapChainDescFS, nullptr, &pSwapChain1));
 
+    // Disable DXGI's built-in Alt+Enter handler: without this it calls SetFullscreenState(TRUE),
+    // entering exclusive fullscreen, where DXGI_PRESENT_ALLOW_TEARING and the frame-latency
+    // waitable object are both illegal -- causing Present errors and an infinite wait lockup.
+    ThrowFailedHResult(pFactory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
+
     CComPtr<IDXGISwapChain4> pSwapChain4;
     ThrowFailedHResult(pSwapChain1->QueryInterface(&pSwapChain4));
 
