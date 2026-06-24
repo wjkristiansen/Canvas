@@ -5,7 +5,7 @@
 #pragma once
 #include "Gem.hpp"
 #include "CanvasCore.h"
-#include "CanvasFormat.h"
+#include "CanvasTypes.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -14,8 +14,6 @@
 
 namespace Canvas
 {
-
-    // GfxFormat is defined in CanvasFormat.h and re-exported here.
 
     //------------------------------------------------------------------------------------------------
     enum GfxMemoryUsage
