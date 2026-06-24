@@ -1,6 +1,6 @@
 #pragma once
 #include "Gem.hpp"
-#include "CanvasFormat.h"
+#include "CanvasTypes.h"
 #include <cstdint>
 
 namespace Canvas { struct XLogger; }

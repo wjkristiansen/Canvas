@@ -15,6 +15,7 @@
 
 #pragma once
 #include "CanvasMath.hpp"
+#include "CanvasTypes.h"
 #include <cstdarg>
 
 namespace Canvas
@@ -56,16 +57,7 @@ struct GfxResourceAllocation;
 struct XGfxSurface;
 struct GfxBackgroundDesc;
 
-//------------------------------------------------------------------------------------------------
-// Light types (immutable - set at creation time)
-enum class LightType : UINT
-{
-    Ambient = 0,
-    Point = 1,
-    Directional = 2,
-    Spot = 3,
-    Area = 4,
-};
+// LightType is defined in CanvasTypes.h (included above).
 
 //------------------------------------------------------------------------------------------------
 // Light flags (mutable - rendering hints)
