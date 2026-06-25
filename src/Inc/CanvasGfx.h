@@ -427,13 +427,6 @@ namespace Canvas
         SurfaceFlag_CpuUpload = 1 << 5,
     };
 
-    enum class GfxSurfaceDimension : uint32_t
-    {
-        Dimension1D = 0,
-        Dimension2D = 1,
-        Dimension3D = 2,
-        DimensionCube = 3,
-    };
 
     struct GfxSurfaceDesc
     {

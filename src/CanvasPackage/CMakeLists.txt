@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.24)
 
 add_library(CanvasPackage STATIC
     CanvasPackage.cpp
+    CpkgStream.cpp
+    CpkgStream.h
     pch.h
     targetver.h
 )

@@ -22,29 +22,53 @@ namespace Canvas
 // Severity passed to a package I/O logging callback.
 enum class PackageLogLevel : uint8_t { Info, Warning, Error };
 
-// Optional logging hook for package read/write. The caller supplies a sink (typically one
-// that forwards to QLog / Canvas::XLogger); CanvasPackage stays decoupled from any concrete
-// logger. An empty function (the default) silences logging.
+// Optional logging hook for package read/write. The caller supplies a sink;
+// CanvasPackage stays decoupled from any concrete logger. An empty function (the default) silences logging.
 using PackageLogFn = std::function<void(PackageLogLevel level, const char* message)>;
 
 #pragma warning(push)
 #pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatVector4 is alignas(16))
 
 //--------------------------------------------------------------------------------------------------
+// PackageSubresource - one mip / array / depth slice within a PackageTexture's payload.
+// Offset and Size address PackageTexture::Bytes; RowPitch is the GPU upload row stride
+// (0 for an encoded-source image that the runtime decodes whole).
+//--------------------------------------------------------------------------------------------------
+struct PackageSubresource
+{
+    uint64_t Offset   = 0;   // byte offset into PackageTexture::Bytes
+    uint32_t Size     = 0;   // byte count of this subresource
+    uint32_t RowPitch = 0;   // bytes per row for GPU upload; 0 = encoded source
+};
+
+//--------------------------------------------------------------------------------------------------
 // PackageTexture - one entry in the TXTR chunk.
-// When EmbeddedBytes is non-empty, the image bytes are stored directly in the package.
-// When empty, Path is a .cpkg-relative path to the image file on disk.
+//
+// Describes a full GPU texture of any dimension. Format / Dimension / Width /
+// Height / Depth / ArraySize / MipCount mirror Canvas::GfxSurfaceDesc so the texture
+// round-trips straight into XGfxDevice::CreateSurface.
+//
+// When Bytes is non-empty the pixel data is embedded in the package and Subresources maps each
+// mip / array / depth slice (D3D order: mip + arraySlice * MipCount) to a byte range within
+// Bytes. An encoded-source image (Format == Unknown) is a single subresource holding the whole
+// blob. When Bytes is empty, Path is a .cpkg-relative external file whose own container carries
+// the subresource layout, and Subresources is empty.
+//
 // Name is the runtime lookup key; empty for unnamed FBX-sourced textures.
 //--------------------------------------------------------------------------------------------------
 struct PackageTexture
 {
-    std::string           Name;
-    std::string           Path;
-    Canvas::GfxFormat     Format    = Canvas::GfxFormat::Unknown;
-    uint32_t              Width     = 0;
-    uint32_t              Height    = 0;
-    uint32_t              MipCount  = 0;
-    std::vector<uint8_t>  EmbeddedBytes;
+    std::string                     Name;
+    std::string                     Path;
+    GfxFormat                       Format    = GfxFormat::Unknown;
+    GfxSurfaceDimension             Dimension = GfxSurfaceDimension::Dimension2D;
+    uint32_t                        Width     = 0;
+    uint32_t                        Height    = 0;
+    uint32_t                        Depth     = 1;   // > 1 only for 3D textures
+    uint32_t                        ArraySize = 1;   // 6 * cubeCount for cubemaps
+    uint32_t                        MipCount  = 0;
+    std::vector<PackageSubresource> Subresources;    // empty for external (Path-only) textures
+    std::vector<uint8_t>            Bytes;           // subresource payload; empty for external
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -121,7 +145,7 @@ struct PackageMesh
 struct PackageLight
 {
     std::string        Name;
-    Canvas::LightType  Type              = Canvas::LightType::Directional;
+    LightType          Type              = LightType::Directional;
     Math::FloatVector4 Color             = { 1.0f, 1.0f, 1.0f, 1.0f }; // linear RGBA
     float              Intensity         = 1.0f;
     float              Range             = 0.0f;
