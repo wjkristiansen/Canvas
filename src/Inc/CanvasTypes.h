@@ -85,4 +85,14 @@ enum class GfxFormat : int
     BC7_UNorm_SRGB,
 };
 
+//------------------------------------------------------------------------------------------------
+// Texture topology shared across Canvas modules. Mirrors the GPU surface model.
+enum class GfxSurfaceDimension : uint32_t
+{
+    Dimension1D   = 0,
+    Dimension2D   = 1,
+    Dimension3D   = 2,
+    DimensionCube = 3,
+};
+
 } // namespace Canvas

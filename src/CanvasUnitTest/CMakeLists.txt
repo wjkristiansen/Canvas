@@ -21,6 +21,7 @@ add_executable(CanvasUnitTest
     GpuTaskGraphTest.cpp
     BVHTest.cpp
     LightBVHTest.cpp
+    CpkgStreamTest.cpp
     pch.h
     targetver.h
 )
@@ -41,6 +42,7 @@ target_include_directories(CanvasUnitTest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../RectanglePacker
     ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasGfx12/Lib
     ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasGfx12/D3D12ResourceUtils
+    ${CMAKE_CURRENT_SOURCE_DIR}/../CanvasPackage
 )
 
 # Preprocessor definitions
@@ -78,6 +80,7 @@ endif()
 target_link_libraries(CanvasUnitTest PRIVATE
     CanvasCore
     CanvasText
+    CanvasPackage
     RectanglePacker
     D3D12ResourceUtils
     GTest::gtest
