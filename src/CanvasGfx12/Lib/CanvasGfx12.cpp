@@ -63,6 +63,7 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
     case Canvas::GfxFormat::R10G10B10A2_UInt: return DXGI_FORMAT_R8G8B8A8_UINT;
     case Canvas::GfxFormat::R11G11B10_Float: return DXGI_FORMAT_R11G11B10_FLOAT;
     case Canvas::GfxFormat::R8G8B8A8_UNorm: return DXGI_FORMAT_R8G8B8A8_UNORM;
+    case Canvas::GfxFormat::R8G8B8A8_UNorm_SRGB: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     case Canvas::GfxFormat::R8G8B8A8_UInt: return DXGI_FORMAT_R8G8B8A8_UINT;
     case Canvas::GfxFormat::R8G8B8A8_Norm: return DXGI_FORMAT_R8G8B8A8_SNORM;
     case Canvas::GfxFormat::R8G8B8A8_Int: return DXGI_FORMAT_R8G8B8A8_SINT;
@@ -72,6 +73,7 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
     case Canvas::GfxFormat::R8G8B8_Int: return DXGI_FORMAT_R8G8_SINT;
     case Canvas::GfxFormat::R8_UNorm: return DXGI_FORMAT_R8_UNORM;
     case Canvas::GfxFormat::BC1_UNorm: return DXGI_FORMAT_BC1_UNORM;
+    case Canvas::GfxFormat::BC1_UNorm_SRGB: return DXGI_FORMAT_BC1_UNORM_SRGB;
     case Canvas::GfxFormat::BC2_UNorm: return DXGI_FORMAT_BC2_UNORM;
     case Canvas::GfxFormat::BC3_UNorm: return DXGI_FORMAT_BC3_UNORM;
     case Canvas::GfxFormat::BC4_UNorm: return DXGI_FORMAT_BC4_UNORM;
@@ -79,6 +81,7 @@ DXGI_FORMAT CanvasFormatToDXGIFormat(Canvas::GfxFormat Fmt)
     case Canvas::GfxFormat::BC5_UNorm: return DXGI_FORMAT_BC5_UNORM;
     case Canvas::GfxFormat::BC5_Norm: return DXGI_FORMAT_BC5_SNORM;
     case Canvas::GfxFormat::BC7_UNorm: return DXGI_FORMAT_BC7_UNORM;
+    case Canvas::GfxFormat::BC7_UNorm_SRGB: return DXGI_FORMAT_BC7_UNORM_SRGB;
     default: return DXGI_FORMAT_UNKNOWN;
     }
 }
