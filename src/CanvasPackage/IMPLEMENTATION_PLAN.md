@@ -386,9 +386,9 @@ back-patched at finalize.
   empty (`Size() == 0`)
 
 **Done when:**
-- [ ] All `CpkgSinkTest`, `CpkgIOTest`, and `CpkgSourceTest` tests pass
-- [ ] CRC32 produces the standard test vector
-- [ ] The container header / chunk table can be read through a `CCpkgSource` and written through a
+- [x] All `CpkgSinkTest`, `CpkgIOTest`, and `CpkgSourceTest` tests pass
+- [x] CRC32 produces the standard test vector
+- [x] The container header / chunk table can be read through a `CCpkgSource` and written through a
   `CCpkgSink` without holding the whole file in memory
 
 ---
