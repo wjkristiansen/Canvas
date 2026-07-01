@@ -11,6 +11,7 @@
 #include "CanvasTypes.h"
 #include "Gem.hpp"
 
+#include <cstdarg>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -22,9 +23,15 @@ namespace Canvas
 // Severity passed to a package I/O logging callback.
 enum class PackageLogLevel : uint8_t { Info, Warning, Error };
 
-// Optional logging hook for package read/write. The caller supplies a sink;
-// CanvasPackage stays decoupled from any concrete logger. An empty function (the default) silences logging.
-using PackageLogFn = std::function<void(PackageLogLevel level, const char* message)>;
+// Optional logging hook for package read/write. The caller supplies a sink; CanvasPackage stays
+// decoupled from any concrete logger. An empty function (the default) silences logging.
+//
+// The hook receives a printf-style format string plus a va_list, NOT a finished string, so message
+// composition is deferred to the sink and skipped entirely when the sink filters the record out by
+// level. A QLog sink forwards straight to QLog::Logger::Log(level, format, args), which checks the
+// level before it formats. The sink must consume args synchronously during the call; it may not
+// retain the va_list past return.
+using PackageLogFn = std::function<void(PackageLogLevel level, const char* format, va_list args)>;
 
 #pragma warning(push)
 #pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatVector4 is alignas(16))

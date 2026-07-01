@@ -22,6 +22,10 @@ add_executable(CanvasUnitTest
     BVHTest.cpp
     LightBVHTest.cpp
     CpkgStreamTest.cpp
+    CpkgSinkTest.cpp
+    CpkgIOTest.cpp
+    CpkgSourceTest.cpp
+    CpkgTestUtil.h
     pch.h
     targetver.h
 )

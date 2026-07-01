@@ -5,6 +5,14 @@ add_library(CanvasPackage STATIC
     CanvasPackage.cpp
     CpkgStream.cpp
     CpkgStream.h
+    CpkgBlobTypes.h
+    CpkgLog.h
+    CpkgSink.cpp
+    CpkgSink.h
+    CpkgSource.cpp
+    CpkgSource.h
+    CpkgIO.cpp
+    CpkgIO.h
     pch.h
     targetver.h
 )
