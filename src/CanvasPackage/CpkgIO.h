@@ -6,10 +6,10 @@
 // block via CCpkgReader or pulls header / chunk-table ranges from a CCpkgSource.
 //
 // Error policy: the read path fails fast and returns a Gem::Result, logging the precise reason for
-// any rejection through the caller-supplied PackageLogFn. The write helpers append to a CCpkgSink,
-// which latches the first failure into its sticky status; they therefore return void (the bounded
-// header + table is composed up front and back-patched at finalize), and the caller checks the
-// outcome once via CCpkgSink::Status() / Close().
+// any rejection through the caller-supplied PackageLogFn. On the write path the append helpers
+// (WriteCpkgHeader, WriteChunkTable) return void and let the CCpkgSink throw a CpkgError on the
+// first failure (see CpkgLog.h); the low-frequency finalize back-patch, PatchChunkEntry, returns
+// the sink's Gem::Result directly.
 //================================================================================================
 #pragma once
 
@@ -33,14 +33,15 @@ namespace Canvas::Cpkg
 uint32_t CRC32(const uint8_t* data, size_t size);
 
 //--------------------------------------------------------------------------------------------------
-// Header write path. Appends to the sink; failures latch on the sink's sticky status.
+// Header write path. Appends to the sink; failures throw from the sink.
 //--------------------------------------------------------------------------------------------------
 
 // Write the complete fixed-size header (CPKG_HEADER_SIZE bytes).
 void WriteCpkgHeader(CCpkgSink& sink, uint32_t chunkCount);
 
 //--------------------------------------------------------------------------------------------------
-// Chunk-table write path. Appends to the sink; failures latch on the sink's sticky status.
+// Chunk-table write path. WriteChunkTable appends and lets the sink throw; PatchChunkEntry returns
+// the sink's Gem::Result.
 //--------------------------------------------------------------------------------------------------
 
 // Write chunkCount zeroed placeholder entries. The caller records sink.Tell() immediately before
@@ -49,9 +50,9 @@ void WriteChunkTable(CCpkgSink& sink, uint32_t chunkCount);
 
 // Back-patch one chunk-table entry in place once its payload has been streamed and its offset/size
 // are known. SizeCompressed is set equal to sizeRaw (v1 is uncompressed); the entry's Flags and
-// ChunkGUID stay at their zeroed placeholder values. A patch failure latches the sink's status.
-void PatchChunkEntry(CCpkgSink& sink, uint64_t tableOffset, uint32_t entryIndex,
-                     uint32_t fourcc, uint16_t version, uint64_t dataOffset, uint32_t sizeRaw);
+// ChunkGUID stay at their zeroed placeholder values. Returns the sink's Gem::Result for the patch.
+Gem::Result PatchChunkEntry(CCpkgSink& sink, uint64_t tableOffset, uint32_t entryIndex,
+                            uint32_t fourcc, uint16_t version, uint64_t dataOffset, uint32_t sizeRaw);
 
 //--------------------------------------------------------------------------------------------------
 // Read path. Fail-fast: each function stops at the first malformed value and logs the reason

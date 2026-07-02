@@ -27,7 +27,9 @@ Gem::Result CCpkgSink::CreateFile(const wchar_t* pFilePath, CCpkgSink* pOut, siz
         return Gem::Result::BadPointer;
     }
 
-    pOut->Close(); // reset any prior backing so a CCpkgSink can be reused
+    // Reset any prior backing so a CCpkgSink can be reused; a failure flushing an abandoned earlier
+    // file does not affect the new target, so its result is discarded.
+    pOut->Close();
 
     pOut->m_Stream.open(pFilePath, std::ios::binary | std::ios::out | std::ios::trunc);
     if (!pOut->m_Stream.is_open())
@@ -39,22 +41,15 @@ Gem::Result CCpkgSink::CreateFile(const wchar_t* pFilePath, CCpkgSink* pOut, siz
     pOut->m_Buffer.assign(flushBufferSize ? flushBufferSize : kDefaultFlushBufferSize, uint8_t(0));
     pOut->m_BufferUsed = 0;
     pOut->m_Written    = 0;
-    pOut->m_Status     = Gem::Result::Success;
     pOut->m_LogFn      = logFn;
     pOut->m_Backing    = Backing::File;
     return Gem::Result::Success;
 }
 
-void CCpkgSink::Latch(Gem::Result r)
+Gem::Result CCpkgSink::FlushBuffer()
 {
-    if (Gem::Succeeded(m_Status)) // record only the first failure
-        m_Status = r;
-}
-
-void CCpkgSink::FlushBuffer()
-{
-    if (Gem::Failed(m_Status) || m_BufferUsed == 0)
-        return;
+    if (m_BufferUsed == 0)
+        return Gem::Result::Success;
 
     m_Stream.write(reinterpret_cast<const char*>(m_Buffer.data()),
                    static_cast<std::streamsize>(m_BufferUsed));
@@ -62,23 +57,19 @@ void CCpkgSink::FlushBuffer()
     {
         LogF(m_LogFn, PackageLogLevel::Error,
              "CCpkgSink: failed flushing %zu bytes to disk", m_BufferUsed);
-        Latch(Gem::Result::Fail);
-        return;
+        return Gem::Result::Fail;
     }
     m_BufferUsed = 0;
+    return Gem::Result::Success;
 }
 
 void CCpkgSink::WriteBytes(const void* data, size_t count)
 {
-    if (Gem::Failed(m_Status) || count == 0)
+    if (count == 0)
         return;
 
     if (m_Backing != Backing::File)
-    {
-        LogF(m_LogFn, PackageLogLevel::Error, "CCpkgSink: write to an unopened sink");
-        Latch(Gem::Result::Uninitialized);
-        return;
-    }
+        ThrowF(m_LogFn, Gem::Result::Uninitialized, "CCpkgSink: write to an unopened sink");
 
     const uint8_t* src = static_cast<const uint8_t*>(data);
 
@@ -86,17 +77,11 @@ void CCpkgSink::WriteBytes(const void* data, size_t count)
     // payload straight to disk so a big blob is not chopped into cache-sized copies.
     if (count >= m_Buffer.size())
     {
-        FlushBuffer();
-        if (Gem::Failed(m_Status))
-            return;
-
+        if (Gem::Failed(FlushBuffer())) // FlushBuffer logged the detail
+            throw CpkgError(Gem::Result::Fail, "CCpkgSink: cache flush failed before a large write");
         m_Stream.write(reinterpret_cast<const char*>(src), static_cast<std::streamsize>(count));
         if (!m_Stream)
-        {
-            LogF(m_LogFn, PackageLogLevel::Error, "CCpkgSink: failed writing %zu bytes to disk", count);
-            Latch(Gem::Result::Fail);
-            return;
-        }
+            ThrowF(m_LogFn, Gem::Result::Fail, "CCpkgSink: failed writing %zu bytes to disk", count);
         m_Written += count;
         return;
     }
@@ -104,9 +89,8 @@ void CCpkgSink::WriteBytes(const void* data, size_t count)
     // Otherwise accumulate into the cache, flushing a full block first if it would not fit.
     if (m_BufferUsed + count > m_Buffer.size())
     {
-        FlushBuffer();
-        if (Gem::Failed(m_Status))
-            return;
+        if (Gem::Failed(FlushBuffer())) // FlushBuffer logged the detail
+            throw CpkgError(Gem::Result::Fail, "CCpkgSink: cache flush failed");
     }
     std::memcpy(m_Buffer.data() + m_BufferUsed, src, count);
     m_BufferUsed += count;
@@ -115,7 +99,7 @@ void CCpkgSink::WriteBytes(const void* data, size_t count)
 
 void CCpkgSink::PadToAlignment(size_t alignment)
 {
-    if (Gem::Failed(m_Status) || alignment <= 1)
+    if (alignment <= 1)
         return;
 
     size_t rem = static_cast<size_t>(m_Written % alignment);
@@ -128,24 +112,19 @@ void CCpkgSink::PadToAlignment(size_t alignment)
     {
         size_t n = (pad < sizeof zeros) ? pad : sizeof zeros;
         WriteBytes(zeros, n);
-        if (Gem::Failed(m_Status))
-            return;
         pad -= n;
     }
 }
 
 Gem::Result CCpkgSink::PatchBytes(uint64_t offset, const void* data, size_t size)
 {
-    if (Gem::Failed(m_Status))
-        return m_Status;
     if (size == 0)
         return Gem::Result::Success;
 
     if (m_Backing != Backing::File)
     {
         LogF(m_LogFn, PackageLogLevel::Error, "CCpkgSink::PatchBytes: write to an unopened sink");
-        Latch(Gem::Result::Uninitialized);
-        return m_Status;
+        return Gem::Result::Uninitialized;
     }
 
     // The patch target must lie within bytes already produced.
@@ -156,16 +135,13 @@ Gem::Result CCpkgSink::PatchBytes(uint64_t offset, const void* data, size_t size
              static_cast<unsigned long long>(offset),
              static_cast<unsigned long long>(offset + size),
              static_cast<unsigned long long>(m_Written));
-        Latch(Gem::Result::InvalidArg);
-        return m_Status;
+        return Gem::Result::InvalidArg;
     }
 
     // Flush so the file reflects everything up to m_Written, then seek-patch and restore the
     // append position to the end (where the next streamed write belongs).
-    FlushBuffer();
-    if (Gem::Failed(m_Status))
-        return m_Status;
-
+    if (Gem::Failed(FlushBuffer()))
+        return Gem::Result::Fail;
     m_Stream.seekp(static_cast<std::streamoff>(offset), std::ios::beg);
     m_Stream.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
     m_Stream.seekp(static_cast<std::streamoff>(m_Written), std::ios::beg);
@@ -174,29 +150,54 @@ Gem::Result CCpkgSink::PatchBytes(uint64_t offset, const void* data, size_t size
         LogF(m_LogFn, PackageLogLevel::Error,
              "CCpkgSink::PatchBytes: failed patching %zu bytes at offset %llu", size,
              static_cast<unsigned long long>(offset));
-        Latch(Gem::Result::Fail);
+        return Gem::Result::Fail;
     }
-    return m_Status;
+    return Gem::Result::Success;
 }
 
 Gem::Result CCpkgSink::Flush()
 {
-    FlushBuffer();
-    if (m_Backing == Backing::File)
-        m_Stream.flush();
-    return m_Status;
+    if (m_Backing != Backing::File)
+        return Gem::Result::Success;
+
+    if (Gem::Failed(FlushBuffer()))
+        return Gem::Result::Fail;
+    m_Stream.flush();
+    if (!m_Stream)
+    {
+        LogF(m_LogFn, PackageLogLevel::Error, "CCpkgSink: failed flushing the stream to disk");
+        return Gem::Result::Fail;
+    }
+    return Gem::Result::Success;
 }
 
 Gem::Result CCpkgSink::Close()
 {
-    if (m_Backing == Backing::File)
+    if (m_Backing != Backing::File)
+        return Gem::Result::Success;
+    m_Backing = Backing::Empty;
+
+    // Drain the cache and close inline rather than via FlushBuffer, so the file handle is
+    // released and the stream reset for reuse even when the final writes fail; the failure is still
+    // reported below.
+    const size_t cached = m_BufferUsed;
+    if (cached != 0)
     {
-        FlushBuffer();
-        m_Stream.flush();
-        m_Stream.close();
-        m_Backing = Backing::Empty;
+        m_Stream.write(reinterpret_cast<const char*>(m_Buffer.data()),
+                       static_cast<std::streamsize>(cached));
+        m_BufferUsed = 0;
     }
-    return m_Status;
+    m_Stream.flush();
+    m_Stream.close();
+    const bool failed = m_Stream.fail();
+    m_Stream.clear();
+    if (failed)
+    {
+        LogF(m_LogFn, PackageLogLevel::Error,
+             "CCpkgSink: failed flushing %zu cached bytes / closing the file", cached);
+        return Gem::Result::Fail;
+    }
+    return Gem::Result::Success;
 }
 
 } // namespace Canvas::Cpkg

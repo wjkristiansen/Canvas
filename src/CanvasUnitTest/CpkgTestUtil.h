@@ -3,12 +3,15 @@
 //================================================================================================
 #pragma once
 
+#include "CpkgLog.h" // Canvas::Cpkg::CpkgError
+
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <ios>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace CanvasUnitTest
@@ -32,6 +35,23 @@ struct TempFile
     std::wstring wstr() const { return path.wstring(); }
     std::filesystem::path path;
 };
+
+// Run write-path code that must fail and assert it throws a CpkgError carrying the expected
+// result.
+template <typename Fn>
+void ExpectCpkgError(Gem::Result expected, Fn&& fn)
+{
+    try
+    {
+        std::forward<Fn>(fn)();
+        ADD_FAILURE() << "expected CpkgError(" << Gem::GemResultString(expected)
+                      << ") was not thrown";
+    }
+    catch (const Canvas::Cpkg::CpkgError& e)
+    {
+        EXPECT_EQ(e.Result(), expected) << e.what();
+    }
+}
 
 // Slurp an entire file into a byte vector (used to inspect / corrupt streamed output in tests).
 inline std::vector<uint8_t> ReadFileBytes(const std::filesystem::path& p)

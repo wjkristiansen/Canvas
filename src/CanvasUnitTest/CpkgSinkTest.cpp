@@ -78,9 +78,9 @@ TEST(CpkgSinkTest, PatchBytesOverwritesEarlierBytes)
     EXPECT_EQ(r.ReadU32(), 0x11223344u);
 }
 
-// A patch beyond what has been written is a programming error: PatchBytes reports InvalidArg and
-// latches it so the whole write fails fast at Close().
-TEST(CpkgSinkTest, PatchBytesPastEndIsRejected)
+// A patch beyond what has been written is a caller error: PatchBytes rejects it with InvalidArg
+// before touching the file, leaving the sink usable.
+TEST(CpkgSinkTest, PatchBytesPastEndReturnsInvalidArg)
 {
     TempFile tmp(L"canvas_cpkg_sink_patch_oob.bin");
 
@@ -89,8 +89,8 @@ TEST(CpkgSinkTest, PatchBytesPastEndIsRejected)
     sink.WriteU32(0u); // only 4 bytes written
     uint32_t v = 0u;
     EXPECT_EQ(sink.PatchBytes(4, &v, sizeof v), Gem::Result::InvalidArg); // starts at end
-    EXPECT_EQ(sink.Status(), Gem::Result::InvalidArg);                 // latched
-    EXPECT_EQ(sink.Close(), Gem::Result::InvalidArg);
+    EXPECT_EQ(sink.Tell(), 4u);                    // append position unaffected
+    EXPECT_EQ(sink.Close(), Gem::Result::Success); // the rejected patch did not poison the sink
 }
 
 // A write at least as large as the flush cache bypasses it and streams straight to disk; the bytes
@@ -130,11 +130,10 @@ TEST(CpkgSinkTest, CreateFileBadPathFails)
     EXPECT_EQ(sink.Tell(), 0u);
 }
 
-TEST(CpkgSinkTest, WriteToUnopenedSinkLatchesUninitialized)
+TEST(CpkgSinkTest, WriteToUnopenedSinkThrowsUninitialized)
 {
     CCpkgSink sink; // never opened
-    sink.WriteU32(0u);
-    EXPECT_EQ(sink.Status(), Gem::Result::Uninitialized);
+    ExpectCpkgError(Gem::Result::Uninitialized, [&] { sink.WriteU32(0u); });
     EXPECT_EQ(sink.Tell(), 0u);
 }
 

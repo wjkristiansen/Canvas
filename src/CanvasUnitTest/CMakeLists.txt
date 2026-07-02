@@ -25,6 +25,7 @@ add_executable(CanvasUnitTest
     CpkgSinkTest.cpp
     CpkgIOTest.cpp
     CpkgSourceTest.cpp
+    CpkgChunkTest.cpp
     CpkgTestUtil.h
     pch.h
     targetver.h

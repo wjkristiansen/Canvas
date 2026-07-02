@@ -69,8 +69,8 @@ void WriteChunkTable(CCpkgSink& sink, uint32_t chunkCount)
         sink.WriteBytes(zeros, CPKG_CHUNK_ENTRY_SIZE);
 }
 
-void PatchChunkEntry(CCpkgSink& sink, uint64_t tableOffset, uint32_t entryIndex,
-                     uint32_t fourcc, uint16_t version, uint64_t dataOffset, uint32_t sizeRaw)
+Gem::Result PatchChunkEntry(CCpkgSink& sink, uint64_t tableOffset, uint32_t entryIndex,
+                            uint32_t fourcc, uint16_t version, uint64_t dataOffset, uint32_t sizeRaw)
 {
     // Build the entry image and patch it in one seek. Version occupies the low 16 bits and Flags the
     // high 16 bits of the second word; Flags stays 0 in v1. SizeCompressed == SizeRaw (uncompressed).
@@ -83,7 +83,7 @@ void PatchChunkEntry(CCpkgSink& sink, uint64_t tableOffset, uint32_t entryIndex,
     std::memcpy(e + CPKG_CHUNK_OFFSET_SIZE_RAW,        &sizeRaw,    sizeof(sizeRaw)); // SizeRaw
 
     const uint64_t base = tableOffset + static_cast<uint64_t>(entryIndex) * CPKG_CHUNK_ENTRY_SIZE;
-    sink.PatchBytes(base, e, CPKG_CHUNK_ENTRY_SIZE); // failure latches the sink's sticky status
+    return sink.PatchBytes(base, e, CPKG_CHUNK_ENTRY_SIZE);
 }
 
 Gem::Result ReadCpkgHeader(CCpkgReader& reader, CpkgHeaderData* out, const PackageLogFn& logFn)

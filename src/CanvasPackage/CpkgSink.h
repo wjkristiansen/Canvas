@@ -8,11 +8,12 @@
 // TODO: The cache size is tunable (CreateFile's flushBufferSize). A background drain
 // thread could be folded in behind this same interface later without changing callers.
 //
-// Error model: the append helpers return void and latch the first failure into a sticky status
-// (like std::ostream's failbit). Once latched, further appends are no-ops, so callers issue a long
-// run of writes and check the outcome once via Status(), Flush(), or Close(), each of which returns
-// the precise Gem::Result. PatchBytes (the cold finalize path) returns its Result directly. Internal
-// to CanvasPackage; not part of the public Inc/ surface.
+// Error model: the streaming append helpers (WriteBytes and its typed wrappers, PadToAlignment)
+// throw a CpkgError carrying the precise Gem::Result (see CpkgLog.h) on the first failure, so a long
+// run of writes needs no per-call result checks; the public API boundary catches the exception and
+// returns its result. The low-frequency calls - CreateFile, PatchBytes, Flush, and Close - return
+// a Gem::Result directly, where a single check at the call site costs nothing. CreateFile mirrors
+// CCpkgSource::OpenFile. Internal to CanvasPackage; not part of the public Inc/ surface.
 //================================================================================================
 #pragma once
 
@@ -31,7 +32,7 @@ class CCpkgSink
 public:
     static constexpr size_t kDefaultFlushBufferSize = 256 * 1024;
 
-    CCpkgSink() = default; // an empty sink; every write is a no-op until CreateFile succeeds
+    CCpkgSink() = default; // an empty sink; writes throw Uninitialized until CreateFile succeeds
     ~CCpkgSink();          // flushes and closes a file backing (best effort; check Close() to be sure)
 
     CCpkgSink(const CCpkgSink&)            = delete;
@@ -44,8 +45,8 @@ public:
                                   size_t flushBufferSize = kDefaultFlushBufferSize,
                                   const PackageLogFn& logFn = {});
 
-    // Append helpers. Each copies into the flush cache (block-flushing when full) and latches the
-    // first failure; no-ops once the sink is in a failed state. Check Status()/Flush()/Close().
+    // Append helpers. Each copies into the flush cache (block-flushing to disk when it fills) and
+    // throws CpkgError on an I/O failure or an unopened sink.
     void WriteBytes(const void* data, size_t count);
     void WriteU8(uint8_t v)   { WriteBytes(&v, sizeof v); }
     void WriteU16(uint16_t v) { WriteBytes(&v, sizeof v); }
@@ -68,18 +69,14 @@ public:
     // Absolute append offset = total bytes written so far (flushed + cached).
     uint64_t Tell() const { return m_Written; }
 
-    // The sticky status: Success until the first failure latches a precise code.
-    Gem::Result Status() const { return m_Status; }
-
-    // Flush the append cache to the file. Returns the sticky status.
+    // Flush the append cache to the file. Returns the resulting status.
     Gem::Result Flush();
 
-    // Flush and close the file. Idempotent. Returns the sticky status.
+    // Flush and close the file. Idempotent. Returns the resulting status.
     Gem::Result Close();
 
 private:
-    void FlushBuffer();          // write the cached bytes to the stream; latches on failure
-    void Latch(Gem::Result r);   // record the first failing status; ignored once already failed
+    Gem::Result FlushBuffer(); // write the cached bytes to the stream; logs and returns Fail on failure
 
     enum class Backing { Empty, File };
 
@@ -88,7 +85,6 @@ private:
     std::vector<uint8_t> m_Buffer;                          // append cache; size() is its capacity
     size_t               m_BufferUsed = 0;                  // bytes currently cached
     uint64_t             m_Written    = 0;                  // total appended (flushed + cached)
-    Gem::Result          m_Status     = Gem::Result::Success;
     PackageLogFn         m_LogFn;                           // retained sink for I/O failure reports
 };
 

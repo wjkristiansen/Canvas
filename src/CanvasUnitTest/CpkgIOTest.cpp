@@ -74,8 +74,10 @@ TEST(CpkgIOTest, HeaderAndChunkTableRoundTrip)
         WriteCpkgHeader(sink, 2);
         uint64_t tableOffset = sink.Tell();
         WriteChunkTable(sink, 2);
-        PatchChunkEntry(sink, tableOffset, 0, CPKG_FOURCC_NODE, 1, 1000u, 64u);
-        PatchChunkEntry(sink, tableOffset, 1, CPKG_FOURCC_MESH, 2, 2000u, 128u);
+        ASSERT_EQ(PatchChunkEntry(sink, tableOffset, 0, CPKG_FOURCC_NODE, 1, 1000u, 64u),
+                  Gem::Result::Success);
+        ASSERT_EQ(PatchChunkEntry(sink, tableOffset, 1, CPKG_FOURCC_MESH, 2, 2000u, 128u),
+                  Gem::Result::Success);
         ASSERT_EQ(sink.Close(), Gem::Result::Success);
     }
 
@@ -189,7 +191,8 @@ TEST(CpkgIOTest, StreamingRoundTrip)
         sink.WriteU32(0xCAFEBABEu);
         size = static_cast<uint32_t>(sink.Tell() - dataOffset);
 
-        PatchChunkEntry(sink, tableOffset, 0, CPKG_FOURCC_NODE, 1, dataOffset, size);
+        ASSERT_EQ(PatchChunkEntry(sink, tableOffset, 0, CPKG_FOURCC_NODE, 1, dataOffset, size),
+                  Gem::Result::Success);
         ASSERT_EQ(sink.Close(), Gem::Result::Success);
     }
 

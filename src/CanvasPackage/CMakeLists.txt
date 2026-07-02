@@ -13,6 +13,8 @@ add_library(CanvasPackage STATIC
     CpkgSource.h
     CpkgIO.cpp
     CpkgIO.h
+    CpkgChunks.cpp
+    CpkgChunks.h
     pch.h
     targetver.h
 )
