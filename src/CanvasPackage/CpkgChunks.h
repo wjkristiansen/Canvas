@@ -1,11 +1,13 @@
 //================================================================================================
-// CpkgChunks - per-chunk-type serializers (NODE, MESH). Each takes an optional PackageLogFn and
-// fails fast on the first malformed value. See README.md for the on-disk layouts.
+// CpkgChunks - per-chunk-type serializers (NODE, MESH, MATL, TXTR, LITE, CAMR). Each takes an
+// optional PackageLogFn and fails fast on the first malformed value. See README.md for the on-disk
+// layouts.
 //
-// NODE is small and always parses fully. MESH carries the bulk vertex streams, so its read has
-// two shapes: ReadMeshChunk materializes every stream into PackageData (convenience / bake path);
-// ReadMeshDescriptors records each stream's absolute {offset, size} byte range into the streaming
-// CpkgDocument without reading the bytes (the large-package path).
+// The small chunks (NODE, MATL, LITE, CAMR) always parse fully. MESH carries the bulk vertex
+// streams, so its read has two shapes: ReadMeshChunk materializes every stream into PackageData
+// (convenience / bake path); ReadMeshDescriptors records each stream's absolute {offset, size} byte
+// range into the streaming CpkgDocument without reading the bytes (the large-package path). TXTR
+// embeds its payload inline in v1 (encoded source images), so it parses fully for now.
 //================================================================================================
 #pragma once
 
@@ -94,7 +96,7 @@ struct MeshPartDescriptor
 struct MeshDescriptor
 {
     std::string                     Name;
-    Math::AABB                      Bounds;
+    PackageAABB                     Bounds;
     PackageSkin                     Skin;
     std::vector<MeshPartDescriptor> Parts;
 };
@@ -125,5 +127,69 @@ Gem::Result ReadMeshChunk(CCpkgReader& reader, PackageData* out,
 // alignment and the recorded ranges.
 Gem::Result ReadMeshDescriptors(CCpkgReader& reader, uint64_t chunkFileOffset,
                                 MeshDescriptors* out, const PackageLogFn& logFn = {});
+
+//--------------------------------------------------------------------------------------------------
+// MATL - PBR metallic-roughness materials. Texture indices reference TXTR entries (-1 = unbound).
+//--------------------------------------------------------------------------------------------------
+
+// MATL chunk format version, recorded in the chunk-table entry.
+constexpr uint16_t CPKG_MATL_CHUNK_VERSION = 1;
+
+// Append the MATL chunk for data.Materials to the sink. Throws CpkgError(InvalidArg) when a name
+// exceeds the uint32 length prefix or the material count exceeds the uint32 limit.
+void WriteMatlChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn = {});
+
+// Parse a MATL chunk from the reader's current position into out->Materials (replacing it),
+// advancing the cursor past the chunk. Fails fast with CorruptedData on truncation.
+Gem::Result ReadMatlChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn = {});
+
+//--------------------------------------------------------------------------------------------------
+// TXTR - the texture table. Each entry mirrors Canvas::GfxSurfaceDesc (Format, Dimension, extents,
+// mip / array counts) plus a per-subresource byte table into an optional embedded payload. The v1
+// payload is stored inline; the descriptor / bulk split MESH uses is not applied to TXTR yet.
+//--------------------------------------------------------------------------------------------------
+
+// TXTR chunk format version, recorded in the chunk-table entry.
+constexpr uint16_t CPKG_TXTR_CHUNK_VERSION = 1;
+
+// Append the TXTR chunk for data.Textures to the sink. Throws CpkgError(InvalidArg) when a name or
+// path exceeds the uint32 length prefix, a count exceeds the uint32 limit, or a subresource range
+// falls outside its texture's payload.
+void WriteTxtrChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn = {});
+
+// Parse a TXTR chunk into out->Textures (replacing it), advancing the cursor past the chunk. Fails
+// fast with CorruptedData on truncation, an unknown Dimension, or a subresource range outside the
+// payload.
+Gem::Result ReadTxtrChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn = {});
+
+//--------------------------------------------------------------------------------------------------
+// LITE - light definitions.
+//--------------------------------------------------------------------------------------------------
+
+// LITE chunk format version, recorded in the chunk-table entry.
+constexpr uint16_t CPKG_LITE_CHUNK_VERSION = 1;
+
+// Append the LITE chunk for data.Lights to the sink. Throws CpkgError(InvalidArg) when a name
+// exceeds the uint32 length prefix or the light count exceeds the uint32 limit.
+void WriteLiteChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn = {});
+
+// Parse a LITE chunk into out->Lights (replacing it), advancing the cursor past the chunk. Fails
+// fast with CorruptedData on truncation or an unknown LightType.
+Gem::Result ReadLiteChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn = {});
+
+//--------------------------------------------------------------------------------------------------
+// CAMR - camera definitions.
+//--------------------------------------------------------------------------------------------------
+
+// CAMR chunk format version, recorded in the chunk-table entry.
+constexpr uint16_t CPKG_CAMR_CHUNK_VERSION = 1;
+
+// Append the CAMR chunk for data.Cameras to the sink. Throws CpkgError(InvalidArg) when a name
+// exceeds the uint32 length prefix or the camera count exceeds the uint32 limit.
+void WriteCamrChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn = {});
+
+// Parse a CAMR chunk into out->Cameras (replacing it), advancing the cursor past the chunk. Fails
+// fast with CorruptedData on truncation.
+Gem::Result ReadCamrChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn = {});
 
 } // namespace Canvas::Cpkg

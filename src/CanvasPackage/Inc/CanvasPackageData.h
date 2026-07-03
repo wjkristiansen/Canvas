@@ -7,7 +7,6 @@
 //================================================================================================
 #pragma once
 
-#include "CanvasMath.hpp"
 #include "CanvasTypes.h"
 #include "Gem.hpp"
 
@@ -15,6 +14,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace Canvas
@@ -33,8 +33,24 @@ enum class PackageLogLevel : uint8_t { Info, Warning, Error };
 // retain the va_list past return.
 using PackageLogFn = std::function<void(PackageLogLevel level, const char* format, va_list args)>;
 
-#pragma warning(push)
-#pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatVector4 is alignas(16))
+//--------------------------------------------------------------------------------------------------
+// Raw POD vector / matrix types for on-disk package data. They carry no math behavior: the package
+// layer only stores and block-copies them, and a consumer constructs a Canvas::Math type from the
+// raw components where it actually needs to compute. Keeping them trivially copyable and tightly
+// packed lets the vertex and matrix streams read and write as raw bytes.
+//--------------------------------------------------------------------------------------------------
+struct PackageFloat2    { float V[2]  = {}; };
+struct PackageFloat3    { float V[3]  = {}; };
+struct PackageFloat4    { float V[4]  = {}; };
+struct PackageQuat      { float V[4]  = { 0.0f, 0.0f, 0.0f, 1.0f }; }; // (x, y, z, w) identity
+struct PackageMatrix4x4 { float M[16] = {}; };                          // row-major
+struct PackageAABB      { PackageFloat3 Min; PackageFloat3 Max; };
+
+static_assert(std::is_trivially_copyable_v<PackageFloat4>,
+              "PackageFloat4 must stay trivially copyable for raw stream I/O");
+static_assert(sizeof(PackageFloat2) == 8,     "PackageFloat2 must be 8 bytes for stream block-copy");
+static_assert(sizeof(PackageFloat4) == 16,    "PackageFloat4 must be 16 bytes for stream block-copy");
+static_assert(sizeof(PackageMatrix4x4) == 64, "PackageMatrix4x4 must be 64 bytes for stream block-copy");
 
 //--------------------------------------------------------------------------------------------------
 // PackageSubresource - one mip / array / depth slice within a PackageTexture's payload.
@@ -85,10 +101,10 @@ struct PackageTexture
 struct PackageMaterial
 {
     std::string         Name;
-    Math::FloatVector4  BaseColorFactor    = { 1.0f, 1.0f, 1.0f, 1.0f }; // linear RGBA
-    Math::FloatVector4  EmissiveFactor     = { 0.0f, 0.0f, 0.0f, 0.0f }; // linear RGB, A unused
+    PackageFloat4       BaseColorFactor    = { 1.0f, 1.0f, 1.0f, 1.0f }; // linear RGBA
+    PackageFloat4       EmissiveFactor     = { 0.0f, 0.0f, 0.0f, 0.0f }; // linear RGB, A unused
     // R=Roughness, G=Metallic, B=AmbientOcclusion, A=spare
-    Math::FloatVector4  RoughMetalAOFactor = { 1.0f, 0.0f, 1.0f, 0.0f };
+    PackageFloat4       RoughMetalAOFactor = { 1.0f, 0.0f, 1.0f, 0.0f };
 
     int32_t AlbedoTextureIndex           = -1;
     int32_t NormalTextureIndex           = -1;
@@ -108,6 +124,9 @@ struct PackageSkinVertex
     float    BoneWeights[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
 };
 
+static_assert(sizeof(PackageSkinVertex) == 32,
+              "PackageSkinVertex must be 32 bytes for stream block-copy");
+
 //--------------------------------------------------------------------------------------------------
 // PackageMeshPart - one material partition of a mesh (triangle-list topology).
 // UV0 and Tangents are empty when the source mesh did not provide them.
@@ -116,10 +135,10 @@ struct PackageSkinVertex
 struct PackageMeshPart
 {
     int32_t                         MaterialIndex = -1;
-    std::vector<Math::FloatVector4> Positions;   // W = 1
-    std::vector<Math::FloatVector4> Normals;     // W = 0, unit length
-    std::vector<Math::FloatVector2> UV0;
-    std::vector<Math::FloatVector4> Tangents;    // xyz = T, w = bitangent sign
+    std::vector<PackageFloat4>      Positions;   // W = 1
+    std::vector<PackageFloat4>      Normals;     // W = 0, unit length
+    std::vector<PackageFloat2>      UV0;
+    std::vector<PackageFloat4>      Tangents;    // xyz = T, w = bitangent sign
     std::vector<PackageSkinVertex>  SkinVertices;
 };
 
@@ -130,9 +149,9 @@ struct PackageMeshPart
 //--------------------------------------------------------------------------------------------------
 struct PackageSkin
 {
-    bool                              HasSkin = false;
-    std::vector<int32_t>              BoneNodeIndices;
-    std::vector<Math::FloatMatrix4x4> InvBindPoses;
+    bool                          HasSkin = false;
+    std::vector<int32_t>          BoneNodeIndices;
+    std::vector<PackageMatrix4x4> InvBindPoses;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -142,7 +161,7 @@ struct PackageMesh
 {
     std::string                  Name;
     std::vector<PackageMeshPart> Parts;
-    Math::AABB                   Bounds;
+    PackageAABB                  Bounds;
     PackageSkin                  Skin;
 };
 
@@ -153,7 +172,7 @@ struct PackageLight
 {
     std::string        Name;
     LightType          Type              = LightType::Directional;
-    Math::FloatVector4 Color             = { 1.0f, 1.0f, 1.0f, 1.0f }; // linear RGBA
+    PackageFloat4      Color             = { 1.0f, 1.0f, 1.0f, 1.0f }; // linear RGBA
     float              Intensity         = 1.0f;
     float              Range             = 0.0f;
     float              AttenuationConst  = 1.0f;
@@ -171,7 +190,7 @@ struct PackageCamera
     std::string Name;
     float       NearZ       = 0.1f;
     float       FarZ        = 1000.0f;
-    float       FovY        = static_cast<float>(Math::Pi / 4.0); // radians, vertical FOV
+    float       FovY        = 0.785398163f; // radians (pi/4), vertical FOV
     float       AspectRatio = 16.0f / 9.0f;
 };
 
@@ -181,14 +200,14 @@ struct PackageCamera
 //--------------------------------------------------------------------------------------------------
 struct PackageNode
 {
-    std::string           Name;
-    int32_t               ParentIndex = -1;
-    Math::FloatVector4    Translation = { 0.0f, 0.0f, 0.0f, 0.0f };
-    Math::FloatVector4    Scale       = { 1.0f, 1.0f, 1.0f, 0.0f };
-    Math::FloatQuaternion Rotation    = {};
-    int32_t               MeshIndex   = -1;
-    int32_t               LightIndex  = -1;
-    int32_t               CameraIndex = -1;
+    std::string   Name;
+    int32_t       ParentIndex = -1;
+    PackageFloat4 Translation = { 0.0f, 0.0f, 0.0f, 0.0f };
+    PackageFloat4 Scale       = { 1.0f, 1.0f, 1.0f, 0.0f };
+    PackageQuat   Rotation;   // (x, y, z, w) identity
+    int32_t       MeshIndex   = -1;
+    int32_t       LightIndex  = -1;
+    int32_t       CameraIndex = -1;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -196,10 +215,10 @@ struct PackageNode
 //--------------------------------------------------------------------------------------------------
 struct PackageAnimKeyframe
 {
-    float                 Time;
-    Math::FloatVector4    Translation; // W = 0
-    Math::FloatQuaternion Rotation;    // unit quaternion (Canvas space)
-    Math::FloatVector4    Scale;       // W = 0
+    float         Time = 0.0f;
+    PackageFloat4 Translation; // W = 0
+    PackageQuat   Rotation;    // unit quaternion (Canvas space)
+    PackageFloat4 Scale;       // W = 0
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -235,7 +254,7 @@ struct PackageData
     std::vector<PackageTexture>   Textures;
     std::vector<PackageNode>      Nodes;
     std::vector<PackageAnimClip>  AnimClips;
-    Math::AABB                    Bounds;
+    PackageAABB                   Bounds;
     int32_t                       ActiveCameraNodeIndex = -1;
 
     // Read a .cpkg file into this PackageData. Per-chunk warnings are reported to logFn when
@@ -245,7 +264,5 @@ struct PackageData
     // Write this PackageData to a .cpkg file. Warnings are reported to logFn when supplied.
     Gem::Result WritePackage(const wchar_t* pOutputPath, const PackageLogFn& logFn = {}) const;
 };
-
-#pragma warning(pop)
 
 } // namespace Canvas

@@ -5,7 +5,6 @@
 #include <windows.h>
 
 #include "CanvasPackageData.h"
-#include "CanvasMath.hpp"
 
 #include <cstdint>
 #include <functional>

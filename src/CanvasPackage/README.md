@@ -356,10 +356,13 @@ For each texture reference encountered during bake (manifest-explicit or FBX-sou
 
 `CanvasPackage` defines the CPU-side data structure for a packaged scene:
 `Canvas::PackageData`. It is declared in `src/CanvasPackage/Inc/CanvasPackageData.h` — the
-library's single public header — a pure-data header with no dependency on `CanvasCore.h` or
-any GPU type, just `Gem.hpp`, `CanvasMath.hpp`, `CanvasTypes.h`, and standard library
-headers. (`CanvasFbx` currently produces its own `Fbx::ImportedScene`; folding that into
-`PackageData` so both load paths share one builder is planned work — see Session 10.)
+library's single public header — a pure-data header with no dependency on `CanvasCore.h`,
+`CanvasMath.hpp`, or any GPU type, just `Gem.hpp`, `CanvasTypes.h`, and standard library
+headers. Vectors and matrices are stored as raw, trivially-copyable POD (`PackageFloat4`,
+`PackageMatrix4x4`, `PackageAABB`, …) with no math behavior, so records serialize as raw bytes;
+a consumer constructs a `Canvas::Math` type from the components where it actually computes.
+(`CanvasFbx` currently produces its own `Fbx::ImportedScene`; folding that into `PackageData`
+so both load paths share one builder is planned work — see Session 10.)
 
 ```cpp
 // src/CanvasPackage/Inc/CanvasPackageData.h  (abbreviated)
@@ -371,6 +374,13 @@ enum class PackageLogLevel : uint8_t { Info, Warning, Error };
 // composition until after its own level filter -- forward straight to QLog::Logger::Log.
 using PackageLogFn = std::function<void(PackageLogLevel level, const char* format, va_list args)>;
 
+// Raw POD carried on disk; no math behavior (see note above).
+struct PackageFloat2 { float V[2]; };
+struct PackageFloat4 { float V[4]; };
+struct PackageQuat   { float V[4]; };  // (x,y,z,w)
+struct PackageMatrix4x4 { float M[16]; };
+struct PackageAABB   { PackageFloat3 Min, Max; };  // PackageFloat3 = { float V[3]; }
+
 struct PackageSubresource { uint64_t Offset; uint32_t Size, RowPitch; };
 struct PackageTexture  { std::string Name; std::string Path; GfxFormat Format;
                          GfxSurfaceDimension Dimension;
@@ -378,16 +388,16 @@ struct PackageTexture  { std::string Name; std::string Path; GfxFormat Format;
                          std::vector<PackageSubresource> Subresources;
                          std::vector<uint8_t> Bytes; };
 struct PackageMaterial { /* PBR factors + 6 texture indices */ };
-struct PackageMeshPart { int32_t MaterialIndex; std::vector<Math::FloatVector4> Positions,
-                         Normals, Tangents; std::vector<Math::FloatVector2> UV0;
+struct PackageMeshPart { int32_t MaterialIndex; std::vector<PackageFloat4> Positions,
+                         Normals, Tangents; std::vector<PackageFloat2> UV0;
                          std::vector<PackageSkinVertex> SkinVertices; };
 struct PackageMesh     { std::string Name; std::vector<PackageMeshPart> Parts;
-                         Math::AABB Bounds; PackageSkin Skin; };
+                         PackageAABB Bounds; PackageSkin Skin; };
 struct PackageLight    { /* type, color, intensity, range, attenuation, spot angles */ };
 struct PackageCamera   { /* near, far, fov, aspect */ };
 struct PackageNode     { std::string Name; int32_t ParentIndex;
-                         Math::FloatVector4 Translation, Scale;
-                         Math::FloatQuaternion Rotation;
+                         PackageFloat4 Translation, Scale;
+                         PackageQuat Rotation;
                          int32_t MeshIndex, LightIndex, CameraIndex; };
 struct PackageAnimClip { std::string Name; float DurationSeconds;
                          std::vector<PackageAnimTrack> Tracks; };
@@ -400,7 +410,7 @@ struct PackageData {
     std::vector<PackageTexture>  Textures;
     std::vector<PackageNode>     Nodes;
     std::vector<PackageAnimClip> AnimClips;
-    Math::AABB                   Bounds;
+    PackageAABB                  Bounds;
     int32_t                      ActiveCameraNodeIndex = -1;
 
     // .cpkg is PackageData's native on-disk form; read/write are members.

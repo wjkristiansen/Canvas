@@ -2,7 +2,6 @@
 #include "CpkgChunks.h"
 #include "CpkgLog.h"
 
-#include <cstdio>
 #include <vector>
 
 namespace Canvas::Cpkg
@@ -29,16 +28,17 @@ namespace
         sink.WriteBytes(name.c_str(), len);
     }
 
-    // Read a length-prefixed name written by WriteName. context names the caller in log records
-    // (e.g. "ReadNodeChunk: node 3"). Fails with CorruptedData on truncation, a zero length, or a
-    // missing terminator.
-    Gem::Result ReadName(CCpkgReader& reader, std::string* out, const char* context,
+    // Read a length-prefixed name written by WriteName. what + index identify the record in log
+    // records (e.g. "ReadNodeChunk node" 3); they are passed straight to LogF so the sink composes
+    // the message only if it accepts the level. Fails with CorruptedData on truncation, a zero
+    // length, or a missing terminator.
+    Gem::Result ReadName(CCpkgReader& reader, std::string* out, const char* what, uint32_t index,
                          const PackageLogFn& logFn)
     {
         if (reader.BytesRemaining() < sizeof(uint32_t))
         {
             LogF(logFn, PackageLogLevel::Error,
-                 "%s: truncated reading name length; have %zu bytes", context,
+                 "%s %u: truncated reading name length; have %zu bytes", what, index,
                  reader.BytesRemaining());
             return Gem::Result::CorruptedData;
         }
@@ -47,14 +47,15 @@ namespace
         if (len == 0)
         {
             LogF(logFn, PackageLogLevel::Error,
-                 "%s: name length 0 (the terminator is included, so the minimum is 1)", context);
+                 "%s %u: name length 0 (the terminator is included, so the minimum is 1)",
+                 what, index);
             return Gem::Result::CorruptedData;
         }
         if (len > reader.BytesRemaining())
         {
             LogF(logFn, PackageLogLevel::Error,
-                 "%s: truncated name; length %u exceeds the %zu bytes remaining",
-                 context, len, reader.BytesRemaining());
+                 "%s %u: truncated name; length %u exceeds the %zu bytes remaining",
+                 what, index, len, reader.BytesRemaining());
             return Gem::Result::CorruptedData;
         }
 
@@ -63,7 +64,7 @@ namespace
         if (name.back() != '\0')
         {
             LogF(logFn, PackageLogLevel::Error,
-                 "%s: name of length %u is not null-terminated", context, len);
+                 "%s %u: name of length %u is not null-terminated", what, index, len);
             return Gem::Result::CorruptedData;
         }
 
@@ -83,14 +84,6 @@ namespace
     //--------------------------------------------------------------------------------------------
     // NODE
     //--------------------------------------------------------------------------------------------
-
-    // Fixed-size portion of one node record after the name: ParentIndex + Translation + Rotation +
-    // Scale + the three payload indices.
-    constexpr size_t kNodeFixedBytes = sizeof(int32_t) + 3 * 4 * sizeof(float) + 3 * sizeof(int32_t);
-
-    // Smallest possible node record on disk: name length prefix + terminator + the fixed fields.
-    // Used to sanity-check NodeCount against the bytes remaining before anything is allocated.
-    constexpr size_t kMinNodeDiskBytes = sizeof(uint32_t) + 1 + kNodeFixedBytes;
 
     // Shared by write and read so both sides reject the same malformed node. nodeCount is the full
     // array size; index identifies the node in log records.
@@ -125,35 +118,14 @@ namespace
     // MESH
     //--------------------------------------------------------------------------------------------
 
-    // The vertex streams and inverse bind poses are block-copied between the file and the
-    // in-memory vectors, so the element types must match the on-disk strides exactly.
-    static_assert(sizeof(Math::FloatVector4) == 16,
-                  "FloatVector4 drifted from the float[4] on-disk stream stride");
-    static_assert(sizeof(Math::FloatVector2) == 8,
-                  "FloatVector2 drifted from the float[2] on-disk stream stride");
-    static_assert(sizeof(PackageSkinVertex) == 32,
-                  "PackageSkinVertex drifted from the {uint32[4], float[4]} on-disk stride");
-    static_assert(sizeof(Math::FloatMatrix4x4) == 64,
-                  "FloatMatrix4x4 drifted from the float[16] on-disk inverse-bind-pose stride");
-
+    // Vertex streams and inverse bind poses are read and written as raw bytes; the element-size
+    // contracts they rely on are asserted on the POD types in CanvasPackageData.h. Every stream
+    // starts on a 16-byte boundary relative to the file start.
     constexpr size_t kStreamAlignment = 16;
 
-    // Fixed-size per-part header: MaterialIndex + VertexCount + StreamFlags + 3 pad bytes.
-    constexpr size_t kPartHeaderBytes = sizeof(int32_t) + sizeof(uint32_t) + 4;
-
-    // Fixed-size per-mesh skin block prefix: HasSkin + 3 pad bytes + BoneCount.
-    constexpr size_t kSkinPrefixBytes = 4 + sizeof(uint32_t);
-
-    // Per-bone payload: one node index plus one inverse bind pose.
-    constexpr size_t kBoneDiskBytes = sizeof(int32_t) + sizeof(Math::FloatMatrix4x4);
-
-    // Smallest possible records on disk, used to sanity-check declared counts against the bytes
-    // remaining before anything is allocated.
-    constexpr size_t kMinMeshDiskBytes = sizeof(uint32_t) + 1     // name length prefix + terminator
-                                       + sizeof(uint32_t)         // PartCount
-                                       + 6 * sizeof(float)        // BoundsMin + BoundsMax
-                                       + kSkinPrefixBytes;
-    constexpr size_t kMinPartDiskBytes = kPartHeaderBytes;        // all alignment pads can be 0
+    // Per-bone skin payload: one node index plus one inverse bind pose. Used to bounds-check a
+    // declared bone count before the bone arrays are sized.
+    constexpr size_t kBoneDiskBytes = sizeof(int32_t) + sizeof(PackageMatrix4x4);
 
     // Validate one mesh's skin the same way on write and read: the two bone arrays agree, and a
     // skinless mesh carries no bones.
@@ -177,11 +149,20 @@ namespace
         return Gem::Result::Success;
     }
 
+    // Identifies a mesh part in deferred log records. Passed by value so the pieces reach LogF as
+    // arguments; the sink composes the location string only if it accepts the record.
+    struct MeshPartLoc
+    {
+        const char* Fn;
+        uint32_t    Mesh;
+        uint32_t    Part;
+    };
+
     // Skip the zero padding that places the next vertex stream on a 16-byte file boundary.
     // base rebases the reader's local offset space to absolute file offsets (0 when the reader is
     // already file-absolute).
-    Gem::Result SkipStreamAlignment(CCpkgReader& reader, uint64_t base, const char* context,
-                                    const PackageLogFn& logFn)
+    Gem::Result SkipStreamAlignment(CCpkgReader& reader, uint64_t base, MeshPartLoc loc,
+                                    const char* streamName, const PackageLogFn& logFn)
     {
         const uint64_t absolute = base + reader.GetOffset();
         const size_t pad = static_cast<size_t>((kStreamAlignment - absolute % kStreamAlignment)
@@ -189,8 +170,8 @@ namespace
         if (!reader.SkipBytes(pad))
         {
             LogF(logFn, PackageLogLevel::Error,
-                 "%s: truncated in stream alignment padding; need %zu bytes, have %zu",
-                 context, pad, reader.BytesRemaining());
+                 "%s: mesh %u part %u %s: truncated in stream alignment padding; need %zu, have %zu",
+                 loc.Fn, loc.Mesh, loc.Part, streamName, pad, reader.BytesRemaining());
             return Gem::Result::CorruptedData;
         }
         return Gem::Result::Success;
@@ -203,9 +184,9 @@ namespace
     template <typename TElement>
     Gem::Result ReadStream(CCpkgReader& reader, uint64_t base, uint32_t vertexCount,
                            std::vector<TElement>* dst, MeshStreamRange* outRange,
-                           const char* context, const char* streamName, const PackageLogFn& logFn)
+                           MeshPartLoc loc, const char* streamName, const PackageLogFn& logFn)
     {
-        const Gem::Result aligned = SkipStreamAlignment(reader, base, context, logFn);
+        const Gem::Result aligned = SkipStreamAlignment(reader, base, loc, streamName, logFn);
         if (Gem::Failed(aligned))
             return aligned;
 
@@ -213,9 +194,9 @@ namespace
         if (size > reader.BytesRemaining())
         {
             LogF(logFn, PackageLogLevel::Error,
-                 "%s: truncated %s stream; need %llu bytes for %u vertices, have %zu",
-                 context, streamName, static_cast<unsigned long long>(size), vertexCount,
-                 reader.BytesRemaining());
+                 "%s: mesh %u part %u %s: truncated stream; need %llu bytes for %u vertices, have %zu",
+                 loc.Fn, loc.Mesh, loc.Part, streamName, static_cast<unsigned long long>(size),
+                 vertexCount, reader.BytesRemaining());
             return Gem::Result::CorruptedData;
         }
 
@@ -241,20 +222,11 @@ namespace
     Gem::Result ParseMeshChunk(CCpkgReader& reader, uint64_t base, PackageData* outData,
                                MeshDescriptors* outDesc, const char* fn, const PackageLogFn& logFn)
     {
-        if (reader.BytesRemaining() < sizeof(uint32_t))
+        uint32_t meshCount = 0;
+        if (!reader.ReadU32s(&meshCount, 1))
         {
             LogF(logFn, PackageLogLevel::Error,
                  "%s: truncated chunk header; have %zu bytes", fn, reader.BytesRemaining());
-            return Gem::Result::CorruptedData;
-        }
-
-        const uint32_t meshCount = reader.ReadU32();
-        if (static_cast<uint64_t>(meshCount) * kMinMeshDiskBytes > reader.BytesRemaining())
-        {
-            LogF(logFn, PackageLogLevel::Error,
-                 "%s: mesh count %u needs at least %llu bytes, have %zu", fn, meshCount,
-                 static_cast<unsigned long long>(meshCount) * kMinMeshDiskBytes,
-                 reader.BytesRemaining());
             return Gem::Result::CorruptedData;
         }
 
@@ -263,71 +235,56 @@ namespace
 
         for (uint32_t m = 0; m < meshCount; ++m)
         {
-            char context[64];
-            std::snprintf(context, sizeof(context), "%s: mesh %u", fn, m);
-
             std::string name;
-            const Gem::Result nameResult = ReadName(reader, &name, context, logFn);
+            const Gem::Result nameResult = ReadName(reader, &name, fn, m, logFn);
             if (Gem::Failed(nameResult))
                 return nameResult;
 
-            if (reader.BytesRemaining() < sizeof(uint32_t) + 6 * sizeof(float))
+            uint32_t    partCount = 0;
+            PackageAABB bounds;
+            if (!reader.ReadU32s(&partCount, 1)
+                || !reader.ReadFloats(bounds.Min.V, 3)
+                || !reader.ReadFloats(bounds.Max.V, 3))
             {
                 LogF(logFn, PackageLogLevel::Error,
-                     "%s: truncated mesh header; have %zu bytes", context, reader.BytesRemaining());
-                return Gem::Result::CorruptedData;
-            }
-
-            const uint32_t partCount = reader.ReadU32();
-            float boundsMin[3];
-            float boundsMax[3];
-            reader.ReadFloats(boundsMin, 3);
-            reader.ReadFloats(boundsMax, 3);
-
-            if (static_cast<uint64_t>(partCount) * kMinPartDiskBytes > reader.BytesRemaining())
-            {
-                LogF(logFn, PackageLogLevel::Error,
-                     "%s: part count %u needs at least %llu bytes, have %zu", context, partCount,
-                     static_cast<unsigned long long>(partCount) * kMinPartDiskBytes,
+                     "%s: mesh %u: truncated mesh header; have %zu bytes", fn, m,
                      reader.BytesRemaining());
                 return Gem::Result::CorruptedData;
             }
 
             PackageMesh    mesh;
             MeshDescriptor desc;
-            const Math::AABB bounds(
-                Math::FloatVector4(boundsMin[0], boundsMin[1], boundsMin[2], 0.0f),
-                Math::FloatVector4(boundsMax[0], boundsMax[1], boundsMax[2], 0.0f));
 
             for (uint32_t p = 0; p < partCount; ++p)
             {
-                char partContext[64];
-                std::snprintf(partContext, sizeof(partContext), "%s: mesh %u part %u", fn, m, p);
+                const MeshPartLoc loc{ fn, m, p };
 
-                if (reader.BytesRemaining() < kPartHeaderBytes)
+                int32_t  materialIndex = 0;
+                uint32_t vertexCount   = 0;
+                uint8_t  streamFlags   = 0;
+                uint8_t  pad[3];
+                if (!reader.ReadI32s(&materialIndex, 1)
+                    || !reader.ReadU32s(&vertexCount, 1)
+                    || !reader.ReadBytes(&streamFlags, 1)
+                    || !reader.ReadBytes(pad, sizeof(pad)))
                 {
                     LogF(logFn, PackageLogLevel::Error,
-                         "%s: truncated part header; need %zu bytes, have %zu",
-                         partContext, kPartHeaderBytes, reader.BytesRemaining());
+                         "%s: mesh %u part %u: truncated part header; have %zu bytes",
+                         fn, m, p, reader.BytesRemaining());
                     return Gem::Result::CorruptedData;
                 }
-
-                const int32_t  materialIndex = reader.ReadI32();
-                const uint32_t vertexCount   = reader.ReadU32();
-                const uint8_t  streamFlags   = reader.ReadU8();
-                reader.SkipBytes(3); // _pad
 
                 if ((streamFlags & ~CPKG_MESH_STREAM_VALID_MASK) != 0)
                 {
                     LogF(logFn, PackageLogLevel::Error,
-                         "%s: unknown StreamFlags bits 0x%02X (valid mask 0x%02X)",
-                         partContext, streamFlags, CPKG_MESH_STREAM_VALID_MASK);
+                         "%s: mesh %u part %u: unknown StreamFlags bits 0x%02X (valid mask 0x%02X)",
+                         fn, m, p, streamFlags, CPKG_MESH_STREAM_VALID_MASK);
                     return Gem::Result::CorruptedData;
                 }
                 if (materialIndex < -1)
                 {
                     LogF(logFn, PackageLogLevel::Error,
-                         "%s: MaterialIndex %d below -1", partContext, materialIndex);
+                         "%s: mesh %u part %u: MaterialIndex %d below -1", fn, m, p, materialIndex);
                     return Gem::Result::CorruptedData;
                 }
 
@@ -339,42 +296,40 @@ namespace
                 partDesc.StreamFlags   = streamFlags;
 
                 // Exactly one destination per stream, matching the outData / outDesc mode.
-                std::vector<Math::FloatVector4>* positions = outData ? &part.Positions : nullptr;
-                std::vector<Math::FloatVector4>* normals   = outData ? &part.Normals   : nullptr;
-                std::vector<Math::FloatVector2>* uv0       = outData ? &part.UV0       : nullptr;
-                std::vector<Math::FloatVector4>* tangents  = outData ? &part.Tangents  : nullptr;
+                std::vector<PackageFloat4>*      positions = outData ? &part.Positions : nullptr;
+                std::vector<PackageFloat4>*      normals   = outData ? &part.Normals   : nullptr;
+                std::vector<PackageFloat2>*      uv0       = outData ? &part.UV0       : nullptr;
+                std::vector<PackageFloat4>*      tangents  = outData ? &part.Tangents  : nullptr;
                 std::vector<PackageSkinVertex>*  skinVerts = outData ? &part.SkinVertices : nullptr;
 
                 Gem::Result streamResult = ReadStream(reader, base, vertexCount, positions,
-                                                      &partDesc.Positions, partContext,
-                                                      "Positions", logFn);
+                                                      &partDesc.Positions, loc, "Positions", logFn);
                 if (Gem::Failed(streamResult))
                     return streamResult;
 
                 streamResult = ReadStream(reader, base, vertexCount, normals, &partDesc.Normals,
-                                          partContext, "Normals", logFn);
+                                          loc, "Normals", logFn);
                 if (Gem::Failed(streamResult))
                     return streamResult;
 
                 if (streamFlags & CPKG_MESH_STREAM_UV0)
                 {
                     streamResult = ReadStream(reader, base, vertexCount, uv0, &partDesc.UV0,
-                                              partContext, "UV0", logFn);
+                                              loc, "UV0", logFn);
                     if (Gem::Failed(streamResult))
                         return streamResult;
                 }
                 if (streamFlags & CPKG_MESH_STREAM_TANGENTS)
                 {
                     streamResult = ReadStream(reader, base, vertexCount, tangents,
-                                              &partDesc.Tangents, partContext, "Tangents", logFn);
+                                              &partDesc.Tangents, loc, "Tangents", logFn);
                     if (Gem::Failed(streamResult))
                         return streamResult;
                 }
                 if (streamFlags & CPKG_MESH_STREAM_SKIN)
                 {
                     streamResult = ReadStream(reader, base, vertexCount, skinVerts,
-                                              &partDesc.SkinVertices, partContext, "SkinVertices",
-                                              logFn);
+                                              &partDesc.SkinVertices, loc, "SkinVertices", logFn);
                     if (Gem::Failed(streamResult))
                         return streamResult;
                 }
@@ -386,22 +341,23 @@ namespace
             }
 
             // Per-mesh skin block: bounded bone data, parsed fully on both paths.
-            if (reader.BytesRemaining() < kSkinPrefixBytes)
+            uint8_t  hasSkin   = 0;
+            uint8_t  skinPad[3];
+            uint32_t boneCount = 0;
+            if (!reader.ReadBytes(&hasSkin, 1)
+                || !reader.ReadBytes(skinPad, sizeof(skinPad))
+                || !reader.ReadU32s(&boneCount, 1))
             {
                 LogF(logFn, PackageLogLevel::Error,
-                     "%s: truncated skin block; need %zu bytes, have %zu",
-                     context, kSkinPrefixBytes, reader.BytesRemaining());
+                     "%s: mesh %u: truncated skin block; have %zu bytes", fn, m,
+                     reader.BytesRemaining());
                 return Gem::Result::CorruptedData;
             }
-
-            const uint8_t hasSkin = reader.ReadU8();
-            reader.SkipBytes(3); // _pad
-            const uint32_t boneCount = reader.ReadU32();
 
             if (hasSkin > 1)
             {
                 LogF(logFn, PackageLogLevel::Error,
-                     "%s: HasSkin byte is %u (expected 0 or 1)", context, hasSkin);
+                     "%s: mesh %u: HasSkin byte is %u (expected 0 or 1)", fn, m, hasSkin);
                 return Gem::Result::CorruptedData;
             }
             const Gem::Result skinValid = ValidateSkin(hasSkin != 0, boneCount, boneCount, m,
@@ -412,8 +368,8 @@ namespace
             if (static_cast<uint64_t>(boneCount) * kBoneDiskBytes > reader.BytesRemaining())
             {
                 LogF(logFn, PackageLogLevel::Error,
-                     "%s: truncated skin; %u bones need %llu bytes, have %zu", context, boneCount,
-                     static_cast<unsigned long long>(boneCount) * kBoneDiskBytes,
+                     "%s: mesh %u: truncated skin; %u bones need %llu bytes, have %zu", fn, m,
+                     boneCount, static_cast<unsigned long long>(boneCount) * kBoneDiskBytes,
                      reader.BytesRemaining());
                 return Gem::Result::CorruptedData;
             }
@@ -424,9 +380,9 @@ namespace
             skin.InvBindPoses.resize(boneCount);
             if (boneCount != 0)
             {
-                reader.ReadI32s(skin.BoneNodeIndices.data(), boneCount);
+                reader.ReadI32s(skin.BoneNodeIndices.data(), boneCount);       // in range per the guard
                 reader.ReadBytes(skin.InvBindPoses.data(),
-                                 boneCount * sizeof(Math::FloatMatrix4x4));
+                                 boneCount * sizeof(PackageMatrix4x4));
             }
 
             if (outData)
@@ -503,15 +459,14 @@ Gem::Result ReadNodeChunk(CCpkgReader& reader, PackageData* out, const PackageLo
         return Gem::Result::BadPointer;
     }
 
-    if (reader.BytesRemaining() < sizeof(uint32_t) + sizeof(int32_t))
+    uint32_t nodeCount             = 0;
+    int32_t  activeCameraNodeIndex = 0;
+    if (!reader.ReadU32s(&nodeCount, 1) || !reader.ReadI32s(&activeCameraNodeIndex, 1))
     {
         LogF(logFn, PackageLogLevel::Error,
              "ReadNodeChunk: truncated chunk header; have %zu bytes", reader.BytesRemaining());
         return Gem::Result::CorruptedData;
     }
-
-    const uint32_t nodeCount = reader.ReadU32();
-    const int32_t activeCameraNodeIndex = reader.ReadI32();
 
     if (activeCameraNodeIndex < -1 || activeCameraNodeIndex >= static_cast<int64_t>(nodeCount))
     {
@@ -521,45 +476,29 @@ Gem::Result ReadNodeChunk(CCpkgReader& reader, PackageData* out, const PackageLo
         return Gem::Result::CorruptedData;
     }
 
-    // Guard the allocation below: the declared count cannot possibly fit in fewer bytes than the
-    // minimum record size times the count.
-    if (static_cast<uint64_t>(nodeCount) * kMinNodeDiskBytes > reader.BytesRemaining())
-    {
-        LogF(logFn, PackageLogLevel::Error,
-             "ReadNodeChunk: node count %u needs at least %llu bytes, have %zu",
-             nodeCount, static_cast<unsigned long long>(nodeCount) * kMinNodeDiskBytes,
-             reader.BytesRemaining());
-        return Gem::Result::CorruptedData;
-    }
-
     std::vector<PackageNode> nodes;
-    nodes.reserve(nodeCount);
 
     for (uint32_t i = 0; i < nodeCount; ++i)
     {
         PackageNode node;
 
-        char context[64];
-        std::snprintf(context, sizeof(context), "ReadNodeChunk: node %u", i);
-        const Gem::Result nameResult = ReadName(reader, &node.Name, context, logFn);
+        const Gem::Result nameResult = ReadName(reader, &node.Name, "ReadNodeChunk: node", i, logFn);
         if (Gem::Failed(nameResult))
             return nameResult;
 
-        if (reader.BytesRemaining() < kNodeFixedBytes)
+        if (!reader.ReadI32s(&node.ParentIndex, 1)
+            || !reader.ReadFloats(node.Translation.V, 4)
+            || !reader.ReadFloats(node.Rotation.V, 4)
+            || !reader.ReadFloats(node.Scale.V, 4)
+            || !reader.ReadI32s(&node.MeshIndex, 1)
+            || !reader.ReadI32s(&node.LightIndex, 1)
+            || !reader.ReadI32s(&node.CameraIndex, 1))
         {
             LogF(logFn, PackageLogLevel::Error,
-                 "ReadNodeChunk: truncated at node %u of %u; need %zu bytes, have %zu",
-                 i, nodeCount, kNodeFixedBytes, reader.BytesRemaining());
+                 "ReadNodeChunk: node %u: truncated body; have %zu bytes", i,
+                 reader.BytesRemaining());
             return Gem::Result::CorruptedData;
         }
-
-        node.ParentIndex = reader.ReadI32();
-        reader.ReadFloats(node.Translation.V, 4);
-        reader.ReadFloats(node.Rotation.V, 4);
-        reader.ReadFloats(node.Scale.V, 4);
-        node.MeshIndex   = reader.ReadI32();
-        node.LightIndex  = reader.ReadI32();
-        node.CameraIndex = reader.ReadI32();
 
         const Gem::Result valid = ValidateNode(node, i, nodeCount, Gem::Result::CorruptedData,
                                                "ReadNodeChunk", logFn);
@@ -667,18 +606,18 @@ void WriteMeshChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn
             // Each stream starts on a 16-byte boundary relative to the file start; PadToAlignment
             // pads from the sink's absolute Tell().
             sink.PadToAlignment(kStreamAlignment);
-            sink.WriteBytes(part.Positions.data(), vertexCount * sizeof(Math::FloatVector4));
+            sink.WriteBytes(part.Positions.data(), vertexCount * sizeof(PackageFloat4));
             sink.PadToAlignment(kStreamAlignment);
-            sink.WriteBytes(part.Normals.data(), vertexCount * sizeof(Math::FloatVector4));
+            sink.WriteBytes(part.Normals.data(), vertexCount * sizeof(PackageFloat4));
             if (streamFlags & CPKG_MESH_STREAM_UV0)
             {
                 sink.PadToAlignment(kStreamAlignment);
-                sink.WriteBytes(part.UV0.data(), vertexCount * sizeof(Math::FloatVector2));
+                sink.WriteBytes(part.UV0.data(), vertexCount * sizeof(PackageFloat2));
             }
             if (streamFlags & CPKG_MESH_STREAM_TANGENTS)
             {
                 sink.PadToAlignment(kStreamAlignment);
-                sink.WriteBytes(part.Tangents.data(), vertexCount * sizeof(Math::FloatVector4));
+                sink.WriteBytes(part.Tangents.data(), vertexCount * sizeof(PackageFloat4));
             }
             if (streamFlags & CPKG_MESH_STREAM_SKIN)
             {
@@ -695,7 +634,7 @@ void WriteMeshChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn
         if (boneCount != 0)
         {
             sink.WriteI32s(skin.BoneNodeIndices.data(), boneCount);
-            sink.WriteBytes(skin.InvBindPoses.data(), boneCount * sizeof(Math::FloatMatrix4x4));
+            sink.WriteBytes(skin.InvBindPoses.data(), boneCount * sizeof(PackageMatrix4x4));
         }
     }
 }
@@ -720,6 +659,451 @@ Gem::Result ReadMeshDescriptors(CCpkgReader& reader, uint64_t chunkFileOffset,
         return Gem::Result::BadPointer;
     }
     return ParseMeshChunk(reader, chunkFileOffset, nullptr, out, "ReadMeshDescriptors", logFn);
+}
+
+//--------------------------------------------------------------------------------------------------
+// MATL
+//--------------------------------------------------------------------------------------------------
+
+void WriteMatlChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn)
+{
+    const size_t materialCount = data.Materials.size();
+    if (materialCount > UINT32_MAX)
+        ThrowF(logFn, Gem::Result::InvalidArg,
+               "WriteMatlChunk: material count %zu exceeds the uint32 limit", materialCount);
+
+    sink.WriteU32(static_cast<uint32_t>(materialCount));
+
+    for (size_t i = 0; i < materialCount; ++i)
+    {
+        const PackageMaterial& mat = data.Materials[i];
+
+        if (!NameLenFits(mat.Name))
+            ThrowF(logFn, Gem::Result::InvalidArg,
+                   "WriteMatlChunk: material %zu name of %zu bytes exceeds the uint32 length prefix",
+                   i, mat.Name.size());
+
+        WriteName(sink, mat.Name);
+        sink.WriteFloats(mat.BaseColorFactor.V, 4);
+        sink.WriteFloats(mat.EmissiveFactor.V, 4);
+        sink.WriteFloats(mat.RoughMetalAOFactor.V, 4);
+        sink.WriteI32(mat.AlbedoTextureIndex);
+        sink.WriteI32(mat.NormalTextureIndex);
+        sink.WriteI32(mat.EmissiveTextureIndex);
+        sink.WriteI32(mat.RoughnessTextureIndex);
+        sink.WriteI32(mat.MetallicTextureIndex);
+        sink.WriteI32(mat.AmbientOcclusionTextureIndex);
+    }
+}
+
+Gem::Result ReadMatlChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn)
+{
+    if (!out)
+    {
+        LogF(logFn, PackageLogLevel::Error, "ReadMatlChunk: null output pointer");
+        return Gem::Result::BadPointer;
+    }
+
+    uint32_t materialCount = 0;
+    if (!reader.ReadU32s(&materialCount, 1))
+    {
+        LogF(logFn, PackageLogLevel::Error,
+             "ReadMatlChunk: truncated chunk header; have %zu bytes", reader.BytesRemaining());
+        return Gem::Result::CorruptedData;
+    }
+
+    std::vector<PackageMaterial> materials;
+
+    for (uint32_t i = 0; i < materialCount; ++i)
+    {
+        PackageMaterial mat;
+
+        const Gem::Result nameResult = ReadName(reader, &mat.Name, "ReadMatlChunk: material", i,
+                                                logFn);
+        if (Gem::Failed(nameResult))
+            return nameResult;
+
+        if (!reader.ReadFloats(mat.BaseColorFactor.V, 4)
+            || !reader.ReadFloats(mat.EmissiveFactor.V, 4)
+            || !reader.ReadFloats(mat.RoughMetalAOFactor.V, 4)
+            || !reader.ReadI32s(&mat.AlbedoTextureIndex, 1)
+            || !reader.ReadI32s(&mat.NormalTextureIndex, 1)
+            || !reader.ReadI32s(&mat.EmissiveTextureIndex, 1)
+            || !reader.ReadI32s(&mat.RoughnessTextureIndex, 1)
+            || !reader.ReadI32s(&mat.MetallicTextureIndex, 1)
+            || !reader.ReadI32s(&mat.AmbientOcclusionTextureIndex, 1))
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadMatlChunk: material %u: truncated body; have %zu bytes", i,
+                 reader.BytesRemaining());
+            return Gem::Result::CorruptedData;
+        }
+
+        materials.push_back(std::move(mat));
+    }
+
+    out->Materials = std::move(materials);
+    return Gem::Result::Success;
+}
+
+//--------------------------------------------------------------------------------------------------
+// TXTR
+//--------------------------------------------------------------------------------------------------
+
+void WriteTxtrChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn)
+{
+    const size_t textureCount = data.Textures.size();
+    if (textureCount > UINT32_MAX)
+        ThrowF(logFn, Gem::Result::InvalidArg,
+               "WriteTxtrChunk: texture count %zu exceeds the uint32 limit", textureCount);
+
+    sink.WriteU32(static_cast<uint32_t>(textureCount));
+
+    for (size_t i = 0; i < textureCount; ++i)
+    {
+        const PackageTexture& tex = data.Textures[i];
+
+        if (!NameLenFits(tex.Name))
+            ThrowF(logFn, Gem::Result::InvalidArg,
+                   "WriteTxtrChunk: texture %zu name of %zu bytes exceeds the uint32 length prefix",
+                   i, tex.Name.size());
+        if (!NameLenFits(tex.Path))
+            ThrowF(logFn, Gem::Result::InvalidArg,
+                   "WriteTxtrChunk: texture %zu path of %zu bytes exceeds the uint32 length prefix",
+                   i, tex.Path.size());
+        if (tex.Subresources.size() > UINT32_MAX)
+            ThrowF(logFn, Gem::Result::InvalidArg,
+                   "WriteTxtrChunk: texture %zu subresource count %zu exceeds the uint32 limit",
+                   i, tex.Subresources.size());
+
+        // Every subresource must address bytes that exist in the payload.
+        const uint64_t payloadSize = tex.Bytes.size();
+        for (size_t s = 0; s < tex.Subresources.size(); ++s)
+        {
+            const PackageSubresource& sub = tex.Subresources[s];
+            if (sub.Offset + sub.Size > payloadSize)
+                ThrowF(logFn, Gem::Result::InvalidArg,
+                       "WriteTxtrChunk: texture %zu subresource %zu range [%llu, %llu) exceeds the "
+                       "%llu-byte payload",
+                       i, s, static_cast<unsigned long long>(sub.Offset),
+                       static_cast<unsigned long long>(sub.Offset + sub.Size),
+                       static_cast<unsigned long long>(payloadSize));
+        }
+
+        WriteName(sink, tex.Name);
+        WriteName(sink, tex.Path);
+        sink.WriteU32(static_cast<uint32_t>(tex.Format));
+        sink.WriteU32(static_cast<uint32_t>(tex.Dimension));
+        sink.WriteU32(tex.Width);
+        sink.WriteU32(tex.Height);
+        sink.WriteU32(tex.Depth);
+        sink.WriteU32(tex.ArraySize);
+        sink.WriteU32(tex.MipCount);
+        sink.WriteU32(static_cast<uint32_t>(tex.Subresources.size()));
+        for (const PackageSubresource& sub : tex.Subresources)
+        {
+            sink.WriteU64(sub.Offset);
+            sink.WriteU32(sub.Size);
+            sink.WriteU32(sub.RowPitch);
+        }
+        sink.WriteU64(payloadSize);
+        if (!tex.Bytes.empty())
+            sink.WriteBytes(tex.Bytes.data(), tex.Bytes.size());
+    }
+}
+
+Gem::Result ReadTxtrChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn)
+{
+    if (!out)
+    {
+        LogF(logFn, PackageLogLevel::Error, "ReadTxtrChunk: null output pointer");
+        return Gem::Result::BadPointer;
+    }
+
+    uint32_t textureCount = 0;
+    if (!reader.ReadU32s(&textureCount, 1))
+    {
+        LogF(logFn, PackageLogLevel::Error,
+             "ReadTxtrChunk: truncated chunk header; have %zu bytes", reader.BytesRemaining());
+        return Gem::Result::CorruptedData;
+    }
+
+    std::vector<PackageTexture> textures;
+
+    for (uint32_t i = 0; i < textureCount; ++i)
+    {
+        PackageTexture tex;
+
+        Gem::Result nameResult = ReadName(reader, &tex.Name, "ReadTxtrChunk: texture name", i,
+                                          logFn);
+        if (Gem::Failed(nameResult))
+            return nameResult;
+
+        nameResult = ReadName(reader, &tex.Path, "ReadTxtrChunk: texture path", i, logFn);
+        if (Gem::Failed(nameResult))
+            return nameResult;
+
+        uint32_t format      = 0;
+        uint32_t dimension   = 0;
+        uint32_t subresCount = 0;
+        if (!reader.ReadU32s(&format, 1)
+            || !reader.ReadU32s(&dimension, 1)
+            || !reader.ReadU32s(&tex.Width, 1)
+            || !reader.ReadU32s(&tex.Height, 1)
+            || !reader.ReadU32s(&tex.Depth, 1)
+            || !reader.ReadU32s(&tex.ArraySize, 1)
+            || !reader.ReadU32s(&tex.MipCount, 1)
+            || !reader.ReadU32s(&subresCount, 1))
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadTxtrChunk: texture %u: truncated metadata; have %zu bytes", i,
+                 reader.BytesRemaining());
+            return Gem::Result::CorruptedData;
+        }
+
+        if (dimension > static_cast<uint32_t>(GfxSurfaceDimension::DimensionCube))
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadTxtrChunk: texture %u: unknown Dimension %u (valid 0..%u)", i, dimension,
+                 static_cast<uint32_t>(GfxSurfaceDimension::DimensionCube));
+            return Gem::Result::CorruptedData;
+        }
+        tex.Format    = static_cast<GfxFormat>(format);
+        tex.Dimension = static_cast<GfxSurfaceDimension>(dimension);
+
+        // Read the subresource table entry by entry (push_back so an absurd count fails on the
+        // first truncated read instead of pre-allocating).
+        for (uint32_t s = 0; s < subresCount; ++s)
+        {
+            PackageSubresource sub;
+            if (!reader.ReadBytes(&sub.Offset, sizeof(sub.Offset))
+                || !reader.ReadU32s(&sub.Size, 1)
+                || !reader.ReadU32s(&sub.RowPitch, 1))
+            {
+                LogF(logFn, PackageLogLevel::Error,
+                     "ReadTxtrChunk: texture %u: truncated subresource table at entry %u of %u; "
+                     "have %zu bytes", i, s, subresCount, reader.BytesRemaining());
+                return Gem::Result::CorruptedData;
+            }
+            tex.Subresources.push_back(sub);
+        }
+
+        uint64_t payloadSize = 0;
+        if (!reader.ReadBytes(&payloadSize, sizeof(payloadSize)))
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadTxtrChunk: texture %u: truncated reading payload size; have %zu bytes", i,
+                 reader.BytesRemaining());
+            return Gem::Result::CorruptedData;
+        }
+        if (payloadSize > reader.BytesRemaining())
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadTxtrChunk: texture %u: payload of %llu bytes exceeds the %zu bytes remaining",
+                 i, static_cast<unsigned long long>(payloadSize), reader.BytesRemaining());
+            return Gem::Result::CorruptedData;
+        }
+
+        // Each subresource must address bytes inside the payload just sized.
+        for (uint32_t s = 0; s < subresCount; ++s)
+        {
+            const PackageSubresource& sub = tex.Subresources[s];
+            if (sub.Offset + sub.Size > payloadSize)
+            {
+                LogF(logFn, PackageLogLevel::Error,
+                     "ReadTxtrChunk: texture %u: subresource %u range [%llu, %llu) exceeds the "
+                     "%llu-byte payload", i, s, static_cast<unsigned long long>(sub.Offset),
+                     static_cast<unsigned long long>(sub.Offset + sub.Size),
+                     static_cast<unsigned long long>(payloadSize));
+                return Gem::Result::CorruptedData;
+            }
+        }
+
+        tex.Bytes.resize(static_cast<size_t>(payloadSize));
+        if (payloadSize != 0)
+            reader.ReadBytes(tex.Bytes.data(), static_cast<size_t>(payloadSize)); // in range per check
+
+        textures.push_back(std::move(tex));
+    }
+
+    out->Textures = std::move(textures);
+    return Gem::Result::Success;
+}
+
+//--------------------------------------------------------------------------------------------------
+// LITE
+//--------------------------------------------------------------------------------------------------
+
+void WriteLiteChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn)
+{
+    const size_t lightCount = data.Lights.size();
+    if (lightCount > UINT32_MAX)
+        ThrowF(logFn, Gem::Result::InvalidArg,
+               "WriteLiteChunk: light count %zu exceeds the uint32 limit", lightCount);
+
+    sink.WriteU32(static_cast<uint32_t>(lightCount));
+
+    for (size_t i = 0; i < lightCount; ++i)
+    {
+        const PackageLight& light = data.Lights[i];
+
+        if (!NameLenFits(light.Name))
+            ThrowF(logFn, Gem::Result::InvalidArg,
+                   "WriteLiteChunk: light %zu name of %zu bytes exceeds the uint32 length prefix",
+                   i, light.Name.size());
+
+        WriteName(sink, light.Name);
+        sink.WriteU32(static_cast<uint32_t>(light.Type));
+        sink.WriteFloats(light.Color.V, 4);
+        sink.WriteFloat(light.Intensity);
+        sink.WriteFloat(light.Range);
+        sink.WriteFloat(light.AttenuationConst);
+        sink.WriteFloat(light.AttenuationLinear);
+        sink.WriteFloat(light.AttenuationQuad);
+        sink.WriteFloat(light.SpotInnerAngle);
+        sink.WriteFloat(light.SpotOuterAngle);
+    }
+}
+
+Gem::Result ReadLiteChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn)
+{
+    if (!out)
+    {
+        LogF(logFn, PackageLogLevel::Error, "ReadLiteChunk: null output pointer");
+        return Gem::Result::BadPointer;
+    }
+
+    uint32_t lightCount = 0;
+    if (!reader.ReadU32s(&lightCount, 1))
+    {
+        LogF(logFn, PackageLogLevel::Error,
+             "ReadLiteChunk: truncated chunk header; have %zu bytes", reader.BytesRemaining());
+        return Gem::Result::CorruptedData;
+    }
+
+    std::vector<PackageLight> lights;
+
+    for (uint32_t i = 0; i < lightCount; ++i)
+    {
+        PackageLight light;
+
+        const Gem::Result nameResult = ReadName(reader, &light.Name, "ReadLiteChunk: light", i,
+                                                logFn);
+        if (Gem::Failed(nameResult))
+            return nameResult;
+
+        uint32_t type = 0;
+        if (!reader.ReadU32s(&type, 1))
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadLiteChunk: light %u: truncated body; have %zu bytes", i,
+                 reader.BytesRemaining());
+            return Gem::Result::CorruptedData;
+        }
+        if (type > static_cast<uint32_t>(LightType::Area))
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadLiteChunk: light %u: unknown LightType %u (valid 0..%u)", i, type,
+                 static_cast<uint32_t>(LightType::Area));
+            return Gem::Result::CorruptedData;
+        }
+        light.Type = static_cast<LightType>(type);
+
+        if (!reader.ReadFloats(light.Color.V, 4)
+            || !reader.ReadFloats(&light.Intensity, 1)
+            || !reader.ReadFloats(&light.Range, 1)
+            || !reader.ReadFloats(&light.AttenuationConst, 1)
+            || !reader.ReadFloats(&light.AttenuationLinear, 1)
+            || !reader.ReadFloats(&light.AttenuationQuad, 1)
+            || !reader.ReadFloats(&light.SpotInnerAngle, 1)
+            || !reader.ReadFloats(&light.SpotOuterAngle, 1))
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadLiteChunk: light %u: truncated body; have %zu bytes", i,
+                 reader.BytesRemaining());
+            return Gem::Result::CorruptedData;
+        }
+
+        lights.push_back(std::move(light));
+    }
+
+    out->Lights = std::move(lights);
+    return Gem::Result::Success;
+}
+
+//--------------------------------------------------------------------------------------------------
+// CAMR
+//--------------------------------------------------------------------------------------------------
+
+void WriteCamrChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn)
+{
+    const size_t cameraCount = data.Cameras.size();
+    if (cameraCount > UINT32_MAX)
+        ThrowF(logFn, Gem::Result::InvalidArg,
+               "WriteCamrChunk: camera count %zu exceeds the uint32 limit", cameraCount);
+
+    sink.WriteU32(static_cast<uint32_t>(cameraCount));
+
+    for (size_t i = 0; i < cameraCount; ++i)
+    {
+        const PackageCamera& camera = data.Cameras[i];
+
+        if (!NameLenFits(camera.Name))
+            ThrowF(logFn, Gem::Result::InvalidArg,
+                   "WriteCamrChunk: camera %zu name of %zu bytes exceeds the uint32 length prefix",
+                   i, camera.Name.size());
+
+        WriteName(sink, camera.Name);
+        sink.WriteFloat(camera.NearZ);
+        sink.WriteFloat(camera.FarZ);
+        sink.WriteFloat(camera.FovY);
+        sink.WriteFloat(camera.AspectRatio);
+    }
+}
+
+Gem::Result ReadCamrChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn)
+{
+    if (!out)
+    {
+        LogF(logFn, PackageLogLevel::Error, "ReadCamrChunk: null output pointer");
+        return Gem::Result::BadPointer;
+    }
+
+    uint32_t cameraCount = 0;
+    if (!reader.ReadU32s(&cameraCount, 1))
+    {
+        LogF(logFn, PackageLogLevel::Error,
+             "ReadCamrChunk: truncated chunk header; have %zu bytes", reader.BytesRemaining());
+        return Gem::Result::CorruptedData;
+    }
+
+    std::vector<PackageCamera> cameras;
+
+    for (uint32_t i = 0; i < cameraCount; ++i)
+    {
+        PackageCamera camera;
+
+        const Gem::Result nameResult = ReadName(reader, &camera.Name, "ReadCamrChunk: camera", i,
+                                                logFn);
+        if (Gem::Failed(nameResult))
+            return nameResult;
+
+        if (!reader.ReadFloats(&camera.NearZ, 1)
+            || !reader.ReadFloats(&camera.FarZ, 1)
+            || !reader.ReadFloats(&camera.FovY, 1)
+            || !reader.ReadFloats(&camera.AspectRatio, 1))
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadCamrChunk: camera %u: truncated body; have %zu bytes", i,
+                 reader.BytesRemaining());
+            return Gem::Result::CorruptedData;
+        }
+
+        cameras.push_back(std::move(camera));
+    }
+
+    out->Cameras = std::move(cameras);
+    return Gem::Result::Success;
 }
 
 } // namespace Canvas::Cpkg

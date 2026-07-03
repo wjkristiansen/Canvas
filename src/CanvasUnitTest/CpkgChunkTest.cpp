@@ -5,6 +5,7 @@
 #include "CpkgTestUtil.h"
 
 #include <cstring>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -45,23 +46,36 @@ namespace
         return ReadFileBytes(tmp.path);
     }
 
-    void ExpectVec2Eq(const Math::FloatVector2& actual, const Math::FloatVector2& expected)
-    {
-        EXPECT_EQ(actual.X, expected.X);
-        EXPECT_EQ(actual.Y, expected.Y);
-    }
-
-    void ExpectVec4Eq(const Math::FloatVector4& actual, const Math::FloatVector4& expected)
+    template <typename T> // PackageFloat4 or PackageQuat (both expose V[4])
+    void ExpectVec4Eq(const T& actual, const T& expected)
     {
         for (int i = 0; i < 4; ++i)
             EXPECT_EQ(actual.V[i], expected.V[i]);
     }
 
-    void ExpectMatrixEq(const Math::FloatMatrix4x4& actual, const Math::FloatMatrix4x4& expected)
+    void ExpectVec3Eq(const PackageFloat3& actual, const PackageFloat3& expected)
     {
-        for (int r = 0; r < 4; ++r)
-            for (int c = 0; c < 4; ++c)
-                EXPECT_EQ(actual[r][c], expected[r][c]);
+        for (int i = 0; i < 3; ++i)
+            EXPECT_EQ(actual.V[i], expected.V[i]);
+    }
+
+    void ExpectVec2Eq(const PackageFloat2& actual, const PackageFloat2& expected)
+    {
+        for (int i = 0; i < 2; ++i)
+            EXPECT_EQ(actual.V[i], expected.V[i]);
+    }
+
+    void ExpectMatrixEq(const PackageMatrix4x4& actual, const PackageMatrix4x4& expected)
+    {
+        for (int i = 0; i < 16; ++i)
+            EXPECT_EQ(actual.M[i], expected.M[i]);
+    }
+
+    PackageMatrix4x4 Identity4x4()
+    {
+        PackageMatrix4x4 m{};
+        m.M[0] = m.M[5] = m.M[10] = m.M[15] = 1.0f;
+        return m;
     }
 
     // A part with recognisable per-vertex values in every requested stream.
@@ -247,11 +261,12 @@ TEST(CpkgChunkTest, MeshRoundTripFullStreams)
     PackageData original;
     PackageMesh mesh;
     mesh.Name   = "FullStreams";
-    mesh.Bounds = Math::AABB({ -1.0f, -2.0f, -3.0f, 0.0f }, { 4.0f, 5.0f, 6.0f, 0.0f });
+    mesh.Bounds.Min = { -1.0f, -2.0f, -3.0f };
+    mesh.Bounds.Max = { 4.0f, 5.0f, 6.0f };
     mesh.Parts.push_back(MakePart(2, 6, true, true, true));
     mesh.Skin.HasSkin = true;
     mesh.Skin.BoneNodeIndices = { 1, 2 };
-    mesh.Skin.InvBindPoses.resize(2, Math::FloatMatrix4x4::Identity());
+    mesh.Skin.InvBindPoses.resize(2, Identity4x4());
     original.Meshes.push_back(mesh);
 
     uint64_t dataOffset = 0;
@@ -270,8 +285,8 @@ TEST(CpkgChunkTest, MeshRoundTripFullStreams)
     ASSERT_EQ(readBack.Meshes.size(), size_t(1));
     const PackageMesh& a = readBack.Meshes[0];
     EXPECT_EQ(a.Name, mesh.Name);
-    ExpectVec4Eq(a.Bounds.Min, mesh.Bounds.Min);
-    ExpectVec4Eq(a.Bounds.Max, mesh.Bounds.Max);
+    ExpectVec3Eq(a.Bounds.Min, mesh.Bounds.Min);
+    ExpectVec3Eq(a.Bounds.Max, mesh.Bounds.Max);
     ASSERT_EQ(a.Parts.size(), size_t(1));
     ExpectPartEq(a.Parts[0], mesh.Parts[0]);
     EXPECT_TRUE(a.Skin.HasSkin);
@@ -285,7 +300,8 @@ TEST(CpkgChunkTest, MeshRoundTripMinimalStreams)
     PackageData original;
     PackageMesh mesh;
     mesh.Name   = "Minimal";
-    mesh.Bounds = Math::AABB({ 0.0f, 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 0.0f });
+    mesh.Bounds.Min = { 0.0f, 0.0f, 0.0f };
+    mesh.Bounds.Max = { 1.0f, 1.0f, 1.0f };
     mesh.Parts.push_back(MakePart(-1, 3, false, false, false));
     original.Meshes.push_back(mesh);
 
@@ -318,16 +334,17 @@ TEST(CpkgChunkTest, MeshRoundTripSkinned)
     PackageData original;
     PackageMesh mesh;
     mesh.Name   = "Skinned";
-    mesh.Bounds = Math::AABB({ -2.0f, -2.0f, -2.0f, 0.0f }, { 2.0f, 2.0f, 2.0f, 0.0f });
+    mesh.Bounds.Min = { -2.0f, -2.0f, -2.0f };
+    mesh.Bounds.Max = { 2.0f, 2.0f, 2.0f };
     mesh.Parts.push_back(MakePart(0, 4, false, false, true));
     mesh.Skin.HasSkin = true;
     mesh.Skin.BoneNodeIndices = { 7, 11, 13 };
     for (int bone = 0; bone < 3; ++bone)
     {
-        Math::FloatMatrix4x4 pose;
+        PackageMatrix4x4 pose;
         for (int r = 0; r < 4; ++r)
             for (int c = 0; c < 4; ++c)
-                pose[r][c] = static_cast<float>(bone * 100 + r * 10 + c);
+                pose.M[r * 4 + c] = static_cast<float>(bone * 100 + r * 10 + c);
         mesh.Skin.InvBindPoses.push_back(pose);
     }
     original.Meshes.push_back(mesh);
@@ -361,12 +378,13 @@ TEST(CpkgChunkTest, MeshStreamAlignment)
     PackageData original;
     PackageMesh mesh;
     mesh.Name   = "Mesh_A"; // odd header sizes so the alignment pads are non-trivial
-    mesh.Bounds = Math::AABB({ 0.0f, 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 0.0f });
+    mesh.Bounds.Min = { 0.0f, 0.0f, 0.0f };
+    mesh.Bounds.Max = { 1.0f, 1.0f, 1.0f };
     mesh.Parts.push_back(MakePart(0, 5, true, true, true));
     mesh.Parts.push_back(MakePart(1, 3, true, false, false));
     mesh.Skin.HasSkin = true;
     mesh.Skin.BoneNodeIndices = { 0 };
-    mesh.Skin.InvBindPoses.resize(1, Math::FloatMatrix4x4::Identity());
+    mesh.Skin.InvBindPoses.resize(1, Identity4x4());
     original.Meshes.push_back(mesh);
 
     uint64_t dataOffset = 0;
@@ -407,10 +425,10 @@ TEST(CpkgChunkTest, MeshStreamAlignment)
         }
 
         // The recorded ranges must address the original stream bytes.
-        EXPECT_EQ(part.Positions.Size, src.Positions.size() * sizeof(Math::FloatVector4));
+        EXPECT_EQ(part.Positions.Size, src.Positions.size() * sizeof(PackageFloat4));
         EXPECT_EQ(std::memcmp(file.data() + part.Positions.Offset, src.Positions.data(),
                               static_cast<size_t>(part.Positions.Size)), 0);
-        EXPECT_EQ(part.UV0.Size, src.UV0.size() * sizeof(Math::FloatVector2));
+        EXPECT_EQ(part.UV0.Size, src.UV0.size() * sizeof(PackageFloat2));
         EXPECT_EQ(std::memcmp(file.data() + part.UV0.Offset, src.UV0.data(),
                               static_cast<size_t>(part.UV0.Size)), 0);
     }
@@ -442,7 +460,8 @@ TEST(CpkgChunkTest, ReadMeshChunkRejectsUnknownStreamFlags)
     PackageData original;
     PackageMesh mesh;
     mesh.Name   = "Flags";
-    mesh.Bounds = Math::AABB({ 0.0f, 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 0.0f });
+    mesh.Bounds.Min = { 0.0f, 0.0f, 0.0f };
+    mesh.Bounds.Max = { 1.0f, 1.0f, 1.0f };
     mesh.Parts.push_back(MakePart(0, 3, false, false, false));
     original.Meshes.push_back(mesh);
 
@@ -466,6 +485,325 @@ TEST(CpkgChunkTest, ReadMeshChunkRejectsUnknownStreamFlags)
     reader.SetOffset(static_cast<size_t>(dataOffset));
     PackageData readBack;
     EXPECT_EQ(ReadMeshChunk(reader, &readBack), Gem::Result::CorruptedData);
+}
+
+//--------------------------------------------------------------------------------------------------
+// MATL
+//--------------------------------------------------------------------------------------------------
+
+// Two materials: one with all six texture slots bound to valid indices, one fully unbound (-1).
+TEST(CpkgChunkTest, MatlRoundTrip)
+{
+    PackageData original;
+
+    PackageMaterial bound;
+    bound.Name                         = "Bound";
+    bound.BaseColorFactor              = { 0.1f, 0.2f, 0.3f, 0.4f };
+    bound.EmissiveFactor               = { 0.5f, 0.6f, 0.7f, 0.0f };
+    bound.RoughMetalAOFactor           = { 0.25f, 0.75f, 0.5f, 0.0f };
+    bound.AlbedoTextureIndex           = 0;
+    bound.NormalTextureIndex           = 1;
+    bound.EmissiveTextureIndex         = 2;
+    bound.RoughnessTextureIndex        = 3;
+    bound.MetallicTextureIndex         = 4;
+    bound.AmbientOcclusionTextureIndex = 5;
+    original.Materials.push_back(bound);
+
+    PackageMaterial unbound; // every texture slot -1, non-default factors
+    unbound.Name               = "Unbound";
+    unbound.BaseColorFactor    = { 1.0f, 0.0f, 1.0f, 1.0f };
+    unbound.EmissiveFactor     = { 0.0f, 0.0f, 0.0f, 0.0f };
+    unbound.RoughMetalAOFactor = { 0.9f, 0.1f, 1.0f, 0.0f };
+    original.Materials.push_back(unbound);
+
+    uint64_t dataOffset = 0;
+    uint32_t sizeRaw    = 0;
+    std::vector<uint8_t> file = WriteSingleChunkFile(
+        L"canvas_cpkg_chunk_matl.cpkg", CPKG_FOURCC_MATL, CPKG_MATL_CHUNK_VERSION,
+        [&](CCpkgSink& sink) { WriteMatlChunk(sink, original); },
+        &dataOffset, &sizeRaw);
+
+    CCpkgReader reader(file.data(), file.size());
+    reader.SetOffset(static_cast<size_t>(dataOffset));
+    PackageData readBack;
+    ASSERT_EQ(ReadMatlChunk(reader, &readBack), Gem::Result::Success);
+    EXPECT_EQ(reader.GetOffset(), static_cast<size_t>(dataOffset) + sizeRaw);
+
+    ASSERT_EQ(readBack.Materials.size(), original.Materials.size());
+    for (size_t i = 0; i < original.Materials.size(); ++i)
+    {
+        const PackageMaterial& e = original.Materials[i];
+        const PackageMaterial& a = readBack.Materials[i];
+        EXPECT_EQ(a.Name, e.Name);
+        ExpectVec4Eq(a.BaseColorFactor, e.BaseColorFactor);
+        ExpectVec4Eq(a.EmissiveFactor, e.EmissiveFactor);
+        ExpectVec4Eq(a.RoughMetalAOFactor, e.RoughMetalAOFactor);
+        EXPECT_EQ(a.AlbedoTextureIndex, e.AlbedoTextureIndex);
+        EXPECT_EQ(a.NormalTextureIndex, e.NormalTextureIndex);
+        EXPECT_EQ(a.EmissiveTextureIndex, e.EmissiveTextureIndex);
+        EXPECT_EQ(a.RoughnessTextureIndex, e.RoughnessTextureIndex);
+        EXPECT_EQ(a.MetallicTextureIndex, e.MetallicTextureIndex);
+        EXPECT_EQ(a.AmbientOcclusionTextureIndex, e.AmbientOcclusionTextureIndex);
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// TXTR
+//--------------------------------------------------------------------------------------------------
+
+namespace
+{
+    void ExpectTextureEq(const PackageTexture& a, const PackageTexture& e)
+    {
+        EXPECT_EQ(a.Name, e.Name);
+        EXPECT_EQ(a.Path, e.Path);
+        EXPECT_EQ(a.Format, e.Format);
+        EXPECT_EQ(a.Dimension, e.Dimension);
+        EXPECT_EQ(a.Width, e.Width);
+        EXPECT_EQ(a.Height, e.Height);
+        EXPECT_EQ(a.Depth, e.Depth);
+        EXPECT_EQ(a.ArraySize, e.ArraySize);
+        EXPECT_EQ(a.MipCount, e.MipCount);
+
+        ASSERT_EQ(a.Subresources.size(), e.Subresources.size());
+        for (size_t s = 0; s < e.Subresources.size(); ++s)
+        {
+            EXPECT_EQ(a.Subresources[s].Offset, e.Subresources[s].Offset);
+            EXPECT_EQ(a.Subresources[s].Size, e.Subresources[s].Size);
+            EXPECT_EQ(a.Subresources[s].RowPitch, e.Subresources[s].RowPitch);
+        }
+        EXPECT_EQ(a.Bytes, e.Bytes);
+    }
+
+    // A subresource whose payload range holds recognisable per-slice bytes (value = base + slice).
+    PackageSubresource AppendSlice(std::vector<uint8_t>& bytes, uint32_t size, uint32_t rowPitch,
+                                   uint8_t fill)
+    {
+        PackageSubresource sub;
+        sub.Offset   = bytes.size();
+        sub.Size     = size;
+        sub.RowPitch = rowPitch;
+        bytes.insert(bytes.end(), size, fill);
+        return sub;
+    }
+}
+
+// Four entries exercising every payload case: external, encoded source, embedded mip-mapped 2D, and
+// embedded cube map with per-(face, mip) subresources.
+TEST(CpkgChunkTest, TxtrRoundTrip)
+{
+    PackageData original;
+
+    // Entry A: named external texture - no payload, no subresources.
+    PackageTexture external;
+    external.Name      = "sky_px";
+    external.Path      = "textures/sky_px.dds";
+    external.Format    = GfxFormat::Unknown;
+    external.Dimension = GfxSurfaceDimension::Dimension2D;
+    original.Textures.push_back(external);
+
+    // Entry B: embedded encoded-source image - one subresource covering the whole blob, RowPitch 0.
+    PackageTexture encoded;
+    encoded.Format    = GfxFormat::Unknown;
+    encoded.Dimension = GfxSurfaceDimension::Dimension2D;
+    encoded.Bytes.assign(16, 0xAB);
+    {
+        PackageSubresource sub;
+        sub.Offset   = 0;
+        sub.Size     = 16;
+        sub.RowPitch = 0;
+        encoded.Subresources.push_back(sub);
+    }
+    original.Textures.push_back(encoded);
+
+    // Entry C: embedded mip-mapped 2D - 10 mips, distinct Offset/Size/RowPitch and per-mip bytes.
+    PackageTexture mipped;
+    mipped.Format    = GfxFormat::BC7_UNorm_SRGB;
+    mipped.Dimension = GfxSurfaceDimension::Dimension2D;
+    mipped.Width     = 512;
+    mipped.Height    = 512;
+    mipped.ArraySize = 1;
+    mipped.MipCount  = 10;
+    for (uint32_t mip = 0; mip < mipped.MipCount; ++mip)
+    {
+        const uint32_t size     = 32u * (mipped.MipCount - mip); // distinct, decreasing sizes
+        const uint32_t rowPitch = 16u * (mipped.MipCount - mip);
+        mipped.Subresources.push_back(
+            AppendSlice(mipped.Bytes, size, rowPitch, static_cast<uint8_t>(0x10 + mip)));
+    }
+    original.Textures.push_back(mipped);
+
+    // Entry D: embedded cube map - 6 faces * 3 mips = 18 subresources, D3D order mip + face*MipCount.
+    PackageTexture cube;
+    cube.Format    = GfxFormat::BC7_UNorm_SRGB;
+    cube.Dimension = GfxSurfaceDimension::DimensionCube;
+    cube.Width     = 64;
+    cube.Height    = 64;
+    cube.ArraySize = 6;
+    cube.MipCount  = 3;
+    cube.Subresources.resize(static_cast<size_t>(cube.ArraySize) * cube.MipCount);
+    for (uint32_t face = 0; face < cube.ArraySize; ++face)
+        for (uint32_t mip = 0; mip < cube.MipCount; ++mip)
+        {
+            const uint32_t size     = 48u * (cube.MipCount - mip);
+            const uint8_t  fill      = static_cast<uint8_t>(0x40 + face * cube.MipCount + mip);
+            cube.Subresources[mip + face * cube.MipCount] =
+                AppendSlice(cube.Bytes, size, 8u * (cube.MipCount - mip), fill);
+        }
+    original.Textures.push_back(cube);
+
+    uint64_t dataOffset = 0;
+    uint32_t sizeRaw    = 0;
+    std::vector<uint8_t> file = WriteSingleChunkFile(
+        L"canvas_cpkg_chunk_txtr.cpkg", CPKG_FOURCC_TXTR, CPKG_TXTR_CHUNK_VERSION,
+        [&](CCpkgSink& sink) { WriteTxtrChunk(sink, original); },
+        &dataOffset, &sizeRaw);
+
+    CCpkgReader reader(file.data(), file.size());
+    reader.SetOffset(static_cast<size_t>(dataOffset));
+    PackageData readBack;
+    ASSERT_EQ(ReadTxtrChunk(reader, &readBack), Gem::Result::Success);
+    EXPECT_EQ(reader.GetOffset(), static_cast<size_t>(dataOffset) + sizeRaw);
+
+    ASSERT_EQ(readBack.Textures.size(), original.Textures.size());
+    for (size_t i = 0; i < original.Textures.size(); ++i)
+        ExpectTextureEq(readBack.Textures[i], original.Textures[i]);
+
+    // Spot-check that specific cube (face, mip) slices survived, not just the aggregate compare.
+    const PackageTexture& c = readBack.Textures[3];
+    const PackageSubresource& face4mip1 = c.Subresources[1 + 4 * 3];
+    EXPECT_EQ(c.Bytes[static_cast<size_t>(face4mip1.Offset)],
+              static_cast<uint8_t>(0x40 + 4 * 3 + 1));
+}
+
+// A subresource whose range runs past the payload is rejected on write.
+TEST(CpkgChunkTest, WriteTxtrChunkRejectsSubresourceOutsidePayload)
+{
+    PackageData data;
+    PackageTexture tex;
+    tex.Format = GfxFormat::Unknown;
+    tex.Bytes.assign(8, 0x00);
+    PackageSubresource sub;
+    sub.Offset = 4;
+    sub.Size   = 8; // [4, 12) exceeds the 8-byte payload
+    tex.Subresources.push_back(sub);
+    data.Textures.push_back(tex);
+
+    TempFile tmp(L"canvas_cpkg_chunk_txtr_reject.cpkg");
+    CCpkgSink sink;
+    ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+    ExpectCpkgError(Gem::Result::InvalidArg, [&] { WriteTxtrChunk(sink, data); });
+}
+
+//--------------------------------------------------------------------------------------------------
+// LITE
+//--------------------------------------------------------------------------------------------------
+
+// One light of each LightType; the spot light's inner/outer cone angles must survive.
+TEST(CpkgChunkTest, LiteRoundTrip)
+{
+    PackageData original;
+
+    const LightType types[] = {
+        LightType::Ambient, LightType::Directional, LightType::Point, LightType::Spot,
+    };
+    for (size_t i = 0; i < std::size(types); ++i)
+    {
+        const float f           = static_cast<float>(i);
+        PackageLight light;
+        light.Name              = "Light" + std::to_string(i);
+        light.Type              = types[i];
+        light.Color             = { 0.1f * f, 0.2f * f, 0.3f * f, 1.0f };
+        light.Intensity         = 2.0f + f;
+        light.Range             = 10.0f * f;
+        light.AttenuationConst  = 1.0f;
+        light.AttenuationLinear = 0.1f * f;
+        light.AttenuationQuad   = 0.01f * f;
+        light.SpotInnerAngle    = 0.3f + 0.1f * f;
+        light.SpotOuterAngle    = 0.6f + 0.1f * f;
+        original.Lights.push_back(light);
+    }
+
+    uint64_t dataOffset = 0;
+    uint32_t sizeRaw    = 0;
+    std::vector<uint8_t> file = WriteSingleChunkFile(
+        L"canvas_cpkg_chunk_lite.cpkg", CPKG_FOURCC_LITE, CPKG_LITE_CHUNK_VERSION,
+        [&](CCpkgSink& sink) { WriteLiteChunk(sink, original); },
+        &dataOffset, &sizeRaw);
+
+    CCpkgReader reader(file.data(), file.size());
+    reader.SetOffset(static_cast<size_t>(dataOffset));
+    PackageData readBack;
+    ASSERT_EQ(ReadLiteChunk(reader, &readBack), Gem::Result::Success);
+    EXPECT_EQ(reader.GetOffset(), static_cast<size_t>(dataOffset) + sizeRaw);
+
+    ASSERT_EQ(readBack.Lights.size(), original.Lights.size());
+    for (size_t i = 0; i < original.Lights.size(); ++i)
+    {
+        const PackageLight& e = original.Lights[i];
+        const PackageLight& a = readBack.Lights[i];
+        EXPECT_EQ(a.Name, e.Name);
+        EXPECT_EQ(a.Type, e.Type);
+        ExpectVec4Eq(a.Color, e.Color);
+        EXPECT_EQ(a.Intensity, e.Intensity);
+        EXPECT_EQ(a.Range, e.Range);
+        EXPECT_EQ(a.AttenuationConst, e.AttenuationConst);
+        EXPECT_EQ(a.AttenuationLinear, e.AttenuationLinear);
+        EXPECT_EQ(a.AttenuationQuad, e.AttenuationQuad);
+        EXPECT_EQ(a.SpotInnerAngle, e.SpotInnerAngle);
+        EXPECT_EQ(a.SpotOuterAngle, e.SpotOuterAngle);
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+// CAMR
+//--------------------------------------------------------------------------------------------------
+
+// Two cameras with distinct FOV / aspect / clip planes.
+TEST(CpkgChunkTest, CamrRoundTrip)
+{
+    PackageData original;
+
+    PackageCamera camA;
+    camA.Name        = "CamA";
+    camA.NearZ       = 0.05f;
+    camA.FarZ        = 500.0f;
+    camA.FovY        = 1.0472f; // 60 degrees
+    camA.AspectRatio = 16.0f / 9.0f;
+    original.Cameras.push_back(camA);
+
+    PackageCamera camB;
+    camB.Name        = "CamB";
+    camB.NearZ       = 0.5f;
+    camB.FarZ        = 2000.0f;
+    camB.FovY        = 0.7854f; // 45 degrees
+    camB.AspectRatio = 4.0f / 3.0f;
+    original.Cameras.push_back(camB);
+
+    uint64_t dataOffset = 0;
+    uint32_t sizeRaw    = 0;
+    std::vector<uint8_t> file = WriteSingleChunkFile(
+        L"canvas_cpkg_chunk_camr.cpkg", CPKG_FOURCC_CAMR, CPKG_CAMR_CHUNK_VERSION,
+        [&](CCpkgSink& sink) { WriteCamrChunk(sink, original); },
+        &dataOffset, &sizeRaw);
+
+    CCpkgReader reader(file.data(), file.size());
+    reader.SetOffset(static_cast<size_t>(dataOffset));
+    PackageData readBack;
+    ASSERT_EQ(ReadCamrChunk(reader, &readBack), Gem::Result::Success);
+    EXPECT_EQ(reader.GetOffset(), static_cast<size_t>(dataOffset) + sizeRaw);
+
+    ASSERT_EQ(readBack.Cameras.size(), original.Cameras.size());
+    for (size_t i = 0; i < original.Cameras.size(); ++i)
+    {
+        const PackageCamera& e = original.Cameras[i];
+        const PackageCamera& a = readBack.Cameras[i];
+        EXPECT_EQ(a.Name, e.Name);
+        EXPECT_EQ(a.NearZ, e.NearZ);
+        EXPECT_EQ(a.FarZ, e.FarZ);
+        EXPECT_EQ(a.FovY, e.FovY);
+        EXPECT_EQ(a.AspectRatio, e.AspectRatio);
+    }
 }
 
 } // namespace CanvasUnitTest
