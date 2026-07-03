@@ -1106,4 +1106,143 @@ Gem::Result ReadCamrChunk(CCpkgReader& reader, PackageData* out, const PackageLo
     return Gem::Result::Success;
 }
 
+//--------------------------------------------------------------------------------------------------
+// ANIM
+//--------------------------------------------------------------------------------------------------
+
+namespace
+{
+    // One keyframe on disk: Time + Translation[4] + Rotation[4] + Scale[4], all float32. Used to
+    // bounds-check a declared keyframe count before the track array is sized.
+    constexpr size_t kKeyframeDiskBytes = sizeof(float) * (1 + 4 + 4 + 4);
+}
+
+void WriteAnimChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn)
+{
+    const size_t clipCount = data.AnimClips.size();
+    if (clipCount > UINT32_MAX)
+        ThrowF(logFn, Gem::Result::InvalidArg,
+               "WriteAnimChunk: clip count %zu exceeds the uint32 limit", clipCount);
+
+    sink.WriteU32(static_cast<uint32_t>(clipCount));
+
+    for (size_t c = 0; c < clipCount; ++c)
+    {
+        const PackageAnimClip& clip = data.AnimClips[c];
+
+        if (!NameLenFits(clip.Name))
+            ThrowF(logFn, Gem::Result::InvalidArg,
+                   "WriteAnimChunk: clip %zu name of %zu bytes exceeds the uint32 length prefix",
+                   c, clip.Name.size());
+        if (clip.Tracks.size() > UINT32_MAX)
+            ThrowF(logFn, Gem::Result::InvalidArg,
+                   "WriteAnimChunk: clip %zu track count %zu exceeds the uint32 limit",
+                   c, clip.Tracks.size());
+
+        WriteName(sink, clip.Name);
+        sink.WriteFloat(clip.DurationSeconds);
+        sink.WriteU32(static_cast<uint32_t>(clip.Tracks.size()));
+
+        for (size_t t = 0; t < clip.Tracks.size(); ++t)
+        {
+            const PackageAnimTrack& track = clip.Tracks[t];
+
+            if (track.Keyframes.size() > UINT32_MAX)
+                ThrowF(logFn, Gem::Result::InvalidArg,
+                       "WriteAnimChunk: clip %zu track %zu keyframe count %zu exceeds the uint32 "
+                       "limit", c, t, track.Keyframes.size());
+
+            sink.WriteI32(track.NodeIndex);
+            sink.WriteU32(static_cast<uint32_t>(track.Keyframes.size()));
+
+            for (const PackageAnimKeyframe& key : track.Keyframes)
+            {
+                sink.WriteFloat(key.Time);
+                sink.WriteFloats(key.Translation.V, 4);
+                sink.WriteFloats(key.Rotation.V, 4);
+                sink.WriteFloats(key.Scale.V, 4);
+            }
+        }
+    }
+}
+
+Gem::Result ReadAnimChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn)
+{
+    if (!out)
+    {
+        LogF(logFn, PackageLogLevel::Error, "ReadAnimChunk: null output pointer");
+        return Gem::Result::BadPointer;
+    }
+
+    uint32_t clipCount = 0;
+    if (!reader.ReadU32s(&clipCount, 1))
+    {
+        LogF(logFn, PackageLogLevel::Error,
+             "ReadAnimChunk: truncated chunk header; have %zu bytes", reader.BytesRemaining());
+        return Gem::Result::CorruptedData;
+    }
+
+    std::vector<PackageAnimClip> clips;
+
+    for (uint32_t c = 0; c < clipCount; ++c)
+    {
+        PackageAnimClip clip;
+
+        const Gem::Result nameResult = ReadName(reader, &clip.Name, "ReadAnimChunk: clip", c, logFn);
+        if (Gem::Failed(nameResult))
+            return nameResult;
+
+        uint32_t trackCount = 0;
+        if (!reader.ReadFloats(&clip.DurationSeconds, 1) || !reader.ReadU32s(&trackCount, 1))
+        {
+            LogF(logFn, PackageLogLevel::Error,
+                 "ReadAnimChunk: clip %u: truncated clip header; have %zu bytes", c,
+                 reader.BytesRemaining());
+            return Gem::Result::CorruptedData;
+        }
+
+        for (uint32_t t = 0; t < trackCount; ++t)
+        {
+            PackageAnimTrack track;
+
+            uint32_t keyframeCount = 0;
+            if (!reader.ReadI32s(&track.NodeIndex, 1) || !reader.ReadU32s(&keyframeCount, 1))
+            {
+                LogF(logFn, PackageLogLevel::Error,
+                     "ReadAnimChunk: clip %u track %u: truncated track header; have %zu bytes",
+                     c, t, reader.BytesRemaining());
+                return Gem::Result::CorruptedData;
+            }
+
+            // Bounds-check the whole keyframe block before sizing so a corrupt count cannot
+            // trigger a huge allocation.
+            if (static_cast<uint64_t>(keyframeCount) * kKeyframeDiskBytes > reader.BytesRemaining())
+            {
+                LogF(logFn, PackageLogLevel::Error,
+                     "ReadAnimChunk: clip %u track %u: truncated keyframes; %u keyframes need %llu "
+                     "bytes, have %zu", c, t, keyframeCount,
+                     static_cast<unsigned long long>(keyframeCount) * kKeyframeDiskBytes,
+                     reader.BytesRemaining());
+                return Gem::Result::CorruptedData;
+            }
+
+            track.Keyframes.resize(keyframeCount);
+            for (PackageAnimKeyframe& key : track.Keyframes) // every read is in range per the guard
+            {
+                reader.ReadFloats(&key.Time, 1);
+                reader.ReadFloats(key.Translation.V, 4);
+                reader.ReadFloats(key.Rotation.V, 4);
+                reader.ReadFloats(key.Scale.V, 4);
+            }
+
+            clip.Tracks.push_back(std::move(track));
+        }
+
+        clips.push_back(std::move(clip));
+    }
+
+    out->AnimClips = std::move(clips);
+    return Gem::Result::Success;
+}
+
 } // namespace Canvas::Cpkg

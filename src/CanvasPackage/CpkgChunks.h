@@ -192,4 +192,20 @@ void WriteCamrChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn
 // fast with CorruptedData on truncation.
 Gem::Result ReadCamrChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn = {});
 
+//--------------------------------------------------------------------------------------------------
+// ANIM - animation clips. Each clip carries per-node tracks of raw float32 TRS keyframes; NodeIndex
+// values reference NODE entries.
+//--------------------------------------------------------------------------------------------------
+
+// ANIM chunk format version, recorded in the chunk-table entry.
+constexpr uint16_t CPKG_ANIM_CHUNK_VERSION = 1;
+
+// Append the ANIM chunk for data.AnimClips to the sink. Throws CpkgError(InvalidArg) when a clip
+// name exceeds the uint32 length prefix or a clip / track / keyframe count exceeds the uint32 limit.
+void WriteAnimChunk(CCpkgSink& sink, const PackageData& data, const PackageLogFn& logFn = {});
+
+// Parse an ANIM chunk into out->AnimClips (replacing it), advancing the cursor past the chunk. Fails
+// fast with CorruptedData on truncation.
+Gem::Result ReadAnimChunk(CCpkgReader& reader, PackageData* out, const PackageLogFn& logFn = {});
+
 } // namespace Canvas::Cpkg

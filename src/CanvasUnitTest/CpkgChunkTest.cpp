@@ -806,4 +806,127 @@ TEST(CpkgChunkTest, CamrRoundTrip)
     }
 }
 
+//--------------------------------------------------------------------------------------------------
+// ANIM
+//--------------------------------------------------------------------------------------------------
+
+namespace
+{
+    // A track for one node with recognisable per-keyframe TRS values seeded from the node and
+    // keyframe indices.
+    PackageAnimTrack MakeTrack(int32_t nodeIndex, uint32_t keyframeCount)
+    {
+        PackageAnimTrack track;
+        track.NodeIndex = nodeIndex;
+        for (uint32_t k = 0; k < keyframeCount; ++k)
+        {
+            const float f = static_cast<float>(nodeIndex * 100 + k);
+            PackageAnimKeyframe key;
+            key.Time        = 0.25f * static_cast<float>(k);
+            key.Translation = { f + 0.1f, f + 0.2f, f + 0.3f, 0.0f };
+            key.Rotation    = { f + 0.4f, f + 0.5f, f + 0.6f, f + 0.7f };
+            key.Scale       = { f + 0.8f, f + 0.9f, f + 1.0f, 0.0f };
+            track.Keyframes.push_back(key);
+        }
+        return track;
+    }
+
+    void ExpectTrackEq(const PackageAnimTrack& a, const PackageAnimTrack& e)
+    {
+        EXPECT_EQ(a.NodeIndex, e.NodeIndex);
+        ASSERT_EQ(a.Keyframes.size(), e.Keyframes.size());
+        for (size_t k = 0; k < e.Keyframes.size(); ++k)
+        {
+            EXPECT_EQ(a.Keyframes[k].Time, e.Keyframes[k].Time);
+            ExpectVec4Eq(a.Keyframes[k].Translation, e.Keyframes[k].Translation);
+            ExpectVec4Eq(a.Keyframes[k].Rotation, e.Keyframes[k].Rotation);
+            ExpectVec4Eq(a.Keyframes[k].Scale, e.Keyframes[k].Scale);
+        }
+    }
+
+    void ExpectClipsEq(const std::vector<PackageAnimClip>& actual,
+                       const std::vector<PackageAnimClip>& expected)
+    {
+        ASSERT_EQ(actual.size(), expected.size());
+        for (size_t c = 0; c < expected.size(); ++c)
+        {
+            const PackageAnimClip& e = expected[c];
+            const PackageAnimClip& a = actual[c];
+            EXPECT_EQ(a.Name, e.Name);
+            EXPECT_EQ(a.DurationSeconds, e.DurationSeconds);
+            ASSERT_EQ(a.Tracks.size(), e.Tracks.size());
+            for (size_t t = 0; t < e.Tracks.size(); ++t)
+                ExpectTrackEq(a.Tracks[t], e.Tracks[t]);
+        }
+    }
+
+    std::vector<PackageAnimClip> RoundTripAnim(const wchar_t* tempName, const PackageData& original)
+    {
+        uint64_t dataOffset = 0;
+        uint32_t sizeRaw    = 0;
+        std::vector<uint8_t> file = WriteSingleChunkFile(
+            tempName, CPKG_FOURCC_ANIM, CPKG_ANIM_CHUNK_VERSION,
+            [&](CCpkgSink& sink) { WriteAnimChunk(sink, original); },
+            &dataOffset, &sizeRaw);
+
+        CCpkgReader reader(file.data(), file.size());
+        reader.SetOffset(static_cast<size_t>(dataOffset));
+        PackageData readBack;
+        EXPECT_EQ(ReadAnimChunk(reader, &readBack), Gem::Result::Success);
+        // The cursor must land exactly on the chunk end.
+        EXPECT_EQ(reader.GetOffset(), static_cast<size_t>(dataOffset) + sizeRaw);
+        return readBack.AnimClips;
+    }
+}
+
+// One clip, two tracks, five keyframes each; every TRS field must survive.
+TEST(CpkgChunkTest, AnimRoundTripBasic)
+{
+    PackageData original;
+    PackageAnimClip clip;
+    clip.Name            = "Walk";
+    clip.DurationSeconds = 1.0f;
+    clip.Tracks.push_back(MakeTrack(0, 5));
+    clip.Tracks.push_back(MakeTrack(3, 5));
+    original.AnimClips.push_back(clip);
+
+    ExpectClipsEq(RoundTripAnim(L"canvas_cpkg_chunk_anim_basic.cpkg", original), original.AnimClips);
+}
+
+// Three clips with 0, 1, and 4 tracks; clip names, durations, and per-track keyframes must match.
+TEST(CpkgChunkTest, AnimRoundTripMultiClip)
+{
+    PackageData original;
+
+    PackageAnimClip empty;
+    empty.Name            = "Idle";
+    empty.DurationSeconds = 0.5f;
+    original.AnimClips.push_back(empty);
+
+    PackageAnimClip single;
+    single.Name            = "Jump";
+    single.DurationSeconds = 2.25f;
+    single.Tracks.push_back(MakeTrack(1, 3));
+    original.AnimClips.push_back(single);
+
+    PackageAnimClip many;
+    many.Name            = "Run";
+    many.DurationSeconds = 3.75f;
+    for (int32_t node = 0; node < 4; ++node)
+        many.Tracks.push_back(MakeTrack(node, static_cast<uint32_t>(node) + 1));
+    original.AnimClips.push_back(many);
+
+    ExpectClipsEq(RoundTripAnim(L"canvas_cpkg_chunk_anim_multi.cpkg", original), original.AnimClips);
+}
+
+// Zero clips: ReadAnimChunk must produce an empty AnimClips vector.
+TEST(CpkgChunkTest, AnimRoundTripEmpty)
+{
+    PackageData original; // no clips
+
+    std::vector<PackageAnimClip> clips =
+        RoundTripAnim(L"canvas_cpkg_chunk_anim_empty.cpkg", original);
+    EXPECT_TRUE(clips.empty());
+}
+
 } // namespace CanvasUnitTest
