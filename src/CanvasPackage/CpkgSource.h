@@ -26,7 +26,7 @@ public:
     CCpkgSource() = default; // an empty source (Size() == 0); every Read fails
 
     // Open a .cpkg file for streaming reads. Logs and fails if the file cannot be opened.
-    static Gem::Result OpenFile(const wchar_t* pFilePath, CCpkgSource* pOut,
+    static Gem::Result OpenFile(const char* pFilePath, CCpkgSource* pOut,
                                 const PackageLogFn& logFn = {});
 
     // Read exactly 'size' bytes starting at absolute 'offset' into 'dst'. A zero-size read at any

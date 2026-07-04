@@ -15,17 +15,17 @@ using namespace Canvas::Cpkg;
 
 TEST(CpkgSourceTest, FileSourceReadsRangeAndRejectsOverrun)
 {
-    TempFile tmp(L"canvas_cpkg_source_range.bin");
+    TempFile tmp("canvas_cpkg_source_range.bin");
     {
         CCpkgSink sink;
-        ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+        ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
         const uint8_t data[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };
         sink.WriteBytes(data, sizeof(data));
         ASSERT_EQ(sink.Close(), Gem::Result::Success);
     }
 
     CCpkgSource src;
-    ASSERT_EQ(CCpkgSource::OpenFile(tmp.wstr().c_str(), &src), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSource::OpenFile(tmp.str().c_str(), &src), Gem::Result::Success);
     EXPECT_EQ(src.Size(), 8u);
 
     uint8_t out[4] = {};
@@ -48,10 +48,10 @@ TEST(CpkgSourceTest, EmptySourceReadFails)
 
 TEST(CpkgSourceTest, FileSourceHeaderAndTableRoundTrip)
 {
-    TempFile tmp(L"canvas_cpkg_source_table.cpkg");
+    TempFile tmp("canvas_cpkg_source_table.cpkg");
     {
         CCpkgSink sink;
-        ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+        ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
         WriteCpkgHeader(sink, 2);
         uint64_t tableOffset = sink.Tell();
         WriteChunkTable(sink, 2);
@@ -63,7 +63,7 @@ TEST(CpkgSourceTest, FileSourceHeaderAndTableRoundTrip)
     }
 
     CCpkgSource src;
-    ASSERT_EQ(CCpkgSource::OpenFile(tmp.wstr().c_str(), &src), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSource::OpenFile(tmp.str().c_str(), &src), Gem::Result::Success);
 
     CpkgHeaderData h;
     ASSERT_EQ(ReadCpkgHeader(src, &h), Gem::Result::Success);
@@ -81,17 +81,17 @@ TEST(CpkgSourceTest, FileSourceHeaderAndTableRoundTrip)
 // container translates the source's out-of-range InvalidArg into CorruptedData.
 TEST(CpkgSourceTest, UndersizedSourceHeaderReadIsCorrupt)
 {
-    TempFile tmp(L"canvas_cpkg_source_tiny.cpkg");
+    TempFile tmp("canvas_cpkg_source_tiny.cpkg");
     {
         CCpkgSink sink;
-        ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+        ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
         const uint8_t tiny[CPKG_HEADER_SIZE - 1] = {}; // one byte short of a full header
         sink.WriteBytes(tiny, sizeof(tiny));
         ASSERT_EQ(sink.Close(), Gem::Result::Success);
     }
 
     CCpkgSource src;
-    ASSERT_EQ(CCpkgSource::OpenFile(tmp.wstr().c_str(), &src), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSource::OpenFile(tmp.str().c_str(), &src), Gem::Result::Success);
 
     CpkgHeaderData h;
     EXPECT_EQ(ReadCpkgHeader(src, &h), Gem::Result::CorruptedData);
@@ -101,12 +101,12 @@ TEST(CpkgSourceTest, UndersizedSourceHeaderReadIsCorrupt)
 // pull only one chunk's payload range -- never the whole file.
 TEST(CpkgSourceTest, FileSourceStreamsChunkByOffset)
 {
-    TempFile tmp(L"canvas_cpkg_source_stream.cpkg");
+    TempFile tmp("canvas_cpkg_source_stream.cpkg");
     uint64_t dataOffset = 0;
     uint32_t size       = 0;
     {
         CCpkgSink sink;
-        ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+        ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
         WriteCpkgHeader(sink, 1);
         uint64_t tableOffset = sink.Tell();
         WriteChunkTable(sink, 1);
@@ -120,7 +120,7 @@ TEST(CpkgSourceTest, FileSourceStreamsChunkByOffset)
     }
 
     CCpkgSource src;
-    ASSERT_EQ(CCpkgSource::OpenFile(tmp.wstr().c_str(), &src), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSource::OpenFile(tmp.str().c_str(), &src), Gem::Result::Success);
     EXPECT_GT(src.Size(), 0u);
 
     CpkgHeaderData h;
@@ -147,7 +147,7 @@ TEST(CpkgSourceTest, FileSourceOpenMissingFileFails)
     std::filesystem::remove(path, ec); // ensure absent
 
     CCpkgSource src;
-    EXPECT_TRUE(Gem::Failed(CCpkgSource::OpenFile(path.wstring().c_str(), &src)));
+    EXPECT_TRUE(Gem::Failed(CCpkgSource::OpenFile(path.u8string().c_str(), &src)));
     EXPECT_EQ(src.Size(), 0u); // unchanged on failure
 }
 

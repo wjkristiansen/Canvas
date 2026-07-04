@@ -259,10 +259,10 @@ struct PackageData
 
     // Read a .cpkg file into this PackageData. Per-chunk warnings are reported to logFn when
     // one is supplied.
-    Gem::Result ReadPackage(const wchar_t* pFilePath, const PackageLogFn& logFn = {});
+    Gem::Result ReadPackage(const char* pFilePath, const PackageLogFn& logFn = {});
 
     // Write this PackageData to a .cpkg file. Warnings are reported to logFn when supplied.
-    Gem::Result WritePackage(const wchar_t* pOutputPath, const PackageLogFn& logFn = {}) const;
+    Gem::Result WritePackage(const char* pOutputPath, const PackageLogFn& logFn = {}) const;
 };
 
 } // namespace Canvas

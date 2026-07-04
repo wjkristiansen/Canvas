@@ -2,12 +2,13 @@
 #include "CpkgSource.h"
 #include "CpkgLog.h"
 
+#include <filesystem>
 #include <ios>
 
 namespace Canvas::Cpkg
 {
 
-Gem::Result CCpkgSource::OpenFile(const wchar_t* pFilePath, CCpkgSource* pOut, const PackageLogFn& logFn)
+Gem::Result CCpkgSource::OpenFile(const char* pFilePath, CCpkgSource* pOut, const PackageLogFn& logFn)
 {
     if (!pOut)
     {
@@ -23,7 +24,7 @@ Gem::Result CCpkgSource::OpenFile(const wchar_t* pFilePath, CCpkgSource* pOut, c
     CCpkgSource source;
 
     // ate: seek to end on open so tellg gives the file size in one step.
-    source.m_Stream.open(pFilePath, std::ios::binary | std::ios::ate);
+    source.m_Stream.open(std::filesystem::u8path(pFilePath), std::ios::binary | std::ios::ate);
     if (!source.m_Stream.is_open())
     {
         LogF(logFn, PackageLogLevel::Error, "CCpkgSource::OpenFile: cannot open file for reading");

@@ -26,6 +26,7 @@ add_executable(CanvasUnitTest
     CpkgIOTest.cpp
     CpkgSourceTest.cpp
     CpkgChunkTest.cpp
+    CpkgBakeTest.cpp
     CpkgTestUtil.h
     pch.h
     targetver.h
@@ -86,6 +87,7 @@ target_link_libraries(CanvasUnitTest PRIVATE
     CanvasCore
     CanvasText
     CanvasPackage
+    CanvasFbx
     RectanglePacker
     D3D12ResourceUtils
     GTest::gtest

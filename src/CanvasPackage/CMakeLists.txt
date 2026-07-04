@@ -15,6 +15,15 @@ add_library(CanvasPackage STATIC
     CpkgIO.h
     CpkgChunks.cpp
     CpkgChunks.h
+    BakeManifest.cpp
+    BakeManifest.h
+    BakePaths.cpp
+    BakePaths.h
+    TextureTable.cpp
+    TextureTable.h
+    SerializeScene.cpp
+    SerializeScene.h
+    WritePackage.cpp
     pch.h
     targetver.h
 )
@@ -36,6 +45,9 @@ target_include_directories(CanvasPackage
 target_link_libraries(CanvasPackage
     PUBLIC
         GEM
+    PRIVATE
+        CanvasFbx      # SerializeScene consumes Canvas::Fbx::ImportedScene
+        NlohmannJson   # LoadBakeManifest JSON parsing
 )
 
 target_compile_definitions(CanvasPackage PRIVATE

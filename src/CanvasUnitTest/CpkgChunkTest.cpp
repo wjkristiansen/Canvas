@@ -20,13 +20,13 @@ namespace
     // a temp file and return the whole file image, so the chunk readers can be exercised against
     // real file offsets (the vertex stream alignment is relative to the file start).
     template <typename WriteChunkFn>
-    std::vector<uint8_t> WriteSingleChunkFile(const wchar_t* tempName, uint32_t fourcc,
+    std::vector<uint8_t> WriteSingleChunkFile(const char* tempName, uint32_t fourcc,
                                               uint16_t version, WriteChunkFn writeChunk,
                                               uint64_t* outDataOffset, uint32_t* outSizeRaw)
     {
         TempFile tmp(tempName);
         CCpkgSink sink;
-        EXPECT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+        EXPECT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
         WriteCpkgHeader(sink, 1);
         const uint64_t tableOffset = sink.Tell();
         WriteChunkTable(sink, 1);
@@ -187,7 +187,7 @@ TEST(CpkgChunkTest, NodeRoundTrip)
     uint64_t dataOffset = 0;
     uint32_t sizeRaw    = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_node.cpkg", CPKG_FOURCC_NODE, CPKG_NODE_CHUNK_VERSION,
+        "canvas_cpkg_chunk_node.cpkg", CPKG_FOURCC_NODE, CPKG_NODE_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteNodeChunk(sink, original); },
         &dataOffset, &sizeRaw);
 
@@ -224,9 +224,9 @@ TEST(CpkgChunkTest, WriteNodeChunkRejectsOutOfRangeParentIndex)
     node.ParentIndex = 4; // only one node exists
     data.Nodes.push_back(node);
 
-    TempFile tmp(L"canvas_cpkg_chunk_node_reject.cpkg");
+    TempFile tmp("canvas_cpkg_chunk_node_reject.cpkg");
     CCpkgSink sink;
-    ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
     ExpectCpkgError(Gem::Result::InvalidArg, [&] { WriteNodeChunk(sink, data); });
 }
 
@@ -240,7 +240,7 @@ TEST(CpkgChunkTest, ReadNodeChunkRejectsTruncatedChunk)
     uint64_t dataOffset = 0;
     uint32_t sizeRaw    = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_node_trunc.cpkg", CPKG_FOURCC_NODE, CPKG_NODE_CHUNK_VERSION,
+        "canvas_cpkg_chunk_node_trunc.cpkg", CPKG_FOURCC_NODE, CPKG_NODE_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteNodeChunk(sink, original); },
         &dataOffset, &sizeRaw);
 
@@ -272,7 +272,7 @@ TEST(CpkgChunkTest, MeshRoundTripFullStreams)
     uint64_t dataOffset = 0;
     uint32_t sizeRaw    = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_mesh_full.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
+        "canvas_cpkg_chunk_mesh_full.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteMeshChunk(sink, original); },
         &dataOffset, &sizeRaw);
 
@@ -307,7 +307,7 @@ TEST(CpkgChunkTest, MeshRoundTripMinimalStreams)
 
     uint64_t dataOffset = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_mesh_min.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
+        "canvas_cpkg_chunk_mesh_min.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteMeshChunk(sink, original); },
         &dataOffset, nullptr);
 
@@ -351,7 +351,7 @@ TEST(CpkgChunkTest, MeshRoundTripSkinned)
 
     uint64_t dataOffset = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_mesh_skin.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
+        "canvas_cpkg_chunk_mesh_skin.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteMeshChunk(sink, original); },
         &dataOffset, nullptr);
 
@@ -390,7 +390,7 @@ TEST(CpkgChunkTest, MeshStreamAlignment)
     uint64_t dataOffset = 0;
     uint32_t sizeRaw    = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_mesh_align.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
+        "canvas_cpkg_chunk_mesh_align.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteMeshChunk(sink, original); },
         &dataOffset, &sizeRaw);
 
@@ -449,9 +449,9 @@ TEST(CpkgChunkTest, WriteMeshChunkRejectsMismatchedStreamSizes)
     mesh.Parts.push_back(part);
     data.Meshes.push_back(mesh);
 
-    TempFile tmp(L"canvas_cpkg_chunk_mesh_reject.cpkg");
+    TempFile tmp("canvas_cpkg_chunk_mesh_reject.cpkg");
     CCpkgSink sink;
-    ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
     ExpectCpkgError(Gem::Result::InvalidArg, [&] { WriteMeshChunk(sink, data); });
 }
 
@@ -467,7 +467,7 @@ TEST(CpkgChunkTest, ReadMeshChunkRejectsUnknownStreamFlags)
 
     uint64_t dataOffset = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_mesh_flags.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
+        "canvas_cpkg_chunk_mesh_flags.cpkg", CPKG_FOURCC_MESH, CPKG_MESH_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteMeshChunk(sink, original); },
         &dataOffset, nullptr);
 
@@ -519,7 +519,7 @@ TEST(CpkgChunkTest, MatlRoundTrip)
     uint64_t dataOffset = 0;
     uint32_t sizeRaw    = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_matl.cpkg", CPKG_FOURCC_MATL, CPKG_MATL_CHUNK_VERSION,
+        "canvas_cpkg_chunk_matl.cpkg", CPKG_FOURCC_MATL, CPKG_MATL_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteMatlChunk(sink, original); },
         &dataOffset, &sizeRaw);
 
@@ -655,7 +655,7 @@ TEST(CpkgChunkTest, TxtrRoundTrip)
     uint64_t dataOffset = 0;
     uint32_t sizeRaw    = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_txtr.cpkg", CPKG_FOURCC_TXTR, CPKG_TXTR_CHUNK_VERSION,
+        "canvas_cpkg_chunk_txtr.cpkg", CPKG_FOURCC_TXTR, CPKG_TXTR_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteTxtrChunk(sink, original); },
         &dataOffset, &sizeRaw);
 
@@ -689,9 +689,9 @@ TEST(CpkgChunkTest, WriteTxtrChunkRejectsSubresourceOutsidePayload)
     tex.Subresources.push_back(sub);
     data.Textures.push_back(tex);
 
-    TempFile tmp(L"canvas_cpkg_chunk_txtr_reject.cpkg");
+    TempFile tmp("canvas_cpkg_chunk_txtr_reject.cpkg");
     CCpkgSink sink;
-    ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
     ExpectCpkgError(Gem::Result::InvalidArg, [&] { WriteTxtrChunk(sink, data); });
 }
 
@@ -727,7 +727,7 @@ TEST(CpkgChunkTest, LiteRoundTrip)
     uint64_t dataOffset = 0;
     uint32_t sizeRaw    = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_lite.cpkg", CPKG_FOURCC_LITE, CPKG_LITE_CHUNK_VERSION,
+        "canvas_cpkg_chunk_lite.cpkg", CPKG_FOURCC_LITE, CPKG_LITE_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteLiteChunk(sink, original); },
         &dataOffset, &sizeRaw);
 
@@ -783,7 +783,7 @@ TEST(CpkgChunkTest, CamrRoundTrip)
     uint64_t dataOffset = 0;
     uint32_t sizeRaw    = 0;
     std::vector<uint8_t> file = WriteSingleChunkFile(
-        L"canvas_cpkg_chunk_camr.cpkg", CPKG_FOURCC_CAMR, CPKG_CAMR_CHUNK_VERSION,
+        "canvas_cpkg_chunk_camr.cpkg", CPKG_FOURCC_CAMR, CPKG_CAMR_CHUNK_VERSION,
         [&](CCpkgSink& sink) { WriteCamrChunk(sink, original); },
         &dataOffset, &sizeRaw);
 
@@ -860,7 +860,7 @@ namespace
         }
     }
 
-    std::vector<PackageAnimClip> RoundTripAnim(const wchar_t* tempName, const PackageData& original)
+    std::vector<PackageAnimClip> RoundTripAnim(const char* tempName, const PackageData& original)
     {
         uint64_t dataOffset = 0;
         uint32_t sizeRaw    = 0;
@@ -890,7 +890,7 @@ TEST(CpkgChunkTest, AnimRoundTripBasic)
     clip.Tracks.push_back(MakeTrack(3, 5));
     original.AnimClips.push_back(clip);
 
-    ExpectClipsEq(RoundTripAnim(L"canvas_cpkg_chunk_anim_basic.cpkg", original), original.AnimClips);
+    ExpectClipsEq(RoundTripAnim("canvas_cpkg_chunk_anim_basic.cpkg", original), original.AnimClips);
 }
 
 // Three clips with 0, 1, and 4 tracks; clip names, durations, and per-track keyframes must match.
@@ -916,7 +916,7 @@ TEST(CpkgChunkTest, AnimRoundTripMultiClip)
         many.Tracks.push_back(MakeTrack(node, static_cast<uint32_t>(node) + 1));
     original.AnimClips.push_back(many);
 
-    ExpectClipsEq(RoundTripAnim(L"canvas_cpkg_chunk_anim_multi.cpkg", original), original.AnimClips);
+    ExpectClipsEq(RoundTripAnim("canvas_cpkg_chunk_anim_multi.cpkg", original), original.AnimClips);
 }
 
 // Zero clips: ReadAnimChunk must produce an empty AnimClips vector.
@@ -925,7 +925,7 @@ TEST(CpkgChunkTest, AnimRoundTripEmpty)
     PackageData original; // no clips
 
     std::vector<PackageAnimClip> clips =
-        RoundTripAnim(L"canvas_cpkg_chunk_anim_empty.cpkg", original);
+        RoundTripAnim("canvas_cpkg_chunk_anim_empty.cpkg", original);
     EXPECT_TRUE(clips.empty());
 }
 

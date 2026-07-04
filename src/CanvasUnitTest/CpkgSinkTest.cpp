@@ -14,11 +14,11 @@ using namespace Canvas::Cpkg;
 
 TEST(CpkgSinkTest, WriteScalarsRoundTrip)
 {
-    TempFile tmp(L"canvas_cpkg_sink_scalars.bin");
+    TempFile tmp("canvas_cpkg_sink_scalars.bin");
 
     {
         CCpkgSink sink;
-        ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+        ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
         sink.WriteU8(0xABu);
         sink.WriteU16(0x1234u);
         sink.WriteU32(0xDEADBEEFu);
@@ -42,10 +42,10 @@ TEST(CpkgSinkTest, WriteScalarsRoundTrip)
 
 TEST(CpkgSinkTest, PadToAlignment)
 {
-    TempFile tmp(L"canvas_cpkg_sink_pad.bin");
+    TempFile tmp("canvas_cpkg_sink_pad.bin");
 
     CCpkgSink sink;
-    ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
     sink.WriteU8(0xFFu);
     sink.PadToAlignment(4);
     EXPECT_EQ(sink.Tell(), 4u);
@@ -61,10 +61,10 @@ TEST(CpkgSinkTest, PadToAlignment)
 
 TEST(CpkgSinkTest, PatchBytesOverwritesEarlierBytes)
 {
-    TempFile tmp(L"canvas_cpkg_sink_patch.bin");
+    TempFile tmp("canvas_cpkg_sink_patch.bin");
 
     CCpkgSink sink;
-    ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
     sink.WriteU32(0u);          // placeholder at offset 0
     sink.WriteU32(0x11223344u); // data after the patch site
     const uint32_t patched = 0xDEADBEEFu;
@@ -82,10 +82,10 @@ TEST(CpkgSinkTest, PatchBytesOverwritesEarlierBytes)
 // before touching the file, leaving the sink usable.
 TEST(CpkgSinkTest, PatchBytesPastEndReturnsInvalidArg)
 {
-    TempFile tmp(L"canvas_cpkg_sink_patch_oob.bin");
+    TempFile tmp("canvas_cpkg_sink_patch_oob.bin");
 
     CCpkgSink sink;
-    ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
     sink.WriteU32(0u); // only 4 bytes written
     uint32_t v = 0u;
     EXPECT_EQ(sink.PatchBytes(4, &v, sizeof v), Gem::Result::InvalidArg); // starts at end
@@ -97,7 +97,7 @@ TEST(CpkgSinkTest, PatchBytesPastEndReturnsInvalidArg)
 // must still land correctly and contiguously after smaller cached writes.
 TEST(CpkgSinkTest, LargeWriteBypassesCache)
 {
-    TempFile tmp(L"canvas_cpkg_sink_large.bin");
+    TempFile tmp("canvas_cpkg_sink_large.bin");
 
     const size_t cache = 256;
     std::vector<uint8_t> big(cache * 4);
@@ -105,7 +105,7 @@ TEST(CpkgSinkTest, LargeWriteBypassesCache)
         big[i] = static_cast<uint8_t>(i * 7 + 1);
 
     CCpkgSink sink;
-    ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink, cache), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink, cache), Gem::Result::Success);
     sink.WriteU32(0xCAFEBABEu);          // small cached write first
     sink.WriteBytes(big.data(), big.size()); // bypasses the cache
     EXPECT_EQ(sink.Tell(), 4u + big.size());
@@ -123,10 +123,10 @@ TEST(CpkgSinkTest, CreateFileBadPathFails)
 {
     // A path into a directory that does not exist cannot be opened for writing.
     std::filesystem::path bad =
-        std::filesystem::temp_directory_path() / L"canvas_cpkg_no_such_dir" / L"out.cpkg";
+        std::filesystem::temp_directory_path() / "canvas_cpkg_no_such_dir" / "out.cpkg";
 
     CCpkgSink sink;
-    EXPECT_TRUE(Gem::Failed(CCpkgSink::CreateFile(bad.wstring().c_str(), &sink)));
+    EXPECT_TRUE(Gem::Failed(CCpkgSink::CreateFile(bad.u8string().c_str(), &sink)));
     EXPECT_EQ(sink.Tell(), 0u);
 }
 

@@ -49,10 +49,10 @@ TEST(CpkgIOTest, Crc32StandardVector)
 // The streamed magic must serialize to ASCII 'C','P','K','G' at offset 0, never byte-reversed.
 TEST(CpkgIOTest, MagicBytesAreAsciiCpkg)
 {
-    TempFile tmp(L"canvas_cpkg_io_magic.cpkg");
+    TempFile tmp("canvas_cpkg_io_magic.cpkg");
 
     CCpkgSink sink;
-    ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
     WriteCpkgHeader(sink, 0);
     ASSERT_EQ(sink.Close(), Gem::Result::Success);
 
@@ -66,11 +66,11 @@ TEST(CpkgIOTest, MagicBytesAreAsciiCpkg)
 
 TEST(CpkgIOTest, HeaderAndChunkTableRoundTrip)
 {
-    TempFile tmp(L"canvas_cpkg_io_table.cpkg");
+    TempFile tmp("canvas_cpkg_io_table.cpkg");
 
     {
         CCpkgSink sink;
-        ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+        ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
         WriteCpkgHeader(sink, 2);
         uint64_t tableOffset = sink.Tell();
         WriteChunkTable(sink, 2);
@@ -82,7 +82,7 @@ TEST(CpkgIOTest, HeaderAndChunkTableRoundTrip)
     }
 
     CCpkgSource src;
-    ASSERT_EQ(CCpkgSource::OpenFile(tmp.wstr().c_str(), &src), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSource::OpenFile(tmp.str().c_str(), &src), Gem::Result::Success);
 
     CpkgHeaderData h;
     ASSERT_EQ(ReadCpkgHeader(src, &h), Gem::Result::Success);
@@ -173,7 +173,7 @@ TEST(CpkgIOTest, ReadRejectsTruncatedHeaderAsCorrupt)
 // from the file by its recorded offset/size.
 TEST(CpkgIOTest, StreamingRoundTrip)
 {
-    TempFile tmp(L"canvas_cpkg_io_roundtrip.cpkg");
+    TempFile tmp("canvas_cpkg_io_roundtrip.cpkg");
 
     const uint32_t chunkCount = 1;
     uint64_t dataOffset = 0;
@@ -181,7 +181,7 @@ TEST(CpkgIOTest, StreamingRoundTrip)
 
     {
         CCpkgSink sink;
-        ASSERT_EQ(CCpkgSink::CreateFile(tmp.wstr().c_str(), &sink), Gem::Result::Success);
+        ASSERT_EQ(CCpkgSink::CreateFile(tmp.str().c_str(), &sink), Gem::Result::Success);
         WriteCpkgHeader(sink, chunkCount);
         uint64_t tableOffset = sink.Tell();
         WriteChunkTable(sink, chunkCount);
@@ -197,7 +197,7 @@ TEST(CpkgIOTest, StreamingRoundTrip)
     }
 
     CCpkgSource src;
-    ASSERT_EQ(CCpkgSource::OpenFile(tmp.wstr().c_str(), &src), Gem::Result::Success);
+    ASSERT_EQ(CCpkgSource::OpenFile(tmp.str().c_str(), &src), Gem::Result::Success);
 
     CpkgHeaderData h;
     ASSERT_EQ(ReadCpkgHeader(src, &h), Gem::Result::Success);

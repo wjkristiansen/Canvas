@@ -3,6 +3,7 @@
 #include "CpkgLog.h"
 
 #include <cstring>
+#include <filesystem>
 #include <ios>
 
 namespace Canvas::Cpkg
@@ -13,7 +14,7 @@ CCpkgSink::~CCpkgSink()
     Close();
 }
 
-Gem::Result CCpkgSink::CreateFile(const wchar_t* pFilePath, CCpkgSink* pOut, size_t flushBufferSize,
+Gem::Result CCpkgSink::CreateFile(const char* pFilePath, CCpkgSink* pOut, size_t flushBufferSize,
                                  const PackageLogFn& logFn)
 {
     if (!pOut)
@@ -31,7 +32,8 @@ Gem::Result CCpkgSink::CreateFile(const wchar_t* pFilePath, CCpkgSink* pOut, siz
     // file does not affect the new target, so its result is discarded.
     pOut->Close();
 
-    pOut->m_Stream.open(pFilePath, std::ios::binary | std::ios::out | std::ios::trunc);
+    pOut->m_Stream.open(std::filesystem::u8path(pFilePath),
+                        std::ios::binary | std::ios::out | std::ios::trunc);
     if (!pOut->m_Stream.is_open())
     {
         LogF(logFn, PackageLogLevel::Error, "CCpkgSink::CreateFile: cannot open file for writing");

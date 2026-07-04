@@ -21,8 +21,8 @@ namespace CanvasUnitTest
 // clean even after an aborted prior run.
 struct TempFile
 {
-    explicit TempFile(const wchar_t* name)
-        : path(std::filesystem::temp_directory_path() / name)
+    explicit TempFile(const char* name)
+        : path(std::filesystem::temp_directory_path() / std::filesystem::u8path(name))
     {
         std::error_code ec;
         std::filesystem::remove(path, ec);
@@ -32,7 +32,8 @@ struct TempFile
         std::error_code ec;
         std::filesystem::remove(path, ec);
     }
-    std::wstring wstr() const { return path.wstring(); }
+
+    std::string str() const { return path.u8string(); }
     std::filesystem::path path;
 };
 

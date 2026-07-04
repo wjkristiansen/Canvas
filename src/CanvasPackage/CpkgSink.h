@@ -41,7 +41,7 @@ public:
     // Create (truncate) a .cpkg file for streaming writes. flushBufferSize sets the append-cache
     // block size; logFn (retained for the sink's lifetime) reports the first I/O failure. Logs and
     // fails if the file cannot be opened for writing.
-    static Gem::Result CreateFile(const wchar_t* pFilePath, CCpkgSink* pOut,
+    static Gem::Result CreateFile(const char* pFilePath, CCpkgSink* pOut,
                                   size_t flushBufferSize = kDefaultFlushBufferSize,
                                   const PackageLogFn& logFn = {});
 

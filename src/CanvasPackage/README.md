@@ -414,8 +414,8 @@ struct PackageData {
     int32_t                      ActiveCameraNodeIndex = -1;
 
     // .cpkg is PackageData's native on-disk form; read/write are members.
-    Gem::Result ReadPackage(const wchar_t* pFilePath,    const PackageLogFn& logFn = {});
-    Gem::Result WritePackage(const wchar_t* pOutputPath, const PackageLogFn& logFn = {}) const;
+    Gem::Result ReadPackage(const char* pFilePath,    const PackageLogFn& logFn = {});
+    Gem::Result WritePackage(const char* pOutputPath, const PackageLogFn& logFn = {}) const;
 };
 
 } // namespace Canvas
