@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cpkgbuilder-manifest.schema.json",
+  "title": "cpkgbuilder manifest",
+  "type": "object",
+  "required": ["bundles"],
+  "additionalProperties": false,
+  "properties": {
+    "bundles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/bundle" }
+    }
+  },
+  "$defs": {
+    "bundle": {
+      "oneOf": [
+        { "$ref": "#/$defs/importBundle" },
+        { "$ref": "#/$defs/authoredBundle" }
+      ]
+    },
+
+    "importBundle": {
+      "type": "object",
+      "required": ["name", "import"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "import": { "$ref": "#/$defs/import" }
+      }
+    },
+
+    "authoredBundle": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        },
+        "meshes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/meshDef" }
+        },
+        "cameras": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/cameraDef" }
+        },
+        "lights": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/lightDef" }
+        },
+        "images": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/imageDef" }
+        }
+      }
+    },
+
+    "import": {
+      "type": "object",
+      "required": ["type", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "fbx" },
+        "path": { "type": "string" },
+        "excludeType": {
+          "type": "array",
+          "items": { "enum": ["mesh", "camera", "light"] },
+          "uniqueItems": true
+        }
+      }
+    },
+
+    "node": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "translation": { "$ref": "#/$defs/vec3" },
+        "rotation": { "$ref": "#/$defs/quat" },
+        "scale": { "$ref": "#/$defs/vec3" },
+        "mesh": { "$ref": "#/$defs/meshRef" },
+        "camera": { "$ref": "#/$defs/cameraRef" },
+        "light": { "$ref": "#/$defs/lightRef" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        }
+      }
+    },
+
+    "vec3": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "quat": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+
+    "meshRef": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/meshDef" } ] },
+    "cameraRef": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/cameraDef" } ] },
+    "lightRef": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/lightDef" } ] },
+
+    "rawFloatArray": {
+      "oneOf": [
+        { "type": "array", "items": { "type": "number" } },
+        {
+          "type": "object",
+          "required": ["path"],
+          "additionalProperties": false,
+          "properties": { "path": { "type": "string" } }
+        }
+      ]
+    },
+
+    "meshDef": {
+      "type": "object",
+      "required": ["positions", "normals"],
+      "additionalProperties": false,
+      "properties": {
+        "positions": { "$ref": "#/$defs/rawFloatArray" },
+        "normals": { "$ref": "#/$defs/rawFloatArray" },
+        "uv0": { "$ref": "#/$defs/rawFloatArray" },
+        "tangents": { "$ref": "#/$defs/rawFloatArray" }
+      }
+    },
+
+    "cameraDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nearClip": { "type": "number" },
+        "farClip": { "type": "number" },
+        "fovAngle": { "type": "number" },
+        "aspectRatio": { "type": "number" },
+        "exposureStops": { "type": "number" }
+      }
+    },
+
+    "lightDef": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["ambient", "point", "directional", "spot", "area"] },
+        "color": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+        "intensity": { "type": "number" },
+        "enabled": { "type": "boolean" },
+        "castsShadows": { "type": "boolean" },
+        "range": { "type": "number" },
+        "attenuationConstant": { "type": "number" },
+        "attenuationLinear": { "type": "number" },
+        "attenuationQuadratic": { "type": "number" },
+        "spotInnerAngle": { "type": "number" },
+        "spotOuterAngle": { "type": "number" },
+        "shadowResolution": { "type": "integer" },
+        "shadowConstantBias": { "type": "number" },
+        "shadowSlopeScaleBias": { "type": "number" },
+        "shadowNormalOffset": { "type": "number" }
+      }
+    },
+
+    "imageDef": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["cubemap"],
+          "additionalProperties": false,
+          "properties": {
+            "cubemap": {
+              "type": "object",
+              "required": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"],
+              "additionalProperties": false,
+              "properties": {
+                "+X": { "type": "string" },
+                "-X": { "type": "string" },
+                "+Y": { "type": "string" },
+                "-Y": { "type": "string" },
+                "+Z": { "type": "string" },
+                "-Z": { "type": "string" }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
