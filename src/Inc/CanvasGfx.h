@@ -33,7 +33,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    enum class MaterialLayerRole
+    enum class MaterialLayerRole : uint32_t
     {
         Albedo,
         Normal,
@@ -150,7 +150,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    enum class MaterialBlendMode
+    enum class MaterialBlendMode : uint32_t
     {
         Default,
         Additive,
@@ -204,7 +204,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    enum class GfxVertexBufferType
+    enum class GfxVertexBufferType : uint32_t
     {
         Position,           // FloatVector3 array
         Normal,             // FloatVector3 array
@@ -242,11 +242,11 @@ namespace Canvas
     // 4-control-point patch list topology and the VS reconstructs the
     // mesh from SV_VertexID.  Used by tessellated displacement materials
     // and by any future SV_VertexID-driven mesh (instanced grids,
-    // particle expansion).
-    enum class GfxPrimitiveTopology
+    // particle expansion).  Values are stored in .cpkg files.
+    enum class GfxPrimitiveTopology : uint32_t
     {
-        TriangleList,
-        PatchList4CP,
+        TriangleList = 0,
+        PatchList4CP = 1,
     };
 
     //------------------------------------------------------------------------------------------------
@@ -517,7 +517,7 @@ namespace Canvas
     // suppresses Info/Verbose.  This is independent of the Canvas log level - it
     // caps how much the underlying graphics debug layer emits in the first place.
     // Backends without a debug layer treat SetDebugMessageSeverity as a no-op.
-    enum class GfxDebugSeverity
+    enum class GfxDebugSeverity : uint32_t
     {
         Off,         // suppress all debug-layer messages
         Corruption,  // report corruption only (most severe)

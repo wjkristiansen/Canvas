@@ -10,7 +10,7 @@
 namespace Canvas
 {
 
-enum class GfxFormat : int
+enum class GfxFormat : uint32_t
 {
     Unknown,
     R32G32B32A32_Float,
