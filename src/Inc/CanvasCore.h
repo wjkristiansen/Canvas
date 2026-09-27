@@ -313,7 +313,7 @@ XAnimationController : public XCanvasElement
 };
 
 //------------------------------------------------------------------------------------------------
-enum class AnimationAttribute
+enum class AnimationAttribute : uint32_t
 {
     // Transform attributes
     PositionX,
