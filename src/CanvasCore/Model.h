@@ -145,7 +145,7 @@ public: // XModel methods
         return static_cast<uint32_t>(m_AnimClips.size());
     }
 
-    GEMMETHOD_(PCSTR, GetAnimationClipName)(uint32_t index) final
+    GEMMETHOD_(const char *, GetAnimationClipName)(uint32_t index) final
     {
         return (index < m_AnimClips.size()) ? m_AnimClips[index].Name.c_str() : nullptr;
     }

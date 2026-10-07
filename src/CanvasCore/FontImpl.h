@@ -48,13 +48,13 @@ public:
 
     // XCanvasElement methods
     GEMMETHOD_(XCanvas*, GetCanvas)() override { return nullptr; }
-    GEMMETHOD_(PCSTR, GetTypeName)() override { return "XFont"; }
+    GEMMETHOD_(const char *, GetTypeName)() override { return "XFont"; }
     GEMMETHOD(Register)(XCanvas *pCanvas) override { UNREFERENCED_PARAMETER(pCanvas); return Gem::Result::Success; }
     GEMMETHOD(Unregister)() override { return Gem::Result::Success; }
     
     // XNamedElement methods
-    GEMMETHOD_(PCSTR, GetName)() override { return m_FontName.c_str(); }
-    GEMMETHOD_(void, SetName)(PCSTR szName) override { m_FontName = szName ? szName : ""; }
+    GEMMETHOD_(const char *, GetName)() override { return m_FontName.c_str(); }
+    GEMMETHOD_(void, SetName)(const char * szName) override { m_FontName = szName ? szName : ""; }
 
     // Internal methods
     uint16_t GetGlyphIndex(uint32_t codepoint)

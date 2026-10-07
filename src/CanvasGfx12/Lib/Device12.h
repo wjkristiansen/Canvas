@@ -47,7 +47,7 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CDevice12(Canvas::XCanvas* pCanvas, PCSTR name = nullptr);
+    CDevice12(Canvas::XCanvas* pCanvas, const char * name = nullptr);
     ~CDevice12();
 
     Gem::Result Initialize();

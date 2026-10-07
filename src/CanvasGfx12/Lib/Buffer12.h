@@ -28,7 +28,7 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CBuffer12(Canvas::XCanvas* pCanvas, ID3D12Resource *pResource, PCSTR name = nullptr)
+    CBuffer12(Canvas::XCanvas* pCanvas, ID3D12Resource *pResource, const char * name = nullptr)
         : TGfxElement(pCanvas),
           CResource(pResource)
     {

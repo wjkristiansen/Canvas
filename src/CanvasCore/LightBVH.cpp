@@ -145,8 +145,8 @@ void LightBVH::Build(XSceneGraphNode* root)
         if (!node)
             continue;
 
-        const UINT elementCount = node->GetBoundElementCount();
-        for (UINT i = 0; i < elementCount; ++i)
+        const uint32_t elementCount = node->GetBoundElementCount();
+        for (uint32_t i = 0; i < elementCount; ++i)
         {
             XSceneGraphElement* element = node->GetBoundElement(i);
             if (!element)

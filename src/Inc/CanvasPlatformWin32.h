@@ -56,13 +56,13 @@ Gem::Result LoadImageData(
 
 struct AppWindowDesc
 {
-    PCSTR     Title     = "Canvas";
-    HINSTANCE hInstance = nullptr;
-    int       Width     = 1280;
-    int       Height    = 720;
-    DWORD     Style     = WS_OVERLAPPEDWINDOW;
-    HICON     hIcon     = nullptr;
-    HICON     hIconSm   = nullptr;
+    const char *       Title     = "Canvas";
+    HINSTANCE          hInstance = nullptr;
+    int                Width     = 1280;
+    int                Height    = 720;
+    DWORD              Style     = WS_OVERLAPPEDWINDOW;
+    HICON              hIcon     = nullptr;
+    HICON              hIconSm   = nullptr;
 };
 
 //------------------------------------------------------------------------------------------------

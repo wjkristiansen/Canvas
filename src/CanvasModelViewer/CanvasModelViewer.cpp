@@ -221,7 +221,7 @@ class CApp
         }
         else
         {
-            PCSTR name = m_pAnimCtrl->GetClipName(m_pAnimCtrl->GetActiveClipIndex());
+            const char * name = m_pAnimCtrl->GetClipName(m_pAnimCtrl->GetActiveClipIndex());
             snprintf(buf, sizeof(buf), "Animation: %s  (Enter = next)", name ? name : "?");
             m_pAnimText->SetText(buf);
         }
@@ -583,7 +583,7 @@ class CApp
 public:
     CApp(
         HINSTANCE hInstance,
-        PCSTR szTitle,
+        const char * szTitle,
         Gem::TGemPtr<Canvas::XLogger> pLogger,
         int exitFrameCount = -1,
         bool logFps = false,
@@ -725,7 +725,7 @@ public:
             std::filesystem::path fontsDir =
                 std::filesystem::path(exePath).parent_path() / "fonts";
 
-            auto LoadFont = [&](const std::filesystem::path& path, PCSTR name) -> Gem::TGemPtr<Canvas::XFont>
+            auto LoadFont = [&](const std::filesystem::path& path, const char * name) -> Gem::TGemPtr<Canvas::XFont>
             {
                 std::ifstream f(path, std::ios::binary | std::ios::ate);
                 if (!f.is_open())

@@ -537,7 +537,7 @@ class CApp
     std::string m_fpsString;
 
 public:
-    CApp(HINSTANCE hInstance, PCSTR title,
+    CApp(HINSTANCE hInstance, const char * title,
          Gem::TGemPtr<Canvas::XLogger> pLogger,
          const GardenConfig& gardenConfig,
          int exitFrameCount, bool fullscreen,
@@ -714,7 +714,7 @@ private:
         std::filesystem::path fontsDir =
             std::filesystem::path(exePath).parent_path() / "fonts";
 
-        auto LoadFont = [&](const std::filesystem::path& path, PCSTR name) {
+        auto LoadFont = [&](const std::filesystem::path& path, const char * name) {
             std::ifstream f(path, std::ios::binary | std::ios::ate);
             if (!f.is_open())
             {

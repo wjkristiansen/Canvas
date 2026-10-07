@@ -58,7 +58,7 @@ struct GfxBackgroundDesc;
 
 //------------------------------------------------------------------------------------------------
 // Light types (immutable - set at creation time)
-enum class LightType : UINT
+enum class LightType : uint32_t
 {
     Ambient = 0,
     Point = 1,
@@ -69,7 +69,7 @@ enum class LightType : UINT
 
 //------------------------------------------------------------------------------------------------
 // Light flags (mutable - rendering hints)
-enum LightFlags : UINT
+enum class LightFlags : uint32_t
 {
     LightFlags_None = 0,
     CastsShadows = 1 << 0,
@@ -78,7 +78,7 @@ enum LightFlags : UINT
 
 //------------------------------------------------------------------------------------------------
 // Log severity levels (ABI-safe, matches QLog::Level)
-enum class LogLevel : UINT8
+enum class LogLevel : uint8_t
 {
     Trace = 0,
     Debug,
@@ -95,7 +95,7 @@ struct XLogger : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XLogger, 0x7A3B8C4D9E2F1A5B);
 
-    GEMMETHOD_(void, Log)(LogLevel level, PCSTR format, va_list args) = 0;
+    GEMMETHOD_(void, Log)(LogLevel level, const char * format, va_list args) = 0;
     GEMMETHOD_(void, SetLevel)(LogLevel level) = 0;
     GEMMETHOD_(LogLevel, GetLevel)() = 0;
     GEMMETHOD_(void, Flush)() = 0;
@@ -104,7 +104,7 @@ struct XLogger : public Gem::XGeneric
 //------------------------------------------------------------------------------------------------
 // XLogger helper functions
 
-inline void LogTrace(XLogger* logger, PCSTR format, ...)
+inline void LogTrace(XLogger* logger, const char * format, ...)
 {
     if (logger)
     {
@@ -115,7 +115,7 @@ inline void LogTrace(XLogger* logger, PCSTR format, ...)
     }
 }
 
-inline void LogDebug(XLogger* logger, PCSTR format, ...)
+inline void LogDebug(XLogger* logger, const char * format, ...)
 {
     if (logger)
     {
@@ -126,7 +126,7 @@ inline void LogDebug(XLogger* logger, PCSTR format, ...)
     }
 }
 
-inline void LogInfo(XLogger* logger, PCSTR format, ...)
+inline void LogInfo(XLogger* logger, const char * format, ...)
 {
     if (logger)
     {
@@ -137,7 +137,7 @@ inline void LogInfo(XLogger* logger, PCSTR format, ...)
     }
 }
 
-inline void LogWarn(XLogger* logger, PCSTR format, ...)
+inline void LogWarn(XLogger* logger, const char * format, ...)
 {
     if (logger)
     {
@@ -148,7 +148,7 @@ inline void LogWarn(XLogger* logger, PCSTR format, ...)
     }
 }
 
-inline void LogError(XLogger* logger, PCSTR format, ...)
+inline void LogError(XLogger* logger, const char * format, ...)
 {
     if (logger)
     {
@@ -159,7 +159,7 @@ inline void LogError(XLogger* logger, PCSTR format, ...)
     }
 }
 
-inline void LogCritical(XLogger* logger, PCSTR format, ...)
+inline void LogCritical(XLogger* logger, const char * format, ...)
 {
     if (logger)
     {
@@ -176,17 +176,17 @@ XCanvas : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XCanvas, 0x0F215E5907B4651D);
 
-    GEMMETHOD(LoadPlugin)(PCSTR path, struct XCanvasPlugin **ppPlugin) = 0;
+    GEMMETHOD(LoadPlugin)(const char * path, struct XCanvasPlugin **ppPlugin) = 0;
 
-    GEMMETHOD(CreateScene)(XGfxDevice *pDevice, XScene **ppScene, PCSTR name = nullptr) = 0;
-    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) = 0;
-    GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) = 0;
-    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) = 0;
-    GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, PCSTR name = nullptr) = 0;
-    GEMMETHOD(CreateModel)(XGfxDevice *pDevice, XModel **ppModel, PCSTR name = nullptr) = 0;
+    GEMMETHOD(CreateScene)(XGfxDevice *pDevice, XScene **ppScene, const char * name = nullptr) = 0;
+    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, const char * name = nullptr) = 0;
+    GEMMETHOD(CreateCamera)(XCamera **ppCamera, const char * name = nullptr) = 0;
+    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, const char * name = nullptr) = 0;
+    GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, const char * name = nullptr) = 0;
+    GEMMETHOD(CreateModel)(XGfxDevice *pDevice, XModel **ppModel, const char * name = nullptr) = 0;
 
     // Text/UI factory methods
-    GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) = 0;
+    GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, const char * name, XFont** ppFont) = 0;
     GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XUIGraph** ppGraph) = 0;
     
     // Element registration methods - ONLY call from XCanvasElement::Register/Unregister implementations
@@ -203,8 +203,8 @@ XNamedElement : public Gem::XGeneric
 {
     GEM_INTERFACE_DECLARE(XNamedElement, 0x314EEA856A888F9D);
 
-    GEMMETHOD_(PCSTR, GetName)() = 0;
-    GEMMETHOD_(void, SetName)(PCSTR szName) = 0;
+    GEMMETHOD_(const char *, GetName)() = 0;
+    GEMMETHOD_(void, SetName)(const char * szName) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -214,7 +214,7 @@ XCanvasElement : public XNamedElement
     GEM_INTERFACE_DECLARE(XCanvasElement, 0x5604F8425EBF3A75);
 
     GEMMETHOD_(XCanvas *, GetCanvas)() = 0;
-    GEMMETHOD_(PCSTR, GetTypeName)() = 0;
+    GEMMETHOD_(const char *, GetTypeName)() = 0;
 
     // Public API for element registration - external code should call these methods
     GEMMETHOD(Register)(XCanvas *pCanvas) = 0;
@@ -293,13 +293,13 @@ XAnimationController : public XCanvasElement
     // Query clips available from the model template (indices 0..GetClipCount()-1).
     // FindClip returns InvalidClipIndex when no clip matches the name.
     GEMMETHOD_(uint32_t, GetClipCount)() = 0;
-    GEMMETHOD_(PCSTR,    GetClipName)(uint32_t index) = 0;
-    GEMMETHOD_(uint32_t, FindClip)(PCSTR name) = 0;
+    GEMMETHOD_(const char *,    GetClipName)(uint32_t index) = 0;
+    GEMMETHOD_(uint32_t, FindClip)(const char * name) = 0;
 
     // Playback.  blendDuration > 0 crossfades from the current pose.  Clips loop.
     // Returns InvalidArg if clipIndex >= GetClipCount() or clipName is not found.
     GEMMETHOD(Play)(uint32_t clipIndex, float blendDuration) = 0;
-    GEMMETHOD(PlayByName)(PCSTR clipName, float blendDuration) = 0;
+    GEMMETHOD(PlayByName)(const char * clipName, float blendDuration) = 0;
     GEMMETHOD_(void, Stop)() = 0;           // freeze at current pose
 
     // Restore every animated node to its bind-pose TRS (the pose at instantiation time).
@@ -391,8 +391,8 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(const Math::FloatMatrix4x4, GetLocalMatrix)() = 0;
 
     // Element iteration (bound elements on this node)
-    GEMMETHOD_(UINT, GetBoundElementCount)() = 0;
-    GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(UINT index) = 0;
+    GEMMETHOD_(uint32_t, GetBoundElementCount)() = 0;
+    GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(uint32_t index) = 0;
 
     // Assign or clear (nullptr) the animation controller for this subtree.
     // The controller's driven nodes must all be descendants of this node; SetAnimationController
@@ -679,7 +679,7 @@ XModel : public XCanvasElement
     };
     GEMMETHOD(AddMeshSkin)(const MeshSkinDesc *pDesc) = 0;
     GEMMETHOD_(uint32_t, GetAnimationClipCount)() = 0;
-    GEMMETHOD_(PCSTR,    GetAnimationClipName)(uint32_t index) = 0;
+    GEMMETHOD_(const char *,    GetAnimationClipName)(uint32_t index) = 0;
 
     // Instantiate: deep-clone the model's node hierarchy into the
     // target scene graph.  A synthetic instance root is always
@@ -766,8 +766,8 @@ struct XUITextElement : public XUIElement
 {
     GEM_INTERFACE_DECLARE(XUITextElement, 0xB2C3D4E5F6071829);
 
-    GEMMETHOD_(void, SetText)(PCSTR utf8Text) = 0;
-    GEMMETHOD_(PCSTR, GetText)() const = 0;
+    GEMMETHOD_(void, SetText)(const char * utf8Text) = 0;
+    GEMMETHOD_(const char *, GetText)() const = 0;
     GEMMETHOD_(void, SetFont)(XFont* pFont) = 0;
     GEMMETHOD_(void, SetLayoutConfig)(const TextLayoutConfig& config) = 0;
     GEMMETHOD_(const TextLayoutConfig&, GetLayoutConfig)() const = 0;
@@ -800,8 +800,8 @@ struct XUIGraphNode : public XCanvasElement
     GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() = 0;
 
     GEMMETHOD(BindElement)(_In_ XUIElement* pElement) = 0;
-    GEMMETHOD_(UINT, GetBoundElementCount)() = 0;
-    GEMMETHOD_(XUIElement*, GetBoundElement)(UINT index) = 0;
+    GEMMETHOD_(uint32_t, GetBoundElementCount)() = 0;
+    GEMMETHOD_(XUIElement*, GetBoundElement)(uint32_t index) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -843,7 +843,7 @@ class CFunctionSentinel
     const char *m_FunctionName;
     Gem::Result m_Result = Gem::Result::Success;
 
-    void LogWithLevel(LogLevel level, PCSTR format, ...) const
+    void LogWithLevel(LogLevel level, const char * format, ...) const
     {
         if (m_pLogger)
         {

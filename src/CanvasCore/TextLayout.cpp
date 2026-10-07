@@ -16,7 +16,7 @@ namespace Canvas
 // UTF-8 Decoding
 //------------------------------------------------------------------------------------------------
 
-Gem::Result CTextLayout::DecodeUtf8(PCSTR utf8Text, std::vector<uint32_t>& outCodepoints)
+Gem::Result CTextLayout::DecodeUtf8(const char * utf8Text, std::vector<uint32_t>& outCodepoints)
 {
     if (!utf8Text)
         return Gem::Result::BadPointer;
@@ -140,7 +140,7 @@ float CTextLayout::LayoutGlyph(
 //------------------------------------------------------------------------------------------------
 
 Gem::Result CTextLayout::GenerateGeometry(
-    PCSTR utf8Text,
+    const char * utf8Text,
     const CTrueTypeFont& font,
     const TextLayoutConfig& config,
     const Math::FloatVector3& basePosition,

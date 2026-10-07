@@ -64,7 +64,7 @@ Gem::Result CUIGraph::Update()
 //------------------------------------------------------------------------------------------------
 Gem::Result CUIGraph::UpdateNode(CUIGraphNodeImpl* pNode)
 {
-    for (UINT i = 0; i < pNode->GetBoundElementCount(); ++i)
+    for (uint32_t i = 0; i < pNode->GetBoundElementCount(); ++i)
     {
         XUIElement* pElem = pNode->GetBoundElement(i);
         if (!pElem->IsVisible())
@@ -108,8 +108,8 @@ Gem::Result CUIGraph::SubmitRenderables(XGfxRenderQueue* pRenderQueue)
         stack.pop_back();
 
         bool hasVisibleElements = false;
-        UINT elemCount = pNode->GetBoundElementCount();
-        for (UINT i = 0; i < elemCount; ++i)
+        uint32_t elemCount = pNode->GetBoundElementCount();
+        for (uint32_t i = 0; i < elemCount; ++i)
         {
             XUIElement* pElem = pNode->GetBoundElement(i);
             if (!pElem->IsVisible() || !pElem->HasContent())

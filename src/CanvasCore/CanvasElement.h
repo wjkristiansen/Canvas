@@ -37,7 +37,7 @@ public:
 
     // Static helper for creating and auto-registering Canvas elements
     template<typename _Impl, typename... _Args>
-    static Gem::Result CreateAndRegister(_Impl **ppElement, Canvas::XCanvas* pCanvas, PCSTR name, _Args&&... args)
+    static Gem::Result CreateAndRegister(_Impl **ppElement, Canvas::XCanvas* pCanvas, const char * name, _Args&&... args)
     {
         if (!ppElement || !pCanvas) 
             return Gem::Result::BadPointer;
@@ -73,7 +73,7 @@ public:
     
     // XCanvasElement methods
     GEMMETHOD_(XCanvas *, GetCanvas)() { return m_pCanvas; }
-    GEMMETHOD_(PCSTR, GetTypeName)() { return _Base::XFaceName; }
+    GEMMETHOD_(const char *, GetTypeName)() { return _Base::XFaceName; }
     GEMMETHOD(Register)(XCanvas *pCanvas)
     {
         if (!pCanvas)

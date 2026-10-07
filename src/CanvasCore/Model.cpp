@@ -181,8 +181,8 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             pClonedNode->SetLocalRotation(pModelNode->GetLocalRotation());
 
             // Clone bound elements
-            const UINT elementCount = pModelNode->GetBoundElementCount();
-            for (UINT i = 0; i < elementCount; ++i)
+            const uint32_t elementCount = pModelNode->GetBoundElementCount();
+            for (uint32_t i = 0; i < elementCount; ++i)
             {
                 XSceneGraphElement *pElement = pModelNode->GetBoundElement(i);
                 if (!pElement)
@@ -281,8 +281,8 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             XSceneGraphNode* pClonedMeshNode = meshNodeIt->second.Get();
 
             // Find the XMeshInstance bound to the cloned node
-            const UINT elementCount = pClonedMeshNode->GetBoundElementCount();
-            for (UINT ei = 0; ei < elementCount; ++ei)
+            const uint32_t elementCount = pClonedMeshNode->GetBoundElementCount();
+            for (uint32_t ei = 0; ei < elementCount; ++ei)
             {
                 XSceneGraphElement* pEl = pClonedMeshNode->GetBoundElement(ei);
                 Gem::TGemPtr<XMeshInstance> pMeshInst;

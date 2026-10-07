@@ -31,7 +31,7 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CUIRectElement12() = default;
-    CUIRectElement12(Canvas::XCanvas* pCanvas, PCSTR name = nullptr)
+    CUIRectElement12(Canvas::XCanvas* pCanvas, const char * name = nullptr)
         : TGfxElement(pCanvas)
     {
         if (name) SetName(name);

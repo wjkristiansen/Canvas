@@ -847,7 +847,7 @@ class CTerrainApp
 public:
     CTerrainApp(
         HINSTANCE hInstance,
-        PCSTR     szTitle,
+        const char *     szTitle,
         Gem::TGemPtr<Canvas::XLogger> pLogger,
         int       exitFrameCount,
         bool      logFps,
@@ -963,7 +963,7 @@ public:
             const std::filesystem::path fontsDir =
                 std::filesystem::path(exePath).parent_path() / "fonts";
 
-            auto LoadFont = [&](const std::filesystem::path& path, PCSTR name) -> Gem::TGemPtr<Canvas::XFont>
+            auto LoadFont = [&](const std::filesystem::path& path, const char * name) -> Gem::TGemPtr<Canvas::XFont>
             {
                 std::ifstream f(path, std::ios::binary | std::ios::ate);
                 if (!f.is_open())

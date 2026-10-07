@@ -40,7 +40,7 @@ class CLight :
     // Frustum extent for directional lights is intentionally absent --
     // that's a view / scene property, not a light property; the backend
     // uses a fixed default until proper camera-driven shadow regions land.
-    UINT  m_ShadowResolution        = 0;       // 0 = backend default (2048)
+    uint32_t  m_ShadowResolution        = 0;       // 0 = backend default (2048)
     float m_ShadowConstantBias      = 1e-4f;
     float m_ShadowSlopeScaleBias    = 2.0f;
     float m_ShadowNormalOffset      = 0.5f;    // In shadow-map texels
@@ -123,8 +123,8 @@ public:
     }
 
     // Shadow parameters
-    GEMMETHOD_(void, SetShadowResolution)(UINT pixels) final { m_ShadowResolution = pixels; }
-    GEMMETHOD_(UINT, GetShadowResolution)() const final { return m_ShadowResolution; }
+    GEMMETHOD_(void, SetShadowResolution)(uint32_t pixels) final { m_ShadowResolution = pixels; }
+    GEMMETHOD_(uint32_t, GetShadowResolution)() const final { return m_ShadowResolution; }
 
     GEMMETHOD_(void, SetShadowDepthBias)(float constantBias, float slopeScaleBias, float normalOffset) final
     {

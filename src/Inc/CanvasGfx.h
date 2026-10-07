@@ -357,7 +357,7 @@ namespace Canvas
     {
         GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
 
-        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, UINT NumBuffers) = 0;
+        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, uint32_t NumBuffers) = 0;
         GEMMETHOD(FlushAndPresent)(XGfxSwapChain *pSwapChain) = 0;
 
         // Frame rendering
@@ -442,11 +442,11 @@ namespace Canvas
         GfxFormat Format;
         GfxSurfaceDimension Dimension;
         GfxSurfaceFlags Flags;
-        UINT Width;
-        UINT Height;
-        UINT Depth;
-        UINT ArraySize;
-        UINT MipLevels;
+        uint32_t Width;
+        uint32_t Height;
+        uint32_t Depth;
+        uint32_t ArraySize;
+        uint32_t MipLevels;
 
         GfxSurfaceDesc()
             : Format(GfxFormat::Unknown)
@@ -460,7 +460,7 @@ namespace Canvas
         {
         }
 
-        static GfxSurfaceDesc SurfaceDesc1D(GfxFormat format, UINT width, GfxSurfaceFlags flags, UINT mipLevels = 1)
+        static GfxSurfaceDesc SurfaceDesc1D(GfxFormat format, uint32_t width, GfxSurfaceFlags flags, uint32_t mipLevels = 1)
         {
             GfxSurfaceDesc desc;
             desc.Format = format;
@@ -471,7 +471,7 @@ namespace Canvas
             return desc;
         }   
 
-        static GfxSurfaceDesc SurfaceDesc2D(GfxFormat format, UINT width, UINT height, GfxSurfaceFlags flags, UINT mipLevels = 1)
+        static GfxSurfaceDesc SurfaceDesc2D(GfxFormat format, uint32_t width, uint32_t height, GfxSurfaceFlags flags, uint32_t mipLevels = 1)
         {
             GfxSurfaceDesc desc;
             desc.Format = format;
@@ -483,7 +483,7 @@ namespace Canvas
             return desc;
         }
 
-        static GfxSurfaceDesc SurfaceDesc3D(GfxFormat format, UINT width, UINT height, UINT depth, GfxSurfaceFlags flags, UINT mipLevels = 1)
+        static GfxSurfaceDesc SurfaceDesc3D(GfxFormat format, uint32_t width, uint32_t height, uint32_t depth, GfxSurfaceFlags flags, uint32_t mipLevels = 1)
         {
             GfxSurfaceDesc desc;
             desc.Format = format;
@@ -496,7 +496,7 @@ namespace Canvas
             return desc;
         }
 
-        static GfxSurfaceDesc SurfaceDescCube(GfxFormat format, UINT size, UINT arraySize, GfxSurfaceFlags flags, UINT mipLevels = 1)
+        static GfxSurfaceDesc SurfaceDescCube(GfxFormat format, uint32_t size, uint32_t arraySize, GfxSurfaceFlags flags, uint32_t mipLevels = 1)
         {
             GfxSurfaceDesc desc;
             desc.Format = format;

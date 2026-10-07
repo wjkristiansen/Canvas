@@ -30,7 +30,7 @@ void CCanvas::Uninitialize()
     // Iterate still active XCanvasElement objects and report them as leaks
     for(XCanvasElement *pElement : m_ActiveCanvasElements)
     {
-        PCSTR pszName = pElement->GetName();
+        const char * pszName = pElement->GetName();
         if(pszName)
         {
             Canvas::LogError(GetLogger(), "%s leaked, Name: %s", pElement->GetTypeName(), pszName);
@@ -55,7 +55,7 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
-    PCSTR pszName = pElement->GetName();
+    const char * pszName = pElement->GetName();
 
     if (m_ActiveCanvasElements.find(pElement) != m_ActiveCanvasElements.end())
     {
@@ -100,7 +100,7 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 
     std::lock_guard<std::mutex> lock(m_Mutex);
 
-    PCSTR pszName = pElement->GetName();
+    const char * pszName = pElement->GetName();
 
     auto it = m_ActiveCanvasElements.find(pElement);
     if (it == m_ActiveCanvasElements.end())
@@ -140,7 +140,7 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateScene(XGfxDevice *pDevice, XScene **ppScene, PCSTR name)
+GEMMETHODIMP CCanvas::CreateScene(XGfxDevice *pDevice, XScene **ppScene, const char * name)
 {
     CFunctionSentinel sentinel("XCanvas::CreateScene", m_pLogger);
 
@@ -148,7 +148,7 @@ GEMMETHODIMP CCanvas::CreateScene(XGfxDevice *pDevice, XScene **ppScene, PCSTR n
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode, PCSTR name)
+GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode, const char * name)
 {
     CFunctionSentinel sentinel("XCanvas::CreateSceneGraphNode", m_pLogger);
 
@@ -156,7 +156,7 @@ GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode, PCSTR name)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera, PCSTR name)
+GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera, const char * name)
 {
     CFunctionSentinel sentinel("XCanvas::CreateCamera", m_pLogger);
 
@@ -164,7 +164,7 @@ GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera, PCSTR name)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight, PCSTR name)
+GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight, const char * name)
 {
     CFunctionSentinel sentinel("XCanvas::CreateLight", m_pLogger);
 
@@ -175,7 +175,7 @@ GEMMETHODIMP CCanvas::CreateLight(LightType type, XLight **ppLight, PCSTR name)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateMeshInstance(XMeshInstance **ppMeshInstance, PCSTR name)
+GEMMETHODIMP CCanvas::CreateMeshInstance(XMeshInstance **ppMeshInstance, const char * name)
 {
     CFunctionSentinel sentinel("XCanvas::CreateMeshInstance", m_pLogger);
 
@@ -183,7 +183,7 @@ GEMMETHODIMP CCanvas::CreateMeshInstance(XMeshInstance **ppMeshInstance, PCSTR n
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateModel(XGfxDevice *pDevice, XModel **ppModel, PCSTR name)
+GEMMETHODIMP CCanvas::CreateModel(XGfxDevice *pDevice, XModel **ppModel, const char * name)
 {
     CFunctionSentinel sentinel("XCanvas::CreateModel", m_pLogger);
 
@@ -194,7 +194,7 @@ GEMMETHODIMP CCanvas::CreateModel(XGfxDevice *pDevice, XModel **ppModel, PCSTR n
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateFont(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont)
+GEMMETHODIMP CCanvas::CreateFont(const uint8_t* pTTFData, size_t dataSize, const char * name, XFont** ppFont)
 {
     CFunctionSentinel sentinel("XCanvas::CreateFont", m_pLogger);
 
@@ -249,7 +249,7 @@ Gem::Result CANVAS_API CreateCanvas(XLogger *pLogger, XCanvas **ppCanvas)
     }
 }
 
-GEMMETHODIMP CCanvas::LoadPlugin(PCSTR path, XCanvasPlugin **ppPlugin)
+GEMMETHODIMP CCanvas::LoadPlugin(const char * path, XCanvasPlugin **ppPlugin)
 {
     CFunctionSentinel sentinel("XCanvas::LoadPlugin", m_pLogger);
 

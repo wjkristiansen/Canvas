@@ -46,7 +46,7 @@ class CANVAS_API CTextLayout
 public:
     // Generate geometry from UTF-8 string
     Gem::Result GenerateGeometry(
-        PCSTR utf8Text,
+        const char * utf8Text,
         const CTrueTypeFont& font,
         const TextLayoutConfig& config,
         const Math::FloatVector3& basePosition,
@@ -55,7 +55,7 @@ public:
 
     // Convert UTF-8 string to Unicode codepoints
     static Gem::Result DecodeUtf8(
-        PCSTR utf8Text,
+        const char * utf8Text,
         std::vector<uint32_t>& outCodepoints
     );
     
