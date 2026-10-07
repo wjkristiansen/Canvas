@@ -587,7 +587,7 @@ public:
 
             step = "create_swap_chain";
             Gem::ThrowGemError(m_pRenderQueue->CreateSwapChain(
-                m_pWindow->GetHWND(), true, &m_pSwapChain,
+                m_pWindow->GetNativeWindow(), true, &m_pSwapChain,
                 Canvas::GfxFormat::R16G16B16A16_Float, 4));
 
             step = "create_camera";

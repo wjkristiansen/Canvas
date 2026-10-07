@@ -20,6 +20,7 @@ public:
 
     GEMMETHOD_(void, Show)(int nCmdShow) final;
     GEMMETHOD_(HWND, GetHWND)() final;
+    GEMMETHOD_(Canvas::NativeWindow, GetNativeWindow)() final;
     GEMMETHOD_(bool, HasFocus)() final;
     GEMMETHOD_(bool, PumpMessages)() final;
     GEMMETHOD_(void, SetMouseCaptured)(bool captured) final;

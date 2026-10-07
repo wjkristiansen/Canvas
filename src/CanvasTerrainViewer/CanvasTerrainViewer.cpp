@@ -920,7 +920,7 @@ public:
             initStep = "create_swap_chain";
             Gem::TGemPtr<Canvas::XGfxSwapChain> pSwap;
             Gem::ThrowGemError(pRq->CreateSwapChain(
-                m_pWindow->GetHWND(), true, &pSwap,
+                m_pWindow->GetNativeWindow(), true, &pSwap,
                 Canvas::GfxFormat::R16G16B16A16_Float, 4));
 
             initStep = "create_camera";

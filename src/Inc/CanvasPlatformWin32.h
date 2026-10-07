@@ -3,7 +3,7 @@
 #include "CanvasFormat.h"
 #include <cstdint>
 
-namespace Canvas { struct XLogger; }
+namespace Canvas { struct XLogger; struct NativeWindow; }
 
 namespace Canvas::Platform::Win32 {
 
@@ -108,6 +108,9 @@ struct XAppWindow : public Gem::XGeneric
 
     GEMMETHOD_(void, Show)(int nCmdShow) = 0;
     GEMMETHOD_(HWND, GetHWND)() = 0;
+
+    // GetHWND wrapped as a Canvas::NativeWindow, for XGfxRenderQueue::CreateSwapChain.
+    GEMMETHOD_(Canvas::NativeWindow, GetNativeWindow)() = 0;
 
     // Returns true when this window is the foreground window.
     GEMMETHOD_(bool, HasFocus)() = 0;

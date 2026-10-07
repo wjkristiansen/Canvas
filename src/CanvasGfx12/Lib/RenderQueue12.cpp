@@ -255,11 +255,19 @@ CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, con
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::CreateSwapChain(HWND hWnd, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers)
+GEMMETHODIMP CRenderQueue12::CreateSwapChain(const Canvas::NativeWindow &window, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers)
 {
     Canvas::CFunctionSentinel sentinel("XGfxRenderQueue::CreateSwapChain", this->GetDevice()->GetLogger());
+    if (window.Kind != Canvas::NativeWindowKind::Win32 || window.Win32.hWnd == nullptr)
+    {
+        sentinel.SetResultCode(Gem::Result::InvalidArg);
+        return Gem::Result::InvalidArg;
+    }
+
     try
     {
+        HWND hWnd = static_cast<HWND>(window.Win32.hWnd);
+
         // Create and register the swapchain
         DXGI_FORMAT dxgiFormat = CanvasFormatToDXGIFormat(Format);
         Gem::TGemPtr<CSwapChain12> pSwapChain;

@@ -664,7 +664,7 @@ public:
             initStep = "create_swap_chain";
             // Create the swapchain
             Gem::TGemPtr<Canvas::XGfxSwapChain> pSwapChain;
-            Gem::ThrowGemError(pGfxRenderQueue->CreateSwapChain(m_pWindow->GetHWND(), true, &pSwapChain, Canvas::GfxFormat::R16G16B16A16_Float, 4));
+            Gem::ThrowGemError(pGfxRenderQueue->CreateSwapChain(m_pWindow->GetNativeWindow(), true, &pSwapChain, Canvas::GfxFormat::R16G16B16A16_Float, 4));
 
             initStep = "create_camera";
             Gem::TGemPtr<Canvas::XCamera> pCamera;

@@ -339,6 +339,28 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
+    enum class NativeWindowKind : uint32_t
+    {
+        Win32,
+    };
+
+    //------------------------------------------------------------------------------------------------
+    // Platform-neutral description of an OS window, passed to XGfxRenderQueue::CreateSwapChain.
+    // Kind selects the active union member. Handles are the platform's own types stored untyped;
+    // only the backend matching Kind casts them back.
+    struct NativeWindow
+    {
+        NativeWindowKind Kind;
+        union
+        {
+            struct
+            {
+                void *hWnd;     // HWND
+            } Win32;
+        };
+    };
+
+    //------------------------------------------------------------------------------------------------
     struct XGfxSwapChain : public XCanvasElement
     {
         GEM_INTERFACE_DECLARE(XGfxSwapChain, 0x1DEDFC0646129850);
@@ -358,7 +380,7 @@ namespace Canvas
     {
         GEM_INTERFACE_DECLARE(XGfxRenderQueue, 0x728AF985153F712D);
 
-        GEMMETHOD(CreateSwapChain)(HWND hWnd, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, uint32_t NumBuffers) = 0;
+        GEMMETHOD(CreateSwapChain)(const NativeWindow &window, bool Windowed, XGfxSwapChain **ppSwapChain, GfxFormat Format, uint32_t NumBuffers) = 0;
         GEMMETHOD(FlushAndPresent)(XGfxSwapChain *pSwapChain) = 0;
 
         // Frame rendering

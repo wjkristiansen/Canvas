@@ -8,7 +8,7 @@ This document describes the current state of the module. CanvasPlatformWin32 is 
 
 CanvasPlatformWin32 publishes two interfaces from `CanvasPlatformWin32.h` in the `Canvas::Platform::Win32` namespace:
 
-- **`XAppWindow`** - owns a top-level Win32 window. Provides `Show`, `GetHWND`, `HasFocus`, `PumpMessages`, `SetMouseCaptured` / `IsMouseCaptured` for exclusive mouse capture, and `SetWindowSize` / `GetClientSize` / `SetFullscreen` / `IsFullscreen` for window sizing and borderless-fullscreen control (see [Window Sizing & Fullscreen](#window-sizing--fullscreen)).
+- **`XAppWindow`** - owns a top-level Win32 window. Provides `Show`, `GetHWND`, `GetNativeWindow` (the window as a `Canvas::NativeWindow` for `XGfxRenderQueue::CreateSwapChain`), `HasFocus`, `PumpMessages`, `SetMouseCaptured` / `IsMouseCaptured` for exclusive mouse capture, and `SetWindowSize` / `GetClientSize` / `SetFullscreen` / `IsFullscreen` for window sizing and borderless-fullscreen control (see [Window Sizing & Fullscreen](#window-sizing--fullscreen)).
 - **`XRawInput`** - accumulates keyboard, mouse-delta, mouse-button, and scroll-wheel state from `WM_INPUT` messages. Exposes both level queries (`IsKeyDown`, `IsMouseButtonDown`) and one-frame edge queries (`IsKeyPressed`, `IsKeyReleased`, `IsMouseButtonPressed`, `IsMouseButtonReleased`), plus `GetMouseDelta` and `ConsumeScrollDelta`.
 
 It also exposes a free-function image-loading API in the same namespace:

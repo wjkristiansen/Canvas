@@ -101,9 +101,13 @@ pPlugin->CreateCanvasElement(
 Gem::TGemPtr<Canvas::XGfxRenderQueue> pRenderQueue;
 pDevice->CreateRenderQueue(&pRenderQueue);
 
+Canvas::NativeWindow window{};
+window.Kind = Canvas::NativeWindowKind::Win32;
+window.Win32.hWnd = hWnd;
+
 Gem::TGemPtr<Canvas::XGfxSwapChain> pSwapChain;
 pRenderQueue->CreateSwapChain(
-    hWnd, true, &pSwapChain,
+    window, true, &pSwapChain,
     Canvas::GfxFormat::R16G16B16A16_Float, 4);
 
 // 5. Build a scene graph
