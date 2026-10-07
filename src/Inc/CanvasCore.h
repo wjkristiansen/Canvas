@@ -273,8 +273,11 @@ XCanvasElement : public XNamedElement
 // CModel copies the data into its internal storage immediately.
 //------------------------------------------------------------------------------------------------
 
+#ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatQuaternion is alignas(16))
+#endif // _MSC_VER
+
 // One TRS keyframe. Rotation is always stored as a unit quaternion.
 struct AnimationKeyframe
 {
@@ -283,7 +286,9 @@ struct AnimationKeyframe
     Math::FloatQuaternion   Rotation;       // unit quaternion (Canvas space)
     Math::FloatVector4      Scale;          // W = 0
 };
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif // _MSC_VER
 
 // All keyframes for one node's track within a clip.
 // NodeName is matched against the cloned XSceneGraphNode names in XModel::Instantiate.
