@@ -820,7 +820,7 @@ TEST(CanvasInterfacesTest, LightProperties)
 
     // Test Flags
     pPointLight->SetFlags(LightFlags::CastsShadows | LightFlags::Enabled);
-    EXPECT_EQ((UINT)(LightFlags::CastsShadows | LightFlags::Enabled), pPointLight->GetFlags());
+    EXPECT_EQ(LightFlags::CastsShadows | LightFlags::Enabled, pPointLight->GetFlags());
 
     // Test Range
     pPointLight->SetRange(500.0f);

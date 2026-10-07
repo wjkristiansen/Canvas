@@ -480,7 +480,7 @@ class CTerrainApp
             Canvas::GfxSurfaceDesc hd = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
                 Canvas::GfxFormat::R16_UNorm,
                 field.Desc.Width, field.Desc.Height,
-                Canvas::SurfaceFlag_ShaderResource);
+                Canvas::GfxSurfaceFlags::ShaderResource);
             Gem::ThrowGemError(m_pGfxDevice->CreateSurface(hd, &m_pHeightmapSurface));
             const uint32_t rowPitchBytes = field.Desc.Width * sizeof(uint16_t);
             Gem::ThrowGemError(m_pGfxDevice->UploadTextureRegion(
@@ -767,7 +767,7 @@ class CTerrainApp
             Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
                 Canvas::GfxFormat::R8G8B8A8_UNorm,
                 moonImg->GetWidth(), moonImg->GetHeight(),
-                Canvas::SurfaceFlag_ShaderResource);
+                Canvas::GfxSurfaceFlags::ShaderResource);
             Gem::ThrowGemError(m_pGfxDevice->CreateSurface(desc, &m_pMoonTexture));
             Gem::ThrowGemError(m_pGfxDevice->UploadTextureRegion(
                 m_pMoonTexture, 0, 0, 0,

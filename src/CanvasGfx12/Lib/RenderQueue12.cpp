@@ -641,8 +641,7 @@ void CRenderQueue12::EnsureShadowAtlas()
     // pass and as an SRV during the composite.  The SRV format will be
     // R32_Float (the typed depth format itself is not a valid SRV
     // format) and is created on demand at composite time.
-    auto flags = static_cast<Canvas::GfxSurfaceFlags>(
-        Canvas::SurfaceFlag_DepthStencil | Canvas::SurfaceFlag_ShaderResource);
+    auto flags = Canvas::GfxSurfaceFlags::DepthStencil | Canvas::GfxSurfaceFlags::ShaderResource;
     Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
         Canvas::GfxFormat::D32_Float, atlasSize, atlasSize, flags);
 
@@ -707,7 +706,7 @@ void CRenderQueue12::EnsureDepthBuffer(UINT width, UINT height)
     // Create depth buffer surface via the device
     Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
         Canvas::GfxFormat::D32_Float, width, height,
-        static_cast<Canvas::GfxSurfaceFlags>(Canvas::SurfaceFlag_DepthStencil));
+        Canvas::GfxSurfaceFlags::DepthStencil);
     
     Gem::TGemPtr<Canvas::XGfxSurface> pSurface;
     Gem::ThrowGemError(m_pDevice->CreateSurface(desc, &pSurface));
@@ -731,8 +730,7 @@ void CRenderQueue12::EnsureGBuffers(UINT width, UINT height)
     if (m_pGBufferNormals && m_GBufferWidth == width && m_GBufferHeight == height)
         return;
     
-    auto flags = static_cast<Canvas::GfxSurfaceFlags>(
-        Canvas::SurfaceFlag_RenderTarget | Canvas::SurfaceFlag_ShaderResource);
+    auto flags = Canvas::GfxSurfaceFlags::RenderTarget | Canvas::GfxSurfaceFlags::ShaderResource;
     
     // Normals G-buffer
     {
@@ -2505,7 +2503,7 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
         return Gem::Result::Success;
 
     // Skip disabled lights
-    if (!(pLight->GetFlags() & Canvas::LightFlags::Enabled))
+    if (!Canvas::HasAnyFlag(pLight->GetFlags(), Canvas::LightFlags::Enabled))
         return Gem::Result::Success;
 
     // Per-frame visibility filter (installed by Scene from the
@@ -2631,7 +2629,7 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
     // final.  Deferring is necessary because lights and meshes can be
     // visited in any order during scene traversal -- computing the
     // shadow region here would use a partial bounds aggregate.
-    if ((pLight->GetFlags() & Canvas::LightFlags::CastsShadows) &&
+    if (Canvas::HasAnyFlag(pLight->GetFlags(), Canvas::LightFlags::CastsShadows) &&
         pLight->GetType() == Canvas::LightType::Directional &&
         pNode != nullptr)
     {

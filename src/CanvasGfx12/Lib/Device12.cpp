@@ -390,23 +390,23 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
         
         // Set resource flags based on GfxSurfaceFlags
-        if (desc.Flags & Canvas::SurfaceFlag_RenderTarget)
+        if (Canvas::HasAnyFlag(desc.Flags, Canvas::GfxSurfaceFlags::RenderTarget))
             resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-        if (desc.Flags & Canvas::SurfaceFlag_DepthStencil)
+        if (Canvas::HasAnyFlag(desc.Flags, Canvas::GfxSurfaceFlags::DepthStencil))
             resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-        if (desc.Flags & Canvas::SurfaceFlag_UnorderedAccess)
+        if (Canvas::HasAnyFlag(desc.Flags, Canvas::GfxSurfaceFlags::UnorderedAccess))
             resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
         
         // Determine heap properties and initial state
         D3D12_HEAP_PROPERTIES heapProps = {};
         D3D12_BARRIER_LAYOUT initialLayout;
         
-        if (desc.Flags & Canvas::SurfaceFlag_CpuUpload)
+        if (Canvas::HasAnyFlag(desc.Flags, Canvas::GfxSurfaceFlags::CpuUpload))
         {
             heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
             initialLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
         }
-        else if (desc.Flags & Canvas::SurfaceFlag_CpuReadback)
+        else if (Canvas::HasAnyFlag(desc.Flags, Canvas::GfxSurfaceFlags::CpuReadback))
         {
             heapProps.Type = D3D12_HEAP_TYPE_READBACK;
             initialLayout = D3D12_BARRIER_LAYOUT_UNDEFINED;
@@ -426,14 +426,14 @@ GEMMETHODIMP CDevice12::CreateSurface(const Canvas::GfxSurfaceDesc &desc, Canvas
         D3D12_CLEAR_VALUE clearValue = {};
         const D3D12_CLEAR_VALUE* pOptimizedClearValue = nullptr;
         
-        if (desc.Flags & Canvas::SurfaceFlag_DepthStencil)
+        if (Canvas::HasAnyFlag(desc.Flags, Canvas::GfxSurfaceFlags::DepthStencil))
         {
             clearValue.Format = resourceDesc.Format;
             clearValue.DepthStencil.Depth = 0.0f;  // Reverse-Z: far plane
             clearValue.DepthStencil.Stencil = 0;
             pOptimizedClearValue = &clearValue;
         }
-        else if (desc.Flags & Canvas::SurfaceFlag_RenderTarget)
+        else if (Canvas::HasAnyFlag(desc.Flags, Canvas::GfxSurfaceFlags::RenderTarget))
         {
             clearValue.Format = resourceDesc.Format;
             clearValue.Color[0] = 0.0f;
@@ -933,7 +933,7 @@ Canvas::XGfxSurface* CDevice12::GetGlyphAtlasSurface()
         Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
             Canvas::GfxFormat::R8_UNorm,
             m_GlyphCache.GetAtlasSize(), m_GlyphCache.GetAtlasSize(),
-            Canvas::SurfaceFlag_ShaderResource, 1);
+            Canvas::GfxSurfaceFlags::ShaderResource, 1);
         CreateSurface(desc, &m_pGlyphAtlasSurface);
     }
     return m_pGlyphAtlasSurface.Get();

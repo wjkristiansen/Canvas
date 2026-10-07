@@ -65,7 +65,7 @@ void SceneBVH::Build(XSceneGraphNode* root)
             prim.WorldBounds = worldBounds;
             prim.Node        = node;
             prim.Id          = nextId++;
-            prim.Flags       = BVHPrimitiveFlag_Static;
+            prim.Flags       = BVHPrimitiveFlags::Static;
             m_Primitives.push_back(prim);
             nodeContributed = true;
         }

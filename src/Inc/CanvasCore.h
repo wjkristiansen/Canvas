@@ -16,9 +16,31 @@
 #pragma once
 #include "CanvasMath.hpp"
 #include <cstdarg>
+#include <cstdint>
+#include <type_traits>
+
+//------------------------------------------------------------------------------------------------
+// Bitwise operators for an enum class whose enumerators are bit flags.  Invoke at namespace
+// scope, in the enum's own namespace, immediately after its declaration.
+#define CANVAS_ENUM_FLAG_OPERATORS(E) \
+    constexpr E operator|(E a, E b) noexcept { return E(std::underlying_type_t<E>(a) | std::underlying_type_t<E>(b)); } \
+    constexpr E operator&(E a, E b) noexcept { return E(std::underlying_type_t<E>(a) & std::underlying_type_t<E>(b)); } \
+    constexpr E operator^(E a, E b) noexcept { return E(std::underlying_type_t<E>(a) ^ std::underlying_type_t<E>(b)); } \
+    constexpr E operator~(E a) noexcept { return E(~std::underlying_type_t<E>(a)); } \
+    constexpr E &operator|=(E &a, E b) noexcept { return a = a | b; } \
+    constexpr E &operator&=(E &a, E b) noexcept { return a = a & b; } \
+    constexpr E &operator^=(E &a, E b) noexcept { return a = a ^ b; }
 
 namespace Canvas
 {
+
+// True if any bit of mask is set in flags.
+template <typename E>
+constexpr bool HasAnyFlag(E flags, E mask) noexcept
+{
+    static_assert(std::is_enum_v<E>, "HasAnyFlag requires an enum type");
+    return (std::underlying_type_t<E>(flags) & std::underlying_type_t<E>(mask)) != 0;
+}
 
 #if defined(_WIN32)
   #if defined(CANVASCORE_EXPORTS)
@@ -71,10 +93,11 @@ enum class LightType : uint32_t
 // Light flags (mutable - rendering hints)
 enum class LightFlags : uint32_t
 {
-    LightFlags_None = 0,
+    None = 0,
     CastsShadows = 1 << 0,
     Enabled = 1 << 1,
 };
+CANVAS_ENUM_FLAG_OPERATORS(LightFlags)
 
 //------------------------------------------------------------------------------------------------
 // Log severity levels (ABI-safe, matches QLog::Level)
@@ -511,8 +534,8 @@ XLight : public XSceneGraphElement
     GEMMETHOD_(void, SetIntensity)(float intensity) = 0;
     GEMMETHOD_(float, GetIntensity)() const = 0;
 
-    GEMMETHOD_(void, SetFlags)(UINT flags) = 0;
-    GEMMETHOD_(UINT, GetFlags)() const = 0;
+    GEMMETHOD_(void, SetFlags)(LightFlags flags) = 0;
+    GEMMETHOD_(LightFlags, GetFlags)() const = 0;
 
     // Attenuation (for Point and Spot lights)
     GEMMETHOD_(void, SetRange)(float range) = 0;
@@ -532,8 +555,8 @@ XLight : public XSceneGraphElement
     // Square shadow-map resolution in texels. 0 selects the backend default
     // (currently 2048). Higher values trade VRAM + fill cost for sharper
     // shadow edges.
-    GEMMETHOD_(void, SetShadowResolution)(UINT pixels) = 0;
-    GEMMETHOD_(UINT, GetShadowResolution)() const = 0;
+    GEMMETHOD_(void, SetShadowResolution)(uint32_t pixels) = 0;
+    GEMMETHOD_(uint32_t, GetShadowResolution)() const = 0;
 
     // Self-shadowing bias knobs.
     //   constantBias   - added to the receiver's projected depth before

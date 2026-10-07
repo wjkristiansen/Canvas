@@ -447,7 +447,7 @@ private:
         pLight->SetRange(range);
         // Physically-loose inverse-square falloff.
         pLight->SetAttenuation(1.0f, 0.0f, 1.0f / (0.25f * range * range));
-        UINT flags = Canvas::LightFlags::Enabled;
+        Canvas::LightFlags flags = Canvas::LightFlags::Enabled;
         if (wantShadows) flags |= Canvas::LightFlags::CastsShadows;
         pLight->SetFlags(flags);
         AttachLight(pLight, position, FloatQuaternion{}, "PointNode");
@@ -469,7 +469,7 @@ private:
         pLight->SetAttenuation(1.0f, 0.0f, 1.0f / (0.25f * range * range));
         constexpr float kDegToRad = 3.14159265f / 180.0f;
         pLight->SetSpotAngles(innerAngleDeg * kDegToRad, outerAngleDeg * kDegToRad);
-        UINT flags = Canvas::LightFlags::Enabled;
+        Canvas::LightFlags flags = Canvas::LightFlags::Enabled;
         if (wantShadows) flags |= Canvas::LightFlags::CastsShadows;
         pLight->SetFlags(flags);
         const FloatQuaternion q = QuaternionLookingAlong(direction, { 0, 0, 1, 0 });

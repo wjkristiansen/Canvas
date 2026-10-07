@@ -24,7 +24,7 @@ class CLight :
     // Mutable attributes
     Math::FloatVector4 m_Color;
     float m_Intensity;
-    UINT m_Flags;
+    LightFlags m_Flags;
     
     // Attenuation parameters (for Point and Spot lights)
     float m_AttenuationConstant;
@@ -88,8 +88,8 @@ public:
     GEMMETHOD_(void, SetIntensity)(float intensity) final { m_Intensity = intensity; }
     GEMMETHOD_(float, GetIntensity)() const final { return m_Intensity; }
 
-    GEMMETHOD_(void, SetFlags)(UINT flags) final { m_Flags = flags; }
-    GEMMETHOD_(UINT, GetFlags)() const final { return m_Flags; }
+    GEMMETHOD_(void, SetFlags)(LightFlags flags) final { m_Flags = flags; }
+    GEMMETHOD_(LightFlags, GetFlags)() const final { return m_Flags; }
 
     // Attenuation
     GEMMETHOD_(void, SetRange)(float range) final { m_Range = range; }

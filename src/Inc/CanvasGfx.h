@@ -139,7 +139,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    enum MaterialLayerFlags : uint32_t
+    enum class MaterialLayerFlags : uint32_t
     {
         None            = 0,
         Decal           = 1 << 0,  // Projected onto surface
@@ -148,6 +148,7 @@ namespace Canvas
         UVTransform     = 1 << 3,  // Uses custom UV matrix
         Masked          = 1 << 4,  // Uses alpha mask
     };
+    CANVAS_ENUM_FLAG_OPERATORS(MaterialLayerFlags)
 
     //------------------------------------------------------------------------------------------------
     enum class MaterialBlendMode : uint32_t
@@ -418,16 +419,17 @@ namespace Canvas
         GEMMETHOD(FinalizeUploadAsShaderResource)(XGfxSurface *pSurface) = 0;
     };
 
-    enum GfxSurfaceFlags : uint32_t
+    enum class GfxSurfaceFlags : uint32_t
     {
-        SurfaceFlag_None = 0,
-        SurfaceFlag_RenderTarget = 1 << 0,
-        SurfaceFlag_DepthStencil = 1 << 1,
-        SurfaceFlag_ShaderResource = 1 << 2,
-        SurfaceFlag_UnorderedAccess = 1 << 3,
-        SurfaceFlag_CpuReadback = 1 << 4,
-        SurfaceFlag_CpuUpload = 1 << 5,
+        None = 0,
+        RenderTarget = 1 << 0,
+        DepthStencil = 1 << 1,
+        ShaderResource = 1 << 2,
+        UnorderedAccess = 1 << 3,
+        CpuReadback = 1 << 4,
+        CpuUpload = 1 << 5,
     };
+    CANVAS_ENUM_FLAG_OPERATORS(GfxSurfaceFlags)
 
     enum class GfxSurfaceDimension : uint32_t
     {
@@ -451,7 +453,7 @@ namespace Canvas
         GfxSurfaceDesc()
             : Format(GfxFormat::Unknown)
             , Dimension(GfxSurfaceDimension::Dimension2D)
-            , Flags(SurfaceFlag_None)
+            , Flags(GfxSurfaceFlags::None)
             , Width(0)
             , Height(0)
             , Depth(1)
