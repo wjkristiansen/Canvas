@@ -25,7 +25,7 @@ CSceneGraphNode::CSceneGraphNode(XCanvas *pCanvas) :
     m_GlobalTranslation = Canvas::Math::FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
     m_GlobalMatrix = Canvas::Math::IdentityMatrix<float, 4, 4>();
 
-    // All dirty flags are already set via member initialization (m_DirtyFlags = DirtyAll)
+    // All dirty flags are already set via member initialization (m_DirtyFlags = TransformDirtyFlags::All)
 }
 
 //------------------------------------------------------------------------------------------------
@@ -105,9 +105,9 @@ GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode* pChild)
         pChildNode->m_pParent = this;
         
         // Mark dirty global state on child (parent changed - but local matrix unaffected)
-        pChildNode->InvalidateTransforms(CSceneGraphNode::DirtyGlobalMatrix | 
-                                         CSceneGraphNode::DirtyGlobalRotation | 
-                                         CSceneGraphNode::DirtyGlobalTranslation);
+        pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | 
+                                         TransformDirtyFlags::GlobalRotation | 
+                                         TransformDirtyFlags::GlobalTranslation);
     }
 
     // Append to child list
@@ -206,9 +206,9 @@ GEMMETHODIMP CSceneGraphNode::InsertChildBefore(_In_ XSceneGraphNode* pChild, _I
     if (pChildNode)
     {
         pChildNode->m_pParent = this;
-        pChildNode->InvalidateTransforms(CSceneGraphNode::DirtyGlobalMatrix | 
-                                         CSceneGraphNode::DirtyGlobalRotation | 
-                                         CSceneGraphNode::DirtyGlobalTranslation);
+        pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | 
+                                         TransformDirtyFlags::GlobalRotation | 
+                                         TransformDirtyFlags::GlobalTranslation);
     }
 
     // Insert before sibling in the doubly-linked list
@@ -262,9 +262,9 @@ GEMMETHODIMP CSceneGraphNode::InsertChildAfter(_In_ XSceneGraphNode* pChild, _In
     if (pChildNode)
     {
         pChildNode->m_pParent = this;
-        pChildNode->InvalidateTransforms(CSceneGraphNode::DirtyGlobalMatrix | 
-                                         CSceneGraphNode::DirtyGlobalRotation | 
-                                         CSceneGraphNode::DirtyGlobalTranslation);
+        pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | 
+                                         TransformDirtyFlags::GlobalRotation | 
+                                         TransformDirtyFlags::GlobalTranslation);
     }
 
     // Insert after sibling in the doubly-linked list
@@ -357,19 +357,18 @@ GEMMETHODIMP CSceneGraphNode::BindElement(XSceneGraphElement *pElement)
 }
 
 //------------------------------------------------------------------------------------------------
-void CSceneGraphNode::InvalidateTransforms(uint32_t flags)
+void CSceneGraphNode::InvalidateTransforms(TransformDirtyFlags flags)
 {
     // Check if this node's transforms need updating
-    uint32_t requestedFlags = flags & (DirtyLocalMatrix | DirtyGlobalMatrix | 
-                                       DirtyGlobalRotation | DirtyGlobalTranslation);
-    uint32_t alreadyDirty = m_DirtyFlags & requestedFlags;
+    TransformDirtyFlags requestedFlags = flags & TransformDirtyFlags::All;
+    TransformDirtyFlags alreadyDirty = m_DirtyFlags & requestedFlags;
     
     // If all requested flags are already dirty, our subtree is already dirty too
     // BUT we still need to notify attached elements that global transform is dirty
     if (alreadyDirty == requestedFlags)
     {
         // Notify attached elements that the global transform is dirty
-        if (flags & (DirtyGlobalMatrix | DirtyGlobalRotation | DirtyGlobalTranslation))
+        if (HasAnyFlag(flags, TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation | TransformDirtyFlags::GlobalTranslation))
         {
             for (auto& element : m_Elements)
             {
@@ -380,7 +379,7 @@ void CSceneGraphNode::InvalidateTransforms(uint32_t flags)
     }
     
     // Notify attached elements that the global transform is dirty
-    if (flags & (DirtyGlobalMatrix | DirtyGlobalRotation | DirtyGlobalTranslation))
+    if (HasAnyFlag(flags, TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation | TransformDirtyFlags::GlobalTranslation))
     {
         for (auto& element : m_Elements)
         {
@@ -392,9 +391,9 @@ void CSceneGraphNode::InvalidateTransforms(uint32_t flags)
     m_DirtyFlags |= flags;
     
     // Recursively invalidate children
-    // Important: Don't propagate DirtyLocalMatrix to children - their local matrices
+    // Important: Don't propagate LocalMatrix to children - their local matrices
     // are independent of parent transforms
-    uint32_t childFlags = flags & ~DirtyLocalMatrix;
+    TransformDirtyFlags childFlags = flags & ~TransformDirtyFlags::LocalMatrix;
     
     for (ChildNode* pWrapper = m_pFirstChild; pWrapper; pWrapper = pWrapper->m_pNext)
     {

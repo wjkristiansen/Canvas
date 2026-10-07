@@ -26,13 +26,14 @@ struct XSceneGraphNode;
 
 // Reserved for future use.  The current build produces and consumes
 // only None / Static.
-enum BVHPrimitiveFlags : uint32_t
+enum class BVHPrimitiveFlags : uint32_t
 {
-    BVHPrimitiveFlag_None         = 0,
-    BVHPrimitiveFlag_Static       = 1u << 0,
-    BVHPrimitiveFlag_Dynamic      = 1u << 1,
-    BVHPrimitiveFlag_CastsShadow  = 1u << 2,
+    None         = 0,
+    Static       = 1u << 0,
+    Dynamic      = 1u << 1,
+    CastsShadow  = 1u << 2,
 };
+CANVAS_ENUM_FLAG_OPERATORS(BVHPrimitiveFlags)
 
 // Stable index into the SceneBVH-owned primitive table.
 using BVHPrimitiveId = uint32_t;
@@ -54,7 +55,7 @@ struct BVHPrimitive
     XSceneGraphNode* Node = nullptr;
 
     BVHPrimitiveId Id = kInvalidBVHPrimitiveId;
-    uint32_t Flags = BVHPrimitiveFlag_None;
+    BVHPrimitiveFlags Flags = BVHPrimitiveFlags::None;
 };
 
 struct BVHNode

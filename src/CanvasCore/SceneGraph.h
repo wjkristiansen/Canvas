@@ -56,6 +56,19 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
+// Which of a scene graph node's cached transforms are stale.
+enum class TransformDirtyFlags : uint32_t
+{
+    None              = 0,
+    LocalMatrix       = 1 << 0,
+    GlobalMatrix      = 1 << 1,
+    GlobalRotation    = 1 << 2,
+    GlobalTranslation = 1 << 3,
+    All               = LocalMatrix | GlobalMatrix | GlobalRotation | GlobalTranslation,
+};
+CANVAS_ENUM_FLAG_OPERATORS(TransformDirtyFlags)
+
+//------------------------------------------------------------------------------------------------
 class 
 CSceneGraphNode :
     public TCanvasElement<XSceneGraphNode>
@@ -77,16 +90,7 @@ protected:
     Math::FloatVector4 m_LocalScale; // W is ignored
     Math::FloatVector4 m_LocalTranslation;
 
-    // Dirty flags bitfield
-    enum DirtyFlags : uint32_t
-    {
-        DirtyLocalMatrix = 1 << 0,
-        DirtyGlobalMatrix = 1 << 1,
-        DirtyGlobalRotation = 1 << 2,
-        DirtyGlobalTranslation = 1 << 3,
-        DirtyAll = DirtyLocalMatrix | DirtyGlobalMatrix | DirtyGlobalRotation | DirtyGlobalTranslation
-    };
-    uint32_t m_DirtyFlags = DirtyAll;
+    TransformDirtyFlags m_DirtyFlags = TransformDirtyFlags::All;
 
     Math::FloatMatrix4x4 m_LocalMatrix;
     Math::FloatQuaternion m_GlobalRotation;
@@ -157,7 +161,7 @@ public: // XSceneGraphNode methods
         m_LocalRotation = rotation;
         // Rotation affects this node's local matrix and all global transforms
         // Children's global rotation, translation, and matrix are affected (but not their local matrices)
-        InvalidateTransforms(DirtyLocalMatrix | DirtyGlobalMatrix | DirtyGlobalRotation | DirtyGlobalTranslation);
+        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation | TransformDirtyFlags::GlobalTranslation);
     }
 
     GEMMETHOD_(void, SetLocalTranslation)(_In_ const Math::FloatVector4 &translation) final
@@ -165,7 +169,7 @@ public: // XSceneGraphNode methods
         m_LocalTranslation = translation;
         // Translation affects this node's local matrix and global translation/matrix
         // Children's global translation and matrix are affected (but not rotation or their local matrices)
-        InvalidateTransforms(DirtyLocalMatrix | DirtyGlobalMatrix | DirtyGlobalTranslation);
+        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalTranslation);
     }
 
     GEMMETHOD_(void, SetLocalScale)(_In_ const Math::FloatVector4 &scale) final
@@ -173,12 +177,12 @@ public: // XSceneGraphNode methods
         m_LocalScale = scale;
         // Scale affects this node's local matrix and global translation/matrix
         // Children's global translation and matrix are affected (but not rotation or their local matrices)
-        InvalidateTransforms(DirtyLocalMatrix | DirtyGlobalMatrix | DirtyGlobalTranslation);
+        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalTranslation);
     }
 
     GEMMETHOD_(const Math::FloatQuaternion, GetGlobalRotation)() final
     {
-        if(m_DirtyFlags & DirtyGlobalRotation)
+        if (HasAnyFlag(m_DirtyFlags, TransformDirtyFlags::GlobalRotation))
         {
             if(m_pParent)
             {
@@ -188,14 +192,14 @@ public: // XSceneGraphNode methods
             {
                 m_GlobalRotation =  m_LocalRotation;
             }
-            m_DirtyFlags &= ~DirtyGlobalRotation;
+            m_DirtyFlags &= ~TransformDirtyFlags::GlobalRotation;
         }
         return m_GlobalRotation;
     }
 
     GEMMETHOD_(const Math::FloatVector4, GetGlobalTranslation)() final
     {
-        if(m_DirtyFlags & DirtyGlobalTranslation)
+        if (HasAnyFlag(m_DirtyFlags, TransformDirtyFlags::GlobalTranslation))
         {
             if(m_pParent)
             {
@@ -217,14 +221,14 @@ public: // XSceneGraphNode methods
             {
                 m_GlobalTranslation = m_LocalTranslation;
             }
-            m_DirtyFlags &= ~DirtyGlobalTranslation;
+            m_DirtyFlags &= ~TransformDirtyFlags::GlobalTranslation;
         }
         return m_GlobalTranslation;
     }
 
     GEMMETHOD_(const Math::FloatMatrix4x4, GetGlobalMatrix)() final
     {
-        if(m_DirtyFlags & DirtyGlobalMatrix)
+        if (HasAnyFlag(m_DirtyFlags, TransformDirtyFlags::GlobalMatrix))
         {
             // Get local matrix from rotation and translation
             Math::FloatMatrix4x4 localMatrix = GetLocalMatrix();
@@ -238,14 +242,14 @@ public: // XSceneGraphNode methods
             {
                 m_GlobalMatrix = localMatrix;
             }
-            m_DirtyFlags &= ~DirtyGlobalMatrix;
+            m_DirtyFlags &= ~TransformDirtyFlags::GlobalMatrix;
         }
         return m_GlobalMatrix;
     }
 
     GEMMETHOD_(const Math::FloatMatrix4x4, GetLocalMatrix)() final
     {
-        if(m_DirtyFlags & DirtyLocalMatrix)
+        if (HasAnyFlag(m_DirtyFlags, TransformDirtyFlags::LocalMatrix))
         {
             // Compose local matrix as M = S * R then translation in row 3.
             // Row-vector convention (v' = v * M): position is scaled first,
@@ -272,7 +276,7 @@ public: // XSceneGraphNode methods
             m_LocalMatrix[3][2] = m_LocalTranslation.Z;
             m_LocalMatrix[3][3] = 1.0f;  // Homogeneous coordinate
 
-            m_DirtyFlags &= ~DirtyLocalMatrix;
+            m_DirtyFlags &= ~TransformDirtyFlags::LocalMatrix;
         }
 
         return m_LocalMatrix;
@@ -283,7 +287,7 @@ public: // XSceneGraphNode methods
 
 private:
     // Helper to invalidate transforms on this node and propagate to children
-    void InvalidateTransforms(uint32_t flags);
+    void InvalidateTransforms(TransformDirtyFlags flags);
 };
 
 //------------------------------------------------------------------------------------------------

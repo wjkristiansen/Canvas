@@ -34,7 +34,7 @@ BVHPrimitive MakePointPrimitive(float x, float y, float z, uint32_t id)
     prim.WorldBounds = AABB(FloatVector4(x, y, z, 0.0f), FloatVector4(x, y, z, 0.0f));
     prim.Id = id;
     prim.Node = nullptr;
-    prim.Flags = BVHPrimitiveFlag_Static;
+    prim.Flags = BVHPrimitiveFlags::Static;
     return prim;
 }
 
@@ -44,7 +44,7 @@ BVHPrimitive MakeBoxPrimitive(const FloatVector4& mn, const FloatVector4& mx, ui
     prim.WorldBounds = AABB(mn, mx);
     prim.Id = id;
     prim.Node = nullptr;
-    prim.Flags = BVHPrimitiveFlag_Static;
+    prim.Flags = BVHPrimitiveFlags::Static;
     return prim;
 }
 

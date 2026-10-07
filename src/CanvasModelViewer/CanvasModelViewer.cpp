@@ -60,7 +60,7 @@ bool LoadFbxTexture(
 
     Canvas::GfxSurfaceDesc desc = Canvas::GfxSurfaceDesc::SurfaceDesc2D(
         Canvas::GfxFormat::R8G8B8A8_UNorm, img->GetWidth(), img->GetHeight(),
-        Canvas::SurfaceFlag_ShaderResource);
+        Canvas::GfxSurfaceFlags::ShaderResource);
     Gem::Result r = pDevice->CreateSurface(desc, &outSurface);
     if (Gem::Failed(r))
     {

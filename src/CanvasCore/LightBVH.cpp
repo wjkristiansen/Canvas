@@ -226,7 +226,7 @@ void LightBVH::Build(XSceneGraphNode* root)
             prim.WorldBounds = influence;
             prim.Node        = node;
             prim.Id          = nextId++;
-            prim.Flags       = BVHPrimitiveFlag_Static;
+            prim.Flags       = BVHPrimitiveFlags::Static;
             m_Primitives.push_back(prim);
             m_LightForPrimitive.push_back(lightRaw);
             m_TrackedLightSet.insert(lightRaw);

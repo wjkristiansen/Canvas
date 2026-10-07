@@ -74,7 +74,7 @@ bool LoadSkyCube(
         GfxFormat::R8G8B8A8_UNorm,
         faceSize,
         /*arraySize*/ 1,
-        SurfaceFlag_ShaderResource);
+        GfxSurfaceFlags::ShaderResource);
 
     Gem::TGemPtr<XGfxSurface> pCube;
     Gem::Result hr = pDevice->CreateSurface(desc, &pCube);

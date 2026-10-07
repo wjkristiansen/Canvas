@@ -202,7 +202,7 @@ Gem::Result BuildTerrainMaterial(
                              const std::vector<uint8_t>& data,
                              Gem::TGemPtr<XGfxSurface>& out) -> Gem::Result
     {
-        GfxSurfaceDesc desc = GfxSurfaceDesc::SurfaceDesc2D(fmt, W, H, SurfaceFlag_ShaderResource);
+        GfxSurfaceDesc desc = GfxSurfaceDesc::SurfaceDesc2D(fmt, W, H, GfxSurfaceFlags::ShaderResource);
         Gem::Result r = pDevice->CreateSurface(desc, &out);
         if (Gem::Failed(r))
             return r;
