@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "CanvasGfx.h"
 #include "AppWindow.h"
 #include "RawInput.h"
 
@@ -263,6 +264,14 @@ GEMMETHODIMP_(void) CAppWindow::Show(int nCmdShow)
 GEMMETHODIMP_(HWND) CAppWindow::GetHWND()
 {
     return m_pImpl ? m_pImpl->m_hWnd : NULL;
+}
+
+GEMMETHODIMP_(Canvas::NativeWindow) CAppWindow::GetNativeWindow()
+{
+    Canvas::NativeWindow window{};
+    window.Kind = Canvas::NativeWindowKind::Win32;
+    window.Win32.hWnd = GetHWND();
+    return window;
 }
 
 GEMMETHODIMP_(bool) CAppWindow::HasFocus()
