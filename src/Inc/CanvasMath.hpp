@@ -1152,7 +1152,7 @@ namespace Canvas
         // Note the input localUpVector and basisForwardVector can be any arbitrary unit vectors, but
         // they should not be colinear.
         template<class _VectorType>
-        void ComposePointToBasisVectors(_In_ const _VectorType &localUpVector, _In_ const _VectorType &basisForwardVector, _Out_ _VectorType &basisSideVector, _Out_ _VectorType &basisUpVector)
+        void ComposePointToBasisVectors(const _VectorType &localUpVector, const _VectorType &basisForwardVector, _VectorType &basisSideVector, _VectorType &basisUpVector)
         {
             using Type = typename _VectorType::Type;
 
@@ -1202,7 +1202,7 @@ namespace Canvas
         // one to produce a guaranteed orthogonal vector. This avoids expensive abs() comparisons and
         // vector constructions.
         template<class _VectorType>
-        void ComposeArbitraryPointToBasisVectors(_In_ const _VectorType &basisForwardVector, _Out_ _VectorType &basisSideVector, _Out_ _VectorType &basisUpVector)
+        void ComposeArbitraryPointToBasisVectors(const _VectorType &basisForwardVector, _VectorType &basisSideVector, _VectorType &basisUpVector)
         {
             using Type = typename _VectorType::Type;
             

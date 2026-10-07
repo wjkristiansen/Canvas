@@ -63,7 +63,7 @@ inline void SetD3D12DebugName(ID3D12Object* pObject, const char* prefix, const c
 #pragma once
 
 #include <string>
-#include "Gem.hpp"
+#include <Gem.hpp>
 #include "CanvasGfx.h"
 
 //------------------------------------------------------------------------------------------------

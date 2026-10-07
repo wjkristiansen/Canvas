@@ -338,7 +338,7 @@ GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetFirstChild()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraphNode::BindElement(XSceneGraphElement *pElement)
+GEMMETHODIMP CSceneGraphNode::BindElement(_In_ XSceneGraphElement *pElement)
 {
     if (pElement)
     {

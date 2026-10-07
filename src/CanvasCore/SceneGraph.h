@@ -156,7 +156,7 @@ public: // XSceneGraphNode methods
         return m_LocalScale;
     }
 
-    GEMMETHOD_(void, SetLocalRotation)(_In_ const Math::FloatQuaternion &rotation) final
+    GEMMETHOD_(void, SetLocalRotation)(const Math::FloatQuaternion &rotation) final
     {
         m_LocalRotation = rotation;
         // Rotation affects this node's local matrix and all global transforms
