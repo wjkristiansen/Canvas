@@ -20,7 +20,7 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CSurface12(Canvas::XCanvas* pCanvas, ID3D12Resource *pResource, D3D12_BARRIER_LAYOUT InitLayout, PCSTR name = nullptr) :
+    CSurface12(Canvas::XCanvas* pCanvas, ID3D12Resource *pResource, D3D12_BARRIER_LAYOUT InitLayout, const char * name = nullptr) :
         TGfxElement(pCanvas),
         CTextureResource(pResource, InitLayout),
         m_pOwnerSwapChain(nullptr)
@@ -39,7 +39,7 @@ public:
     {
         m_pD3DResource = pResource;
         // Propagate the Canvas element name to the new D3D12 resource
-        PCSTR name = GetName();
+        const char * name = GetName();
         if (name)
             SetD3D12DebugName(pResource, name);
     }

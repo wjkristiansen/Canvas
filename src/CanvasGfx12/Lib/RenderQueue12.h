@@ -715,7 +715,7 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCSTR name = nullptr);
+    CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, const char * name = nullptr);
 
     // XGeneric methods
     Gem::Result Initialize() { return Gem::Result::Success; }    

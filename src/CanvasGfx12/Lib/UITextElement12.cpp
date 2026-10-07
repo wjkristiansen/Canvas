@@ -8,7 +8,7 @@
 #include "RenderQueue12.h"
 
 //------------------------------------------------------------------------------------------------
-void CUITextElement12::SetText(PCSTR utf8Text)
+void CUITextElement12::SetText(const char * utf8Text)
 {
     if (!utf8Text)
         utf8Text = "";

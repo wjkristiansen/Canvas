@@ -45,9 +45,9 @@ void SceneBVH::Build(XSceneGraphNode* root)
         // carrying multiple bound elements.
         const Math::FloatMatrix4x4 worldMtx = node->GetGlobalMatrix();
 
-        const UINT elementCount = node->GetBoundElementCount();
+        const uint32_t elementCount = node->GetBoundElementCount();
         bool nodeContributed = false;
-        for (UINT i = 0; i < elementCount; ++i)
+        for (uint32_t i = 0; i < elementCount; ++i)
         {
             XSceneGraphElement* element = node->GetBoundElement(i);
             if (!element)

@@ -26,8 +26,8 @@ public:
     }
 
     // XCanvasElement methods
-    GEMMETHOD_(PCSTR, GetName)() { return m_Name.has_value() ? m_Name->c_str() : nullptr; }
-    GEMMETHOD_(void, SetName)(PCSTR szName) { m_Name = szName; }
+    GEMMETHOD_(const char *, GetName)() { return m_Name.has_value() ? m_Name->c_str() : nullptr; }
+    GEMMETHOD_(void, SetName)(const char * szName) { m_Name = szName; }
 };
 
 }

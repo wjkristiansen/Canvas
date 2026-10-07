@@ -11,7 +11,7 @@ float DoVectorThing(float v[2])
 
 void DumpNode(Canvas::XSceneGraphNode *pNode, const std::string &indent)
 {
-    PCSTR szName = pNode->GetName();
+    const char * szName = pNode->GetName();
     if (szName)
     {
         std::cout << indent << szName << std::endl;

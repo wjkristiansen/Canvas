@@ -38,7 +38,7 @@ public:
     }
 
     // XLogger interface implementation - only the core Log method
-    void Log(Canvas::LogLevel level, PCSTR format, va_list args) override
+    void Log(Canvas::LogLevel level, const char * format, va_list args) override
     {
         m_Logger->Log(ToQLogLevel(level), format, args);
     }

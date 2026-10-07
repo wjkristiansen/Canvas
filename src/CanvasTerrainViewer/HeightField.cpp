@@ -277,7 +277,7 @@ Gem::Result BuildTerrainMesh(
     const HeightField&        field,
     const TerrainMeshOptions& opts,
     XGfxMeshData**            ppMesh,
-    PCSTR                     name)
+    const char *                     name)
 {
     if (!pDevice || !ppMesh)
         return Gem::Result::InvalidArg;

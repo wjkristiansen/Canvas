@@ -122,16 +122,16 @@ public:
     GEMMETHOD(RegisterElement)(XCanvasElement *) final;
     GEMMETHOD(UnregisterElement)(XCanvasElement *) final;
 
-    GEMMETHOD(LoadPlugin)(PCSTR path, XCanvasPlugin **ppPlugin) final;
-    GEMMETHOD(CreateScene)(XGfxDevice *pDevice, XScene **ppScene, PCSTR name = nullptr) final;
-    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, PCSTR name = nullptr) final;
-    GEMMETHOD(CreateCamera)(XCamera **ppCamera, PCSTR name = nullptr) final;
-    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, PCSTR name = nullptr) final;
-    GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, PCSTR name = nullptr) final;
-    GEMMETHOD(CreateModel)(XGfxDevice *pDevice, XModel **ppModel, PCSTR name = nullptr) final;
+    GEMMETHOD(LoadPlugin)(const char * path, XCanvasPlugin **ppPlugin) final;
+    GEMMETHOD(CreateScene)(XGfxDevice *pDevice, XScene **ppScene, const char * name = nullptr) final;
+    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, const char * name = nullptr) final;
+    GEMMETHOD(CreateCamera)(XCamera **ppCamera, const char * name = nullptr) final;
+    GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, const char * name = nullptr) final;
+    GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, const char * name = nullptr) final;
+    GEMMETHOD(CreateModel)(XGfxDevice *pDevice, XModel **ppModel, const char * name = nullptr) final;
 
     // Text/UI factory methods
-    GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, PCSTR name, XFont** ppFont) final;
+    GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, const char * name, XFont** ppFont) final;
     GEMMETHOD(CreateUIGraph)(XGfxDevice* pDevice, XUIGraph** ppGraph) final;
 
     GEMMETHOD_(XLogger *, GetLogger)() final
@@ -142,7 +142,7 @@ public:
 public:
     // CCanvas methods
     template<class _Type, typename... Args>
-    Gem::Result CreateElement(typename _Type::BaseType **ppElement, PCSTR name, Args... args)
+    Gem::Result CreateElement(typename _Type::BaseType **ppElement, const char * name, Args... args)
     {
         if (!ppElement)
         {

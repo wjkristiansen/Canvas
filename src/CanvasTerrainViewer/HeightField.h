@@ -147,7 +147,7 @@ Gem::Result BuildTerrainMesh(
     const HeightField&        field,
     const TerrainMeshOptions& opts,
     XGfxMeshData**            ppMesh,
-    PCSTR                     name = nullptr);
+    const char *                     name = nullptr);
 
 } // namespace HeightField
 } // namespace Canvas

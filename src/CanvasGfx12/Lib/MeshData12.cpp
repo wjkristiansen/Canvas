@@ -8,7 +8,7 @@
 #include <algorithm>
 
 //------------------------------------------------------------------------------------------------
-CMeshData12::CMeshData12(Canvas::XCanvas* pCanvas, CDevice12* pDevice, PCSTR name) :
+CMeshData12::CMeshData12(Canvas::XCanvas* pCanvas, CDevice12* pDevice, const char * name) :
     TGfxElement(pCanvas),
     m_pDevice(pDevice)
 {

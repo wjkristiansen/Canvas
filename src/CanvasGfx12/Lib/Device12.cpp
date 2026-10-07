@@ -53,7 +53,7 @@ static void __stdcall D3D12DebugMessageCallback(
 #endif
 
 //------------------------------------------------------------------------------------------------
-CDevice12::CDevice12(Canvas::XCanvas* pCanvas, PCSTR name) :
+CDevice12::CDevice12(Canvas::XCanvas* pCanvas, const char * name) :
     TGfxElement(pCanvas)
 {
     if (name != nullptr)

@@ -121,8 +121,8 @@ public: // XSceneGraphNode methods
     GEMMETHOD_(XSceneGraphNode *, GetNextChild)(_In_ XSceneGraphNode* pCurrent) final;
     GEMMETHOD_(XSceneGraphNode *, GetPrevChild)(_In_ XSceneGraphNode* pCurrent) final;
 
-    GEMMETHOD_(UINT, GetBoundElementCount)() final { return static_cast<UINT>(m_Elements.size()); }
-    GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(UINT index) final { return m_Elements[index].Get(); }
+    GEMMETHOD_(uint32_t, GetBoundElementCount)() final { return static_cast<uint32_t>(m_Elements.size()); }
+    GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(uint32_t index) final { return m_Elements[index].Get(); }
 
     GEMMETHOD(SetAnimationController)(_In_opt_ XAnimationController *pController) final
     {

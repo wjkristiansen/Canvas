@@ -4,7 +4,7 @@
 
 #include "pch.h"
 
-CSwapChain12::CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers, PCSTR name) :
+CSwapChain12::CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers, const char * name) :
     TGfxElement(pCanvas),
     m_pRenderQueue(pRenderQueue)
 {

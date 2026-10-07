@@ -8,7 +8,7 @@
 #include "Surface12.h"
 
 //------------------------------------------------------------------------------------------------
-CMaterial12::CMaterial12(Canvas::XCanvas *pCanvas, CDevice12 *pDevice, PCSTR name) :
+CMaterial12::CMaterial12(Canvas::XCanvas *pCanvas, CDevice12 *pDevice, const char * name) :
     TGfxElement(pCanvas),
     m_pDevice(pDevice)
 {

@@ -89,9 +89,9 @@ public:
 
     // XCanvasElement interface implementation for external plugins
     GEMMETHOD_(Canvas::XCanvas *, GetCanvas)() { return m_pCanvas; }
-    GEMMETHOD_(PCSTR, GetTypeName)() { return _Base::XFaceName; }
-    GEMMETHOD_(PCSTR, GetName)() { return m_Name.empty() ? nullptr : m_Name.c_str(); }
-    GEMMETHOD_(void, SetName)(PCSTR szName) { m_Name = szName ? szName : ""; }
+    GEMMETHOD_(const char *, GetTypeName)() { return _Base::XFaceName; }
+    GEMMETHOD_(const char *, GetName)() { return m_Name.empty() ? nullptr : m_Name.c_str(); }
+    GEMMETHOD_(void, SetName)(const char * szName) { m_Name = szName ? szName : ""; }
     
     GEMMETHOD(Register)(Canvas::XCanvas* pCanvas)
     {

@@ -31,7 +31,7 @@ public:
     // changes.  The ctor allocates + populates this material's persistent texture descriptor
     // block (kMaterialDescriptorCount SRVs, one per SupportedRole) and throws
     // Gem::Result::OutOfMemory if the persistent region is exhausted.
-    CMaterial12(Canvas::XCanvas *pCanvas, CDevice12 *pDevice, PCSTR name = nullptr);
+    CMaterial12(Canvas::XCanvas *pCanvas, CDevice12 *pDevice, const char * name = nullptr);
     ~CMaterial12();
 
     Gem::Result Initialize() { return Gem::Result::Success; }

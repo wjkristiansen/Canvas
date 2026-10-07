@@ -53,7 +53,7 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CUITextElement12() = default;
-    CUITextElement12(Canvas::XCanvas* pCanvas, Canvas::CGlyphCache* pGlyphCache, PCSTR name = nullptr)
+    CUITextElement12(Canvas::XCanvas* pCanvas, Canvas::CGlyphCache* pGlyphCache, const char * name = nullptr)
         : TGfxElement(pCanvas)
         , m_pGlyphCache(pGlyphCache)
     {
@@ -76,8 +76,8 @@ public:
     GEMMETHOD_(void, SetLocalOffset)(const Canvas::Math::FloatVector2& offset) override { m_LocalOffset = offset; }
 
     // XUITextElement
-    GEMMETHOD_(void, SetText)(PCSTR utf8Text) override;
-    GEMMETHOD_(PCSTR, GetText)() const override { return m_Text.c_str(); }
+    GEMMETHOD_(void, SetText)(const char * utf8Text) override;
+    GEMMETHOD_(const char *, GetText)() const override { return m_Text.c_str(); }
     GEMMETHOD_(void, SetFont)(Canvas::XFont* pFont) override;
     GEMMETHOD_(void, SetLayoutConfig)(const Canvas::TextLayoutConfig& config) override;
     GEMMETHOD_(const Canvas::TextLayoutConfig&, GetLayoutConfig)() const override { return m_Config; }

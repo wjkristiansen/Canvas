@@ -86,7 +86,7 @@ static_assert(static_cast<uint32_t>(Canvas::LightType::Area)        == LIGHT_ARE
 
 //------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------
-CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, PCSTR name) :
+CRenderQueue12::CRenderQueue12(Canvas::XCanvas* pCanvas, CDevice12 *pDevice, const char * name) :
     TGfxElement(pCanvas),
     m_pDevice(pDevice)
 {
@@ -2319,11 +2319,11 @@ GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphNode *pNode)
     // Route lights directly to SubmitLight -- they don't go in the renderable
     // queue.  At the same time, accumulate every spatial element's world AABB
     // into the per-frame scene bounds (consumed by the shadow pass).
-    const UINT elementCount = pNode->GetBoundElementCount();
+    const uint32_t elementCount = pNode->GetBoundElementCount();
     if (elementCount > 0)
     {
         const Canvas::Math::FloatMatrix4x4 nodeWorld = pNode->GetGlobalMatrix();
-        for (UINT i = 0; i < elementCount; ++i)
+        for (uint32_t i = 0; i < elementCount; ++i)
         {
             Canvas::XSceneGraphElement* pElement = pNode->GetBoundElement(i);
 
@@ -3036,8 +3036,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         // Drain the renderable queue - process nodes inline
         for (auto *pNode : m_RenderableQueue)
         {
-            UINT elementCount = pNode->GetBoundElementCount();
-            for (UINT i = 0; i < elementCount; ++i)
+            uint32_t elementCount = pNode->GetBoundElementCount();
+            for (uint32_t i = 0; i < elementCount; ++i)
             {
                 auto *pElement = pNode->GetBoundElement(i);
 
@@ -3613,8 +3613,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
         // Draw UI elements (pure draw - uploads already staged by SubmitRenderables)
         for (auto* pNode : m_UIRenderableQueue)
         {
-            UINT elemCount = pNode->GetBoundElementCount();
-            for (UINT i = 0; i < elemCount; ++i)
+            uint32_t elemCount = pNode->GetBoundElementCount();
+            for (uint32_t i = 0; i < elemCount; ++i)
             {
                 auto* pElem = pNode->GetBoundElement(i);
                 if (!pElem->IsVisible())

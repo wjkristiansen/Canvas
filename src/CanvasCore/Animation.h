@@ -164,7 +164,7 @@ public:
         return m_pClipDefs ? static_cast<uint32_t>(m_pClipDefs->size()) : 0u;
     }
 
-    GEMMETHOD_(PCSTR, GetClipName)(uint32_t index) final
+    GEMMETHOD_(const char *, GetClipName)(uint32_t index) final
     {
         if (!m_pClipDefs || index >= m_pClipDefs->size()) return nullptr;
         return (*m_pClipDefs)[index].Name.c_str();
@@ -172,10 +172,10 @@ public:
 
     GEMMETHOD_(bool, ValidateForNode)(_In_ XSceneGraphNode *pRoot) final;
 
-    GEMMETHOD_(uint32_t, FindClip)(PCSTR name) final;
+    GEMMETHOD_(uint32_t, FindClip)(const char * name) final;
 
     GEMMETHOD(Play)(uint32_t clipIndex, float blendDuration) final;
-    GEMMETHOD(PlayByName)(PCSTR clipName, float blendDuration) final;
+    GEMMETHOD(PlayByName)(const char * clipName, float blendDuration) final;
     GEMMETHOD_(void, Stop)() final;
     GEMMETHOD_(void, ResetToBindPose)() final;
 

@@ -184,7 +184,7 @@ void CAnimationController::BuildFromModel(
     {
         if (kv.first && kv.second)
         {
-            PCSTR name = kv.first->GetName();
+            const char * name = kv.first->GetName();
             if (name && name[0])
                 nodeByName[name] = kv.second.Get();
         }
@@ -259,7 +259,7 @@ GEMMETHODIMP_(bool) CAnimationController::ValidateForNode(XSceneGraphNode *pRoot
     return true;
 }
 
-GEMMETHODIMP_(uint32_t) CAnimationController::FindClip(PCSTR name)
+GEMMETHODIMP_(uint32_t) CAnimationController::FindClip(const char * name)
 {
     if (!m_pClipDefs || !name) return InvalidClipIndex;
     for (size_t i = 0; i < m_pClipDefs->size(); ++i)
@@ -293,7 +293,7 @@ GEMMETHODIMP CAnimationController::Play(uint32_t clipIndex, float blendDuration)
     return Gem::Result::Success;
 }
 
-GEMMETHODIMP CAnimationController::PlayByName(PCSTR clipName, float blendDuration)
+GEMMETHODIMP CAnimationController::PlayByName(const char * clipName, float blendDuration)
 {
     const uint32_t idx = FindClip(clipName);
     if (idx == InvalidClipIndex)

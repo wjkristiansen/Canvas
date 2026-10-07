@@ -36,7 +36,7 @@ public:
         GEM_INTERFACE_ENTRY(Canvas::XNamedElement)
     END_GEM_INTERFACE_MAP()
 
-    CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers, PCSTR name = nullptr);
+    CSwapChain12(Canvas::XCanvas* pCanvas, HWND hWnd, bool Windowed, class CRenderQueue12 *pRenderQueue, DXGI_FORMAT Format, UINT NumBuffers, const char * name = nullptr);
 
     Gem::Result Initialize() { return Gem::Result::Success; }
     void Uninitialize() {}

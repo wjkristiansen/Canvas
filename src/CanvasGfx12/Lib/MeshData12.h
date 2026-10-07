@@ -41,7 +41,7 @@ public:
     // pDevice (the owning device, which holds the shared descriptor heap) is required and never
     // changes; the mesh frees its per-group persistent descriptor blocks back to it on
     // destruction.
-    CMeshData12(Canvas::XCanvas* pCanvas, CDevice12* pDevice, PCSTR name = nullptr);
+    CMeshData12(Canvas::XCanvas* pCanvas, CDevice12* pDevice, const char * name = nullptr);
     ~CMeshData12();
 
     Gem::Result Initialize() { return Gem::Result::Success; }
