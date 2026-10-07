@@ -236,7 +236,7 @@ void CAnimationController::BuildFromModel(
 // XAnimationController interface methods
 //================================================================================================
 
-GEMMETHODIMP_(bool) CAnimationController::ValidateForNode(XSceneGraphNode *pRoot)
+GEMMETHODIMP_(bool) CAnimationController::ValidateForNode(_In_ XSceneGraphNode *pRoot)
 {
     if (!pRoot) return false;
 

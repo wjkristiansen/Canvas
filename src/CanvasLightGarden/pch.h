@@ -22,7 +22,7 @@
 #include <cmath>
 
 #include "CanvasPlatformWin32.h"
-#include "Gem.hpp"
+#include <Gem.hpp>
 #include "CanvasMath.hpp"
 #include "CanvasCore.h"
 #include "QLog.h"

@@ -29,6 +29,6 @@
 // reference additional headers your program requires here
 #include <wil/resource.h>
 #include <Gem.hpp>
-#include <CanvasMath.hpp>
-#include <CanvasCore.h>
+#include "CanvasMath.hpp"
+#include "CanvasCore.h"
 

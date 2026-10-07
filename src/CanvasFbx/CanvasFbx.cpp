@@ -876,11 +876,11 @@ static std::string ExtractActionName(const std::string& stackName)
 // The union of all authored key times across T, R, and S channels is built and
 // evaluated using ufbx's baked-keyframe interpolation helpers.
 static void BakedNodeToTrack(
-    _In_  const ufbx_baked_node&    bn,
-    _In_  double                    clipBegin,
-    _In_  const Math::FloatVector4& translationScale, // unit_meters * parent accumulated scale
-    _In_  const Math::FloatVector4& restScale,        // node's rest local scale (phantom unit scale)
-    _Out_ ImportedAnimationTrack*   pOut)
+    _In_    const ufbx_baked_node&    bn,
+    _In_    double                    clipBegin,
+    _In_    const Math::FloatVector4& translationScale, // unit_meters * parent accumulated scale
+    _In_    const Math::FloatVector4& restScale,        // node's rest local scale (phantom unit scale)
+    _Inout_ ImportedAnimationTrack*   pOut)
 {
     std::vector<double> times;
     times.reserve(bn.translation_keys.count + bn.rotation_keys.count + bn.scale_keys.count);

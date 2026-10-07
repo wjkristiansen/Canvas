@@ -36,7 +36,7 @@
 #include "CanvasPlatformWin32.h"
 
 // GEM
-#include "Gem.hpp"
+#include <Gem.hpp>
 
 // Canvas
 #include "CanvasMath.hpp"

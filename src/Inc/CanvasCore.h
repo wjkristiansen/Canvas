@@ -20,6 +20,29 @@
 #include <type_traits>
 
 //------------------------------------------------------------------------------------------------
+// SAL annotations.  MSVC supplies them through <sal.h>; other compilers get empty definitions
+// so annotated declarations still compile.
+#if defined(_MSC_VER)
+  #include <sal.h>
+#else
+  #ifndef _In_
+    #define _In_
+  #endif
+  #ifndef _In_opt_
+    #define _In_opt_
+  #endif
+  #ifndef _In_z_
+    #define _In_z_
+  #endif
+  #ifndef _Inout_
+    #define _Inout_
+  #endif
+  #ifndef _Out_
+    #define _Out_
+  #endif
+#endif
+
+//------------------------------------------------------------------------------------------------
 // Bitwise operators for an enum class whose enumerators are bit flags.  Invoke at namespace
 // scope, in the enum's own namespace, immediately after its declaration.
 #define CANVAS_ENUM_FLAG_OPERATORS(E) \
@@ -404,9 +427,9 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(const Math::FloatQuaternion &, GetLocalRotation)() const = 0;
     GEMMETHOD_(const Math::FloatVector4 &, GetLocalTranslation)() const = 0;
     GEMMETHOD_(const Math::FloatVector4 &, GetLocalScale)() const = 0;
-    GEMMETHOD_(void, SetLocalRotation)(_In_ const Math::FloatQuaternion &Rotation) = 0;
-    GEMMETHOD_(void, SetLocalTranslation)(_In_ const Math::FloatVector4 &Translation) = 0;
-    GEMMETHOD_(void, SetLocalScale)(_In_ const Math::FloatVector4 &Scale) = 0;
+    GEMMETHOD_(void, SetLocalRotation)(const Math::FloatQuaternion &Rotation) = 0;
+    GEMMETHOD_(void, SetLocalTranslation)(const Math::FloatVector4 &Translation) = 0;
+    GEMMETHOD_(void, SetLocalScale)(const Math::FloatVector4 &Scale) = 0;
 
     GEMMETHOD_(const Math::FloatQuaternion, GetGlobalRotation)() = 0;
     GEMMETHOD_(const Math::FloatVector4, GetGlobalTranslation)() = 0;

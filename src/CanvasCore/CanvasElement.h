@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "Gem.hpp"
+#include <Gem.hpp>
 #include "NamedElement.h"
 
 namespace Canvas

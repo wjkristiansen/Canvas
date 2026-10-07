@@ -13,9 +13,9 @@
 #include <Windows.h>
 
 #include <Gem.hpp>
-#include <CanvasMath.hpp>
-#include <CanvasCore.h>
-#include <CanvasGfx.h>
+#include "CanvasMath.hpp"
+#include "CanvasCore.h"
+#include "CanvasGfx.h"
 
 #include <string>
 #include <iostream>

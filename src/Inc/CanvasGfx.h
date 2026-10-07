@@ -3,7 +3,7 @@
 //================================================================================================
 
 #pragma once
-#include "Gem.hpp"
+#include <Gem.hpp>
 #include "CanvasCore.h"
 #include "CanvasFormat.h"
 

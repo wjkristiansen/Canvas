@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Gem.hpp"
+#include <Gem.hpp>
 #include <optional>
 
 namespace Canvas

@@ -5,7 +5,7 @@
 
 #include "CanvasCore.h"
 #include "CanvasGfx.h"
-#include "Gem.hpp"
+#include <Gem.hpp>
 #include "Font.h"
 #include <memory>
 #include <string>
