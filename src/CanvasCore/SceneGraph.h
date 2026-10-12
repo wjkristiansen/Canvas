@@ -63,8 +63,7 @@ enum class TransformDirtyFlags : uint32_t
     LocalMatrix       = 1 << 0,
     GlobalMatrix      = 1 << 1,
     GlobalRotation    = 1 << 2,
-    GlobalTranslation = 1 << 3,
-    All               = LocalMatrix | GlobalMatrix | GlobalRotation | GlobalTranslation,
+    All               = LocalMatrix | GlobalMatrix | GlobalRotation,
 };
 CANVAS_ENUM_FLAG_OPERATORS(TransformDirtyFlags)
 
@@ -94,7 +93,6 @@ protected:
 
     Math::FloatMatrix4x4 m_LocalMatrix;
     Math::FloatQuaternion m_GlobalRotation;
-    Math::FloatVector4 m_GlobalTranslation;
     Math::FloatMatrix4x4 m_GlobalMatrix;
 
     std::vector<Gem::TGemPtr<XSceneGraphElement>> m_Elements;
@@ -160,26 +158,29 @@ public: // XSceneGraphNode methods
     {
         m_LocalRotation = rotation;
         // Rotation affects this node's local matrix and all global transforms
-        // Children's global rotation, translation, and matrix are affected (but not their local matrices)
-        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation | TransformDirtyFlags::GlobalTranslation);
+        // Children's global rotation and matrix are affected (but not their local matrices)
+        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation);
     }
 
     GEMMETHOD_(void, SetLocalTranslation)(_In_ const Math::FloatVector4 &translation) final
     {
         m_LocalTranslation = translation;
-        // Translation affects this node's local matrix and global translation/matrix
-        // Children's global translation and matrix are affected (but not rotation or their local matrices)
-        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalTranslation);
+        // Translation affects this node's local matrix and global matrix
+        // Children's global matrices are affected (but not rotation or their local matrices)
+        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix);
     }
 
     GEMMETHOD_(void, SetLocalScale)(_In_ const Math::FloatVector4 &scale) final
     {
         m_LocalScale = scale;
-        // Scale affects this node's local matrix and global translation/matrix
-        // Children's global translation and matrix are affected (but not rotation or their local matrices)
-        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalTranslation);
+        // Scale affects this node's local matrix and global matrix
+        // Children's global matrices are affected (but not rotation or their local matrices)
+        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix);
     }
 
+    // Composed rotation of this node and its ancestors, ignoring scale. It matches the
+    // rotation in GetGlobalMatrix when every ancestor's scale is uniform; non-uniform
+    // ancestor scale under a rotated child shears the matrix, which no rotation describes.
     GEMMETHOD_(const Math::FloatQuaternion, GetGlobalRotation)() final
     {
         if (HasAnyFlag(m_DirtyFlags, TransformDirtyFlags::GlobalRotation))
@@ -199,31 +200,9 @@ public: // XSceneGraphNode methods
 
     GEMMETHOD_(const Math::FloatVector4, GetGlobalTranslation)() final
     {
-        if (HasAnyFlag(m_DirtyFlags, TransformDirtyFlags::GlobalTranslation))
-        {
-            if(m_pParent)
-            {
-                const auto parentRotation = m_pParent->GetGlobalRotation();
-                const auto parentTranslation = m_pParent->GetGlobalTranslation();
-
-                // Rotate local translation by parent's rotation using pure quaternion
-                const Math::FloatQuaternion vLocal(m_LocalTranslation.X, m_LocalTranslation.Y, m_LocalTranslation.Z, 0.0f);
-                const auto qConj = Conjugate(parentRotation);
-                const auto vRot = parentRotation * vLocal * qConj;
-                Math::FloatVector4 rotatedLocal(vRot.X, vRot.Y, vRot.Z, 0.0f);
-
-                // Add to parent translation (row-vector convention)
-                m_GlobalTranslation = parentTranslation + rotatedLocal;
-                // Preserve homogeneous coordinate
-                m_GlobalTranslation.W = parentTranslation.W;
-            }
-            else
-            {
-                m_GlobalTranslation = m_LocalTranslation;
-            }
-            m_DirtyFlags &= ~TransformDirtyFlags::GlobalTranslation;
-        }
-        return m_GlobalTranslation;
+        // Row 3 of the global matrix, so ancestor rotation and scale apply exactly as
+        // they do for rendering.
+        return GetGlobalMatrix()[3];
     }
 
     GEMMETHOD_(const Math::FloatMatrix4x4, GetGlobalMatrix)() final

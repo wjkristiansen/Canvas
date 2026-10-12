@@ -2890,12 +2890,12 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 memcpy(&frameConstants.CameraWorldPos, &camPos, sizeof(frameConstants.CameraWorldPos));
 
                 // Camera basis from the world matrix (row-vector convention:
-                // row 0 = forward, row 1 = right, row 2 = up).
+                // row 0 = forward, row 1 = left, row 2 = up). Right is -left.
                 auto world = pCameraNode->GetGlobalMatrix();
                 const float tanHalfFov = std::tan(0.5f * m_pActiveCamera->GetFovAngle());
                 const float aspect     = m_pActiveCamera->GetAspectRatio();
                 frameConstants.CamForwardAndTanHalfFov = { world[0][0], world[0][1], world[0][2], tanHalfFov };
-                frameConstants.CamRightAndAspect       = { world[1][0], world[1][1], world[1][2], aspect    };
+                frameConstants.CamRightAndAspect       = { -world[1][0], -world[1][1], -world[1][2], aspect };
                 frameConstants.CamUp                   = { world[2][0], world[2][1], world[2][2], 0.0f      };
             }
 

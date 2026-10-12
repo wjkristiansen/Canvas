@@ -22,7 +22,6 @@ CSceneGraphNode::CSceneGraphNode(XCanvas *pCanvas) :
     // Initialize cached matrices/quaternions
     m_LocalMatrix = Canvas::Math::IdentityMatrix<float, 4, 4>();
     m_GlobalRotation = Canvas::Math::IdentityQuaternion<float>();
-    m_GlobalTranslation = Canvas::Math::FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
     m_GlobalMatrix = Canvas::Math::IdentityMatrix<float, 4, 4>();
 
     // All dirty flags are already set via member initialization (m_DirtyFlags = TransformDirtyFlags::All)
@@ -106,8 +105,7 @@ GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode* pChild)
         
         // Mark dirty global state on child (parent changed - but local matrix unaffected)
         pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | 
-                                         TransformDirtyFlags::GlobalRotation | 
-                                         TransformDirtyFlags::GlobalTranslation);
+                                         TransformDirtyFlags::GlobalRotation);
     }
 
     // Append to child list
@@ -207,8 +205,7 @@ GEMMETHODIMP CSceneGraphNode::InsertChildBefore(_In_ XSceneGraphNode* pChild, _I
     {
         pChildNode->m_pParent = this;
         pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | 
-                                         TransformDirtyFlags::GlobalRotation | 
-                                         TransformDirtyFlags::GlobalTranslation);
+                                         TransformDirtyFlags::GlobalRotation);
     }
 
     // Insert before sibling in the doubly-linked list
@@ -263,8 +260,7 @@ GEMMETHODIMP CSceneGraphNode::InsertChildAfter(_In_ XSceneGraphNode* pChild, _In
     {
         pChildNode->m_pParent = this;
         pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | 
-                                         TransformDirtyFlags::GlobalRotation | 
-                                         TransformDirtyFlags::GlobalTranslation);
+                                         TransformDirtyFlags::GlobalRotation);
     }
 
     // Insert after sibling in the doubly-linked list
@@ -368,7 +364,7 @@ void CSceneGraphNode::InvalidateTransforms(TransformDirtyFlags flags)
     if (alreadyDirty == requestedFlags)
     {
         // Notify attached elements that the global transform is dirty
-        if (HasAnyFlag(flags, TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation | TransformDirtyFlags::GlobalTranslation))
+        if (HasAnyFlag(flags, TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation))
         {
             for (auto& element : m_Elements)
             {
@@ -379,7 +375,7 @@ void CSceneGraphNode::InvalidateTransforms(TransformDirtyFlags flags)
     }
     
     // Notify attached elements that the global transform is dirty
-    if (HasAnyFlag(flags, TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation | TransformDirtyFlags::GlobalTranslation))
+    if (HasAnyFlag(flags, TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation))
     {
         for (auto& element : m_Elements)
         {

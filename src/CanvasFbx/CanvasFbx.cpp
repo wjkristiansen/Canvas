@@ -61,14 +61,11 @@ Math::FloatVector4 ToCanvasNormal(ufbx_vec3 v)
 //------------------------------------------------------------------------------------------------
 Math::FloatQuaternion ToCanvasQuaternion(ufbx_quat q)
 {
-    // Canvas uses row-vector math (v' = v*M). ufbx bakes quaternions for the
-    // column-vector convention (v' = M*v), which is the conjugate of the
-    // equivalent row-vector (Canvas) quaternion. Negate XYZ (keep W) to convert.
     return Math::FloatQuaternion(
-        -static_cast<float>(q.x),
-        -static_cast<float>(q.y),
-        -static_cast<float>(q.z),
-         static_cast<float>(q.w));
+        static_cast<float>(q.x),
+        static_cast<float>(q.y),
+        static_cast<float>(q.z),
+        static_cast<float>(q.w));
 }
 
 //------------------------------------------------------------------------------------------------
