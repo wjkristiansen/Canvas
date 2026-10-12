@@ -121,34 +121,11 @@ A bundle's or asset's name is the `NameLength` bytes at `NameOffset` within the 
 
 Both tables and the name blobs are variable-length and grow as the writer appends, so none has a fixed, pre-reserved location. The writer accumulates each in memory and serializes it once, when the thing it describes is sealed.
 
-`Open` writes `CpkgFileHeader::Magic`/`Version` immediately, leaving the remaining header fields as placeholders. `BeginBundle` writes nothing to the file; it starts a new in-memory bundle table entry. `EndBundle` seals the open bundle: it appends that bundle's asset table and asset name blob at the current end of file and records their locations in the bundle's in-memory table entry. `Close` appends the file-level bundle table, immediately followed by the bundle name blob, then seeks back and overwrites the file header's placeholder fields to point at them.
+`Open` writes `CpkgFileHeader::Magic`/`Version` immediately, leaving the remaining header fields zero as placeholders. `BeginBundle` writes nothing to the file; it starts a new in-memory bundle table entry. `EndBundle` seals the open bundle: it appends that bundle's asset table and asset name blob at the current end of file and records their locations in the bundle's in-memory table entry. `Close` appends the file-level bundle table, immediately followed by the bundle name blob, then seeks back and overwrites the file header's placeholder fields to point at them.
 
-Every write is therefore an append, except the single fixup of the file header in `Close`. No previously written payload, table, or name blob is moved or rewritten, and the bundle table followed by the bundle name blob is always the tail of a closed file.
+Every write is therefore an append, except the single fixup of the file header in `Close`. No previously written payload, table, or name blob is moved or rewritten.
 
-
-### Staged Writes
-
-`CCpkgWriter::Open`'s `append` parameter selects what happens when `fileName` already exists:
-
-| `fileName` | `append` | Behavior |
-|---|---|---|
-| does not exist | either | Creates a new package. `append` is ignored. |
-| exists | `true` | Amends the existing package, as described below. `Gem::Result::DataNotRecognized` if the file is not a package, `Gem::Result::CorruptedData` if it is a package whose structure is damaged. |
-| exists | `false` | `Gem::Result::AlreadyExists`. The existing file is left untouched, and the caller decides whether to delete it, rename it, or pick another path. |
-
-**A writer never writes to `fileName`.** Every write - to a new package or an amend - goes to a temporary scratch file, and `fileName` is touched only once, by an atomic rename at the end of a successful `Close()`. Until that step, `fileName` is exactly what it was before `Open`: absent for a new package, byte-for-byte the original for an amend. A crash, a power loss, or a [writer failure](#writer-failure-closes-the-writer) at any point therefore never leaves a partial or corrupt package under `fileName`. This is the standard write-new-then-rename discipline; for an amend it costs one full copy of the package, which is acceptable for a build-time cooking tool.
-
-The sequence is:
-
-1. **`Open`** creates the temporary file in the *same directory* as `fileName` - the rename in step 3 is only atomic within a volume - with a name derived from `fileName` plus a unique suffix (for example `world.cpkg.a1b2c3.tmp`).
-   - **New package**: writes `CpkgFileHeader` with placeholder fields (see [File Layout and Fixups](#file-layout-and-fixups)).
-   - **Amend**: copies the existing package's bytes into the temporary file, reads `CpkgFileHeader`, loads the existing bundle table and bundle name blob into memory (seeding the in-memory bundle list and duplicate-name check), and treats `BundleTableOffset` as the resume point for writing in the temporary file.
-2. **`AppendAsset`/`EndBundle`** write payloads, asset tables, and asset name blobs into the temporary file. On an amend, writing starts at the resume offset, overwriting the copy's bundle table and bundle name blob; together they were the tail of a closed file, so nothing is orphaned, and the live copies are the ones held in memory.
-3. **`Close`** writes the complete bundle table and bundle name blob (for an amend, existing + new) at the end of the temporary file, fixes up the file header, flushes the file's contents to stable storage (`FlushFileBuffers`, `fsync`), closes it, and only then atomically renames it to `fileName` (`ReplaceFileW` or `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`; `rename(2)` elsewhere). Flushing before the rename is required: without it a crash just after the rename can publish a file name pointing at unwritten data.
-
-If any step fails, the writer closes and deletes the temporary file (see [Writer failure closes the writer](#writer-failure-closes-the-writer)). The same cleanup runs if the `CCpkgWriter` is destroyed while still open. A temporary file can still be left behind by a hard crash; it is inert (it holds the `.tmp` suffix, not the package's name) and callers may sweep stale ones.
-
-Amending only ever adds whole new bundles. An existing bundle is immutable once `EndBundle` has sealed it; there is no operation to reopen one and append more assets to it.
+A file whose writer never completed `Close` still has a zero `BundleTableOffset`, so `CCpkgReader::Open` rejects it as `Gem::Result::CorruptedData`.
 
 ## Package Data Types
 
@@ -564,11 +541,11 @@ The codes this API reports:
 | `Gem::Result::Success` | |
 | `Gem::Result::InvalidArg` | Caller error: an out-of-range index, a null required argument, a `ReadAsset` destination buffer smaller than the asset's `RawSize`, an `Open` call on an object that is already open, a writer call or argument that breaks a [writer argument rule](#writer-argument-rules), or an empty or misaligned payload passed to a [payload helper](#payload-encoding-helpers) |
 | `Gem::Result::NotFound` | The named file does not exist |
-| `Gem::Result::IoError` | A read, write, or seek on the package file failed, or the writer's temporary file could not be created, copied, flushed, or renamed to `fileName` |
+| `Gem::Result::IoError` | A read, write, or seek on the package file failed, or the writer could not create it |
 | `Gem::Result::DataNotRecognized` | The file is not a package: it is too short to hold a `CpkgFileHeader`, or its `Magic` does not match. The file may be valid data of some other kind |
 | `Gem::Result::CorruptedData` | The file is a package (its `Magic` matches) but its structure is damaged: a table, name blob, name, or payload outside the file, an empty bundle name, an unknown `AssetType` or `CpkgCodec`, a `CpkgCodec::None` asset whose `StoredSize` differs from its `RawSize`, or an out-of-order reference (see `CCpkgReader::Open`). From a payload helper: a payload too small for its header, or a span that breaks a [Payload Layout](#payload-layout) rule |
 | `Gem::Result::OutOfRange` | The package's `Version` is outside this build's supported range |
-| `Gem::Result::AlreadyExists` | `CCpkgWriter::Open` was called with `append = false` on an existing file |
+| `Gem::Result::AlreadyExists` | `CCpkgWriter::Open` was called on an existing file |
 | `Gem::Result::OutOfMemory` | An allocation for an in-memory table, directory, or scratch buffer failed |
 | `Gem::Result::NotOpen` | The call was made on a reader or writer that is not open: before a successful `Open`, after `Close`, or after a writer failure closed it |
 
@@ -585,9 +562,9 @@ A future accessor for data `Open` does not load (per-bundle or per-asset metadat
 
 ### Writer failure closes the writer
 
-Every `CCpkgWriter` method validates its arguments and call order before modifying anything. A validation failure returns `Gem::Result::InvalidArg` and leaves the writer and its temporary file exactly as they were; the writer stays open and later valid calls proceed normally.
+Every `CCpkgWriter` method validates its arguments and call order before modifying anything. A validation failure returns `Gem::Result::InvalidArg` and leaves the writer and its file exactly as they were; the writer stays open and later valid calls proceed normally.
 
-Any other failure - an `IoError` or `OutOfMemory` from `BeginBundle`, `AppendAsset`, `EndBundle`, or `Close`, including a failed flush or rename in `Close` - closes the writer. The failing call releases the file handle, deletes the temporary file, and returns the code describing the cause. `fileName` is left exactly as it was before `Open` (see [Staged Writes](#staged-writes)). The writer is then not open, so every later call, including `Close`, returns `Gem::Result::NotOpen`. The cause of a failure is reported once, by the call that failed; a later `NotOpen` means an earlier call already failed or the writer was never opened.
+Any other failure - an `IoError` or `OutOfMemory` from `BeginBundle`, `AppendAsset`, `EndBundle`, `CopyBundle`, or `Close` - closes the writer. The failing call releases the file handle, deletes the partially written file, and returns the code describing the cause. Destroying a `CCpkgWriter` that is still open does the same cleanup. The writer is then not open, so every later call, including `Close`, returns `Gem::Result::NotOpen`. The cause of a failure is reported once, by the call that failed; a later `NotOpen` means an earlier call already failed or the writer was never opened.
 
 A reader failure does not close the reader. `ReadAsset` modifies no state, so an `IoError` or `CorruptedData` from one call leaves the reader open and other assets readable.
 
@@ -595,12 +572,24 @@ A reader failure does not close the reader. `ReadAsset` modifies no state, so an
 
 A CCpkgWriter class writes bundles and assets to a package. CanvasPkg bundle and asset writes are append-only, with a single fixup of the file header in `Close` (see [File Layout and Fixups](#file-layout-and-fixups)).
 
+### Copying Bundles
+
+`CopyBundle` copies a sealed bundle from a package open in a `CCpkgReader` into the package being written. The copy is byte-for-byte: each asset keeps its index, type, name, and compression scheme, and its stored payload is copied without being decompressed or interpreted. Because asset indices are preserved, the bundle's intra-bundle references remain valid in the new package.
+
+This makes whole-bundle operations cheap without the format supporting in-place modification:
+
+- **Merging packages.** One writer can copy bundles from any number of open readers, producing a single package from several. A bundle can be given a new name as it is copied, so bundles with the same name in different source packages can coexist.
+- **Append-like updates.** Copy every bundle of an existing package into a new file, add, replace, or drop bundles along the way, then replace the original file with the new one.
+
+Bundle indices are not preserved: a copied bundle's index is its position in the new package. Nothing in the format stores a bundle index, so this breaks no reference.
+
 ### Writer argument rules
 
 The writer rejects any argument that would break a format rule or produce a file `CCpkgReader::Open` rejects, so every package `CCpkgWriter` produces is one its reader accepts. Each rule is checked before anything is written, and a violation returns `Gem::Result::InvalidArg` and leaves the writer unchanged (see [Writer failure closes the writer](#writer-failure-closes-the-writer)):
 
-- **Call order**: `Open` while the writer is already open; `BeginBundle` while a bundle is open; `AppendAsset` or `EndBundle` with no bundle open; `Close` while a bundle is open.
-- **Names** (`bundleName`, `name`): must be valid UTF-8, must not contain a NUL byte, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A bundle name must be non-empty and unique within the package; an asset name may be empty, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
+- **Call order**: `Open` while the writer is already open; `BeginBundle` or `CopyBundle` while a bundle is open; `AppendAsset` or `EndBundle` with no bundle open; `Close` while a bundle is open.
+- **`CopyBundle` source**: `reader` must be open and `bundleIndex` in range.
+- **Names** (`bundleName`, `name`, and the name a `CopyBundle` copy receives): must be valid UTF-8, must not contain a NUL byte, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A bundle name must be non-empty and unique within the package; an asset name may be empty, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
 - **`assetType`**: must be a named `AssetType` enumerator other than `AssetType::Unknown`.
 - **`codec`**: must be a named `CpkgCodec` enumerator.
 - **`data`**: must be non-empty. Every payload begins with its header struct (see [Package Data Types](#package-data-types)), so no asset type has an empty payload.
@@ -612,13 +601,13 @@ The reader does not recheck the name rules: a name that breaks them cannot cause
 
 **CCpkgWriter::Open**
 
-Opens a package for write. If `fileName` does not exist, `Open` creates a new package and ignores `append`. If it does exist, `append = true` amends it and `append = false` fails with `Gem::Result::AlreadyExists`, leaving the file untouched. `Open` never destroys or modifies an existing file: all writes are staged in a temporary file alongside `fileName` and renamed into place by a successful `Close`. See [Staged Writes](#staged-writes) for the full behavior table and the staging sequence.
+Creates `fileName` and opens it for write. Fails with `Gem::Result::AlreadyExists` if `fileName` already exists, leaving it untouched.
 
-`Gem::Result CCpkgWriter::Open(const char *fileName, bool append)`
+`Gem::Result CCpkgWriter::Open(const char *fileName)`
 
 **CCpkgWriter::Close**
 
-Writes the file-level bundle table and bundle name blob, fixes up the file header, flushes the temporary file, and atomically renames it to `fileName` (see [Staged Writes](#staged-writes)). Fails with `Gem::Result::InvalidArg` if a bundle is still open, leaving the writer open; call `EndBundle` first. Any other failure deletes the temporary file, leaves `fileName` as it was before `Open`, and closes the writer (see [Writer failure closes the writer](#writer-failure-closes-the-writer)). Returns `Gem::Result::NotOpen` if the writer is not open.
+Writes the file-level bundle table and bundle name blob, fixes up the file header, and closes the file (see [File Layout and Fixups](#file-layout-and-fixups)). Fails with `Gem::Result::InvalidArg` if a bundle is still open, leaving the writer open; call `EndBundle` first. Any other failure deletes the file and closes the writer (see [Writer failure closes the writer](#writer-failure-closes-the-writer)). Returns `Gem::Result::NotOpen` if the writer is not open.
 
 `Gem::Result CCpkgWriter::Close()`
 
@@ -643,6 +632,14 @@ Appends one asset to the open bundle and writes its index to `pAssetIndex`, whic
 Fails with `Gem::Result::InvalidArg` if no bundle is open or any argument breaks a [writer argument rule](#writer-argument-rules). All of these are checked before anything is written; any failure after that closes the writer (see [Writer failure closes the writer](#writer-failure-closes-the-writer)).
 
 `Gem::Result CCpkgWriter::AppendAsset(AssetType assetType, std::string_view name, CpkgCodec codec, std::span<const std::byte> data, uint32_t *pAssetIndex = nullptr)`
+
+**CCpkgWriter::CopyBundle**
+
+Copies the bundle at `bundleIndex` in `reader` into the package as a new, sealed bundle, and writes its index in this package to `pBundleIndex`, which may be null (see [Copying Bundles](#copying-bundles)). The copy is named `newName`, or the source bundle's name if `newName` is empty. Payload bytes are copied as stored and never inspected, so a payload that is corrupt in the source is equally corrupt in the copy.
+
+Fails with `Gem::Result::InvalidArg` if a bundle is open, `reader` is not open, `bundleIndex` is out of range, or the copy's name breaks a [writer argument rule](#writer-argument-rules), including one already used in this package. All of these are checked before anything is written. A failed read from `reader` returns `Gem::Result::IoError` and, like any failure after validation, closes the writer; `reader` is unaffected.
+
+`Gem::Result CCpkgWriter::CopyBundle(const CCpkgReader &reader, uint32_t bundleIndex, std::string_view newName = {}, uint32_t *pBundleIndex = nullptr)`
 
 ## CCpkgReader
 
@@ -802,16 +799,14 @@ Directions the current design leaves room for. None are committed plans:
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **Staging preconditions and durability details.** For an amend, step 2 of [Staged Writes](#staged-writes) overwrites from `BundleTableOffset` onward, which is safe only if the bundle table followed by the bundle name blob is the file's tail; `Open(append = true)` should verify `BundleTableOffset + BundleCount * sizeof(CpkgBundleTableEntry) == BundleNameBlobOffset` and `BundleNameBlobOffset + BundleNameBlobSize == file size`, and reject the file otherwise. Amending a package whose `Version` is older than `kMaxSupportedVersion` but still supported is undefined - reject it, or rewrite its header version (only valid if the layouts agree). For a new package, the rename in `Close` must not overwrite a `fileName` that another process created after `Open`; it should fail with `AlreadyExists` instead (`MoveFileExW` without `MOVEFILE_REPLACE_EXISTING` on Windows, `renameat2` with `RENAME_NOREPLACE` on Linux). On POSIX, a durable `rename(2)` also requires `fsync` on the containing directory. Pick one of `ReplaceFileW`/`MoveFileExW`; they differ in ACL/attribute preservation and in whether the target must exist.
+1. **The empty-bounds rule does not match the engine's.** `CpkgMeshData::LocalBounds` says `Min > Max` means "auto-compute", but `Math::AABB::IsEmpty` (`CanvasMath.hpp`) recognizes only the exact sentinel `Min = +FLT_MAX`, `Max = -FLT_MAX` in all three axes and deems any other inside-out box invalid. Specify that exact sentinel and treat any other inside-out box as corrupt.
 
-2. **The empty-bounds rule does not match the engine's.** `CpkgMeshData::LocalBounds` says `Min > Max` means "auto-compute", but `Math::AABB::IsEmpty` (`CanvasMath.hpp`) recognizes only the exact sentinel `Min = +FLT_MAX`, `Max = -FLT_MAX` in all three axes and deems any other inside-out box invalid. Specify that exact sentinel and treat any other inside-out box as corrupt.
+2. **Undefined spatial and color conventions.** "Canvas space" is never defined - handedness, up axis, and linear units should be stated here or linked. Color spaces are likewise unstated: whether `BaseColorFactor`/`EmissiveFactor` are linear, and how a loader decides whether to decode an `Image` as sRGB or linear when a single image asset can be bound to both color and non-color roles.
 
-3. **Undefined spatial and color conventions.** "Canvas space" is never defined - handedness, up axis, and linear units should be stated here or linked. Color spaces are likewise unstated: whether `BaseColorFactor`/`EmissiveFactor` are linear, and how a loader decides whether to decode an `Image` as sRGB or linear when a single image asset can be bound to both color and non-color roles.
+3. **No mapping from a bundle to engine objects.** [CanvasPkg](#canvaspkg) says `CCpkgReader` is used to build world instances, but this document does not say how a bundle's `SceneNode` assets become an `XModel` (or several), whether a bundle may contain multiple roots (`ParentIndex = -1`), or where that loader code lives, given that CanvasPkg links no Canvas library.
 
-4. **No mapping from a bundle to engine objects.** [CanvasPkg](#canvaspkg) says `CCpkgReader` is used to build world instances, but this document does not say how a bundle's `SceneNode` assets become an `XModel` (or several), whether a bundle may contain multiple roots (`ParentIndex = -1`), or where that loader code lives, given that CanvasPkg links no Canvas library.
+4. **Degenerate mesh records are undefined.** Specify whether a `CpkgMeshData` may have zero groups, whether a group may have zero vertices, and whether `BoneIndices` without `BoneWeights` (or the reverse) is corrupt; presumably the two must be present or absent together.
 
-5. **Degenerate mesh records are undefined.** Specify whether a `CpkgMeshData` may have zero groups, whether a group may have zero vertices, and whether `BoneIndices` without `BoneWeights` (or the reverse) is corrupt; presumably the two must be present or absent together.
+5. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
 
-6. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
-
-7. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
+6. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
