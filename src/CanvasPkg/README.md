@@ -329,8 +329,8 @@ struct CpkgVertexBoneWeights { float    Weight[4]; };
 
 struct CpkgAABB
 {
-    float Min[3];  // xyz
-    float Max[3];  // xyz
+    float Min[3] = {  FLT_MAX,  FLT_MAX,  FLT_MAX };  // xyz
+    float Max[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };  // xyz
 };
 
 // One material partition of a mesh. The vertex count is Positions.Count.
@@ -349,13 +349,15 @@ struct CpkgMeshDataGroup
 struct CpkgMeshData
 {
     GfxPrimitiveTopology            Topology;            // CanvasGfx.h
-    CpkgAABB                        LocalBounds;         // Min > Max (empty) = auto-compute from positions, as in MeshDataDesc
+    CpkgAABB                        LocalBounds;         // empty sentinel = compute from positions; see below
     uint32_t                        Padding = 0;
     CpkgSpan<CpkgMeshDataGroup>     Groups;
 };
 ```
 
 Every non-empty stream's `Count` must equal the group's `Positions.Count`.
+
+**`LocalBounds` is either empty or well-formed.** Empty is the exact sentinel `Min = {+FLT_MAX, +FLT_MAX, +FLT_MAX}`, `Max = {-FLT_MAX, -FLT_MAX, -FLT_MAX}`: `CpkgAABB`'s default, and the state `Canvas::Math::AABB::IsEmpty` recognizes. It means the loader passes an empty `Canvas::MeshDataDesc::LocalBounds` and the backend computes the bounds from the positions. Otherwise `Min[i] <= Max[i]` must hold on every axis, which also excludes NaN. Any other box, including one that is inside-out on some axes or inverted without matching the sentinel, is not empty; a reader may treat it as corrupt (`Gem::Result::CorruptedData`).
 
 **Which streams are required depends on `Topology`**, matching what the backend enforces in `CreateMeshData`: `TriangleList` requires `Positions` and `Normals`; `PatchList4CP` requires `Positions`, `Normals`, and `UV0` (per-control-point map UVs, and the base direction along which displacement extends each control point). `Tangents`, `BoneIndices`, and `BoneWeights` are optional under either topology.
 
@@ -799,14 +801,12 @@ Directions the current design leaves room for. None are committed plans:
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **The empty-bounds rule does not match the engine's.** `CpkgMeshData::LocalBounds` says `Min > Max` means "auto-compute", but `Math::AABB::IsEmpty` (`CanvasMath.hpp`) recognizes only the exact sentinel `Min = +FLT_MAX`, `Max = -FLT_MAX` in all three axes and deems any other inside-out box invalid. Specify that exact sentinel and treat any other inside-out box as corrupt.
+1. **Undefined spatial and color conventions.** "Canvas space" is never defined - handedness, up axis, and linear units should be stated here or linked. Color spaces are likewise unstated: whether `BaseColorFactor`/`EmissiveFactor` are linear, and how a loader decides whether to decode an `Image` as sRGB or linear when a single image asset can be bound to both color and non-color roles.
 
-2. **Undefined spatial and color conventions.** "Canvas space" is never defined - handedness, up axis, and linear units should be stated here or linked. Color spaces are likewise unstated: whether `BaseColorFactor`/`EmissiveFactor` are linear, and how a loader decides whether to decode an `Image` as sRGB or linear when a single image asset can be bound to both color and non-color roles.
+2. **No mapping from a bundle to engine objects.** [CanvasPkg](#canvaspkg) says `CCpkgReader` is used to build world instances, but this document does not say how a bundle's `SceneNode` assets become an `XModel` (or several), whether a bundle may contain multiple roots (`ParentIndex = -1`), or where that loader code lives, given that CanvasPkg links no Canvas library.
 
-3. **No mapping from a bundle to engine objects.** [CanvasPkg](#canvaspkg) says `CCpkgReader` is used to build world instances, but this document does not say how a bundle's `SceneNode` assets become an `XModel` (or several), whether a bundle may contain multiple roots (`ParentIndex = -1`), or where that loader code lives, given that CanvasPkg links no Canvas library.
+3. **Degenerate mesh records are undefined.** Specify whether a `CpkgMeshData` may have zero groups, whether a group may have zero vertices, and whether `BoneIndices` without `BoneWeights` (or the reverse) is corrupt; presumably the two must be present or absent together.
 
-4. **Degenerate mesh records are undefined.** Specify whether a `CpkgMeshData` may have zero groups, whether a group may have zero vertices, and whether `BoneIndices` without `BoneWeights` (or the reverse) is corrupt; presumably the two must be present or absent together.
+4. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
 
-5. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
-
-6. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
+5. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
