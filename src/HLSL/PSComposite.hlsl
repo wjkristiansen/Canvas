@@ -153,10 +153,8 @@ float3 ScreenUVToWorldDir(float2 uv)
     float3 fwd        = PerFrame.CamForwardAndTanHalfFov.xyz;
     float3 right      = PerFrame.CamRightAndAspect.xyz;
     float3 up         = PerFrame.CamUp.xyz;
-    // Row-vector convention: row 1 = "left", so the visible right of screen
-    // is -row[1]. Mirror the x ray accordingly.
     float3 dir = fwd
-               + (-right) * (ndc.x * tanHalfFovY * aspect)
+               + right    * (ndc.x * tanHalfFovY * aspect)
                + up       * (ndc.y * tanHalfFovY);
     return normalize(dir);
 }

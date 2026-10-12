@@ -599,8 +599,8 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        // Sets the upper-left 3x3 as a rotation about the x-axis
-        // with the given Euler angle
+        // Sets the upper-left 3x3 as a right-handed rotation about the x-axis by the given
+        // angle, for row vectors (v' = v * M): +Y rotates toward +Z.
         template<class _Type>
         TMatrix<_Type, 4, 4> XRotationMatrix(_Type angle)
         {
@@ -609,17 +609,17 @@ namespace Canvas
             _Type c = cos(angle);
             _Type s = sin(angle);
             m[1][1] = c;
-            m[1][2] = -s;
+            m[1][2] = s;
 
-            m[2][1] = s;
+            m[2][1] = -s;
             m[2][2] = c;
 
             return m;
         }
 
         //------------------------------------------------------------------------------------------------
-        // Sets the upper-left 3x3 as a rotation about the x-axis
-        // with the given Euler angle
+        // Sets the upper-left 3x3 as a right-handed rotation about the y-axis by the given
+        // angle, for row vectors (v' = v * M): +Z rotates toward +X.
         template<class _Type>
         TMatrix<_Type, 4, 4> YRotationMatrix(_Type angle)
         {
@@ -628,17 +628,17 @@ namespace Canvas
             alignas(16) _Type c = cos(angle);
             alignas(16) _Type s = sin(angle);
             m[0][0] = c;
-            m[0][2] = s;
+            m[0][2] = -s;
 
-            m[2][0] = -s;
+            m[2][0] = s;
             m[2][2] = c;
 
             return m;
         }
 
         //------------------------------------------------------------------------------------------------
-        // Sets the upper-left 3x3 as a rotation about the x-axis
-        // with the given Euler angle
+        // Sets the upper-left 3x3 as a right-handed rotation about the z-axis by the given
+        // angle, for row vectors (v' = v * M): +X rotates toward +Y.
         template<class _Type>
         TMatrix<_Type, 4, 4> ZRotationMatrix(_Type angle)
         {
@@ -647,54 +647,56 @@ namespace Canvas
             alignas(16) _Type c = cos(angle);
             alignas(16) _Type s = sin(angle);
             m[0][0] = c;
-            m[0][1] = -s;
+            m[0][1] = s;
 
-            m[1][0] = s;
+            m[1][0] = -s;
             m[1][1] = c;
 
             return m;
         }
 
         //------------------------------------------------------------------------------------------------
+        // Euler rotation matrices. The name gives the order the axis rotations are applied
+        // (about fixed axes); with row vectors that is also the left-to-right product order.
         template<class _Type>
         TMatrix<_Type, 4, 4> XYZRotationMatrix(_Type angleX, _Type angleY, _Type angleZ)
         {
-            return ZRotationMatrix(angleZ) * YRotationMatrix(angleY) * XRotationMatrix(angleX);
+            return XRotationMatrix(angleX) * YRotationMatrix(angleY) * ZRotationMatrix(angleZ);
         }
 
         //------------------------------------------------------------------------------------------------
         template<class _Type>
         TMatrix<_Type, 4, 4> XZYRotationMatrix(_Type angleX, _Type angleZ, _Type angleY)
         {
-            return YRotationMatrix(angleY) * ZRotationMatrix(angleZ) * XRotationMatrix(angleX);
+            return XRotationMatrix(angleX) * ZRotationMatrix(angleZ) * YRotationMatrix(angleY);
         }
 
         //------------------------------------------------------------------------------------------------
         template<class _Type>
         TMatrix<_Type, 4, 4> YXZRotationMatrix(_Type angleY, _Type angleX, _Type angleZ)
         {
-            return ZRotationMatrix(angleZ) * XRotationMatrix(angleX) * YRotationMatrix(angleY);
+            return YRotationMatrix(angleY) * XRotationMatrix(angleX) * ZRotationMatrix(angleZ);
         }
 
         //------------------------------------------------------------------------------------------------
         template<class _Type>
         TMatrix<_Type, 4, 4> YZXRotationMatrix(_Type angleY, _Type angleZ, _Type angleX)
         {
-            return XRotationMatrix(angleX) * ZRotationMatrix(angleZ) * YRotationMatrix(angleY);
+            return YRotationMatrix(angleY) * ZRotationMatrix(angleZ) * XRotationMatrix(angleX);
         }
 
         //------------------------------------------------------------------------------------------------
         template<class _Type>
         TMatrix<_Type, 4, 4> ZXYRotationMatrix(_Type angleZ, _Type angleX, _Type angleY)
         {
-            return YRotationMatrix(angleY) * XRotationMatrix(angleX) * ZRotationMatrix(angleZ);
+            return ZRotationMatrix(angleZ) * XRotationMatrix(angleX) * YRotationMatrix(angleY);
         }
 
         //------------------------------------------------------------------------------------------------
         template<class _Type>
         TMatrix<_Type, 4, 4> ZYXRotationMatrix(_Type angleZ, _Type angleY, _Type angleX)
         {
-            return XRotationMatrix(angleX) * YRotationMatrix(angleY) * ZRotationMatrix(angleZ);
+            return ZRotationMatrix(angleZ) * YRotationMatrix(angleY) * XRotationMatrix(angleX);
         }
 
         //------------------------------------------------------------------------------------------------
@@ -1024,7 +1026,8 @@ namespace Canvas
         //}
 
         //------------------------------------------------------------------------------------------------
-        // Converts the unit quaternion to a 3x3 rotation matrix
+        // Converts the unit quaternion to a rotation matrix for row vectors: v * M rotates v
+        // the same way as q * v * q^-1. Each row is the image of the corresponding unit axis.
         template<class _Type>
         TMatrix<_Type, 4, 4> QuaternionToRotationMatrix(const TQuaternion<_Type> & q)
         {
@@ -1032,19 +1035,19 @@ namespace Canvas
                 {
                     {
                         1 - 2 * (q.Y * q.Y + q.Z * q.Z),
-                        2 * (q.X * q.Y - q.Z * q.W),
-                        2 * (q.X * q.Z + q.Y * q.W),
-                        0
-                    },
-                    {
                         2 * (q.X * q.Y + q.Z * q.W),
-                        1 - 2 * (q.X * q.X + q.Z * q.Z),
-                        2 * (q.Y * q.Z - q.X * q.W),
+                        2 * (q.X * q.Z - q.Y * q.W),
                         0
                     },
                     {
-                        2 * (q.X * q.Z - q.Y * q.W),
+                        2 * (q.X * q.Y - q.Z * q.W),
+                        1 - 2 * (q.X * q.X + q.Z * q.Z),
                         2 * (q.Y * q.Z + q.X * q.W),
+                        0
+                    },
+                    {
+                        2 * (q.X * q.Z + q.Y * q.W),
+                        2 * (q.Y * q.Z - q.X * q.W),
                         1 - 2 * (q.X * q.X + q.Y * q.Y),
                         0
                     },
@@ -1070,9 +1073,11 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        // Creates a quaternion from a given matrix
+        // Creates a quaternion from a rotation matrix for row vectors (v' = v * M); the inverse
+        // of QuaternionToRotationMatrix.
         // Assumes the matrix is rotation only 3x3 or affine (no scale or translation)
         // See http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
+        // (written for column vectors, so every off-diagonal m[i][j] there is m[j][i] here)
         template<class _MatrixType>
         TQuaternion<typename _MatrixType::ElementType> QuaternionFromRotationMatrix(const _MatrixType &m)
         {
@@ -1088,16 +1093,16 @@ namespace Canvas
                 const Type s = 2 * std::sqrt(t + 1);
                 const Type srsq = 1 / s;
                 q.W = Type(0.25) * s;
-                q.X = (m[2][1] - m[1][2]) * srsq;
-                q.Y = (m[0][2] - m[2][0]) * srsq;
-                q.Z = (m[1][0] - m[0][1]) * srsq;
+                q.X = (m[1][2] - m[2][1]) * srsq;
+                q.Y = (m[2][0] - m[0][2]) * srsq;
+                q.Z = (m[0][1] - m[1][0]) * srsq;
             }
             else if (m[0][0] > m[1][1] && (m[0][0] > m[2][2]))
             {
                 t = m[0][0] - m[1][1] - m[2][2];
                 const Type s = 2 * std::sqrt(t + 1);
                 const Type srsq = 1 / s;
-                q.W = (m[2][1] - m[1][2]) * srsq;
+                q.W = (m[1][2] - m[2][1]) * srsq;
                 q.X = Type(0.25) * s;
                 q.Y = (m[0][1] + m[1][0]) * srsq;
                 q.Z = (m[0][2] + m[2][0]) * srsq;
@@ -1107,7 +1112,7 @@ namespace Canvas
                 t = m[1][1] - m[0][0] - m[2][2];
                 const Type s = 2 * std::sqrt(t + 1);
                 const Type srsq = 1 / s;
-                q.W = (m[0][2] - m[2][0]) * srsq;
+                q.W = (m[2][0] - m[0][2]) * srsq;
                 q.X = (m[0][1] + m[1][0]) * srsq;
                 q.Y = Type(0.25) * s;
                 q.Z = (m[1][2] + m[2][1]) * srsq;
@@ -1117,7 +1122,7 @@ namespace Canvas
                 t = m[2][2] - m[0][0] - m[1][1];
                 const Type s = 2 * std::sqrt(t + 1);
                 const Type srsq = 1 / s;
-                q.W = (m[1][0] - m[0][1]) * srsq;
+                q.W = (m[0][1] - m[1][0]) * srsq;
                 q.X = (m[0][2] + m[2][0]) * srsq;
                 q.Y = (m[1][2] + m[2][1]) * srsq;
                 q.Z = Type(0.25) * s;

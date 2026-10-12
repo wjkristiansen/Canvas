@@ -183,6 +183,14 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
     EXPECT_TRUE(AlmostEqual(mA_global, mA_global_expected));
     EXPECT_TRUE(AlmostEqual(mB_global, mB_global_expected));
 
+    // The matrix path and the quaternion path must describe the same global transform:
+    // row 3 of the global matrix is the global translation, and its rotation block is
+    // the global rotation's matrix.
+    EXPECT_TRUE(AlmostEqual(mB_global[3], tB_g));
+    auto mB_rotation = mB_global;
+    mB_rotation[3] = FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
+    EXPECT_TRUE(AlmostEqual(mB_rotation, QuaternionToRotationMatrix(qB_g)));
+
     // Test scenario: Move B from A to Root after transforms are resolved
     // This tests that dirty flags are properly set when parent changes
 
@@ -271,6 +279,40 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
     auto mC_global_final = pC->GetGlobalMatrix();
     auto mB_expected_final = mB_local_saved * mC_global_final;
     EXPECT_TRUE(AlmostEqual(mB_after_rotation, mB_expected_final));
+}
+
+TEST(CanvasInterfacesTest, SceneGraphGlobalTranslationInheritsScale)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    Gem::TGemPtr<XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+
+    Gem::TGemPtr<XSceneGraphNode> pParent, pChild;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pChild)));
+    EXPECT_TRUE(Succeeded(pScene->GetRootNode()->AddChild(pParent)));
+    EXPECT_TRUE(Succeeded(pParent->AddChild(pChild)));
+
+    // Parent: non-uniform scale (2,3,1), then +90 deg about Z, then translate (10,0,0).
+    const float ninety = float(3.14159265358979323846 / 2.0);
+    pParent->SetLocalScale(FloatVector4(2.0f, 3.0f, 1.0f, 0.0f));
+    pParent->SetLocalRotation(FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, ninety));
+    pParent->SetLocalTranslation(FloatVector4(10.0f, 0.0f, 0.0f, 1.0f));
+    pChild->SetLocalTranslation(FloatVector4(1.0f, 1.0f, 0.0f, 1.0f));
+
+    // (1,1,0) scaled -> (2,3,0), rotated -> (-3,2,0), translated -> (7,2,0).
+    const FloatVector4 expected(7.0f, 2.0f, 0.0f, 1.0f);
+    EXPECT_TRUE(AlmostEqual(pChild->GetGlobalTranslation(), expected));
+    EXPECT_TRUE(AlmostEqual(pChild->GetGlobalMatrix()[3], expected));
+
+    // Changing the parent's scale must refresh the child's global translation.
+    // (1,1,0) rotated -> (-1,1,0), translated -> (9,1,0).
+    pParent->SetLocalScale(FloatVector4(1.0f, 1.0f, 1.0f, 0.0f));
+    EXPECT_TRUE(AlmostEqual(pChild->GetGlobalTranslation(), FloatVector4(9.0f, 1.0f, 0.0f, 1.0f)));
 }
 
 TEST(CanvasInterfacesTest, CameraTest)

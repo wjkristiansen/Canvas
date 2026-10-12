@@ -184,39 +184,41 @@ TEST(CanvasMathTest, MatrixRotation)
     static const auto Rows = MatrixType::Rows;
     static const auto Columns = MatrixType::Columns;
 
+    // Row-vector rotations: row i is the image of unit axis i (v' = v * M), and a
+    // positive angle turns counter-clockwise looking down the axis toward the origin.
     MatrixType rx = XRotationMatrix<ElementType>(float(g_PI) / 2);
-    EXPECT_TRUE(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
-    EXPECT_TRUE(AlmostEqual(rx[1], VecType(0, 0, -1, 0)));
-    EXPECT_TRUE(AlmostEqual(rx[2], VecType(0, 1, 0, 0)));
-
-    rx = XRotationMatrix<ElementType>(-float(g_PI) / 2);
     EXPECT_TRUE(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
     EXPECT_TRUE(AlmostEqual(rx[1], VecType(0, 0, 1, 0)));
     EXPECT_TRUE(AlmostEqual(rx[2], VecType(0, -1, 0, 0)));
 
-    MatrixType ry = YRotationMatrix<ElementType>(float(g_PI) / 2);
-    EXPECT_TRUE(AlmostEqual(ry[0], VecType(0, 0, 1, 0)));
-    EXPECT_TRUE(AlmostEqual(ry[1], VecType(0, 1, 0, 0)));
-    EXPECT_TRUE(AlmostEqual(ry[2], VecType(-1, 0, 0, 0)));
-    EXPECT_TRUE(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
+    rx = XRotationMatrix<ElementType>(-float(g_PI) / 2);
+    EXPECT_TRUE(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
+    EXPECT_TRUE(AlmostEqual(rx[1], VecType(0, 0, -1, 0)));
+    EXPECT_TRUE(AlmostEqual(rx[2], VecType(0, 1, 0, 0)));
 
-    ry = YRotationMatrix<ElementType>(-float(g_PI) / 2);
+    MatrixType ry = YRotationMatrix<ElementType>(float(g_PI) / 2);
     EXPECT_TRUE(AlmostEqual(ry[0], VecType(0, 0, -1, 0)));
     EXPECT_TRUE(AlmostEqual(ry[1], VecType(0, 1, 0, 0)));
     EXPECT_TRUE(AlmostEqual(ry[2], VecType(1, 0, 0, 0)));
     EXPECT_TRUE(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
-    MatrixType rz = ZRotationMatrix<ElementType>(float(g_PI) / 2);
-    EXPECT_TRUE(AlmostEqual(rz[0], VecType(0, -1, 0, 0)));
-    EXPECT_TRUE(AlmostEqual(rz[1], VecType(1, 0, 0, 0)));
-    EXPECT_TRUE(AlmostEqual(rz[2], VecType(0, 0, 1, 0)));
+    ry = YRotationMatrix<ElementType>(-float(g_PI) / 2);
+    EXPECT_TRUE(AlmostEqual(ry[0], VecType(0, 0, 1, 0)));
+    EXPECT_TRUE(AlmostEqual(ry[1], VecType(0, 1, 0, 0)));
+    EXPECT_TRUE(AlmostEqual(ry[2], VecType(-1, 0, 0, 0)));
     EXPECT_TRUE(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
 
-    rz = ZRotationMatrix<ElementType>(-float(g_PI) / 2);
+    MatrixType rz = ZRotationMatrix<ElementType>(float(g_PI) / 2);
     EXPECT_TRUE(AlmostEqual(rz[0], VecType(0, 1, 0, 0)));
     EXPECT_TRUE(AlmostEqual(rz[1], VecType(-1, 0, 0, 0)));
     EXPECT_TRUE(AlmostEqual(rz[2], VecType(0, 0, 1, 0)));
-    EXPECT_TRUE(AlmostEqual(ry[3], VecType(0, 0, 0, 1)));
+    EXPECT_TRUE(AlmostEqual(rz[3], VecType(0, 0, 0, 1)));
+
+    rz = ZRotationMatrix<ElementType>(-float(g_PI) / 2);
+    EXPECT_TRUE(AlmostEqual(rz[0], VecType(0, -1, 0, 0)));
+    EXPECT_TRUE(AlmostEqual(rz[1], VecType(1, 0, 0, 0)));
+    EXPECT_TRUE(AlmostEqual(rz[2], VecType(0, 0, 1, 0)));
+    EXPECT_TRUE(AlmostEqual(rz[3], VecType(0, 0, 0, 1)));
 }
 
 TEST(CanvasMathTest, AffineInverse)
@@ -485,8 +487,8 @@ TEST(CanvasMathTest, BasicQuaternion)
                 // and verify the results match
                 for (auto &V : Vectors)
                 {
-                    // Matrix transform
-                    auto VByM = M * V;
+                    // Matrix transform (row vector)
+                    auto VByM = V * M;
 
                     auto InvR = Conjugate(R);
                     auto Ident = R * InvR;
@@ -569,32 +571,32 @@ TEST(CanvasMathTest, AllRotationMatrixOrders)
 
     // Test XYZRotationMatrix
     auto mXYZ = XYZRotationMatrix(angleX, angleY, angleZ);
-    auto mXYZ_manual = ZRotationMatrix(angleZ) * YRotationMatrix(angleY) * XRotationMatrix(angleX);
+    auto mXYZ_manual = XRotationMatrix(angleX) * YRotationMatrix(angleY) * ZRotationMatrix(angleZ);
     EXPECT_TRUE(AlmostEqual(mXYZ, mXYZ_manual));
 
     // Test XZYRotationMatrix
     auto mXZY = XZYRotationMatrix(angleX, angleZ, angleY);
-    auto mXZY_manual = YRotationMatrix(angleY) * ZRotationMatrix(angleZ) * XRotationMatrix(angleX);
+    auto mXZY_manual = XRotationMatrix(angleX) * ZRotationMatrix(angleZ) * YRotationMatrix(angleY);
     EXPECT_TRUE(AlmostEqual(mXZY, mXZY_manual));
 
     // Test YXZRotationMatrix
     auto mYXZ = YXZRotationMatrix(angleY, angleX, angleZ);
-    auto mYXZ_manual = ZRotationMatrix(angleZ) * XRotationMatrix(angleX) * YRotationMatrix(angleY);
+    auto mYXZ_manual = YRotationMatrix(angleY) * XRotationMatrix(angleX) * ZRotationMatrix(angleZ);
     EXPECT_TRUE(AlmostEqual(mYXZ, mYXZ_manual));
 
     // Test YZXRotationMatrix
     auto mYZX = YZXRotationMatrix(angleY, angleZ, angleX);
-    auto mYZX_manual = XRotationMatrix(angleX) * ZRotationMatrix(angleZ) * YRotationMatrix(angleY);
+    auto mYZX_manual = YRotationMatrix(angleY) * ZRotationMatrix(angleZ) * XRotationMatrix(angleX);
     EXPECT_TRUE(AlmostEqual(mYZX, mYZX_manual));
 
     // Test ZXYRotationMatrix
     auto mZXY = ZXYRotationMatrix(angleZ, angleX, angleY);
-    auto mZXY_manual = YRotationMatrix(angleY) * XRotationMatrix(angleX) * ZRotationMatrix(angleZ);
+    auto mZXY_manual = ZRotationMatrix(angleZ) * XRotationMatrix(angleX) * YRotationMatrix(angleY);
     EXPECT_TRUE(AlmostEqual(mZXY, mZXY_manual));
 
     // Test ZYXRotationMatrix
     auto mZYX = ZYXRotationMatrix(angleZ, angleY, angleX);
-    auto mZYX_manual = XRotationMatrix(angleX) * YRotationMatrix(angleY) * ZRotationMatrix(angleZ);
+    auto mZYX_manual = ZRotationMatrix(angleZ) * YRotationMatrix(angleY) * XRotationMatrix(angleX);
     EXPECT_TRUE(AlmostEqual(mZYX, mZYX_manual));
 }
 
@@ -681,10 +683,11 @@ TEST(CanvasMathTest, QuaternionMultiplication)
     // Quaternion multiplication
     auto qResult = qY * qX;
 
-    // Equivalent matrix multiplication
+    // Equivalent matrix multiplication: qY * qX applies qX first, which for row
+    // vectors is mX * mY
     auto mX = XRotationMatrix(angle1);
     auto mY = YRotationMatrix(angle2);
-    auto mResult = mY * mX;
+    auto mResult = mX * mY;
 
     // Convert quaternion result to matrix
     auto mFromQuat = QuaternionToRotationMatrix(qResult);
@@ -724,6 +727,10 @@ TEST(CanvasMathTest, QuaternionRotateVector)
 
     // Should point along Z-axis
     EXPECT_TRUE(AlmostEqual(rotated2, FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
+
+    // The row-vector rotation matrix must turn the same way as the quaternion.
+    EXPECT_TRUE(AlmostEqual(v1 * QuaternionToRotationMatrix(qZ), FloatVector4(0.0f, 1.0f, 0.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(v2 * QuaternionToRotationMatrix(qX), FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
 }
 
 TEST(CanvasMathTest, CrossProductFloatVector4)
