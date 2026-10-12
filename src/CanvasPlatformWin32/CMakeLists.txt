@@ -8,7 +8,7 @@ add_library(CanvasPlatformWin32 STATIC
     ../Inc/CanvasPlatformWin32.h)
 
 set_target_properties(CanvasPlatformWin32 PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON)
 
 target_include_directories(CanvasPlatformWin32

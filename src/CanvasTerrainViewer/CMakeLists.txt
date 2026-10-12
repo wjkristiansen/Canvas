@@ -19,7 +19,7 @@ add_executable(CanvasTerrainViewer WIN32
 )
 
 set_target_properties(CanvasTerrainViewer PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
     OUTPUT_NAME "CanvasTerrainViewer"
 )

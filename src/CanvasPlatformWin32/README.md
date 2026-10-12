@@ -178,7 +178,7 @@ Both overloads return a failing `Gem::Result` on any failure (null/empty input, 
 CanvasPlatformWin32 is a CMake static library target built as part of the top-level Canvas build:
 
 - Sources: `AppWindow.{h,cpp}`, `RawInput.{h,cpp}`, `ImageLoader.cpp`, `pch.h`, plus the public header `../Inc/CanvasPlatformWin32.h`.
-- C++ standard: C++17.
+- C++ standard: C++20.
 - Compile definitions: `NOMINMAX`, `_WINDOWS`.
 - Public dependencies: `GEM`, `windowscodecs` (the WIC import library - public so consumers that statically link this target also get WIC).
 - Private dependencies: `ThinWin`, `user32`, `kernel32`.

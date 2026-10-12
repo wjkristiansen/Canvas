@@ -16,7 +16,7 @@ add_executable(CanvasModelViewer WIN32
 
 # Set target properties
 set_target_properties(CanvasModelViewer PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
     OUTPUT_NAME "CanvasModelViewer"
 )

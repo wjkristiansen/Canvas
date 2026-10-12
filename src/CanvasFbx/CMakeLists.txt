@@ -42,7 +42,7 @@ add_library(CanvasFbx STATIC
 )
 
 set_target_properties(CanvasFbx PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
     OUTPUT_NAME "CanvasFbx"
 )

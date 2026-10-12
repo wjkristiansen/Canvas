@@ -1447,7 +1447,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
         cycleSeconds, fullscreen ? 1 : 0, logLevel.c_str());
 
     auto pathFromUtf8 = [](const std::string& s) {
-        return s.empty() ? std::filesystem::path{} : std::filesystem::u8path(s);
+        return s.empty() ? std::filesystem::path{} : std::filesystem::path(std::u8string(s.begin(), s.end()));
     };
 
     // -------------------------------------------------------------------------

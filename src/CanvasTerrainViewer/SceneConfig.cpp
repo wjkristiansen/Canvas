@@ -20,7 +20,7 @@ std::filesystem::path ResolvePath(const std::string& s, const std::filesystem::p
 {
     if (s.empty())
         return {};
-    std::filesystem::path p = std::filesystem::u8path(s);
+    std::filesystem::path p{ std::u8string(s.begin(), s.end()) };
     if (p.is_absolute())
         return p;
     return std::filesystem::weakly_canonical(baseDir / p);
