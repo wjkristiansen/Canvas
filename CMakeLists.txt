@@ -52,7 +52,7 @@ endif()
 set(CANVAS_INSTALL_DEST "${ARCH_NAME}/$<CONFIG>")
 
 # Set C++ standard
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -107,6 +107,7 @@ target_include_directories(GEM INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/GEM/Inc>
     $<INSTALL_INTERFACE:include/GEM>
 )
+target_compile_features(GEM INTERFACE cxx_std_20)
 
 # Header-only nlohmann/json (single-include build)
 add_library(NlohmannJson INTERFACE)

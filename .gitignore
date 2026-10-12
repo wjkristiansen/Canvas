@@ -1,9 +1,6 @@
 build
 install
 
-# VS Code user settings
-.vscode/
-
 # Copilot workspace instructions
 .github/instructions/
 .github/prompts/

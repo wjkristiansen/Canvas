@@ -11,7 +11,7 @@ add_library(D3D12ResourceUtils STATIC
 
 # Set target properties
 set_target_properties(D3D12ResourceUtils PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
     OUTPUT_NAME "D3D12ResourceUtils"
 )

@@ -6,6 +6,7 @@
 
 #include "CanvasCore.h"
 #include "CanvasGfx.h"
+#include "CanvasElement.h"
 #include <Gem.hpp>
 #include "Timer.h"
 

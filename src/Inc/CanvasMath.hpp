@@ -28,10 +28,6 @@ namespace Canvas
 
             Type V[Dim] = {};
 
-            TVector() = default;
-            TVector(const TVector &o) = default;
-            TVector &operator=(const TVector &o) = default;
-
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
         };
@@ -813,18 +809,19 @@ namespace Canvas
         struct TQuaternion : public TVector<_Type, 4>
         {
             using Type = _Type;
+            using Base = TVector<_Type, 4>;
 
             // Default-constructs to the multiplicative identity (0, 0, 0, 1),
             // which is what every default-constructed rotation should be.
             // (The additive identity (0, 0, 0, 0) is not a meaningful rotation.)
             TQuaternion() :
-                TVector{ 0, 0, 0, 1 } {}
+                Base{ 0, 0, 0, 1 } {}
             TQuaternion(_Type scalar) :
-                TVector{ 0, 0, 0, scalar } {}
+                Base{ 0, 0, 0, scalar } {}
             TQuaternion(const TVector<Type, 4> & v) :
-                TVector(v) {}
+                Base(v) {}
             TQuaternion(Type x, Type y, Type z, Type w) :
-                TVector{ x, y, z, w } {}
+                Base{ x, y, z, w } {}
 
             TQuaternion(const TQuaternion &o) = default;
 

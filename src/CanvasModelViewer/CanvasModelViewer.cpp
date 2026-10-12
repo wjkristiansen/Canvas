@@ -1311,7 +1311,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance,
     // Create the application object
     std::filesystem::path modelPath;
     if (!fbxPath.empty())
-        modelPath = std::filesystem::u8path(fbxPath);
+        modelPath = std::filesystem::path(std::u8string(fbxPath.begin(), fbxPath.end()));
 
     std::unique_ptr<CApp> pApp(std::make_unique<CApp>(hInstance, szTitle, pLogger, exitFrameCount, logFps, modelPath, fullscreen, gfxDebugSeverity));
 

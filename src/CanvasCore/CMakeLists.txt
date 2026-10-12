@@ -49,7 +49,7 @@ add_library(CanvasCore SHARED
 
 # Set target properties
 set_target_properties(CanvasCore PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
     OUTPUT_NAME "CanvasCore"
 )

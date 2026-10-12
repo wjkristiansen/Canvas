@@ -17,7 +17,7 @@ add_library(CanvasText STATIC
 
 # Set target properties
 set_target_properties(CanvasText PROPERTIES
-    CXX_STANDARD 17
+    CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
 )
 
