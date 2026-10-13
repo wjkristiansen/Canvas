@@ -9,6 +9,15 @@ StructuredBuffer<uint4>  BoneIndices : register(t10); // 4 bone indices per vert
 StructuredBuffer<float4> BoneWeights : register(t11); // 4 bone weights per vertex
 StructuredBuffer<float4x4> BoneMatrices : register(t12); // palette; bone i = InvBind[i] * boneWorldMatrix[i]
 
+// Normal transform for the row-vector linear map L: the inverse-transpose up to a positive
+// scale (rows are cofactors), which normalize() removes. The determinant's sign keeps
+// normals facing outward under mirroring.
+float3x3 NormalMatrix(float3x3 L)
+{
+    float3x3 c = float3x3(cross(L[1], L[2]), cross(L[2], L[0]), cross(L[0], L[1]));
+    return dot(L[0], c[0]) < 0.0f ? -c : c;
+}
+
 PS_INPUT VSPrimary(VS_INPUT Input)
 {
     PS_INPUT Output;
@@ -18,6 +27,7 @@ PS_INPUT VSPrimary(VS_INPUT Input)
 
     float3 worldPos3;
     float3 worldNrm;
+    float4x4 skinMatrix = (float4x4)0;
 
     if ((PerObject.MaterialFlags & MATERIAL_FLAG_HAS_SKIN) != 0)
     {
@@ -25,16 +35,10 @@ PS_INPUT VSPrimary(VS_INPUT Input)
         // so PerObject.World is not applied for skinned vertices.
         uint4  bi = BoneIndices[Input.VertexId];
         float4 bw = BoneWeights[Input.VertexId];
-        float3 sp = float3(0.0f, 0.0f, 0.0f);
-        float3 sn = float3(0.0f, 0.0f, 0.0f);
         [unroll] for (int k = 0; k < 4; ++k)
-        {
-            float4x4 M = BoneMatrices[bi[k]];
-            sp += bw[k] * mul(float4(pos, 1.0f), M).xyz;
-            sn += bw[k] * mul(float4(nrm, 0.0f), M).xyz;
-        }
-        worldPos3 = sp;
-        worldNrm  = normalize(sn);
+            skinMatrix += bw[k] * BoneMatrices[bi[k]];
+        worldPos3 = mul(float4(pos, 1.0f), skinMatrix).xyz;
+        worldNrm  = normalize(mul(nrm, NormalMatrix((float3x3)skinMatrix)));
     }
     else
     {
@@ -54,25 +58,18 @@ PS_INPUT VSPrimary(VS_INPUT Input)
     else
         Output.TexCoord = float2(0.0f, 0.0f);
 
-    // Tangent — same pattern; also blend tangent with bone matrices when skinned.
+    // Tangent — same pattern; skinned tangents use the blended skin matrix.
+    // A mirroring transform flips the bitangent the pixel shader rebuilds from
+    // cross(N, T), so the handedness sign takes the determinant's sign.
     if ((PerObject.MaterialFlags & MATERIAL_FLAG_HAS_TANGENT) != 0)
     {
         float4 tan = Tangents[Input.VertexId];
-        float3 tanDir;
-        if ((PerObject.MaterialFlags & MATERIAL_FLAG_HAS_SKIN) != 0)
-        {
-            uint4  bi = BoneIndices[Input.VertexId];
-            float4 bw = BoneWeights[Input.VertexId];
-            float3 st = float3(0.0f, 0.0f, 0.0f);
-            [unroll] for (int k = 0; k < 4; ++k)
-                st += bw[k] * mul(float4(tan.xyz, 0.0f), BoneMatrices[bi[k]]).xyz;
-            tanDir = normalize(st);
-        }
-        else
-        {
-            tanDir = normalize(mul(float4(tan.xyz, 0.0f), PerObject.World).xyz);
-        }
-        Output.Tangent = float4(tanDir, tan.w);
+        float3x3 L = ((PerObject.MaterialFlags & MATERIAL_FLAG_HAS_SKIN) != 0)
+            ? (float3x3)skinMatrix
+            : (float3x3)PerObject.World;
+        float3 tanDir = normalize(mul(tan.xyz, L));
+        float  detSign = dot(L[0], cross(L[1], L[2])) < 0.0f ? -1.0f : 1.0f;
+        Output.Tangent = float4(tanDir, tan.w * detSign);
     }
     else
     {
