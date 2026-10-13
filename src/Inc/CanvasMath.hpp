@@ -513,20 +513,6 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        template<class _Type, int _Rows, int _Columns>
-        TVector<_Type, _Columns> operator*(const TMatrix<_Type, _Rows, _Columns> &m, const TVector<_Type, _Rows> &v)
-        {
-            TVector<_Type, _Columns> result = {};
-
-            for (int i = 0; i < _Rows; ++i)
-            {
-                result[i] = DotProduct(m[i], v);
-            }
-
-            return result;
-        }
-
-        //------------------------------------------------------------------------------------------------
         template<class _Type, int _Rows0, int _Columns0, int _Columns1>
         TMatrix<_Type, _Rows0, _Columns1> operator*(const TMatrix<_Type, _Rows0, _Columns0> &m0, const TMatrix<_Type, _Columns0, _Columns1> &m1)
         {
@@ -899,7 +885,7 @@ namespace Canvas
                 const Type cy = std::cos(hy), sy = std::sin(hy);
                 const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                // Intrinsic XYZ => q = qz * qy * qx
+                // X, then Y, then Z about fixed axes (extrinsic), same as XYZRotationMatrix => q = qz * qy * qx
                 const TQuaternion<Type> qx(sx, 0, 0, cx);
                 const TQuaternion<Type> qy(0, sy, 0, cy);
                 const TQuaternion<Type> qz(0, 0, sz, cz);
@@ -913,7 +899,7 @@ namespace Canvas
                 const Type cy = std::cos(hy), sy = std::sin(hy);
                 const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                // Intrinsic XZY => q = qy * qz * qx
+                // X, then Z, then Y about fixed axes (extrinsic), same as XZYRotationMatrix => q = qy * qz * qx
                 const TQuaternion<Type> qx(sx, 0, 0, cx);
                 const TQuaternion<Type> qy(0, sy, 0, cy);
                 const TQuaternion<Type> qz(0, 0, sz, cz);
@@ -927,7 +913,7 @@ namespace Canvas
                 const Type cy = std::cos(hy), sy = std::sin(hy);
                 const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                // Intrinsic YXZ => q = qz * qx * qy
+                // Y, then X, then Z about fixed axes (extrinsic), same as YXZRotationMatrix => q = qz * qx * qy
                 const TQuaternion<Type> qx(sx, 0, 0, cx);
                 const TQuaternion<Type> qy(0, sy, 0, cy);
                 const TQuaternion<Type> qz(0, 0, sz, cz);
@@ -941,7 +927,7 @@ namespace Canvas
                 const Type cy = std::cos(hy), sy = std::sin(hy);
                 const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                // Intrinsic YZX => q = qx * qz * qy
+                // Y, then Z, then X about fixed axes (extrinsic), same as YZXRotationMatrix => q = qx * qz * qy
                 const TQuaternion<Type> qx(sx, 0, 0, cx);
                 const TQuaternion<Type> qy(0, sy, 0, cy);
                 const TQuaternion<Type> qz(0, 0, sz, cz);
@@ -955,7 +941,7 @@ namespace Canvas
                 const Type cy = std::cos(hy), sy = std::sin(hy);
                 const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                // Intrinsic ZXY => q = qy * qx * qz
+                // Z, then X, then Y about fixed axes (extrinsic), same as ZXYRotationMatrix => q = qy * qx * qz
                 const TQuaternion<Type> qx(sx, 0, 0, cx);
                 const TQuaternion<Type> qy(0, sy, 0, cy);
                 const TQuaternion<Type> qz(0, 0, sz, cz);
@@ -969,7 +955,7 @@ namespace Canvas
                 const Type cy = std::cos(hy), sy = std::sin(hy);
                 const Type cz = std::cos(hz), sz = std::sin(hz);
 
-                // Intrinsic ZYX => q = qx * qy * qz
+                // Z, then Y, then X about fixed axes (extrinsic), same as ZYXRotationMatrix => q = qx * qy * qz
                 const TQuaternion<Type> qx(sx, 0, 0, cx);
                 const TQuaternion<Type> qy(0, sy, 0, cy);
                 const TQuaternion<Type> qz(0, 0, sz, cz);

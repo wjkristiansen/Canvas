@@ -2886,14 +2886,15 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 auto camPos = pCameraNode->GetGlobalTranslation();
                 memcpy(&frameConstants.CameraWorldPos, &camPos, sizeof(frameConstants.CameraWorldPos));
 
-                // Camera basis from the world matrix (row-vector convention:
-                // row 0 = forward, row 1 = left, row 2 = up). Right is -left.
-                auto world = pCameraNode->GetGlobalMatrix();
+                // Camera basis from the view matrix, whose 3x3 columns are the
+                // orthonormalized world-space (right, up, forward), so the
+                // composite rays match the rasterized view.
+                auto view = m_pActiveCamera->GetViewMatrix();
                 const float tanHalfFov = std::tan(0.5f * m_pActiveCamera->GetFovAngle());
                 const float aspect     = m_pActiveCamera->GetAspectRatio();
-                frameConstants.CamForwardAndTanHalfFov = { world[0][0], world[0][1], world[0][2], tanHalfFov };
-                frameConstants.CamRightAndAspect       = { -world[1][0], -world[1][1], -world[1][2], aspect };
-                frameConstants.CamUp                   = { world[2][0], world[2][1], world[2][2], 0.0f      };
+                frameConstants.CamForwardAndTanHalfFov = { view[0][2], view[1][2], view[2][2], tanHalfFov };
+                frameConstants.CamRightAndAspect       = { view[0][0], view[1][0], view[2][0], aspect };
+                frameConstants.CamUp                   = { view[0][1], view[1][1], view[2][1], 0.0f };
             }
 
             frameConstants.Exposure = std::exp2(m_pActiveCamera->GetExposureStops());

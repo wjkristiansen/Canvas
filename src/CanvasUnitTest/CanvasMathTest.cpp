@@ -946,7 +946,7 @@ TEST(CanvasMathTest, QuaternionConjugate)
 
 TEST(CanvasMathTest, VectorMatrixMultiplication)
 {
-    // Test vector * matrix (row vector)
+    // Canvas uses row vectors: v * M
     FloatVector3 v(1.0f, 2.0f, 3.0f);
     FloatMatrix3x3 m({
         {1.0f, 0.0f, 0.0f},
@@ -957,9 +957,13 @@ TEST(CanvasMathTest, VectorMatrixMultiplication)
     auto result = v * m;
     EXPECT_TRUE(AlmostEqual(result, FloatVector3(1.0f, 4.0f, 9.0f)));
 
-    // Test matrix * vector (column vector)
-    auto result2 = m * v;
-    EXPECT_TRUE(AlmostEqual(result2, FloatVector3(1.0f, 4.0f, 9.0f)));
+    // Non-symmetric: row 0 is the image of +X, so +X picks up m2[0][1] in its Y component.
+    FloatMatrix3x3 m2({
+        {1.0f, 2.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {0.0f, 0.0f, 1.0f}
+    });
+    EXPECT_TRUE(AlmostEqual(FloatVector3(1.0f, 1.0f, 1.0f) * m2, FloatVector3(1.0f, 3.0f, 1.0f)));
 }
 
 TEST(CanvasMathTest, MatrixIdentity)

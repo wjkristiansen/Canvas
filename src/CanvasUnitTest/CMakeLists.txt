@@ -84,6 +84,16 @@ target_link_libraries(CanvasUnitTest PRIVATE
     GTest::gtest_main
 )
 
+# FBX import checks need the importer and ufbx (for its reference evaluation).
+if(TARGET CanvasFbx AND TARGET ufbx)
+    target_sources(CanvasUnitTest PRIVATE CanvasFbxTest.cpp)
+    target_link_libraries(CanvasUnitTest PRIVATE CanvasFbx ufbx)
+    target_compile_definitions(CanvasUnitTest PRIVATE
+        CANVAS_FBX_ASSET_DIR="${CMAKE_SOURCE_DIR}/deps/FbxAssets"
+        CANVAS_UFBX_DATA_DIR="${UFBX_ROOT}/data"
+    )
+endif()
+
 # Use precompiled headers
 target_precompile_headers(CanvasUnitTest PRIVATE pch.h)
 
