@@ -173,12 +173,10 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             Gem::TGemPtr<XSceneGraphNode> pClonedNode;
             Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pClonedNode, pModelNode->GetName()));
 
-            // Copy transforms. Scale intentionally omitted: FBX-imported models
-            // never set a node-local scale (units/inherit-mode compensation are
-            // baked into geometry by the importer), so cloning the source scale
-            // is unnecessary and risks propagating any latent non-unit value.
+            // Copy transforms
             pClonedNode->SetLocalTranslation(pModelNode->GetLocalTranslation());
             pClonedNode->SetLocalRotation(pModelNode->GetLocalRotation());
+            pClonedNode->SetLocalScale(pModelNode->GetLocalScale());
 
             // Clone bound elements
             const uint32_t elementCount = pModelNode->GetBoundElementCount();

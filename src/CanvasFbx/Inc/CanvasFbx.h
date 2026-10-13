@@ -267,7 +267,7 @@ struct ImportedScene
     std::vector<ImportedNode>           Nodes;
     std::vector<ImportedAnimationClip>  AnimationClips;     // one per FBX AnimationStack / Blender Action
     std::vector<ImportDiag>             Diagnostics;
-    Math::AABB                          SceneBounds;    // union of all mesh bounds (Canvas space)
+    Math::AABB                          SceneBounds;    // world-space bounds of all mesh instances at rest
     int32_t                             ActiveCameraNodeIndex = -1;
 
     bool HasMeshes()     const { return !Meshes.empty(); }

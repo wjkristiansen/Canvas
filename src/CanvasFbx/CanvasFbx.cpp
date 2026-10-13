@@ -59,6 +59,12 @@ Math::FloatVector4 ToCanvasNormal(ufbx_vec3 v)
 }
 
 //------------------------------------------------------------------------------------------------
+Math::FloatVector4 ToCanvasVector(ufbx_vec3 v)
+{
+    return Math::FloatVector4(static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z), 0.0f);
+}
+
+//------------------------------------------------------------------------------------------------
 Math::FloatQuaternion ToCanvasQuaternion(ufbx_quat q)
 {
     return Math::FloatQuaternion(
@@ -90,60 +96,31 @@ Math::FloatMatrix4x4 ToCanvasAffineMatrix(_In_ const ufbx_matrix &m)
 }
 
 //------------------------------------------------------------------------------------------------
-Math::FloatVector4 ExtractCanvasScale(_In_ const Math::FloatMatrix4x4 &m)
+// Space conversion applied above the top-level nodes (see ImportScene). Folding it into a
+// top-level node's local TRS leaves world transforms unchanged; it is exact because the
+// root scale is uniform, so it commutes with the node's rotation.
+#pragma warning(push)
+#pragma warning(disable: 4324) // padded due to alignas(16) math types
+struct RootFold
 {
-    const Math::FloatVector4 row0(m[0][0], m[0][1], m[0][2], 0.0f);
-    const Math::FloatVector4 row1(m[1][0], m[1][1], m[1][2], 0.0f);
-    const Math::FloatVector4 row2(m[2][0], m[2][1], m[2][2], 0.0f);
-    return Math::FloatVector4(
-        std::sqrt(Math::DotProduct(row0, row0)),
-        std::sqrt(Math::DotProduct(row1, row1)),
-        std::sqrt(Math::DotProduct(row2, row2)),
-        0.0f);
-}
+    bool                  Enabled = false;
+    Math::FloatVector4    Translation = { 0.0f, 0.0f, 0.0f, 0.0f };
+    Math::FloatQuaternion Rotation = {};
+    Math::FloatMatrix4x4  RotationMatrix = Math::FloatMatrix4x4::Identity();
+    float                 Scale = 1.0f;
 
-//------------------------------------------------------------------------------------------------
-Math::FloatQuaternion ExtractCanvasRotation(_In_ const Math::FloatMatrix4x4 &m)
-{
-    Math::FloatMatrix4x4 rotation = m;
-
-    auto NormalizeRow = [](Math::FloatMatrix4x4 &matrix, int row)
+    void Apply(_Inout_ Math::FloatVector4 &t, _Inout_ Math::FloatQuaternion &r, _Inout_ Math::FloatVector4 &s) const
     {
-        const float x = matrix[row][0];
-        const float y = matrix[row][1];
-        const float z = matrix[row][2];
-        const float lenSq = x * x + y * y + z * z;
-        if (lenSq > 1e-12f)
-        {
-            const float invLen = 1.0f / std::sqrt(lenSq);
-            matrix[row][0] *= invLen;
-            matrix[row][1] *= invLen;
-            matrix[row][2] *= invLen;
-        }
-    };
-
-    NormalizeRow(rotation, 0);
-    NormalizeRow(rotation, 1);
-    NormalizeRow(rotation, 2);
-
-    rotation[0][3] = rotation[1][3] = rotation[2][3] = 0.0f;
-    rotation[3][0] = rotation[3][1] = rotation[3][2] = 0.0f;
-    rotation[3][3] = 1.0f;
-
-    return Math::QuaternionFromRotationMatrix(rotation).Normalize();
-}
-
-//------------------------------------------------------------------------------------------------
-Math::FloatQuaternion ToCanvasNodeRotation(_In_ const ufbx_node *pNode, _Inout_ ImportedScene *pScene)
-{
-    if (!pNode)
-        return Math::FloatQuaternion();
-
-    (void)pScene;
-
-    const Math::FloatMatrix4x4 localMatrix = ToCanvasAffineMatrix(pNode->node_to_parent);
-    return ExtractCanvasRotation(localMatrix);
-}
+        if (!Enabled)
+            return;
+        t = (t * Scale) * RotationMatrix + Translation;
+        t.W = 0.0f;
+        r = (Rotation * r).Normalize();
+        s = s * Scale;
+        s.W = 0.0f;
+    }
+};
+#pragma warning(pop)
 
 //------------------------------------------------------------------------------------------------
 Math::FloatVector4 ComputeFaceNormal(_In_ const Math::FloatVector4 &p0, _In_ const Math::FloatVector4 &p1, _In_ const Math::FloatVector4 &p2)
@@ -588,14 +565,14 @@ bool ImportLight(
 //------------------------------------------------------------------------------------------------
 bool ImportCamera(
     _In_ const ufbx_camera *pCamera,
-    _In_ float distanceUnitScale,
+    _In_ float distanceScale,
     _Inout_ ImportedCamera *pOut,
     _Inout_ ImportedScene *pScene)
 {
     pOut->Name = ToStdString(pCamera->name);
 
-    const float nearPlane = static_cast<float>(pCamera->near_plane) * distanceUnitScale;
-    const float farPlane = static_cast<float>(pCamera->far_plane) * distanceUnitScale;
+    const float nearPlane = static_cast<float>(pCamera->near_plane) * distanceScale;
+    const float farPlane = static_cast<float>(pCamera->far_plane) * distanceScale;
     if (nearPlane > 0.0f)
         pOut->NearClip = nearPlane;
     if (farPlane > pOut->NearClip)
@@ -831,34 +808,6 @@ std::unordered_map<const ufbx_material *, int32_t> ImportMaterials(
 }
 
 //------------------------------------------------------------------------------------------------
-// Accumulated scale of all strict ancestors (parent, grandparent, ...) up to but not
-// including the root node.
-//
-// Canvas's scene graph composes child transforms as parent_rotation * child_local_T +
-// parent_translation -- it does NOT propagate parent SCALE to child translations.  The
-// importer also drops per-node scale (geometry already carries it under MODIFY_GEOMETRY).
-//
-// FBX/Blender stores the unit conversion (e.g. metre->cm = x100) as a per-object scale on
-// top-level nodes.  A child node's local translation is therefore expressed in the parent's
-// pre-scale space.  To land children at the correct world offset in Canvas's scale-free
-// hierarchy, we bake the parent's accumulated scale into each child's local translation
-// (and into its animation keyframes).
-//
-// NOTE: This assumes parent scale is not itself animated -- a limitation inherent to a
-// scene graph without hierarchical scale.
-Math::FloatVector4 ComputeParentAccumScale(_In_ const ufbx_node* pNode)
-{
-    Math::FloatVector4 s(1.0f, 1.0f, 1.0f, 0.0f);
-    for (const ufbx_node* p = pNode->parent; p && !p->is_root; p = p->parent)
-    {
-        s.X *= static_cast<float>(p->local_transform.scale.x);
-        s.Y *= static_cast<float>(p->local_transform.scale.y);
-        s.Z *= static_cast<float>(p->local_transform.scale.z);
-    }
-    return s;
-}
-
-//------------------------------------------------------------------------------------------------
 // Extract the "action name" from a Blender-style "ObjectName|ActionName" AnimationStack name.
 // Returns the full name when no '|' separator is present (non-Blender exporters).
 static std::string ExtractActionName(const std::string& stackName)
@@ -875,8 +824,7 @@ static std::string ExtractActionName(const std::string& stackName)
 static void BakedNodeToTrack(
     _In_    const ufbx_baked_node&    bn,
     _In_    double                    clipBegin,
-    _In_    const Math::FloatVector4& translationScale, // unit_meters * parent accumulated scale
-    _In_    const Math::FloatVector4& restScale,        // node's rest local scale (phantom unit scale)
+    _In_    const RootFold*           pRootFold,  // non-null for top-level nodes
     _Inout_ ImportedAnimationTrack*   pOut)
 {
     std::vector<double> times;
@@ -898,25 +846,13 @@ static void BakedNodeToTrack(
         const ufbx_quat r = ufbx_evaluate_baked_quat(bn.rotation_keys,    absTime);
         const ufbx_vec3 s = ufbx_evaluate_baked_vec3(bn.scale_keys,       absTime);
 
-        // Scale is normalised against the node's rest scale so the phantom unit-baking
-        // scale (e.g. 100 from a Blender cm export) cancels to 1 -- matching the static
-        // import, which drops node scale entirely.  Genuine scale animation survives as a
-        // ratio relative to rest.  Guard against a zero rest component.
-        const float invRx = (std::abs(restScale.X) > 1e-8f) ? 1.0f / restScale.X : 0.0f;
-        const float invRy = (std::abs(restScale.Y) > 1e-8f) ? 1.0f / restScale.Y : 0.0f;
-        const float invRz = (std::abs(restScale.Z) > 1e-8f) ? 1.0f / restScale.Z : 0.0f;
-
         ImportedAnimationKeyframe kf;
         kf.Time        = static_cast<float>(absTime - clipBegin);
-        kf.Translation = Math::FloatVector4(
-            static_cast<float>(t.x) * translationScale.X,
-            static_cast<float>(t.y) * translationScale.Y,
-            static_cast<float>(t.z) * translationScale.Z, 0.0f);
+        kf.Translation = ToCanvasVector(t);
         kf.Rotation    = ToCanvasQuaternion(r);
-        kf.Scale       = Math::FloatVector4(
-            static_cast<float>(s.x) * invRx,
-            static_cast<float>(s.y) * invRy,
-            static_cast<float>(s.z) * invRz, 0.0f);
+        kf.Scale       = ToCanvasVector(s);
+        if (pRootFold)
+            pRootFold->Apply(kf.Translation, kf.Rotation, kf.Scale);
         pOut->Keyframes.push_back(kf);
     }
 }
@@ -933,7 +869,7 @@ static void BakedNodeToTrack(
 // so all rotation orders (including UFBX_ROTATION_ORDER_SPHERIC) are handled correctly.
 void ImportAnimationClips(
     _In_ const ufbx_scene* pLoaded,
-    _In_ float sceneDistanceScale,
+    _In_ const RootFold& rootFold,
     _In_ const std::unordered_map<const ufbx_node*, int32_t>& nodeMap,
     _Inout_ ImportedScene* pScene)
 {
@@ -1002,24 +938,10 @@ void ImportAnimationClips(
             const auto itNode = nodeMap.find(pNode);
             if (itNode == nodeMap.end()) continue;
 
-            // Keyframe translations need the same factor as the bind pose:
-            // unit_meters (source-unit -> metres) * parent's accumulated scale.
-            const Math::FloatVector4 parentScale = ComputeParentAccumScale(pNode);
-            const Math::FloatVector4 translationScale(
-                sceneDistanceScale * parentScale.X,
-                sceneDistanceScale * parentScale.Y,
-                sceneDistanceScale * parentScale.Z, 0.0f);
-
-            // Rest scale used to normalise the node's own animated scale (drops the
-            // phantom unit-baking scale to match the static import).
-            const Math::FloatVector4 restScale(
-                static_cast<float>(pNode->local_transform.scale.x),
-                static_cast<float>(pNode->local_transform.scale.y),
-                static_cast<float>(pNode->local_transform.scale.z), 0.0f);
-
             ImportedAnimationTrack track;
             track.NodeIndex = itNode->second;
-            BakedNodeToTrack(bn, pBaked->playback_time_begin, translationScale, restScale, &track);
+            const bool topLevel = pNode->parent && pNode->parent->is_root;
+            BakedNodeToTrack(bn, pBaked->playback_time_begin, topLevel ? &rootFold : nullptr, &track);
 
             if (!track.Keyframes.empty())
             {
@@ -1079,8 +1001,8 @@ HRESULT ImportScene(
         UFBX_COORDINATE_AXIS_POSITIVE_Z,
         UFBX_COORDINATE_AXIS_NEGATIVE_Y,
     };
-    // Keep source unit scale here; forcing target_unit_meters introduced a 100x shrink
-    // for this asset's mesh geometry in runtime diagnostics.
+    // Canvas world units are meters.
+    loadOpts.target_unit_meters = 1.0;
 
     // Canvas cameras use a different local basis than world geometry:
     //   +X = forward, +Y = left, +Z = up
@@ -1106,6 +1028,43 @@ HRESULT ImportScene(
 
     ufbx_error err = { 0 };
     ufbx_scene *pLoaded = ufbx_load_file(utf8Path.c_str(), &loadOpts, &err);
+
+    // Unit conversion. Most exporters (Maya and others using the FBX SDK) write vertices
+    // and translations in the declared unit with unit node scale, so ufbx converts the
+    // geometry and translations to meters (MODIFY_GEOMETRY) and nodes stay unscaled.
+    //
+    // Blender writes vertices in meters but declares centimeters, and puts a x100 scale on
+    // every top-level object to make up the difference. Converting its geometry would
+    // shrink the vertices and leave the x100 on the nodes. Instead the file is reloaded
+    // with the conversion (x0.01 plus the axis change) on the ufbx root, and that root
+    // transform is folded into the top-level nodes: their x100 becomes x1, vertices and
+    // child nodes are untouched, and every node comes out with unit scale.
+    RootFold rootFold;
+    if (pLoaded && (pLoaded->metadata.exporter == UFBX_EXPORTER_BLENDER_BINARY ||
+                    pLoaded->metadata.exporter == UFBX_EXPORTER_BLENDER_ASCII))
+    {
+        ufbx_load_opts rootOpts = loadOpts;
+        rootOpts.space_conversion = UFBX_SPACE_CONVERSION_TRANSFORM_ROOT;
+        ufbx_scene *pRootLoaded = ufbx_load_file(utf8Path.c_str(), &rootOpts, &err);
+        const ufbx_vec3 rootScale = pRootLoaded ? pRootLoaded->root_node->local_transform.scale : ufbx_vec3{};
+        if (pRootLoaded && rootScale.x > 0.0f && rootScale.x == rootScale.y && rootScale.x == rootScale.z)
+        {
+            ufbx_free_scene(pLoaded);
+            pLoaded = pRootLoaded;
+
+            const ufbx_transform &root = pLoaded->root_node->local_transform;
+            rootFold.Enabled        = true;
+            rootFold.Translation    = ToCanvasVector(root.translation);
+            rootFold.Rotation       = ToCanvasQuaternion(root.rotation);
+            rootFold.RotationMatrix = Math::QuaternionToRotationMatrix(rootFold.Rotation);
+            rootFold.Scale          = static_cast<float>(rootScale.x);
+        }
+        else if (pRootLoaded)
+        {
+            ufbx_free_scene(pRootLoaded);
+        }
+    }
+
     if (!pLoaded)
     {
         std::string message = "ufbx failed to load file: ";
@@ -1136,13 +1095,6 @@ HRESULT ImportScene(
         return E_FAIL;
     }
 
-    // Distance/unit scale applied to node translations.  FBX stores positions in the
-    // source unit (often centimetres for Blender exports); unit_meters converts to metres
-    // to match the geometry scale used elsewhere in the renderer.
-    float sceneDistanceScale = 1.0f;
-    if (pLoaded->settings.unit_meters > 0.0)
-        sceneDistanceScale = static_cast<float>(pLoaded->settings.unit_meters);
-
     std::unordered_map<const ufbx_node*, int32_t> nodeMap;
     nodeMap.reserve(pLoaded->nodes.count);
 
@@ -1161,20 +1113,21 @@ HRESULT ImportScene(
         if (node.Name.empty())
             node.Name = "Node_" + std::to_string(ni);
 
-        const Math::FloatMatrix4x4 localMatrix = ToCanvasAffineMatrix(pNode->node_to_parent);
+        // ufbx's local TRS composes the same way as a Canvas node (S * R * T, then the
+        // parent), so it carries over unchanged.
+        node.Translation = ToCanvasVector(pNode->local_transform.translation);
+        node.Rotation    = ToCanvasQuaternion(pNode->local_transform.rotation);
+        node.Scale       = ToCanvasVector(pNode->local_transform.scale);
+        if (pNode->parent && pNode->parent->is_root)
+            rootFold.Apply(node.Translation, node.Rotation, node.Scale);
 
-        // Bake the parent's accumulated scale into the child's local translation so it
-        // lands correctly in Canvas's scale-free scene-graph hierarchy. (See
-        // ComputeParentAccumScale.)  Top-level nodes have an empty parent chain, so this
-        // is the identity for them.
-        const Math::FloatVector4 parentScale = ComputeParentAccumScale(pNode);
-        node.Translation = Math::FloatVector4(
-            localMatrix[3][0] * sceneDistanceScale * parentScale.X,
-            localMatrix[3][1] * sceneDistanceScale * parentScale.Y,
-            localMatrix[3][2] * sceneDistanceScale * parentScale.Z,
-            0.0f);
-        node.Rotation = ToCanvasNodeRotation(pNode, pScene);
-        node.Scale = ExtractCanvasScale(localMatrix);
+        // Unit conversion leaves every node unscaled, so remaining scale was authored (or
+        // comes from an export setting this importer does not recognize).
+        const float maxScaleError = std::max({ std::abs(node.Scale.X - 1.0f), std::abs(node.Scale.Y - 1.0f), std::abs(node.Scale.Z - 1.0f) });
+        if (maxScaleError > 1e-4f)
+            AddDiag(pScene, DiagLevel::Info,
+                "Node '" + node.Name + "' has scale (" + std::to_string(node.Scale.X) + ", " +
+                std::to_string(node.Scale.Y) + ", " + std::to_string(node.Scale.Z) + ")");
 
         node.ParentIndex = -1;
         pScene->Nodes.push_back(node);
@@ -1234,7 +1187,6 @@ HRESULT ImportScene(
                         }
                     }
 
-                    pScene->SceneBounds.ExpandToInclude(importedMesh.Bounds);
                     pScene->Meshes.push_back(std::move(importedMesh));
                     const int32_t meshIndex = static_cast<int32_t>(pScene->Meshes.size() - 1);
                     meshMap[pMesh] = meshIndex;
@@ -1244,6 +1196,12 @@ HRESULT ImportScene(
             else
             {
                 outNode.MeshIndex = itMesh->second;
+            }
+
+            if (outNode.MeshIndex >= 0)
+            {
+                const Math::AABB &meshBounds = pScene->Meshes[static_cast<size_t>(outNode.MeshIndex)].Bounds;
+                pScene->SceneBounds.ExpandToInclude(meshBounds.Transform(ToCanvasAffineMatrix(pNode->geometry_to_world)));
             }
         }
 
@@ -1276,7 +1234,7 @@ HRESULT ImportScene(
             if (itCamera == cameraMap.end())
             {
                 ImportedCamera importedCamera;
-                if (ImportCamera(pCamera, sceneDistanceScale, &importedCamera, pScene))
+                if (ImportCamera(pCamera, rootFold.Scale, &importedCamera, pScene))
                 {
                     pScene->Cameras.push_back(std::move(importedCamera));
                     const int32_t cameraIndex = static_cast<int32_t>(pScene->Cameras.size() - 1);
@@ -1303,7 +1261,7 @@ HRESULT ImportScene(
 
     // Extract animation clips (FBX AnimationStacks / Blender Actions).
     // Must happen before ufbx_free_scene while the ufbx data is still live.
-    ImportAnimationClips(pLoaded, sceneDistanceScale, nodeMap, pScene);
+    ImportAnimationClips(pLoaded, rootFold, nodeMap, pScene);
 
     ufbx_free_scene(pLoaded);
 
@@ -1601,11 +1559,7 @@ Gem::Result BuildModel(
         pNode->SetName(nodeName.c_str());
         pNode->SetLocalTranslation(srcNode.Translation);
         pNode->SetLocalRotation(srcNode.Rotation);
-        // Intentionally do not propagate srcNode.Scale: ufbx is configured with
-        // UFBX_SPACE_CONVERSION_MODIFY_GEOMETRY (units baked into vertices) and
-        // UFBX_INHERIT_MODE_HANDLING_HELPER_NODES (inherit-mode compensation baked
-        // into helper-node matrices). Applying those row magnitudes as a Canvas
-        // node-local scale would double-count and deform the model.
+        pNode->SetLocalScale(srcNode.Scale);
 
         // Bind mesh instance
         if (srcNode.MeshIndex >= 0 && static_cast<size_t>(srcNode.MeshIndex) < meshDataByIndex.size())
@@ -1717,32 +1671,11 @@ Gem::Result BuildModel(
             boneNodes.push_back(pBone);
         }
 
-        // Compute InvBindPose from Canvas node matrices so the bone matrices are
-        // consistent with GetGlobalMatrix() at draw time (same coordinate system,
-        // no ufbx-scale baked in). The nodes currently hold their rest (default) pose,
-        // loaded by BuildModel from the FBX node transforms; for this asset rest == bind,
-        // so the rest global matrix is the bind matrix.
-        //
-        // InvBind[i] = G_mesh_canvas * inverse(G_bone_canvas_bindpose)
-        // -> at bind pose: InvBind[i] * G_bone_canvas = G_mesh_canvas ✓
-        //
-        // (Using the FBX cluster geometry_to_bone directly was tried and broke the static
-        // pose: it is authored in a frame that does not match Canvas node-world space.)
-        const Canvas::Math::FloatMatrix4x4 meshWorld = pMeshNode->GetGlobalMatrix();
-        std::vector<Canvas::Math::FloatMatrix4x4> invBindPoses(boneCount);
-        for (uint32_t i = 0; i < boneCount; ++i)
-        {
-            if (boneNodes[i])
-                invBindPoses[i] = meshWorld * Canvas::Math::AffineInverse(boneNodes[i]->GetGlobalMatrix());
-            else
-                invBindPoses[i] = Canvas::Math::FloatMatrix4x4::Identity();
-        }
-
         Canvas::XModel::MeshSkinDesc skinDesc{};
         skinDesc.pMeshNode    = pMeshNode;
         skinDesc.BoneCount    = boneCount;
         skinDesc.ppBoneNodes  = boneNodes.data();
-        skinDesc.pInvBindPoses = invBindPoses.data();
+        skinDesc.pInvBindPoses = srcMesh.Skin.InvBindPoses.data();
         gr = pModel->AddMeshSkin(&skinDesc);
         if (Gem::Failed(gr))
             Canvas::LogWarn(pLogger, "BuildModel: failed to add skin for mesh '%s'", srcMesh.Name.c_str());

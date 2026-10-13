@@ -1126,6 +1126,41 @@ TEST(CanvasInterfacesTest, ModelInstantiateTransformIndependence)
     EXPECT_TRUE(AlmostEqual(pCloned2A->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 1.0f)));
 }
 
+TEST(CanvasInterfacesTest, ModelInstantiateCopiesTransforms)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XModel> pModel;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
+
+    const FloatVector4 translation(1.0f, 2.0f, 3.0f, 0.0f);
+    const FloatQuaternion rotation = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, 0.5f);
+    const FloatVector4 scale(100.0f, 2.0f, 0.5f, 0.0f);
+
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNode, "Scaled")));
+    pNode->SetLocalTranslation(translation);
+    pNode->SetLocalRotation(rotation);
+    pNode->SetLocalScale(scale);
+    EXPECT_TRUE(Succeeded(pModel->GetRootNode()->AddChild(pNode)));
+
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+
+    Canvas::ModelInstantiateResult result{};
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    Canvas::XSceneGraphNode *pClone = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pClone, nullptr);
+
+    EXPECT_TRUE(AlmostEqual(pClone->GetLocalTranslation(), translation));
+    EXPECT_TRUE(AlmostEqual(pClone->GetLocalRotation(), rotation));
+    EXPECT_TRUE(AlmostEqual(pClone->GetLocalScale(), scale));
+}
+
 TEST(CanvasInterfacesTest, ModelActiveCameraInstantiation)
 {
     using namespace Canvas::Math;
