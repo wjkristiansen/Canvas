@@ -175,6 +175,7 @@ struct ALIGN16 HlslPerObjectConstants
 struct ALIGN16 HlslDisplacedConstants
 {
     ROW_MAJOR float4x4 World;        // Per-tile world transform applied to mesh-local CP positions
+    ROW_MAJOR float4x4 WorldInvTranspose;  // Normal transform for World (no translation)
     float  MapScale;                 // World units per [0, 1] displacement-map sample
     float  MapBias;                  // World units added after scale
     uint   _Pad0;

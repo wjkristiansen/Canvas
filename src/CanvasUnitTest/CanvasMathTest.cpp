@@ -264,6 +264,55 @@ TEST(CanvasMathTest, AffineInverse)
     ExpectIdentity(Canvas::Math::AffineInverse(singular));
 }
 
+TEST(CanvasMathTest, NormalMatrix)
+{
+    // Rotation with non-uniform scale and a translation.
+    FloatMatrix4x4 m = ZRotationMatrix<float>(0.7f);
+    const float sx = 2.0f, sy = 0.5f, sz = 3.0f;
+    for (int c = 0; c < 3; ++c)
+    {
+        m[0][c] *= sx;
+        m[1][c] *= sy;
+        m[2][c] *= sz;
+    }
+    m[3][0] = 4.0f; m[3][1] = -7.0f; m[3][2] = 11.0f; m[3][3] = 1.0f;
+
+    // A plane spanned by t1 and t2, with normal n.
+    const FloatVector4 t1(1.0f, 1.0f, 0.0f, 0.0f);
+    const FloatVector4 t2(0.0f, 0.0f, 1.0f, 0.0f);
+    const FloatVector4 n(1.0f, -1.0f, 0.0f, 0.0f);
+
+    // The transformed normal stays perpendicular to the transformed plane.
+    const FloatMatrix4x4 nm = Canvas::Math::NormalMatrix(m);
+    const FloatVector4 nWorld = n * nm;
+    EXPECT_NEAR(DotProduct(nWorld, t1 * m), 0.0f, 1e-5f);
+    EXPECT_NEAR(DotProduct(nWorld, t2 * m), 0.0f, 1e-5f);
+
+    // Transforming the normal by m itself does not, under non-uniform scale.
+    EXPECT_GT(std::abs(DotProduct(n * m, t1 * m)), 0.1f);
+
+    // No translation.
+    EXPECT_TRUE(AlmostEqual(nm[3], FloatVector4(0.0f, 0.0f, 0.0f, 1.0f)));
+
+    // A tiny uniform scale (determinant ~1e-15) still rotates the normal.
+    const float tiny = 1e-5f;
+    const FloatMatrix4x4 r = ZRotationMatrix<float>(0.7f);
+    FloatMatrix4x4 scaled = r;
+    for (int row = 0; row < 3; ++row)
+        for (int c = 0; c < 3; ++c)
+            scaled[row][c] *= tiny;
+    const FloatVector4 nSmall = (n * Canvas::Math::NormalMatrix(scaled)).Normalize();
+    const FloatVector4 nRotated = (n * r).Normalize();
+    EXPECT_TRUE(AlmostEqual(nSmall, nRotated));
+
+    // A mirror keeps the normal facing outward: reflecting across the X = 0 plane
+    // maps the +X normal of that plane's front side to -X.
+    FloatMatrix4x4 mirror = FloatMatrix4x4::Identity();
+    mirror[0][0] = -1.0f;
+    const FloatVector4 nMirrored = (FloatVector4(1.0f, 0.0f, 0.0f, 0.0f) * Canvas::Math::NormalMatrix(mirror)).Normalize();
+    EXPECT_TRUE(AlmostEqual(nMirrored, FloatVector4(-1.0f, 0.0f, 0.0f, 0.0f)));
+}
+
 TEST(CanvasMathTest, LookAt)
 {
     // ComposePointToBasisVectors is a general utility that works with any coordinate system.

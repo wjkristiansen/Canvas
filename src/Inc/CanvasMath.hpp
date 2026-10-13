@@ -759,6 +759,35 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
+        // Normal transform for the row-vector affine matrix m: n' = n * NormalMatrix(m) keeps n'
+        // perpendicular to every surface direction t' = t * m. It is the inverse-transpose of
+        // m's linear block up to a positive scale, with no translation: the rows are the
+        // cofactors of the linear block, negated when its determinant is negative so normals
+        // keep facing outward under mirroring. Working from cofactors needs no singularity
+        // cutoff, so very small scales keep their rotation. n' is not unit length; renormalize.
+        template<class _Type>
+        TMatrix<_Type, 4, 4> NormalMatrix(const TMatrix<_Type, 4, 4> &m)
+        {
+            TMatrix<_Type, 4, 4> n = TMatrix<_Type, 4, 4>::Identity();
+            for (int i = 0; i < 3; ++i)
+            {
+                const auto &a = m[(i + 1) % 3];
+                const auto &b = m[(i + 2) % 3];
+                n[i][0] = a[1] * b[2] - a[2] * b[1];
+                n[i][1] = a[2] * b[0] - a[0] * b[2];
+                n[i][2] = a[0] * b[1] - a[1] * b[0];
+            }
+            const _Type det = m[0][0] * n[0][0] + m[0][1] * n[0][1] + m[0][2] * n[0][2];
+            if (det < 0)
+            {
+                for (int i = 0; i < 3; ++i)
+                    for (int j = 0; j < 3; ++j)
+                        n[i][j] = -n[i][j];
+            }
+            return n;
+        }
+
+        //------------------------------------------------------------------------------------------------
         using FloatMatrix2x2 = TMatrix<float, 2, 2>;
         using FloatMatrix3x3 = TMatrix<float, 3, 3>;
         using FloatMatrix4x4 = TMatrix<float, 4, 4>;

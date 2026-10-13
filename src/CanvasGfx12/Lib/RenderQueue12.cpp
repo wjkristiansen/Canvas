@@ -2034,11 +2034,8 @@ Gem::Result CRenderQueue12::DrawMesh(
         static_assert(sizeof(objectConstants.World) == sizeof(worldTransform),
                       "HlslTypes::float4x4 and Math::FloatMatrix4x4 must be layout-compatible");
         memcpy(&objectConstants.World, &worldTransform, sizeof(objectConstants.World));
-        memcpy(&objectConstants.WorldInvTranspose, &worldTransform, sizeof(objectConstants.WorldInvTranspose));
-        objectConstants.WorldInvTranspose.m[3][0] = 0.0f;
-        objectConstants.WorldInvTranspose.m[3][1] = 0.0f;
-        objectConstants.WorldInvTranspose.m[3][2] = 0.0f;
-        objectConstants.WorldInvTranspose.m[3][3] = 1.0f;
+        const Canvas::Math::FloatMatrix4x4 normalMatrix = Canvas::Math::NormalMatrix(worldTransform);
+        memcpy(&objectConstants.WorldInvTranspose, &normalMatrix, sizeof(objectConstants.WorldInvTranspose));
         memcpy(&objectConstants.BaseColorFactor,    &baseColorFactor,    sizeof(objectConstants.BaseColorFactor));
         memcpy(&objectConstants.EmissiveFactor,     &emissiveFactor,     sizeof(objectConstants.EmissiveFactor));
         memcpy(&objectConstants.RoughMetalAOFactor, &roughMetalAOFactor, sizeof(objectConstants.RoughMetalAOFactor));
@@ -3147,6 +3144,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                     // for the world transform + displacement decode.
                     HlslTypes::HlslDisplacedConstants tileCb = {};
                     memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
+                    const Canvas::Math::FloatMatrix4x4 tileNormalMatrix = Canvas::Math::NormalMatrix(sub.World);
+                    memcpy(&tileCb.WorldInvTranspose, &tileNormalMatrix, sizeof(tileCb.WorldInvTranspose));
                     tileCb.MapScale = sub.MapScale;
                     tileCb.MapBias  = sub.MapBias;
 
@@ -3306,6 +3305,8 @@ GEMMETHODIMP CRenderQueue12::EndFrame()
                 // ---- Per-tile constant buffer ----
                 HlslTypes::HlslDisplacedConstants tileCb = {};
                 memcpy(&tileCb.World, &sub.World, sizeof(tileCb.World));
+                const Canvas::Math::FloatMatrix4x4 tileNormalMatrix = Canvas::Math::NormalMatrix(sub.World);
+                memcpy(&tileCb.WorldInvTranspose, &tileNormalMatrix, sizeof(tileCb.WorldInvTranspose));
                 tileCb.MapScale = sub.MapScale;
                 tileCb.MapBias  = sub.MapBias;
 
