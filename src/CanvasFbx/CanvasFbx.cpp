@@ -994,12 +994,14 @@ HRESULT ImportScene(
 
     ufbx_load_opts loadOpts = { 0 };
     loadOpts.generate_missing_normals = options.GenerateNormals;
-    // Scene/world conversion: preserve the original Canvas scene basis used elsewhere in the
-    // renderer (X-right, Z-up, forward = +Y because `front` is opposite from forward in ufbx).
+    // Scene/world conversion to the Canvas local basis: +X = forward, +Y = left, +Z = up.
+    // ufbx `front` is the direction a model faces (Maya content faces +Z, Blender -Y), and
+    // ufbx `right` is the viewer's right when facing the model, i.e. the model's left. So a
+    // model's front maps to +X and its left to +Y.
     loadOpts.target_axes = ufbx_coordinate_axes{
-        UFBX_COORDINATE_AXIS_POSITIVE_X,
+        UFBX_COORDINATE_AXIS_POSITIVE_Y,
         UFBX_COORDINATE_AXIS_POSITIVE_Z,
-        UFBX_COORDINATE_AXIS_NEGATIVE_Y,
+        UFBX_COORDINATE_AXIS_POSITIVE_X,
     };
     // Canvas world units are meters.
     loadOpts.target_unit_meters = 1.0;
