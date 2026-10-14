@@ -135,6 +135,41 @@ A file whose writer never completed `Close` still has a zero `BundleTableOffset`
 
 Relationships between assets - a node's parent, the mesh a node instances, the material a mesh group draws with - are stored as the intra-bundle asset index of the referenced asset (see [Assets](#assets)). Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
 
+### Conventions
+
+Every payload stores values in the Canvas engine's own conventions, so a loader passes them to the engine unconverted. Converting from a source format's conventions is the writer's job (for example `cpkgbuilder` and its importers).
+
+**Canvas space** is the engine's world and scene-graph coordinate system (see [Coordinate System and Local Basis](../../README.md#coordinate-system-and-local-basis)):
+
+- Right-handed, with +Z up.
+- Linear units are meters. This covers translations, positions, bounds, light `Range`, camera clip distances, and displacement `MapScale`/`MapBias`.
+- Matrices use the row-vector convention, `v' = v * M`, with translation in row 3 (see [Row-Vector Matrix Convention](../../README.md#row-vector-matrix-convention)).
+- Rotations are unit quaternions stored XYZW.
+- A camera or light node faces along its local +X axis, with +Y to its left and +Z up.
+- A triangle's front face has counter-clockwise winding when viewed from the side its normal points toward.
+- `CpkgVertexTangent::XYZW[3]` is +1 or -1, and the bitangent is `XYZW[3] * cross(N, T)`.
+- Angles are radians and times are seconds.
+
+**Colors.** Every color stored as `float` is linear RGB with straight (non-premultiplied) alpha where alpha is meaningful. This covers `BaseColorFactor`, `EmissiveFactor` (its alpha is unused), and `CpkgLightData::Color`. These values are not sRGB-encoded.
+
+**Image color space depends on the binding role, not on the image.** `CpkgImageData` stores no color space. A loader decides how to decode an image from the `CpkgMaterialData` field that references it:
+
+| Role | Texture index field | Interpretation |
+|---|---|---|
+| Albedo | `AlbedoTextureIndex` | sRGB-encoded color, decoded to linear when sampled |
+| Emissive | `EmissiveTextureIndex` | sRGB-encoded color, decoded to linear when sampled |
+| Normal | `NormalTextureIndex` | Linear data |
+| Roughness | `RoughnessTextureIndex` | Linear data |
+| Metallic | `MetallicTextureIndex` | Linear data |
+| Ambient occlusion | `AmbientOcclusionTextureIndex` | Linear data |
+| Displacement | `Displacement.DisplacementMapTextureIndex` | Linear data |
+
+The sRGB rule covers integer-valued pixel data only. Floating-point pixel data, such as a floating-point TIFF, is always linear, in every role.
+
+One `Image` asset may be referenced in both a color role and a linear role. This is valid, and the loader must honor each binding's interpretation: for example, it can create one GPU texture per interpretation, or one resource with an sRGB view and a linear view where the backend supports both. A writer that wants a single interpretation stores two `Image` assets.
+
+The engine does not yet implement the sRGB half of this rule. `GfxFormat` has no sRGB formats, and the backend samples every material texture as UNorm with no decode. Until it does, a loader that follows this rule must convert color-role images to linear itself before upload.
+
 ### AssetType
 
 ```cpp
@@ -303,7 +338,7 @@ struct CpkgSceneNodeData
 {
     int32_t   ParentIndex        = -1;  // asset index of the parent SceneNode; -1 = root
     float     LocalTranslation[3];
-    float     LocalRotation[4];         // unit quaternion, XYZW, Canvas space
+    float     LocalRotation[4];         // unit quaternion, XYZW, Canvas space (see Conventions)
     float     LocalScale[3];
     int32_t   MeshDataIndex      = -1;  // asset index of a MeshData this node instances; -1 = none
     int32_t   CameraIndex        = -1;  // asset index of a Camera this node instances; -1 = none
@@ -383,8 +418,8 @@ struct CpkgDisplacementData
 
 struct CpkgMaterialData
 {
-    float  BaseColorFactor[4];      // RGBA
-    float  EmissiveFactor[4];       // RGBA
+    float  BaseColorFactor[4];      // linear RGBA
+    float  EmissiveFactor[4];       // linear RGB, A unused
     float  RoughMetalAOFactor[4];   // R=Roughness, G=Metallic, B=AmbientOcclusion, A=spare
 
     int32_t AlbedoTextureIndex           = -1;  // asset index of an Image; -1 = none, one per MaterialLayerRole
@@ -503,7 +538,7 @@ Corresponds to `XLight`'s settable state (`Light.h`): light type, color/intensit
 struct CpkgLightData
 {
     LightType Type                 = LightType::Point;
-    float     Color[4]             = { 1.0f, 1.0f, 1.0f, 1.0f };  // RGBA
+    float     Color[4]             = { 1.0f, 1.0f, 1.0f, 1.0f };  // linear RGBA
     float     Intensity            = 1.0f;
     LightFlags Flags               = LightFlags::Enabled;
 
@@ -801,12 +836,10 @@ Directions the current design leaves room for. None are committed plans:
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **Undefined spatial and color conventions.** "Canvas space" is never defined - handedness, up axis, and linear units should be stated here or linked. Color spaces are likewise unstated: whether `BaseColorFactor`/`EmissiveFactor` are linear, and how a loader decides whether to decode an `Image` as sRGB or linear when a single image asset can be bound to both color and non-color roles.
+1. **No mapping from a bundle to engine objects.** [CanvasPkg](#canvaspkg) says `CCpkgReader` is used to build world instances, but this document does not say how a bundle's `SceneNode` assets become an `XModel` (or several), whether a bundle may contain multiple roots (`ParentIndex = -1`), or where that loader code lives, given that CanvasPkg links no Canvas library.
 
-2. **No mapping from a bundle to engine objects.** [CanvasPkg](#canvaspkg) says `CCpkgReader` is used to build world instances, but this document does not say how a bundle's `SceneNode` assets become an `XModel` (or several), whether a bundle may contain multiple roots (`ParentIndex = -1`), or where that loader code lives, given that CanvasPkg links no Canvas library.
+2. **Degenerate mesh records are undefined.** Specify whether a `CpkgMeshData` may have zero groups, whether a group may have zero vertices, and whether `BoneIndices` without `BoneWeights` (or the reverse) is corrupt; presumably the two must be present or absent together.
 
-3. **Degenerate mesh records are undefined.** Specify whether a `CpkgMeshData` may have zero groups, whether a group may have zero vertices, and whether `BoneIndices` without `BoneWeights` (or the reverse) is corrupt; presumably the two must be present or absent together.
+3. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
 
-4. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
-
-5. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
+4. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
