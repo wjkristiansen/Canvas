@@ -244,7 +244,8 @@ class CApp
             fov = std::clamp(pCamera->GetFovAngle(), 0.2f, 2.8f);
 
         const float distance = std::max(2.0f, (radius / tanf(fov * 0.5f)) * 1.35f);
-        const Canvas::Math::FloatVector4 viewDir = Canvas::Math::FloatVector4(0.55f, 0.55f, 0.35f, 0.0f).Normalize();
+        // Imported models face +X; view them from their front-right.
+        const Canvas::Math::FloatVector4 viewDir = Canvas::Math::FloatVector4(-0.55f, 0.55f, 0.35f, 0.0f).Normalize();
         const Canvas::Math::FloatVector4 cameraPosition = sceneCenter - viewDir * distance;
         const Canvas::Math::FloatVector4 basisForward = (sceneCenter - cameraPosition).Normalize();
         const Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);

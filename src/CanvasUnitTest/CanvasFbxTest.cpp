@@ -30,7 +30,7 @@ std::filesystem::path AssetPath(std::string_view name)
 ufbx_scene *LoadReference(const std::filesystem::path &path)
 {
     ufbx_load_opts opts = {};
-    opts.target_axes = { UFBX_COORDINATE_AXIS_POSITIVE_X, UFBX_COORDINATE_AXIS_POSITIVE_Z, UFBX_COORDINATE_AXIS_NEGATIVE_Y };
+    opts.target_axes = { UFBX_COORDINATE_AXIS_POSITIVE_Y, UFBX_COORDINATE_AXIS_POSITIVE_Z, UFBX_COORDINATE_AXIS_POSITIVE_X };
     opts.target_camera_axes = { UFBX_COORDINATE_AXIS_NEGATIVE_Y, UFBX_COORDINATE_AXIS_POSITIVE_Z, UFBX_COORDINATE_AXIS_NEGATIVE_X };
     opts.target_light_axes = opts.target_camera_axes;
     opts.target_unit_meters = 1.0f;
@@ -124,6 +124,19 @@ struct ImportedFixture
             if (Scene.Nodes[i].ParentIndex >= 0)
                 Nodes[static_cast<size_t>(Scene.Nodes[i].ParentIndex)]->AddChild(Nodes[i]);
         return true;
+    }
+
+    // World-space position of the imported node with the given name.
+    Math::FloatVector4 NodePosition(std::string_view name) const
+    {
+        for (size_t i = 0; i < Scene.Nodes.size(); ++i)
+            if (Scene.Nodes[i].Name == name)
+            {
+                const Math::FloatMatrix4x4 m = Nodes[i]->GetGlobalMatrix();
+                return Math::FloatVector4(m[3][0], m[3][1], m[3][2], 1.0f);
+            }
+        ADD_FAILURE() << "missing node " << name;
+        return Math::FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
     }
 
     const ufbx_node *RefNode(const ufbx_scene *pScene, size_t nodeIndex) const
@@ -248,6 +261,40 @@ TEST(CanvasFbxTest, BlenderGeometryIsInMeters)
     const float height = bounds.Max.Z - bounds.Min.Z;
     EXPECT_GT(height, 0.5f);
     EXPECT_LT(height, 2.0f);
+}
+
+// Imported characters must face +X with their left on +Y (the Canvas local basis): the left
+// hand sits on the +Y side of the right hand. Both assets face their file's front axis.
+static void ExpectLeftHandOnPositiveY(const ImportedFixture &f, std::string_view leftHand, std::string_view rightHand)
+{
+    const Math::FloatVector4 toLeft = f.NodePosition(leftHand) - f.NodePosition(rightHand);
+    EXPECT_GT(toLeft.Y, 0.0f) << "right-to-left hand (" << toLeft.X << ", " << toLeft.Y << ")";
+    EXPECT_GT(toLeft.Y, 4.0f * std::abs(toLeft.X)) << "right-to-left hand (" << toLeft.X << ", " << toLeft.Y << ")";
+}
+
+// Maya HumanIK character. A second, independent cue: the toes sit on the +X side of the head.
+TEST(CanvasFbxTest, MayaCharacterFacesPositiveX)
+{
+    ImportedFixture f;
+    if (!f.Load("ufbx:maya_character_7500_binary.fbx"))
+        GTEST_SKIP() << "FBX asset not available";
+
+    ExpectLeftHandOnPositiveY(f, "Character1_LeftHand", "Character1_RightHand");
+
+    const Math::FloatVector4 toes = (f.NodePosition("Character1_LeftToeBase") + f.NodePosition("Character1_RightToeBase")) * 0.5f;
+    const Math::FloatVector4 toToes = toes - f.NodePosition("Character1_Head");
+    EXPECT_GT(toToes.X, 0.0f) << "head-to-toes (" << toToes.X << ", " << toToes.Y << ")";
+    EXPECT_GT(toToes.X, 4.0f * std::abs(toToes.Y)) << "head-to-toes (" << toToes.X << ", " << toToes.Y << ")";
+}
+
+// Blender-authored character, modeled facing Blender's Front view (-Y).
+TEST(CanvasFbxTest, BlenderCharacterFacesPositiveX)
+{
+    ImportedFixture f;
+    if (!f.Load("Blocky.fbx"))
+        GTEST_SKIP() << "FBX asset not available";
+
+    ExpectLeftHandOnPositiveY(f, "Bone.LHand", "Bone.RHand");
 }
 
 TEST(CanvasFbxTest, AnimatedSkinMatchesUfbx)

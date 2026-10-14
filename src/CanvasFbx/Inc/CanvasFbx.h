@@ -7,7 +7,9 @@
 //
 // The importer converts all data to Canvas conventions on output:
 //   - Row-vector matrices (v' = v * M), translation in row[3]
-//   - Z-up coordinate system (X = right, Y = forward, Z = up)
+//   - Right-handed, Z-up world, in meters
+//   - Canvas local basis: +X = forward, +Y = left, +Z = up. A model's front
+//     faces +X, and cameras and lights look along their local +X
 //   - Positions / normals as FloatVector4 (W = 1 for positions, 0 for normals)
 //================================================================================================
 #pragma once
