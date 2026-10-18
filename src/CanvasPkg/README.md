@@ -33,7 +33,7 @@ Changing an on-disk struct changes the format.
 
 All values are little-endian. CanvasPkg supports only little-endian hosts, and `CanvasPkg.h` fails to compile on any other (`static_assert(std::endian::native == std::endian::little)`).
 
-Bundle and asset names are the only on-disk data that are not structs. Every such name is stored in a **name blob**: UTF-8 names concatenated with no length prefixes, separators, or terminators. The file has one blob holding every bundle name, and each bundle has one holding the names of its assets. A bundle or asset table entry locates its name by `NameOffset` and `NameLength` within the corresponding blob (see [Bundles](#bundles)).
+Names are the only on-disk data that are not structs. The package name is stored as UTF-8 bytes with no terminator, located by `CpkgFileHeader::PackageNameOffset` and `PackageNameLength`. Every bundle and asset name is stored in a **name blob**: UTF-8 names concatenated with no length prefixes, separators, or terminators. The file has one blob holding every bundle name, and each bundle has one holding the names of its assets. A bundle or asset table entry locates its name by `NameOffset` and `NameLength` within the corresponding blob (see [Bundles](#bundles)).
 
 Name blobs hold only the names of bundles and assets themselves. A name stored inside an asset payload, such as `CpkgAnimTrack::NodeName`, is not in a name blob: it is a `CpkgSpan<char>`, like any other variable-length array, with the same UTF-8 and no-terminator rules.
 
@@ -49,11 +49,13 @@ The reference graph this schema defines is acyclic, so an append order satisfyin
 
 ```
 Image <- Material <- MeshData <- SceneNode <- MeshSkin
-                                  ^     ^
-                           Camera-+     +-Light
+                                 |  |  ^
+                       Camera <--+  |  +-- Instance
+                                    v
+                                  Light
 ```
 
-`AnimationClip` binds tracks by node name and holds no indices, so it may be appended anywhere. The canonical order is: `Image`, `Material`, `MeshData`, `Camera`, `Light`, `SceneNode`, `MeshSkin`, `AnimationClip`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
+`AnimationClip` binds tracks by node name and holds no indices, so it may be appended anywhere. The canonical order is: `Image`, `Material`, `MeshData`, `Camera`, `Light`, `SceneNode`, `MeshSkin`, `Instance`, `AnimationClip`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
 
 `AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed. A reader may treat an out-of-order reference as a corrupt package (`Gem::Result::CorruptedData`).
 
@@ -80,8 +82,9 @@ struct CpkgFileHeader
     uint64_t BundleTableOffset;     // file offset of the file-level bundle table
     uint64_t BundleNameBlobOffset;  // file offset of the bundle name blob
     uint64_t BundleNameBlobSize;    // byte size of the bundle name blob
+    uint64_t PackageNameOffset;     // file offset of the package name
     uint32_t BundleCount;           // number of entries at BundleTableOffset
-    uint32_t Padding = 0;
+    uint32_t PackageNameLength;     // byte length of the package name; never 0
 };
 ```
 
@@ -121,11 +124,78 @@ A bundle's or asset's name is the `NameLength` bytes at `NameOffset` within the 
 
 Both tables and the name blobs are variable-length and grow as the writer appends, so none has a fixed, pre-reserved location. The writer accumulates each in memory and serializes it once, when the thing it describes is sealed.
 
-`Open` writes `CpkgFileHeader::Magic`/`Version` immediately, leaving the remaining header fields zero as placeholders. `BeginBundle` writes nothing to the file; it starts a new in-memory bundle table entry. `EndBundle` seals the open bundle: it appends that bundle's asset table and asset name blob at the current end of file and records their locations in the bundle's in-memory table entry. `Close` appends the file-level bundle table, immediately followed by the bundle name blob, then seeks back and overwrites the file header's placeholder fields to point at them.
+`Open` writes the file header immediately, followed by the package name. The header's `Magic`, `Version`, `PackageNameOffset`, and `PackageNameLength` hold their final values; the remaining fields are zero placeholders. `BeginBundle` writes nothing to the file; it starts a new in-memory bundle table entry. `EndBundle` seals the open bundle: it appends that bundle's asset table and asset name blob at the current end of file and records their locations in the bundle's in-memory table entry. `Close` appends the file-level bundle table, immediately followed by the bundle name blob, then seeks back and overwrites the file header's placeholder fields to point at them.
 
 Every write is therefore an append, except the single fixup of the file header in `Close`. No previously written payload, table, or name blob is moved or rewritten.
 
 A file whose writer never completed `Close` still has a zero `BundleTableOffset`, so `CCpkgReader::Open` rejects it as `Gem::Result::CorruptedData`.
+
+## Instantiation Model
+
+This section describes, at a high level, how the content of a package becomes objects in a Canvas world. The [Canvas engine spec](../../README.md) defines the actual mapping to engine objects (scene-graph nodes, `XModel`, GPU resources, physics bodies). What this section defines is what a package *declares*, so that any conforming loader instantiates it the same way.
+
+**The package declares structural roles; the engine user supplies gameplay meaning.** A package says what its content is and how the engine may treat it: whether something is a reusable template or placed in the world, whether a placement may move, and (later) what collision or scripts are attached.
+
+### Templates
+
+A **template** is a bundle that describes one instantiable thing (a goblin, a chair, a tree) as a hierarchy of `SceneNode` assets together with the meshes, materials, images, skins, and clips they reference. A template may also contain placements of other templates (see [Placements](#placements)). Instantiating a template creates a new copy of that hierarchy in the world. Every instance of a template shares the template's immutable resources (mesh data, materials, images, clips); each instance has its own nodes and transforms.
+
+A template's `SceneNode` assets may form more than one tree (more than one node with `ParentIndex = -1`). Instantiating a template always produces a single **instance root** node that carries the instance's transform; each of the template's root nodes becomes a child of that instance root. A loader therefore manipulates an instance as one unit no matter how many roots the bundle has.
+
+A template enters the world when something instantiates it: a placement (below), or the engine user at runtime (for example, spawning an enemy) by naming the bundle.
+
+### Placements
+
+A **placement** is an asset (`AssetType::Instance`) that instantiates a template at a transform with a declared [mobility](#mobility). A placement names its template by bundle name and, for a template in another package, by that package's declared name (`CCpkgReader::GetPackageName`). Templates are therefore shared across packages: world regions in several packages can each place a goblin template stored once in a shared characters package.
+
+```cpp
+// Draft schema.
+struct CpkgInstanceData
+{
+    CpkgSpan<char> PackageName;               // package holding the template; empty = this package
+    CpkgSpan<char> BundleName;                // template bundle; must be non-empty
+    int32_t        ParentIndex = -1;          // asset index of a SceneNode in this bundle; -1 = bundle root
+    float          LocalTranslation[3];
+    float          LocalRotation[4];          // unit quaternion, XYZW, Canvas space
+    float          LocalScale[3];
+    CpkgMobility   Mobility = CpkgMobility::Static;
+};
+```
+
+`ParentIndex` attaches a placement to a node of the template that contains it. For example, a house template can hang a lamp placement from one of its beam nodes. Like every intra-bundle reference, it must name an asset appended earlier. Because the template is referenced by name, only `ParentIndex` constrains where a placement is appended.
+
+Template references must form an acyclic graph.
+
+### World Regions
+
+A **world region** is a bundle whose assets are all placements. Each placement in a world region has `ParentIndex = -1`. A world region is instantiated once, with its instance root at the world origin, so its placements are positioned in world space. Content that exists only once in the world (a cathedral, a cliff face) is a template placed once. A large world can be divided into many world regions; a small game's entire level can be a single world region. The Canvas engine decides when each world region is instantiated and removed.
+
+### Mobility
+
+Each placement declares its **mobility**, which tells the engine which parts of the instance may change after instantiation:
+
+```cpp
+enum class CpkgMobility : uint32_t
+{
+    Static     = 0,   // transform and attributes are fixed
+    Stationary = 1,   // transform is fixed; attributes and node animation may change
+    Movable    = 2,   // transform, attributes, and node animation may change
+};
+```
+
+| Mobility | Example | What the engine may do |
+|---|---|---|
+| `Static` | A wall, a boulder | Bake lighting and shadows, merge or batch geometry, add it to static acceleration structures, and skip it in per-frame updates |
+| `Stationary` | A flickering lamp, a windmill turning its blades | Add it to static spatial structures, using bounds that enclose its animation, and skip transform propagation at its instance root |
+| `Movable` | A door, a cart, a goblin | Update it every frame |
+
+A placement's mobility covers the nodes of its own template. Each placement nested in that template declares its own mobility, so a `Static` house can contain a `Stationary` flickering lamp.
+
+An instance whose ancestor instances include a `Movable` one is effectively `Movable`, whatever its declared mobility, because its world transform changes with that ancestor. For example, a house placed `Movable` on a ship moves with the ship, and so does the `Static` furniture placed inside the house template. A template can therefore be placed anywhere, regardless of the mobility of its nested placements.
+
+### Resolving references across packages
+
+Resolving a placement's template, or any other cross-bundle or cross-package reference, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together. A reference to an unloaded package fails instantiation, and the loader reports the missing package.
 
 ## Package Data Types
 
@@ -184,6 +254,7 @@ enum class AssetType : uint32_t
     MeshSkin      = 6,
     Camera        = 7,
     Light         = 8,
+    Instance      = 9,   // a placement; see Instantiation Model
 };
 ```
 
@@ -580,7 +651,7 @@ The codes this API reports:
 | `Gem::Result::NotFound` | The named file does not exist |
 | `Gem::Result::IoError` | A read, write, or seek on the package file failed, or the writer could not create it |
 | `Gem::Result::DataNotRecognized` | The file is not a package: it is too short to hold a `CpkgFileHeader`, or its `Magic` does not match. The file may be valid data of some other kind |
-| `Gem::Result::CorruptedData` | The file is a package (its `Magic` matches) but its structure is damaged: a table, name blob, name, or payload outside the file, an empty bundle name, an unknown `AssetType` or `CpkgCodec`, a `CpkgCodec::None` asset whose `StoredSize` differs from its `RawSize`, or an out-of-order reference (see `CCpkgReader::Open`). From a payload helper: a payload too small for its header, or a span that breaks a [Payload Layout](#payload-layout) rule |
+| `Gem::Result::CorruptedData` | The file is a package (its `Magic` matches) but its structure is damaged: a table, name blob, name, or payload outside the file, an empty package or bundle name, an unknown `AssetType` or `CpkgCodec`, a `CpkgCodec::None` asset whose `StoredSize` differs from its `RawSize`, or an out-of-order reference (see `CCpkgReader::Open`). From a payload helper: a payload too small for its header, or a span that breaks a [Payload Layout](#payload-layout) rule |
 | `Gem::Result::OutOfRange` | The package's `Version` is outside this build's supported range |
 | `Gem::Result::AlreadyExists` | `CCpkgWriter::Open` was called on an existing file |
 | `Gem::Result::OutOfMemory` | An allocation for an in-memory table, directory, or scratch buffer failed |
@@ -626,7 +697,7 @@ The writer rejects any argument that would break a format rule or produce a file
 
 - **Call order**: `Open` while the writer is already open; `BeginBundle` or `CopyBundle` while a bundle is open; `AppendAsset` or `EndBundle` with no bundle open; `Close` while a bundle is open.
 - **`CopyBundle` source**: `reader` must be open and `bundleIndex` in range.
-- **Names** (`bundleName`, `name`, and the name a `CopyBundle` copy receives): must be valid UTF-8, must not contain a NUL byte, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A bundle name must be non-empty and unique within the package; an asset name may be empty, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
+- **Names** (`packageName`, `bundleName`, `name`, and the name a `CopyBundle` copy receives): must be valid UTF-8, must not contain a NUL byte, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A package name must be non-empty. A bundle name must be non-empty and unique within the package; an asset name may be empty, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
 - **`assetType`**: must be a named `AssetType` enumerator other than `AssetType::Unknown`.
 - **`codec`**: must be a named `CpkgCodec` enumerator.
 - **`data`**: must be non-empty. Every payload begins with its header struct (see [Package Data Types](#package-data-types)), so no asset type has an empty payload.
@@ -638,9 +709,9 @@ The reader does not recheck the name rules: a name that breaks them cannot cause
 
 **CCpkgWriter::Open**
 
-Creates `fileName` and opens it for write. Fails with `Gem::Result::AlreadyExists` if `fileName` already exists, leaving it untouched.
+Creates `fileName`, opens it for write, and writes the file header and `packageName`. `packageName` identifies the package in cross-package references (see [Instantiation Model](#instantiation-model)) and follows the same rules as a bundle name. Fails with `Gem::Result::AlreadyExists` if `fileName` already exists, leaving it untouched.
 
-`Gem::Result CCpkgWriter::Open(const char *fileName)`
+`Gem::Result CCpkgWriter::Open(const char *fileName, std::string_view packageName)`
 
 **CCpkgWriter::Close**
 
@@ -751,11 +822,12 @@ constexpr uint32_t kMaxSupportedVersion = 1;  // current format version this bui
 
 A file whose `Version` falls outside `[kMinSupportedVersion, kMaxSupportedVersion]` is rejected, including a file newer than `kMaxSupportedVersion`.
 
-`Open` then loads the package's structure into memory: the file-level bundle table and bundle name blob, and every bundle's asset table and asset name blob. Each is one contiguous read. Payloads are not read.
+`Open` then loads the package's structure into memory: the package name, the file-level bundle table and bundle name blob, and every bundle's asset table and asset name blob. Each is one contiguous read. Payloads are not read.
 
 The file is untrusted input, so `Open` validates everything it loads before accepting it. With `fileSize` the size of the file, and every sum and product evaluated without overflow:
 
 - **File header**: `fileSize >= sizeof(CpkgFileHeader)`, `Magic` matches, and `Version` is supported.
+- **Package name**: `PackageNameLength > 0`, `PackageNameOffset >= sizeof(CpkgFileHeader)`, and `PackageNameOffset + PackageNameLength <= fileSize`.
 - **Bundle table and bundle name blob**: `BundleTableOffset >= sizeof(CpkgFileHeader)` and `BundleTableOffset + BundleCount * sizeof(CpkgBundleTableEntry) <= fileSize`; `BundleNameBlobOffset >= sizeof(CpkgFileHeader)` and `BundleNameBlobOffset + BundleNameBlobSize <= fileSize`.
 - **Bundle table entries**: for each bundle, `NameLength > 0` and `NameOffset + NameLength <= BundleNameBlobSize`; `AssetTableOffset >= sizeof(CpkgFileHeader)` and `AssetTableOffset + AssetCount * sizeof(CpkgAssetTableEntry) <= fileSize`; `AssetNameBlobOffset >= sizeof(CpkgFileHeader)` and `AssetNameBlobOffset + AssetNameBlobSize <= fileSize`.
 - **Asset table entries**: for each asset, `NameOffset + NameLength <= AssetNameBlobSize` for its bundle, and `NameOffset == 0` when `NameLength == 0`; `Type` is a named `AssetType` enumerator other than `Unknown`; `Compression.Codec` is a named `CpkgCodec` enumerator; `Compression.StoredSize == Compression.RawSize` when `Codec` is `CpkgCodec::None`; `PayloadOffset >= sizeof(CpkgFileHeader)` and `PayloadOffset + Compression.StoredSize <= fileSize`.
@@ -773,6 +845,12 @@ Fails with `Gem::Result::NotFound` if `fileName` does not exist, `Gem::Result::I
 Closes a CCpkgReader instance. Returns `Gem::Result::NotOpen` if the reader is not open.
 
 `Gem::Result CCpkgReader::Close()`
+
+**CCpkgReader::GetPackageName**
+
+Returns the package name declared at `CCpkgWriter::Open`, or an empty view if the reader is not open. Package names are never empty, so an empty view always means the reader is not open. The package name is loaded by `Open`, so this reads no file data. The view refers to storage owned by the reader and is valid until `Close()`.
+
+`std::string_view CCpkgReader::GetPackageName() const`
 
 **CCpkgReader::GetBundleCount**
 
@@ -828,6 +906,7 @@ This follows the same split as the rest of Canvas: public, consumable headers li
 Directions the current design leaves room for. None are committed plans:
 
 - **Compression**: `CpkgCompressionScheme` carries a `Codec` field and both a stored and a raw size, but only `CpkgCodec::None` is implemented. Adding a codec is additive; existing `None`-coded assets keep working.
+- **Per-instance overrides**: a placement instantiates its template unmodified. Overrides such as material swaps or script parameters would extend `CpkgInstanceData` with an override list.
 - **Model-level manifest**: there is no asset type for the model-level metadata `XModel` carries (the active-camera-node designation, overall bounds). It would need its own `AssetType` value and schema.
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data with mip chains, array slices, and a GPU tile-region layout, for direct-to-GPU-tile streaming.
@@ -836,10 +915,8 @@ Directions the current design leaves room for. None are committed plans:
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **No mapping from a bundle to engine objects.** [CanvasPkg](#canvaspkg) says `CCpkgReader` is used to build world instances, but this document does not say how a bundle's `SceneNode` assets become an `XModel` (or several), whether a bundle may contain multiple roots (`ParentIndex = -1`), or where that loader code lives, given that CanvasPkg links no Canvas library.
+1. **Degenerate mesh records are undefined.** Specify whether a `CpkgMeshData` may have zero groups, whether a group may have zero vertices, and whether `BoneIndices` without `BoneWeights` (or the reverse) is corrupt; presumably the two must be present or absent together.
 
-2. **Degenerate mesh records are undefined.** Specify whether a `CpkgMeshData` may have zero groups, whether a group may have zero vertices, and whether `BoneIndices` without `BoneWeights` (or the reverse) is corrupt; presumably the two must be present or absent together.
+2. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
 
-3. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
-
-4. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
+3. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
