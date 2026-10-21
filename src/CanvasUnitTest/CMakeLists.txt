@@ -91,6 +91,7 @@ if(TARGET CanvasFbx AND TARGET ufbx)
     target_compile_definitions(CanvasUnitTest PRIVATE
         CANVAS_FBX_ASSET_DIR="${CMAKE_SOURCE_DIR}/deps/FbxAssets"
         CANVAS_UFBX_DATA_DIR="${UFBX_ROOT}/data"
+        CANVAS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Data"
     )
 endif()
 

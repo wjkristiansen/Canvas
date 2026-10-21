@@ -207,7 +207,8 @@ struct ImportedNode
     std::string             Name;
     int32_t                 ParentIndex     = -1;   // -1 = root
 
-    // Local transform (Canvas convention: row-vector, Z-up)
+    // Local transform (Canvas convention: row-vector, Z-up), in the bind pose: the file's
+    // recorded bind matrices where it has them, the stored local transform otherwise.
     Math::FloatVector4      Translation     = { 0.0f, 0.0f, 0.0f, 0.0f };
     Math::FloatQuaternion   Rotation        = {}; // identity
     Math::FloatVector4      Scale           = { 1.0f, 1.0f, 1.0f, 0.0f };
