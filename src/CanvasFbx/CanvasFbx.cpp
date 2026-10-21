@@ -626,6 +626,153 @@ bool ImportCamera(
     return true;
 }
 
+//------------------------------------------------------------------------------------------------
+// Bind (rest) pose. A node's stored local transform is the pose the file was saved in, which
+// for an animated skeleton is often a posed frame rather than the rest pose. The bind pose is
+// recorded separately, as world matrices: per skin cluster (the matrix its inverse bind pose
+// was built from) and in the scene's BindPose objects. ufbx converts both into the same world
+// space as node_to_world. A skinned mesh node is placed where its skin was bound.
+//
+// A node with a bind matrix takes its local transform from it, relative to its parent's bind
+// world; every other node keeps its stored local transform.
+//------------------------------------------------------------------------------------------------
+class BindPose
+{
+public:
+    explicit BindPose(_In_ const ufbx_scene *pScene)
+    {
+        // Cluster matrices first: they are what the skin's inverse bind poses were built from.
+        for (const ufbx_skin_cluster *pCluster : pScene->skin_clusters)
+            if (pCluster->bone_node)
+                m_BindWorld.emplace(pCluster->bone_node, pCluster->bind_to_world);
+
+        // A skinned mesh node is placed where its skin was bound, recovered from the cluster
+        // matrices its geometry_to_bone was built from. This takes precedence over the mesh
+        // node's BindPose entry, which some exporters write inconsistently with the clusters
+        // (e.g. Blender 2.79 and MotionBuilder), so the node always sits where the skin
+        // renders. Uses the first skin deformer (as ImportMesh does) and the mesh's first
+        // instance (as ufbx does).
+        for (const ufbx_node *pNode : pScene->nodes)
+        {
+            const ufbx_mesh *pMesh = pNode->mesh;
+            if (!pMesh || pMesh->skin_deformers.count == 0 || pMesh->instances.count == 0 ||
+                pMesh->instances.data[0] != pNode)
+                continue;
+
+            for (const ufbx_skin_cluster *pCluster : pMesh->skin_deformers.data[0]->clusters)
+            {
+                if (!pCluster->bone_node)
+                    continue;
+                const ufbx_matrix geometryToWorld = ufbx_matrix_mul(&pCluster->bind_to_world, &pCluster->geometry_to_bone);
+                const ufbx_matrix nodeToGeometry = ufbx_matrix_invert(&pNode->geometry_to_node);
+                m_BindWorld.emplace(pNode, ufbx_matrix_mul(&geometryToWorld, &nodeToGeometry));
+                break;
+            }
+        }
+
+        // BindPose entries for everything else.
+        for (const ufbx_pose *pPose : pScene->poses)
+        {
+            if (!pPose->is_bind_pose)
+                continue;
+            for (const ufbx_bone_pose &bonePose : pPose->bone_poses)
+                if (bonePose.bone_node)
+                    m_BindWorld.emplace(bonePose.bone_node, bonePose.bone_to_world);
+        }
+    }
+
+    // The node's local transform in the bind pose. pExact is set false when the bind matrix,
+    // relative to the parent's, has shear (e.g. a rotated child under a non-uniformly scaled
+    // parent): translation, rotation, and scale cannot represent it, so the result
+    // approximates it.
+    ufbx_transform LocalTransform(_In_ const ufbx_node *pNode, _Out_ bool *pExact)
+    {
+        *pExact = true;
+        const auto it = m_BindWorld.find(pNode);
+        if (it == m_BindWorld.end() || !pNode->parent)
+            return pNode->local_transform;
+
+        const ufbx_matrix parentToWorld = WorldMatrix(pNode->parent);
+        const ufbx_matrix worldToParent = ufbx_matrix_invert(&parentToWorld);
+        const ufbx_matrix local = ufbx_matrix_mul(&worldToParent, &it->second);
+        const ufbx_transform transform = ufbx_matrix_to_transform(&local);
+
+        // Rebuild the matrix from the decomposition; shear is whatever fails to round-trip.
+        // Translation always round-trips exactly, so only the 3x3 linear block is compared
+        // (a large translation must not loosen the tolerance).
+        const ufbx_matrix rebuilt = ufbx_transform_to_matrix(&transform);
+        ufbx_real diff = 0.0, magnitude = 0.0;
+        for (int col = 0; col < 3; ++col)
+            for (int row = 0; row < 3; ++row)
+            {
+                diff = std::max(diff, std::abs(local.cols[col].v[row] - rebuilt.cols[col].v[row]));
+                magnitude = std::max(magnitude, std::abs(local.cols[col].v[row]));
+            }
+        *pExact = diff <= 1e-5 * magnitude;
+        return transform;
+    }
+
+private:
+    // The node's world matrix in the bind pose.
+    ufbx_matrix WorldMatrix(_In_ const ufbx_node *pNode)
+    {
+        const auto it = m_BindWorld.find(pNode);
+        if (it != m_BindWorld.end())
+            return it->second;
+        if (!pNode->parent)
+            return pNode->node_to_world;
+
+        const auto itDerived = m_DerivedWorld.find(pNode);
+        if (itDerived != m_DerivedWorld.end())
+            return itDerived->second;
+
+        const ufbx_matrix parentToWorld = WorldMatrix(pNode->parent);
+        const ufbx_matrix world = ufbx_matrix_mul(&parentToWorld, &pNode->node_to_parent);
+        m_DerivedWorld.emplace(pNode, world);
+        return world;
+    }
+
+    std::unordered_map<const ufbx_node *, ufbx_matrix> m_BindWorld;     // authored bind matrices
+    std::unordered_map<const ufbx_node *, ufbx_matrix> m_DerivedWorld;  // nodes without one, memoized
+};
+
+//------------------------------------------------------------------------------------------------
+// Global matrix of every imported node, composed exactly as a Canvas scene-graph node composes
+// its translation, rotation, and scale (row vectors: scale, then rotation, then translation,
+// then the parent).
+std::vector<Math::FloatMatrix4x4> ImportedGlobalMatrices(_In_ const std::vector<ImportedNode> &nodes)
+{
+    std::vector<Math::FloatMatrix4x4> globals(nodes.size());
+    std::vector<bool> done(nodes.size(), false);
+
+    const auto compute = [&](auto &self, size_t i) -> const Math::FloatMatrix4x4 &
+    {
+        if (done[i])
+            return globals[i];
+
+        const ImportedNode &node = nodes[i];
+        Math::FloatMatrix4x4 local = Math::QuaternionToRotationMatrix(node.Rotation);
+        for (int c = 0; c < 4; ++c)
+        {
+            local[0][c] *= node.Scale.X;
+            local[1][c] *= node.Scale.Y;
+            local[2][c] *= node.Scale.Z;
+        }
+        local[3][0] = node.Translation.X;
+        local[3][1] = node.Translation.Y;
+        local[3][2] = node.Translation.Z;
+        local[3][3] = 1.0f;
+
+        globals[i] = node.ParentIndex >= 0 ? local * self(self, static_cast<size_t>(node.ParentIndex)) : local;
+        done[i] = true;
+        return globals[i];
+    };
+
+    for (size_t i = 0; i < nodes.size(); ++i)
+        compute(compute, i);
+    return globals;
+}
+
 #endif // CANVASFBX_HAS_UFBX
 
 } // anonymous namespace
@@ -858,6 +1005,48 @@ static void BakedNodeToTrack(
 }
 
 //------------------------------------------------------------------------------------------------
+// The node's stored (file) local transform as a single keyframe at t = 0.
+static ImportedAnimationKeyframe StoredPoseKeyframe(
+    _In_ const ufbx_node& node,
+    _In_ const RootFold&  rootFold)
+{
+    ImportedAnimationKeyframe kf;
+    kf.Time        = 0.0f;
+    kf.Translation = ToCanvasVector(node.local_transform.translation);
+    kf.Rotation    = ToCanvasQuaternion(node.local_transform.rotation);
+    kf.Scale       = ToCanvasVector(node.local_transform.scale);
+    if (node.parent && node.parent->is_root)
+        rootFold.Apply(kf.Translation, kf.Rotation, kf.Scale);
+    return kf;
+}
+
+//------------------------------------------------------------------------------------------------
+// True when the keyframe holds the node's imported (bind pose) local transform.
+//
+// The translation tolerance is absolute (meters), independent of distance from the origin,
+// so a small offset far from the origin still counts as a different pose. Far out, float
+// rounding can make equal poses compare different; that only costs a redundant track.
+static bool IsImportedPose(
+    _In_ const ImportedAnimationKeyframe& kf,
+    _In_ const ImportedNode&              node)
+{
+    constexpr float kEpsilon = 1e-5f;
+    const Math::FloatVector4 dt = kf.Translation - node.Translation;
+    const Math::FloatVector4 ds = kf.Scale - node.Scale;
+
+    // q and -q are the same rotation, so compare against whichever sign is nearer. The
+    // component distance is about half the angle between them (in radians).
+    const float sign = Math::DotProduct(kf.Rotation, node.Rotation) < 0.0f ? -1.0f : 1.0f;
+    const Math::FloatVector4 q0 = kf.Rotation;
+    const Math::FloatVector4 q1 = node.Rotation;
+    const Math::FloatVector4 dq = q0 - q1 * sign;
+
+    return std::sqrt(Math::DotProduct(dt, dt)) <= kEpsilon &&
+           std::sqrt(Math::DotProduct(ds, ds)) <= kEpsilon &&
+           std::sqrt(Math::DotProduct(dq, dq)) <= kEpsilon;
+}
+
+//------------------------------------------------------------------------------------------------
 // Bake all FBX AnimationStacks and append to pScene->AnimationClips.
 //
 // Blender (and some DCC tools) exports each object's action as a separate AnimationStack
@@ -897,13 +1086,17 @@ void ImportAnimationClips(
     }
 
     // Pass 2 - bake each stack and append its tracks to the matching clip.
+    // A clip is played if any of its stacks bakes, even when every baked track turns out to
+    // be redundant: it still holds unanimated nodes at their stored transforms (below).
+    std::vector<bool> clipBaked(pScene->AnimationClips.size(), false);
     for (size_t si = 0; si < pLoaded->anim_stacks.count; ++si)
     {
         const ufbx_anim_stack* pStack = pLoaded->anim_stacks.data[si];
         if (!pStack || !pStack->anim) continue;
 
         const std::string actionName = ExtractActionName(ToStdString(pStack->name));
-        ImportedAnimationClip& clip = pScene->AnimationClips[clipIndexByAction.at(actionName)];
+        const size_t clipIndex = clipIndexByAction.at(actionName);
+        ImportedAnimationClip& clip = pScene->AnimationClips[clipIndex];
 
         const float duration = static_cast<float>(pStack->time_end - pStack->time_begin);
         if (duration <= 0.0f)
@@ -924,13 +1117,11 @@ void ImportAnimationClips(
                 std::string(bakeErr.description.data, bakeErr.description.length));
             continue;
         }
+        clipBaked[clipIndex] = true;
 
         for (size_t ni = 0; ni < pBaked->nodes.count; ++ni)
         {
             const ufbx_baked_node& bn = pBaked->nodes.data[ni];
-            if (bn.constant_translation && bn.constant_rotation && bn.constant_scale)
-                continue;
-
             if (bn.typed_id >= pLoaded->nodes.count) continue;
             const ufbx_node* pNode = pLoaded->nodes.data[bn.typed_id];
             if (!pNode || pNode->is_root) continue;
@@ -942,6 +1133,22 @@ void ImportAnimationClips(
             track.NodeIndex = itNode->second;
             const bool topLevel = pNode->parent && pNode->parent->is_root;
             BakedNodeToTrack(bn, pBaked->playback_time_begin, topLevel ? &rootFold : nullptr, &track);
+
+            // A node held still at its imported pose needs no track, provided its stored pose
+            // matches too (otherwise the fallback below would hold it at the stored pose).
+            // Held anywhere else (e.g. a bone posed away from the bind pose for the whole
+            // clip), it keeps one.
+            const bool constant = bn.constant_translation && bn.constant_rotation && bn.constant_scale;
+            const ImportedNode& importedNode = pScene->Nodes[track.NodeIndex];
+            if (constant && !track.Keyframes.empty() &&
+                IsImportedPose(track.Keyframes.front(), importedNode) &&
+                IsImportedPose(StoredPoseKeyframe(*pNode, rootFold), importedNode))
+                continue;
+            if (constant && !track.Keyframes.empty())
+            {
+                track.Keyframes.resize(1);
+                track.Keyframes.front().Time = 0.0f;
+            }
 
             if (!track.Keyframes.empty())
             {
@@ -965,7 +1172,48 @@ void ImportAnimationClips(
         ufbx_free_baked_anim(pBaked);
     }
 
-    // Remove clips that produced no animated tracks (e.g. all-constant stacks).
+    // A node a clip that does not animate holds its stored (file) transform while the clip plays.
+    // Nodes start in the bind pose, so each one whose stored transform differs from it
+    // gets a single-key track holding the stored transform.
+    //
+    // So does every node another clip drives, even when its stored transform is the bind
+    // pose: playing a clip only writes that clip's tracks, so without one the node would keep
+    // whatever pose the previous clip left it in.
+    std::vector<bool> drivenByAnyClip(pScene->Nodes.size(), false);
+    for (const ImportedAnimationClip& clip : pScene->AnimationClips)
+        for (const ImportedAnimationTrack& track : clip.Tracks)
+            drivenByAnyClip[static_cast<size_t>(track.NodeIndex)] = true;
+
+    for (size_t ci = 0; ci < pScene->AnimationClips.size(); ++ci)
+    {
+        if (!clipBaked[ci])
+            continue;
+
+        ImportedAnimationClip& clip = pScene->AnimationClips[ci];
+        std::vector<bool> tracked(pScene->Nodes.size(), false);
+        for (const ImportedAnimationTrack& track : clip.Tracks)
+            tracked[static_cast<size_t>(track.NodeIndex)] = true;
+
+        for (const ufbx_node* pNode : pLoaded->nodes)
+        {
+            const auto itNode = nodeMap.find(pNode);
+            if (itNode == nodeMap.end()) continue;
+
+            const int32_t nodeIndex = itNode->second;
+            if (tracked[static_cast<size_t>(nodeIndex)])
+                continue;
+
+            const ImportedAnimationKeyframe stored = StoredPoseKeyframe(*pNode, rootFold);
+            if (!drivenByAnyClip[static_cast<size_t>(nodeIndex)] && IsImportedPose(stored, pScene->Nodes[nodeIndex]))
+                continue;
+
+            clip.Tracks.push_back(ImportedAnimationTrack{ nodeIndex, { stored } });
+            tracked[static_cast<size_t>(nodeIndex)] = true;
+        }
+    }
+
+    // Remove clips that still have no tracks: no stack baked, or every node they touch holds
+    // its imported pose throughout.
     pScene->AnimationClips.erase(
         std::remove_if(pScene->AnimationClips.begin(), pScene->AnimationClips.end(),
             [](const ImportedAnimationClip& c) { return c.Tracks.empty(); }),
@@ -1103,7 +1351,8 @@ HRESULT ImportScene(
     // Import materials first so meshes can reference scene-wide indices.
     const std::unordered_map<const ufbx_material *, int32_t> materialMap = ImportMaterials(pLoaded, pScene);
 
-    // Build Canvas node list first so parent indices are stable.
+    // Build Canvas node list first so parent indices are stable. Nodes start in the bind pose.
+    BindPose bindPose(pLoaded);
     for (size_t ni = 0; ni < pLoaded->nodes.count; ++ni)
     {
         const ufbx_node *pNode = pLoaded->nodes[ni];
@@ -1117,9 +1366,16 @@ HRESULT ImportScene(
 
         // ufbx's local TRS composes the same way as a Canvas node (S * R * T, then the
         // parent), so it carries over unchanged.
-        node.Translation = ToCanvasVector(pNode->local_transform.translation);
-        node.Rotation    = ToCanvasQuaternion(pNode->local_transform.rotation);
-        node.Scale       = ToCanvasVector(pNode->local_transform.scale);
+        bool exact = true;
+        const ufbx_transform local = bindPose.LocalTransform(pNode, &exact);
+        if (!exact)
+            AddDiag(pScene, DiagLevel::Warning,
+                "Node '" + node.Name + "' has a bind pose with shear relative to its parent (e.g. a rotated "
+                "bone under a non-uniformly scaled parent); its bind transform is approximated, so skinned "
+                "geometry may be deformed in the bind pose");
+        node.Translation = ToCanvasVector(local.translation);
+        node.Rotation    = ToCanvasQuaternion(local.rotation);
+        node.Scale       = ToCanvasVector(local.scale);
         if (pNode->parent && pNode->parent->is_root)
             rootFold.Apply(node.Translation, node.Rotation, node.Scale);
 
@@ -1199,12 +1455,6 @@ HRESULT ImportScene(
             {
                 outNode.MeshIndex = itMesh->second;
             }
-
-            if (outNode.MeshIndex >= 0)
-            {
-                const Math::AABB &meshBounds = pScene->Meshes[static_cast<size_t>(outNode.MeshIndex)].Bounds;
-                pScene->SceneBounds.ExpandToInclude(meshBounds.Transform(ToCanvasAffineMatrix(pNode->geometry_to_world)));
-            }
         }
 
         if (pNode->light)
@@ -1253,6 +1503,16 @@ HRESULT ImportScene(
                     pScene->ActiveCameraNodeIndex = itNode->second;
             }
         }
+    }
+
+    // Scene bounds from the imported hierarchy itself, so they enclose the model exactly as
+    // built (including any approximated bind transforms).
+    const std::vector<Math::FloatMatrix4x4> globals = ImportedGlobalMatrices(pScene->Nodes);
+    for (size_t i = 0; i < pScene->Nodes.size(); ++i)
+    {
+        const int32_t meshIndex = pScene->Nodes[i].MeshIndex;
+        if (meshIndex >= 0)
+            pScene->SceneBounds.ExpandToInclude(pScene->Meshes[static_cast<size_t>(meshIndex)].Bounds.Transform(globals[i]));
     }
 
     for (size_t wi = 0; wi < pLoaded->metadata.warnings.count; ++wi)
