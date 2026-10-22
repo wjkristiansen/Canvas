@@ -84,6 +84,21 @@ bool LoadFbxTexture(
     return true;
 }
 
+//------------------------------------------------------------------------------------------------
+// Why an imported light adds nothing to the rendered image, or nullptr when it contributes. The
+// composite shader lights with directional, point, spot and ambient lights; area lights import
+// but contribute nothing yet, and neither does a light with zero intensity or a black color.
+const char *NonContributingLightReason(const Canvas::Fbx::ImportedLight &light)
+{
+    if (light.Type == Canvas::LightType::Area)
+        return "area lights are not rendered";
+    if (light.Intensity <= 0.0f)
+        return "zero intensity";
+    if (std::max({ light.Color.X, light.Color.Y, light.Color.Z }) <= 0.0f)
+        return "black color";
+    return nullptr;
+}
+
 } // anonymous namespace
 
 //------------------------------------------------------------------------------------------------
@@ -244,8 +259,8 @@ class CApp
             fov = std::clamp(pCamera->GetFovAngle(), 0.2f, 2.8f);
 
         const float distance = std::max(2.0f, (radius / tanf(fov * 0.5f)) * 1.35f);
-        // Imported models face +X; view them from their front-right.
-        const Canvas::Math::FloatVector4 viewDir = Canvas::Math::FloatVector4(-0.55f, 0.55f, 0.35f, 0.0f).Normalize();
+        // Imported models face +X; view them from their front-right, looking down.
+        const Canvas::Math::FloatVector4 viewDir = Canvas::Math::FloatVector4(-0.55f, 0.55f, -0.35f, 0.0f).Normalize();
         const Canvas::Math::FloatVector4 cameraPosition = sceneCenter - viewDir * distance;
         const Canvas::Math::FloatVector4 basisForward = (sceneCenter - cameraPosition).Normalize();
         const Canvas::Math::FloatVector4 worldUp(0.0f, 0.0f, 1.0f, 0.0f);
@@ -376,6 +391,42 @@ class CApp
 
 
 
+    // Ambient fill plus a sun from above the default camera's side, so models without
+    // lights are visible.
+    void AddDefaultLights(Canvas::XCanvas *pCanvas, Canvas::XScene *pScene)
+    {
+        Gem::TGemPtr<Canvas::XLight> pAmbientLight;
+        Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Ambient, &pAmbientLight, "DefaultAmbientLight"));
+        pAmbientLight->SetColor(Canvas::Math::FloatVector4(0.15f, 0.15f, 0.2f, 0.0f));
+        pAmbientLight->SetIntensity(1.0f);
+
+        Gem::TGemPtr<Canvas::XSceneGraphNode> pAmbientNode;
+        Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pAmbientNode, "DefaultAmbientLightNode"));
+        Gem::ThrowGemError(pAmbientNode->BindElement(pAmbientLight));
+        Gem::ThrowGemError(pScene->GetRootNode()->AddChild(pAmbientNode));
+
+        Gem::TGemPtr<Canvas::XLight> pSunLight;
+        Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &pSunLight, "DefaultSunLight"));
+        pSunLight->SetColor(Canvas::Math::FloatVector4(1.0f, 0.95f, 0.85f, 0.0f));
+        pSunLight->SetIntensity(1.0f);
+
+        // A directional light emits along its node's +X (forward) row.
+        Gem::TGemPtr<Canvas::XSceneGraphNode> pSunNode;
+        Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pSunNode, "DefaultSunLightNode"));
+        Gem::ThrowGemError(pSunNode->BindElement(pSunLight));
+        {
+            const Canvas::Math::FloatVector4 up(0.0f, 0.0f, 1.0f, 0.0f);
+            Canvas::Math::FloatMatrix4x4 sunRotation = Canvas::Math::IdentityMatrix<float, 4, 4>();
+            sunRotation[0] = Canvas::Math::FloatVector4(-0.4f, 0.3f, -1.0f, 0.0f).Normalize();
+            Canvas::Math::ComposePointToBasisVectors(up, sunRotation[0], sunRotation[1], sunRotation[2]);
+            pSunNode->SetLocalRotation(Canvas::Math::QuaternionFromRotationMatrix(sunRotation));
+        }
+        Gem::ThrowGemError(pScene->GetRootNode()->AddChild(pSunNode));
+
+        m_pAmbientLight = pAmbientLight;
+        m_pSunLight = pSunLight;
+    }
+
     bool TryLoadImportedScene(
         Canvas::XCanvas *pCanvas,
         Canvas::XScene *pScene,
@@ -495,6 +546,24 @@ class CApp
         {
             m_pAnimCtrl = nullptr;
             m_inBindPose = true;
+        }
+
+        // -----------------------------------------------------------------
+        // Default lighting for scenes that bring no lights of their own,
+        // typically character and prop models. A scene's own lights are
+        // kept even when they do not contribute, since they may be meant
+        // to be driven externally.
+        // -----------------------------------------------------------------
+        if (imported.Lights.empty())
+        {
+            Canvas::LogInfo(m_pLogger.Get(), "Imported scene has no lights; adding default ambient and sun lights");
+            AddDefaultLights(pCanvas, pScene);
+        }
+        for (const Canvas::Fbx::ImportedLight &light : imported.Lights)
+        {
+            if (const char *reason = NonContributingLightReason(light))
+                Canvas::LogWarn(m_pLogger.Get(), "Imported light '%s' does not contribute to the scene: %s",
+                    light.Name.c_str(), reason);
         }
 
         // -----------------------------------------------------------------
