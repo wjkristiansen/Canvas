@@ -12,7 +12,7 @@ option(CANVAS_FBX_ENABLE "Enable FBX importer backend" ON)
 set(CANVASFBX_HAS_UFBX FALSE)
 
 if(CANVAS_FBX_ENABLE)
-    include(${CMAKE_SOURCE_DIR}/cmake/FetchUfbx.cmake)
+    include(${Canvas_SOURCE_DIR}/cmake/FetchUfbx.cmake)
     if(TARGET ufbx)
         set(CANVASFBX_HAS_UFBX TRUE)
         message(STATUS "CanvasFbx: ufbx backend enabled")

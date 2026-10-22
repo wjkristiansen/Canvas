@@ -18,13 +18,13 @@ set(_UFBX_ROOT_CANDIDATE "")
 
 if(DEFINED UFBX_ROOT AND EXISTS "${UFBX_ROOT}/ufbx.h" AND EXISTS "${UFBX_ROOT}/ufbx.c")
     set(_UFBX_ROOT_CANDIDATE "${UFBX_ROOT}")
-elseif(EXISTS "${CMAKE_SOURCE_DIR}/deps/ufbx/ufbx.h" AND EXISTS "${CMAKE_SOURCE_DIR}/deps/ufbx/ufbx.c")
-    set(_UFBX_ROOT_CANDIDATE "${CMAKE_SOURCE_DIR}/deps/ufbx")
+elseif(EXISTS "${Canvas_SOURCE_DIR}/deps/ufbx/ufbx.h" AND EXISTS "${Canvas_SOURCE_DIR}/deps/ufbx/ufbx.c")
+    set(_UFBX_ROOT_CANDIDATE "${Canvas_SOURCE_DIR}/deps/ufbx")
 endif()
 
 if(NOT _UFBX_ROOT_CANDIDATE)
     message(STATUS "Canvas: ufbx source not found; CanvasFbx will build in stub mode.")
-    message(STATUS "  Expected submodule location: ${CMAKE_SOURCE_DIR}/deps/ufbx")
+    message(STATUS "  Expected submodule location: ${Canvas_SOURCE_DIR}/deps/ufbx")
     message(STATUS "  Initialize submodules: git submodule update --init --recursive")
     message(STATUS "  Provide -DUFBX_ROOT=<path containing ufbx.h and ufbx.c>")
     return()
@@ -39,13 +39,6 @@ if(NOT TARGET ufbx)
     # UFBX_REAL_IS_FLOAT affects public struct layout (eg ufbx_scene/ufbx_node fields),
     # so consumers that include ufbx.h must use the same definition as the ufbx library.
     target_compile_definitions(ufbx PUBLIC UFBX_REAL_IS_FLOAT=1)
-    if(MSVC)
-        # Keep ufbx runtime consistent with Canvas root policy: /MDd for Debug, /MD otherwise.
-        target_compile_options(ufbx PRIVATE
-            $<$<CONFIG:Debug>:/MDd>
-            $<$<NOT:$<CONFIG:Debug>>:/MD>
-        )
-    endif()
     set_target_properties(ufbx PROPERTIES
         C_STANDARD 99
         C_STANDARD_REQUIRED ON

@@ -84,9 +84,6 @@ if(MSVC)
     # Enable debug information in all builds
     add_compile_options(/Zi)
     add_link_options(/DEBUG)
-    
-    # Set runtime library to Multi-threaded DLL
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 
 # =============================================================================

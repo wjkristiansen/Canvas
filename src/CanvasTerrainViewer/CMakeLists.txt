@@ -1,7 +1,7 @@
 # CanvasTerrainViewer - heightfield-driven terrain renderer
 cmake_minimum_required(VERSION 3.24)
 
-include(${CMAKE_SOURCE_DIR}/cmake/FetchFonts.cmake)
+include(${Canvas_SOURCE_DIR}/cmake/FetchFonts.cmake)
 
 add_executable(CanvasTerrainViewer WIN32
     CanvasTerrainViewer.cpp
