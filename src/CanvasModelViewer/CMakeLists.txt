@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 # Fetch open-source fonts (Inter, JetBrains Mono) at configure time
-include(${CMAKE_SOURCE_DIR}/cmake/FetchFonts.cmake)
+include(${Canvas_SOURCE_DIR}/cmake/FetchFonts.cmake)
 
 # Define the executable
 add_executable(CanvasModelViewer WIN32

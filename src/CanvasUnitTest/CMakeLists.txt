@@ -3,8 +3,11 @@ cmake_minimum_required(VERSION 3.24)
 
 include(FetchContent)
 
-# Fetch GoogleTest (same version used by sibling deps to avoid duplicate fetches)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+# Fetch GoogleTest (same version used by sibling deps to avoid duplicate fetches). Its options
+# are normal variables so they stay out of a parent project's cache: keep the shared CRT, and
+# keep GoogleTest out of the install directory.
+set(gtest_force_shared_crt ON)
+set(INSTALL_GTEST OFF)
 FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
@@ -89,7 +92,7 @@ if(TARGET CanvasFbx AND TARGET ufbx)
     target_sources(CanvasUnitTest PRIVATE CanvasFbxTest.cpp)
     target_link_libraries(CanvasUnitTest PRIVATE CanvasFbx ufbx)
     target_compile_definitions(CanvasUnitTest PRIVATE
-        CANVAS_FBX_ASSET_DIR="${CMAKE_SOURCE_DIR}/deps/FbxAssets"
+        CANVAS_FBX_ASSET_DIR="${Canvas_SOURCE_DIR}/deps/FbxAssets"
         CANVAS_UFBX_DATA_DIR="${UFBX_ROOT}/data"
         CANVAS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Data"
     )
