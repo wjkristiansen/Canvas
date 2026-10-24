@@ -461,13 +461,15 @@ struct CpkgMeshData
 };
 ```
 
-Every non-empty stream's `Count` must equal the group's `Positions.Count`.
+**A mesh has at least one group, and every group has at least one vertex.** `Groups.Count` and each group's `Positions.Count` are nonzero, matching `CreateMeshData`, which rejects a zero `GroupCount` or `VertexCount`. Every non-empty stream's `Count` must equal the group's `Positions.Count`. A mesh is skinned in full or not at all: either every group carries both `BoneIndices` and `BoneWeights`, or no group carries either. A reader may treat a payload that breaks any of these rules as corrupt (`Gem::Result::CorruptedData`).
 
 **`LocalBounds` is either empty or well-formed.** Empty is the exact sentinel `Min = {+FLT_MAX, +FLT_MAX, +FLT_MAX}`, `Max = {-FLT_MAX, -FLT_MAX, -FLT_MAX}`: `CpkgAABB`'s default, and the state `Canvas::Math::AABB::IsEmpty` recognizes. It means the loader passes an empty `Canvas::MeshDataDesc::LocalBounds` and the backend computes the bounds from the positions. Otherwise `Min[i] <= Max[i]` must hold on every axis, which also excludes NaN. Any other box, including one that is inside-out on some axes or inverted without matching the sentinel, is not empty; a reader may treat it as corrupt (`Gem::Result::CorruptedData`).
 
 **Which streams are required depends on `Topology`**, matching what the backend enforces in `CreateMeshData`: `TriangleList` requires `Positions` and `Normals`; `PatchList4CP` requires `Positions`, `Normals`, and `UV0` (per-control-point map UVs, and the base direction along which displacement extends each control point). `Tangents`, `BoneIndices`, and `BoneWeights` are optional under either topology.
 
 A skinned mesh, its `MeshSkin` asset, and every bone it references must all live in the same bundle. `BoneIndices` is the one cross-reference field in this schema that is not a bundle asset index: it is a palette-relative index into the mesh's `CpkgMeshSkinData::BoneNodeIndices` array, and by the ordering correspondence into `InvBindPoses`. This matches the runtime skinning convention. `CpkgMeshSkinData` is the single place bones are referenced by asset index. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
+
+**A mesh bound by a `MeshSkin` carries bone streams in every group.** The mesh instanced by the node at `CpkgMeshSkinData::MeshNodeIndex` must be a skinned mesh in the sense above. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, instanced by a node parented under the bone node. A reader may treat a `MeshSkin` whose mesh lacks bone streams as corrupt (`Gem::Result::CorruptedData`).
 
 ### CpkgMaterialData (AssetType::Material)
 
@@ -915,8 +917,6 @@ Directions the current design leaves room for. None are committed plans:
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **Degenerate mesh records are undefined.** Specify whether a `CpkgMeshData` may have zero groups, whether a group may have zero vertices, and whether `BoneIndices` without `BoneWeights` (or the reverse) is corrupt; presumably the two must be present or absent together.
+1. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
 
-2. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
-
-3. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
+2. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
