@@ -54,7 +54,16 @@
         "images": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/imageDef" }
-        }
+        },
+        "skyboxes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/skyboxDef" }
+        },
+        "placements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/placementDef" }
+        },
+        "world": { "$ref": "#/$defs/worldDef" }
       }
     },
 
@@ -94,6 +103,7 @@
 
     "vec3": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
     "quat": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+    "rgba": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
 
     "meshRef": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/meshDef" } ] },
     "cameraRef": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/cameraDef" } ] },
@@ -182,6 +192,69 @@
           }
         }
       ]
+    },
+
+    "skyboxDef": {
+      "type": "object",
+      "required": ["image"],
+      "additionalProperties": false,
+      "properties": {
+        "image": { "$ref": "#/$defs/assetPath" },
+        "orientation": { "$ref": "#/$defs/quat" },
+        "intensity": { "type": "number" }
+      }
+    },
+
+    "bundlePath": { "type": "string", "pattern": "^[^/]+(/[^/]+)?$" },
+    "assetPath": { "type": "string", "pattern": "^[^/]+(/[^/]+){0,2}$" },
+
+    "placementDef": {
+      "type": "object",
+      "required": ["template"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "template": { "$ref": "#/$defs/bundlePath" },
+        "parent": { "type": "string" },
+        "translation": { "$ref": "#/$defs/vec3" },
+        "rotation": { "$ref": "#/$defs/quat" },
+        "scale": { "$ref": "#/$defs/vec3" },
+        "mobility": { "enum": ["static", "stationary", "movable"] }
+      }
+    },
+
+    "worldDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["region", "bounds"],
+            "additionalProperties": false,
+            "properties": {
+              "region": { "$ref": "#/$defs/bundlePath" },
+              "bounds": {
+                "type": "object",
+                "required": ["min", "max"],
+                "additionalProperties": false,
+                "properties": {
+                  "min": { "$ref": "#/$defs/vec3" },
+                  "max": { "$ref": "#/$defs/vec3" }
+                }
+              }
+            }
+          }
+        },
+        "skyboxes": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[^/]+$" }
+        },
+        "defaultSkybox": { "type": "integer", "minimum": 0 },
+        "activeCamera": { "type": "string" },
+        "backgroundColor": { "$ref": "#/$defs/rgba" }
+      }
     }
   }
 }
