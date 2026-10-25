@@ -511,7 +511,7 @@ The `Displacement` block is always present, even when `HasDisplacement` is `0`, 
 
 ### CpkgImageData (AssetType::Image)
 
-An image asset holds encoded image bytes verbatim, exactly as read from the source. `Encoding` identifies how they are encoded. CanvasPkg neither decodes nor re-encodes the bytes; decoding happens downstream, at load time.
+An image asset is a texture: a 1D, 2D, 3D, or cube texture with optional array slices and a stored mip chain. Its pixels are held as encoded 2D images, each stored verbatim, exactly as read from the source. `Encoding` identifies how they are encoded. CanvasPkg neither decodes nor re-encodes the bytes; decoding happens downstream, at load time.
 
 ```cpp
 enum class CpkgImageEncoding : uint32_t
@@ -524,19 +524,45 @@ enum class CpkgImageEncoding : uint32_t
     // container formats such as DDS/KTX) are added here.
 };
 
+enum class CpkgImageDimension : uint32_t   // values match GfxSurfaceDimension
+{
+    Texture1D = 0,
+    Texture2D = 1,
+    Texture3D = 2,
+    Cube      = 3,
+};
+
 struct CpkgImageData
 {
-    CpkgImageEncoding  Encoding;
-    uint32_t           Padding = 0;
-    CpkgSpan<uint8_t>  ImageData;  // encoded bytes, exactly as read from the source
+    CpkgImageEncoding            Encoding;
+    CpkgImageDimension           Dimension;
+    uint32_t                     Width;      // of mip 0
+    uint32_t                     Height;     // of mip 0; 1 for Texture1D
+    uint32_t                     Depth;      // of mip 0; 1 unless Texture3D
+    uint32_t                     ArraySize;  // array slices; a multiple of 6 for Cube; 1 for Texture3D
+    uint32_t                     MipLevels;  // mip levels stored; at least 1
+    uint32_t                     Padding = 0;
+    CpkgSpan<CpkgSpan<uint8_t>>  Images;     // encoded 2D images, in the order below
 };
 ```
 
-The image's byte count is `ImageData.Count`.
+The shape fields mirror `GfxSurfaceDesc`, so a loader builds the surface description directly from the header. `ArraySize` counts 2D slices, as `GfxSurfaceDesc::ArraySize` does: a single cubemap has `ArraySize == 6`, and a cube array of `N` cubes has `ArraySize == 6 * N`. Mip `m` measures `max(1, Width >> m)` by `max(1, Height >> m)` by `max(1, Depth >> m)`. `MipLevels` may be less than the full chain; generating further mips is the loader's choice.
 
-`Encoding` and `Compression.Codec` describe separate layers. `Encoding` describes the payload itself and is opaque to CanvasPkg, which stores and returns those bytes untouched. `Compression.Codec` is transport compression applied over the payload, and `ReadAsset` always reverses it before returning (see [Compression](#compression)). Any `CpkgCodec` is valid for any `Encoding`.
+Each `Images` entry is one encoded 2D image, ordered as follows:
 
-Tiled/decoded GPU-ready texture support (mip chains, array slices, GPU tile layout) is a future design pass - see [Future Directions](#future-directions).
+- **`Texture1D`, `Texture2D`, `Cube`**: one entry per subresource, `ArraySize * MipLevels` entries in all, in subresource order: entry `arraySlice * MipLevels + mip`. This is the order in which `XGfxDevice::UploadTextureRegion` numbers subresources, so entry `i` uploads to subresource `i`. Within each cube, the slices are the faces +X, -X, +Y, -Y, +Z, -Z, in that order. A `Texture1D` entry is an image of height 1.
+- **`Texture3D`**: mip 0's depth slices, front to back, then mip 1's, and so on. Mip `m` contributes `max(1, Depth >> m)` entries.
+- **Container encodings** (such as DDS or KTX, once added) carry their own layout. For a container encoding, `Images` holds exactly one entry, the whole container file, and the header's shape fields equal the container's.
+
+A reader may treat an image whose `Images.Count` differs from the count these rules give as corrupt (`Gem::Result::CorruptedData`). Cube faces are in cube-texture space; the engine maps them to Canvas space through `GfxBackgroundDesc::Orientation`.
+
+Every entry uses the header's `Encoding` and the same pixel format, and decodes to the size of its mip. CanvasPkg cannot check these without decoding, so they are a contract on the writer, and a loader rejects an image that violates them.
+
+Every `CpkgMaterialData` texture index references a `Texture2D` image with `ArraySize == 1`. The color-space rules in [Conventions](#conventions) apply to each entry.
+
+`Encoding` and `Compression.Codec` describe separate layers. `Encoding` describes the encoded images and is opaque to CanvasPkg, which stores and returns those bytes untouched. `Compression.Codec` is transport compression applied over the whole payload, and `ReadAsset` always reverses it before returning (see [Compression](#compression)). Any `CpkgCodec` is valid for any `Encoding`.
+
+Decoded, GPU-ready texture data (decoded pixels in a GPU tile layout) is a future design pass - see [Future Directions](#future-directions).
 
 ### CpkgAnimClipData (AssetType::AnimationClip)
 
@@ -911,12 +937,10 @@ Directions the current design leaves room for. None are committed plans:
 - **Per-instance overrides**: a placement instantiates its template unmodified. Overrides such as material swaps or script parameters would extend `CpkgInstanceData` with an override list.
 - **Model-level manifest**: there is no asset type for the model-level metadata `XModel` carries (the active-camera-node designation, overall bounds). It would need its own `AssetType` value and schema.
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
-- **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data with mip chains, array slices, and a GPU tile-region layout, for direct-to-GPU-tile streaming.
+- **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
 
 ## Review Concerns (Open)
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **Cubemaps have no representation.** cpkgbuilder's manifest can name a six-face cubemap, but `CpkgImageData` is a single encoded image with no face or grouping metadata (see cpkgbuilder's [Review Concerns](../cpkgbuilder/README.md#review-concerns-open), concern 1). The answer belongs in this format: a cubemap asset type, face metadata on `CpkgImageData`, or a naming convention both documents commit to.
-
-2. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
+1. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
