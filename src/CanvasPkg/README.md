@@ -43,19 +43,20 @@ Assets are the primary data block for CanvasPkg files. Each asset has an `AssetT
 
 Asset indices are per-bundle and span all asset types: the first asset appended to a bundle is index 0, the second is index 1, and so on, in append order, regardless of `AssetType`. `CCpkgReader::ReadAsset` and the `Cpkg*Data` cross-reference fields described below (`MaterialIndex`, `TextureIndex`, `MeshDataIndex`, `ParentIndex`, ...) all use this index.
 
-**An asset may only index other assets appended before it.** Every intra-bundle cross-reference index (`MeshDataIndex`, `MaterialIndex`, `ParentIndex`, `TextureIndex`, `MeshNodeIndex`, `BoneNodeIndices`, ...) must be strictly less than the index of the asset holding it. Forward indices are not part of the format, so a loader resolves every index in a single forward pass over the asset table, with no deferred fixups and no second pass.
+**An asset may only index other assets appended before it.** Every intra-bundle cross-reference index (`MeshDataIndex`, `MaterialIndex`, `ParentIndex`, `TextureIndex`, `MeshNodeIndex`, `BoneNodeIndices`, `ImageIndex`, `Skyboxes`, ...) must be strictly less than the index of the asset holding it. Forward indices are not part of the format, so a loader resolves every index in a single forward pass over the asset table, with no deferred fixups and no second pass.
 
 The graph these indices form is acyclic, so an append order satisfying the rule always exists:
 
 ```
 Image <- Material <- MeshData <- SceneNode <- MeshSkin
-                                 |  |  ^
-                       Camera <--+  |  +-- Instance
-                                    v
-                                  Light
+  ^                              |  |  ^
+  +-- Skybox           Camera <--+  |  +-- Instance
+        ^                           v  +-- WorldSettings
+        |                         Light          |
+        +----------------------------------------+
 ```
 
-`AnimationClip` binds tracks by node name and holds no indices, so it may be appended anywhere. The canonical order is: `Image`, `Material`, `MeshData`, `Camera`, `Light`, `SceneNode`, `MeshSkin`, `Instance`, `AnimationClip`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
+`AnimationClip` binds tracks by node name and holds no indices, so it may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Camera`, `Light`, `SceneNode`, `MeshSkin`, `Instance`, `WorldSettings`, `AnimationClip`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
 
 `AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed. A reader may treat an out-of-order reference as a corrupt package (`Gem::Result::CorruptedData`).
 
@@ -82,10 +83,10 @@ Path references follow these rules:
 - **An empty path is null.** Each path reference field states whether it may be null. For example, a placement's template is required.
 - **A qualified path may refer to its own scope.** A `package/bundle/asset` path that spells out the referencing package and bundle resolves to the same asset as `asset`.
 - **Malformed paths.** A non-empty path containing an empty name (a leading, trailing, or doubled `/`), or more names than its kind allows, is malformed, and a reader may treat it as corrupt (`Gem::Result::CorruptedData`).
-- **Each path reference declares its target.** An asset path declares an `AssetType`, and an asset path that resolves to an asset of any other type is a fatal error. Every bundle path references a bundle to instantiate.
+- **Each path reference declares its target.** An asset path declares an `AssetType`, and an asset path that resolves to an asset of any other type is a fatal error. Every bundle path references a bundle to instantiate, and a bundle path that resolves to a [world bundle](#worlds) is a fatal error.
 - **An unresolved path is a fatal error**: a package not loaded, or a bundle or asset absent from it.
 
-A fatal path reference error fails instantiation of the template that holds the path reference, and the loader reports the path and the asset that holds it. Resolution is the loader's job (see [Resolving path references](#resolving-path-references)). A loader resolving an asset path can build the target bundle's directory with the expected type as the `BuildAssetDirectory` filter, so a lookup finds only assets of that type.
+A fatal path reference error fails instantiation of the template or world that holds the path reference, and the loader reports the path and the asset that holds it. Resolution is the loader's job (see [Resolving path references](#resolving-path-references)). A loader resolving an asset path can build the target bundle's directory with the expected type as the `BuildAssetDirectory` filter, so a lookup finds only assets of that type.
 
 `CCpkgWriter::CopyBundle` copies path references unchanged. A relative path in a copied bundle therefore resolves within the package it is copied into, while a fully qualified path keeps referencing the original package.
 
@@ -160,9 +161,11 @@ This section describes, at a high level, how the content of a package becomes ob
 
 ### Templates
 
-A **template** is a bundle that describes one instantiable thing (a goblin, a chair, a tree) as a hierarchy of `SceneNode` assets together with the meshes, materials, images, skins, and clips they reference. A template may also contain placements of other templates (see [Placements](#placements)). Instantiating a template creates a new copy of that hierarchy in the world. Every instance of a template shares the template's immutable resources (mesh data, materials, images, clips); each instance has its own nodes and transforms.
+Any bundle other than a world bundle can be instantiated. Instantiating a bundle creates a new copy of its `SceneNode` hierarchy and its placements in the world. How a bundle is used decides what it is called: a bundle instantiated by a placement or by the engine user is a template, and a bundle a world streams is a [world region](#world-regions). Nothing in a bundle records its use, and one bundle may serve both.
 
-A template's `SceneNode` assets may form more than one tree (more than one node with `ParentIndex = -1`). Instantiating a template always produces a single **instance root** node that carries the instance's transform; each of the template's root nodes becomes a child of that instance root. A loader therefore manipulates an instance as one unit no matter how many roots the bundle has.
+A **template** describes one instantiable thing (a goblin, a chair, a tree) as a hierarchy of `SceneNode` assets together with the meshes, materials, images, skins, and clips they reference. A template may also contain placements of other templates (see [Placements](#placements)). Every instance of a template shares the template's immutable resources (mesh data, materials, images, clips); each instance has its own nodes and transforms.
+
+A bundle's `SceneNode` assets may form more than one tree (more than one node with `ParentIndex = -1`). Instantiating a bundle always produces a single **instance root** node that carries the instance's transform; each of the bundle's root nodes and root placements becomes a child of that instance root. A loader therefore manipulates an instance as one unit no matter how many roots the bundle has.
 
 A template enters the world when something instantiates it: a placement (below), or the engine user at runtime (for example, spawning an enemy) by referencing the bundle by name.
 
@@ -189,7 +192,39 @@ The templates that placements reference must form an acyclic graph: no template 
 
 ### World Regions
 
-A **world region** is a bundle whose assets are all placements. Each placement in a world region has `ParentIndex = -1`. A world region is instantiated once, with its instance root at the world origin, so its placements are positioned in world space. Content that exists only once in the world (a cathedral, a cliff face) is a template placed once. A large world can be divided into many world regions; a small game's entire level can be a single world region. The Canvas engine decides when each world region is instantiated and removed.
+A **world region** is a bundle that a [world](#worlds) lists in its `Regions`, together with the region's streaming bounds. A region's instance root is at the world origin, so its content is positioned in world space. A region typically holds placements, and may also hold its own nodes, such as terrain. Content that exists only once in the world (a cathedral, a cliff face) is a template placed once. A large world can be divided into many world regions; a small game's entire level can live in its world bundle with no regions at all.
+
+### Worlds
+
+A **world** is the top-level unit a game loads: one place, such as a level, a map, or an open world, made of always-present content and world regions. A world is declared by a **world bundle**, a bundle that holds exactly one `AssetType::WorldSettings` asset. A bundle holding a `WorldSettings` asset is always a world bundle.
+
+Besides its `WorldSettings` asset, a world bundle may hold assets of any type: the world's always-present content, such as placements, `SceneNode` hierarchies with their cameras and lights, and the world's `Skybox` assets.
+
+A world bundle's instance root is at the world origin, so its content is positioned in world space, as a region's is. A world bundle is used only as a world, so neither a placement nor a region list references one. How and when a world and its regions are instantiated is defined by the [Canvas engine spec](../../README.md).
+
+```cpp
+// Draft schema.
+struct CpkgWorldRegionRef
+{
+    CpkgSpan<char>  Region;           // bundle path to the region's bundle; required
+    CpkgAABB        StreamingBounds;  // world space; must be well-formed (see below)
+};
+
+struct CpkgWorldSettingsData
+{
+    CpkgSpan<CpkgWorldRegionRef>  Regions;
+    CpkgSpan<int32_t>             Skyboxes;                    // asset indices of Skybox assets in this bundle
+    int32_t                       DefaultSkybox         = -1;  // position in Skyboxes (not an asset index); -1 = none
+    int32_t                       ActiveCameraNodeIndex = -1;  // asset index of a SceneNode in this bundle; -1 = none
+    float                         BackgroundColor[4];          // linear RGBA; shown while no skybox is active
+};
+```
+
+**Regions** lists the world's regions. `StreamingBounds` declares the world-space area the region covers, authored like a streaming grid cell, and it satisfies `Min[i] <= Max[i]` on every axis. The bounds say where a region's content is; when a region is loaded is not part of the package. A region may belong to several worlds, and a package never records which worlds use its bundles.
+
+**Skyboxes** lists every `Skybox` asset the world uses, such as day, dusk, and night skies. A world's skyboxes live in its world bundle. `DefaultSkybox` declares the skybox in effect when the world starts, or none. `BackgroundColor` declares the background while no skybox is in effect.
+
+**ActiveCameraNodeIndex** declares the world's initial camera: it references a `SceneNode` of the world bundle whose `CameraIndex` is not `-1`. A world with no authored camera, such as one whose game creates a player camera at runtime, leaves it at `-1`.
 
 ### Mobility
 
@@ -216,13 +251,13 @@ An instance whose ancestor instances include a `Movable` one is effectively `Mov
 
 ### Resolving path references
 
-Resolving [path references](#paths), such as a placement's template, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
+Resolving [path references](#paths), such as a placement's template or a world's regions, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
 
 ## Package Data Types
 
 `CCpkgWriter`/`CCpkgReader` move opaque, named, typed byte payloads. This section defines what those bytes mean for each `AssetType`.
 
-**Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`SceneNode`, `Material`, `Camera`, `Light`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
+**Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`SceneNode`, `Material`, `Camera`, `Light`, `Skybox`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
 
 Relationships between assets - a node's parent, the mesh a node instances, the material a mesh group draws with - are stored as the intra-bundle asset index of the referenced asset (see [Assets](#assets)). Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
 
@@ -243,7 +278,7 @@ Every payload stores values in the Canvas engine's own conventions, so a loader 
 
 **Colors.** Every color stored as `float` is linear RGB with straight (non-premultiplied) alpha where alpha is meaningful. This covers `BaseColorFactor`, `EmissiveFactor` (its alpha is unused), and `CpkgLightData::Color`. These values are not sRGB-encoded.
 
-**Image color space depends on the binding role, not on the image.** `CpkgImageData` stores no color space. A loader decides how to decode an image from the `CpkgMaterialData` field that references it:
+**Image color space depends on the binding role, not on the image.** `CpkgImageData` stores no color space. A loader decides how to decode an image from the field that references it:
 
 | Role | Texture index field | Interpretation |
 |---|---|---|
@@ -254,6 +289,7 @@ Every payload stores values in the Canvas engine's own conventions, so a loader 
 | Metallic | `MetallicTextureIndex` | Linear data |
 | Ambient occlusion | `AmbientOcclusionTextureIndex` | Linear data |
 | Displacement | `Displacement.DisplacementMapTextureIndex` | Linear data |
+| Skybox | `CpkgSkyboxData::ImageIndex` | sRGB-encoded color, decoded to linear when sampled |
 
 The sRGB rule covers integer-valued pixel data only. Floating-point pixel data, such as a floating-point TIFF, is always linear, in every role.
 
@@ -276,6 +312,8 @@ enum class AssetType : uint32_t
     Camera        = 7,
     Light         = 8,
     Instance      = 9,   // a placement; see Instantiation Model
+    Skybox        = 10,
+    WorldSettings = 11,  // see Worlds
 };
 ```
 
@@ -579,11 +617,28 @@ A reader may treat an image whose `Images.Count` differs from the count these ru
 
 Every entry uses the header's `Encoding` and the same pixel format, and decodes to the size of its mip. CanvasPkg cannot check these without decoding, so they are a contract on the writer, and a loader rejects an image that violates them.
 
-Every `CpkgMaterialData` texture index references a `Texture2D` image with `ArraySize == 1`. The color-space rules in [Conventions](#conventions) apply to each entry.
+Every `CpkgMaterialData` texture index references a `Texture2D` image with `ArraySize == 1`, and `CpkgSkyboxData::ImageIndex` references a `Cube` image with `ArraySize == 6`. The color-space rules in [Conventions](#conventions) apply to each entry.
 
 `Encoding` and `Compression.Codec` describe separate layers. `Encoding` describes the encoded images and is opaque to CanvasPkg, which stores and returns those bytes untouched. `Compression.Codec` is transport compression applied over the whole payload, and `ReadAsset` always reverses it before returning (see [Compression](#compression)). Any `CpkgCodec` is valid for any `Encoding`.
 
 Decoded, GPU-ready texture data (decoded pixels in a GPU tile layout) is a future design pass - see [Future Directions](#future-directions).
+
+### CpkgSkyboxData (AssetType::Skybox)
+
+A sky drawn behind all geometry, sampled by view direction. A [world](#worlds) lists the skyboxes it uses, and they live in its world bundle. The fields correspond to the skybox fields of `GfxBackgroundDesc`.
+
+Fixed size: the payload is one `CpkgSkyboxData`.
+
+```cpp
+struct CpkgSkyboxData
+{
+    int32_t  ImageIndex = -1;    // asset index of a Cube image; required
+    float    Orientation[4];     // unit quaternion, XYZW: rotates cube-texture space into Canvas space
+    float    Intensity  = 1.0f;  // linear multiplier on the sample
+};
+```
+
+`Orientation` lets a cubemap authored in any basis appear upright in Canvas space; it is `GfxBackgroundDesc::Orientation`. The image is a color role (see [Conventions](#conventions)).
 
 ### CpkgAnimClipData (AssetType::AnimationClip)
 
@@ -957,6 +1012,10 @@ Directions the current design leaves room for. None are committed plans:
 - **Compression**: `CpkgCompressionScheme` carries a `Codec` field and both a stored and a raw size, but only `CpkgCodec::None` is implemented. Adding a codec is additive; existing `None`-coded assets keep working.
 - **Per-instance overrides**: a placement instantiates its template unmodified. Overrides such as material swaps or script parameters would extend `CpkgInstanceData` with an override list.
 - **Model-level manifest**: there is no asset type for the model-level metadata `XModel` carries (the active-camera-node designation, overall bounds). It would need its own `AssetType` value and schema.
+- **World attributes**: `CpkgWorldSettingsData` holds the world-wide settings the engine has today. Settings such as gravity, spawn points, or global lighting would extend it as the engine grows them.
+- **World variants**: content subsets of one world toggled on and off at runtime, such as a town before and after its destruction, in the manner of Unreal's Data Layers.
+- **Local sky overrides**: volumes that override the active skybox within a bounded area and blend by camera position.
+- **Equirectangular skies**: many HDR skies ship as latitude-longitude images. A skybox could accept one through a mapping field, or a writer could convert it to a `Cube` image at cook time.
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
 
@@ -964,4 +1023,6 @@ Directions the current design leaves room for. None are committed plans:
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
+1. **Nodes held directly by a world bundle or region have no mobility.** Mobility is declared on a placement, but a world bundle's or region's own `SceneNode` hierarchy (a camera rig, terrain) is instantiated without one, so the engine cannot tell whether to bake it or update it every frame. Either fix a rule (such content is `Movable`, which is safe but forgoes baking) or declare it: a `Mobility` field on `CpkgWorldSettingsData` for the world bundle and on `CpkgWorldRegionRef` for each region.
+
+2. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
