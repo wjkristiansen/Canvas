@@ -43,9 +43,9 @@ Assets are the primary data block for CanvasPkg files. Each asset has an `AssetT
 
 Asset indices are per-bundle and span all asset types: the first asset appended to a bundle is index 0, the second is index 1, and so on, in append order, regardless of `AssetType`. `CCpkgReader::ReadAsset` and the `Cpkg*Data` cross-reference fields described below (`MaterialIndex`, `TextureIndex`, `MeshDataIndex`, `ParentIndex`, ...) all use this index.
 
-**An asset may only reference assets appended before it.** Every intra-bundle cross-reference index (`MeshDataIndex`, `MaterialIndex`, `ParentIndex`, `TextureIndex`, `MeshNodeIndex`, `BoneNodeIndices`, ...) must be strictly less than the index of the asset holding it. Forward references are not part of the format, so a loader resolves every reference in a single forward pass over the asset table, with no deferred fixups and no second pass.
+**An asset may only index other assets appended before it.** Every intra-bundle cross-reference index (`MeshDataIndex`, `MaterialIndex`, `ParentIndex`, `TextureIndex`, `MeshNodeIndex`, `BoneNodeIndices`, ...) must be strictly less than the index of the asset holding it. Forward indices are not part of the format, so a loader resolves every index in a single forward pass over the asset table, with no deferred fixups and no second pass.
 
-The reference graph this schema defines is acyclic, so an append order satisfying the rule always exists:
+The graph these indices form is acyclic, so an append order satisfying the rule always exists:
 
 ```
 Image <- Material <- MeshData <- SceneNode <- MeshSkin
@@ -59,13 +59,35 @@ Image <- Material <- MeshData <- SceneNode <- MeshSkin
 
 `AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed. A reader may treat an out-of-order reference as a corrupt package (`Gem::Result::CorruptedData`).
 
-Intra-bundle asset dependencies reference assets by this index. Cross-bundle dependencies reference bundle name + asset name. Cross-package dependencies use package name + bundle name + asset name. Resolving cross-bundle and cross-package references is a loader-level concern, built on top of `CCpkgReader`'s opt-in [name directories](#name-directories).
-
 `CCpkgWriter::AppendAsset` requires an open bundle; call `BeginBundle` first, and `EndBundle` when the bundle is complete.
 
-Bundle names must be non-empty and unique within a package.
+Bundle names must be non-empty and unique within a package. Package, bundle, and asset names never contain `/`, which separates names in a [path](#paths). Names compare byte-for-byte: case-sensitive UTF-8, with no normalization. This applies to every name match in CanvasPkg, including path resolution and animation track binding.
 
-Asset names are optional. An asset referenced only by its index may be unnamed, which is stored as an empty name. An asset that is referenced by name must be named: a `SceneNode` targeted by an `AnimationClip` track, and any asset referenced from another bundle or package. Like the reference-order rule above, this is a contract on whoever produces the package; the writer cannot tell which assets will be referenced by name. Non-empty asset names must be unique within a bundle; any number of assets in a bundle may be unnamed.
+Asset names are optional. An asset referenced only by its index may be unnamed, which is stored as an empty name. An asset found by name must be named: any asset referenced by a path, and a `SceneNode` an `AnimationClip` track targets. Like the append-order rule above, this is a contract on whoever produces the package; the writer cannot tell which assets will be found by name. Non-empty asset names must be unique within a bundle; any number of assets in a bundle may be unnamed.
+
+### Paths
+
+A **path reference** is a `CpkgSpan<char>` field holding a **path**: UTF-8 names separated by `/`, resolved by name relative to the bundle that holds it, called the referencing bundle. A path reference refers to an asset or bundle that may live in another bundle or package. Each path reference field is either an **asset path** or a **bundle path**, and that fixes the forms its path may take:
+
+| Kind | Path | Resolves to |
+|---|---|---|
+| Asset path | `asset` | the asset named `asset` in the referencing bundle |
+| | `bundle/asset` | the asset named `asset` in bundle `bundle` of the referencing package |
+| | `package/bundle/asset` | the asset named `asset` in bundle `bundle` of package `package` |
+| Bundle path | `bundle` | bundle `bundle` of the referencing package |
+| | `package/bundle` | bundle `bundle` of package `package` |
+
+Path references follow these rules:
+
+- **An empty path is null.** Each path reference field states whether it may be null. For example, a placement's template is required.
+- **A qualified path may refer to its own scope.** A `package/bundle/asset` path that spells out the referencing package and bundle resolves to the same asset as `asset`.
+- **Malformed paths.** A non-empty path containing an empty name (a leading, trailing, or doubled `/`), or more names than its kind allows, is malformed, and a reader may treat it as corrupt (`Gem::Result::CorruptedData`).
+- **Each path reference declares its target.** An asset path declares an `AssetType`, and an asset path that resolves to an asset of any other type is a fatal error. Every bundle path references a bundle to instantiate.
+- **An unresolved path is a fatal error**: a package not loaded, or a bundle or asset absent from it.
+
+A fatal path reference error fails instantiation of the template that holds the path reference, and the loader reports the path and the asset that holds it. Resolution is the loader's job (see [Resolving path references](#resolving-path-references)). A loader resolving an asset path can build the target bundle's directory with the expected type as the `BuildAssetDirectory` filter, so a lookup finds only assets of that type.
+
+`CCpkgWriter::CopyBundle` copies path references unchanged. A relative path in a copied bundle therefore resolves within the package it is copied into, while a fully qualified path keeps referencing the original package.
 
 ## Bundles
 
@@ -142,18 +164,17 @@ A **template** is a bundle that describes one instantiable thing (a goblin, a ch
 
 A template's `SceneNode` assets may form more than one tree (more than one node with `ParentIndex = -1`). Instantiating a template always produces a single **instance root** node that carries the instance's transform; each of the template's root nodes becomes a child of that instance root. A loader therefore manipulates an instance as one unit no matter how many roots the bundle has.
 
-A template enters the world when something instantiates it: a placement (below), or the engine user at runtime (for example, spawning an enemy) by naming the bundle.
+A template enters the world when something instantiates it: a placement (below), or the engine user at runtime (for example, spawning an enemy) by referencing the bundle by name.
 
 ### Placements
 
-A **placement** is an asset (`AssetType::Instance`) that instantiates a template at a transform with a declared [mobility](#mobility). A placement names its template by bundle name and, for a template in another package, by that package's declared name (`CCpkgReader::GetPackageName`). Templates are therefore shared across packages: world regions in several packages can each place a goblin template stored once in a shared characters package.
+A **placement** is an asset (`AssetType::Instance`) that instantiates a template at a transform with a declared [mobility](#mobility). A placement references its template by [bundle path](#paths): `bundle` for a template in the same package, or `package/bundle` for a template in another package, where `package` is that package's declared name (`CCpkgReader::GetPackageName`). Templates are therefore shared across packages: world regions in several packages can each place a goblin template stored once in a shared characters package.
 
 ```cpp
 // Draft schema.
 struct CpkgInstanceData
 {
-    CpkgSpan<char> PackageName;               // package holding the template; empty = this package
-    CpkgSpan<char> BundleName;                // template bundle; must be non-empty
+    CpkgSpan<char> Template;                  // bundle path to the template's bundle; required
     int32_t        ParentIndex = -1;          // asset index of a SceneNode in this bundle; -1 = bundle root
     float          LocalTranslation[3];
     float          LocalRotation[4];          // unit quaternion, XYZW, Canvas space
@@ -162,9 +183,9 @@ struct CpkgInstanceData
 };
 ```
 
-`ParentIndex` attaches a placement to a node of the template that contains it. For example, a house template can hang a lamp placement from one of its beam nodes. Like every intra-bundle reference, it must name an asset appended earlier. Because the template is referenced by name, only `ParentIndex` constrains where a placement is appended.
+`ParentIndex` attaches a placement to a node of the template that contains it. For example, a house template can hang a lamp placement from one of its beam nodes. Like every asset index, it must reference an asset appended earlier. The template is a path reference, so only `ParentIndex` constrains where a placement is appended.
 
-Template references must form an acyclic graph.
+The templates that placements reference must form an acyclic graph: no template places itself, directly or through other templates.
 
 ### World Regions
 
@@ -193,9 +214,9 @@ A placement's mobility covers the nodes of its own template. Each placement nest
 
 An instance whose ancestor instances include a `Movable` one is effectively `Movable`, whatever its declared mobility, because its world transform changes with that ancestor. For example, a house placed `Movable` on a ship moves with the ship, and so does the `Static` furniture placed inside the house template. A template can therefore be placed anywhere, regardless of the mobility of its nested placements.
 
-### Resolving references across packages
+### Resolving path references
 
-Resolving a placement's template, or any other cross-bundle or cross-package reference, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together. A reference to an unloaded package fails instantiation, and the loader reports the missing package.
+Resolving [path references](#paths), such as a placement's template, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
 
 ## Package Data Types
 
@@ -710,14 +731,14 @@ A CCpkgWriter class writes bundles and assets to a package. CanvasPkg bundle and
 
 ### Copying Bundles
 
-`CopyBundle` copies a sealed bundle from a package open in a `CCpkgReader` into the package being written. The copy is byte-for-byte: each asset keeps its index, type, name, and compression scheme, and its stored payload is copied without being decompressed or interpreted. Because asset indices are preserved, the bundle's intra-bundle references remain valid in the new package.
+`CopyBundle` copies a sealed bundle from a package open in a `CCpkgReader` into the package being written. The copy is byte-for-byte: each asset keeps its index, type, name, and compression scheme, and its stored payload is copied without being decompressed or interpreted. Because asset indices are preserved, the bundle's asset indices remain valid in the new package. Its path references are copied unchanged (see [Paths](#paths)).
 
 This makes whole-bundle operations cheap without the format supporting in-place modification:
 
 - **Merging packages.** One writer can copy bundles from any number of open readers, producing a single package from several. A bundle can be given a new name as it is copied, so bundles with the same name in different source packages can coexist.
 - **Append-like updates.** Copy every bundle of an existing package into a new file, add, replace, or drop bundles along the way, then replace the original file with the new one.
 
-Bundle indices are not preserved: a copied bundle's index is its position in the new package. Nothing in the format stores a bundle index, so this breaks no reference.
+Bundle indices are not preserved: a copied bundle's index is its position in the new package. Nothing in the format stores a bundle index; bundle paths reference bundles by name.
 
 ### Writer argument rules
 
@@ -725,7 +746,7 @@ The writer rejects any argument that would break a format rule or produce a file
 
 - **Call order**: `Open` while the writer is already open; `BeginBundle` or `CopyBundle` while a bundle is open; `AppendAsset` or `EndBundle` with no bundle open; `Close` while a bundle is open.
 - **`CopyBundle` source**: `reader` must be open and `bundleIndex` in range.
-- **Names** (`packageName`, `bundleName`, `name`, and the name a `CopyBundle` copy receives): must be valid UTF-8, must not contain a NUL byte, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A package name must be non-empty. A bundle name must be non-empty and unique within the package; an asset name may be empty, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
+- **Names** (`packageName`, `bundleName`, `name`, and the name a `CopyBundle` copy receives): must be valid UTF-8, must not contain a NUL byte or `/`, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A package name must be non-empty. A bundle name must be non-empty and unique within the package; an asset name may be empty, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
 - **`assetType`**: must be a named `AssetType` enumerator other than `AssetType::Unknown`.
 - **`codec`**: must be a named `CpkgCodec` enumerator.
 - **`data`**: must be non-empty. Every payload begins with its header struct (see [Package Data Types](#package-data-types)), so no asset type has an empty payload.
@@ -737,7 +758,7 @@ The reader does not recheck the name rules: a name that breaks them cannot cause
 
 **CCpkgWriter::Open**
 
-Creates `fileName`, opens it for write, and writes the file header and `packageName`. `packageName` identifies the package in cross-package references (see [Instantiation Model](#instantiation-model)) and follows the same rules as a bundle name. Fails with `Gem::Result::AlreadyExists` if `fileName` already exists, leaving it untouched.
+Creates `fileName`, opens it for write, and writes the file header and `packageName`. `packageName` identifies the package in path references (see [Paths](#paths)) and follows the same rules as a bundle name. Fails with `Gem::Result::AlreadyExists` if `fileName` already exists, leaving it untouched.
 
 `Gem::Result CCpkgWriter::Open(const char *fileName, std::string_view packageName)`
 
@@ -783,7 +804,7 @@ CanvasPkg reads are random-access. The file-level bundle table and bundle name b
 
 ### Name Directories
 
-Name lookups are opt-in: a caller builds a directory once (e.g. a loader resolving cross-bundle references) and searches it directly:
+Name lookups are opt-in: a caller builds a directory once (e.g. a loader resolving path references) and searches it directly:
 
 ```cpp
 // Built by BuildBundleDirectory/BuildAssetDirectory. Owns its own copies of
