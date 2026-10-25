@@ -41,22 +41,21 @@ Name blobs hold only the names of bundles and assets themselves. A name stored i
 
 Assets are the primary data block for CanvasPkg files. Each asset has an `AssetType`, a payload of bytes whose internal layout is defined by that `AssetType` (see [Package Data Types](#package-data-types)), and optionally a name. An asset's payload is stored on disk on its own, with nothing before or after it. A named asset's name is stored separately in its bundle's asset name blob, with no imposed maximum length. The bundle's asset table (see [Bundles](#bundles)) is a flat, fixed-stride array, indexed by asset index, holding the type, payload offset, name location, and compression info of every asset in the bundle. `CCpkgReader::Open` loads every bundle's asset table and asset name blob, so a name costs no file read.
 
-Asset indices are per-bundle and span all asset types: the first asset appended to a bundle is index 0, the second is index 1, and so on, in append order, regardless of `AssetType`. `CCpkgReader::ReadAsset` and the `Cpkg*Data` cross-reference fields described below (`MaterialIndex`, `TextureIndex`, `MeshDataIndex`, `ParentIndex`, ...) all use this index.
+Asset indices are per-bundle and span all asset types: the first asset appended to a bundle is index 0, the second is index 1, and so on, in append order, regardless of `AssetType`. `CCpkgReader::ReadAsset` and the `Cpkg*Data` cross-reference fields described below (`MaterialIndex`, `MeshDataIndex`, `ParentIndex`, ...) all use this index.
 
-**An asset may only index other assets appended before it.** Every intra-bundle cross-reference index (`MeshDataIndex`, `MaterialIndex`, `ParentIndex`, `TextureIndex`, `MeshNodeIndex`, `BoneNodeIndices`, `ImageIndex`, `Skyboxes`, ...) must be strictly less than the index of the asset holding it. Forward indices are not part of the format, so a loader resolves every index in a single forward pass over the asset table, with no deferred fixups and no second pass.
+**An asset may only index other assets appended before it.** Every intra-bundle cross-reference index (`MeshDataIndex`, `MaterialIndex`, `ParentIndex`, `MeshNodeIndex`, `BoneNodeIndices`, `Skyboxes`, ...) must be strictly less than the index of the asset holding it. Forward indices are not part of the format, so a loader resolves every index in a single forward pass over the asset table, with no deferred fixups and no second pass.
 
 The graph these indices form is acyclic, so an append order satisfying the rule always exists:
 
 ```
-Image <- Material <- MeshData <- SceneNode <- MeshSkin
-  ^                              |  |  ^
-  +-- Skybox           Camera <--+  |  +-- Instance
-        ^                           v  +-- WorldSettings
-        |                         Light          |
-        +----------------------------------------+
+Material <- MeshData <- SceneNode <- MeshSkin
+                        |  |  ^
+              Camera <--+  |  +-- Instance
+                           v  +-- WorldSettings --> Skybox
+                         Light
 ```
 
-`AnimationClip` binds tracks by node name and holds no indices, so it may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Camera`, `Light`, `SceneNode`, `MeshSkin`, `Instance`, `WorldSettings`, `AnimationClip`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
+`Image` is referenced only by [asset paths](#paths), and `AnimationClip` binds tracks by node name; neither holds an index nor is referenced by one, so either may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Camera`, `Light`, `SceneNode`, `MeshSkin`, `Instance`, `WorldSettings`, `AnimationClip`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
 
 `AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed. A reader may treat an out-of-order reference as a corrupt package (`Gem::Result::CorruptedData`).
 
@@ -161,9 +160,9 @@ This section describes, at a high level, how the content of a package becomes ob
 
 ### Templates
 
-Any bundle other than a world bundle can be instantiated. Instantiating a bundle creates a new copy of its `SceneNode` hierarchy and its placements in the world. How a bundle is used decides what it is called: a bundle instantiated by a placement or by the engine user is a template, and a bundle a world streams is a [world region](#world-regions). Nothing in a bundle records its use, and one bundle may serve both.
+Any bundle other than a world bundle can be instantiated. Instantiating a bundle creates a new copy of its `SceneNode` hierarchy and its placements in the world. How a bundle is used decides what it is called: a bundle instantiated by a placement or by the engine user is a template, and a bundle a world streams is a [world region](#world-regions). Nothing in a bundle records its use, and one bundle may serve both. A bundle that is never instantiated, such as one holding only images that other bundles reference by path, needs no special designation.
 
-A **template** describes one instantiable thing (a goblin, a chair, a tree) as a hierarchy of `SceneNode` assets together with the meshes, materials, images, skins, and clips they reference. A template may also contain placements of other templates (see [Placements](#placements)). Every instance of a template shares the template's immutable resources (mesh data, materials, images, clips); each instance has its own nodes and transforms.
+A **template** describes one instantiable thing (a goblin, a chair, a tree) as a hierarchy of `SceneNode` assets together with the meshes, materials, skins, and clips they reference, and the images its materials reference by path. A template may also contain placements of other templates (see [Placements](#placements)). Every instance of a template shares the template's immutable resources (mesh data, materials, images, clips); each instance has its own nodes and transforms.
 
 A bundle's `SceneNode` assets may form more than one tree (more than one node with `ParentIndex = -1`). Instantiating a bundle always produces a single **instance root** node that carries the instance's transform; each of the bundle's root nodes and root placements becomes a child of that instance root. A loader therefore manipulates an instance as one unit no matter how many roots the bundle has.
 
@@ -222,7 +221,7 @@ struct CpkgWorldSettingsData
 
 **Regions** lists the world's regions. `StreamingBounds` declares the world-space area the region covers, authored like a streaming grid cell, and it satisfies `Min[i] <= Max[i]` on every axis. The bounds say where a region's content is; when a region is loaded is not part of the package. A region may belong to several worlds, and a package never records which worlds use its bundles.
 
-**Skyboxes** lists every `Skybox` asset the world uses, such as day, dusk, and night skies. A world's skyboxes live in its world bundle. `DefaultSkybox` declares the skybox in effect when the world starts, or none. `BackgroundColor` declares the background while no skybox is in effect.
+**Skyboxes** lists every `Skybox` asset the world uses, such as day, dusk, and night skies. A world's skyboxes live in its world bundle; the cube images they reference by path may live anywhere. `DefaultSkybox` declares the skybox in effect when the world starts, or none. `BackgroundColor` declares the background while no skybox is in effect.
 
 **ActiveCameraNodeIndex** declares the world's initial camera: it references a `SceneNode` of the world bundle whose `CameraIndex` is not `-1`. A world with no authored camera, such as one whose game creates a player camera at runtime, leaves it at `-1`.
 
@@ -251,15 +250,15 @@ An instance whose ancestor instances include a `Movable` one is effectively `Mov
 
 ### Resolving path references
 
-Resolving [path references](#paths), such as a placement's template or a world's regions, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
+Resolving [path references](#paths), such as a placement's template or a world's regions and skyboxes, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
 
 ## Package Data Types
 
 `CCpkgWriter`/`CCpkgReader` move opaque, named, typed byte payloads. This section defines what those bytes mean for each `AssetType`.
 
-**Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`SceneNode`, `Material`, `Camera`, `Light`, `Skybox`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
+**Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`SceneNode`, `Camera`, `Light`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
 
-Relationships between assets - a node's parent, the mesh a node instances, the material a mesh group draws with - are stored as the intra-bundle asset index of the referenced asset (see [Assets](#assets)). Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
+Relationships between assets - a node's parent, the mesh a node instances, the material a mesh group draws with - are stored as the intra-bundle asset index of the referenced asset (see [Assets](#assets)). Images are the exception: every field that references an `Image` is a path reference: an asset path (see [Paths](#paths)), so an image may live in any bundle of any loaded package and be shared by many. Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
 
 ### Conventions
 
@@ -280,16 +279,16 @@ Every payload stores values in the Canvas engine's own conventions, so a loader 
 
 **Image color space depends on the binding role, not on the image.** `CpkgImageData` stores no color space. A loader decides how to decode an image from the field that references it:
 
-| Role | Texture index field | Interpretation |
+| Role | Texture field | Interpretation |
 |---|---|---|
-| Albedo | `AlbedoTextureIndex` | sRGB-encoded color, decoded to linear when sampled |
-| Emissive | `EmissiveTextureIndex` | sRGB-encoded color, decoded to linear when sampled |
-| Normal | `NormalTextureIndex` | Linear data |
-| Roughness | `RoughnessTextureIndex` | Linear data |
-| Metallic | `MetallicTextureIndex` | Linear data |
-| Ambient occlusion | `AmbientOcclusionTextureIndex` | Linear data |
-| Displacement | `Displacement.DisplacementMapTextureIndex` | Linear data |
-| Skybox | `CpkgSkyboxData::ImageIndex` | sRGB-encoded color, decoded to linear when sampled |
+| Albedo | `AlbedoTexture` | sRGB-encoded color, decoded to linear when sampled |
+| Emissive | `EmissiveTexture` | sRGB-encoded color, decoded to linear when sampled |
+| Normal | `NormalTexture` | Linear data |
+| Roughness | `RoughnessTexture` | Linear data |
+| Metallic | `MetallicTexture` | Linear data |
+| Ambient occlusion | `AmbientOcclusionTexture` | Linear data |
+| Displacement | `Displacement.DisplacementMap` | Linear data |
+| Skybox | `CpkgSkyboxData::Image` | sRGB-encoded color, decoded to linear when sampled |
 
 The sRGB rule covers integer-valued pixel data only. Floating-point pixel data, such as a floating-point TIFF, is always linear, in every role.
 
@@ -534,12 +533,12 @@ A skinned mesh, its `MeshSkin` asset, and every bone it references must all live
 
 Covers the material properties `XGfxMaterial` exposes today: texture-role bindings, the three PBR factors, and the optional displacement extension.
 
-Fixed size: the payload is one `CpkgMaterialData`.
+The payload is a `CpkgMaterialData` header followed by a data area holding its texture paths. Each texture field is an asset path to an `Image`; an empty path means the role has no texture.
 
 ```cpp
 struct CpkgDisplacementData
 {
-    int32_t DisplacementMapTextureIndex = -1;  // asset index of an Image; required if present
+    CpkgSpan<char> DisplacementMap;   // asset path to an Image; required if present
     float   MapScale          = 1.0f;
     float   MapBias           = 0.0f;
     float   MinTessFactor     = 2.0f;
@@ -554,19 +553,20 @@ struct CpkgMaterialData
     float  EmissiveFactor[4];       // linear RGB, A unused
     float  RoughMetalAOFactor[4];   // R=Roughness, G=Metallic, B=AmbientOcclusion, A=spare
 
-    int32_t AlbedoTextureIndex           = -1;  // asset index of an Image; -1 = none, one per MaterialLayerRole
-    int32_t NormalTextureIndex           = -1;
-    int32_t RoughnessTextureIndex        = -1;
-    int32_t MetallicTextureIndex         = -1;
-    int32_t AmbientOcclusionTextureIndex = -1;
-    int32_t EmissiveTextureIndex         = -1;
+    CpkgSpan<char> AlbedoTexture;            // asset path to an Image; empty = none, one per MaterialLayerRole
+    CpkgSpan<char> NormalTexture;
+    CpkgSpan<char> RoughnessTexture;
+    CpkgSpan<char> MetallicTexture;
+    CpkgSpan<char> AmbientOcclusionTexture;
+    CpkgSpan<char> EmissiveTexture;
 
     uint32_t               HasDisplacement = 0;  // 0 or 1
+    uint32_t               Padding         = 0;
     CpkgDisplacementData   Displacement;         // meaningful only when HasDisplacement is 1
 };
 ```
 
-The `Displacement` block is always present, even when `HasDisplacement` is `0`, so the struct has a single fixed layout. A reader ignores its contents when `HasDisplacement` is `0`.
+The `Displacement` block is always present, even when `HasDisplacement` is `0`, so the header has a single fixed layout. When `HasDisplacement` is `0`, `Displacement.DisplacementMap` is empty and a reader ignores the block's other fields.
 
 ### CpkgImageData (AssetType::Image)
 
@@ -617,7 +617,7 @@ A reader may treat an image whose `Images.Count` differs from the count these ru
 
 Every entry uses the header's `Encoding` and the same pixel format, and decodes to the size of its mip. CanvasPkg cannot check these without decoding, so they are a contract on the writer, and a loader rejects an image that violates them.
 
-Every `CpkgMaterialData` texture index references a `Texture2D` image with `ArraySize == 1`, and `CpkgSkyboxData::ImageIndex` references a `Cube` image with `ArraySize == 6`. The color-space rules in [Conventions](#conventions) apply to each entry.
+Every image a `CpkgMaterialData` texture path references is a `Texture2D` image with `ArraySize == 1`, and the image `CpkgSkyboxData::Image` references is a `Cube` image with `ArraySize == 6`. A path referencing an image of any other shape is a fatal error, like one referencing an asset of the wrong type. The color-space rules in [Conventions](#conventions) apply to each entry.
 
 `Encoding` and `Compression.Codec` describe separate layers. `Encoding` describes the encoded images and is opaque to CanvasPkg, which stores and returns those bytes untouched. `Compression.Codec` is transport compression applied over the whole payload, and `ReadAsset` always reverses it before returning (see [Compression](#compression)). Any `CpkgCodec` is valid for any `Encoding`.
 
@@ -627,14 +627,15 @@ Decoded, GPU-ready texture data (decoded pixels in a GPU tile layout) is a futur
 
 A sky drawn behind all geometry, sampled by view direction. A [world](#worlds) lists the skyboxes it uses, and they live in its world bundle. The fields correspond to the skybox fields of `GfxBackgroundDesc`.
 
-Fixed size: the payload is one `CpkgSkyboxData`.
+The payload is a `CpkgSkyboxData` header followed by a data area holding the `Image` path.
 
 ```cpp
 struct CpkgSkyboxData
 {
-    int32_t  ImageIndex = -1;    // asset index of a Cube image; required
-    float    Orientation[4];     // unit quaternion, XYZW: rotates cube-texture space into Canvas space
-    float    Intensity  = 1.0f;  // linear multiplier on the sample
+    CpkgSpan<char>  Image;               // asset path to a Cube Image; required
+    float           Orientation[4];      // unit quaternion, XYZW: rotates cube-texture space into Canvas space
+    float           Intensity  = 1.0f;   // linear multiplier on the sample
+    uint32_t        Padding    = 0;
 };
 ```
 
@@ -1015,6 +1016,7 @@ Directions the current design leaves room for. None are committed plans:
 - **World attributes**: `CpkgWorldSettingsData` holds the world-wide settings the engine has today. Settings such as gravity, spawn points, or global lighting would extend it as the engine grows them.
 - **World variants**: content subsets of one world toggled on and off at runtime, such as a town before and after its destruction, in the manner of Unreal's Data Layers.
 - **Local sky overrides**: volumes that override the active skybox within a bounded area and blend by camera position.
+- **Shared materials and meshes**: only images are referenced by path today, so materials and meshes are shared across bundles only by sharing a template. Making `Material` and `MeshData` path-referenced as well would let separate templates share them, in the manner of standalone material and mesh assets in other engines.
 - **Equirectangular skies**: many HDR skies ship as latitude-longitude images. A skybox could accept one through a mapping field, or a writer could convert it to a `Cube` image at cook time.
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
