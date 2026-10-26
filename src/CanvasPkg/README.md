@@ -41,7 +41,7 @@ Name blobs hold only the names of bundles and assets themselves. A name stored i
 
 Assets are the primary data block for CanvasPkg files. Each asset has an `AssetType`, a payload of bytes whose internal layout is defined by that `AssetType` (see [Package Data Types](#package-data-types)), and optionally a name. An asset's payload is stored on disk on its own, with nothing before or after it. A named asset's name is stored separately in its bundle's asset name blob, with no imposed maximum length. The bundle's asset table (see [Bundles](#bundles)) is a flat, fixed-stride array, indexed by asset index, holding the type, payload offset, name location, and compression info of every asset in the bundle. `CCpkgReader::Open` loads every bundle's asset table and asset name blob, so a name costs no file read.
 
-Asset indices are per-bundle and span all asset types: the first asset appended to a bundle is index 0, the second is index 1, and so on, in append order, regardless of `AssetType`. `CCpkgReader::ReadAsset` and the `Cpkg*Data` index fields described below (`ParentIndex`, `MeshNodeIndex`, ...) all use this index.
+Asset indices are per-bundle and span all asset types: the first asset appended to a bundle is index 0, the second is index 1, and so on, in append order, regardless of `AssetType`. `CCpkgReader::ReadAsset` and the `Cpkg*Data` index fields described below (`ParentIndex`, `NodeIndex`, ...) all use this index.
 
 `CCpkgWriter::AppendAsset` requires an open bundle; call `BeginBundle` first, and `EndBundle` when the bundle is complete.
 
@@ -55,12 +55,12 @@ Every asset type is one of two classes, fixed by its `AssetType`. The class deci
 
 | Class | Asset types | Referenced by | At instantiation |
 |---|---|---|---|
-| **Shared** | `Image`, `Material`, `MeshData`, `Skybox`, `Camera`, `Light` | [Asset path](#paths) only | Every instance uses the same loaded copy |
-| **Local** | `Node`, `MeshSkin`, `NodeAnimationClip`, `Placement`, `WorldSettings` | Asset index within its bundle | Each instance gets its own copy |
+| **Shared** | `Image`, `Material`, `MeshData`, `Skybox` | [Asset path](#paths) only | Every instance uses the same loaded copy |
+| **Local** | `TransformNode`, `MeshInstance`, `Camera`, `Light`, `Placement`, `MeshSkin`, `NodeAnimationClip`, `WorldSettings` | Asset index within its bundle | Each instance gets its own copy |
 
-**A shared asset's payload holds no asset index.** It references other assets only by path, so its meaning does not depend on the bundle that holds it, and any bundle of any loaded package may reference it. A bundle may hold only shared assets, such as a material library that other bundles reference. A shared asset is always named, since a path finds it by name. For a `Camera` or `Light`, the shared copy is its settings; each instance still gets its own camera or light object, built from those settings, on its own node.
+**A shared asset's payload cannot reference other assets by index.** It references other assets only by path, so its meaning does not depend on the bundle that holds it, and any bundle of any loaded package may reference it. A bundle may hold only shared assets, such as a material library that other bundles reference. A shared asset is always named, since a path finds it by name.
 
-**A local asset is instance structure.** Its payload may itself reference earlier local assets in the same bundle by index. For example, `CpkgMeshSkinData::BoneNodeIndices` references `Node` assets. A local asset may be unnamed.
+**A local asset is instance structure.** Its payload may itself reference earlier local assets in the same bundle by index. For example, `CpkgMeshSkinData::BoneNodeIndices` references `TransformNode` assets. A local asset may be unnamed.
 
 `CanvasPkg.h` classifies each type with a `constexpr` helper, so `cpkgbuilder` and the loader classify them identically:
 
@@ -77,12 +77,13 @@ A producer satisfies the rule by appending each asset after every asset it index
 
 | Field | Held by | References |
 |---|---|---|
-| `ParentIndex` | `Node`, `Placement` | `Node` |
-| `MeshNodeIndex`, `BoneNodeIndices` | `MeshSkin` | `Node` |
-| `NodeIndex` | `NodeAnimationClip` (per track) | `Node` |
-| `ActiveCameraNodeIndex` | `WorldSettings` | `Node` |
+| `ParentIndex` | `TransformNode` | `TransformNode` |
+| `NodeIndex` | `MeshInstance`, `Camera`, `Light`, `Placement`, `NodeAnimationClip` (per track) | `TransformNode` |
+| `MeshInstanceIndex` | `MeshSkin` | `MeshInstance` |
+| `BoneNodeIndices` | `MeshSkin` | `TransformNode` |
+| `ActiveCameraIndex` | `WorldSettings` | `Camera` |
 
-Shared assets hold no index, and no index references one, so they may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Camera`, `Light`, `Node`, `MeshSkin`, `NodeAnimationClip`, `Placement`, `WorldSettings`. Within `Node`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
+Shared assets hold no index, and no index references one, so they may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `TransformNode`, `MeshInstance`, `Camera`, `Light`, `Placement`, `MeshSkin`, `NodeAnimationClip`, `WorldSettings`. Within `TransformNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
 
 `AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed. A reader may treat an out-of-order reference as a corrupt package (`Gem::Result::CorruptedData`).
 
@@ -181,46 +182,50 @@ This section describes, at a high level, how the content of a package becomes ob
 
 ### Templates
 
-Any bundle other than a world bundle can be instantiated. Instantiating a bundle creates a new copy of its `Node` hierarchy and its placements in the world. How a bundle is used decides what it is called: a bundle instantiated by a placement or by the engine user is a template, and a bundle a world streams is a [world region](#world-regions). Nothing in a bundle records its use, and one bundle may serve both. A bundle that is never instantiated, such as one holding only images that other bundles reference by path, needs no special designation.
+Any bundle can be **instantiated**: brought into the world any number of times, each **instance** independent of the others. An instance is made of the bundle's [local assets](#shared-and-local-assets): its `TransformNode` hierarchy and the nodes' [attachments](#cpkgtransformnodedata-assettypetransformnode), its skins, and its clips. A bundle with no local assets, such as an image library, has an empty instance. How the engine represents an instance is defined by the [Canvas engine spec](../../README.md).
 
-A **template** describes one instantiable thing (a goblin, a chair, a tree) as a hierarchy of `Node` assets together with their skins, the clips that animate them, and the shared assets they reference by path: meshes, materials, images, cameras, and lights. Those shared assets may live in the template's own bundle or in any other bundle of any loaded package. A template may also contain placements of other templates (see [Placements](#placements)). Every instance of a template uses the same [shared assets](#shared-and-local-assets); each instance has its own nodes, transforms, cameras, and lights.
+A bundle's use decides what it is called. A **template** is a bundle instantiated by a placement or by the engine user at runtime, for example to spawn an enemy. A [world region](#world-regions) is a bundle a world streams, and a [world bundle](#worlds) is instantiated only as its world. Nothing in a bundle records its use, and one bundle may serve as both a template and a region.
 
-A bundle's `Node` assets may form more than one tree (more than one node with `ParentIndex = -1`). Instantiating a bundle always produces a single **instance root** node that carries the instance's transform; each of the bundle's root nodes and root placements becomes a child of that instance root. A loader therefore manipulates an instance as one unit no matter how many roots the bundle has.
+A template typically describes one thing, such as a goblin, a chair, or a tree. Each instance has its own nodes and their attachments; the [shared assets](#shared-and-local-assets) they reference, which may live in any bundle of any loaded package, are common to every instance. A template may also contain placements of other templates (see [Placements](#placements)).
 
-A template enters the world when something instantiates it: a placement (below), or the engine user at runtime (for example, spawning an enemy) by referencing the bundle by name.
+Each instance has an **instance transform**, supplied by whatever instantiates the bundle: a [placement](#placements) supplies the instance's placement transform, a [world region](#world-regions) or [world bundle](#worlds) uses the world origin, and the engine user supplies one for an instance it creates at runtime. A `TransformNode` with `ParentIndex = -1` is relative to its instance's instance transform, so a bundle's nodes may form several trees and an instance still moves as one unit.
 
 ### Placements
 
-A **placement** is an asset (`AssetType::Placement`) that instantiates a template at a transform with a declared [mobility](#mobility). A placement references its template by [bundle path](#paths): `bundle` for a template in the same package, or `package/bundle` for a template in another package, where `package` is that package's declared name (`CCpkgReader::GetPackageName`). Templates are therefore shared across packages: world regions in several packages can each place a goblin template stored once in a shared characters package.
+A **placement** is an [attachment](#cpkgtransformnodedata-assettypetransformnode) (`AssetType::Placement`) that instantiates one template once per entry in its `Transforms` array, with a declared [mobility](#mobility) shared by every instance it creates. Each entry is relative to the node the placement attaches to, or to the instance transform of the bundle holding the placement when `NodeIndex` is `-1`. That entry, composed with what it is relative to, is the placed instance's **placement transform**, which serves as its instance transform. A placement references its template by [bundle path](#paths): `bundle` for a template in the same package, or `package/bundle` for a template in another package, where `package` is that package's declared name (`CCpkgReader::GetPackageName`). Templates are therefore shared across packages: world regions in several packages can each place a goblin template stored once in a shared characters package.
 
 ```cpp
 // Draft schema.
 struct CpkgPlacementData
 {
-    CpkgSpan<char> Template;                  // bundle path to the template's bundle; required
-    int32_t        ParentIndex = -1;          // asset index of a Node in this bundle; -1 = bundle root
-    float          LocalTranslation[3];
-    float          LocalRotation[4];          // unit quaternion, XYZW, Canvas space
-    float          LocalScale[3];
-    CpkgMobility   Mobility = CpkgMobility::Static;
+    int32_t                  NodeIndex = -1;                   // asset index of the TransformNode this placement attaches to; -1 = instance transform
+    CpkgMobility             Mobility  = CpkgMobility::Static;
+    CpkgSpan<char>           Template;                         // bundle path to the template's bundle; required
+    CpkgSpan<CpkgTransform>  Transforms;                       // one instance per entry, relative to NodeIndex; at least one
 };
 ```
 
-`ParentIndex` attaches a placement to a node of the template that contains it. For example, a house template can hang a lamp placement from one of its beam nodes. Like every asset index, it must reference an asset appended earlier. The template is a path reference, so only `ParentIndex` constrains where a placement is appended.
+A placement with one entry places a single instance; a placement with many places a batch that shares one template path, one mobility, and one parent. For example:
+
+- **A hillside of flowers** is one placement in the region, with `NodeIndex = -1` and one entry per flower in region space.
+- **A flower shop** with individual flowers in pots on shelves uses one placement per flower, each attached to its pot's node, so every flower moves with its pot.
+- **A lamp hung from a beam** is a one-entry placement attached to the beam node, with the entry offsetting the lamp from the beam.
+
+An instance in a batch has no node of its own, so nothing can attach to it individually. Content that must be addressed individually, such as a trap door and the trigger placed beside it, uses a `TransformNode` per instance, with each placement attached to it. A node may carry any number of placements.
 
 The templates that placements reference must form an acyclic graph: no template places itself, directly or through other templates.
 
 ### World Regions
 
-A **world region** is a bundle that a [world](#worlds) lists in its `Regions`, together with the region's streaming bounds. A region's instance root is at the world origin, so its content is positioned in world space. A region typically holds placements, and may also hold its own nodes, such as terrain. Content that exists only once in the world (a cathedral, a cliff face) is a template placed once. A large world can be divided into many world regions; a small game's entire level can live in its world bundle with no regions at all.
+A **world region** is a bundle that a [world](#worlds) lists in its `Regions`, together with the region's streaming bounds. A region's [instance transform](#templates) is the world origin, so its content is positioned in world space. A region typically holds placements, and may also hold its own nodes, such as terrain. Content that exists only once in the world (a cathedral, a cliff face) is a template placed once. A large world can be divided into many world regions; a small game's entire level can live in its world bundle with no regions at all.
 
 ### Worlds
 
 A **world** is the top-level unit a game loads: one place, such as a level, a map, or an open world, made of always-present content and world regions. A world is declared by a **world bundle**, a bundle that holds exactly one `AssetType::WorldSettings` asset. A bundle holding a `WorldSettings` asset is always a world bundle.
 
-Besides its `WorldSettings` asset, a world bundle may hold assets of any type: the world's always-present content, such as placements and `Node` hierarchies, and shared assets such as the world's `Skybox` assets.
+Besides its `WorldSettings` asset, a world bundle may hold assets of any type: the world's always-present content, such as `TransformNode` hierarchies and their attachments, including placements, and shared assets such as the world's `Skybox` assets.
 
-A world bundle's instance root is at the world origin, so its content is positioned in world space, as a region's is. A world bundle is used only as a world, so neither a placement nor a region list references one. How and when a world and its regions are instantiated is defined by the [Canvas engine spec](../../README.md).
+A world bundle's [instance transform](#templates) is the world origin, so its content is positioned in world space, as a region's is. A world bundle is used only as a world, so neither a placement nor a region list references one. How and when a world and its regions are instantiated is defined by the [Canvas engine spec](../../README.md).
 
 ```cpp
 // Draft schema.
@@ -235,7 +240,7 @@ struct CpkgWorldSettingsData
     CpkgSpan<CpkgWorldRegionRef>  Regions;
     CpkgSpan<CpkgSpan<char>>      Skyboxes;                    // asset paths to Skybox assets; each required
     int32_t                       DefaultSkybox         = -1;  // position in Skyboxes (not an asset index); -1 = none
-    int32_t                       ActiveCameraNodeIndex = -1;  // asset index of a Node in this bundle; -1 = none
+    int32_t                       ActiveCameraIndex     = -1;  // asset index of a Camera in this bundle; -1 = none
     float                         BackgroundColor[4];          // linear RGBA; shown while no skybox is active
 };
 ```
@@ -244,7 +249,7 @@ struct CpkgWorldSettingsData
 
 **Skyboxes** lists every `Skybox` asset the world uses, such as day, dusk, and night skies. Each entry is an asset path, so a skybox may live in the world bundle or in a shared sky bundle that several worlds use. `DefaultSkybox` declares the skybox in effect when the world starts, or none. `BackgroundColor` declares the background while no skybox is in effect.
 
-**ActiveCameraNodeIndex** declares the world's initial camera: it references a `Node` of the world bundle whose `Camera` path is non-empty. A world with no authored camera, such as one whose game creates a player camera at runtime, leaves it at `-1`.
+**ActiveCameraIndex** declares the world's initial camera: it references a `Camera` of the world bundle. A world with no authored camera, such as one whose game creates a player camera at runtime, leaves it at `-1`.
 
 ### Mobility
 
@@ -262,24 +267,24 @@ enum class CpkgMobility : uint32_t
 | Mobility | Example | What the engine may do |
 |---|---|---|
 | `Static` | A wall, a boulder | Bake lighting and shadows, merge or batch geometry, add it to static acceleration structures, and skip it in per-frame updates |
-| `Stationary` | A flickering lamp, a windmill turning its blades | Add it to static spatial structures, using bounds that enclose its animation, and skip transform propagation at its instance root |
+| `Stationary` | A flickering lamp, a windmill turning its blades | Add it to static spatial structures, using bounds that enclose its animation, and skip transform updates for its instance transform |
 | `Movable` | A door, a cart, a goblin | Update it every frame |
 
-A placement's mobility covers the nodes of its own template. Each placement nested in that template declares its own mobility, so a `Static` house can contain a `Stationary` flickering lamp.
+A placement's mobility covers the nodes of the template it places. Each placement nested in that template declares its own mobility, so a `Static` house can contain a `Stationary` flickering lamp.
 
 An instance whose ancestor instances include a `Movable` one is effectively `Movable`, whatever its declared mobility, because its world transform changes with that ancestor. For example, a house placed `Movable` on a ship moves with the ship, and so does the `Static` furniture placed inside the house template. A template can therefore be placed anywhere, regardless of the mobility of its nested placements.
 
 ### Resolving path references
 
-Resolving [path references](#paths), such as a placement's template, a node's mesh, or a world's regions and skyboxes, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
+Resolving [path references](#paths), such as a placement's template, a mesh instance's mesh, or a world's regions and skyboxes, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
 
 ## Package Data Types
 
 `CCpkgWriter`/`CCpkgReader` move opaque, named, typed byte payloads. This section defines what those bytes mean for each `AssetType`.
 
-**Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`Camera`, `Light`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
+**Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`TransformNode`, `Camera`, `Light`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
 
-A relationship between assets is stored according to the referenced asset's [class](#shared-and-local-assets). A field referencing a shared asset - the mesh a node instances, the material a mesh group draws with, an image a material samples - is an asset path (see [Paths](#paths)). A field referencing a local asset - a node's parent, a skin's bones - is the intra-bundle asset index of that asset. Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
+A relationship between assets is stored according to the referenced asset's [class](#shared-and-local-assets). A field referencing a shared asset - the mesh a mesh instance draws, the material a mesh group draws with, an image a material samples - is an asset path (see [Paths](#paths)). A field referencing a local asset - a node's parent, the node an asset attaches to, a skin's bones - is the intra-bundle asset index of that asset. Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
 
 ### Conventions
 
@@ -291,10 +296,21 @@ Every payload stores values in the Canvas engine's own conventions, so a loader 
 - Linear units are meters. This covers translations, positions, bounds, light `Range`, camera clip distances, and displacement `MapScale`/`MapBias`.
 - Matrices use the row-vector convention, `v' = v * M`, with translation in row 3 (see [Row-Vector Matrix Convention](../../README.md#row-vector-matrix-convention)).
 - Rotations are unit quaternions stored XYZW.
-- A camera or light node faces along its local +X axis, with +Y to its left and +Z up.
+- A camera or light faces along the local +X axis of the node it attaches to, with +Y to its left and +Z up.
 - A triangle's front face has counter-clockwise winding when viewed from the side its normal points toward.
 - `CpkgVertexTangent::XYZW[3]` is +1 or -1, and the bitangent is `XYZW[3] * cross(N, T)`.
 - Angles are radians and times are seconds.
+
+**Transforms.** Every local transform a payload stores is a `CpkgTransform`. `CpkgTransformNodeData`, `CpkgPlacementData`, and `CpkgKeyframe` all use it.
+
+```cpp
+struct CpkgTransform
+{
+    float Scale[3]       = { 1.0f, 1.0f, 1.0f };        // xyz
+    float Rotation[4]    = { 0.0f, 0.0f, 0.0f, 1.0f };  // unit quaternion, XYZW
+    float Translation[3] = { 0.0f, 0.0f, 0.0f };        // xyz, meters
+};
+```
 
 **Colors.** Every color stored as `float` is linear RGB with straight (non-premultiplied) alpha where alpha is meaningful. This covers `BaseColorFactor`, `EmissiveFactor` (its alpha is unused), and `CpkgLightData::Color`. These values are not sRGB-encoded.
 
@@ -323,7 +339,7 @@ The engine does not yet implement the sRGB half of this rule. `GfxFormat` has no
 enum class AssetType : uint32_t
 {
     Unknown           = 0,   // sentinel; never assigned to a real asset
-    Node              = 1,
+    TransformNode     = 1,
     MeshData          = 2,
     Material          = 3,
     Image             = 4,
@@ -334,6 +350,7 @@ enum class AssetType : uint32_t
     Placement         = 9,   // see Placements
     Skybox            = 10,
     WorldSettings     = 11,  // see Worlds
+    MeshInstance      = 12,
 };
 ```
 
@@ -477,27 +494,38 @@ for (const CpkgMeshDataGroup &group : groups)
 
 The helpers check only structure. Schema rules - parallel counts, the streams each topology requires, asset index ordering - are checked by the loader that interprets the payload.
 
-### CpkgNodeData (AssetType::Node)
+### CpkgTransformNodeData (AssetType::TransformNode)
 
-One node of a bundle's node hierarchy, which may include bones. Instantiation clones each node into a scene-graph node of the instance. A bundle's `Node` assets together describe the whole hierarchy; `ParentIndex` links a node to its parent by asset index.
+One node of a bundle's node hierarchy: a parent and a local transform. A bundle's `TransformNode` assets together describe the whole hierarchy; `ParentIndex` links a node to its parent by asset index. What a node carries, such as a mesh, a camera, or a light, is an attachment: an asset that attaches to the node.
 
-The payload is a `CpkgNodeData` header followed by a data area holding the paths of the shared assets the node instances. Each is optional; an empty path means the node instances none of that type.
+Fixed size: the payload is one `CpkgTransformNodeData`.
 
 ```cpp
-struct CpkgNodeData
+struct CpkgTransformNodeData
 {
-    int32_t         ParentIndex = -1;  // asset index of the parent Node; -1 = root
-    float           LocalTranslation[3];
-    float           LocalRotation[4];  // unit quaternion, XYZW, Canvas space (see Conventions)
-    float           LocalScale[3];
-    uint32_t        Padding     = 0;
-    CpkgSpan<char>  MeshData;          // asset path to a MeshData this node instances; empty = none
-    CpkgSpan<char>  Camera;            // asset path to a Camera this node instances; empty = none
-    CpkgSpan<char>  Light;             // asset path to a Light this node instances; empty = none
+    int32_t        ParentIndex = -1;  // asset index of the parent TransformNode; -1 = instance transform
+    CpkgTransform  LocalTransform;    // relative to the parent (see Conventions)
 };
 ```
 
 A node's name is the optional `name` it was appended with.
+
+`MeshInstance`, `Camera`, `Light`, and [`Placement`](#placements) assets each attach to one `TransformNode` through a `NodeIndex` field. A node may have any number of attachments, of any types, or none; a node with none is a pure transform, such as a bone or a pivot. `NodeIndex` is required, except that a placement's may be `-1` to place relative to the instance transform. Like every asset index, a `NodeIndex` references an earlier asset, so an attachment is appended after its node.
+
+### CpkgMeshInstanceData (AssetType::MeshInstance)
+
+An [attachment](#cpkgtransformnodedata-assettypetransformnode) corresponding to `XMeshInstance`: the node it attaches to draws a shared `MeshData`. Each instance of the template gets its own mesh instance, and all of them draw the same mesh.
+
+The payload is a `CpkgMeshInstanceData` header followed by a data area holding the mesh path.
+
+```cpp
+struct CpkgMeshInstanceData
+{
+    int32_t         NodeIndex = -1;  // asset index of the TransformNode this mesh instance attaches to; required
+    uint32_t        Padding   = 0;
+    CpkgSpan<char>  MeshData;        // asset path to a MeshData; required
+};
+```
 
 ### CpkgMeshData (AssetType::MeshData)
 
@@ -548,7 +576,7 @@ struct CpkgMeshData
 
 A skinned mesh holds no asset index, so like any shared asset it may live in any bundle and be skinned by templates in many bundles. Each skinning template's `MeshSkin` and every bone it references live in that template's bundle. `BoneIndices` references bones without naming an asset: it is a palette-relative index into the mesh's `CpkgMeshSkinData::BoneNodeIndices` array, and by the ordering correspondence into `InvBindPoses`. This matches the runtime skinning convention. `CpkgMeshSkinData` is the single place bones are referenced by asset index. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
 
-**A mesh bound by a `MeshSkin` carries bone streams in every group.** The mesh instanced by the node at `CpkgMeshSkinData::MeshNodeIndex` must be a skinned mesh in the sense above. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, instanced by a node parented under the bone node. A reader may treat a `MeshSkin` whose mesh lacks bone streams as corrupt (`Gem::Result::CorruptedData`).
+**A mesh bound by a `MeshSkin` carries bone streams in every group.** The mesh drawn by the mesh instance at `CpkgMeshSkinData::MeshInstanceIndex` must be a skinned mesh in the sense above. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, drawn by a mesh instance attached to the bone node or to a node parented under it. A reader may treat a `MeshSkin` whose mesh lacks bone streams as corrupt (`Gem::Result::CorruptedData`).
 
 ### CpkgMaterialData (AssetType::Material)
 
@@ -664,22 +692,20 @@ struct CpkgSkyboxData
 
 ### CpkgNodeAnimClipData (AssetType::NodeAnimationClip)
 
-Corresponds to `AnimationClipDesc`/`AnimationTrackDesc`. A node animation clip animates `Node` assets of its own bundle, such as a door swinging on its hinge node or a windmill turning its blades. Each track targets one node by asset index. The clips that animate a bundle's nodes are the `NodeAnimationClip` assets that bundle holds.
+Corresponds to `AnimationClipDesc`/`AnimationTrackDesc`. A node animation clip animates `TransformNode` assets of its own bundle, such as a door swinging on its hinge node or a windmill turning its blades. Each track targets one node by asset index. The clips that animate a bundle's nodes are the `NodeAnimationClip` assets that bundle holds.
 
 Variable size. The payload's header is one `CpkgNodeAnimClipData`. Its `Tracks` span refers to an array of `CpkgNodeAnimTrack` in the data area, and each track's `Keyframes` span refers to that track's keyframes:
 
 ```cpp
 struct CpkgKeyframe
 {
-    float Time;                    // seconds from clip start
-    float Translation[3];          // xyz
-    float Rotation[4];             // unit quaternion, XYZW
-    float Scale[3];                // xyz
+    float          Time;       // seconds from clip start
+    CpkgTransform  Transform;  // the node's local transform at Time
 };
 
 struct CpkgNodeAnimTrack
 {
-    int32_t                 NodeIndex = -1;  // asset index of the Node this track animates
+    int32_t                 NodeIndex = -1;  // asset index of the TransformNode this track animates
     uint32_t                Padding   = 0;
     CpkgSpan<CpkgKeyframe>  Keyframes;       // sorted ascending by Time
 };
@@ -704,10 +730,10 @@ struct CpkgInvBindPose { float M[16]; };
 
 struct CpkgMeshSkinData
 {
-    int32_t                     MeshNodeIndex = -1;  // asset index of the Node carrying the skinned mesh
-    uint32_t                    Padding       = 0;
-    CpkgSpan<uint32_t>          BoneNodeIndices;     // asset indices of Node bones; one per bone
-    CpkgSpan<CpkgInvBindPose>   InvBindPoses;        // one per bone, same order as BoneNodeIndices
+    int32_t                     MeshInstanceIndex = -1;  // asset index of the MeshInstance this skin binds
+    uint32_t                    Padding           = 0;
+    CpkgSpan<uint32_t>          BoneNodeIndices;         // asset indices of TransformNode bones; one per bone
+    CpkgSpan<CpkgInvBindPose>   InvBindPoses;            // one per bone, same order as BoneNodeIndices
 };
 ```
 
@@ -715,26 +741,28 @@ The bone count is `BoneNodeIndices.Count`; `InvBindPoses.Count` must equal it.
 
 ### CpkgCameraData (AssetType::Camera)
 
-Corresponds to `XCamera`'s settable state (`Camera.h`). Fixed size: the payload is one `CpkgCameraData`.
+An [attachment](#cpkgtransformnodedata-assettypetransformnode) corresponding to `XCamera`'s settable state (`Camera.h`). Fixed size: the payload is one `CpkgCameraData`.
 
 ```cpp
 struct CpkgCameraData
 {
-    float NearClip      = 0.1f;
-    float FarClip       = 1000.0f;
-    float FovAngle      = 0.785398f;  // radians
-    float AspectRatio   = 1.7778f;
-    float ExposureStops = 0.0f;
+    int32_t NodeIndex     = -1;         // asset index of the TransformNode this camera attaches to; required
+    float   NearClip      = 0.1f;
+    float   FarClip       = 1000.0f;
+    float   FovAngle      = 0.785398f;  // radians
+    float   AspectRatio   = 1.7778f;
+    float   ExposureStops = 0.0f;
 };
 ```
 
 ### CpkgLightData (AssetType::Light)
 
-Corresponds to `XLight`'s settable state (`Light.h`): light type, color/intensity, point/spot attenuation, spot cone angles, and shadow parameters. `Flags` is a `LightFlags` bit set (`CastsShadows`, `Enabled`); the shadow fields take effect only when `CastsShadows` is set. Fixed size: the payload is one `CpkgLightData`.
+An [attachment](#cpkgtransformnodedata-assettypetransformnode) corresponding to `XLight`'s settable state (`Light.h`): light type, color/intensity, point/spot attenuation, spot cone angles, and shadow parameters. `Flags` is a `LightFlags` bit set (`CastsShadows`, `Enabled`); the shadow fields take effect only when `CastsShadows` is set. Fixed size: the payload is one `CpkgLightData`.
 
 ```cpp
 struct CpkgLightData
 {
+    int32_t   NodeIndex            = -1;     // asset index of the TransformNode this light attaches to; required
     LightType Type                 = LightType::Point;
     float     Color[4]             = { 1.0f, 1.0f, 1.0f, 1.0f };  // linear RGBA
     float     Intensity            = 1.0f;
@@ -1034,6 +1062,7 @@ Directions the current design leaves room for. None are committed plans:
 
 - **Compression**: `CpkgCompressionScheme` carries a `Codec` field and both a stored and a raw size, but only `CpkgCodec::None` is implemented. Adding a codec is additive; existing `None`-coded assets keep working.
 - **Per-instance overrides**: a placement instantiates its template unmodified. Overrides such as material swaps or script parameters would extend `CpkgPlacementData` with an override list.
+- **More node attachments**: fog volumes, particle emitters, script triggers, and similar would each be a new [attachment](#cpkgtransformnodedata-assettypetransformnode) asset type, leaving `CpkgTransformNodeData` unchanged.
 - **Model-level manifest**: there is no asset type for the model-level metadata `XModel` carries (the active-camera-node designation, overall bounds). It would need its own `AssetType` value and schema.
 - **World attributes**: `CpkgWorldSettingsData` holds the world-wide settings the engine has today. Settings such as gravity, spawn points, or global lighting would extend it as the engine grows them.
 - **World variants**: content subsets of one world toggled on and off at runtime, such as a town before and after its destruction, in the manner of Unreal's Data Layers.
@@ -1047,12 +1076,12 @@ Directions the current design leaves room for. None are committed plans:
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
 1. **Cross-bundle asset sharing is only partly designed.** [Shared assets](#shared-and-local-assets) are referenced by path and can be shared across bundles and packages, but these sharing cases are unresolved:
-   - **Skeletons**: each template carries its own bone `Node` hierarchy, and `MeshSkin` is a local asset because it indexes those nodes. A shared `Skeleton` asset holding joint names, parent indices, and rest pose, instantiated as scene-graph nodes, would let templates share a rig and its skins.
+   - **Skeletons**: each template carries its own bone `TransformNode` hierarchy, and `MeshSkin` is a local asset because it indexes those nodes. A shared skeleton, either a `Skeleton` asset or a bundle of `TransformNode` joints referenced by bundle path, would let templates share a rig and its skins. Either form needs a reference from one bundle to a node of another, which the format does not have yet.
    - **Skeletal animation clips**: a `NodeAnimationClip` animates only the nodes of its own bundle, so templates cannot share character animation. A shared `SkeletalAnimationClip` (or `JointAnimationClip`) that declares its `Skeleton` and targets joints by index would let every template using that skeleton share its clips.
-   - **Template-level data**: a template has no settings asset to hold skeletal clip references, the active camera node, or bounds (see the model-level manifest in Future Directions).
+   - **Template-level data**: a template has no settings asset to hold skeletal clip references, the active camera, or bounds (see the model-level manifest in Future Directions).
 
    Resolve these before building tooling such as an editor on the format.
 
-2. **Nodes held directly by a world bundle or region have no mobility.** Mobility is declared on a placement, but a world bundle's or region's own `Node` hierarchy (a camera rig, terrain) is instantiated without one, so the engine cannot tell whether to bake it or update it every frame. Either fix a rule (such content is `Movable`, which is safe but forgoes baking) or declare it: a `Mobility` field on `CpkgWorldSettingsData` for the world bundle and on `CpkgWorldRegionRef` for each region.
+2. **Nodes held directly by a world bundle or region have no mobility.** Mobility is declared on a placement, but a world bundle's or region's own `TransformNode` hierarchy (a camera rig, terrain) is instantiated without one, so the engine cannot tell whether to bake it or update it every frame. Either fix a rule (such content is `Movable`, which is safe but forgoes baking) or declare it: a `Mobility` field on `CpkgWorldSettingsData` for the world bundle and on `CpkgWorldRegionRef` for each region.
 
 3. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
