@@ -97,7 +97,7 @@ Each bundle is populated **either** by importing a whole FBX file, **or** by aut
 
 `Hero` and `Props` are templates, `Village` is a world region, and `Level1` is a world bundle (see CanvasPkg's [Instantiation Model](../CanvasPkg/README.md#instantiation-model)).
 
-For each bundle, cpkgbuilder calls `CCpkgWriter::BeginBundle`, calls `CCpkgWriter::AppendAsset` once per asset, then closes the bundle with `CCpkgWriter::EndBundle`. An authored bundle's `"nodes"` tree is flattened into `CpkgNodeData`'s `ParentIndex`-linked array in a pre-order traversal (parent written before its children) when the bundle is cooked; the same flattening applies to an FBX-imported hierarchy.
+For each bundle, cpkgbuilder calls `CCpkgWriter::BeginBundle`, calls `CCpkgWriter::AppendAsset` once per asset, then closes the bundle with `CCpkgWriter::EndBundle`. An authored bundle's `"nodes"` tree is flattened into `CpkgTransformNodeData`'s `ParentIndex`-linked array in a pre-order traversal (parent written before its children) when the bundle is cooked; the same flattening applies to an FBX-imported hierarchy.
 
 ## FBX Sources
 
@@ -109,7 +109,7 @@ The mapping is close to 1:1:
 
 | `ImportedScene` | CanvasPkg |
 |---|---|
-| `ImportedNode` | `CpkgNodeData` |
+| `ImportedNode` | `CpkgTransformNodeData` |
 | `ImportedMesh` / `ImportedMeshPart` | `CpkgMeshData` / `CpkgMeshDataGroup` |
 | `ImportedMaterial` | `CpkgMaterialData` |
 | `ImportedTextureRef` | `CpkgImageData` (`AssetType::Image`, with `CpkgImageEncoding` set from the source encoding) |
@@ -132,7 +132,7 @@ A bundle not populated by `"import"` is authored directly in the manifest: a `"n
 
 **Names and paths.** A field referencing a map entry or node of its own bundle by name - a node's `"mesh"`/`"camera"`/`"light"`, a placement's `"parent"`, a world's `"skyboxes"` and `"activeCamera"` - cooks to an asset index. A field whose CanvasPkg counterpart is a [path reference](../CanvasPkg/README.md#paths) - a skybox's `"image"`, a placement's `"template"`, a world's `"regions"` - takes a path string and cooks it unchanged: `"Village"` or `"Shared/Village"` for a bundle, and `"Sky"`, `"Skies/Sky"`, or `"Shared/Skies/Sky"` for an image. Every manifest name - bundle, node, and map entry - follows CanvasPkg's name rules, so none contains `/`.
 
-**Node tree.** `"nodes"` is a real nested tree (`"children"`), not a flat list naming each node's parent, matching `CSceneGraphNode`'s actual parent/child structure (see [SceneGraph.h](../CanvasCore/SceneGraph.h)). It is flattened into `CpkgNodeData`'s `ParentIndex`-linked array in pre-order when cooked (see [Manifest to Package](#manifest-to-package)). An FBX-imported bundle and an authored bundle never mix hierarchies within the same bundle.
+**Node tree.** `"nodes"` is a real nested tree (`"children"`), not a flat list naming each node's parent, matching `CSceneGraphNode`'s actual parent/child structure (see [SceneGraph.h](../CanvasCore/SceneGraph.h)). It is flattened into `CpkgTransformNodeData`'s `ParentIndex`-linked array in pre-order when cooked (see [Manifest to Package](#manifest-to-package)). An FBX-imported bundle and an authored bundle never mix hierarchies within the same bundle.
 
 **Node attachments.** A node's `"mesh"`/`"camera"`/`"light"` field accepts either a string referencing an entry in the bundle's corresponding map by name (for reuse/instancing across nodes - e.g. one `"TorchFlame"` light definition placed at several nodes) or an inline definition object (for a one-off, with no map entry needed). Both forms produce the same `Cpkg*Data` asset; a named one is just shared by index across every node that references it.
 
