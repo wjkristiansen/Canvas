@@ -50,12 +50,12 @@ The graph these indices form is acyclic, so an append order satisfying the rule 
 ```
 Material <- MeshData <- SceneNode <- MeshSkin
                         |  |  ^
-              Camera <--+  |  +-- Instance
+              Camera <--+  |  +-- Placement
                            v  +-- WorldSettings --> Skybox
                          Light
 ```
 
-`Image` is referenced only by [asset paths](#paths), and `AnimationClip` binds tracks by node name; neither holds an index nor is referenced by one, so either may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Camera`, `Light`, `SceneNode`, `MeshSkin`, `Instance`, `WorldSettings`, `AnimationClip`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
+`Image` is referenced only by [asset paths](#paths), and `AnimationClip` binds tracks by node name; neither holds an index nor is referenced by one, so either may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Camera`, `Light`, `SceneNode`, `MeshSkin`, `Placement`, `WorldSettings`, `AnimationClip`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
 
 `AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed. A reader may treat an out-of-order reference as a corrupt package (`Gem::Result::CorruptedData`).
 
@@ -170,11 +170,11 @@ A template enters the world when something instantiates it: a placement (below),
 
 ### Placements
 
-A **placement** is an asset (`AssetType::Instance`) that instantiates a template at a transform with a declared [mobility](#mobility). A placement references its template by [bundle path](#paths): `bundle` for a template in the same package, or `package/bundle` for a template in another package, where `package` is that package's declared name (`CCpkgReader::GetPackageName`). Templates are therefore shared across packages: world regions in several packages can each place a goblin template stored once in a shared characters package.
+A **placement** is an asset (`AssetType::Placement`) that instantiates a template at a transform with a declared [mobility](#mobility). A placement references its template by [bundle path](#paths): `bundle` for a template in the same package, or `package/bundle` for a template in another package, where `package` is that package's declared name (`CCpkgReader::GetPackageName`). Templates are therefore shared across packages: world regions in several packages can each place a goblin template stored once in a shared characters package.
 
 ```cpp
 // Draft schema.
-struct CpkgInstanceData
+struct CpkgPlacementData
 {
     CpkgSpan<char> Template;                  // bundle path to the template's bundle; required
     int32_t        ParentIndex = -1;          // asset index of a SceneNode in this bundle; -1 = bundle root
@@ -310,7 +310,7 @@ enum class AssetType : uint32_t
     MeshSkin      = 6,
     Camera        = 7,
     Light         = 8,
-    Instance      = 9,   // a placement; see Instantiation Model
+    Placement     = 9,   // see Placements
     Skybox        = 10,
     WorldSettings = 11,  // see Worlds
 };
@@ -1011,7 +1011,7 @@ This follows the same split as the rest of Canvas: public, consumable headers li
 Directions the current design leaves room for. None are committed plans:
 
 - **Compression**: `CpkgCompressionScheme` carries a `Codec` field and both a stored and a raw size, but only `CpkgCodec::None` is implemented. Adding a codec is additive; existing `None`-coded assets keep working.
-- **Per-instance overrides**: a placement instantiates its template unmodified. Overrides such as material swaps or script parameters would extend `CpkgInstanceData` with an override list.
+- **Per-instance overrides**: a placement instantiates its template unmodified. Overrides such as material swaps or script parameters would extend `CpkgPlacementData` with an override list.
 - **Model-level manifest**: there is no asset type for the model-level metadata `XModel` carries (the active-camera-node designation, overall bounds). It would need its own `AssetType` value and schema.
 - **World attributes**: `CpkgWorldSettingsData` holds the world-wide settings the engine has today. Settings such as gravity, spawn points, or global lighting would extend it as the engine grows them.
 - **World variants**: content subsets of one world toggled on and off at runtime, such as a town before and after its destruction, in the manner of Unreal's Data Layers.
