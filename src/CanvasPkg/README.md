@@ -1,6 +1,6 @@
 # CanvasPkg
 
-A CanvasPkg (Cpkg) is a package file containing world data - including models, geometry, materials, textures, lights, cameras, animations, (and eventually scripts, sounds, and other world data). The file is organized into bundles which contain related assets. Bundle assets can interrelate by asset index within a bundle. For example, a bundle might contain model data with object/bone hierarchy, meshes, materials, textures, animation clips. Other bundles might contain sky-box texture, scripts, music or sound effects.
+A CanvasPkg (Cpkg) is a package file containing world data - including models, geometry, materials, textures, lights, cameras, animations, (and eventually scripts, sounds, and other world data). The file is organized into bundles which contain related assets. A shared asset, such as a mesh or a texture, may be referenced by path from any bundle of any loaded package; a bundle's scene structure references its own nodes by asset index. For example, a bundle might contain model data with object/bone hierarchy, meshes, materials, textures, animation clips. Other bundles might contain sky-box texture, scripts, music or sound effects.
 
 CanvasPkg is a static library. API Success/failure codes use type `Gem::Result`.
 
@@ -41,29 +41,50 @@ Name blobs hold only the names of bundles and assets themselves. A name stored i
 
 Assets are the primary data block for CanvasPkg files. Each asset has an `AssetType`, a payload of bytes whose internal layout is defined by that `AssetType` (see [Package Data Types](#package-data-types)), and optionally a name. An asset's payload is stored on disk on its own, with nothing before or after it. A named asset's name is stored separately in its bundle's asset name blob, with no imposed maximum length. The bundle's asset table (see [Bundles](#bundles)) is a flat, fixed-stride array, indexed by asset index, holding the type, payload offset, name location, and compression info of every asset in the bundle. `CCpkgReader::Open` loads every bundle's asset table and asset name blob, so a name costs no file read.
 
-Asset indices are per-bundle and span all asset types: the first asset appended to a bundle is index 0, the second is index 1, and so on, in append order, regardless of `AssetType`. `CCpkgReader::ReadAsset` and the `Cpkg*Data` cross-reference fields described below (`MaterialIndex`, `MeshDataIndex`, `ParentIndex`, ...) all use this index.
-
-**An asset may only index other assets appended before it.** Every intra-bundle cross-reference index (`MeshDataIndex`, `MaterialIndex`, `ParentIndex`, `MeshNodeIndex`, `BoneNodeIndices`, `Skyboxes`, ...) must be strictly less than the index of the asset holding it. Forward indices are not part of the format, so a loader resolves every index in a single forward pass over the asset table, with no deferred fixups and no second pass.
-
-The graph these indices form is acyclic, so an append order satisfying the rule always exists:
-
-```
-Material <- MeshData <- SceneNode <- MeshSkin
-                        |  |  ^
-              Camera <--+  |  +-- Placement
-                           v  +-- WorldSettings --> Skybox
-                         Light
-```
-
-`Image` is referenced only by [asset paths](#paths), and `AnimationClip` binds tracks by node name; neither holds an index nor is referenced by one, so either may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Camera`, `Light`, `SceneNode`, `MeshSkin`, `Placement`, `WorldSettings`, `AnimationClip`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
-
-`AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed. A reader may treat an out-of-order reference as a corrupt package (`Gem::Result::CorruptedData`).
+Asset indices are per-bundle and span all asset types: the first asset appended to a bundle is index 0, the second is index 1, and so on, in append order, regardless of `AssetType`. `CCpkgReader::ReadAsset` and the `Cpkg*Data` index fields described below (`ParentIndex`, `MeshNodeIndex`, ...) all use this index.
 
 `CCpkgWriter::AppendAsset` requires an open bundle; call `BeginBundle` first, and `EndBundle` when the bundle is complete.
 
 Bundle names must be non-empty and unique within a package. Package, bundle, and asset names never contain `/`, which separates names in a [path](#paths). Names compare byte-for-byte: case-sensitive UTF-8, with no normalization. This applies to every name match in CanvasPkg, including path resolution and animation track binding.
 
-Asset names are optional. An asset referenced only by its index may be unnamed, which is stored as an empty name. An asset found by name must be named: any asset referenced by a path, and a `SceneNode` an `AnimationClip` track targets. Like the append-order rule above, this is a contract on whoever produces the package; the writer cannot tell which assets will be found by name. Non-empty asset names must be unique within a bundle; any number of assets in a bundle may be unnamed.
+An unnamed asset is stored with an empty name. An asset found by name must be named: every [shared asset](#shared-and-local-assets), since paths reference it, and a `SceneNode` an `AnimationClip` track targets. Any other asset may be unnamed. The writer rejects an unnamed shared asset (see [Writer argument rules](#writer-argument-rules)). Naming every targeted `SceneNode` is, like the [append-order rule](#append-order), a contract on whoever produces the package, since the writer cannot tell which nodes a clip targets. Non-empty asset names must be unique within a bundle; any number of assets in a bundle may be unnamed.
+
+### Shared and Local Assets
+
+Every asset type is one of two classes, fixed by its `AssetType`. The class decides how the asset is referenced and whether instances share it:
+
+| Class | Asset types | Referenced by | At instantiation |
+|---|---|---|---|
+| **Shared** | `Image`, `Material`, `MeshData`, `AnimationClip`, `Skybox`, `Camera`, `Light` | [Asset path](#paths) only | Every instance uses the same loaded copy |
+| **Local** | `SceneNode`, `MeshSkin`, `Placement`, `WorldSettings` | Asset index within its bundle | Each instance gets its own copy |
+
+**A shared asset's payload holds no asset index.** It references other assets only by path, so its meaning does not depend on the bundle that holds it, and any bundle of any loaded package may reference it. A bundle may hold only shared assets, such as a material library that other bundles reference. A shared asset is always named, since a path finds it by name. For a `Camera` or `Light`, the shared copy is its settings; each instance still gets its own camera or light object, built from those settings, on its own node.
+
+**A local asset is instance structure.** Its payload may hold asset indices, each referencing a `SceneNode` in the same bundle. A local asset is referenced only by index, so it may be unnamed, unless it is a `SceneNode` that an `AnimationClip` targets by name.
+
+`CanvasPkg.h` classifies each type with a `constexpr` helper, so `cpkgbuilder` and the loader classify them identically:
+
+```cpp
+// True for the shared asset types; false for the local ones and for Unknown.
+constexpr bool CpkgIsSharedAssetType(AssetType type);
+```
+
+### Append Order
+
+**An asset may only index other assets appended before it.** Every asset index (`ParentIndex`, `MeshNodeIndex`, `BoneNodeIndices`, `ActiveCameraNodeIndex`) must be strictly less than the index of the asset holding it. Forward indices are not part of the format, so a loader resolves every index in a single forward pass over the asset table, with no deferred fixups and no second pass.
+
+Every asset index references a `SceneNode`, so the graph these indices form is acyclic and an append order satisfying the rule always exists:
+
+```
+SceneNode <- MeshSkin
+    ^  ^
+    |  +---- Placement
+    +------- WorldSettings
+```
+
+A `SceneNode` may also index its parent `SceneNode`. Shared assets hold no index and are referenced by none, so they may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Camera`, `Light`, `AnimationClip`, `SceneNode`, `MeshSkin`, `Placement`, `WorldSettings`. Within `SceneNode`, appending in pre-order satisfies the rule for `ParentIndex` and guarantees parent-before-child; a loader may rely on a node's parent already being resolved when the node itself is read.
+
+`AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed. A reader may treat an out-of-order reference as a corrupt package (`Gem::Result::CorruptedData`).
 
 ### Paths
 
@@ -82,7 +103,7 @@ Path references follow these rules:
 - **An empty path is null.** Each path reference field states whether it may be null. For example, a placement's template is required.
 - **A qualified path may refer to its own scope.** A `package/bundle/asset` path that spells out the referencing package and bundle resolves to the same asset as `asset`.
 - **Malformed paths.** A non-empty path containing an empty name (a leading, trailing, or doubled `/`), or more names than its kind allows, is malformed, and a reader may treat it as corrupt (`Gem::Result::CorruptedData`).
-- **Each path reference declares its target.** An asset path declares an `AssetType`, and an asset path that resolves to an asset of any other type is a fatal error. Every bundle path references a bundle to instantiate, and a bundle path that resolves to a [world bundle](#worlds) is a fatal error.
+- **Each path reference declares its target.** An asset path declares a [shared](#shared-and-local-assets) `AssetType`, and an asset path that resolves to an asset of any other type is a fatal error. Every bundle path references a bundle to instantiate, and a bundle path that resolves to a [world bundle](#worlds) is a fatal error.
 - **An unresolved path is a fatal error**: a package not loaded, or a bundle or asset absent from it.
 
 A fatal path reference error fails instantiation of the template or world that holds the path reference, and the loader reports the path and the asset that holds it. Resolution is the loader's job (see [Resolving path references](#resolving-path-references)). A loader resolving an asset path can build the target bundle's directory with the expected type as the `BuildAssetDirectory` filter, so a lookup finds only assets of that type.
@@ -162,7 +183,7 @@ This section describes, at a high level, how the content of a package becomes ob
 
 Any bundle other than a world bundle can be instantiated. Instantiating a bundle creates a new copy of its `SceneNode` hierarchy and its placements in the world. How a bundle is used decides what it is called: a bundle instantiated by a placement or by the engine user is a template, and a bundle a world streams is a [world region](#world-regions). Nothing in a bundle records its use, and one bundle may serve both. A bundle that is never instantiated, such as one holding only images that other bundles reference by path, needs no special designation.
 
-A **template** describes one instantiable thing (a goblin, a chair, a tree) as a hierarchy of `SceneNode` assets together with the meshes, materials, skins, and clips they reference, and the images its materials reference by path. A template may also contain placements of other templates (see [Placements](#placements)). Every instance of a template shares the template's immutable resources (mesh data, materials, images, clips); each instance has its own nodes and transforms.
+A **template** describes one instantiable thing (a goblin, a chair, a tree) as a hierarchy of `SceneNode` assets together with their skins and the shared assets they reference by path: meshes, materials, images, cameras, lights, and clips. Those shared assets may live in the template's own bundle or in any other bundle of any loaded package. A template may also contain placements of other templates (see [Placements](#placements)). Every instance of a template uses the same [shared assets](#shared-and-local-assets); each instance has its own nodes, transforms, cameras, and lights.
 
 A bundle's `SceneNode` assets may form more than one tree (more than one node with `ParentIndex = -1`). Instantiating a bundle always produces a single **instance root** node that carries the instance's transform; each of the bundle's root nodes and root placements becomes a child of that instance root. A loader therefore manipulates an instance as one unit no matter how many roots the bundle has.
 
@@ -197,7 +218,7 @@ A **world region** is a bundle that a [world](#worlds) lists in its `Regions`, t
 
 A **world** is the top-level unit a game loads: one place, such as a level, a map, or an open world, made of always-present content and world regions. A world is declared by a **world bundle**, a bundle that holds exactly one `AssetType::WorldSettings` asset. A bundle holding a `WorldSettings` asset is always a world bundle.
 
-Besides its `WorldSettings` asset, a world bundle may hold assets of any type: the world's always-present content, such as placements, `SceneNode` hierarchies with their cameras and lights, and the world's `Skybox` assets.
+Besides its `WorldSettings` asset, a world bundle may hold assets of any type: the world's always-present content, such as placements and `SceneNode` hierarchies, and shared assets such as the world's `Skybox` assets.
 
 A world bundle's instance root is at the world origin, so its content is positioned in world space, as a region's is. A world bundle is used only as a world, so neither a placement nor a region list references one. How and when a world and its regions are instantiated is defined by the [Canvas engine spec](../../README.md).
 
@@ -212,7 +233,7 @@ struct CpkgWorldRegionRef
 struct CpkgWorldSettingsData
 {
     CpkgSpan<CpkgWorldRegionRef>  Regions;
-    CpkgSpan<int32_t>             Skyboxes;                    // asset indices of Skybox assets in this bundle
+    CpkgSpan<CpkgSpan<char>>      Skyboxes;                    // asset paths to Skybox assets; each required
     int32_t                       DefaultSkybox         = -1;  // position in Skyboxes (not an asset index); -1 = none
     int32_t                       ActiveCameraNodeIndex = -1;  // asset index of a SceneNode in this bundle; -1 = none
     float                         BackgroundColor[4];          // linear RGBA; shown while no skybox is active
@@ -221,9 +242,9 @@ struct CpkgWorldSettingsData
 
 **Regions** lists the world's regions. `StreamingBounds` declares the world-space area the region covers, authored like a streaming grid cell, and it satisfies `Min[i] <= Max[i]` on every axis. The bounds say where a region's content is; when a region is loaded is not part of the package. A region may belong to several worlds, and a package never records which worlds use its bundles.
 
-**Skyboxes** lists every `Skybox` asset the world uses, such as day, dusk, and night skies. A world's skyboxes live in its world bundle; the cube images they reference by path may live anywhere. `DefaultSkybox` declares the skybox in effect when the world starts, or none. `BackgroundColor` declares the background while no skybox is in effect.
+**Skyboxes** lists every `Skybox` asset the world uses, such as day, dusk, and night skies. Each entry is an asset path, so a skybox may live in the world bundle or in a shared sky bundle that several worlds use. `DefaultSkybox` declares the skybox in effect when the world starts, or none. `BackgroundColor` declares the background while no skybox is in effect.
 
-**ActiveCameraNodeIndex** declares the world's initial camera: it references a `SceneNode` of the world bundle whose `CameraIndex` is not `-1`. A world with no authored camera, such as one whose game creates a player camera at runtime, leaves it at `-1`.
+**ActiveCameraNodeIndex** declares the world's initial camera: it references a `SceneNode` of the world bundle whose `Camera` path is non-empty. A world with no authored camera, such as one whose game creates a player camera at runtime, leaves it at `-1`.
 
 ### Mobility
 
@@ -250,15 +271,15 @@ An instance whose ancestor instances include a `Movable` one is effectively `Mov
 
 ### Resolving path references
 
-Resolving [path references](#paths), such as a placement's template or a world's regions and skyboxes, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
+Resolving [path references](#paths), such as a placement's template, a node's mesh, or a world's regions and skyboxes, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
 
 ## Package Data Types
 
 `CCpkgWriter`/`CCpkgReader` move opaque, named, typed byte payloads. This section defines what those bytes mean for each `AssetType`.
 
-**Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`SceneNode`, `Camera`, `Light`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
+**Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`Camera`, `Light`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
 
-Relationships between assets - a node's parent, the mesh a node instances, the material a mesh group draws with - are stored as the intra-bundle asset index of the referenced asset (see [Assets](#assets)). Images are the exception: every field that references an `Image` is a path reference: an asset path (see [Paths](#paths)), so an image may live in any bundle of any loaded package and be shared by many. Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
+A relationship between assets is stored according to the referenced asset's [class](#shared-and-local-assets). A field referencing a shared asset - the mesh a node instances, the material a mesh group draws with, an image a material samples - is an asset path (see [Paths](#paths)). A field referencing a local asset - a node's parent, a skin's bones - is the intra-bundle asset index of that asset. Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
 
 ### Conventions
 
@@ -460,18 +481,19 @@ The helpers check only structure. Schema rules - parallel counts, the streams ea
 
 One node in a model's node/bone hierarchy. A bundle's `SceneNode` assets together describe the whole hierarchy; `ParentIndex` links a node to its parent by asset index.
 
-Fixed size: the payload is one `CpkgSceneNodeData`.
+The payload is a `CpkgSceneNodeData` header followed by a data area holding the paths of the shared assets the node instances. Each is optional; an empty path means the node instances none of that type.
 
 ```cpp
 struct CpkgSceneNodeData
 {
-    int32_t   ParentIndex        = -1;  // asset index of the parent SceneNode; -1 = root
-    float     LocalTranslation[3];
-    float     LocalRotation[4];         // unit quaternion, XYZW, Canvas space (see Conventions)
-    float     LocalScale[3];
-    int32_t   MeshDataIndex      = -1;  // asset index of a MeshData this node instances; -1 = none
-    int32_t   CameraIndex        = -1;  // asset index of a Camera this node instances; -1 = none
-    int32_t   LightIndex         = -1;  // asset index of a Light this node instances; -1 = none
+    int32_t         ParentIndex = -1;  // asset index of the parent SceneNode; -1 = root
+    float           LocalTranslation[3];
+    float           LocalRotation[4];  // unit quaternion, XYZW, Canvas space (see Conventions)
+    float           LocalScale[3];
+    uint32_t        Padding     = 0;
+    CpkgSpan<char>  MeshData;          // asset path to a MeshData this node instances; empty = none
+    CpkgSpan<char>  Camera;            // asset path to a Camera this node instances; empty = none
+    CpkgSpan<char>  Light;             // asset path to a Light this node instances; empty = none
 };
 ```
 
@@ -500,8 +522,7 @@ struct CpkgAABB
 // One material partition of a mesh. The vertex count is Positions.Count.
 struct CpkgMeshDataGroup
 {
-    int32_t                         MaterialIndex = -1;  // asset index of a Material; -1 = none
-    uint32_t                        Padding       = 0;
+    CpkgSpan<char>                  Material;            // asset path to a Material; empty = none
     CpkgSpan<CpkgVertexPosition>    Positions;           // required by every topology
     CpkgSpan<CpkgVertexNormal>      Normals;             // required by every topology
     CpkgSpan<CpkgVertexUV>          UV0;                 // required by PatchList4CP, optional otherwise
@@ -525,7 +546,7 @@ struct CpkgMeshData
 
 **Which streams are required depends on `Topology`**, matching what the backend enforces in `CreateMeshData`: `TriangleList` requires `Positions` and `Normals`; `PatchList4CP` requires `Positions`, `Normals`, and `UV0` (per-control-point map UVs, and the base direction along which displacement extends each control point). `Tangents`, `BoneIndices`, and `BoneWeights` are optional under either topology.
 
-A skinned mesh, its `MeshSkin` asset, and every bone it references must all live in the same bundle. `BoneIndices` is the one cross-reference field in this schema that is not a bundle asset index: it is a palette-relative index into the mesh's `CpkgMeshSkinData::BoneNodeIndices` array, and by the ordering correspondence into `InvBindPoses`. This matches the runtime skinning convention. `CpkgMeshSkinData` is the single place bones are referenced by asset index. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
+A skinned mesh holds no asset index, so like any shared asset it may live in any bundle and be skinned by templates in many bundles. Each skinning template's `MeshSkin` and every bone it references live in that template's bundle. `BoneIndices` references bones without naming an asset: it is a palette-relative index into the mesh's `CpkgMeshSkinData::BoneNodeIndices` array, and by the ordering correspondence into `InvBindPoses`. This matches the runtime skinning convention. `CpkgMeshSkinData` is the single place bones are referenced by asset index. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
 
 **A mesh bound by a `MeshSkin` carries bone streams in every group.** The mesh instanced by the node at `CpkgMeshSkinData::MeshNodeIndex` must be a skinned mesh in the sense above. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, instanced by a node parented under the bone node. A reader may treat a `MeshSkin` whose mesh lacks bone streams as corrupt (`Gem::Result::CorruptedData`).
 
@@ -625,7 +646,7 @@ Decoded, GPU-ready texture data (decoded pixels in a GPU tile layout) is a futur
 
 ### CpkgSkyboxData (AssetType::Skybox)
 
-A sky drawn behind all geometry, sampled by view direction. A [world](#worlds) lists the skyboxes it uses, and they live in its world bundle. The fields correspond to the skybox fields of `GfxBackgroundDesc`.
+A sky drawn behind all geometry, sampled by view direction. A [world](#worlds) lists the skyboxes it uses by path. The fields correspond to the skybox fields of `GfxBackgroundDesc`.
 
 The payload is a `CpkgSkyboxData` header followed by a data area holding the `Image` path.
 
@@ -802,7 +823,7 @@ The writer rejects any argument that would break a format rule or produce a file
 
 - **Call order**: `Open` while the writer is already open; `BeginBundle` or `CopyBundle` while a bundle is open; `AppendAsset` or `EndBundle` with no bundle open; `Close` while a bundle is open.
 - **`CopyBundle` source**: `reader` must be open and `bundleIndex` in range.
-- **Names** (`packageName`, `bundleName`, `name`, and the name a `CopyBundle` copy receives): must be valid UTF-8, must not contain a NUL byte or `/`, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A package name must be non-empty. A bundle name must be non-empty and unique within the package; an asset name may be empty, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
+- **Names** (`packageName`, `bundleName`, `name`, and the name a `CopyBundle` copy receives): must be valid UTF-8, must not contain a NUL byte or `/`, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A package name must be non-empty. A bundle name must be non-empty and unique within the package. An asset name must be non-empty when `CpkgIsSharedAssetType(assetType)` is true and may be empty otherwise, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
 - **`assetType`**: must be a named `AssetType` enumerator other than `AssetType::Unknown`.
 - **`codec`**: must be a named `CpkgCodec` enumerator.
 - **`data`**: must be non-empty. Every payload begins with its header struct (see [Package Data Types](#package-data-types)), so no asset type has an empty payload.
@@ -840,7 +861,7 @@ Seals the open bundle: appends its asset table and asset name blob and records t
 
 Appends one asset to the open bundle and writes its index to `pAssetIndex`, which may be null. Assets are indexed in append order within the bundle, starting at zero and shared across all asset types, so a caller appends assets of different types in whatever order it produces them - see [Assets](#assets).
 
-`name` may be empty for an asset referenced only by index (see [Assets](#assets)); a non-empty `name` must be unique within the bundle. `data` is the raw, uncompressed payload, and `codec` is the codec to store it with (`CpkgCodec::None` for no compression). `AppendAsset` compresses the payload and writes the result to the file before returning, retaining nothing beyond the in-memory bundle and asset tables and the open bundle's name blob, so a caller stages and appends one asset at a time while building a large model.
+`name` may be empty for a local asset referenced only by index, and is required for a shared asset (see [Shared and Local Assets](#shared-and-local-assets)); a non-empty `name` must be unique within the bundle. `data` is the raw, uncompressed payload, and `codec` is the codec to store it with (`CpkgCodec::None` for no compression). `AppendAsset` compresses the payload and writes the result to the file before returning, retaining nothing beyond the in-memory bundle and asset tables and the open bundle's name blob, so a caller stages and appends one asset at a time while building a large model.
 
 Fails with `Gem::Result::InvalidArg` if no bundle is open or any argument breaks a [writer argument rule](#writer-argument-rules). All of these are checked before anything is written; any failure after that closes the writer (see [Writer failure closes the writer](#writer-failure-closes-the-writer)).
 
@@ -1000,7 +1021,7 @@ Reads one asset payload from an open package into `data`, a caller-owned buffer 
 
 | Path | Description |
 |---|---|
-| `src/Inc/CanvasPkg.h` | Public header: `CCpkgWriter`, `CCpkgReader`, `CCpkgNameDirectory`, `AssetType`, `CpkgCodec`/`CpkgCompressionScheme`, `CpkgSpan`, the header-only payload helpers (`CCpkgPayloadBuilder`, `CpkgGetPayloadHeader`, `CpkgResolveSpan`), and every `Cpkg*Data` schema |
+| `src/Inc/CanvasPkg.h` | Public header: `CCpkgWriter`, `CCpkgReader`, `CCpkgNameDirectory`, `AssetType` and `CpkgIsSharedAssetType`, `CpkgCodec`/`CpkgCompressionScheme`, `CpkgSpan`, the header-only payload helpers (`CCpkgPayloadBuilder`, `CpkgGetPayloadHeader`, `CpkgResolveSpan`), and every `Cpkg*Data` schema |
 | `src/CanvasPkg/*.cpp` | Implementation |
 | `src/CanvasPkg/*.h` | Internal-only headers (file layout structs, fixup bookkeeping); not part of the public surface |
 
@@ -1016,7 +1037,6 @@ Directions the current design leaves room for. None are committed plans:
 - **World attributes**: `CpkgWorldSettingsData` holds the world-wide settings the engine has today. Settings such as gravity, spawn points, or global lighting would extend it as the engine grows them.
 - **World variants**: content subsets of one world toggled on and off at runtime, such as a town before and after its destruction, in the manner of Unreal's Data Layers.
 - **Local sky overrides**: volumes that override the active skybox within a bounded area and blend by camera position.
-- **Shared materials and meshes**: only images are referenced by path today, so materials and meshes are shared across bundles only by sharing a template. Making `Material` and `MeshData` path-referenced as well would let separate templates share them, in the manner of standalone material and mesh assets in other engines.
 - **Equirectangular skies**: many HDR skies ship as latitude-longitude images. A skybox could accept one through a mapping field, or a writer could convert it to a `Cube` image at cook time.
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
@@ -1025,13 +1045,12 @@ Directions the current design leaves room for. None are committed plans:
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **Cross-bundle asset sharing is only partly designed.** Images are referenced by path and can be shared across bundles and packages; everything else is referenced by index and is shared only by sharing a whole template. Several sharing cases are unresolved:
-   - **Animation clips**: tracks bind by node name so that templates sharing a skeleton can share clips, but no field references a clip, so a template cannot use clips from a shared clip bundle. The spec also does not state which clips a template uses (presumably those in its own bundle) or that the node names a clip targets must be unique within an instance.
-   - **Materials and meshes**: separate templates cannot share a `Material` or `MeshData` (see Future Directions).
-   - **Skeletons**: each template carries its own bone `SceneNode` hierarchy. Whether templates sharing a rig should reference a shared skeleton (as Unreal's Skeleton asset does) or only declare compatibility by matching bone names (as Unity and glTF do) is undecided, and depends on whether the Canvas engine gains a skeleton object.
+1. **Cross-bundle asset sharing is only partly designed.** [Shared assets](#shared-and-local-assets) are referenced by path and can be shared across bundles and packages, but these sharing cases are unresolved:
+   - **Animation clips**: tracks bind by node name so that templates sharing a rig can share clips, but no field references a clip, so a template cannot use clips from a shared clip bundle. The spec also does not state which clips a template uses or which nodes a clip may bind to.
+   - **Skeletons**: each template carries its own bone `SceneNode` hierarchy, and `MeshSkin` is a local asset because it indexes those nodes. A shared `Skeleton` asset holding joint names, parent indices, and rest pose, instantiated as scene-graph nodes, would let templates share a rig and its skins.
    - **Template-level data**: a template has no settings asset to hold clip references, the active camera node, or bounds (see the model-level manifest in Future Directions).
 
-   Resolve these together, as one rule for which asset types are shared resources referenced by path and which are per-instance structure referenced by index, before building tooling such as an editor on the format.
+   Resolve these before building tooling such as an editor on the format.
 
 2. **Nodes held directly by a world bundle or region have no mobility.** Mobility is declared on a placement, but a world bundle's or region's own `SceneNode` hierarchy (a camera rig, terrain) is instantiated without one, so the engine cannot tell whether to bake it or update it every frame. Either fix a rule (such content is `Movable`, which is safe but forgoes baking) or declare it: a `Mobility` field on `CpkgWorldSettingsData` for the world bundle and on `CpkgWorldRegionRef` for each region.
 
