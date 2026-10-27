@@ -182,17 +182,17 @@ This section describes, at a high level, how the content of a package becomes ob
 
 ### Templates
 
-Any bundle can be **instantiated**: brought into the world any number of times, each **instance** independent of the others. An instance is made of the bundle's [local assets](#shared-and-local-assets): its `TransformNode` hierarchy and the nodes' [attachments](#cpkgtransformnodedata-assettypetransformnode), its skins, and its clips. A bundle with no local assets, such as an image library, has an empty instance. How the engine represents an instance is defined by the [Canvas engine spec](../../README.md).
+Any bundle can be **instantiated**: brought into the world any number of times, each **instance** independent of the others. An instance is made of the bundle's [local assets](#shared-and-local-assets): its [TransformNode](#cpkgtransformnodedata-assettypetransformnode) hierarchy and the nodes, skins, and its clips. A bundle with no local assets, such as an image library, has an empty instance. How the engine represents an instance is defined by the [Canvas engine spec](../../README.md).
 
 A bundle's use decides what it is called. A **template** is a bundle instantiated by a placement or by the engine user at runtime, for example to spawn an enemy. A [world region](#world-regions) is a bundle a world streams, and a [world bundle](#worlds) is instantiated only as its world. Nothing in a bundle records its use, and one bundle may serve as both a template and a region.
 
-A template typically describes one thing, such as a goblin, a chair, or a tree. Each instance has its own nodes and their attachments; the [shared assets](#shared-and-local-assets) they reference, which may live in any bundle of any loaded package, are common to every instance. A template may also contain placements of other templates (see [Placements](#placements)).
+A template typically describes one thing, such as a goblin, a chair, or a tree. Each instance has its own nodes; the [shared assets](#shared-and-local-assets) they reference, which may live in any bundle of any loaded package, are common to every instance. A template may also contain placements of other templates (see [Placements](#placements)).
 
 Each instance has an **instance transform**, supplied by whatever instantiates the bundle: a [placement](#placements) supplies the instance's placement transform, a [world region](#world-regions) or [world bundle](#worlds) uses the world origin, and the engine user supplies one for an instance it creates at runtime. A `TransformNode` with `ParentIndex = -1` is relative to its instance's instance transform, so a bundle's nodes may form several trees and an instance still moves as one unit.
 
 ### Placements
 
-A **placement** is an [attachment](#cpkgtransformnodedata-assettypetransformnode) (`AssetType::Placement`) that instantiates one template once per entry in its `Transforms` array, with a declared [mobility](#mobility) shared by every instance it creates. Each entry is relative to the node the placement attaches to, or to the instance transform of the bundle holding the placement when `NodeIndex` is `-1`. That entry, composed with what it is relative to, is the placed instance's **placement transform**, which serves as its instance transform. A placement references its template by [bundle path](#paths): `bundle` for a template in the same package, or `package/bundle` for a template in another package, where `package` is that package's declared name (`CCpkgReader::GetPackageName`). Templates are therefore shared across packages: world regions in several packages can each place a goblin template stored once in a shared characters package.
+A **placement** is an asset (`AssetType::Placement`) that instantiates one template once per entry in its `Transforms` array, with a declared [mobility](#mobility) shared by every instance it creates. Each entry is relative to the node the placement attaches to, or to the instance transform of the bundle holding the placement when `NodeIndex` is `-1`. That entry, composed with what it is relative to, is the placed instance's **placement transform**, which serves as its instance transform. A placement references its template by [bundle path](#paths): `bundle` for a template in the same package, or `package/bundle` for a template in another package, where `package` is that package's declared name (`CCpkgReader::GetPackageName`). Templates are therefore shared across packages: world regions in several packages can each place a goblin template stored once in a shared characters package.
 
 ```cpp
 // Draft schema.
@@ -223,7 +223,7 @@ A **world region** is a bundle that a [world](#worlds) lists in its `Regions`, t
 
 A **world** is the top-level unit a game loads: one place, such as a level, a map, or an open world, made of always-present content and world regions. A world is declared by a **world bundle**, a bundle that holds exactly one `AssetType::WorldSettings` asset. A bundle holding a `WorldSettings` asset is always a world bundle.
 
-Besides its `WorldSettings` asset, a world bundle may hold assets of any type: the world's always-present content, such as `TransformNode` hierarchies and their attachments, including placements, and shared assets such as the world's `Skybox` assets.
+Besides its `WorldSettings` asset, a world bundle may hold assets of any type: the world's always-present content, such as `TransformNode` hierarchies, placements, and shared assets such as the world's `Skybox` assets.
 
 A world bundle's [instance transform](#templates) is the world origin, so its content is positioned in world space, as a region's is. A world bundle is used only as a world, so neither a placement nor a region list references one. How and when a world and its regions are instantiated is defined by the [Canvas engine spec](../../README.md).
 
@@ -496,7 +496,7 @@ The helpers check only structure. Schema rules - parallel counts, the streams ea
 
 ### CpkgTransformNodeData (AssetType::TransformNode)
 
-One node of a bundle's node hierarchy: a parent and a local transform. A bundle's `TransformNode` assets together describe the whole hierarchy; `ParentIndex` links a node to its parent by asset index. What a node carries, such as a mesh, a camera, or a light, is an attachment: an asset that attaches to the node.
+One node of a bundle's node hierarchy: a parent and a local transform. A bundle's `TransformNode` assets together describe the whole hierarchy; `ParentIndex` links a node to its parent by asset index.
 
 Fixed size: the payload is one `CpkgTransformNodeData`.
 
@@ -510,11 +510,11 @@ struct CpkgTransformNodeData
 
 A node's name is the optional `name` it was appended with.
 
-`MeshInstance`, `Camera`, `Light`, and [`Placement`](#placements) assets each attach to one `TransformNode` through a `NodeIndex` field. A node may have any number of attachments, of any types, or none; a node with none is a pure transform, such as a bone or a pivot. `NodeIndex` is required, except that a placement's may be `-1` to place relative to the instance transform. Like every asset index, a `NodeIndex` references an earlier asset, so an attachment is appended after its node.
+`MeshInstance`, `Camera`, `Light`, and [`Placement`](#placements) assets each attach to one `TransformNode` through a `NodeIndex` field. A node may have any number of attachments, of any types, or none; a node with none is a pure transform, such as a bone or a pivot. `NodeIndex` is required, except that a placement's may be `-1` to place relative to the instance transform. Like every asset index, a `NodeIndex` references an earlier asset, so they are appended after its node.
 
 ### CpkgMeshInstanceData (AssetType::MeshInstance)
 
-An [attachment](#cpkgtransformnodedata-assettypetransformnode) corresponding to `XMeshInstance`: the node it attaches to draws a shared `MeshData`. Each instance of the template gets its own mesh instance, and all of them draw the same mesh.
+Describes mesh data attached to a `TransformNode`: the node it attaches to draws a shared `MeshData`. Each instance of the template gets its own mesh instance, and all of them draw the same mesh.
 
 The payload is a `CpkgMeshInstanceData` header followed by a data area holding the mesh path.
 
@@ -741,7 +741,7 @@ The bone count is `BoneNodeIndices.Count`; `InvBindPoses.Count` must equal it.
 
 ### CpkgCameraData (AssetType::Camera)
 
-An [attachment](#cpkgtransformnodedata-assettypetransformnode) corresponding to `XCamera`'s settable state (`Camera.h`). Fixed size: the payload is one `CpkgCameraData`.
+An asset that attaches to a `TransformNode` describing a camera's settable state. Fixed size: the payload is one `CpkgCameraData`.
 
 ```cpp
 struct CpkgCameraData
@@ -757,7 +757,7 @@ struct CpkgCameraData
 
 ### CpkgLightData (AssetType::Light)
 
-An [attachment](#cpkgtransformnodedata-assettypetransformnode) corresponding to `XLight`'s settable state (`Light.h`): light type, color/intensity, point/spot attenuation, spot cone angles, and shadow parameters. `Flags` is a `LightFlags` bit set (`CastsShadows`, `Enabled`); the shadow fields take effect only when `CastsShadows` is set. Fixed size: the payload is one `CpkgLightData`.
+Describes a light attached to a `TransformNode`: light type, color/intensity, point/spot attenuation, spot cone angles, and shadow parameters. `Flags` is a `LightFlags` bit set (`CastsShadows`, `Enabled`); the shadow fields take effect only when `CastsShadows` is set. Fixed size: the payload is one `CpkgLightData`.
 
 ```cpp
 struct CpkgLightData
@@ -1062,7 +1062,6 @@ Directions the current design leaves room for. None are committed plans:
 
 - **Compression**: `CpkgCompressionScheme` carries a `Codec` field and both a stored and a raw size, but only `CpkgCodec::None` is implemented. Adding a codec is additive; existing `None`-coded assets keep working.
 - **Per-instance overrides**: a placement instantiates its template unmodified. Overrides such as material swaps or script parameters would extend `CpkgPlacementData` with an override list.
-- **More node attachments**: fog volumes, particle emitters, script triggers, and similar would each be a new [attachment](#cpkgtransformnodedata-assettypetransformnode) asset type, leaving `CpkgTransformNodeData` unchanged.
 - **Model-level manifest**: there is no asset type for the model-level metadata `XModel` carries (the active-camera-node designation, overall bounds). It would need its own `AssetType` value and schema.
 - **World attributes**: `CpkgWorldSettingsData` holds the world-wide settings the engine has today. Settings such as gravity, spawn points, or global lighting would extend it as the engine grows them.
 - **World variants**: content subsets of one world toggled on and off at runtime, such as a town before and after its destruction, in the manner of Unreal's Data Layers.
