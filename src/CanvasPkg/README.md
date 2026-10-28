@@ -71,7 +71,7 @@ constexpr bool CpkgIsSharedAssetType(AssetType type);
 
 ### Append Order
 
-**A local asset may only index other local assets appended before it.** Every local asset index must be strictly less than the index of the local asset holding it. Forward indices are not part of the format, so a loader resolves every index in a single forward pass over the asset table, with no deferred fixups and no second pass. Because every index points backward, the indices in a bundle form an acyclic graph.
+**A local asset may only index other local assets appended before it.** Every local asset index must be strictly less than the index of the local asset holding it. Forward indices are not part of the format, so every index can be resolved in a single forward pass over the asset table, with no deferred fixups and no second pass. Because every index points backward, the indices in a bundle form an acyclic graph.
 
 A producer satisfies the rule by appending each asset after every asset it indexes. These are the index fields, and the type each references:
 
@@ -85,9 +85,9 @@ A producer satisfies the rule by appending each asset after every asset it index
 | `BoneNodeIndices` | `MeshSkin` | `TransformNode` |
 | `ActiveCameraIndex` | `WorldSettings` | `Camera` |
 
-Shared assets hold no index, and no index references one, so they may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, the hierarchy assets, `MeshInstance`, `Camera`, `Light`, `MeshSkin`, `NodeAnimationClip`, `ExportList`, `WorldSettings`. The **hierarchy assets** are `TransformNode`, `Placement`, and `ImportNode`: each is relative to one other asset (a node's parent, a placement's node, an import node's placement), so together they form one hierarchy. Appending them together in pre-order satisfies the rule for every index among them and guarantees parent-before-child; a loader may rely on an asset's parent already being resolved when the asset itself is read.
+Shared assets hold no index, and no index references one, so they may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, the hierarchy assets, `MeshInstance`, `Camera`, `Light`, `MeshSkin`, `NodeAnimationClip`, `ExportList`, `WorldSettings`. The **hierarchy assets** are `TransformNode`, `Placement`, and `ImportNode`: each is relative to one other asset (a node's parent, a placement's node, an import node's placement), so together they form one hierarchy. Appending them together in pre-order satisfies the rule for every index among them and guarantees parent-before-child, so an asset's parent always precedes it.
 
-`AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed. A reader may treat an out-of-order reference as a corrupt package (`Gem::Result::CorruptedData`).
+`AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed.
 
 ### Paths
 
@@ -105,11 +105,11 @@ Path references follow these rules:
 
 - **An empty path is null.** Each path reference field states whether it may be null. For example, a placement's bundle is required.
 - **A qualified path may refer to its own scope.** A `package/bundle/asset` path that spells out the referencing package and bundle resolves to the same asset as `asset`.
-- **Malformed paths.** A non-empty path containing an empty name (a leading, trailing, or doubled `/`), or more names than its kind allows, is malformed, and a reader may treat it as corrupt (`Gem::Result::CorruptedData`).
-- **Each path reference declares its target.** An asset path declares a [shared](#shared-and-local-assets) `AssetType`, and an asset path that resolves to an asset of any other type is a fatal error. Every bundle path references a bundle to instantiate, and a bundle path that resolves to a [world bundle](#worlds) is a fatal error.
-- **An unresolved path is a fatal error**: a package not loaded, or a bundle or asset absent from it.
+- **Malformed paths.** A non-empty path containing an empty name (a leading, trailing, or doubled `/`), or more names than its kind allows, is malformed.
+- **Each path reference declares its target.** An asset path declares a [shared](#shared-and-local-assets) `AssetType` and must resolve to an asset of that type. A bundle path must resolve to a bundle other than a [world bundle](#worlds).
+- **Every non-null path must resolve**, among the packages loaded together, to a bundle or asset that exists.
 
-A fatal path reference error fails instantiation of the template or world that holds the path reference, and the loader reports the path and the asset that holds it. Resolution is the loader's job (see [Resolving path references](#resolving-path-references)). A loader resolving an asset path can build the target bundle's directory with the expected type as the `BuildAssetDirectory` filter, so a lookup finds only assets of that type.
+The [Canvas engine spec](../../README.md) defines how path references are resolved and how an unresolved or mistyped one is handled (see [Resolving path references](#resolving-path-references)).
 
 `CCpkgWriter::CopyBundle` copies path references unchanged. A relative path in a copied bundle therefore resolves within the package it is copied into, while a fully qualified path keeps referencing the original package.
 
@@ -294,7 +294,7 @@ An instance whose ancestor instances include a `Movable` one is effectively `Mov
 
 ### Resolving path references
 
-Resolving [path references](#paths), such as a placement's template, a mesh instance's mesh, or a world's regions and skyboxes, is the loader's job. The loader is engine-side code built on `CCpkgReader` and its [name directories](#name-directories). It locates loaded packages by their declared names, so package names must be unique among the packages loaded together.
+[Path references](#paths), such as a placement's bundle, a mesh instance's mesh, or a world's regions and skyboxes, and [export names](#exports-and-imports) are resolved by engine-side code built on `CCpkgReader` and its [name directories](#name-directories), as defined by the [Canvas engine spec](../../README.md). A path names a package by its declared name, so package names must be unique among the packages loaded together.
 
 ## Package Data Types
 
@@ -306,7 +306,7 @@ A relationship between assets is stored according to the referenced asset's [cla
 
 ### Conventions
 
-Every payload stores values in the Canvas engine's own conventions, so a loader passes them to the engine unconverted. Converting from a source format's conventions is the writer's job (for example `cpkgbuilder` and its importers).
+Every payload stores values in the Canvas engine's own conventions, so they need no conversion between package and engine. Converting from a source format's conventions is the writer's job (for example `cpkgbuilder` and its importers).
 
 **Canvas space** is the engine's world and scene-graph coordinate system (see [Coordinate System and Local Basis](../../README.md#coordinate-system-and-local-basis)):
 
@@ -332,24 +332,22 @@ struct CpkgTransform
 
 **Colors.** Every color stored as `float` is linear RGB with straight (non-premultiplied) alpha where alpha is meaningful. This covers `BaseColorFactor`, `EmissiveFactor` (its alpha is unused), and `CpkgLightData::Color`. These values are not sRGB-encoded.
 
-**Image color space depends on the binding role, not on the image.** `CpkgImageData` stores no color space. A loader decides how to decode an image from the field that references it:
+**Image color space depends on the binding role, not on the image.** `CpkgImageData` stores no color space. The field that references an image declares how its pixel data is interpreted:
 
 | Role | Texture field | Interpretation |
 |---|---|---|
-| Albedo | `AlbedoTexture` | sRGB-encoded color, decoded to linear when sampled |
-| Emissive | `EmissiveTexture` | sRGB-encoded color, decoded to linear when sampled |
+| Albedo | `AlbedoTexture` | sRGB-encoded color |
+| Emissive | `EmissiveTexture` | sRGB-encoded color |
 | Normal | `NormalTexture` | Linear data |
 | Roughness | `RoughnessTexture` | Linear data |
 | Metallic | `MetallicTexture` | Linear data |
 | Ambient occlusion | `AmbientOcclusionTexture` | Linear data |
 | Displacement | `Displacement.DisplacementMap` | Linear data |
-| Skybox | `CpkgSkyboxData::Image` | sRGB-encoded color, decoded to linear when sampled |
+| Skybox | `CpkgSkyboxData::Image` | sRGB-encoded color |
 
 The sRGB rule covers integer-valued pixel data only. Floating-point pixel data, such as a floating-point TIFF, is always linear, in every role.
 
-One `Image` asset may be referenced in both a color role and a linear role. This is valid, and the loader must honor each binding's interpretation: for example, it can create one GPU texture per interpretation, or one resource with an sRGB view and a linear view where the backend supports both. A writer that wants a single interpretation stores two `Image` assets.
-
-The engine does not yet implement the sRGB half of this rule. `GfxFormat` has no sRGB formats, and the backend samples every material texture as UNorm with no decode. Until it does, a loader that follows this rule must convert color-role images to linear itself before upload.
+One `Image` asset may be referenced in both a color role and a linear role, and each reference has its own role's interpretation. A writer that wants a single interpretation stores two `Image` assets.
 
 ### AssetType
 
@@ -427,7 +425,7 @@ These rules define where a span's elements are and when a span is valid:
 - `Count == 0` is an empty array; for an optional array, empty means absent. An empty span has `Offset == 0`.
 - Spans nest to whatever depth the schemas declare. `CpkgMeshData::Groups` refers to an array of `CpkgMeshDataGroup`, and each of those holds spans referring to that group's vertex streams.
 
-A reader may treat a payload that violates any of these rules as corrupt (`Gem::Result::CorruptedData`).
+A payload that violates any of these rules is malformed, and `CpkgResolveSpan` reports such a span as `Gem::Result::CorruptedData`.
 
 **The data area has no prescribed order.** A reader finds every array through its span and never by position, so a writer may place arrays in any order. Spans must not overlap, and the alignment gaps between arrays must be zero; `CCpkgPayloadBuilder` guarantees both. A reader does not check for overlap, since every access is read-only, and does not interpret the gap bytes. For example, `CCpkgPayloadBuilder` (below) lays out a mesh with two groups in the order it is called, which for cpkgbuilder is:
 
@@ -450,7 +448,7 @@ constexpr size_t kCpkgPayloadAlignment = 16;
 
 Payloads are not aligned within the file. Alignment applies to the buffer that `ReadAsset` fills.
 
-Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and `InvBindPoses` with `BoneNodeIndices`. A reader may treat a mismatch as corrupt.
+Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and `InvBindPoses` with `BoneNodeIndices`.
 
 ### Payload Encoding Helpers
 
@@ -512,7 +510,7 @@ for (const CpkgMeshDataGroup &group : groups)
 }
 ```
 
-The helpers check only structure. Schema rules - parallel counts, the streams each topology requires, asset index ordering - are checked by the loader that interprets the payload.
+The helpers check only structure. Schema rules - parallel counts, the streams each topology requires, asset index ordering - are defined by each schema below.
 
 ### CpkgTransformNodeData (AssetType::TransformNode)
 
@@ -613,21 +611,21 @@ struct CpkgMeshDataGroup
 struct CpkgMeshData
 {
     GfxPrimitiveTopology            Topology;            // CanvasGfx.h
-    CpkgAABB                        LocalBounds;         // empty sentinel = compute from positions; see below
+    CpkgAABB                        LocalBounds;         // empty sentinel = no bounds declared; see below
     uint32_t                        Padding = 0;
     CpkgSpan<CpkgMeshDataGroup>     Groups;
 };
 ```
 
-**A mesh has at least one group, and every group has at least one vertex.** `Groups.Count` and each group's `Positions.Count` are nonzero, matching `CreateMeshData`, which rejects a zero `GroupCount` or `VertexCount`. Every non-empty stream's `Count` must equal the group's `Positions.Count`. A mesh is skinned in full or not at all: either every group carries both `BoneIndices` and `BoneWeights`, or no group carries either. A reader may treat a payload that breaks any of these rules as corrupt (`Gem::Result::CorruptedData`).
+**A mesh has at least one group, and every group has at least one vertex.** `Groups.Count` and each group's `Positions.Count` are nonzero, matching `CreateMeshData`, which rejects a zero `GroupCount` or `VertexCount`. Every non-empty stream's `Count` must equal the group's `Positions.Count`. A mesh is skinned in full or not at all: either every group carries both `BoneIndices` and `BoneWeights`, or no group carries either. A payload that breaks any of these rules is malformed.
 
-**`LocalBounds` is either empty or well-formed.** Empty is the exact sentinel `Min = {+FLT_MAX, +FLT_MAX, +FLT_MAX}`, `Max = {-FLT_MAX, -FLT_MAX, -FLT_MAX}`: `CpkgAABB`'s default, and the state `Canvas::Math::AABB::IsEmpty` recognizes. It means the loader passes an empty `Canvas::MeshDataDesc::LocalBounds` and the backend computes the bounds from the positions. Otherwise `Min[i] <= Max[i]` must hold on every axis, which also excludes NaN. Any other box, including one that is inside-out on some axes or inverted without matching the sentinel, is not empty; a reader may treat it as corrupt (`Gem::Result::CorruptedData`).
+**`LocalBounds` is either empty or well-formed.** Empty is the exact sentinel `Min = {+FLT_MAX, +FLT_MAX, +FLT_MAX}`, `Max = {-FLT_MAX, -FLT_MAX, -FLT_MAX}`: `CpkgAABB`'s default, and the state `Canvas::Math::AABB::IsEmpty` recognizes. It means the mesh declares no bounds. Otherwise `Min[i] <= Max[i]` must hold on every axis, which also excludes NaN. Any other box, including one that is inside-out on some axes or inverted without matching the sentinel, is not empty, and is malformed.
 
 **Which streams are required depends on `Topology`**, matching what the backend enforces in `CreateMeshData`: `TriangleList` requires `Positions` and `Normals`; `PatchList4CP` requires `Positions`, `Normals`, and `UV0` (per-control-point map UVs, and the base direction along which displacement extends each control point). `Tangents`, `BoneIndices`, and `BoneWeights` are optional under either topology.
 
 A skinned mesh holds no asset index, so like any shared asset it may live in any bundle and be skinned in many bundles. Each skinning bundle's `MeshSkin` and every bone it references live in that bundle. `BoneIndices` references bones without naming an asset: it is a palette-relative index into the mesh's `CpkgMeshSkinData::BoneNodeIndices` array, and by the ordering correspondence into `InvBindPoses`. This matches the runtime skinning convention. `CpkgMeshSkinData` is the single place bones are referenced by asset index. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
 
-**A mesh bound by a `MeshSkin` carries bone streams in every group.** The mesh drawn by the mesh instance at `CpkgMeshSkinData::MeshInstanceIndex` must be a skinned mesh in the sense above. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, drawn by a mesh instance attached to the bone node or to a node parented under it. A reader may treat a `MeshSkin` whose mesh lacks bone streams as corrupt (`Gem::Result::CorruptedData`).
+**A mesh bound by a `MeshSkin` carries bone streams in every group.** The mesh drawn by the mesh instance at `CpkgMeshSkinData::MeshInstanceIndex` must be a skinned mesh in the sense above. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, drawn by a mesh instance attached to the bone node or to a node parented under it. A `MeshSkin` whose mesh lacks bone streams is malformed.
 
 ### CpkgMaterialData (AssetType::Material)
 
@@ -670,7 +668,7 @@ The `Displacement` block is always present, even when `HasDisplacement` is `0`, 
 
 ### CpkgImageData (AssetType::Image)
 
-An image asset is a texture: a 1D, 2D, 3D, or cube texture with optional array slices and a stored mip chain. Its pixels are held as encoded 2D images, each stored verbatim, exactly as read from the source. `Encoding` identifies how they are encoded. CanvasPkg neither decodes nor re-encodes the bytes; decoding happens downstream, at load time.
+An image asset is a texture: a 1D, 2D, 3D, or cube texture with optional array slices and a stored mip chain. Its pixels are held as encoded 2D images, each stored verbatim, exactly as read from the source. `Encoding` identifies how they are encoded. CanvasPkg neither decodes nor re-encodes the bytes.
 
 ```cpp
 enum class CpkgImageEncoding : uint32_t
@@ -705,7 +703,7 @@ struct CpkgImageData
 };
 ```
 
-The shape fields mirror `GfxSurfaceDesc`, so a loader builds the surface description directly from the header. `ArraySize` counts 2D slices, as `GfxSurfaceDesc::ArraySize` does: a single cubemap has `ArraySize == 6`, and a cube array of `N` cubes has `ArraySize == 6 * N`. Mip `m` measures `max(1, Width >> m)` by `max(1, Height >> m)` by `max(1, Depth >> m)`. `MipLevels` may be less than the full chain; generating further mips is the loader's choice.
+The shape fields mirror `GfxSurfaceDesc`. `ArraySize` counts 2D slices, as `GfxSurfaceDesc::ArraySize` does: a single cubemap has `ArraySize == 6`, and a cube array of `N` cubes has `ArraySize == 6 * N`. Mip `m` measures `max(1, Width >> m)` by `max(1, Height >> m)` by `max(1, Depth >> m)`. `MipLevels` may be less than the full chain.
 
 Each `Images` entry is one encoded 2D image, ordered as follows:
 
@@ -713,11 +711,11 @@ Each `Images` entry is one encoded 2D image, ordered as follows:
 - **`Texture3D`**: mip 0's depth slices, front to back, then mip 1's, and so on. Mip `m` contributes `max(1, Depth >> m)` entries.
 - **Container encodings** (such as DDS or KTX, once added) carry their own layout. For a container encoding, `Images` holds exactly one entry, the whole container file, and the header's shape fields equal the container's.
 
-A reader may treat an image whose `Images.Count` differs from the count these rules give as corrupt (`Gem::Result::CorruptedData`). Cube faces are in cube-texture space; the engine maps them to Canvas space through `GfxBackgroundDesc::Orientation`.
+An image whose `Images.Count` differs from the count these rules give is malformed. Cube faces are in cube-texture space; a skybox's `Orientation` rotates them into Canvas space.
 
-Every entry uses the header's `Encoding` and the same pixel format, and decodes to the size of its mip. CanvasPkg cannot check these without decoding, so they are a contract on the writer, and a loader rejects an image that violates them.
+Every entry uses the header's `Encoding` and the same pixel format, and decodes to the size of its mip. CanvasPkg cannot check these without decoding, so they are a contract on the writer.
 
-Every image a `CpkgMaterialData` texture path references is a `Texture2D` image with `ArraySize == 1`, and the image `CpkgSkyboxData::Image` references is a `Cube` image with `ArraySize == 6`. A path referencing an image of any other shape is a fatal error, like one referencing an asset of the wrong type. The color-space rules in [Conventions](#conventions) apply to each entry.
+Every image a `CpkgMaterialData` texture path references is a `Texture2D` image with `ArraySize == 1`, and the image `CpkgSkyboxData::Image` references is a `Cube` image with `ArraySize == 6`. A path must reference an image of that shape, just as every asset path must reference an asset of its declared type. The color-space rules in [Conventions](#conventions) apply to each entry.
 
 `Encoding` and `Compression.Codec` describe separate layers. `Encoding` describes the encoded images and is opaque to CanvasPkg, which stores and returns those bytes untouched. `Compression.Codec` is transport compression applied over the whole payload, and `ReadAsset` always reverses it before returning (see [Compression](#compression)). Any `CpkgCodec` is valid for any `Encoding`.
 
@@ -829,15 +827,15 @@ struct CpkgLightData
     float     SpotInnerAngle       = 0.785398f;
     float     SpotOuterAngle       = 1.047198f;
 
-    // Shadow parameters (consumed by the backend when Flags has CastsShadows set)
-    uint32_t  ShadowResolution     = 0;      // 0 = backend default (2048)
+    // Shadow parameters (meaningful only when Flags has CastsShadows set)
+    uint32_t  ShadowResolution     = 0;      // 0 = engine default
     float     ShadowConstantBias   = 1e-4f;
     float     ShadowSlopeScaleBias = 2.0f;
     float     ShadowNormalOffset   = 0.5f;   // in shadow-map texels
 };
 ```
 
-The shadow fields are always present, even when `Flags` does not have `CastsShadows` set, so the struct has a single fixed layout. The backend ignores them in that case.
+The shadow fields are always present, even when `Flags` does not have `CastsShadows` set, so the struct has a single fixed layout.
 
 ## Error handling and result reporting
 
@@ -857,7 +855,7 @@ The codes this API reports:
 | `Gem::Result::NotFound` | The named file does not exist |
 | `Gem::Result::IoError` | A read, write, or seek on the package file failed, or the writer could not create it |
 | `Gem::Result::DataNotRecognized` | The file is not a package: it is too short to hold a `CpkgFileHeader`, or its `Magic` does not match. The file may be valid data of some other kind |
-| `Gem::Result::CorruptedData` | The file is a package (its `Magic` matches) but its structure is damaged: a table, name blob, name, or payload outside the file, an empty package or bundle name, an unknown `AssetType` or `CpkgCodec`, a `CpkgCodec::None` asset whose `StoredSize` differs from its `RawSize`, or an out-of-order reference (see `CCpkgReader::Open`). From a payload helper: a payload too small for its header, or a span that breaks a [Payload Layout](#payload-layout) rule |
+| `Gem::Result::CorruptedData` | The file is a package (its `Magic` matches) but its structure is damaged: a table, name blob, name, or payload outside the file, an empty package or bundle name, an unknown `AssetType` or `CpkgCodec`, or a `CpkgCodec::None` asset whose `StoredSize` differs from its `RawSize` (see `CCpkgReader::Open`). From a payload helper: a payload too small for its header, or a span that breaks a [Payload Layout](#payload-layout) rule |
 | `Gem::Result::OutOfRange` | The package's `Version` is outside this build's supported range |
 | `Gem::Result::AlreadyExists` | `CCpkgWriter::Open` was called on an existing file |
 | `Gem::Result::OutOfMemory` | An allocation for an in-memory table, directory, or scratch buffer failed |
@@ -1040,7 +1038,7 @@ The file is untrusted input, so `Open` validates everything it loads before acce
 
 Each table's and name blob's extent is checked against `fileSize` before it is allocated, so a corrupt count or size cannot cause an allocation larger than the file. Every bound is checked here, so no later call can find a table entry, name, or payload outside the file.
 
-`Open` does not check that tables, name blobs, and payloads are disjoint, that names are unique, or anything inside a payload: none of these can cause an out-of-bounds read. `CCpkgWriter` never produces duplicate names; in a file that contains them anyway, a [name directory](#name-directories) maps the name to one of the duplicates, unspecified which. Payload contents are checked by the [payload helpers](#payload-encoding-helpers) and the loader.
+`Open` does not check that tables, name blobs, and payloads are disjoint, that names are unique, or anything inside a payload: none of these can cause an out-of-bounds read. `CCpkgWriter` never produces duplicate names; in a file that contains them anyway, a [name directory](#name-directories) maps the name to one of the duplicates, unspecified which. Payload layout is checked by the [payload helpers](#payload-encoding-helpers).
 
 Fails with `Gem::Result::NotFound` if `fileName` does not exist, `Gem::Result::IoError` if the file cannot be read, `Gem::Result::DataNotRecognized` if the file is too short for a `CpkgFileHeader` or its `Magic` does not match, `Gem::Result::CorruptedData` if any later check fails other than `Version`, `Gem::Result::OutOfRange` if `Version` is outside the supported range, and `Gem::Result::OutOfMemory` if the in-memory tables cannot be allocated. On failure the reader is not open and holds nothing.
 
