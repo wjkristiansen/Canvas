@@ -55,12 +55,12 @@ Every asset type is one of two classes, fixed by its `AssetType`. The class deci
 
 | Class | Asset types | Referenced by | Across instances |
 |---|---|---|---|
-| **Shared** | `Image`, `Material`, `MeshData`, `Skybox` | [Asset path](#paths) only | One asset, common to every instance |
-| **Local** | `TransformNode`, `Placement`, `ImportNode`, `MeshInstance`, `Camera`, `Light`, `MeshSkin`, `NodeAnimationClip`, `ExportList`, `WorldSettings` | Asset index within its bundle | Part of each instance |
+| **Shared** | `Image`, `Material`, `MeshData`, `MeshSkin`, `Skybox` | [Asset path](#paths) only | One asset, common to every instance |
+| **Local** | `TransformNode`, `Placement`, `ImportNode`, `Skeleton`, `MeshInstance`, `Camera`, `Light`, `NodeAnimationClip`, `ExportList`, `WorldSettings` | Asset index within its bundle | Part of each instance |
 
 **A shared asset's payload cannot reference other assets by index.** It references other assets only by path, so its meaning does not depend on the bundle that holds it, and any bundle of any package in its project may reference it. A bundle may hold only shared assets, such as a material library that other bundles reference. A shared asset is always named, since a path finds it by name.
 
-**A local asset is part of its bundle's structure.** Its payload may itself reference earlier local assets in the same bundle by index. For example, `CpkgMeshSkinData::BoneNodeIndices` references `TransformNode` assets. A local asset may be unnamed, except an [exported](#exports-and-imports) node, whose name is its export name.
+**A local asset is part of its bundle's structure.** Its payload may itself reference earlier local assets in the same bundle by index. For example, `CpkgSkeletonData::BoneNodeIndices` references node assets. A local asset may be unnamed, except an [exported](#exports-and-imports) node, whose name is its export name.
 
 `CanvasPkg.h` classifies each type with a `constexpr` helper, so `cpkgbuilder` and the loader classify them identically:
 
@@ -81,11 +81,11 @@ A producer satisfies the rule by appending each asset after every asset it index
 | `NodeIndex` | `Placement`, `MeshInstance`, `Camera`, `Light`, `NodeAnimationClip` (per track) | `TransformNode` or `ImportNode` |
 | `PlacementIndex` | `ImportNode` | `Placement` |
 | `NodeIndices` | `ExportList` | `TransformNode` or `ImportNode` |
-| `MeshInstanceIndex` | `MeshSkin` | `MeshInstance` |
-| `BoneNodeIndices` | `MeshSkin` | `TransformNode` |
+| `BoneNodeIndices` | `Skeleton` | `TransformNode` or `ImportNode` |
+| `SkeletonIndex` | `MeshInstance` | `Placement` |
 | `ActiveCameraIndex` | `WorldSettings` | `Camera` |
 
-The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, the hierarchy assets, `MeshInstance`, `Camera`, `Light`, `MeshSkin`, `NodeAnimationClip`, `ExportList`, `WorldSettings`. The **hierarchy assets** are `TransformNode`, `Placement`, and `ImportNode`: each is relative to one other asset (a node's parent, a placement's node, an import node's placement), so together they form one hierarchy. Appending them together in pre-order satisfies the rule for every index among them and guarantees parent-before-child, so an asset's parent always precedes it.
+The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `MeshSkin`, the hierarchy assets, `Skeleton`, `MeshInstance`, `Camera`, `Light`, `NodeAnimationClip`, `ExportList`, `WorldSettings`. The **hierarchy assets** are `TransformNode`, `Placement`, and `ImportNode`: each is relative to one other asset (a node's parent, a placement's node, an import node's placement), so together they form one hierarchy. Appending them together in pre-order satisfies the rule for every index among them and guarantees parent-before-child, so an asset's parent always precedes it.
 
 `AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed.
 
@@ -218,7 +218,7 @@ This section describes, at a high level, how the content of a package becomes ob
 
 ### Instances
 
-The engine can **instantiate** any bundle any number of times, and each resulting **instance** is independent of the others. An instance is built from the bundle's [local assets](#shared-and-local-assets): its hierarchy of nodes and placements, and the attachments, skins, and clips that go with it. A bundle with no local assets, such as an image library, yields an empty instance. How the engine represents an instance is defined by the [Canvas engine spec](../../README.md).
+The engine can **instantiate** any bundle any number of times, and each resulting **instance** is independent of the others. An instance is built from the bundle's [local assets](#shared-and-local-assets): its hierarchy of nodes and placements, and the attachments, skeleton, and clips that go with it. A bundle with no local assets, such as an image library, yields an empty instance. How the engine represents an instance is defined by the [Canvas engine spec](../../README.md).
 
 The engine instantiates a bundle as a nested instance of a bundle that places it (see [Placements](#placements)), as a [world bundle](#worlds) or one of its [world regions](#world-regions), or when the engine user requests one at runtime, for example to spawn an enemy. Nothing in a bundle records how it is used, and one bundle may be both placed and used as a region.
 
@@ -336,7 +336,7 @@ An instance whose ancestor instances include a `Movable` one is effectively `Mov
 
 **Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`TransformNode`, `Camera`, `Light`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
 
-A relationship between assets is stored according to the referenced asset's [class](#shared-and-local-assets). A field referencing a shared asset - the mesh a mesh instance draws, the material a mesh group draws with, an image a material samples - is an asset path (see [Paths](#paths)). A field referencing a local asset - a node's parent, the node an asset attaches to, a skin's bones - is the intra-bundle asset index of that asset. An import node names an export of a placed bundle (see [Exports and Imports](#exports-and-imports)). Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
+A relationship between assets is stored according to the referenced asset's [class](#shared-and-local-assets). A field referencing a shared asset - the mesh a mesh instance draws, the skin that deforms it, the material a mesh group draws with, an image a material samples - is an asset path (see [Paths](#paths)). A field referencing a local asset - a node's parent, the node an asset attaches to, a skeleton's bones - is the intra-bundle asset index of that asset. An import node names an export of a placed bundle (see [Exports and Imports](#exports-and-imports)). Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
 
 ### Conventions
 
@@ -403,6 +403,7 @@ enum class AssetType : uint32_t
     MeshInstance      = 12,
     ImportNode        = 13,  // see Exports and Imports
     ExportList        = 14,  // see Exports and Imports
+    Skeleton          = 15,
 };
 ```
 
@@ -482,7 +483,7 @@ constexpr size_t kCpkgPayloadAlignment = 16;
 
 Payloads are not aligned within the file. Alignment applies to the buffer that `ReadAsset` fills.
 
-Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and `InvBindPoses` with `BoneNodeIndices`.
+Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and `InvBindPoses` with `Bones`.
 
 ### Payload Encoding Helpers
 
@@ -595,20 +596,45 @@ struct CpkgExportListData
 
 Each listed node appears once, and each listed `ImportNode` represents exactly one node. A node's export name is its asset name, so export names are unique within the bundle.
 
+### CpkgSkeletonData (AssetType::Skeleton)
+
+Declares the bundle's skeleton: an ordered list of its bone nodes. Skins bind to a skeleton by bone index, a position in this list (see [`CpkgMeshSkinData`](#cpkgmeshskindata-assettypemeshskin)). A bundle holds at most one `Skeleton`.
+
+The payload is a `CpkgSkeletonData` header followed by a data area holding the bone node indices.
+
+```cpp
+struct CpkgSkeletonData
+{
+    CpkgSpan<int32_t>  BoneNodeIndices;  // asset indices of the bone nodes; bone i is entry i; at least one
+};
+```
+
+Each listed node appears once, and each listed `ImportNode` represents exactly one node. The skeleton's bone count is `BoneNodeIndices.Count`.
+
+A skeleton's animation clips are `NodeAnimationClip` assets of its bundle, whose tracks index its bone nodes. Every bundle that places the skeleton bundle, and every skin bound to one of its nested instances, shares them.
+
 ### CpkgMeshInstanceData (AssetType::MeshInstance)
 
-Describes mesh data attached to a node: the node it attaches to draws a shared `MeshData`. Each instance of the bundle has its own mesh instance, and all of them draw the same mesh.
+Describes mesh data attached to a node: the node it attaches to draws a shared `MeshData`, optionally deformed by a shared `MeshSkin`. Each instance of the bundle has its own mesh instance, and all of them draw the same mesh.
 
-The payload is a `CpkgMeshInstanceData` header followed by a data area holding the mesh path.
+The payload is a `CpkgMeshInstanceData` header followed by a data area holding the mesh and skin paths.
 
 ```cpp
 struct CpkgMeshInstanceData
 {
-    int32_t         NodeIndex = -1;  // asset index of the node this mesh instance attaches to; required
-    uint32_t        Padding   = 0;
-    CpkgSpan<char>  MeshData;        // asset path to a MeshData; required
+    int32_t         NodeIndex     = -1;  // asset index of the node this mesh instance attaches to; required
+    int32_t         SkeletonIndex = -1;  // asset index of the Placement whose nested instance supplies the skeleton; -1 = this bundle's skeleton
+    CpkgSpan<char>  MeshData;            // asset path to a MeshData; required
+    CpkgSpan<char>  Skin;                // asset path to a MeshSkin; null = not skinned
 };
 ```
+
+**A skinned mesh instance binds its skin to one skeleton.** When `Skin` is not null, the skin's bones resolve to the bone nodes of a [skeleton](#cpkgskeletondata-assettypeskeleton):
+
+- With `SkeletonIndex = -1`, the skeleton is the `Skeleton` asset of the mesh instance's own bundle, and the skin's `Skeleton` path must resolve to that bundle.
+- Otherwise `SkeletonIndex` references a placement that declares exactly one nested instance, and the skeleton is the placed bundle's `Skeleton`, in that nested instance. The placement's bundle path and the skin's `Skeleton` path must resolve to the same bundle.
+
+When `Skin` is null, `SkeletonIndex` is `-1`.
 
 ### CpkgMeshData (AssetType::MeshData)
 
@@ -657,9 +683,9 @@ struct CpkgMeshData
 
 **Which streams are required depends on `Topology`**, matching what the backend enforces in `CreateMeshData`: `TriangleList` requires `Positions` and `Normals`; `PatchList4CP` requires `Positions`, `Normals`, and `UV0` (per-control-point map UVs, and the base direction along which displacement extends each control point). `Tangents`, `BoneIndices`, and `BoneWeights` are optional under either topology.
 
-A skinned mesh holds no asset index, so like any shared asset it may live in any bundle and be skinned in many bundles. Each skinning bundle's `MeshSkin` and every bone it references live in that bundle. `BoneIndices` references bones without naming an asset: it is a palette-relative index into the mesh's `CpkgMeshSkinData::BoneNodeIndices` array, and by the ordering correspondence into `InvBindPoses`. This matches the runtime skinning convention. `CpkgMeshSkinData` is the single place bones are referenced by asset index. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
+A skinned mesh holds no asset index, so like any shared asset it may live in any bundle. `BoneIndices` references bones without naming an asset: it is a palette-relative index into the `Bones` array of the [`MeshSkin`](#cpkgmeshskindata-assettypemeshskin) that deforms the mesh, and by the ordering correspondence into its `InvBindPoses`. This matches the runtime skinning convention. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
 
-**A mesh bound by a `MeshSkin` carries bone streams in every group.** The mesh drawn by the mesh instance at `CpkgMeshSkinData::MeshInstanceIndex` must be a skinned mesh in the sense above. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, drawn by a mesh instance attached to the bone node or to a node parented under it. A `MeshSkin` whose mesh lacks bone streams is malformed.
+**A mesh drawn with a `MeshSkin` carries bone streams in every group.** The mesh of a mesh instance whose `Skin` is not null must be a skinned mesh in the sense above, and each `BoneIndices` entry of an influence with a nonzero weight must be less than the skin's palette size. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, drawn by a mesh instance attached to the bone node or to a node parented under it. A mesh instance whose skin deforms a mesh that lacks bone streams is malformed.
 
 ### CpkgMaterialData (AssetType::Material)
 
@@ -803,9 +829,9 @@ struct CpkgNodeAnimClipData
 
 ### CpkgMeshSkinData (AssetType::MeshSkin)
 
-Corresponds to `MeshSkinDesc`. A skin binding is tied to one bundle's node hierarchy, so bones are referenced by asset index.
+Corresponds to `MeshSkinDesc`. A skin deforms a skinned mesh by the bones of a [skeleton](#cpkgskeletondata-assettypeskeleton). It references bones by bone index, a position in the skeleton's bone list, so it holds no asset index and may live in any bundle, typically beside the mesh it deforms. A [mesh instance](#cpkgmeshinstancedata-assettypemeshinstance) selects the skin and binds it to a skeleton. Several meshes of one character may share one skin.
 
-Variable size. The payload's header is one `CpkgMeshSkinData`, whose spans refer to the two per-bone arrays in the data area:
+Variable size. The payload's header is one `CpkgMeshSkinData`, whose spans refer to the skeleton path and the two per-palette-entry arrays in the data area:
 
 ```cpp
 // Row-major, Canvas row-vector convention: v' = v * M, translation in row 3.
@@ -813,14 +839,13 @@ struct CpkgInvBindPose { float M[16]; };
 
 struct CpkgMeshSkinData
 {
-    int32_t                     MeshInstanceIndex = -1;  // asset index of the MeshInstance this skin binds
-    uint32_t                    Padding           = 0;
-    CpkgSpan<uint32_t>          BoneNodeIndices;         // asset indices of TransformNode bones; one per bone
-    CpkgSpan<CpkgInvBindPose>   InvBindPoses;            // one per bone, same order as BoneNodeIndices
+    CpkgSpan<char>              Skeleton;      // bundle path to the bundle whose Skeleton this skin is built for; required
+    CpkgSpan<uint32_t>          Bones;         // palette: one bone index into that skeleton per entry; at least one
+    CpkgSpan<CpkgInvBindPose>   InvBindPoses;  // one per palette entry, same order as Bones
 };
 ```
 
-The bone count is `BoneNodeIndices.Count`; `InvBindPoses.Count` must equal it.
+The palette size is `Bones.Count`; `InvBindPoses.Count` must equal it. Every `Bones` entry is less than the bone count of the `Skeleton` bundle's skeleton. The skeleton's bundle must hold a `Skeleton` asset.
 
 ### CpkgCameraData (AssetType::Camera)
 
@@ -1153,18 +1178,14 @@ Directions the current design leaves room for. None are committed plans:
 - **Equirectangular skies**: many HDR skies ship as latitude-longitude images. A skybox could accept one through a mapping field, or a writer could convert it to a `Cube` image at build time.
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
+- **Proportional skeleton variants**: characters of different proportions sharing one skeleton bundle and its clips, each mesh with its own rest pose, with per-bone translation retargeting in the manner of Unreal's retargeting modes.
 - **Project world list**: a project manifest could declare the world bundles a project offers, so a launcher or editor can list them without opening every package.
 
 ## Review Concerns (Open)
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **Cross-bundle asset sharing is only partly designed.** [Shared assets](#shared-and-local-assets) are referenced by path and can be shared across bundles and packages, but these sharing cases are unresolved:
-   - **Skeletons**: each skinned bundle carries its own bone `TransformNode` hierarchy, and `MeshSkin` is a local asset because it indexes those nodes. A shared skeleton, either a `Skeleton` asset or a bundle of `TransformNode` joints referenced by bundle path, would let bundles share a rig and its skins. [Imports](#exports-and-imports) let a bundle attach content to an exported node of a bundle it places; skins still need a way to bind to the joints of a placed skeleton.
-   - **Skeletal animation clips**: a `NodeAnimationClip` animates only the nodes of its own bundle, so bundles cannot share character animation. A shared `SkeletalAnimationClip` (or `JointAnimationClip`) that declares its `Skeleton` and targets joints by index would let every bundle using that skeleton share its clips.
-   - **Bundle-level data**: a bundle has no settings asset to hold skeletal clip references, the active camera, or bounds (see bundle-level settings in Future Directions).
-
-   Resolve these before building tooling such as an editor on the format.
+1. **Bundle-level data has no asset.** A bundle has no settings asset to hold its active camera or overall bounds (see bundle-level settings in Future Directions). Resolve this before building tooling such as an editor on the format.
 
 2. **Nodes held directly by a world bundle or region have no mobility.** Mobility is declared on a placement, but a world bundle's or region's own `TransformNode` hierarchy (a camera rig, terrain) is declared without one, so the engine cannot tell whether to bake it or update it every frame. Either fix a rule (such content is `Movable`, which is safe but forgoes baking) or declare it: a `Mobility` field on `CpkgWorldSettingsData` for the world bundle and on `CpkgWorldRegionRef` for each region.
 
