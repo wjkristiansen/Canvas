@@ -4,7 +4,7 @@ A CanvasPkg (Cpkg) is a package file containing world data - including models, g
 
 CanvasPkg is a static library. API Success/failure codes use type `Gem::Result`.
 
-`CCpkgReader` is used by Canvas itself to build world instances and set up scripts at load time. `CCpkgWriter` is used by `cpkgbuilder`, a separate command-line tool that cooks a `.cpkg` file from a JSON manifest (see [cpkgbuilder](../cpkgbuilder/README.md)).
+`CCpkgReader` is used by Canvas itself to build world instances and set up scripts at load time. `CCpkgWriter` is used by `cpkgbuilder`, a separate command-line tool that builds a `.cpkg` file from a JSON manifest (see [cpkgbuilder](../cpkgbuilder/README.md)).
 
 ## Dependencies
 
@@ -1111,11 +1111,11 @@ Directions the current design leaves room for. None are committed plans:
 
 - **Compression**: `CpkgCompressionScheme` carries a `Codec` field and both a stored and a raw size, but only `CpkgCodec::None` is implemented. Adding a codec is additive; existing `None`-coded assets keep working.
 - **Per-instance overrides**: every nested instance a placement declares is an unmodified instance of the placed bundle. Overrides such as material swaps or script parameters would extend `CpkgPlacementData` with an override list.
-- **Model-level manifest**: there is no asset type for the model-level metadata `XModel` carries (the active-camera-node designation, overall bounds). It would need its own `AssetType` value and schema.
+- **Bundle-level settings**: there is no asset type for the model-level metadata `XModel` carries (the active-camera-node designation, overall bounds). It would need its own `AssetType` value and schema.
 - **World attributes**: `CpkgWorldSettingsData` holds the world-wide settings the engine has today. Settings such as gravity, spawn points, or global lighting would extend it as the engine grows them.
 - **World variants**: content subsets of one world toggled on and off at runtime, such as a town before and after its destruction, in the manner of Unreal's Data Layers.
 - **Local sky overrides**: volumes that override the active skybox within a bounded area and blend by camera position.
-- **Equirectangular skies**: many HDR skies ship as latitude-longitude images. A skybox could accept one through a mapping field, or a writer could convert it to a `Cube` image at cook time.
+- **Equirectangular skies**: many HDR skies ship as latitude-longitude images. A skybox could accept one through a mapping field, or a writer could convert it to a `Cube` image at build time.
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
 
@@ -1126,10 +1126,33 @@ Design-review findings that block or complicate implementation as currently spec
 1. **Cross-bundle asset sharing is only partly designed.** [Shared assets](#shared-and-local-assets) are referenced by path and can be shared across bundles and packages, but these sharing cases are unresolved:
    - **Skeletons**: each skinned bundle carries its own bone `TransformNode` hierarchy, and `MeshSkin` is a local asset because it indexes those nodes. A shared skeleton, either a `Skeleton` asset or a bundle of `TransformNode` joints referenced by bundle path, would let bundles share a rig and its skins. [Imports](#exports-and-imports) let a bundle attach content to an exported node of a bundle it places; skins still need a way to bind to the joints of a placed skeleton.
    - **Skeletal animation clips**: a `NodeAnimationClip` animates only the nodes of its own bundle, so bundles cannot share character animation. A shared `SkeletalAnimationClip` (or `JointAnimationClip`) that declares its `Skeleton` and targets joints by index would let every bundle using that skeleton share its clips.
-   - **Bundle-level data**: a bundle has no settings asset to hold skeletal clip references, the active camera, or bounds (see the model-level manifest in Future Directions).
+   - **Bundle-level data**: a bundle has no settings asset to hold skeletal clip references, the active camera, or bounds (see bundle-level settings in Future Directions).
 
    Resolve these before building tooling such as an editor on the format.
 
-2. **Nodes held directly by a world bundle or region have no mobility.** Mobility is declared on a placement, but a world bundle's or region's own `TransformNode` hierarchy (a camera rig, terrain) is instantiated without one, so the engine cannot tell whether to bake it or update it every frame. Either fix a rule (such content is `Movable`, which is safe but forgoes baking) or declare it: a `Mobility` field on `CpkgWorldSettingsData` for the world bundle and on `CpkgWorldRegionRef` for each region.
+2. **How packages find each other is unspecified.** A path names another package by its declared name (see [Paths](#paths)), and every path must resolve "among the packages loaded together" (see [Resolving path references](#resolving-path-references)), but nothing declares which packages those are or where their files are. The following decisions resolve this; the spec text above is updated once the design is drafted.
+   - **A `.cpkg` file holds exactly one package**, so a cross-package reference is a cross-file reference. The spec implies this (one file header, one package name) and should state it.
+   - **A project groups packages.** A **project** is a set of interrelated packages, declared by a text file called the **project manifest**. The manifest lists each package of the project by its declared name and the location of its `.cpkg` file, as an absolute file path or a path relative to the manifest file.
+   - **The project manifest is part of this spec.** Its format and rules get their own section of this document, since they describe file data about packages.
+   - **The `.cpkg` format is unchanged.** Paths keep naming packages by declared name, and the project maps each name to a file. A package records no file locations of its own.
+   - **Packages of one project may reference each other freely**, including mutually: package A's material may use package B's image while B places one of A's bundles. The [placement graph](#placements) across bundles stays acyclic.
+   - **Package names are unique within a project.** This replaces "unique among the packages loaded together" in [Paths](#paths) and [Resolving path references](#resolving-path-references) with a rule stated in terms of file data.
+   - **Projects may depend on other projects, and the project dependency graph is acyclic.** A shared characters project, for example, is a dependency of every game project that places its goblins.
+   - **Dependencies are inherited through the project that needs them.** A path resolves through the project of the package that holds it. When a game project places a bundle from the characters project, that bundle's own paths resolve within the characters project and its dependencies, so the game project lists only the projects its own packages reference.
+   - **The engine spec defines handling** of a package missing from its location, a file whose declared name doesn't match its manifest entry, and conflicting names across projects.
+   - **"Manifest" now means the project manifest.** cpkgbuilder's JSON input is the text source a package is built from, including `"import"` directives, not a list of packages, so it is renamed **package source**: cpkgbuilder builds a package from its package source. The rename covers the [cpkgbuilder README](../cpkgbuilder/README.md), `manifest.schema.json`, the `--manifest` flag, and this document's introduction.
 
-3. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
+   Rejected alternatives:
+   - **A dependency table in each package's file header**, listing each referenced package's name and file location. Mutually referencing packages would each have to record the other's location, and every package would carry locations that belong to its installation, not its content.
+   - **File paths inside path references**, such as `../shared/chars.cpkg#goblin/Body`. They need a second grammar for the file part, repeat the file path in every reference, and need a separator no file name contains.
+
+   Open questions for the drafting pass:
+   - The manifest's text format (JSON, matching the package source, or another) and whether it has a schema file.
+   - Whether a project has a name of its own, and how a manifest locates the manifests of the projects it depends on.
+   - Whether a package may belong to more than one project. If it may, its paths could resolve differently in each; requiring exactly one project avoids that.
+   - Whether package names must be unique across a project and all its dependencies, or only within each project. Unique across all of them lets a path name a package of a dependency project with the existing `package/bundle/asset` form.
+   - What else the manifest declares beyond packages and project dependencies, such as the world bundles a project offers.
+
+3. **Nodes held directly by a world bundle or region have no mobility.** Mobility is declared on a placement, but a world bundle's or region's own `TransformNode` hierarchy (a camera rig, terrain) is declared without one, so the engine cannot tell whether to bake it or update it every frame. Either fix a rule (such content is `Movable`, which is safe but forgoes baking) or declare it: a `Mobility` field on `CpkgWorldSettingsData` for the world bundle and on `CpkgWorldRegionRef` for each region.
+
+4. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
