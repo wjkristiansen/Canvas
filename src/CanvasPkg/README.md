@@ -71,7 +71,7 @@ constexpr bool CpkgIsSharedAssetType(AssetType type);
 
 ### Append Order
 
-**A local asset may only index other local assets appended before it.** Every local asset index must be strictly less than the index of the local asset holding it. Forward indices are not part of the format, so every index can be resolved in a single forward pass over the asset table, with no deferred fixups and no second pass. Because every index points backward, the indices in a bundle form an acyclic graph.
+**In a bundle's asset table, every asset follows the assets it indexes.** Every local asset index must be strictly less than the index of the local asset holding it. Forward indices are not part of the format, so every index can be resolved in a single forward pass over the asset table, with no deferred fixups and no second pass. Because every index points backward, the indices in a bundle form an acyclic graph.
 
 A producer satisfies the rule by appending each asset after every asset it indexes. These are the index fields, and the type each references:
 
@@ -85,7 +85,7 @@ A producer satisfies the rule by appending each asset after every asset it index
 | `BoneNodeIndices` | `MeshSkin` | `TransformNode` |
 | `ActiveCameraIndex` | `WorldSettings` | `Camera` |
 
-Shared assets hold no index, and no index references one, so they may be appended anywhere. The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, the hierarchy assets, `MeshInstance`, `Camera`, `Light`, `MeshSkin`, `NodeAnimationClip`, `ExportList`, `WorldSettings`. The **hierarchy assets** are `TransformNode`, `Placement`, and `ImportNode`: each is relative to one other asset (a node's parent, a placement's node, an import node's placement), so together they form one hierarchy. Appending them together in pre-order satisfies the rule for every index among them and guarantees parent-before-child, so an asset's parent always precedes it.
+The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, the hierarchy assets, `MeshInstance`, `Camera`, `Light`, `MeshSkin`, `NodeAnimationClip`, `ExportList`, `WorldSettings`. The **hierarchy assets** are `TransformNode`, `Placement`, and `ImportNode`: each is relative to one other asset (a node's parent, a placement's node, an import node's placement), so together they form one hierarchy. Appending them together in pre-order satisfies the rule for every index among them and guarantees parent-before-child, so an asset's parent always precedes it.
 
 `AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - `cpkgbuilder` orders its appends to satisfy it - and a package that violates it is malformed.
 
