@@ -37,6 +37,22 @@ Names are the only on-disk data that are not structs. The package name is stored
 
 Name blobs hold only the names of bundles and assets themselves. A name stored inside an asset payload, such as the path in `CpkgMaterialData::AlbedoTexture`, is not in a name blob: it is a `CpkgSpan<char>`, like any other variable-length array, with the same UTF-8 and no-terminator rules.
 
+## Names
+
+Packages, bundles, and assets are identified by name. Every name follows these rules:
+
+- **Encoding.** A name is valid UTF-8, holds no NUL byte, and is at most `UINT32_MAX` bytes, the width of `NameLength`.
+- **Separator.** A name never contains `/`, which separates names in a [path](#paths).
+- **Comparison.** Names compare byte-for-byte: case-sensitive UTF-8, with no normalization. This applies to every name match in CanvasPkg, including path resolution.
+
+Each kind of name has its own scope:
+
+| Name | Empty | Unique within |
+|---|---|---|
+| Package | Never | The package itself; a [project](#projects) gives each package it lists a project name unique within the project |
+| Bundle | Never | Its package |
+| Asset | Only for an unnamed [local asset](#shared-and-local-assets); a shared asset is always named | Its bundle, across all asset types |
+
 ## Assets
 
 Assets are the primary data block for CanvasPkg files. Each asset has an `AssetType`, a payload of bytes whose internal layout is defined by that `AssetType` (see [Package Data Types](#package-data-types)), and optionally a name. An asset's payload is stored on disk on its own, with nothing before or after it. A named asset's name is stored separately in its bundle's asset name blob, with no imposed maximum length. The bundle's asset table (see [Bundles](#bundles)) is a flat, fixed-stride array, indexed by asset index, holding the type, payload offset, name location, and compression info of every asset in the bundle. `CCpkgReader::Open` loads every bundle's asset table and asset name blob, so a name costs no file read.
@@ -45,9 +61,7 @@ Asset indices are per-bundle and span all asset types: the first asset appended 
 
 `CCpkgWriter::AppendAsset` requires an open bundle; call `BeginBundle` first, and `EndBundle` when the bundle is complete.
 
-Bundle names must be non-empty and unique within a package. Package, bundle, and asset names never contain `/`, which separates names in a [path](#paths). Names compare byte-for-byte: case-sensitive UTF-8, with no normalization. This applies to every name match in CanvasPkg, including path resolution.
-
-An asset's name, when it has one, is unique within its bundle. An unnamed asset is stored with an empty name. Every shared asset is named (see [Shared and Local Assets](#shared-and-local-assets)).
+Asset names follow the [name rules](#names). An unnamed asset is stored with an empty name.
 
 ### Shared and Local Assets
 
@@ -883,7 +897,7 @@ The palette size is `Bones.Count`; `InvBindPoses.Count` must equal it. Every `Bo
 
 ### CpkgCameraData (AssetType::Camera)
 
-Describes a camera attached to a node: its clip planes, field of view, aspect ratio, and exposure. Fixed size: the payload is one `CpkgCameraData`.
+Describes a camera attached to a node: its clip planes, vertical field of view, and exposure. Fixed size: the payload is one `CpkgCameraData`.
 
 ```cpp
 struct CpkgCameraData
@@ -891,8 +905,7 @@ struct CpkgCameraData
     int32_t NodeIndex     = -1;         // asset index of the node this camera attaches to; required
     float   NearClip      = 0.1f;
     float   FarClip       = 1000.0f;
-    float   FovAngle      = 0.785398f;  // radians
-    float   AspectRatio   = 1.7778f;
+    float   FovAngle      = 0.785398f;  // vertical field of view, radians
     float   ExposureStops = 0.0f;
 };
 ```
@@ -982,7 +995,7 @@ A CCpkgWriter class writes bundles and assets to a package. CanvasPkg bundle and
 The writer rejects any argument that would break a format rule or produce a file `CCpkgReader::Open` rejects, so every package `CCpkgWriter` produces is one its reader accepts. Each rule is checked before anything is written, and a violation returns `Gem::Result::InvalidArg` and leaves the writer unchanged (see [Writer failure closes the writer](#writer-failure-closes-the-writer)):
 
 - **Call order**: `Open` while the writer is already open; `BeginBundle` while a bundle is open; `AppendAsset` or `EndBundle` with no bundle open; `Close` while a bundle is open.
-- **Names** (`packageName`, `bundleName`, and `name`): must be valid UTF-8, must not contain a NUL byte or `/`, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A package name must be non-empty. A bundle name must be non-empty and unique within the package. An asset name must be non-empty when `CpkgIsSharedAssetType(assetType)` is true and may be empty otherwise, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
+- **Names** (`packageName`, `bundleName`, and `name`): must follow the [name rules](#names), including when each kind may be empty and where each must be unique. An asset is shared when `CpkgIsSharedAssetType(assetType)` is true.
 - **`assetType`**: must be a named `AssetType` enumerator other than `AssetType::Unknown`.
 - **`codec`**: must be a named `CpkgCodec` enumerator.
 - **`data`**: must be non-empty. Every payload begins with its header struct (see [Package Data Types](#package-data-types)), so no asset type has an empty payload.

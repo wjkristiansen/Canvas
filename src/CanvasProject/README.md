@@ -36,7 +36,7 @@ The manifest's shape is defined by [project.schema.json](project.schema.json).
 | `worlds` | Optional. The world bundles the project offers, each written `package/bundle`, where `package` is a project name (see [Worlds](#worlds)). |
 | `defaultWorld` | Optional. One of the `worlds` entries: the world the project declares for startup. |
 
-Names in a manifest follow CanvasPkg's [name rules](../CanvasPkg/README.md#assets): they never contain `/`, and they compare byte-for-byte.
+Every project name and `references` key follows CanvasPkg's [name rules](../CanvasPkg/README.md#names).
 
 ## Rules
 

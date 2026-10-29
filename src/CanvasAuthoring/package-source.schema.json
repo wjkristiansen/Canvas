@@ -1,0 +1,500 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "package-source.schema.json",
+  "title": "Canvas package source",
+  "oneOf": [
+    { "$ref": "#/$defs/packageFile" },
+    { "$ref": "#/$defs/bundleFile" }
+  ],
+  "$defs": {
+    "packageFile": {
+      "type": "object",
+      "required": ["formatVersion", "packageName", "bundles"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "$schema": { "type": "string" },
+        "formatVersion": { "const": 1 },
+        "packageName": { "$ref": "#/$defs/name" },
+        "bundles": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/bundle" },
+              {
+                "type": "object",
+                "required": ["include"],
+                "patternProperties": { "^x-": true },
+                "additionalProperties": false,
+                "properties": { "include": { "$ref": "#/$defs/file" } }
+              }
+            ]
+          }
+        }
+      }
+    },
+
+    "bundleFile": {
+      "type": "object",
+      "required": ["formatVersion", "bundle"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "$schema": { "type": "string" },
+        "formatVersion": { "const": 1 },
+        "bundle": { "$ref": "#/$defs/bundle" }
+      }
+    },
+
+    "name": { "type": "string", "minLength": 1, "pattern": "^[^/]+$" },
+    "file": { "type": "string", "minLength": 1, "pattern": "^[^\\\\]+$" },
+    "assetPath": { "type": "string", "pattern": "^[^/]+(/[^/]+){0,2}$" },
+    "bundlePath": { "type": "string", "pattern": "^[^/]+(/[^/]+)?$" },
+
+    "vec3": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "quat": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+    "rgb":  { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "rgba": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+    "rotation": {
+      "oneOf": [
+        { "$ref": "#/$defs/quat" },
+        {
+          "type": "object",
+          "required": ["degrees"],
+          "additionalProperties": false,
+          "properties": { "degrees": { "$ref": "#/$defs/vec3" } }
+        }
+      ]
+    },
+    "mobility": { "enum": ["static", "stationary", "movable"] },
+    "boneRef": {
+      "oneOf": [
+        { "$ref": "#/$defs/name" },
+        { "type": "integer", "minimum": 0 }
+      ]
+    },
+    "fileArray": {
+      "type": "object",
+      "required": ["file"],
+      "additionalProperties": false,
+      "properties": { "file": { "$ref": "#/$defs/file" } }
+    },
+    "numberArray": {
+      "oneOf": [
+        { "type": "array", "items": { "type": "number" } },
+        { "$ref": "#/$defs/fileArray" }
+      ]
+    },
+    "uintArray": {
+      "oneOf": [
+        { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        { "$ref": "#/$defs/fileArray" }
+      ]
+    },
+    "bounds": {
+      "type": "object",
+      "required": ["min", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "min": { "$ref": "#/$defs/vec3" },
+        "max": { "$ref": "#/$defs/vec3" }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "translation": { "$ref": "#/$defs/vec3" },
+        "rotation": { "$ref": "#/$defs/rotation" },
+        "scale": { "$ref": "#/$defs/vec3" }
+      }
+    },
+
+    "bundle": {
+      "type": "object",
+      "required": ["name"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "images": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/image" } },
+        "materials": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/material" } },
+        "meshes": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/mesh" } },
+        "skeletons": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skeleton" } },
+        "skins": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skin" } },
+        "boneClips": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/boneClip" } },
+        "skyboxes": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skybox" } },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "placements": { "type": "array", "items": { "$ref": "#/$defs/placement" } },
+        "importNodes": { "type": "array", "items": { "$ref": "#/$defs/importNode" } },
+        "nodeClips": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/nodeClip" } },
+        "exports": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true },
+        "world": { "$ref": "#/$defs/world" }
+      }
+    },
+
+    "image": {
+      "oneOf": [
+        { "$ref": "#/$defs/file" },
+        {
+          "type": "object",
+          "required": ["cubemap"],
+          "patternProperties": { "^x-": true },
+          "additionalProperties": false,
+          "properties": {
+            "cubemap": {
+              "type": "object",
+              "required": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"],
+              "additionalProperties": false,
+              "properties": {
+                "+X": { "$ref": "#/$defs/file" },
+                "-X": { "$ref": "#/$defs/file" },
+                "+Y": { "$ref": "#/$defs/file" },
+                "-Y": { "$ref": "#/$defs/file" },
+                "+Z": { "$ref": "#/$defs/file" },
+                "-Z": { "$ref": "#/$defs/file" }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["dimension", "files"],
+          "patternProperties": { "^x-": true },
+          "additionalProperties": false,
+          "properties": {
+            "dimension": { "enum": ["texture1D", "texture2D", "texture3D", "cube"] },
+            "arraySize": { "type": "integer", "minimum": 1 },
+            "mipLevels": { "type": "integer", "minimum": 1 },
+            "files": { "type": "array", "items": { "$ref": "#/$defs/file" }, "minItems": 1 }
+          }
+        }
+      ]
+    },
+
+    "material": {
+      "type": "object",
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "baseColor": { "$ref": "#/$defs/rgba" },
+        "emissive": { "$ref": "#/$defs/rgb" },
+        "roughness": { "type": "number" },
+        "metallic": { "type": "number" },
+        "ambientOcclusion": { "type": "number" },
+        "textures": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "albedo": { "$ref": "#/$defs/assetPath" },
+            "normal": { "$ref": "#/$defs/assetPath" },
+            "roughness": { "$ref": "#/$defs/assetPath" },
+            "metallic": { "$ref": "#/$defs/assetPath" },
+            "ambientOcclusion": { "$ref": "#/$defs/assetPath" },
+            "emissive": { "$ref": "#/$defs/assetPath" }
+          }
+        },
+        "displacement": {
+          "type": "object",
+          "required": ["map"],
+          "additionalProperties": false,
+          "properties": {
+            "map": { "$ref": "#/$defs/assetPath" },
+            "scale": { "type": "number" },
+            "bias": { "type": "number" },
+            "minTessFactor": { "type": "number" },
+            "maxTessFactor": { "type": "number" },
+            "distanceLodScale": { "type": "number" },
+            "curvatureLodScale": { "type": "number" }
+          }
+        }
+      }
+    },
+
+    "mesh": {
+      "type": "object",
+      "required": ["groups"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "topology": { "enum": ["triangleList", "patchList4CP"] },
+        "bounds": { "oneOf": [ { "$ref": "#/$defs/bounds" }, { "const": "none" } ] },
+        "groups": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["positions"],
+            "patternProperties": { "^x-": true },
+            "additionalProperties": false,
+            "properties": {
+              "material": { "$ref": "#/$defs/assetPath" },
+              "positions": { "$ref": "#/$defs/numberArray" },
+              "normals": { "$ref": "#/$defs/numberArray" },
+              "uv0": { "$ref": "#/$defs/numberArray" },
+              "tangents": { "$ref": "#/$defs/numberArray" },
+              "boneIndices": { "$ref": "#/$defs/uintArray" },
+              "boneWeights": { "$ref": "#/$defs/numberArray" }
+            }
+          }
+        }
+      }
+    },
+
+    "skeleton": {
+      "type": "object",
+      "required": ["bones"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "bones": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "patternProperties": { "^x-": true },
+            "additionalProperties": false,
+            "properties": {
+              "name": { "$ref": "#/$defs/name" },
+              "parent": { "$ref": "#/$defs/boneRef" },
+              "rest": { "$ref": "#/$defs/transform" }
+            }
+          }
+        }
+      }
+    },
+
+    "skin": {
+      "type": "object",
+      "required": ["skeleton", "bones"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "skeleton": { "$ref": "#/$defs/assetPath" },
+        "bones": { "type": "array", "items": { "$ref": "#/$defs/boneRef" }, "minItems": 1 },
+        "invBindPoses": { "$ref": "#/$defs/numberArray" }
+      }
+    },
+
+    "keyframes": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["time"],
+            "additionalProperties": false,
+            "properties": {
+              "time": { "type": "number", "minimum": 0 },
+              "translation": { "$ref": "#/$defs/vec3" },
+              "rotation": { "$ref": "#/$defs/rotation" },
+              "scale": { "$ref": "#/$defs/vec3" }
+            }
+          }
+        },
+        { "$ref": "#/$defs/fileArray" }
+      ]
+    },
+
+    "boneClip": {
+      "type": "object",
+      "required": ["skeleton", "tracks"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "skeleton": { "$ref": "#/$defs/assetPath" },
+        "duration": { "type": "number", "minimum": 0 },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["bone", "keyframes"],
+            "additionalProperties": false,
+            "properties": {
+              "bone": { "$ref": "#/$defs/boneRef" },
+              "keyframes": { "$ref": "#/$defs/keyframes" }
+            }
+          }
+        }
+      }
+    },
+
+    "nodeClip": {
+      "type": "object",
+      "required": ["tracks"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "duration": { "type": "number", "minimum": 0 },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["node", "keyframes"],
+            "additionalProperties": false,
+            "properties": {
+              "node": { "$ref": "#/$defs/name" },
+              "keyframes": { "$ref": "#/$defs/keyframes" }
+            }
+          }
+        }
+      }
+    },
+
+    "skybox": {
+      "type": "object",
+      "required": ["image"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "image": { "$ref": "#/$defs/assetPath" },
+        "orientation": { "$ref": "#/$defs/rotation" },
+        "intensity": { "type": "number" }
+      }
+    },
+
+    "meshInstance": {
+      "type": "object",
+      "required": ["mesh"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "mesh": { "$ref": "#/$defs/assetPath" },
+        "skin": { "$ref": "#/$defs/assetPath" },
+        "skeletonInstance": { "$ref": "#/$defs/name" }
+      }
+    },
+
+    "camera": {
+      "type": "object",
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "nearClip": { "type": "number" },
+        "farClip": { "type": "number" },
+        "fovAngle": { "type": "number" },
+        "exposureStops": { "type": "number" }
+      }
+    },
+
+    "light": {
+      "type": "object",
+      "required": ["type"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["ambient", "point", "directional", "spot", "area"] },
+        "color": { "$ref": "#/$defs/rgb" },
+        "intensity": { "type": "number" },
+        "enabled": { "type": "boolean" },
+        "castsShadows": { "type": "boolean" },
+        "range": { "type": "number" },
+        "attenuationConstant": { "type": "number" },
+        "attenuationLinear": { "type": "number" },
+        "attenuationQuadratic": { "type": "number" },
+        "spotInnerAngle": { "type": "number" },
+        "spotOuterAngle": { "type": "number" },
+        "shadowResolution": { "type": "integer", "minimum": 0 },
+        "shadowConstantBias": { "type": "number" },
+        "shadowSlopeScaleBias": { "type": "number" },
+        "shadowNormalOffset": { "type": "number" }
+      }
+    },
+
+    "attachments": {
+      "properties": {
+        "skeletonInstance": {
+          "type": "object",
+          "required": ["skeleton"],
+          "additionalProperties": false,
+          "properties": { "skeleton": { "$ref": "#/$defs/assetPath" } }
+        },
+        "meshInstances": { "type": "array", "items": { "$ref": "#/$defs/meshInstance" } },
+        "camera": { "$ref": "#/$defs/camera" },
+        "light": { "$ref": "#/$defs/light" },
+        "placements": { "type": "array", "items": { "$ref": "#/$defs/placement" } },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+      }
+    },
+
+    "node": {
+      "type": "object",
+      "$ref": "#/$defs/attachments",
+      "patternProperties": { "^x-": true },
+      "unevaluatedProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "translation": { "$ref": "#/$defs/vec3" },
+        "rotation": { "$ref": "#/$defs/rotation" },
+        "scale": { "$ref": "#/$defs/vec3" },
+        "mobility": { "$ref": "#/$defs/mobility" },
+        "bone": { "$ref": "#/$defs/boneRef" }
+      }
+    },
+
+    "importNode": {
+      "type": "object",
+      "required": ["placement", "export"],
+      "$ref": "#/$defs/attachments",
+      "patternProperties": { "^x-": true },
+      "unevaluatedProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "placement": { "$ref": "#/$defs/name" },
+        "export": { "$ref": "#/$defs/name" },
+        "translation": { "$ref": "#/$defs/vec3" },
+        "rotation": { "$ref": "#/$defs/rotation" },
+        "scale": { "$ref": "#/$defs/vec3" }
+      }
+    },
+
+    "placement": {
+      "type": "object",
+      "required": ["bundle"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "bundle": { "$ref": "#/$defs/bundlePath" },
+        "mobility": { "$ref": "#/$defs/mobility" },
+        "transforms": { "type": "array", "items": { "$ref": "#/$defs/transform" }, "minItems": 1 },
+        "translation": { "$ref": "#/$defs/vec3" },
+        "rotation": { "$ref": "#/$defs/rotation" },
+        "scale": { "$ref": "#/$defs/vec3" }
+      },
+      "not": {
+        "required": ["transforms"],
+        "anyOf": [
+          { "required": ["translation"] },
+          { "required": ["rotation"] },
+          { "required": ["scale"] }
+        ]
+      }
+    },
+
+    "world": {
+      "type": "object",
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["region", "bounds"],
+            "additionalProperties": false,
+            "properties": {
+              "region": { "$ref": "#/$defs/bundlePath" },
+              "bounds": { "$ref": "#/$defs/bounds" }
+            }
+          }
+        },
+        "skyboxes": { "type": "array", "items": { "$ref": "#/$defs/assetPath" }, "uniqueItems": true },
+        "defaultSkybox": { "$ref": "#/$defs/assetPath" },
+        "activeCamera": { "$ref": "#/$defs/name" },
+        "backgroundColor": { "$ref": "#/$defs/rgba" }
+      }
+    }
+  }
+}
