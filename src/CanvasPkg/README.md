@@ -110,8 +110,6 @@ Path references follow these rules:
 
 The [Canvas engine spec](../../README.md) defines how path references are resolved and how an unresolved or mistyped one is handled (see [Resolving path references](#resolving-path-references)).
 
-`CCpkgWriter::CopyBundle` copies path references unchanged. A relative path in a copied bundle therefore resolves within the package it is copied into, while a fully qualified path keeps referencing the original package.
-
 ## Bundles
 
 Bundles represent a related collection of assets such as mesh data, materials and textures. Bundles in a package must be uniquely named.
@@ -998,7 +996,7 @@ A future accessor for data `Open` does not load (per-bundle or per-asset metadat
 
 Every `CCpkgWriter` method validates its arguments and call order before modifying anything. A validation failure returns `Gem::Result::InvalidArg` and leaves the writer and its file exactly as they were; the writer stays open and later valid calls proceed normally.
 
-Any other failure - an `IoError` or `OutOfMemory` from `BeginBundle`, `AppendAsset`, `EndBundle`, `CopyBundle`, or `Close` - closes the writer. The failing call releases the file handle, deletes the partially written file, and returns the code describing the cause. Destroying a `CCpkgWriter` that is still open does the same cleanup. The writer is then not open, so every later call, including `Close`, returns `Gem::Result::NotOpen`. The cause of a failure is reported once, by the call that failed; a later `NotOpen` means an earlier call already failed or the writer was never opened.
+Any other failure - an `IoError` or `OutOfMemory` from `BeginBundle`, `AppendAsset`, `EndBundle`, or `Close` - closes the writer. The failing call releases the file handle, deletes the partially written file, and returns the code describing the cause. Destroying a `CCpkgWriter` that is still open does the same cleanup. The writer is then not open, so every later call, including `Close`, returns `Gem::Result::NotOpen`. The cause of a failure is reported once, by the call that failed; a later `NotOpen` means an earlier call already failed or the writer was never opened.
 
 A reader failure does not close the reader. `ReadAsset` modifies no state, so an `IoError` or `CorruptedData` from one call leaves the reader open and other assets readable.
 
@@ -1006,24 +1004,12 @@ A reader failure does not close the reader. `ReadAsset` modifies no state, so an
 
 A CCpkgWriter class writes bundles and assets to a package. CanvasPkg bundle and asset writes are append-only, with a single fixup of the file header in `Close` (see [File Layout and Fixups](#file-layout-and-fixups)).
 
-### Copying Bundles
-
-`CopyBundle` copies a sealed bundle from a package open in a `CCpkgReader` into the package being written. The copy is byte-for-byte: each asset keeps its index, type, name, and compression scheme, and its stored payload is copied without being decompressed or interpreted. Because asset indices are preserved, the bundle's asset indices remain valid in the new package. Its path references are copied unchanged (see [Paths](#paths)).
-
-This makes whole-bundle operations cheap without the format supporting in-place modification:
-
-- **Merging packages.** One writer can copy bundles from any number of open readers, producing a single package from several. A bundle can be given a new name as it is copied, so bundles with the same name in different source packages can coexist.
-- **Append-like updates.** Copy every bundle of an existing package into a new file, add, replace, or drop bundles along the way, then replace the original file with the new one.
-
-Bundle indices are not preserved: a copied bundle's index is its position in the new package. Nothing in the format stores a bundle index; bundle paths reference bundles by name.
-
 ### Writer argument rules
 
 The writer rejects any argument that would break a format rule or produce a file `CCpkgReader::Open` rejects, so every package `CCpkgWriter` produces is one its reader accepts. Each rule is checked before anything is written, and a violation returns `Gem::Result::InvalidArg` and leaves the writer unchanged (see [Writer failure closes the writer](#writer-failure-closes-the-writer)):
 
-- **Call order**: `Open` while the writer is already open; `BeginBundle` or `CopyBundle` while a bundle is open; `AppendAsset` or `EndBundle` with no bundle open; `Close` while a bundle is open.
-- **`CopyBundle` source**: `reader` must be open and `bundleIndex` in range.
-- **Names** (`packageName`, `bundleName`, `name`, and the name a `CopyBundle` copy receives): must be valid UTF-8, must not contain a NUL byte or `/`, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A package name must be non-empty. A bundle name must be non-empty and unique within the package. An asset name must be non-empty when `CpkgIsSharedAssetType(assetType)` is true and may be empty otherwise, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
+- **Call order**: `Open` while the writer is already open; `BeginBundle` while a bundle is open; `AppendAsset` or `EndBundle` with no bundle open; `Close` while a bundle is open.
+- **Names** (`packageName`, `bundleName`, and `name`): must be valid UTF-8, must not contain a NUL byte or `/`, and must be at most `UINT32_MAX` bytes (the width of `NameLength`). A package name must be non-empty. A bundle name must be non-empty and unique within the package. An asset name must be non-empty when `CpkgIsSharedAssetType(assetType)` is true and may be empty otherwise, and a non-empty one must be unique within its bundle (see [Assets](#assets)).
 - **`assetType`**: must be a named `AssetType` enumerator other than `AssetType::Unknown`.
 - **`codec`**: must be a named `CpkgCodec` enumerator.
 - **`data`**: must be non-empty. Every payload begins with its header struct (see [Package Data Types](#package-data-types)), so no asset type has an empty payload.
@@ -1066,14 +1052,6 @@ Appends one asset to the open bundle and writes its index to `pAssetIndex`, whic
 Fails with `Gem::Result::InvalidArg` if no bundle is open or any argument breaks a [writer argument rule](#writer-argument-rules). All of these are checked before anything is written; any failure after that closes the writer (see [Writer failure closes the writer](#writer-failure-closes-the-writer)).
 
 `Gem::Result CCpkgWriter::AppendAsset(AssetType assetType, std::string_view name, CpkgCodec codec, std::span<const std::byte> data, uint32_t *pAssetIndex = nullptr)`
-
-**CCpkgWriter::CopyBundle**
-
-Copies the bundle at `bundleIndex` in `reader` into the package as a new, sealed bundle, and writes its index in this package to `pBundleIndex`, which may be null (see [Copying Bundles](#copying-bundles)). The copy is named `newName`, or the source bundle's name if `newName` is empty. Payload bytes are copied as stored and never inspected, so a payload that is corrupt in the source is equally corrupt in the copy.
-
-Fails with `Gem::Result::InvalidArg` if a bundle is open, `reader` is not open, `bundleIndex` is out of range, or the copy's name breaks a [writer argument rule](#writer-argument-rules), including one already used in this package. All of these are checked before anything is written. A failed read from `reader` returns `Gem::Result::IoError` and, like any failure after validation, closes the writer; `reader` is unaffected.
-
-`Gem::Result CCpkgWriter::CopyBundle(const CCpkgReader &reader, uint32_t bundleIndex, std::string_view newName = {}, uint32_t *pBundleIndex = nullptr)`
 
 ## CCpkgReader
 
