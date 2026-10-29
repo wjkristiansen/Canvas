@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canvasproject.schema.json",
+  "title": "Canvas project manifest",
+  "type": "object",
+  "required": ["formatVersion", "name", "packages"],
+  "additionalProperties": false,
+  "properties": {
+    "formatVersion": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "packages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/package" }
+    },
+    "worlds": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/worldPath" },
+      "uniqueItems": true
+    },
+    "defaultWorld": { "$ref": "#/$defs/worldPath" }
+  },
+  "$defs": {
+    "packageName": { "type": "string", "minLength": 1, "pattern": "^[^/]+$" },
+    "worldPath": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+    "package": {
+      "type": "object",
+      "required": ["name", "location"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/packageName" },
+        "location": { "type": "string", "minLength": 1, "pattern": "^[^\\\\]+$" },
+        "references": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/packageName" },
+          "additionalProperties": { "$ref": "#/$defs/packageName" }
+        }
+      }
+    }
+  }
+}

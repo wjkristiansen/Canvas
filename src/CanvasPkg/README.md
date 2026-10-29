@@ -103,7 +103,8 @@ A **path reference** is a `CpkgSpan<char>` field holding a **path**: UTF-8 names
 Path references follow these rules:
 
 - **An empty path is null.** Each path reference field states whether it may be null. For example, a placement's bundle is required.
-- **A qualified path may refer to its own scope.** A `package/bundle/asset` path that spells out the referencing package and bundle resolves to the same asset as `asset`.
+- **A qualified path may refer to its own scope.** A `package/bundle/asset` path that spells out the referencing package's declared name and the referencing bundle resolves to the same asset as `asset`.
+- **Package names resolve through the project.** The `package` name in a path is resolved by the [project](#projects) that lists the referencing package.
 - **Malformed paths.** A non-empty path containing an empty name (a leading, trailing, or doubled `/`), or more names than its kind allows, is malformed.
 - **Each path reference declares its target.** An asset path declares a [shared](#shared-and-local-assets) `AssetType` and must resolve to an asset of that type. A bundle path must resolve to a bundle other than a [world bundle](#worlds).
 - **Every non-null path must resolve**, within each [project](#projects) that lists its package, to a bundle or asset that exists.
@@ -175,37 +176,9 @@ A file whose writer never completed `Close` still has a zero `BundleTableOffset`
 
 ## Projects
 
-A `.cpkg` file holds exactly one package, so a path naming another package references another file. A **project** is a set of packages used together, declared by its **project manifest**: a JSON file that names the project and lists its packages, each by name and file location. Its shape is defined by [project.schema.json](project.schema.json).
+A `.cpkg` file holds exactly one package, so a path naming another package references another file. A **project** is a set of packages used together, declared by a project manifest. Projects are defined by the [CanvasProject spec](../CanvasProject/README.md): the manifest format, how a project names its packages, and the worlds it offers.
 
-```json
-{
-  "formatVersion": 1,
-  "name": "Game",
-  "packages": [
-    { "name": "Levels",     "location": "levels.cpkg" },
-    { "name": "Characters", "location": "../Shared/characters.cpkg" },
-    { "name": "Textures",   "location": "D:/Assets/textures.cpkg" }
-  ]
-}
-```
-
-| Field | Meaning |
-|---|---|
-| `formatVersion` | Manifest format version. This spec defines version `1`. |
-| `name` | The project's name; non-empty. |
-| `packages` | The project's packages, one entry per package. |
-| `packages[].name` | The package's declared name (`CCpkgReader::GetPackageName`); the file at `location` must declare the same name. |
-| `packages[].location` | File path of the package's `.cpkg` file, using `/` as its separator: absolute, or relative to the directory holding the manifest. |
-
-Projects follow these rules:
-
-- **A project has one manifest, and the manifest is self-contained.** A project's packages are exactly those its manifest lists.
-- **Package names are unique within a project.** No two entries of a manifest share a name.
-- **Paths resolve within the project.** The `package` name in a [path](#paths) names a package of the project. A path that names no package, such as `bundle/asset`, resolves within its own package.
-- **A project lists every package its packages reference.** Every package named by a path in any listed package is itself listed. This includes packages that only other packages reference: a project that lists a shared characters package also lists every package the characters package's paths name.
-- **Projects may share packages.** A texture library may be listed by any number of projects. Each project resolves the shared package's paths among its own packages, so the projects that share a package list, under the names that package's paths use, the packages those paths reference.
-
-How the engine opens a project, and how it handles a package file that is missing or declares a different name than its entry, is defined by the [Canvas engine spec](../../README.md).
+A package's **declared name** is the name `CCpkgWriter::Open` stores in its file header, returned by `CCpkgReader::GetPackageName`. The project that lists a package resolves each package name in that package's paths, and the package's own declared name names the package itself (see [Package Names](../CanvasProject/README.md#package-names)).
 
 ## Instantiation Model
 
@@ -227,7 +200,7 @@ Each instance has an **instance transform**, which depends on what the instance 
 
 A bundle may **place** other bundles. Each **placement** (`AssetType::Placement`) it holds declares **nested instances** of one **placed bundle** within the bundle's space. A placement declares one nested instance per entry in its `Transforms` array, all with the placement's declared [mobility](#mobility). When the engine instantiates a bundle, it also instantiates each placed bundle once for each nested instance the bundle's placements declare.
 
-Each entry is relative to the [node](#cpkgtransformnodedata-assettypetransformnode) the placement attaches to, or to the instance transform of the bundle holding the placement when `NodeIndex` is `-1`. That entry, composed with what it is relative to, is the nested instance's **placement transform**, which serves as its instance transform. A placement references the placed bundle by [bundle path](#paths): `bundle` for a bundle in the same package, or `package/bundle` for a bundle in another package, where `package` is that package's declared name (`CCpkgReader::GetPackageName`). Placed bundles are therefore shared across packages: world regions in several packages can each place a goblin bundle stored once in a shared characters package.
+Each entry is relative to the [node](#cpkgtransformnodedata-assettypetransformnode) the placement attaches to, or to the instance transform of the bundle holding the placement when `NodeIndex` is `-1`. That entry, composed with what it is relative to, is the nested instance's **placement transform**, which serves as its instance transform. A placement references the placed bundle by [bundle path](#paths): `bundle` for a bundle in the same package, or `package/bundle` for a bundle in another package, where `package` names that package as the [project](#projects) resolves it. Placed bundles are therefore shared across packages: world regions in several packages can each place a goblin bundle stored once in a shared characters package.
 
 ```cpp
 // Draft schema.
@@ -274,7 +247,7 @@ A **world** is the top-level unit a game loads: one place, such as a level, a ma
 
 Besides its `WorldSettings` asset, a world bundle may hold assets of any type: the world's always-present content, such as `TransformNode` hierarchies, placements, and shared assets such as the world's `Skybox` assets.
 
-A world bundle's [instance transform](#instances) is the world origin, so its content is positioned in world space, as a region's is. A world bundle is used only as a world, so neither a placement nor a region list references one. How and when a world and its regions are instantiated is defined by the [Canvas engine spec](../../README.md).
+A world bundle's [instance transform](#instances) is the world origin, so its content is positioned in world space, as a region's is. A world bundle is used only as a world, so neither a placement nor a region list references one. A [project](../CanvasProject/README.md#worlds) lists the worlds it offers. How and when a world and its regions are instantiated is defined by the [Canvas engine spec](../../README.md).
 
 ```cpp
 // Draft schema.
@@ -335,7 +308,7 @@ Mobility passes only from parent to child. A region's `Movable` camera rig makes
 
 ### Resolving path references
 
-[Path references](#paths), such as a placement's bundle, a mesh instance's mesh, or a world's regions and skyboxes, and [export names](#exports-and-imports) are resolved by engine-side code built on `CCpkgReader` and its [name directories](#name-directories), as defined by the [Canvas engine spec](../../README.md). A path names a package by its declared name, among the packages of a [project](#projects).
+[Path references](#paths), such as a placement's bundle, a mesh instance's mesh, or a world's regions and skyboxes, and [export names](#exports-and-imports) are resolved by engine-side code built on `CCpkgReader` and its [name directories](#name-directories), as defined by the [Canvas engine spec](../../README.md). A path names a package among the packages of a [project](#projects), as described in [Package Names](../CanvasProject/README.md#package-names).
 
 ## Package Data Types
 
@@ -1188,7 +1161,6 @@ Reads one asset payload from an open package into `data`, a caller-owned buffer 
 | `src/Inc/CanvasPkg.h` | Public header: `CCpkgWriter`, `CCpkgReader`, `CCpkgNameDirectory`, `AssetType` and `CpkgIsSharedAssetType`, `CpkgCodec`/`CpkgCompressionScheme`, `CpkgSpan`, the header-only payload helpers (`CCpkgPayloadBuilder`, `CpkgGetPayloadHeader`, `CpkgResolveSpan`), and every `Cpkg*Data` schema |
 | `src/CanvasPkg/*.cpp` | Implementation |
 | `src/CanvasPkg/*.h` | Internal-only headers (file layout structs, fixup bookkeeping); not part of the public surface |
-| `src/CanvasPkg/project.schema.json` | JSON Schema for the [project manifest](#projects) |
 
 This follows the same split as the rest of Canvas: public, consumable headers live under `src/Inc` alongside `CanvasCore.h`/`CanvasGfx.h`, while a component's own subdirectory under `src/` holds its implementation and any headers private to it.
 
@@ -1206,4 +1178,4 @@ Directions the current design leaves room for. None are committed plans:
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
 - **Proportional skeleton variants**: characters of different proportions sharing one skeleton and its clips, each mesh with its own rest pose, with per-bone translation retargeting.
-- **Project world list**: a project manifest could declare the world bundles a project offers, so a launcher or editor can list them without opening every package.
+- **UI content**: menus and loading screens are worlds whose content is mostly UI graph, and packages have no asset types for UI graph content yet. Composing them in an editor needs such types.
