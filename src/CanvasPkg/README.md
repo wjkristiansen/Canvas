@@ -980,7 +980,7 @@ The codes this API reports:
 | `Gem::Result::CorruptedData` | The file is a package (its `Magic` matches) but its structure is damaged: a table, name blob, name, or payload outside the file, an empty package or bundle name, an unknown `AssetType` or `CpkgCodec`, or a `CpkgCodec::None` asset whose `StoredSize` differs from its `RawSize` (see `CCpkgReader::Open`). From a payload helper: a payload too small for its header, or a span that breaks a [Payload Layout](#payload-layout) rule |
 | `Gem::Result::OutOfRange` | The package's `Version` is outside this build's supported range |
 | `Gem::Result::AlreadyExists` | `CCpkgWriter::Open` was called on an existing file |
-| `Gem::Result::OutOfMemory` | An allocation for an in-memory table, directory, or scratch buffer failed |
+| `Gem::Result::OutOfMemory` | An allocation for an in-memory table, directory, or decompression buffer failed |
 | `Gem::Result::NotOpen` | The call was made on a reader or writer that is not open: before a successful `Open`, after `Close`, or after a writer failure closed it |
 
 Every `Gem::Result`-returning method of `CCpkgWriter` and `CCpkgReader` other than `Open` - reads, writes, and `Close` alike - returns `Gem::Result::NotOpen` when the object is not open, and does nothing else. Conversely, `Open` on an object that is already open returns `Gem::Result::InvalidArg` and leaves the open package untouched; call `Close` first. The reader's value-returning accessors (`GetBundleCount`, `GetBundleName`, ...) cannot report a code; on an object that is not open they return the same value they return for an out-of-range index.
@@ -992,7 +992,7 @@ Reader method names follow one convention, which new methods must keep:
 
 A future accessor for data `Open` does not load (per-bundle or per-asset metadata, for example) is therefore a `Read*` method, not a `Get*` method.
 
-`CCpkgWriter` is a single-threaded, call-in-order API. A `CCpkgReader`'s state does not change between `Open` and `Close`, so every `const` method is safe to call concurrently from multiple threads on the same instance. `Open` and `Close` are not, and must not overlap any other call on that instance.
+`CCpkgWriter` is a single-threaded, call-in-order API. A `CCpkgReader`'s state does not change between `Open` and `Close`, so every `const` method is safe to call concurrently from multiple threads on the same instance. `Open` and `Close` are not, and must not overlap any other call on that instance. The reader's file access is positional (`pread`, or `ReadFile` with an explicit offset), so concurrent `ReadAsset` calls share no seek cursor.
 
 ### Writer failure closes the writer
 
@@ -1121,20 +1121,6 @@ Fills `*pDirectory` from the asset names of the bundle at `bundleIndex` loaded b
 
 `Gem::Result CCpkgReader::BuildAssetDirectory(uint32_t bundleIndex, CCpkgNameDirectory *pDirectory, AssetType typeFilter = AssetType::Unknown) const`
 
-### Decompression Scratch Buffer
-
-A compressed asset is read into a scratch buffer and decompressed from there into the caller's `data`. An asset stored with `CpkgCodec::None` skips the scratch entirely and is read straight into `data`, so in v1 - where `None` is the only codec - this pool is never exercised. `CCpkgReader` owns a private pool of reusable buffers, so concurrent `ReadAsset` calls on one instance do not contend for the same memory. The buffer size and pool size are fixed constants, not caller-configurable:
-
-```cpp
-// Internal to CCpkgReader; not part of the public API.
-constexpr size_t kScratchBufferCapacity = 64 * 1024;  // 64 KiB
-constexpr size_t kScratchBufferPoolSize = 4;          // concurrent ReadAsset calls before spillover
-```
-
-A `ReadAsset` call on a compressed asset checks out a free buffer for the duration of the call and returns it afterward. Two situations spill over to a one-off allocation freed at the end of that call: an asset whose `StoredSize` exceeds `kScratchBufferCapacity`, and a call arriving when all `kScratchBufferPoolSize` buffers are checked out. The pool's steady-state footprint stays at `kScratchBufferPoolSize * kScratchBufferCapacity` in either case. Both constants are sized for whatever codec is eventually added; until then they have no effect on any read.
-
-Concurrent `ReadAsset` calls also require the underlying file access to be positional (`pread`, or `ReadFile` with an explicit offset) so they do not race on a shared seek cursor. The pool is the only reader state that changes after `Open`; it is synchronized internally, so it does not affect the concurrency contract described in [Error handling and result reporting](#error-handling-and-result-reporting).
-
 ### Methods
 
 **CCpkgReader::Open**
@@ -1213,7 +1199,7 @@ Returns the name of the asset at `assetIndex` within the bundle at `bundleIndex`
 
 **CCpkgReader::ReadAsset**
 
-Reads one asset payload from an open package into `data`, a caller-owned buffer whose size must be at least `GetAssetCompression(bundleIndex, assetIndex).RawSize`. Fails with `Gem::Result::InvalidArg` if either index is out of range or if `data` is smaller than that asset's `RawSize` - both checked before any read. `ReadAsset` reads the asset's on-disk bytes and decompresses internally, so the first `RawSize` bytes of `data` always receive the raw payload whatever codec the asset is stored with; `data.first(RawSize)` is the payload to pass to the [payload helpers](#payload-encoding-helpers).
+Reads one asset payload from an open package into `data`, a caller-owned buffer whose size must be at least `GetAssetCompression(bundleIndex, assetIndex).RawSize`. Fails with `Gem::Result::InvalidArg` if either index is out of range or if `data` is smaller than that asset's `RawSize` - both checked before any read. `ReadAsset` reads the asset's on-disk bytes and decompresses internally, using working memory internal to the reader, so the first `RawSize` bytes of `data` always receive the raw payload whatever codec the asset is stored with; `data.first(RawSize)` is the payload to pass to the [payload helpers](#payload-encoding-helpers).
 
 `Gem::Result CCpkgReader::ReadAsset(uint32_t bundleIndex, uint32_t assetIndex, std::span<std::byte> data) const`
 
@@ -1232,7 +1218,7 @@ This follows the same split as the rest of Canvas: public, consumable headers li
 
 Directions the current design leaves room for. None are committed plans:
 
-- **Compression**: `CpkgCompressionScheme` carries a `Codec` field and both a stored and a raw size, but only `CpkgCodec::None` is implemented. Adding a codec is additive; existing `None`-coded assets keep working.
+- **Compression**: `CpkgCompressionScheme` carries a `Codec` field and both a stored and a raw size, but only `CpkgCodec::None` is implemented. Adding a codec is additive; existing `None`-coded assets keep working. Choosing a codec includes choosing between whole-asset and block compression. Block compression lets the reader decompress through a small fixed pool of block-sized buffers and lets a streaming read path (below) read part of an asset; it also needs a per-asset block table, which could lead the stored payload so the asset table entry keeps its shape.
 - **Per-instance overrides**: every nested instance a placement declares is an unmodified instance of the placed bundle. Overrides such as material swaps or script parameters would extend `CpkgPlacementData` with an override list.
 - **Bundle-level settings**: there is no asset type for the model-level metadata `XModel` carries (the active-camera-node designation, overall bounds). It would need its own `AssetType` value and schema.
 - **World attributes**: `CpkgWorldSettingsData` holds the world-wide settings the engine has today. Settings such as gravity, spawn points, or global lighting would extend it as the engine grows them.
@@ -1243,9 +1229,3 @@ Directions the current design leaves room for. None are committed plans:
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
 - **Proportional skeleton variants**: characters of different proportions sharing one skeleton and its clips, each mesh with its own rest pose, with per-bone translation retargeting.
 - **Project world list**: a project manifest could declare the world bundles a project offers, so a launcher or editor can list them without opening every package.
-
-## Review Concerns (Open)
-
-Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
-
-1. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
