@@ -236,7 +236,7 @@ Each entry is relative to the [node](#cpkgtransformnodedata-assettypetransformno
 struct CpkgPlacementData
 {
     int32_t                  NodeIndex = -1;                   // asset index of the node this placement attaches to; -1 = instance transform
-    CpkgMobility             Mobility  = CpkgMobility::Static;
+    CpkgMobility             Mobility  = CpkgMobility::Static; // mobility of each nested instance's instance transform
     CpkgSpan<char>           Bundle;                           // bundle path to the placed bundle; required
     CpkgSpan<CpkgTransform>  Transforms;                       // one nested instance per entry, relative to NodeIndex; at least one
 };
@@ -304,26 +304,36 @@ struct CpkgWorldSettingsData
 
 ### Mobility
 
-Each placement declares its **mobility**, which tells the engine which parts of the instance may change after instantiation:
+**Mobility** tells the engine which parts of the content may change after instantiation. Each [`TransformNode`](#cpkgtransformnodedata-assettypetransformnode) declares the mobility of its local transform and its attachments, and each [placement](#placements) declares the mobility of the instance transforms of the nested instances it declares:
 
 ```cpp
 enum class CpkgMobility : uint32_t
 {
     Static     = 0,   // transform and attributes are fixed
-    Stationary = 1,   // transform is fixed; attributes and node animation may change
-    Movable    = 2,   // transform, attributes, and node animation may change
+    Stationary = 1,   // transform is fixed; attributes may change
+    Movable    = 2,   // transform and attributes may change
 };
 ```
 
+A node's transform is its local transform, and its attributes are those of the assets attached to it, such as a light's color or a skeleton instance's pose. An instance's transform is its instance transform.
+
 | Mobility | Example | What the engine may do |
 |---|---|---|
-| `Static` | A wall, a boulder | Bake lighting and shadows, merge or batch geometry, add it to static acceleration structures, and skip it in per-frame updates |
-| `Stationary` | A flickering lamp, a windmill turning its blades | Add it to static spatial structures, using bounds that enclose its animation, and skip transform updates for its instance transform |
-| `Movable` | A door, a cart, a goblin | Update it every frame |
+| `Static` | A wall, a boulder, terrain | Bake lighting and shadows, merge or batch geometry, add it to static acceleration structures, and skip it in per-frame updates |
+| `Stationary` | A flickering lamp, a flag waving on its skeleton | Add it to static spatial structures, using bounds that enclose any skeleton animation, and skip transform updates for it |
+| `Movable` | A door's hinge, a cart, a goblin | Update it every frame |
 
-A placement's mobility covers the nodes of the bundle it places. Each placement nested in that bundle declares its own mobility, so a `Static` house can contain a `Stationary` flickering lamp.
+The two declarations describe different things. A placement's mobility describes how the placing bundle uses the placed bundle: one chair bundle can be placed `Static` as decor in one room and `Movable` as a throwable prop in another. A node's mobility describes motion within its own bundle wherever that bundle is placed: a door bundle declares its hinge node `Movable`, so every door swings, while the door frame stays `Static`.
 
-An instance whose ancestor instances include a `Movable` one is effectively `Movable`, whatever its declared mobility, because its world transform changes with that ancestor. For example, a house placed `Movable` on a ship moves with the ship, and so does the `Static` furniture placed inside the house bundle. An [import node](#exports-and-imports) moves with the instance it imports from, so a sword attached to a `Movable` goblin's hand is effectively `Movable`. A bundle can therefore be placed anywhere, regardless of the mobility of its nested placements.
+**Mobility is inherited from parent to child.** Mobility values are ordered `Static` < `Stationary` < `Movable`, and each node and instance has an **effective mobility**, the most mobile of its declared mobility and its parent's effective mobility:
+
+- A `TransformNode` whose `ParentIndex` references a node has that node as its parent. One parented to a bone has, as its parent, the node its skeleton instance attaches to. One with `ParentIndex = -1` has its instance as its parent.
+- A nested instance has, as its parent, the node its placement attaches to, or the instance holding the placement when `NodeIndex` is `-1`. Its declared mobility is its placement's.
+- A world bundle or world region instance has the effective mobility `Static`, because its instance transform is the world origin.
+- An instance the engine user requests at runtime has the mobility the engine user supplies along with its instance transform.
+- An [import node](#exports-and-imports) has the effective mobility of the exported node it represents, so a sword attached to a `Movable` goblin's hand is effectively `Movable`.
+
+Mobility passes only from parent to child. A region's `Movable` camera rig makes the nodes below it effectively `Movable` and leaves the terrain beside it `Static`, so the engine can bake the terrain. A house placed `Movable` on a ship moves with the ship, and so does the `Static` furniture placed inside the house bundle. A `Static` windmill placement whose blade node is declared `Movable` bakes the building and updates only the blades. A bundle can therefore be placed anywhere, regardless of the mobility its nodes and nested placements declare.
 
 ### Resolving path references
 
@@ -557,11 +567,14 @@ Fixed size: the payload is one `CpkgTransformNodeData`.
 ```cpp
 struct CpkgTransformNodeData
 {
-    int32_t        ParentIndex = -1;  // asset index of the parent node or SkeletonInstance; -1 = instance transform
-    int32_t        ParentBone  = -1;  // bone index of the parent bone when ParentIndex is a SkeletonInstance; otherwise -1
-    CpkgTransform  LocalTransform;    // relative to the parent node or bone (see Conventions)
+    int32_t        ParentIndex = -1;                    // asset index of the parent node or SkeletonInstance; -1 = instance transform
+    int32_t        ParentBone  = -1;                    // bone index of the parent bone when ParentIndex is a SkeletonInstance; otherwise -1
+    CpkgMobility   Mobility    = CpkgMobility::Static;  // see Mobility; inherited by descendants
+    CpkgTransform  LocalTransform;                      // relative to the parent node or bone (see Conventions)
 };
 ```
+
+`Mobility` declares whether the node's local transform and its attachments may change after instantiation. The node's effective mobility is the most mobile of its declared `Mobility` and its parent's effective mobility, so `Static`, the default, makes the node exactly as mobile as its parent (see [Mobility](#mobility)).
 
 When `ParentIndex` references a `SkeletonInstance`, `ParentBone` is less than the bone count of its `Skeleton`, and the node follows that bone in the skeleton instance's pose. When `ParentIndex` references a node or is `-1`, `ParentBone` is `-1`.
 
@@ -1235,6 +1248,4 @@ Directions the current design leaves room for. None are committed plans:
 
 Design-review findings that block or complicate implementation as currently specified. Each is removed from this list once the design above is updated to resolve it.
 
-1. **Nodes held directly by a world bundle or region have no mobility.** Mobility is declared on a placement, but a world bundle's or region's own `TransformNode` hierarchy (a camera rig, terrain) is declared without one, so the engine cannot tell whether to bake it or update it every frame. Either fix a rule (such content is `Movable`, which is safe but forgoes baking) or declare it: a `Mobility` field on `CpkgWorldSettingsData` for the world bundle and on `CpkgWorldRegionRef` for each region.
-
-2. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
+1. **Minor: the decompression scratch pool is designed ahead of any codec.** v1 implements only `CpkgCodec::None`, which bypasses the pool, and at 64 KiB per buffer most compressed texture payloads would spill to one-off allocations anyway. Consider deferring [Decompression Scratch Buffer](#decompression-scratch-buffer) to the design pass that picks a codec.
