@@ -164,6 +164,10 @@ Interfaces are declared with `GEM_INTERFACE_DECLARE` and mapped in concrete clas
 
 Graphics backends are loaded at runtime as shared libraries. The host calls `XCanvas::LoadPlugin(path)`, which loads the library and calls its exported `CreateCanvasPlugin` factory. This keeps CanvasCore free of any graphics-API dependency and opens the door to alternative backends (Vulkan, Metal, ...) in the future.
 
+### Worlds
+
+Canvas always has an active world, including while a menu or loading screen is shown. A menu or loading screen is a world whose content is mostly UI graph, so editors compose it like any other world. Worlds are declared by world bundles in [CanvasPkg](src/CanvasPkg/README.md#worlds) packages, and a project lists the worlds it offers, optionally with a `defaultWorld` for startup (see [CanvasProject](src/CanvasProject/README.md#worlds)).
+
 ## Conventions
 
 ### Matrix and Quaternion Conventions
