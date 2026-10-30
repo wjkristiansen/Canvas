@@ -1,6 +1,6 @@
 # Package Source
 
-A **package source** is the text form of one [CanvasPkg](../CanvasPkg/README.md) package: JSON files describing the package's bundles and assets, together with the image and binary files they name. It is what an editor saves and what a person writes by hand, and the CanvasAuthoring library builds a `.cpkg` file from it. Its shape is defined by [package-source.schema.json](package-source.schema.json).
+A **package source** is the text form of one [CanvasPkg](../CanvasPkg/README.md) package: JSON files describing the package's bundles and assets, together with the image and binary files they name. It is what an editor saves and what a person writes by hand, and the [CanvasAuthoring](README.md) library builds a `.cpkg` file from it. Its shape is defined by [package-source.schema.json](package-source.schema.json).
 
 A package source expresses every `AssetType`, so any package can be built from one, including a package holding [world bundles](../CanvasPkg/README.md#worlds). It mirrors the package format closely, with conveniences for authoring: a nested node tree, references by name in place of asset indices, defaults for omitted fields, alternative forms for values that are awkward to write by hand, and [imports](#imports) that bring the content of FBX files into a bundle.
 
@@ -15,7 +15,7 @@ A package source is one **package file** and any number of **bundle files**:
   "packageName": "Levels",
   "bundles": [
     { "name": "Crate", "...": "..." },
-    { "include": "village.bundle.json" }
+    { "include": "village.cbundle.json" }
   ]
 }
 ```
@@ -38,6 +38,8 @@ A bundle file holds one bundle:
 ```
 
 A bundle file belongs to the package file that includes it, and is included once.
+
+**File extensions.** A package file's name ends in `.cpkg.json`, and a bundle file's in `.cbundle.json`. The `.json` ending lets text editors treat both as JSON, and the part before it lets tools recognize which file is which. The build's default output for `levels.cpkg.json` is `levels.cpkg`, beside it.
 
 **File references.** A field that names a file on disk, such as an image, a bundle file, an FBX file, or a binary array, holds a file path using `/` as its separator: absolute, or relative to the directory of the JSON file that contains the field.
 
@@ -394,7 +396,7 @@ Polygons are triangulated, and normals are generated for geometry the file holds
 | A node | `TransformNode` | `nodes` |
 | A camera, light, or mesh on a node | `Camera`, `Light`, or `MeshInstance` attached to the node's `TransformNode` | None: these are unnamed local assets |
 
-A texture file's encoding is one CanvasPkg stores, such as PNG, and its image is a `Texture2D` with one mip. A texture the file embeds is stored from the embedded bytes. A texture in any other encoding is either replaced, with `replace`, or converted to a stored encoding before the build.
+A texture file's encoding is one CanvasPkg stores, such as PNG, and its image is a `Texture2D` with one mip. A texture the file embeds is stored from the embedded bytes, and an external texture from the file the FBX file names (see CanvasAuthoring's [Imports](README.md#imports)). A texture in any other encoding is either replaced, with `replace`, or converted to a stored encoding before the build.
 
 A mesh used by several nodes builds one `MeshData`, and each node that uses it gets a `MeshInstance`. A material replaced with `replace` is not built, and neither is an image that only replaced materials use.
 
@@ -404,7 +406,7 @@ Each built asset's name comes from the file. A kind's **name template** forms it
 
 | Kind | Name in the file | Default template |
 |---|---|---|
-| `images` | The texture's file name without its extension | `{name}.image` |
+| `images` | The file name the file records for the texture, without its extension, or else the texture's own name in the file | `{name}.image` |
 | `materials` | The material's name | `{name}.material` |
 | `meshes` | The mesh's name | `{name}.mesh` |
 | `skeletons` | The name of the skeleton's root bone | `{name}.skeleton` |
@@ -415,7 +417,7 @@ Each built asset's name comes from the file. A kind's **name template** forms it
 
 A `boneClips` template may also hold `{skeleton}`, replaced by the skeleton's name in the file. It distinguishes the bone clips of a clip that animates more than one skeleton.
 
-The templates keep the names of different kinds from colliding where a file names them alike, as when a node and its mesh are both named `Crate`. Two imports of files with overlapping names give one of them templates such as `"Tree_{name}.mesh"`. Each `/` in a name in the file becomes `_`. An unnamed node builds an unnamed `TransformNode`. An unnamed mesh, material, or clip takes the name `Mesh<n>`, `Material<n>`, or `Clip<n>`, and a skeleton whose root bone is unnamed takes the name `Skeleton<n>`, where `<n>` is its position among the file's content of that kind, counting from 0.
+The templates keep the names of different kinds from colliding where a file names them alike, as when a node and its mesh are both named `Crate`. Two imports of files with overlapping names give one of them templates such as `"Tree_{name}.mesh"`. Each `/` in a name in the file becomes `_`. An unnamed node builds an unnamed `TransformNode`. An unnamed mesh, material, clip, or texture takes the name `Mesh<n>`, `Material<n>`, `Clip<n>`, or `Image<n>`, and a skeleton whose root bone is unnamed takes the name `Skeleton<n>`, where `<n>` is its position among the file's content of that kind, counting from 0.
 
 `rename` and `names` are keyed by kind, using the kind names above:
 
