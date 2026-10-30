@@ -130,7 +130,8 @@
         "importNodes": { "type": "array", "items": { "$ref": "#/$defs/importNode" } },
         "nodeClips": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/nodeClip" } },
         "exports": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true },
-        "world": { "$ref": "#/$defs/world" }
+        "world": { "$ref": "#/$defs/world" },
+        "imports": { "type": "array", "items": { "$ref": "#/$defs/import" } }
       }
     },
 
@@ -379,10 +380,19 @@
     },
 
     "light": {
-      "type": "object",
+      "$ref": "#/$defs/lightFields",
       "required": ["type"],
+      "unevaluatedProperties": false
+    },
+
+    "lightEdit": {
+      "$ref": "#/$defs/lightFields",
+      "unevaluatedProperties": false
+    },
+
+    "lightFields": {
+      "type": "object",
       "patternProperties": { "^x-": true },
-      "additionalProperties": false,
       "properties": {
         "type": { "enum": ["ambient", "point", "directional", "spot", "area"] },
         "color": { "$ref": "#/$defs/rgb" },
@@ -494,6 +504,110 @@
         "defaultSkybox": { "$ref": "#/$defs/assetPath" },
         "activeCamera": { "$ref": "#/$defs/name" },
         "backgroundColor": { "$ref": "#/$defs/rgba" }
+      }
+    },
+
+    "nameTemplate": { "type": "string", "minLength": 1, "pattern": "^[^/]+$" },
+    "renameMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/name" } },
+    "replaceMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/assetPath" } },
+
+    "import": {
+      "type": "object",
+      "required": ["file"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "file": { "$ref": "#/$defs/file" },
+        "scale": { "type": "number", "exclusiveMinimum": 0 },
+        "rotation": { "$ref": "#/$defs/rotation" },
+        "nodes": { "type": "boolean" },
+        "parent": { "$ref": "#/$defs/name" },
+        "skeleton": { "$ref": "#/$defs/assetPath" },
+        "names": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "images": { "$ref": "#/$defs/nameTemplate" },
+            "materials": { "$ref": "#/$defs/nameTemplate" },
+            "meshes": { "$ref": "#/$defs/nameTemplate" },
+            "skeletons": { "$ref": "#/$defs/nameTemplate" },
+            "skins": { "$ref": "#/$defs/nameTemplate" },
+            "boneClips": { "$ref": "#/$defs/nameTemplate" },
+            "nodeClips": { "$ref": "#/$defs/nameTemplate" },
+            "nodes": { "$ref": "#/$defs/nameTemplate" }
+          }
+        },
+        "rename": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "images": { "$ref": "#/$defs/renameMap" },
+            "materials": { "$ref": "#/$defs/renameMap" },
+            "meshes": { "$ref": "#/$defs/renameMap" },
+            "skeletons": { "$ref": "#/$defs/renameMap" },
+            "skins": { "$ref": "#/$defs/renameMap" },
+            "boneClips": { "$ref": "#/$defs/renameMap" },
+            "nodeClips": { "$ref": "#/$defs/renameMap" },
+            "nodes": { "$ref": "#/$defs/renameMap" }
+          }
+        },
+        "replace": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "images": { "$ref": "#/$defs/replaceMap" },
+            "materials": { "$ref": "#/$defs/replaceMap" }
+          }
+        },
+        "clips": { "type": "array", "items": { "$ref": "#/$defs/importClip" } },
+        "edits": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/name" },
+          "additionalProperties": { "$ref": "#/$defs/nodeEdit" }
+        }
+      }
+    },
+
+    "importClip": {
+      "type": "object",
+      "required": ["name"],
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "stack": { "type": "string" },
+        "start": { "type": "number", "minimum": 0 },
+        "end": { "type": "number", "minimum": 0 },
+        "frames": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "not": {
+        "required": ["frames"],
+        "anyOf": [
+          { "required": ["start"] },
+          { "required": ["end"] }
+        ]
+      }
+    },
+
+    "nodeEdit": {
+      "type": "object",
+      "patternProperties": { "^x-": true },
+      "additionalProperties": false,
+      "properties": {
+        "translation": { "$ref": "#/$defs/vec3" },
+        "rotation": { "$ref": "#/$defs/rotation" },
+        "scale": { "$ref": "#/$defs/vec3" },
+        "mobility": { "$ref": "#/$defs/mobility" },
+        "camera": { "$ref": "#/$defs/camera" },
+        "light": { "$ref": "#/$defs/lightEdit" },
+        "meshInstances": { "type": "array", "items": { "$ref": "#/$defs/meshInstance" } },
+        "placements": { "type": "array", "items": { "$ref": "#/$defs/placement" } },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/node" } }
       }
     }
   }
