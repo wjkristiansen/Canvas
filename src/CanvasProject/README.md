@@ -1,8 +1,10 @@
 # CanvasProject
 
-A **project** is a set of [CanvasPkg](../CanvasPkg/README.md) packages used together. A `.cpkg` file holds exactly one package, and a [path](../CanvasPkg/README.md#paths) in one package may name a bundle or asset in another, so a project declares which packages exist together and which package each such name refers to. A project is declared by its **project manifest**: a JSON file that names the project, lists its packages, each with a name and file location, and lists the worlds the project offers.
+A **project** is a set of [CanvasPkg](../CanvasPkg/README.md) packages used together. A `.cpkg` file holds exactly one package, and a [path](../CanvasPkg/README.md#paths) in one package may name a bundle or asset in another, so a project declares which packages exist together and which package each such name refers to. A project is declared by its **project manifest**: a JSON file that names the project, lists its packages, each with a name and a file, and lists the worlds the project offers.
 
-CanvasProject is a static library that reads and validates a project manifest and resolves the package names in paths. The engine uses it to open a project, and authoring tools use it to validate packages against the projects that list them, so both resolve package names identically.
+A manifest takes one of two forms. An **authored project** is the one people and editors work on: it lists each package by its [package source](../CanvasAuthoring/PackageSource.md), or by its `.cpkg` file for a package that has no source. Building an authored project produces a **built project**, which lists every package by its built `.cpkg` file, and is the form the engine opens.
+
+CanvasProject is a static library that reads and validates project manifests and resolves the package names in paths. The engine uses it to open a built project, and authoring tools use it to open authored projects and to validate packages against them, so both resolve package names identically.
 
 ## Project Manifest
 
@@ -12,12 +14,13 @@ The manifest's shape is defined by [project.schema.json](project.schema.json). A
 {
   "formatVersion": 1,
   "name": "Game",
+  "output": "build",
   "packages": [
-    { "name": "Levels",         "location": "levels.cpkg" },
-    { "name": "Characters",     "location": "../Shared/characters.cpkg" },
-    { "name": "Textures",       "location": "D:/Assets/textures.cpkg" },
-    { "name": "VendorTextures", "location": "vendor/textures.cpkg" },
-    { "name": "VendorProps",    "location": "vendor/props.cpkg",
+    { "name": "Levels",         "source":  "levels/levels.cpkg.json" },
+    { "name": "Characters",     "source":  "../Shared/characters/characters.cpkg.json" },
+    { "name": "Textures",       "source":  "D:/Assets/library/library.cpkg.json" },
+    { "name": "VendorTextures", "package": "vendor/textures.cpkg" },
+    { "name": "VendorProps",    "package": "vendor/props.cpkg",
       "references": { "Textures": "VendorTextures" } }
   ],
   "worlds": [ "Levels/MainMenu", "Levels/Level1", "Levels/Level2" ],
@@ -29,14 +32,16 @@ The manifest's shape is defined by [project.schema.json](project.schema.json). A
 |---|---|
 | `formatVersion` | Manifest format version. This spec defines version `1`. |
 | `name` | The project's name; non-empty. |
+| `output` | Optional; default `build`. The directory a build of the project writes to (see [Building a Project](#building-a-project)). |
 | `packages` | The project's packages, one entry per package. |
 | `packages[].name` | The package's **project name**: the name the project's packages use for it in paths (see [Package Names](#package-names)). |
-| `packages[].location` | File path of the package's `.cpkg` file, using `/` as its separator: absolute, or relative to the directory holding the manifest. |
+| `packages[].source` | The package's source: the file path of its `.cpkg.json` package file. |
+| `packages[].package` | The package's `.cpkg` file. |
 | `packages[].references` | Optional. Maps package names used in this package's paths to project names (see [Package Names](#package-names)). |
 | `worlds` | Optional. The world bundles the project offers, each written `package/bundle`, where `package` is a project name (see [Worlds](#worlds)). |
 | `defaultWorld` | Optional. One of the `worlds` entries: the world the project declares for startup. |
 
-Every project name and `references` key follows CanvasPkg's [name rules](../CanvasPkg/README.md#names).
+Each package entry holds exactly one of `source` and `package`. A package listed by `package` is a **prebuilt package**: one built elsewhere, such as a package from a vendor or from another project, which this project uses as it is. File paths use `/` as their separator, and are absolute or relative to the directory holding the manifest. Every project name and `references` key follows CanvasPkg's [name rules](../CanvasPkg/README.md#names).
 
 ## Rules
 
@@ -44,15 +49,48 @@ Every project name and `references` key follows CanvasPkg's [name rules](../Canv
 - **Project names are unique within a project.** No two entries of a manifest share a name.
 - **Paths resolve within the project.** The `package` name in a path names a package of the project, as described in [Package Names](#package-names). A path that names no package, such as `bundle/asset`, resolves within its own package.
 - **A project lists every package its packages reference.** Every package named by a path in any listed package resolves to a listed package. This includes packages that only other packages reference: a project that lists a shared characters package also lists every package the characters package's paths name.
-- **Every non-null path in a listed package resolves** to a bundle or asset that exists, as CanvasPkg's [path rules](../CanvasPkg/README.md#paths) require.
+- **Every non-null path in a listed package resolves** to a bundle or asset that exists, as CanvasPkg's [path rules](../CanvasPkg/README.md#paths) require. For a package listed by its source, the path resolves against the content its source declares.
 - **Projects may share packages.** A texture library may be listed by any number of projects, under any project name. Each project resolves the shared package's paths among its own packages, using the shared package's `references` wherever its names differ from the project's.
 - **Each `references` value is a project name** of a package the manifest lists.
 
-How the engine opens a project, which world it activates first, and how it handles a package file that is missing, is defined by the [Canvas engine spec](../../README.md).
+## Building a Project
+
+A build of an authored project builds each package listed by its source, and writes a built project beside the packages it builds. The build's caller may name a directory that takes the place of `output`, and the build writes there instead. A build writes:
+
+- **Packages.** Each `source` package builds to a `.cpkg` file in `output`, named after its package file without the `.json` ending, so `levels/levels.cpkg.json` builds `build/levels.cpkg`.
+- **Prebuilt packages.** Each prebuilt package is copied into `output` under its file name.
+- **Built project.** The built project is written to `output` under the authored manifest's file name. It holds the authored manifest's content without `output`, with each entry's `source` or `package` replaced by a `package` naming the package's file in `output` by its file name.
+
+The file names a build writes in `output` are unique, so two files that would share a name in `output` are a build error. The built project and every package it lists are in `output`, so the directory holds everything the engine opens, and can be moved or shipped as a whole.
+
+A built project is written only when every package builds. A build that fails writes no built project and removes any built project an earlier build left in `output`, so a built project in `output` always lists packages that one successful build produced together.
+
+For the example above, the built project is `build/game.cproj.json`:
+
+```json
+{
+  "formatVersion": 1,
+  "name": "Game",
+  "packages": [
+    { "name": "Levels",         "package": "levels.cpkg" },
+    { "name": "Characters",     "package": "characters.cpkg" },
+    { "name": "Textures",       "package": "library.cpkg" },
+    { "name": "VendorTextures", "package": "textures.cpkg" },
+    { "name": "VendorProps",    "package": "props.cpkg",
+      "references": { "Textures": "VendorTextures" } }
+  ],
+  "worlds": [ "Levels/MainMenu", "Levels/Level1", "Levels/Level2" ],
+  "defaultWorld": "Levels/MainMenu"
+}
+```
+
+The `Textures` package declares the name `Textures` in its source, and builds to `library.cpkg`, after its package file: a package's file name and its names are independent.
+
+The engine opens a built project: a manifest whose every entry is a `package`. How it opens the project, which world it activates first, and how it handles a package file that is missing, is defined by the [Canvas engine spec](../../README.md).
 
 ## Package Names
 
-A package has two names. Its **declared name** is stored in its file header by `CCpkgWriter::Open` and returned by `CCpkgReader::GetPackageName`; it is the package's own identity, and the name its author uses for it. Its **project name** is the `name` of its manifest entry. The two may differ, so a project can list two packages that both declare `Textures`, under different project names.
+A package has two names. Its **declared name** is its own identity, and the name its author uses for it: the `packageName` of its package source, which the build stores in its file header, and which `CCpkgReader::GetPackageName` returns. Its **project name** is the `name` of its manifest entry. The two may differ, so a project can list two packages that both declare `Textures`, under different project names.
 
 A path names other packages by the names its package's author used. Each listed package resolves a package name in its own paths by the first of these rules that matches:
 
@@ -83,5 +121,5 @@ A project lists the [worlds](../CanvasPkg/README.md#worlds) it offers in `worlds
 Directions the current design leaves room for. None are committed plans:
 
 - **Library API**: the reader, validator, and package-name resolver described above, with the engine and authoring tools as consumers.
-- **Package content hashes**: a manifest entry could record a hash of its package's content, so a package file that is damaged, or was rebuilt without the packages that depend on it, is detectable before its paths are resolved. The same hash supports verifying shipped content.
+- **Package content hashes**: a built project's entry could record a hash of its package's content, so a package file that is damaged, or was rebuilt without the packages that depend on it, is detectable before its paths are resolved. The same hash supports verifying shipped content.
 - **Project editor data**: editor-only organization of a project's bundles, such as display folders that span packages, kept in a separate file beside the manifest.

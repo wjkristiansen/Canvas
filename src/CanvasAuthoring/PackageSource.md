@@ -1,6 +1,6 @@
 # Package Source
 
-A **package source** is the text form of one [CanvasPkg](../CanvasPkg/README.md) package: JSON files describing the package's bundles and assets, together with the image and binary files they name. It is what an editor saves and what a person writes by hand, and the [CanvasAuthoring](README.md) library builds a `.cpkg` file from it. Its shape is defined by [package-source.schema.json](package-source.schema.json).
+A **package source** is the text form of one [CanvasPkg](../CanvasPkg/README.md) package: JSON files describing the package's bundles and assets, together with the image and binary files they name. It is what an editor saves and what can be written by hand, and the [CanvasAuthoring](README.md) library builds a `.cpkg` file from it. Its shape is defined by [package-source.schema.json](package-source.schema.json).
 
 A package source expresses every `AssetType`, so any package can be built from one, including a package holding [world bundles](../CanvasPkg/README.md#worlds). It mirrors the package format closely, with conveniences for authoring: a nested node tree, references by name in place of asset indices, defaults for omitted fields, alternative forms for values that are awkward to write by hand, and [imports](#imports) that bring the content of FBX files into a bundle.
 

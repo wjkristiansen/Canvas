@@ -6,8 +6,10 @@
   "required": ["formatVersion", "name", "packages"],
   "additionalProperties": false,
   "properties": {
+    "$schema": { "type": "string" },
     "formatVersion": { "const": 1 },
     "name": { "type": "string", "minLength": 1 },
+    "output": { "$ref": "#/$defs/file" },
     "packages": {
       "type": "array",
       "items": { "$ref": "#/$defs/package" }
@@ -22,13 +24,19 @@
   "$defs": {
     "packageName": { "type": "string", "minLength": 1, "pattern": "^[^/]+$" },
     "worldPath": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+    "file": { "type": "string", "minLength": 1, "pattern": "^[^\\\\]+$" },
     "package": {
       "type": "object",
-      "required": ["name", "location"],
+      "required": ["name"],
+      "oneOf": [
+        { "required": ["source"] },
+        { "required": ["package"] }
+      ],
       "additionalProperties": false,
       "properties": {
         "name": { "$ref": "#/$defs/packageName" },
-        "location": { "type": "string", "minLength": 1, "pattern": "^[^\\\\]+$" },
+        "source": { "$ref": "#/$defs/file", "pattern": "\\.cpkg\\.json$" },
+        "package": { "$ref": "#/$defs/file", "pattern": "\\.cpkg$" },
         "references": {
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/packageName" },
