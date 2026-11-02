@@ -123,7 +123,7 @@ Path references follow these rules:
 - **Each path reference declares its target.** An asset path declares a [shared](#shared-and-local-assets) `AssetType` and must resolve to an asset of that type. A bundle path must resolve to a bundle other than a [world bundle](#worlds).
 - **Every non-null path must resolve**, within each [project](#projects) that lists its package, to a bundle or asset that exists.
 
-The [Canvas engine spec](../../README.md) defines how path references are resolved and how an unresolved or mistyped one is handled (see [Resolving path references](#resolving-path-references)).
+The [Canvas engine spec](../CanvasCore/README.md) defines how path references are resolved and how an unresolved or mistyped one is handled (see [Resolving path references](#resolving-path-references)).
 
 ## Bundles
 
@@ -196,13 +196,13 @@ A package's **declared name** is the name `CCpkgWriter::Open` stores in its file
 
 ## Instantiation Model
 
-This section describes, at a high level, how the content of a package becomes objects in a Canvas world. The [Canvas engine spec](../../README.md) defines the actual mapping to engine objects (scene-graph nodes, `XModel`, GPU resources, physics bodies). What this section defines is what a package *declares*, so that any conforming engine instantiates it the same way.
+This section describes, at a high level, how the content of a package becomes objects in a Canvas world. The [Canvas engine spec](../CanvasCore/README.md) defines the actual mapping to engine objects (scene-graph nodes, `XModel`, GPU resources, physics bodies). What this section defines is what a package *declares*, so that any conforming engine instantiates it the same way.
 
 **The package declares structural roles; the engine user supplies gameplay meaning.** A package says what its content is and how the engine may treat it: which bundles a bundle places, which nodes it exports, whether placed content may move, and (later) what collision or scripts are attached.
 
 ### Instances
 
-The engine can **instantiate** any bundle any number of times, and each resulting **instance** is independent of the others. An instance is built from the bundle's [local assets](#shared-and-local-assets): its hierarchy of nodes, placements, and skeleton instances, and the attachments and clips that go with it. A bundle that holds only shared assets, such as an image library, contributes no structure: other bundles reference its assets by path. How the engine represents an instance is defined by the [Canvas engine spec](../../README.md).
+The engine can **instantiate** any bundle any number of times, and each resulting **instance** is independent of the others. An instance is built from the bundle's [local assets](#shared-and-local-assets): its hierarchy of nodes, placements, and skeleton instances, and the attachments and clips that go with it. A bundle that holds only shared assets, such as an image library, contributes no structure: other bundles reference its assets by path. How the engine represents an instance is defined by the [Canvas engine spec](../CanvasCore/README.md).
 
 The engine instantiates a bundle as a nested instance of a bundle that places it (see [Placements](#placements)), as a [world bundle](#worlds) or one of its [world regions](#world-regions), or when the engine user requests one at runtime, for example to spawn an enemy. Nothing in a bundle records how it is used, and one bundle may be both placed and used as a region.
 
@@ -261,7 +261,7 @@ A **world** is the top-level unit a game loads: one place, such as a level, a ma
 
 Besides its `WorldSettings` asset, a world bundle may hold assets of any type: the world's always-present content, such as `TransformNode` hierarchies, placements, and shared assets such as the world's `Skybox` assets.
 
-A world bundle's [instance transform](#instances) is the world origin, so its content is positioned in world space, as a region's is. A world bundle is used only as a world, so neither a placement nor a region list references one. A [project](../CanvasProject/README.md#worlds) lists the worlds it offers. How and when a world and its regions are instantiated is defined by the [Canvas engine spec](../../README.md).
+A world bundle's [instance transform](#instances) is the world origin, so its content is positioned in world space, as a region's is. A world bundle is used only as a world, so neither a placement nor a region list references one. A [project](../CanvasProject/README.md#worlds) lists the worlds it offers. How and when a world and its regions are instantiated is defined by the [Canvas engine spec](../CanvasCore/README.md).
 
 ```cpp
 // Draft schema.
@@ -322,7 +322,7 @@ Mobility passes only from parent to child. A region's `Movable` camera rig makes
 
 ### Resolving path references
 
-[Path references](#paths), such as a placement's bundle, a mesh instance's mesh, or a world's regions and skyboxes, and [export names](#exports-and-imports) are resolved as the [Canvas engine spec](../../README.md) defines. A path names a package among the packages of a [project](#projects), as described in [Package Names](../CanvasProject/README.md#package-names).
+[Path references](#paths), such as a placement's bundle, a mesh instance's mesh, or a world's regions and skyboxes, and [export names](#exports-and-imports) are resolved as the [Canvas engine spec](../CanvasCore/README.md) defines. A path names a package among the packages of a [project](#projects), as described in [Package Names](../CanvasProject/README.md#package-names).
 
 ## Package Data Types
 

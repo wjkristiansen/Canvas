@@ -155,21 +155,9 @@ while (running)
 }
 ```
 
-## Key Design Decisions
+## Engine Spec
 
-### GEM Interface Model
-
-Canvas objects expose functionality through **GEM interfaces**, a COM-inspired system that provides reference counting (`AddRef` / `Release`), interface discovery (`QueryInterface`), and 64-bit interface IDs. Smart pointers (`Gem::TGemPtr<T>`) manage lifetimes automatically.
-
-Interfaces are declared with `GEM_INTERFACE_DECLARE` and mapped in concrete classes via `BEGIN_GEM_INTERFACE_MAP` / `GEM_INTERFACE_ENTRY` macros. This gives Canvas a binary-stable ABI boundary and makes the plugin architecture possible.
-
-### Plugin Architecture
-
-Graphics backends are loaded at runtime as shared libraries. The host calls `XCanvas::LoadPlugin(path)`, which loads the library and calls its exported `CreateCanvasPlugin` factory. This keeps CanvasCore free of any graphics-API dependency and opens the door to alternative backends (Vulkan, Metal, ...) in the future.
-
-### Worlds
-
-Canvas always has an active world, including while a menu or loading screen is shown. A menu or loading screen is a world whose content is mostly UI graph, so editors compose it like any other world. Worlds are declared by world bundles in [CanvasPkg](src/CanvasPkg/README.md#worlds) packages, and a project lists the worlds it offers, optionally with a `defaultWorld` for startup (see [CanvasProject](src/CanvasProject/README.md#worlds)).
+The engine's design is specified in [CanvasCore](src/CanvasCore/README.md): the GEM interface model, the plugin architecture, the thread rules, and the project runtime, which opens a project and runs its worlds. Content is stored in [CanvasPkg](src/CanvasPkg/README.md) packages, grouped into [projects](src/CanvasProject/README.md), and built by [`cpkg`](src/cpkg/README.md).
 
 ## Conventions
 
@@ -278,7 +266,7 @@ To run a single test or filter by name, invoke the executable directly (it lives
 | `docs/`                  | Design documents                                               |
 | `scripts/`               | Utility scripts                                                |
 | `src/Inc/`               | Public headers (CanvasCore.h, CanvasGfx.h, CanvasMath.hpp)     |
-| `src/CanvasCore/`        | Core library implementation                                    |
+| `src/CanvasCore/`        | Engine spec and core library implementation                    |
 | `src/CanvasGfx12/`       | Graphics backend                                               |
 | `src/CanvasText/`        | Font and SDF glyph generation                                  |
 | `src/CanvasFbx/`         | FBX import                                                     |
