@@ -2,9 +2,9 @@
 
 A **project** is a set of [CanvasPkg](../CanvasPkg/README.md) packages used together. A `.cpkg` file holds exactly one package, and a [path](../CanvasPkg/README.md#paths) in one package may name a bundle or asset in another, so a project declares which packages exist together and which package each such name refers to. A project is declared by its **project manifest**: a JSON file that names the project, lists its packages, each with a name and a file, and lists the worlds the project offers.
 
-A manifest takes one of two forms. An **authored project** is the one people and editors work on: it lists each package by its [package source](../CanvasAuthoring/PackageSource.md), or by its `.cpkg` file for a package that has no source. Building an authored project produces a **built project**, which lists every package by its built `.cpkg` file, and is the form the engine opens.
+A manifest takes one of two forms. An **authored project** is the one people and editors work on: it lists each package by its [package source](../cpkg/PackageSource.md), or by its `.cpkg` file for a package that has no source. Building an authored project produces a **built project**, which lists every package by its built `.cpkg` file, and is the form the engine opens.
 
-CanvasProject is a static library that reads and validates project manifests and resolves the package names in paths. The engine uses it to open a built project, and authoring tools use it to open authored projects and to validate packages against them, so both resolve package names identically.
+CanvasProject is a static library that reads and validates project manifests and resolves the package names in paths. Every program that resolves package names through it resolves them identically.
 
 ## Project Manifest
 

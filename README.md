@@ -67,7 +67,6 @@ A header-only math library (`CanvasMath.hpp`) providing templated vectors, matri
 | **RectanglePacker** | Bin-packing algorithm used for texture atlas layout.                                                                             |
 | **CanvasPkg**       | The `.cpkg` package file format, with its reader and writer. Design spec; not yet implemented.                                   |
 | **CanvasProject**   | Project manifests: the packages used together, their package names, and their worlds. Design spec; not yet implemented.         |
-| **CanvasAuthoring** | Package sources: loading, editing, validating, refactoring, and building them into `.cpkg` files. Design spec; not yet implemented. |
 
 ### Applications
 
@@ -285,8 +284,7 @@ To run a single test or filter by name, invoke the executable directly (it lives
 | `src/CanvasFbx/`         | FBX import                                                     |
 | `src/CanvasPkg/`         | Package file format spec                                       |
 | `src/CanvasProject/`     | Project manifest spec and schema                               |
-| `src/CanvasAuthoring/`   | Package source spec and schema, and authoring library spec     |
-| `src/cpkg/`              | Package build tool spec                                        |
+| `src/cpkg/`              | Package build tool spec, and package source spec and schema    |
 | `src/RectanglePacker/`   | Rectangle bin-packing                                          |
 | `src/HLSL/`              | Shader source and compiled header output                       |
 | `src/Common/`            | Shared utilities                                               |

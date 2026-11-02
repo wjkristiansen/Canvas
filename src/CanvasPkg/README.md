@@ -4,11 +4,11 @@ A CanvasPkg (Cpkg) is a package file containing world data - including models, g
 
 CanvasPkg is a static library. API Success/failure codes use type `Gem::Result`.
 
-`CCpkgReader` is used by Canvas itself to build world instances and set up scripts at load time. `CCpkgWriter` is used by [CanvasAuthoring](../CanvasAuthoring/README.md), the library that builds a `.cpkg` file from a [package source](../CanvasAuthoring/PackageSource.md), and through it by editors and the [`cpkg`](../cpkg/README.md) command-line tool.
+`CCpkgWriter` writes a package file, and `CCpkgReader` reads one.
 
 ## Dependencies
 
-`CanvasPkg.h` includes `CanvasCore.h` and `CanvasGfx.h`. The dependency is header-only and CanvasPkg links no Canvas library, so CanvasAuthoring and the tools built on it can include it without linking the engine.
+`CanvasPkg.h` includes `CanvasCore.h` and `CanvasGfx.h`. The dependency is header-only and CanvasPkg links no Canvas library, so a program that writes or reads packages can include it without linking the engine.
 
 Engine enumerations are used by name in the record declarations below. Public Canvas enumerations declare an explicit base type; an enumeration field is stored as its base type, holding the enumerator's numeric value, and occupies that many bytes on disk. Because those numeric values are the on-disk encoding, every enumeration a `Cpkg*` record stores assigns each enumerator an explicit value.
 
@@ -76,7 +76,7 @@ Every asset type is one of two classes, fixed by its `AssetType`. The class deci
 
 **A local asset is part of its bundle's structure.** Its payload may itself reference earlier local assets in the same bundle by index. For example, `CpkgTransformNodeData::ParentIndex` references the node's parent. A local asset may be unnamed, except an [exported](#exports-and-imports) node, whose name is its export name.
 
-`CanvasPkg.h` classifies each type with a `constexpr` helper, so CanvasAuthoring and the loader classify them identically:
+`CanvasPkg.h` classifies each type with a `constexpr` helper, so every writer and reader classifies them identically:
 
 ```cpp
 // True for the shared asset types; false for the local ones and for Unknown.
@@ -100,7 +100,7 @@ A producer satisfies the rule by appending each asset after every asset it index
 
 The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Skeleton`, `MeshSkin`, `BoneAnimationClip`, the hierarchy assets, `MeshInstance`, `Camera`, `Light`, `NodeAnimationClip`, `ExportList`, `WorldSettings`. The **hierarchy assets** are `TransformNode`, `Placement`, `ImportNode`, and `SkeletonInstance`: each is relative to one other asset (a node's parent, a placement's node, an import node's placement, a skeleton instance's node), so together they form one hierarchy. Appending them together in pre-order satisfies the rule for every index among them and guarantees parent-before-child, so an asset's parent always precedes it.
 
-`AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads - CanvasAuthoring orders its appends to satisfy it - and a package that violates it is malformed.
+`AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads, and a package that violates it is malformed.
 
 ### Paths
 
@@ -322,7 +322,7 @@ Mobility passes only from parent to child. A region's `Movable` camera rig makes
 
 ### Resolving path references
 
-[Path references](#paths), such as a placement's bundle, a mesh instance's mesh, or a world's regions and skyboxes, and [export names](#exports-and-imports) are resolved by engine-side code built on `CCpkgReader` and its [name directories](#name-directories), as defined by the [Canvas engine spec](../../README.md). A path names a package among the packages of a [project](#projects), as described in [Package Names](../CanvasProject/README.md#package-names).
+[Path references](#paths), such as a placement's bundle, a mesh instance's mesh, or a world's regions and skyboxes, and [export names](#exports-and-imports) are resolved as the [Canvas engine spec](../../README.md) defines. A path names a package among the packages of a [project](#projects), as described in [Package Names](../CanvasProject/README.md#package-names).
 
 ## Package Data Types
 
@@ -334,7 +334,7 @@ A relationship between assets is stored according to the referenced asset's [cla
 
 ### Conventions
 
-Every payload stores values in the Canvas engine's own conventions, so they need no conversion between package and engine. Converting from a source format's conventions is the writer's job (for example CanvasAuthoring and CanvasPkgFbx).
+Every payload stores values in the Canvas engine's own conventions, so they need no conversion between package and engine. Converting from a source format's conventions is the writer's job.
 
 **Canvas space** is the engine's world and scene-graph coordinate system (see [Coordinate System and Local Basis](../../README.md#coordinate-system-and-local-basis)):
 
@@ -458,7 +458,7 @@ These rules define where a span's elements are and when a span is valid:
 
 A payload that violates any of these rules is malformed, and `CpkgResolveSpan` reports such a span as `Gem::Result::CorruptedData`.
 
-**The data area has no prescribed order.** A reader finds every array through its span and never by position, so a writer may place arrays in any order. Spans must not overlap, and the alignment gaps between arrays must be zero; `CCpkgPayloadBuilder` guarantees both. A reader does not check for overlap, since every access is read-only, and does not interpret the gap bytes. For example, `CCpkgPayloadBuilder` (below) lays out a mesh with two groups in the order it is called, which for CanvasAuthoring is:
+**The data area has no prescribed order.** A reader finds every array through its span and never by position, so a writer may place arrays in any order. Spans must not overlap, and the alignment gaps between arrays must be zero; `CCpkgPayloadBuilder` guarantees both. A reader does not check for overlap, since every access is read-only, and does not interpret the gap bytes. For example, `CCpkgPayloadBuilder` (below) lays out a mesh with two groups in the order it is called. Appending each group's streams and then the group array gives:
 
 ```
 CpkgMeshData                 header at offset 0; Groups refers to the group array
@@ -483,7 +483,7 @@ Parallel arrays must have equal counts: each per-vertex stream with its group's 
 
 ### Payload Encoding Helpers
 
-`CCpkgWriter` and `CCpkgReader` move opaque bytes. `CanvasPkg.h` provides header-only helpers that encode and decode payloads, so CanvasAuthoring and the loader share one implementation of the layout rules above. The helpers link no library and touch no file.
+`CCpkgWriter` and `CCpkgReader` move opaque bytes. `CanvasPkg.h` provides header-only helpers that encode and decode payloads, so every writer and reader shares one implementation of the layout rules above. The helpers link no library and touch no file.
 
 ```cpp
 // Builds one payload in memory. The header slot at offset 0 is reserved on
@@ -1045,7 +1045,7 @@ CanvasPkg reads are random-access. The file-level bundle table and bundle name b
 
 ### Name Directories
 
-Name lookups are opt-in: a caller builds a directory once (e.g. a loader resolving path references) and searches it directly:
+Name lookups are opt-in: a caller builds a directory once, such as to resolve path references, and searches it directly:
 
 ```cpp
 // Built by BuildBundleDirectory/BuildAssetDirectory. Owns its own copies of
@@ -1071,7 +1071,7 @@ private:
 };
 ```
 
-`Find` looks names up without allocating, so a loader can search directly for a name it holds as a `std::string_view`, such as one resolved from a payload's `CpkgSpan<char>`.
+`Find` looks names up without allocating, so a caller can search directly for a name it holds as a `std::string_view`, such as one resolved from a payload's `CpkgSpan<char>`.
 
 **CCpkgReader::BuildBundleDirectory**
 
