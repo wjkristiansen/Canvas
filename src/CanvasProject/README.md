@@ -86,7 +86,7 @@ For the example above, the built project is `build/game.cproj.json`:
 
 The `Textures` package declares the name `Textures` in its source, and builds to `library.cpkg`, after its package file: a package's file name and its names are independent.
 
-The engine opens a built project: a manifest whose every entry is a `package`. How it opens the project, which world it activates first, and how it handles a package file that is missing, is defined by the [Canvas engine spec](../../README.md).
+The engine opens a built project: a manifest whose every entry is a `package`. How it opens the project, which world it activates first, and how it handles a package file that is missing, is defined by the [Canvas engine spec](../CanvasCore/README.md).
 
 ## Package Names
 
