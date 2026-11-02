@@ -1,6 +1,6 @@
 # Package Source
 
-A **package source** is the text form of one [CanvasPkg](../CanvasPkg/README.md) package: JSON files describing the package's bundles and assets, together with the image and binary files they name. It is what an editor saves and what can be written by hand, and the [CanvasAuthoring](README.md) library builds a `.cpkg` file from it. Its shape is defined by [package-source.schema.json](package-source.schema.json).
+A **package source** is the text form of one [CanvasPkg](../CanvasPkg/README.md) package: JSON files describing the package's bundles and assets, together with the image and binary files they name. It is what an editor saves and what can be written by hand, and the [`cpkg`](README.md) tool builds a `.cpkg` file from it. Its shape is defined by [package-source.schema.json](package-source.schema.json).
 
 A package source expresses every `AssetType`, so any package can be built from one, including a package holding [world bundles](../CanvasPkg/README.md#worlds). It mirrors the package format closely, with conveniences for authoring: a nested node tree, references by name in place of asset indices, defaults for omitted fields, alternative forms for values that are awkward to write by hand, and [imports](#imports) that bring the content of FBX files into a bundle.
 
@@ -56,7 +56,7 @@ A source refers to other content in one of two ways, matching the class of what 
 | A [shared asset](../CanvasPkg/README.md#shared-and-local-assets) or a bundle | A [path](../CanvasPkg/README.md#paths): `asset`, `bundle/asset`, or `package/bundle/asset`; `bundle` or `package/bundle` | The same path, unchanged |
 | A local asset of the same bundle (a node, placement, or skeleton-bearing node) | Its name | Its asset index |
 
-A path names other packages by their declared names, and the [project](../CanvasProject/README.md#package-names) that lists the package resolves them. A reference by name requires its target to be named.
+A path names another package by the name the source's author uses for it, and the [project](../CanvasProject/README.md#package-names) that lists the package resolves that name to one of its packages. A reference by name requires its target to be named.
 
 **Bones** are referenced by name or by bone index. A name refers to the bone with that name in the relevant skeleton; an integer is a bone index.
 
@@ -332,7 +332,7 @@ A bundle's `world` member builds its `WorldSettings`:
 
 ## Imports
 
-An **import** builds the content of an FBX file into the bundle that lists it: its images, materials, meshes, skeletons, skins, and animation, and its node hierarchy with the cameras, lights, and mesh instances attached to it. The build reads the file each time it runs, so a changed FBX file is picked up by the next build, and the import's settings are kept with the import rather than in the file.
+An **import** builds the content of an FBX file into the bundle that lists it: its images, materials, meshes, skeletons, skins, and animation, and its node hierarchy with the cameras, lights, and mesh instances attached to it. The build reads the file whenever it builds the package, and the file is one of the build's inputs, so a changed FBX file is picked up by the next build. The import's settings are kept with the import rather than in the file.
 
 ```json
 {
@@ -380,7 +380,7 @@ A bundle may list any number of imports, of the same file or of different files.
 
 The build converts the file's content to CanvasPkg's [conventions](../CanvasPkg/README.md#conventions), using the unit scale and axis system the file declares, and then applies the import's `rotation` and `scale` about the file's origin. Both are baked into the built assets: `rotation` into vertex positions, normals, and tangents, node and bone transforms, inverse bind poses, and keyframes; `scale` into positions and translations, bounds, inverse bind poses, keyframes, and distances such as light ranges and camera clip planes. `rotation` corrects a file whose declared axis system does not match its content; `scale` corrects a file whose declared unit does not, or resizes content on purpose.
 
-Polygons are triangulated, and normals are generated for geometry the file holds none for. The translation of each kind of FBX content into its CanvasPkg asset is CanvasPkgFbx's; this section defines what an import builds and how a source controls it.
+Polygons are triangulated, and normals are generated for geometry the file holds none for. This section defines what an import builds and how a source controls it; how the build reads an FBX file is described in `cpkg`'s [Imports](README.md#imports).
 
 ### What an Import Builds
 
@@ -396,7 +396,7 @@ Polygons are triangulated, and normals are generated for geometry the file holds
 | A node | `TransformNode` | `nodes` |
 | A camera, light, or mesh on a node | `Camera`, `Light`, or `MeshInstance` attached to the node's `TransformNode` | None: these are unnamed local assets |
 
-A texture file's encoding is one CanvasPkg stores, such as PNG, and its image is a `Texture2D` with one mip. A texture the file embeds is stored from the embedded bytes, and an external texture from the file the FBX file names (see CanvasAuthoring's [Imports](README.md#imports)). A texture in any other encoding is either replaced, with `replace`, or converted to a stored encoding before the build.
+A texture file's encoding is one CanvasPkg stores, such as PNG, and its image is a `Texture2D` with one mip. A texture the file embeds is stored from the embedded bytes, and an external texture from the file the FBX file names (see `cpkg`'s [Imports](README.md#imports)). A texture in any other encoding is either replaced, with `replace`, or converted to a stored encoding before the build.
 
 A mesh used by several nodes builds one `MeshData`, and each node that uses it gets a `MeshInstance`. A material replaced with `replace` is not built, and neither is an image that only replaced materials use.
 
