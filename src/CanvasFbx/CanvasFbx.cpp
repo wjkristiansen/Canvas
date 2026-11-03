@@ -738,8 +738,7 @@ private:
 
 //------------------------------------------------------------------------------------------------
 // Global matrix of every imported node, composed exactly as a Canvas scene-graph node composes
-// its translation, rotation, and scale (row vectors: scale, then rotation, then translation,
-// then the parent).
+// its translation, rotation, and scale: scale * rotation * translation * parent (row vectors).
 std::vector<Math::FloatMatrix4x4> ImportedGlobalMatrices(_In_ const std::vector<ImportedNode> &nodes)
 {
     std::vector<Math::FloatMatrix4x4> globals(nodes.size());

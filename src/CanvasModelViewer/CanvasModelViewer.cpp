@@ -1058,7 +1058,7 @@ public:
             }
 
             // Build camera orientation matrix from yaw/pitch (Z-up world)
-            // Canvas row-vector convention: row 0 = forward, row 1 = right, row 2 = up
+            // Canvas local basis: row 0 = forward, row 1 = left, row 2 = up
             float cy = cosf(m_CameraYaw), sy = sinf(m_CameraYaw);
             float cp = cosf(m_CameraPitch), sp = sinf(m_CameraPitch);
 
@@ -1070,8 +1070,8 @@ public:
             Canvas::Math::ComposePointToBasisVectors(worldUp, forward, rotMat[1], rotMat[2]);
             Canvas::Math::FloatQuaternion cameraQuat = Canvas::Math::QuaternionFromRotationMatrix(rotMat);
 
-            // Right vector for WASD strafing (from the rotation matrix)
-            Canvas::Math::FloatVector4 right = rotMat[1];
+            // Left vector for WASD strafing (from the rotation matrix)
+            Canvas::Math::FloatVector4 left = rotMat[1];
 
             if (hasFocus && m_pInput->IsKeyDown(VK_ESCAPE)) { running = false; break; }
 
@@ -1081,8 +1081,8 @@ public:
                 Canvas::Math::FloatVector4 moveDir(0.0f, 0.0f, 0.0f, 0.0f);
                 if (m_pInput->IsKeyDown('W'))        moveDir = moveDir + forward;
                 if (m_pInput->IsKeyDown('S'))        moveDir = moveDir - forward;
-                if (m_pInput->IsKeyDown('D'))        moveDir = moveDir - right;
-                if (m_pInput->IsKeyDown('A'))        moveDir = moveDir + right;
+                if (m_pInput->IsKeyDown('D'))        moveDir = moveDir - left;
+                if (m_pInput->IsKeyDown('A'))        moveDir = moveDir + left;
                 if (m_pInput->IsKeyDown(VK_SPACE))   moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
                 if (m_pInput->IsKeyDown(VK_SHIFT))   moveDir = moveDir + Canvas::Math::FloatVector4(0, 0, 1, 0);
                 if (m_pInput->IsKeyDown(VK_CONTROL)) moveDir = moveDir - Canvas::Math::FloatVector4(0, 0, 1, 0);

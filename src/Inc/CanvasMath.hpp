@@ -586,7 +586,7 @@ namespace Canvas
 
         //------------------------------------------------------------------------------------------------
         // Sets the upper-left 3x3 as a right-handed rotation about the x-axis by the given
-        // angle, for row vectors (v' = v * M): +Y rotates toward +Z.
+        // angle, for row vectors: +Y rotates toward +Z.
         template<class _Type>
         TMatrix<_Type, 4, 4> XRotationMatrix(_Type angle)
         {
@@ -605,7 +605,7 @@ namespace Canvas
 
         //------------------------------------------------------------------------------------------------
         // Sets the upper-left 3x3 as a right-handed rotation about the y-axis by the given
-        // angle, for row vectors (v' = v * M): +Z rotates toward +X.
+        // angle, for row vectors: +Z rotates toward +X.
         template<class _Type>
         TMatrix<_Type, 4, 4> YRotationMatrix(_Type angle)
         {
@@ -624,7 +624,7 @@ namespace Canvas
 
         //------------------------------------------------------------------------------------------------
         // Sets the upper-left 3x3 as a right-handed rotation about the z-axis by the given
-        // angle, for row vectors (v' = v * M): +X rotates toward +Y.
+        // angle, for row vectors: +X rotates toward +Y.
         template<class _Type>
         TMatrix<_Type, 4, 4> ZRotationMatrix(_Type angle)
         {
@@ -703,7 +703,7 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        // Inverse of a 4x4 affine matrix in Canvas's row-vector convention (v' = v * M):
+        // Inverse of a 4x4 affine matrix (row vectors):
         // the upper-left 3x3 is the linear (rotation/scale/shear) block and row 3 is the
         // translation. Handles any invertible linear block. For a pure rotation this reduces
         // to [ R^T | 0 ; -t*R^T | 1 ]. Returns identity when the linear block is singular.
@@ -1042,7 +1042,7 @@ namespace Canvas
 
         //------------------------------------------------------------------------------------------------
         // Converts the unit quaternion to a rotation matrix for row vectors: v * M rotates v
-        // the same way as q * v * q^-1. Each row is the image of the corresponding unit axis.
+        // the same way as q * v * q^-1.
         template<class _Type>
         TMatrix<_Type, 4, 4> QuaternionToRotationMatrix(const TQuaternion<_Type> & q)
         {
@@ -1088,7 +1088,7 @@ namespace Canvas
         }
 
         //------------------------------------------------------------------------------------------------
-        // Creates a quaternion from a rotation matrix for row vectors (v' = v * M); the inverse
+        // Creates a quaternion from a rotation matrix for row vectors; the inverse
         // of QuaternionToRotationMatrix.
         // Assumes the matrix is rotation only 3x3 or affine (no scale or translation)
         // See http://www.euclideanspace.com/maths/geometry/rotations/conversions/matrixToQuaternion/
@@ -1293,7 +1293,7 @@ namespace Canvas
         //   nearPlane   - Distance to near clip plane (positive value)
         //   farPlane    - Distance to far clip plane (positive value, farPlane > nearPlane)
         //
-        // Returns: A 4x4 projection matrix for use with row vectors (v' = v * M)
+        // Returns: A 4x4 projection matrix for use with row vectors
         //
         // [ f/aspect  0    0    0 ]  row 0 (x_view=right    -> x_clip)
         // [   0       f    0    0 ]  row 1 (y_view=up       -> y_clip)
@@ -1335,7 +1335,7 @@ namespace Canvas
         //   nearPlane   - Distance to near clip plane (positive value)
         //   farPlane    - Distance to far clip plane (positive value, farPlane > nearPlane)
         //
-        // Returns: A 4x4 projection matrix for use with row vectors (v' = v * M)
+        // Returns: A 4x4 projection matrix for use with row vectors
         //
         // [ f/aspect  0    0    0 ]  row 0 (x_view=right    -> x_clip)
         // [   0       f    0    0 ]  row 1 (y_view=up       -> y_clip)
@@ -1379,7 +1379,7 @@ namespace Canvas
         //   zNear       - near plane along +Z (meters; receivers nearer than this clip away)
         //   zFar        - far plane along +Z (meters; zFar > zNear)
         //
-        // Returns a 4x4 matrix for row vectors (v' = v * M).
+        // Returns a 4x4 matrix for row vectors.
         //
         // [ 1/halfWidth   0           0                  0 ]
         // [ 0             1/halfHeight 0                 0 ]
@@ -1499,7 +1499,7 @@ namespace Canvas
             }
 
             // Transform this AABB through an affine row-vector matrix
-            // (v' = v * M) and return the AABB of the eight transformed
+            // and return the AABB of the eight transformed
             // corners.  Conservative: the result fully encloses the
             // transformed box but is generally larger than the tightest
             // oriented bounding box.  Empty AABBs pass through unchanged;
@@ -1585,10 +1585,9 @@ namespace Canvas
         // intentionally avoids a sqrt per plane during extraction.  Code
         // that needs signed Euclidean distances must normalize first.
         //
-        // Matrix convention: Canvas uses ROW VECTORS (clip = world * VP), so
-        // plane coefficients are derived from COLUMNS of the view-projection
-        // matrix (see FromViewProjection below).  Passing a column-vector
-        // matrix here will silently produce a degenerate frustum.
+        // With row vectors (clip = world * VP), plane coefficients are derived from
+        // COLUMNS of the view-projection matrix (see FromViewProjection below).  Passing a
+        // column-vector matrix here silently produces a degenerate frustum.
         struct Frustum
         {
             enum PlaneIndex

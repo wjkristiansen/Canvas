@@ -184,8 +184,8 @@ TEST(CanvasMathTest, MatrixRotation)
     static const auto Rows = MatrixType::Rows;
     static const auto Columns = MatrixType::Columns;
 
-    // Row-vector rotations: row i is the image of unit axis i (v' = v * M), and a
-    // positive angle turns counter-clockwise looking down the axis toward the origin.
+    // Row-vector rotations: a positive angle turns counter-clockwise looking down the axis
+    // toward the origin.
     MatrixType rx = XRotationMatrix<ElementType>(float(g_PI) / 2);
     EXPECT_TRUE(AlmostEqual(rx[0], VecType(1, 0, 0, 0)));
     EXPECT_TRUE(AlmostEqual(rx[1], VecType(0, 0, 1, 0)));
@@ -223,7 +223,7 @@ TEST(CanvasMathTest, MatrixRotation)
 
 TEST(CanvasMathTest, AffineInverse)
 {
-    // Affine transform in Canvas's row-vector convention: non-uniform scale on the
+    // Affine transform (row vectors): non-uniform scale on the
     // 3x3 rows, a rotation, and a translation in row 3. Exercises the general
     // (scaled, non-orthonormal) path, not just pure rotation.
     FloatMatrix4x4 m = ZRotationMatrix<float>(0.7f);
@@ -251,7 +251,7 @@ TEST(CanvasMathTest, AffineInverse)
     ExpectIdentity(m * inv);
     ExpectIdentity(inv * m);
 
-    // A point round-trips: (p * M) * M^-1 == p  (row-vector v * M).
+    // A point round-trips: (p * M) * M^-1 == p.
     const FloatVector4 p(1.5f, -2.0f, 0.25f, 1.0f);
     const FloatVector4 back = (p * m) * inv;
     EXPECT_NEAR(back.X, p.X, 1e-4f);
@@ -946,7 +946,6 @@ TEST(CanvasMathTest, QuaternionConjugate)
 
 TEST(CanvasMathTest, VectorMatrixMultiplication)
 {
-    // Canvas uses row vectors: v * M
     FloatVector3 v(1.0f, 2.0f, 3.0f);
     FloatMatrix3x3 m({
         {1.0f, 0.0f, 0.0f},
@@ -1071,7 +1070,6 @@ TEST(CanvasMathTest, PerspectiveForwardZBasic)
 
     auto proj = PerspectiveForwardZ(fovY, aspect, nearPlane, farPlane);
 
-    // Row-vector: M[i][j] maps input axis i to output axis j.
     EXPECT_TRUE(proj[0][0] != 0.0f);  // X(right)   -> X_clip
     EXPECT_TRUE(proj[1][1] != 0.0f);  // Y(up)      -> Y_clip
     EXPECT_TRUE(proj[2][2] != 0.0f);  // Z(forward) -> Z_clip

@@ -1,10 +1,7 @@
 //================================================================================================
 // SceneGraph
 //
-// MATRIX CONVENTION: Canvas uses ROW VECTORS (v' = v * M)
-//   - Translation is in BOTTOM ROW: matrix[3][0], matrix[3][1], matrix[3][2]
-//   - Matrix multiplication: world = local * parent
-//   - Transform hierarchy: child inherits parent transform by multiplying local * parent
+// A node's global matrix is its local matrix times its parent's global matrix (row vectors).
 //================================================================================================
 
 #pragma once
@@ -241,7 +238,6 @@ public: // XSceneGraphNode methods
 
             if(m_pParent)
             {
-                // Row-vector convention (v' = v * M): local applied first, then parent.
                 m_GlobalMatrix = localMatrix * m_pParent->GetGlobalMatrix();
             }
             else
