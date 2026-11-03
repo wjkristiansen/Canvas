@@ -53,33 +53,6 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-// Composes a local matrix: scale * rotation * translation.
-inline Math::FloatMatrix4x4 ComposeLocalMatrix(
-    const Math::FloatVector4 &scale, const Math::FloatQuaternion &rotation, const Math::FloatVector4 &translation)
-{
-    Math::FloatMatrix4x4 m = Math::QuaternionToRotationMatrix(rotation);
-
-    // Scale each axis row: S * R.
-    for (int c = 0; c < 4; ++c)
-    {
-        m[0][c] *= scale.X;
-        m[1][c] *= scale.Y;
-        m[2][c] *= scale.Z;
-    }
-
-    m[3][0] = translation.X;
-    m[3][1] = translation.Y;
-    m[3][2] = translation.Z;
-    m[3][3] = 1.0f;  // Homogeneous coordinate
-    return m;
-}
-
-inline Math::FloatMatrix4x4 ComposeLocalMatrix(const Transform &transform)
-{
-    return ComposeLocalMatrix(transform.Scale, transform.Rotation, transform.Translation);
-}
-
-//------------------------------------------------------------------------------------------------
 // Which of a scene graph node's cached transforms are stale.
 enum class TransformDirtyFlags : uint32_t
 {
@@ -109,9 +82,7 @@ protected:
     ChildNode* m_pFirstChild = nullptr;   // Intrusive doubly-linked list for O(1) insertion anywhere
     ChildNode* m_pLastChild = nullptr;    // Tail pointer for O(1) AddChild
     std::unordered_map<XSceneGraphNode*, ChildNode*> m_ChildMap;  // For O(1) lookup of wrapper given child pointer
-    Math::FloatQuaternion m_LocalRotation;
-    Math::FloatVector4 m_LocalScale; // W is ignored
-    Math::FloatVector4 m_LocalTranslation;
+    Transform m_LocalTransform;
 
     TransformDirtyFlags m_DirtyFlags = TransformDirtyFlags::All;
 
@@ -163,24 +134,35 @@ public: // XSceneGraphNode methods
         return m_pAnimController.Get();
     }
 
+    GEMMETHOD_(const Transform &, GetLocalTransform)() const final
+    {
+        return m_LocalTransform;
+    }
+
+    GEMMETHOD_(void, SetLocalTransform)(const Transform &transform) final
+    {
+        m_LocalTransform = transform;
+        InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation);
+    }
+
     GEMMETHOD_(const Math::FloatQuaternion &, GetLocalRotation)() const final
     {
-        return m_LocalRotation;
+        return m_LocalTransform.Rotation;
     }
 
     GEMMETHOD_(const Math::FloatVector4 &, GetLocalTranslation)() const final
     {
-        return m_LocalTranslation;
+        return m_LocalTransform.Translation;
     }
 
     GEMMETHOD_(const Math::FloatVector4 &, GetLocalScale)() const final
     {
-        return m_LocalScale;
+        return m_LocalTransform.Scale;
     }
 
     GEMMETHOD_(void, SetLocalRotation)(const Math::FloatQuaternion &rotation) final
     {
-        m_LocalRotation = rotation;
+        m_LocalTransform.Rotation = rotation;
         // Rotation affects this node's local matrix and all global transforms
         // Children's global rotation and matrix are affected (but not their local matrices)
         InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation);
@@ -188,7 +170,7 @@ public: // XSceneGraphNode methods
 
     GEMMETHOD_(void, SetLocalTranslation)(_In_ const Math::FloatVector4 &translation) final
     {
-        m_LocalTranslation = translation;
+        m_LocalTransform.Translation = translation;
         // Translation affects this node's local matrix and global matrix
         // Children's global matrices are affected (but not rotation or their local matrices)
         InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix);
@@ -196,7 +178,7 @@ public: // XSceneGraphNode methods
 
     GEMMETHOD_(void, SetLocalScale)(_In_ const Math::FloatVector4 &scale) final
     {
-        m_LocalScale = scale;
+        m_LocalTransform.Scale = scale;
         // Scale affects this node's local matrix and global matrix
         // Children's global matrices are affected (but not rotation or their local matrices)
         InvalidateTransforms(TransformDirtyFlags::LocalMatrix | TransformDirtyFlags::GlobalMatrix);
@@ -211,11 +193,11 @@ public: // XSceneGraphNode methods
         {
             if(m_pParent)
             {
-                m_GlobalRotation = m_pParent->GetGlobalRotation() * m_LocalRotation;
+                m_GlobalRotation = m_pParent->GetGlobalRotation() * m_LocalTransform.Rotation;
             }
             else
             {
-                m_GlobalRotation =  m_LocalRotation;
+                m_GlobalRotation = m_LocalTransform.Rotation;
             }
             m_DirtyFlags &= ~TransformDirtyFlags::GlobalRotation;
         }
@@ -253,7 +235,7 @@ public: // XSceneGraphNode methods
     {
         if (HasAnyFlag(m_DirtyFlags, TransformDirtyFlags::LocalMatrix))
         {
-            m_LocalMatrix = ComposeLocalMatrix(m_LocalScale, m_LocalRotation, m_LocalTranslation);
+            m_LocalMatrix = m_LocalTransform.ToMatrix();
             m_DirtyFlags &= ~TransformDirtyFlags::LocalMatrix;
         }
 

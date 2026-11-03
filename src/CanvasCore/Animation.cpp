@@ -87,11 +87,7 @@ Transform CAnimationController::TransformTarget::Get() const
     if (pSkeleton)
         return pSkeleton->LocalTransform(Joint);
 
-    Transform t;
-    t.Translation = pNode->GetLocalTranslation();
-    t.Rotation    = pNode->GetLocalRotation();
-    t.Scale       = pNode->GetLocalScale();
-    return t;
+    return pNode->GetLocalTransform();
 }
 
 void CAnimationController::TransformTarget::Set(const Transform &transform) const
@@ -102,9 +98,7 @@ void CAnimationController::TransformTarget::Set(const Transform &transform) cons
         return;
     }
 
-    pNode->SetLocalTranslation(transform.Translation);
-    pNode->SetLocalRotation(transform.Rotation);
-    pNode->SetLocalScale(transform.Scale);
+    pNode->SetLocalTransform(transform);
 }
 
 void CAnimationController::SnapshotPose(std::vector<Transform>& dest) const

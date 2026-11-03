@@ -130,9 +130,7 @@ struct ImportedFixture
         {
             const Fbx::ImportedNode &src = Scene.Nodes[i];
             EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&Nodes[i], src.Name.c_str())));
-            Nodes[i]->SetLocalTranslation(src.Translation);
-            Nodes[i]->SetLocalRotation(src.Rotation);
-            Nodes[i]->SetLocalScale(src.Scale);
+            Nodes[i]->SetLocalTransform(src.LocalTransform);
         }
         for (size_t i = 0; i < Scene.Nodes.size(); ++i)
             if (Scene.Nodes[i].ParentIndex >= 0)
@@ -629,7 +627,7 @@ TEST(CanvasFbxTest, UnanimatedNodeFarFromOrigin)
     ASSERT_NE(itClip->Tracks.end(), itTrack) << "no track holds Far at its saved position";
     ASSERT_EQ(1u, itTrack->Keyframes.size());
 
-    const Math::FloatVector4 d = itTrack->Keyframes[0].Translation - itNode->Translation;
+    const Math::FloatVector4 d = itTrack->Keyframes[0].Translation - itNode->LocalTransform.Translation;
     EXPECT_NEAR(std::sqrt(Math::DotProduct(d, d)), 0.005f, 0.001f);
 }
 
@@ -669,7 +667,7 @@ TEST(CanvasFbxTest, NodesHaveUnitScale)
         anyLoaded = true;
         for (size_t i = 0; i < f.Nodes.size(); ++i)
         {
-            const Math::FloatVector4 s = f.Scene.Nodes[i].Scale;
+            const Math::FloatVector4 s = f.Scene.Nodes[i].LocalTransform.Scale;
             EXPECT_NEAR(s.X, 1.0f, 1e-4f) << f.Scene.Nodes[i].Name;
             EXPECT_NEAR(s.Y, 1.0f, 1e-4f) << f.Scene.Nodes[i].Name;
             EXPECT_NEAR(s.Z, 1.0f, 1e-4f) << f.Scene.Nodes[i].Name;

@@ -64,6 +64,11 @@ Math::FloatVector4 ToCanvasVector(ufbx_vec3 v)
     return Math::FloatVector4(static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z), 0.0f);
 }
 
+Math::FloatVector4 ToCanvasPoint(ufbx_vec3 v)
+{
+    return Math::FloatVector4(static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z), 1.0f);
+}
+
 //------------------------------------------------------------------------------------------------
 Math::FloatQuaternion ToCanvasQuaternion(ufbx_quat q)
 {
@@ -114,7 +119,7 @@ struct RootFold
         if (!Enabled)
             return;
         t = (t * Scale) * RotationMatrix + Translation;
-        t.W = 0.0f;
+        t.W = 1.0f;
         r = (Rotation * r).Normalize();
         s = s * Scale;
         s.W = 0.0f;
@@ -737,8 +742,8 @@ private:
 };
 
 //------------------------------------------------------------------------------------------------
-// Global matrix of every imported node, composed exactly as a Canvas scene-graph node composes
-// its translation, rotation, and scale: scale * rotation * translation * parent (row vectors).
+// Global matrix of every imported node: its local transform's matrix times its parent's
+// global matrix (row vectors), as a Canvas scene-graph node composes it.
 std::vector<Math::FloatMatrix4x4> ImportedGlobalMatrices(_In_ const std::vector<ImportedNode> &nodes)
 {
     std::vector<Math::FloatMatrix4x4> globals(nodes.size());
@@ -750,18 +755,7 @@ std::vector<Math::FloatMatrix4x4> ImportedGlobalMatrices(_In_ const std::vector<
             return globals[i];
 
         const ImportedNode &node = nodes[i];
-        Math::FloatMatrix4x4 local = Math::QuaternionToRotationMatrix(node.Rotation);
-        for (int c = 0; c < 4; ++c)
-        {
-            local[0][c] *= node.Scale.X;
-            local[1][c] *= node.Scale.Y;
-            local[2][c] *= node.Scale.Z;
-        }
-        local[3][0] = node.Translation.X;
-        local[3][1] = node.Translation.Y;
-        local[3][2] = node.Translation.Z;
-        local[3][3] = 1.0f;
-
+        const Math::FloatMatrix4x4 local = node.LocalTransform.ToMatrix();
         globals[i] = node.ParentIndex >= 0 ? local * self(self, static_cast<size_t>(node.ParentIndex)) : local;
         done[i] = true;
         return globals[i];
@@ -994,7 +988,7 @@ static void BakedNodeToTrack(
 
         ImportedAnimationKeyframe kf;
         kf.Time        = static_cast<float>(absTime - clipBegin);
-        kf.Translation = ToCanvasVector(t);
+        kf.Translation = ToCanvasPoint(t);
         kf.Rotation    = ToCanvasQuaternion(r);
         kf.Scale       = ToCanvasVector(s);
         if (pRootFold)
@@ -1011,7 +1005,7 @@ static ImportedAnimationKeyframe StoredPoseKeyframe(
 {
     ImportedAnimationKeyframe kf;
     kf.Time        = 0.0f;
-    kf.Translation = ToCanvasVector(node.local_transform.translation);
+    kf.Translation = ToCanvasPoint(node.local_transform.translation);
     kf.Rotation    = ToCanvasQuaternion(node.local_transform.rotation);
     kf.Scale       = ToCanvasVector(node.local_transform.scale);
     if (node.parent && node.parent->is_root)
@@ -1030,14 +1024,14 @@ static bool IsImportedPose(
     _In_ const ImportedNode&              node)
 {
     constexpr float kEpsilon = 1e-5f;
-    const Math::FloatVector4 dt = kf.Translation - node.Translation;
-    const Math::FloatVector4 ds = kf.Scale - node.Scale;
+    const Math::FloatVector4 dt = kf.Translation - node.LocalTransform.Translation;
+    const Math::FloatVector4 ds = kf.Scale - node.LocalTransform.Scale;
 
     // q and -q are the same rotation, so compare against whichever sign is nearer. The
     // component distance is about half the angle between them (in radians).
-    const float sign = Math::DotProduct(kf.Rotation, node.Rotation) < 0.0f ? -1.0f : 1.0f;
+    const float sign = Math::DotProduct(kf.Rotation, node.LocalTransform.Rotation) < 0.0f ? -1.0f : 1.0f;
     const Math::FloatVector4 q0 = kf.Rotation;
-    const Math::FloatVector4 q1 = node.Rotation;
+    const Math::FloatVector4 q1 = node.LocalTransform.Rotation;
     const Math::FloatVector4 dq = q0 - q1 * sign;
 
     return std::sqrt(Math::DotProduct(dt, dt)) <= kEpsilon &&
@@ -1372,19 +1366,21 @@ HRESULT ImportScene(
                 "Node '" + node.Name + "' has a bind pose with shear relative to its parent (e.g. a rotated "
                 "bone under a non-uniformly scaled parent); its bind transform is approximated, so skinned "
                 "geometry may be deformed in the bind pose");
-        node.Translation = ToCanvasVector(local.translation);
-        node.Rotation    = ToCanvasQuaternion(local.rotation);
-        node.Scale       = ToCanvasVector(local.scale);
+        Transform &nodeTransform = node.LocalTransform;
+        nodeTransform.Translation = ToCanvasPoint(local.translation);
+        nodeTransform.Rotation    = ToCanvasQuaternion(local.rotation);
+        nodeTransform.Scale       = ToCanvasVector(local.scale);
         if (pNode->parent && pNode->parent->is_root)
-            rootFold.Apply(node.Translation, node.Rotation, node.Scale);
+            rootFold.Apply(nodeTransform.Translation, nodeTransform.Rotation, nodeTransform.Scale);
 
         // Unit conversion leaves every node unscaled, so remaining scale was authored (or
         // comes from an export setting this importer does not recognize).
-        const float maxScaleError = std::max({ std::abs(node.Scale.X - 1.0f), std::abs(node.Scale.Y - 1.0f), std::abs(node.Scale.Z - 1.0f) });
+        const Math::FloatVector4 &scale = nodeTransform.Scale;
+        const float maxScaleError = std::max({ std::abs(scale.X - 1.0f), std::abs(scale.Y - 1.0f), std::abs(scale.Z - 1.0f) });
         if (maxScaleError > 1e-4f)
             AddDiag(pScene, DiagLevel::Info,
-                "Node '" + node.Name + "' has scale (" + std::to_string(node.Scale.X) + ", " +
-                std::to_string(node.Scale.Y) + ", " + std::to_string(node.Scale.Z) + ")");
+                "Node '" + node.Name + "' has scale (" + std::to_string(scale.X) + ", " +
+                std::to_string(scale.Y) + ", " + std::to_string(scale.Z) + ")");
 
         node.ParentIndex = -1;
         pScene->Nodes.push_back(node);
@@ -1728,15 +1724,6 @@ SkeletonLayout ComputeSkeletonLayout(
     return layout;
 }
 
-Canvas::Transform NodeTransform(_In_ const ImportedNode &node)
-{
-    Canvas::Transform t;
-    t.Translation = node.Translation;
-    t.Rotation    = node.Rotation;
-    t.Scale       = node.Scale;
-    return t;
-}
-
 } // anonymous namespace
 
 Gem::Result BuildModel(
@@ -2011,7 +1998,7 @@ Gem::Result BuildModel(
                     const bool parentIsJoint = p >= 0 && layout.SkeletonOfNode[static_cast<size_t>(p)] == static_cast<int32_t>(s);
                     joints[j].Name          = names[j].c_str();
                     joints[j].ParentIndex   = parentIsJoint ? layout.JointOfNode[static_cast<size_t>(p)] : Canvas::InvalidIndex;
-                    joints[j].RestTransform = NodeTransform(scene.Nodes[ni]);
+                    joints[j].RestTransform = scene.Nodes[ni].LocalTransform;
                 }
 
                 Canvas::ModelSkeletonDesc desc{};
@@ -2053,7 +2040,7 @@ Gem::Result BuildModel(
             const std::string name = NodeName(ni);
             Canvas::ModelNodeDesc desc{};
             desc.Name      = name.c_str();
-            desc.LocalTransform = NodeTransform(scene.Nodes[ni]);
+            desc.LocalTransform = scene.Nodes[ni].LocalTransform;
             const int32_t p = parents[ni];
             if (p >= 0)
                 desc.ParentIndex = layout.SkeletonOfNode[static_cast<size_t>(p)] >= 0

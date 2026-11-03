@@ -314,6 +314,57 @@ TEST(CanvasInterfacesTest, SceneGraphGlobalTranslationInheritsScale)
     EXPECT_TRUE(AlmostEqual(pChild->GetGlobalTranslation(), FloatVector4(9.0f, 1.0f, 0.0f, 1.0f)));
 }
 
+TEST(CanvasInterfacesTest, SceneGraphLocalTransform)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    Gem::TGemPtr<XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+
+    Gem::TGemPtr<XSceneGraphNode> pParent, pChild;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pChild)));
+    EXPECT_TRUE(Succeeded(pScene->GetRootNode()->AddChild(pParent)));
+    EXPECT_TRUE(Succeeded(pParent->AddChild(pChild)));
+    pChild->SetLocalTranslation(FloatVector4(1.0f, 1.0f, 0.0f, 1.0f));
+
+    // A new node's local transform is identity.
+    const Transform identity;
+    EXPECT_TRUE(AlmostEqual(pParent->GetLocalTransform().Scale, identity.Scale));
+    EXPECT_TRUE(AlmostEqual(pParent->GetLocalTransform().Rotation, identity.Rotation));
+    EXPECT_TRUE(AlmostEqual(pParent->GetLocalTransform().Translation, identity.Translation));
+    EXPECT_TRUE(AlmostEqual(pChild->GetGlobalTranslation(), FloatVector4(1.0f, 1.0f, 0.0f, 1.0f)));
+
+    // Setting the whole transform sets each component and refreshes descendants.
+    const float ninety = float(3.14159265358979323846 / 2.0);
+    Transform t;
+    t.Scale       = FloatVector4(2.0f, 3.0f, 1.0f, 0.0f);
+    t.Rotation    = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, ninety);
+    t.Translation = FloatVector4(10.0f, 0.0f, 0.0f, 1.0f);
+    pParent->SetLocalTransform(t);
+
+    EXPECT_TRUE(AlmostEqual(pParent->GetLocalScale(), t.Scale));
+    EXPECT_TRUE(AlmostEqual(pParent->GetLocalRotation(), t.Rotation));
+    EXPECT_TRUE(AlmostEqual(pParent->GetLocalTranslation(), t.Translation));
+
+    // Scale rows of the +90 deg Z rotation, translation in row 3.
+    const FloatMatrix4x4 expectedLocal({
+        {  0.0f, 2.0f, 0.0f, 0.0f },
+        { -3.0f, 0.0f, 0.0f, 0.0f },
+        {  0.0f, 0.0f, 1.0f, 0.0f },
+        { 10.0f, 0.0f, 0.0f, 1.0f },
+    });
+    EXPECT_TRUE(AlmostEqual(pParent->GetLocalMatrix(), expectedLocal));
+    EXPECT_TRUE(AlmostEqual(t.ToMatrix(), expectedLocal));
+
+    // (1,1,0) scaled -> (2,3,0), rotated -> (-3,2,0), translated -> (7,2,0).
+    EXPECT_TRUE(AlmostEqual(pChild->GetGlobalTranslation(), FloatVector4(7.0f, 2.0f, 0.0f, 1.0f)));
+    EXPECT_TRUE(AlmostEqual(pChild->GetGlobalRotation(), t.Rotation));
+}
+
 TEST(CanvasInterfacesTest, CameraTest)
 {
     using namespace Canvas::Math;
@@ -926,7 +977,7 @@ using Canvas::InvalidIndex;
 Canvas::Transform Translation(float x, float y, float z)
 {
     Canvas::Transform t;
-    t.Translation = Canvas::Math::FloatVector4(x, y, z, 0.0f);
+    t.Translation = Canvas::Math::FloatVector4(x, y, z, 1.0f);
     return t;
 }
 
@@ -1171,7 +1222,7 @@ TEST(CanvasInterfacesTest, ModelBuilderValidatesIndices)
     EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddMesh(&mesh, nullptr));
 
     // Build checks clip targets, and a failed Build keeps the model's content.
-    Canvas::AnimationKeyframe key = TranslateKey(0.0f, FloatVector4(0.0f, 0.0f, 0.0f, 0.0f));
+    Canvas::AnimationKeyframe key = TranslateKey(0.0f, FloatVector4(0.0f, 0.0f, 0.0f, 1.0f));
     Canvas::AnimationTrackDesc track{};
     track.TargetType    = Canvas::AnimationTargetType::ModelNode;
     track.TargetIndex   = 7;
@@ -1230,7 +1281,7 @@ TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
     EXPECT_EQ(InvalidIndex, pModel->GetNodeParent(nodeA));
     Canvas::Transform transform;
     EXPECT_TRUE(Succeeded(pModel->GetNodeTransform(nodeC, &transform)));
-    EXPECT_TRUE(AlmostEqual(transform.Translation, FloatVector4(0.0f, 0.0f, 3.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(transform.Translation, FloatVector4(0.0f, 0.0f, 3.0f, 1.0f)));
     EXPECT_EQ(Gem::Result::InvalidArg, pModel->GetNodeTransform(3, &transform));
 
     // Instantiate into a scene
@@ -1259,13 +1310,13 @@ TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
     EXPECT_STREQ("NodeB", pNodeB->GetName());
 
     // Transforms come from the model nodes
-    EXPECT_TRUE(AlmostEqual(pNodeA->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 0.0f)));
-    EXPECT_TRUE(AlmostEqual(pNodeB->GetLocalTranslation(), FloatVector4(0.0f, 2.0f, 0.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pNodeA->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 1.0f)));
+    EXPECT_TRUE(AlmostEqual(pNodeB->GetLocalTranslation(), FloatVector4(0.0f, 2.0f, 0.0f, 1.0f)));
 
     // NodeB should have one child (NodeC)
     Canvas::XSceneGraphNode *pNodeC = pNodeB->GetFirstChild();
     ASSERT_NE(pNodeC, nullptr);
-    EXPECT_TRUE(AlmostEqual(pNodeC->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 3.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pNodeC->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 3.0f, 1.0f)));
 
     // Mesh instances share the model's GPU mesh data
     EXPECT_EQ(1u, pNodeA->GetBoundElementCount());
@@ -1317,10 +1368,10 @@ TEST(CanvasInterfacesTest, ModelInstantiateTransformIndependence)
     pNode1A->SetLocalTranslation(FloatVector4(99.0f, 0.0f, 0.0f, 0.0f));
 
     // Instance 2 and the model are unaffected
-    EXPECT_TRUE(AlmostEqual(pNode2A->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pNode2A->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 1.0f)));
     Canvas::Transform transform;
     EXPECT_TRUE(Succeeded(pModel->GetNodeTransform(0, &transform)));
-    EXPECT_TRUE(AlmostEqual(transform.Translation, FloatVector4(1.0f, 0.0f, 0.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(transform.Translation, FloatVector4(1.0f, 0.0f, 0.0f, 1.0f)));
 }
 
 TEST(CanvasInterfacesTest, ModelInstantiateCopiesTransforms)
@@ -1399,7 +1450,7 @@ TEST(CanvasInterfacesTest, ModelActiveCameraInstantiation)
     Canvas::XSceneGraphNode *pCamNode = result.pActiveCamera->GetAttachedNode();
     ASSERT_NE(pCamNode, nullptr);
     EXPECT_TRUE(pCamNode == result.pInstanceRoot->GetFirstChild());
-    EXPECT_TRUE(AlmostEqual(pCamNode->GetLocalTranslation(), FloatVector4(0.0f, -5.0f, 2.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pCamNode->GetLocalTranslation(), FloatVector4(0.0f, -5.0f, 2.0f, 1.0f)));
 }
 
 TEST(CanvasInterfacesTest, ModelLightInstantiation)
@@ -1729,8 +1780,8 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
 
     // One clip translating X from 0 to 40 over 2 seconds.
     Canvas::AnimationKeyframe keys[2] = {
-        TranslateKey(0.0f, FloatVector4(0.0f,  0.0f, 0.0f, 0.0f)),
-        TranslateKey(2.0f, FloatVector4(40.0f, 0.0f, 0.0f, 0.0f)),
+        TranslateKey(0.0f, FloatVector4(0.0f,  0.0f, 0.0f, 1.0f)),
+        TranslateKey(2.0f, FloatVector4(40.0f, 0.0f, 0.0f, 1.0f)),
     };
     Canvas::AnimationTrackDesc track{};
     track.TargetType    = Canvas::AnimationTargetType::ModelNode;
@@ -1778,19 +1829,19 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     EXPECT_TRUE(Succeeded(pCtrl->Update(1.0f)));
     EXPECT_FLOAT_EQ(1.0f, pCtrl->GetTime());
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
-                            FloatVector4(20.0f, 0.0f, 0.0f, 0.0f)));
+                            FloatVector4(20.0f, 0.0f, 0.0f, 1.0f)));
 
     // Advancing past Duration wraps the clip time back into [0, Duration).
     EXPECT_TRUE(Succeeded(pCtrl->Update(1.5f)));   // 1.0 + 1.5 = 2.5 -> 0.5
     EXPECT_FLOAT_EQ(0.5f, pCtrl->GetTime());
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
-                            FloatVector4(10.0f, 0.0f, 0.0f, 0.0f)));
+                            FloatVector4(10.0f, 0.0f, 0.0f, 1.0f)));
 
     // ResetToBindPose restores the instantiation-time TRS and stops playback.
     pCtrl->ResetToBindPose();
     EXPECT_FALSE(pCtrl->IsPlaying());
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
-                            FloatVector4(7.0f, 7.0f, 7.0f, 0.0f)));
+                            FloatVector4(7.0f, 7.0f, 7.0f, 1.0f)));
 }
 
 // Exercises cross-fade blending between two clips: the pose interpolates from the
@@ -1809,14 +1860,14 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
     const uint32_t node = AddNode(pBuilder, "Joint", InvalidIndex);
 
     // Two single-key clips that hold the node at constant, distinct translations.
-    Canvas::AnimationKeyframe keyA = TranslateKey(0.0f, FloatVector4(0.0f,   0.0f, 0.0f, 0.0f));
+    Canvas::AnimationKeyframe keyA = TranslateKey(0.0f, FloatVector4(0.0f,   0.0f, 0.0f, 1.0f));
     Canvas::AnimationTrackDesc trackA{};
     trackA.TargetIndex = node; trackA.Keyframes = &keyA; trackA.KeyframeCount = 1;
     Canvas::AnimationClipDesc clipA{};
     clipA.Name = "A"; clipA.Duration = 10.0f; clipA.Tracks = &trackA; clipA.TrackCount = 1;
     EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clipA, nullptr)));
 
-    Canvas::AnimationKeyframe keyB = TranslateKey(0.0f, FloatVector4(100.0f, 0.0f, 0.0f, 0.0f));
+    Canvas::AnimationKeyframe keyB = TranslateKey(0.0f, FloatVector4(100.0f, 0.0f, 0.0f, 1.0f));
     Canvas::AnimationTrackDesc trackB{};
     trackB.TargetIndex = node; trackB.Keyframes = &keyB; trackB.KeyframeCount = 1;
     Canvas::AnimationClipDesc clipB{};
@@ -1841,24 +1892,24 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
     EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
     EXPECT_TRUE(Succeeded(pCtrl->Update(0.1f)));
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
-                            FloatVector4(0.0f, 0.0f, 0.0f, 0.0f)));
+                            FloatVector4(0.0f, 0.0f, 0.0f, 1.0f)));
 
     // Cross-fade to clip B (X = 100) over 1 second; halfway through, X is the 50/50 blend.
     EXPECT_TRUE(Succeeded(pCtrl->PlayByName("B", 1.0f)));
     EXPECT_EQ(1u, pCtrl->GetActiveClipIndex());
     EXPECT_TRUE(Succeeded(pCtrl->Update(0.5f)));
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
-                            FloatVector4(50.0f, 0.0f, 0.0f, 0.0f)));
+                            FloatVector4(50.0f, 0.0f, 0.0f, 1.0f)));
 
     // Once the blend duration elapses the pose snaps fully to clip B.
     EXPECT_TRUE(Succeeded(pCtrl->Update(0.6f)));   // blend time 1.1 >= 1.0
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
-                            FloatVector4(100.0f, 0.0f, 0.0f, 0.0f)));
+                            FloatVector4(100.0f, 0.0f, 0.0f, 1.0f)));
 
     // Subsequent updates keep applying clip B directly (blend state cleared).
     EXPECT_TRUE(Succeeded(pCtrl->Update(0.1f)));
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
-                            FloatVector4(100.0f, 0.0f, 0.0f, 0.0f)));
+                            FloatVector4(100.0f, 0.0f, 0.0f, 1.0f)));
 }
 
 // A joint track drives the joint in each instance's skeleton instance.  Ticked through the
@@ -1894,8 +1945,8 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesJoints)
 
     // X from 0 to 4 over 2 seconds; Z held at the rest height.
     Canvas::AnimationKeyframe keys[2] = {
-        TranslateKey(0.0f, FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)),
-        TranslateKey(2.0f, FloatVector4(4.0f, 0.0f, 1.0f, 0.0f)),
+        TranslateKey(0.0f, FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)),
+        TranslateKey(2.0f, FloatVector4(4.0f, 0.0f, 1.0f, 1.0f)),
     };
     Canvas::AnimationTrackDesc track{};
     track.TargetType    = Canvas::AnimationTargetType::Joint;
@@ -1932,15 +1983,15 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesJoints)
 
     Canvas::Transform pose;
     EXPECT_TRUE(Succeeded(pSkeleton->GetJointLocalTransform(0, &pose)));
-    EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(2.0f, 0.0f, 1.0f, 0.0f)));
-    EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(2.0f, 0.0f, 1.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(2.0f, 0.0f, 1.0f, 1.0f)));
+    EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(2.0f, 0.0f, 1.0f, 1.0f)));
 
     // ResetToBindPose returns the joint to rest; the socket follows on the next update.
     pCtrl->ResetToBindPose();
     EXPECT_TRUE(Succeeded(pSkeleton->GetJointLocalTransform(0, &pose)));
-    EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)));
     EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
-    EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)));
 }
 
 }
