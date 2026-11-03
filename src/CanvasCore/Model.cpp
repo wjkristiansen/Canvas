@@ -37,7 +37,7 @@ Math::AABB ComputeBounds(const ModelContent &content, const std::vector<Skeleton
     for (size_t i = 0; i < content.Nodes.size(); ++i)
     {
         const ModelNodeData &node = content.Nodes[i];
-        const Math::FloatMatrix4x4 local = ComposeLocalMatrix(node.LocalTransform);
+        const Math::FloatMatrix4x4 local = node.LocalTransform.ToMatrix();
         globals[i] = node.ParentIndex == InvalidIndex ? local : local * globals[node.ParentIndex];
     }
 
@@ -114,9 +114,7 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             const ModelNodeData &src = m_Content.Nodes[i];
             Gem::TGemPtr<XSceneGraphNode> pNode;
             Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pNode, src.Name.c_str()));
-            pNode->SetLocalTranslation(src.LocalTransform.Translation);
-            pNode->SetLocalRotation(src.LocalTransform.Rotation);
-            pNode->SetLocalScale(src.LocalTransform.Scale);
+            pNode->SetLocalTransform(src.LocalTransform);
 
             XSceneGraphNode *pParent = src.ParentIndex == InvalidIndex ? pInstanceRoot.Get() : nodes[src.ParentIndex];
             Gem::ThrowGemError(pParent->AddChild(pNode));

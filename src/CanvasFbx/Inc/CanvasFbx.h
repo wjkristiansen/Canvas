@@ -209,9 +209,7 @@ struct ImportedNode
 
     // Local transform (Canvas convention: row-vector, Z-up), in the bind pose: the file's
     // recorded bind matrices where it has them, the stored local transform otherwise.
-    Math::FloatVector4      Translation     = { 0.0f, 0.0f, 0.0f, 0.0f };
-    Math::FloatQuaternion   Rotation        = {}; // identity
-    Math::FloatVector4      Scale           = { 1.0f, 1.0f, 1.0f, 0.0f };
+    Transform               LocalTransform;
 
     // Payload binding (-1 = none)
     int32_t                 MeshIndex       = -1;       // -> ImportedScene::Meshes[i]
@@ -229,7 +227,7 @@ struct ImportedNode
 struct ImportedAnimationKeyframe
 {
     float                   Time;           // seconds from clip start
-    Math::FloatVector4      Translation;    // W = 0
+    Math::FloatVector4      Translation;    // W = 1
     Math::FloatQuaternion   Rotation;       // unit quaternion (Canvas space)
     Math::FloatVector4      Scale;          // W = 0
 };

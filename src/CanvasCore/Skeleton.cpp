@@ -23,7 +23,7 @@ void SkeletonPose::Compute(const ModelSkeletonData &skeleton, const Transform *p
     for (size_t j = 0; j < count; ++j)
     {
         const Transform &local = pLocalTransforms[j];
-        const Math::FloatMatrix4x4 localMatrix = ComposeLocalMatrix(local);
+        const Math::FloatMatrix4x4 localMatrix = local.ToMatrix();
         const uint32_t parent = skeleton.Joints[j].ParentIndex;
         if (parent == InvalidIndex)
         {
@@ -42,10 +42,10 @@ void SkeletonPose::Compute(const ModelSkeletonData &skeleton, const Transform *p
 
 Transform SkeletonPose::SocketTransform(uint32_t jointIndex, const Transform &localTransform) const
 {
-    const Math::FloatMatrix4x4 m = ComposeLocalMatrix(localTransform) * Matrices[jointIndex];
+    const Math::FloatMatrix4x4 m = localTransform.ToMatrix() * Matrices[jointIndex];
 
     Transform t;
-    t.Translation = Math::FloatVector4(m[3][0], m[3][1], m[3][2], 0.0f);
+    t.Translation = m[3];
     t.Rotation    = Rotations[jointIndex] * localTransform.Rotation;
     t.Scale       = Scales[jointIndex] * localTransform.Scale;
     return t;
@@ -101,10 +101,7 @@ GEMMETHODIMP CSkeletonInstance::Update(float /*dtime*/)
             {
                 if (socket.pNode != pChild)
                     continue;
-                const Transform t = m_Pose.SocketTransform(socket.JointIndex, socket.LocalTransform);
-                pChild->SetLocalTranslation(t.Translation);
-                pChild->SetLocalRotation(t.Rotation);
-                pChild->SetLocalScale(t.Scale);
+                pChild->SetLocalTransform(m_Pose.SocketTransform(socket.JointIndex, socket.LocalTransform));
             }
         }
         m_SocketsDirty = false;

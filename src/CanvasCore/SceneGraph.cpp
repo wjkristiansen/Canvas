@@ -14,11 +14,6 @@ namespace Canvas
 CSceneGraphNode::CSceneGraphNode(XCanvas *pCanvas) :
     TCanvasElement(pCanvas)
 {
-    // Initialize local transform to identity
-    m_LocalRotation = Canvas::Math::IdentityQuaternion<float>();
-    m_LocalTranslation = Canvas::Math::FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
-    m_LocalScale = Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 0.0f);
-
     // Initialize cached matrices/quaternions
     m_LocalMatrix = Canvas::Math::IdentityMatrix<float, 4, 4>();
     m_GlobalRotation = Canvas::Math::IdentityQuaternion<float>();

@@ -276,13 +276,32 @@ static constexpr uint32_t InvalidIndex = UINT32_MAX;
 #pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatQuaternion is alignas(16))
 #endif // _MSC_VER
 
-// A local transform as scale, rotation, and translation, composed like a scene-graph node's:
-// scale * rotation * translation.
+// A transform as scale, rotation, and translation, composed as scale * rotation * translation.
 struct Transform
 {
     Math::FloatVector4      Scale       = { 1.0f, 1.0f, 1.0f, 0.0f };
     Math::FloatQuaternion   Rotation;                                   // identity
-    Math::FloatVector4      Translation = { 0.0f, 0.0f, 0.0f, 0.0f };
+    Math::FloatVector4      Translation = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+    // The matrix scale * rotation * translation.
+    Math::FloatMatrix4x4 ToMatrix() const
+    {
+        Math::FloatMatrix4x4 m = Math::QuaternionToRotationMatrix(Rotation);
+
+        // Scale each axis row: S * R.
+        for (int c = 0; c < 4; ++c)
+        {
+            m[0][c] *= Scale.X;
+            m[1][c] *= Scale.Y;
+            m[2][c] *= Scale.Z;
+        }
+
+        m[3][0] = Translation.X;
+        m[3][1] = Translation.Y;
+        m[3][2] = Translation.Z;
+        m[3][3] = 1.0f;  // Homogeneous coordinate
+        return m;
+    }
 };
 
 //------------------------------------------------------------------------------------------------
@@ -295,7 +314,7 @@ struct Transform
 struct AnimationKeyframe
 {
     float                   Time;           // seconds from clip start
-    Math::FloatVector4      Translation;    // W = 0
+    Math::FloatVector4      Translation;    // W = 1
     Math::FloatQuaternion   Rotation;       // unit quaternion (Canvas space)
     Math::FloatVector4      Scale;          // W = 0
 };
@@ -451,6 +470,8 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(XSceneGraphNode *, GetNextChild)(_In_ XSceneGraphNode *pCurrent) = 0;
     GEMMETHOD_(XSceneGraphNode *, GetPrevChild)(_In_ XSceneGraphNode *pCurrent) = 0;
 
+    GEMMETHOD_(const Transform &, GetLocalTransform)() const = 0;
+    GEMMETHOD_(void, SetLocalTransform)(const Transform &transform) = 0;
     GEMMETHOD_(const Math::FloatQuaternion &, GetLocalRotation)() const = 0;
     GEMMETHOD_(const Math::FloatVector4 &, GetLocalTranslation)() const = 0;
     GEMMETHOD_(const Math::FloatVector4 &, GetLocalScale)() const = 0;
