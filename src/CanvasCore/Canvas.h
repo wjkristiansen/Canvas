@@ -129,7 +129,7 @@ public:
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, const char * name = nullptr) final;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, const char * name = nullptr) final;
     GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, const char * name = nullptr) final;
-    GEMMETHOD(CreateModel)(XGfxDevice *pDevice, XModel **ppModel, const char * name = nullptr) final;
+    GEMMETHOD(CreateModelBuilder)(XGfxDevice *pDevice, XModelBuilder **ppBuilder, const char * name = nullptr) final;
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, const char * name, XFont** ppFont) final;

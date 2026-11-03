@@ -289,10 +289,7 @@ struct ImportedFixture
             [clipName](const Fbx::ImportedAnimationClip &c) { return c.Name == clipName; });
         ASSERT_NE(Scene.AnimationClips.end(), itClip) << "missing clip " << clipName;
         ASSERT_FALSE(itClip->Tracks.empty());
-        const auto &keys = std::max_element(itClip->Tracks.begin(), itClip->Tracks.end(),
-            [](const Fbx::ImportedAnimationTrack &a, const Fbx::ImportedAnimationTrack &b)
-            { return a.Keyframes.size() < b.Keyframes.size(); })->Keyframes;
-        const float time = keys[keys.size() / 2].Time;
+        const float time = ClipKeyTime(*itClip);
 
         for (const Fbx::ImportedAnimationTrack &track : itClip->Tracks)
         {
@@ -306,7 +303,33 @@ struct ImportedFixture
             pNode->SetLocalScale(itKey->Scale);
         }
 
-        // Blender names stacks "Object|Action"; the clip takes the action name.
+        const ufbx_anim_stack *pStack = FindStack(clipName);
+        ASSERT_NE(nullptr, pStack) << "missing stack for clip " << clipName;
+
+        ufbx_scene *pPosed = ufbx_evaluate_scene(pRef, pStack->anim, pStack->time_begin + time, nullptr, nullptr);
+        ASSERT_NE(nullptr, pPosed);
+        ExpectNodeGlobalsMatch(pPosed);
+        ExpectSkinPalettesMatch(pPosed);
+        ufbx_free_scene(pPosed);
+    }
+
+    // The key time a clip is checked at: the middle key of its longest track.  With
+    // beforeEnd, the latest key at or before that one that precedes the clip's end: the
+    // animation controller loops, so it plays the end time as the start.
+    static float ClipKeyTime(const Fbx::ImportedAnimationClip &clip, bool beforeEnd = false)
+    {
+        const auto &keys = std::max_element(clip.Tracks.begin(), clip.Tracks.end(),
+            [](const Fbx::ImportedAnimationTrack &a, const Fbx::ImportedAnimationTrack &b)
+            { return a.Keyframes.size() < b.Keyframes.size(); })->Keyframes;
+        size_t k = keys.size() / 2;
+        while (beforeEnd && k > 0 && keys[k].Time >= clip.DurationSeconds)
+            --k;
+        return keys[k].Time;
+    }
+
+    // Blender names stacks "Object|Action"; the clip takes the action name.
+    const ufbx_anim_stack *FindStack(std::string_view clipName) const
+    {
         const ufbx_anim_stack *pStack = nullptr;
         for (const ufbx_anim_stack *pCandidate : pRef->anim_stacks)
         {
@@ -315,13 +338,158 @@ struct ImportedFixture
             if ((bar == std::string_view::npos ? name : name.substr(bar + 1)) == clipName)
                 pStack = pCandidate;
         }
-        ASSERT_NE(nullptr, pStack) << "missing stack for clip " << clipName;
+        return pStack;
+    }
 
-        ufbx_scene *pPosed = ufbx_evaluate_scene(pRef, pStack->anim, pStack->time_begin + time, nullptr, nullptr);
-        ASSERT_NE(nullptr, pPosed);
-        ExpectNodeGlobalsMatch(pPosed);
-        ExpectSkinPalettesMatch(pPosed);
-        ufbx_free_scene(pPosed);
+    // Builds the imported scene into an XModel with BuildModel, which turns skin bones into
+    // skeleton joints, and instantiates it at the origin.  With no clip, the instance stays
+    // at the bind pose, and every imported node's world matrix and every skin palette must
+    // match the imported hierarchy's.  With a clip, the instance's animation controller plays
+    // it to a key time (see ClipKeyTime), and they must match ufbx's evaluation there.
+    void ExpectBuiltModelMatches(std::string_view clipName = {})
+    {
+        Gem::TGemPtr<XGfxDevice> pDevice;
+        {
+            Gem::TGemPtr<XCanvasPlugin> pPlugin;
+            ASSERT_TRUE(Succeeded(pCanvas->LoadPlugin("CanvasGfx12.dll", &pPlugin)));
+            ASSERT_TRUE(Succeeded(pPlugin->CreateCanvasElement(pCanvas, TypeId::TypeId_GfxDevice, "TestDevice",
+                XGfxDevice::IId, reinterpret_cast<void **>(&pDevice))));
+        }
+
+        Gem::TGemPtr<XModel> pModel;
+        ASSERT_TRUE(Succeeded(Fbx::BuildModel(pCanvas, pDevice, Scene, Fbx::BuildModelOptions{}, &pModel)));
+        Gem::TGemPtr<XScene> pScene;
+        ASSERT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "BuiltModelScene")));
+        ModelInstantiateResult result{};
+        ASSERT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+
+        std::unique_ptr<ufbx_scene, decltype(&ufbx_free_scene)> posed(nullptr, &ufbx_free_scene);
+        if (!clipName.empty())
+        {
+            const auto itClip = std::find_if(Scene.AnimationClips.begin(), Scene.AnimationClips.end(),
+                [clipName](const Fbx::ImportedAnimationClip &c) { return c.Name == clipName; });
+            ASSERT_NE(Scene.AnimationClips.end(), itClip) << "missing clip " << clipName;
+            const ufbx_anim_stack *pStack = FindStack(clipName);
+            ASSERT_NE(nullptr, pStack) << "missing stack for clip " << clipName;
+            const float time = ClipKeyTime(*itClip, true);
+
+            ASSERT_NE(nullptr, result.pAnimationController);
+            ASSERT_TRUE(Succeeded(result.pAnimationController->PlayByName(std::string(clipName).c_str(), 0.0f)));
+            ASSERT_TRUE(Succeeded(result.pInstanceRoot->Update(time)));
+
+            posed.reset(ufbx_evaluate_scene(pRef, pStack->anim, pStack->time_begin + time, nullptr, nullptr));
+            ASSERT_NE(nullptr, posed);
+        }
+
+        const ufbx_scene *pPosed = posed.get();
+
+        // The instance's scene nodes by name, and its skeleton instances.
+        std::unordered_map<std::string, XSceneGraphNode *> sceneNodes;
+        std::vector<XSkeletonInstance *> skeletons;
+        std::vector<XSceneGraphNode *> stack{ result.pInstanceRoot };
+        while (!stack.empty())
+        {
+            XSceneGraphNode *pNode = stack.back();
+            stack.pop_back();
+            sceneNodes.emplace(pNode->GetName() ? pNode->GetName() : "", pNode);
+            for (uint32_t e = 0; e < pNode->GetBoundElementCount(); ++e)
+            {
+                Gem::TGemPtr<XSkeletonInstance> pSkeleton;
+                if (Succeeded(pNode->GetBoundElement(e)->QueryInterface(&pSkeleton)))
+                    skeletons.push_back(pSkeleton.Get());
+            }
+            for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+                stack.push_back(pChild);
+        }
+
+        // A scene with a skinned mesh builds at least one skeleton.
+        const bool anySkin = std::any_of(Scene.Meshes.begin(), Scene.Meshes.end(),
+            [](const Fbx::ImportedMesh &m) { return m.Skin.HasSkin; });
+        EXPECT_EQ(anySkin, !skeletons.empty());
+        EXPECT_EQ(skeletons.size(), pModel->GetSkeletonCount());
+
+        // An imported node is a joint of one of the skeletons or a scene node of its own.
+        const auto WorldMatrix = [&](size_t ni, Math::FloatMatrix4x4 &world) -> bool
+        {
+            const std::string &name = Scene.Nodes[ni].Name;
+            for (XSkeletonInstance *pSkeleton : skeletons)
+            {
+                const uint32_t joint = pSkeleton->FindJoint(name.c_str());
+                if (joint != InvalidIndex)
+                {
+                    world = pSkeleton->GetJointMatrix(joint) * pSkeleton->GetAttachedNode()->GetGlobalMatrix();
+                    return true;
+                }
+            }
+            const auto it = sceneNodes.find(name);
+            if (it == sceneNodes.end())
+                return false;
+            world = it->second->GetGlobalMatrix();
+            return true;
+        };
+
+        for (size_t ni = 0; ni < Scene.Nodes.size(); ++ni)
+        {
+            Math::FloatMatrix4x4 world;
+            ASSERT_TRUE(WorldMatrix(ni, world)) << "node " << Scene.Nodes[ni].Name << " missing from the instance";
+            if (pPosed)
+            {
+                const ufbx_node *pNode = RefNode(pPosed, ni);
+                ASSERT_NE(nullptr, pNode) << Scene.Nodes[ni].Name;
+                EXPECT_LT(RelativeDiff(world, ToRowMatrix(pNode->node_to_world)), kTolerance) << "node " << Scene.Nodes[ni].Name;
+            }
+            else
+            {
+                EXPECT_LT(RelativeDiff(world, Nodes[ni]->GetGlobalMatrix()), kTolerance) << "node " << Scene.Nodes[ni].Name;
+            }
+        }
+
+        // Each skin is bound on the first node that carries its mesh, or that node's socket
+        // when the node is a joint.
+        for (size_t meshIndex = 0; meshIndex < Scene.Meshes.size(); ++meshIndex)
+        {
+            const Fbx::ImportedSkin &skin = Scene.Meshes[meshIndex].Skin;
+            if (!skin.HasSkin)
+                continue;
+            const auto itNode = std::find_if(Scene.Nodes.begin(), Scene.Nodes.end(),
+                [meshIndex](const Fbx::ImportedNode &n) { return n.MeshIndex == static_cast<int32_t>(meshIndex); });
+            if (itNode == Scene.Nodes.end())
+                continue;
+            const size_t ni = static_cast<size_t>(itNode - Scene.Nodes.begin());
+
+            auto itScene = sceneNodes.find(itNode->Name);
+            if (itScene == sceneNodes.end())
+                itScene = sceneNodes.find(itNode->Name + "_Socket");
+            ASSERT_NE(sceneNodes.end(), itScene) << "mesh node " << itNode->Name;
+            XMeshInstance *pMesh = nullptr;
+            for (uint32_t e = 0; e < itScene->second->GetBoundElementCount() && !pMesh; ++e)
+            {
+                Gem::TGemPtr<XMeshInstance> p;
+                if (Succeeded(itScene->second->GetBoundElement(e)->QueryInterface(&p)))
+                    pMesh = p.Get();
+            }
+            ASSERT_NE(nullptr, pMesh) << "mesh node " << itNode->Name;
+            ASSERT_EQ(skin.InvBindPoses.size(), pMesh->GetSkinBoneCount()) << "mesh node " << itNode->Name;
+
+            std::vector<Math::FloatMatrix4x4> palette(skin.InvBindPoses.size());
+            ASSERT_TRUE(Succeeded(pMesh->ComputeSkinMatrices(palette.data(), static_cast<uint32_t>(palette.size()))));
+            const ufbx_skin_deformer *pSkin = nullptr;
+            if (pPosed)
+            {
+                const ufbx_node *pMeshNode = RefNode(pPosed, ni);
+                ASSERT_TRUE(pMeshNode && pMeshNode->mesh && pMeshNode->mesh->skin_deformers.count > 0);
+                pSkin = pMeshNode->mesh->skin_deformers.data[0];
+            }
+            for (size_t c = 0; c < palette.size(); ++c)
+            {
+                const size_t bone = static_cast<size_t>(skin.BoneNodeIndices[c]);
+                const Math::FloatMatrix4x4 expected = pSkin
+                    ? ToRowMatrix(pSkin->clusters.data[c]->geometry_to_world)
+                    : skin.InvBindPoses[c] * Nodes[bone]->GetGlobalMatrix();
+                EXPECT_LT(RelativeDiff(palette[c], expected), kTolerance)
+                    << "cluster " << c << " bone " << Scene.Nodes[bone].Name;
+            }
+        }
     }
 
     // Every skin palette entry (InvBind * boneGlobal, as uploaded by the renderer) must
@@ -589,6 +757,46 @@ TEST(CanvasFbxTest, AnimatedSkinMatchesUfbx)
         GTEST_SKIP() << "FBX asset not available";
 
     f.ExpectClipMatchesUfbx("Walk");
+}
+
+// BuildModel's model nodes, skeletons, sockets, and skins reproduce the imported bind pose.
+TEST(CanvasFbxTest, BuiltModelMatchesBindPose)
+{
+    std::vector<const char *> assets(std::begin(kAllAssets), std::end(kAllAssets));
+    assets.insert(assets.end(), std::begin(kSkinnedAssets), std::end(kSkinnedAssets));
+
+    bool anyLoaded = false;
+    for (const char *asset : assets)
+    {
+        SCOPED_TRACE(asset);
+        ImportedFixture f;
+        if (!f.Load(asset))
+            continue;
+        anyLoaded = true;
+        f.ExpectBuiltModelMatches();
+    }
+    if (!anyLoaded)
+        GTEST_SKIP() << "No FBX assets available";
+}
+
+// Clips played by a built model's animation controller, on its joints and model nodes,
+// pose the instance as ufbx evaluates the clip.
+TEST(CanvasFbxTest, BuiltModelClipMatchesUfbx)
+{
+    const std::pair<const char *, const char *> clips[] = {
+        { "data:ClipHoldsBindPose.fbx",           "Hold" },
+        { "data:PoseClipHoldsUnanimatedBone.fbx", "Pose" },
+        { "data:UnanimatedBoneNearBindPose.fbx",  "Move" },
+        { "Blocky.fbx",                           "Walk" },
+    };
+    for (const auto &[asset, clip] : clips)
+    {
+        SCOPED_TRACE(asset);
+        ImportedFixture f;
+        if (!f.Load(asset))
+            continue;
+        f.ExpectBuiltModelMatches(clip);
+    }
 }
 
 } // namespace CanvasUnitTest

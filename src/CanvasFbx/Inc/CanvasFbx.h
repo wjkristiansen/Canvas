@@ -305,15 +305,25 @@ CANVASFBX_API HRESULT ImportScene(
 //================================================================================================
 // BuildModel - convert an ImportedScene into a fully populated XModel
 //
-// Creates an XModel containing GPU mesh data, materials, textures, lights,
-// cameras, and the full node hierarchy from the imported scene.  The caller
+// Builds an XModel, through an XModelBuilder, containing GPU mesh data,
+// materials, textures, lights, cameras, and the imported hierarchy.  The caller
 // supplies a texture-loading callback because image decoding is
 // platform-specific (e.g. WIC on Windows, stb_image elsewhere).
 //
+// The bones of skins that share a bone, and every node between those bones and
+// their nearest common ancestor, become the joints of one skeleton, in the space
+// of that ancestor.  Every other imported node becomes a model node.  Content on
+// a joint, and nodes parented to one, hang from a socket on that joint.  An
+// imported node's transform track animates its joint when the node is a joint,
+// and its model node otherwise.
+//
 // Behaviour on malformed data:
 //   - Out-of-range material / mesh / light / camera / parent indices are
-//     silently skipped (with a warning to pLogger when provided).
+//     skipped (with a warning to pLogger when provided).
 //   - Empty mesh parts are skipped.
+//   - A skin with a bone outside the hierarchy is dropped, and its mesh draws
+//     unskinned.  A skinned mesh carried by several nodes is skinned on the
+//     first and draws unskinned on the others.
 //   - A scene with no meshes is valid; cameras, lights, and nodes are still
 //     built into the model.
 //

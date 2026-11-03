@@ -2005,9 +2005,9 @@ Gem::Result CRenderQueue12::DrawMesh(
         if (hasUV && pTextures[4])               materialFlags |= MATERIAL_FLAG_HAS_METAL_TEX;
         if (hasUV && pTextures[5])               materialFlags |= MATERIAL_FLAG_HAS_AO_TEX;
 
-        // Compute and upload bone matrices when skinning is active.
-        // Each matrix = InvBindPose[i] * boneNode[i].GetGlobalMatrix() - maps bind-pose
-        // geometry space directly to world space for the current frame's bone pose.
+        // Compute and upload bone matrices when skinning is active.  The mesh instance writes
+        // its skin palette, which maps bind-pose geometry space directly to world space for
+        // the skeleton's current pose.
         D3D12_GPU_VIRTUAL_ADDRESS boneMatricesGpuAddr = pPosBuf->GetD3DResource()->GetGPUVirtualAddress();
         if (hasSkin)
         {
@@ -2016,16 +2016,7 @@ Gem::Result CRenderQueue12::DrawMesh(
             HostWriteAllocation boneHw;
             Gem::ThrowGemError(m_UploadRing.AllocateFromRing(boneMatSize, boneHw));
             auto* pMats = static_cast<Canvas::Math::FloatMatrix4x4*>(boneHw.pMapped);
-            for (uint32_t i = 0; i < boneCount; ++i)
-            {
-                Canvas::XSceneGraphNode*          pBone    = pMeshInstance->GetSkinBoneNode(i);
-                const Canvas::Math::FloatMatrix4x4* pInvBind = pMeshInstance->GetSkinInvBindPose(i);
-                // Skin bindings are fully resolved and validated at instantiation time
-                // (XModel::Instantiate and CMeshInstance::SetSkinBinding reject unresolved
-                // bones), so both pointers are guaranteed valid for an active skin here.
-                assert(pBone && pInvBind);
-                pMats[i] = *pInvBind * pBone->GetGlobalMatrix();
-            }
+            Gem::ThrowGemError(pMeshInstance->ComputeSkinMatrices(pMats, boneCount));
             boneMatricesGpuAddr = boneHw.GpuAddress;
         }
 

@@ -35,8 +35,8 @@ public:
         return Gem::Result::Success;
     }
 
-    // Default returns an empty AABB.  Renderable elements (CMeshInstance,
-    // CModel, ...) override with their node-local vertex envelope.
+    // Default returns an empty AABB.  Renderable elements (CMeshInstance, ...)
+    // override with their node-local vertex envelope.
     // Non-renderable elements -- lights, cameras, ambient -- inherit
     // this default so they contribute nothing to renderable aggregates.
     GEMMETHOD_(Math::AABB, GetLocalBounds)() const
@@ -48,12 +48,39 @@ public:
     // region of space (finite-range XLight, XCamera) override with
     // their node-local influence volume.  Infinite-influence elements
     // (directional / ambient lights) and pure-renderable elements
-    // (XMeshInstance, XModel) inherit this default.
+    // (XMeshInstance) inherit this default.
     GEMMETHOD_(Math::AABB, GetLocalInfluenceBounds)() const
     {
         return Math::AABB{};
     }
 };
+
+//------------------------------------------------------------------------------------------------
+// Composes a local matrix: scale * rotation * translation.
+inline Math::FloatMatrix4x4 ComposeLocalMatrix(
+    const Math::FloatVector4 &scale, const Math::FloatQuaternion &rotation, const Math::FloatVector4 &translation)
+{
+    Math::FloatMatrix4x4 m = Math::QuaternionToRotationMatrix(rotation);
+
+    // Scale each axis row: S * R.
+    for (int c = 0; c < 4; ++c)
+    {
+        m[0][c] *= scale.X;
+        m[1][c] *= scale.Y;
+        m[2][c] *= scale.Z;
+    }
+
+    m[3][0] = translation.X;
+    m[3][1] = translation.Y;
+    m[3][2] = translation.Z;
+    m[3][3] = 1.0f;  // Homogeneous coordinate
+    return m;
+}
+
+inline Math::FloatMatrix4x4 ComposeLocalMatrix(const Transform &transform)
+{
+    return ComposeLocalMatrix(transform.Scale, transform.Rotation, transform.Translation);
+}
 
 //------------------------------------------------------------------------------------------------
 // Which of a scene graph node's cached transforms are stale.
@@ -230,31 +257,7 @@ public: // XSceneGraphNode methods
     {
         if (HasAnyFlag(m_DirtyFlags, TransformDirtyFlags::LocalMatrix))
         {
-            // Compose local matrix as M = S * R then translation in row 3.
-            // Row-vector convention (v' = v * M): position is scaled first,
-            // then rotated, then translated, which matches the standard
-            // TRS interpretation of SetLocalScale / SetLocalRotation /
-            // SetLocalTranslation.
-            m_LocalMatrix = Math::QuaternionToRotationMatrix(m_LocalRotation);
-
-            // Apply per-axis scale by multiplying each basis row by the
-            // corresponding scale component. Each row of a rotation matrix
-            // is a unit basis vector in row-vector convention; scaling a
-            // basis row scales the contribution of that axis in v * M.
-            for (int c = 0; c < 4; ++c)
-            {
-                m_LocalMatrix[0][c] *= m_LocalScale.X;
-                m_LocalMatrix[1][c] *= m_LocalScale.Y;
-                m_LocalMatrix[2][c] *= m_LocalScale.Z;
-            }
-
-            // CRITICAL: Canvas uses ROW VECTORS (v' = v * M)
-            // Translation MUST be in BOTTOM ROW [3][col], NOT right column [row][3]
-            m_LocalMatrix[3][0] = m_LocalTranslation.X;
-            m_LocalMatrix[3][1] = m_LocalTranslation.Y;
-            m_LocalMatrix[3][2] = m_LocalTranslation.Z;
-            m_LocalMatrix[3][3] = 1.0f;  // Homogeneous coordinate
-
+            m_LocalMatrix = ComposeLocalMatrix(m_LocalScale, m_LocalRotation, m_LocalTranslation);
             m_DirtyFlags &= ~TransformDirtyFlags::LocalMatrix;
         }
 

@@ -3,13 +3,14 @@
 //
 // CAnimationClip   : immutable, shared clip data stored on CModel (one per FBX AnimationStack
 //                    / Blender Action).  All instances of a model share the same clip data.
+//                    Each track names its target by index.
 //
-// CAnimationController : mutable per-instance evaluator, bound as a XSceneGraphElement to
-//                        the instance root node so CSceneGraphNode::Update(dtime) drives it
-//                        automatically each frame.
+// CAnimationController : mutable per-instance evaluator, held by the instance root node so
+//                        CSceneGraphNode::Update(dtime) drives it automatically each frame.
+//                        It writes each track's values onto its target in the instance.
 //
 //                        Supports immediate clip switching and linear cross-fade blending.
-//                        Bind-pose restoration snapshots the cloned node TRS at instantiation
+//                        Bind-pose restoration snapshots every target's value at instantiation
 //                        time and restores it on demand (useful for editing / debugging).
 //================================================================================================
 
@@ -19,6 +20,7 @@
 #include "Canvas.h"
 #include "CanvasElement.h"
 #include "SceneGraph.h"
+#include "Skeleton.h"
 
 namespace Canvas
 {
@@ -27,9 +29,11 @@ namespace Canvas
 // CAnimationClip - immutable clip data (shared across instances)
 //================================================================================================
 
-struct AnimNodeTrack
+struct AnimTrack
 {
-    std::string                     NodeName;
+    AnimationTargetType             TargetType    = AnimationTargetType::ModelNode;
+    uint32_t                        SkeletonIndex = InvalidIndex;  // Joint targets only
+    uint32_t                        TargetIndex   = InvalidIndex;
     std::vector<AnimationKeyframe>  Keyframes;  // sorted ascending by Time
 };
 
@@ -37,7 +41,7 @@ struct CAnimationClip
 {
     std::string                 Name;
     float                       Duration = 0.0f;    // seconds
-    std::vector<AnimNodeTrack>  Tracks;
+    std::vector<AnimTrack>      Tracks;
 };
 
 //================================================================================================
@@ -48,12 +52,26 @@ class CAnimationController :
     public TCanvasElement<XAnimationController>
 {
     //--------------------------------------------------------------------------------------------
-    // Per-track runtime binding: resolved cloned node + keyframe data pointer
+    // A transform target: a scene node, or one joint of a skeleton instance.
+    // Both pointers are non-owning; the instance's subtree owns the nodes and elements.
+    //--------------------------------------------------------------------------------------------
+    struct TransformTarget
+    {
+        XSceneGraphNode*        pNode     = nullptr;
+        CSkeletonInstance*      pSkeleton = nullptr;
+        uint32_t                Joint     = 0;
+
+        Transform Get() const;
+        void Set(const Transform &transform) const;
+    };
+
+    //--------------------------------------------------------------------------------------------
+    // Per-track runtime binding: target slot + keyframe data pointer
     //--------------------------------------------------------------------------------------------
     struct BoundTrack
     {
-        XSceneGraphNode*                      pNode = nullptr;
-        const std::vector<AnimationKeyframe>* pKeys = nullptr;  // into m_Clips[i].Tracks[j].Keyframes
+        uint32_t                              TargetIndex = 0;   // into m_Targets
+        const std::vector<AnimationKeyframe>* pKeys = nullptr;   // into m_pClipDefs[i].Tracks[j].Keyframes
     };
 
     struct BoundClip
@@ -61,31 +79,6 @@ class CAnimationController :
         const CAnimationClip*       pDef = nullptr;
         std::vector<BoundTrack>     Tracks;
     };
-
-    //--------------------------------------------------------------------------------------------
-    // Bind-pose snapshot: captured at BuildFromModel time, restored by ResetToBindPose()
-    //--------------------------------------------------------------------------------------------
-#pragma warning(push)
-#pragma warning(disable: 4324)
-    struct BindPoseEntry
-    {
-        XSceneGraphNode*                pNode = nullptr;    // non-owning; see note above
-        Math::FloatVector4              T;
-        Math::FloatQuaternion           R;
-        Math::FloatVector4              S;
-    };
-
-    //--------------------------------------------------------------------------------------------
-    // Per-node pose snapshot used during blending
-    //--------------------------------------------------------------------------------------------
-    struct PoseSnapshot
-    {
-        XSceneGraphNode*                pNode = nullptr;    // non-owning; see note above
-        Math::FloatVector4              T;
-        Math::FloatQuaternion           R;
-        Math::FloatVector4              S;
-    };
-#pragma warning(pop)
 
     // Strong reference to the model that owns the shared clip data.  The controller stores
     // raw pointers into the model's clip vector (m_pClipDefs and the per-track keyframe
@@ -97,7 +90,9 @@ class CAnimationController :
     // Shared clip definitions - pointer into m_pModel's vector (kept alive by m_pModel above)
     std::vector<CAnimationClip> const*  m_pClipDefs = nullptr;
     std::vector<BoundClip>              m_BoundClips;       // parallel to *m_pClipDefs
-    std::vector<BindPoseEntry>          m_BindPose;         // one per uniquely animated node
+
+    std::vector<TransformTarget>        m_Targets;          // one per uniquely animated transform
+    std::vector<Transform>              m_BindPose;         // parallel to m_Targets
 
     uint32_t    m_ActiveClipIndex   = 0;
     float       m_Time              = 0.0f;
@@ -105,7 +100,7 @@ class CAnimationController :
     bool        m_InBindPose        = true;
 
     // Blend state
-    std::vector<PoseSnapshot>   m_BlendFromPose;    // empty when not blending
+    std::vector<Transform>      m_BlendFromPose;    // parallel to m_Targets; empty when not blending
     float                       m_BlendTime         = 0.0f;
     float                       m_BlendDuration     = 0.0f;
 
@@ -116,13 +111,12 @@ class CAnimationController :
         Math::FloatQuaternion a, Math::FloatQuaternion b, float t);
 
     static void EvaluateTrack(
-        const std::vector<AnimationKeyframe>& keys, float t,
-        Math::FloatVector4& outT, Math::FloatQuaternion& outR, Math::FloatVector4& outS);
+        const std::vector<AnimationKeyframe>& keys, float t, Transform& out);
 
-    // Snapshot the current animated-node poses into dest (used before a blend transition)
-    void SnapshotPose(std::vector<PoseSnapshot>& dest) const;
+    // Snapshot the current pose of every target into dest (used before a blend transition)
+    void SnapshotPose(std::vector<Transform>& dest) const;
 
-    // Apply the active clip at m_Time to all bound nodes (no blending)
+    // Apply the active clip at t to all bound targets (no blending)
     void ApplyClipPose(const BoundClip& clip, float t);
 
     // Blend from m_BlendFromPose toward the active clip at weight [0,1]
@@ -145,15 +139,19 @@ public:
     //--------------------------------------------------------------------------------------------
     // Called once after construction, before the controller is attached to the instance root.
     //
-    // pModel    : model that owns the clip data; held by a strong reference so the controller
-    //             can keep the shared clips alive for its own lifetime
-    // clipDefs  : pModel's clip list (the controller stores raw pointers into it)
-    // cloneMap  : maps model-template node* -> cloned instance node* (from Instantiate)
+    // pModel     : model that owns the clip data; held by a strong reference so the controller
+    //              can keep the shared clips alive for its own lifetime
+    // clipDefs   : pModel's clip list (the controller stores raw pointers into it)
+    // nodes      : the instance's scene node for each model node, by model node index
+    // skeletons  : the instance's skeleton instance for each skeleton, by skeleton index
+    //
+    // Every track target must be in range; XModelBuilder::Build checks this.
     //--------------------------------------------------------------------------------------------
     void BuildFromModel(
         XModel* pModel,
         const std::vector<CAnimationClip>& clipDefs,
-        const std::unordered_map<XSceneGraphNode*, Gem::TGemPtr<XSceneGraphNode>>& cloneMap);
+        const std::vector<XSceneGraphNode*>& nodes,
+        const std::vector<CSkeletonInstance*>& skeletons);
 
     // XAnimationController
     GEMMETHOD(Update)(float dtime) final;
@@ -186,4 +184,3 @@ public:
 };
 
 } // namespace Canvas
-

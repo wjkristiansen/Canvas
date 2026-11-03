@@ -183,14 +183,14 @@ GEMMETHODIMP CCanvas::CreateMeshInstance(XMeshInstance **ppMeshInstance, const c
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateModel(XGfxDevice *pDevice, XModel **ppModel, const char * name)
+GEMMETHODIMP CCanvas::CreateModelBuilder(XGfxDevice *pDevice, XModelBuilder **ppBuilder, const char * name)
 {
-    CFunctionSentinel sentinel("XCanvas::CreateModel", m_pLogger);
+    CFunctionSentinel sentinel("XCanvas::CreateModelBuilder", m_pLogger);
 
     if (!pDevice)
         return Gem::Result::BadPointer;
 
-    return CreateElement<CModel>(ppModel, name, pDevice);
+    return CreateElement<CModelBuilder>(ppBuilder, name, pDevice);
 }
 
 //------------------------------------------------------------------------------------------------

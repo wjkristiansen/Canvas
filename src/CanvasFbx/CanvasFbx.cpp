@@ -1557,6 +1557,189 @@ HRESULT ImportScene(
 // BuildModel - convert an ImportedScene into a fully populated XModel
 //================================================================================================
 
+namespace
+{
+
+//------------------------------------------------------------------------------------------------
+// How BuildModel divides the imported hierarchy between model nodes and skeleton joints.
+//
+// The bones of skins that share a bone form one skeleton.  A skeleton is in the space of its
+// owner: the nearest common ancestor of its bones' parents, or the instance root when they
+// have none.  Its joints are its bones and every node between a bone and the owner, so each
+// root joint is a child of the owner.  Skeletons whose joints overlap, or whose owner is a
+// joint of another skeleton, are merged.  Every other node is a model node.
+//------------------------------------------------------------------------------------------------
+struct SkeletonLayout
+{
+    struct Skeleton
+    {
+        int32_t                 OwnerNode = -1;     // imported node index; -1: the instance root
+        std::vector<int32_t>    Joints;             // imported node indices, parents first
+    };
+
+    std::vector<Skeleton>   Skeletons;
+    std::vector<int32_t>    SkeletonOfNode;         // per imported node; -1 for a model node
+    std::vector<uint32_t>   JointOfNode;            // per imported node; its joint index
+};
+
+// Imported node indices, parents first, with siblings in index order.
+std::vector<int32_t> ParentsFirstOrder(_In_ const std::vector<int32_t> &parents)
+{
+    std::vector<std::vector<int32_t>> children(parents.size());
+    std::vector<int32_t> roots;
+    for (size_t i = 0; i < parents.size(); ++i)
+        (parents[i] < 0 ? roots : children[static_cast<size_t>(parents[i])]).push_back(static_cast<int32_t>(i));
+
+    std::vector<int32_t> order;
+    order.reserve(parents.size());
+    std::vector<int32_t> stack(roots.rbegin(), roots.rend());
+    while (!stack.empty())
+    {
+        const int32_t n = stack.back();
+        stack.pop_back();
+        order.push_back(n);
+        const std::vector<int32_t> &c = children[static_cast<size_t>(n)];
+        stack.insert(stack.end(), c.rbegin(), c.rend());
+    }
+    return order;
+}
+
+SkeletonLayout ComputeSkeletonLayout(
+    _In_ const std::vector<int32_t> &parents,
+    _In_ const std::vector<int32_t> &order,
+    _In_ const std::vector<std::vector<int32_t>> &skinBones)    // the bones of each usable skin
+{
+    const size_t nodeCount = parents.size();
+
+    std::vector<int32_t> depth(nodeCount, 0);
+    for (int32_t n : order)
+        if (parents[static_cast<size_t>(n)] >= 0)
+            depth[static_cast<size_t>(n)] = depth[static_cast<size_t>(parents[static_cast<size_t>(n)])] + 1;
+
+    // Nearest common ancestor-or-self; -1 stands above every root.
+    const auto CommonAncestor = [&](int32_t a, int32_t b)
+    {
+        while (a >= 0 && b >= 0 && a != b)
+        {
+            if (depth[static_cast<size_t>(a)] >= depth[static_cast<size_t>(b)])
+                a = parents[static_cast<size_t>(a)];
+            else
+                b = parents[static_cast<size_t>(b)];
+        }
+        return (a >= 0 && b >= 0) ? a : -1;
+    };
+
+    // Union-find over bones: bones that end up in one skeleton share a root.
+    std::vector<int32_t> uf(nodeCount);
+    for (size_t i = 0; i < nodeCount; ++i)
+        uf[i] = static_cast<int32_t>(i);
+    const auto Find = [&](int32_t n)
+    {
+        while (uf[static_cast<size_t>(n)] != n)
+            n = uf[static_cast<size_t>(n)] = uf[static_cast<size_t>(uf[static_cast<size_t>(n)])];
+        return n;
+    };
+    const auto Unite = [&](int32_t a, int32_t b)
+    {
+        a = Find(a);
+        b = Find(b);
+        if (a == b)
+            return false;
+        uf[static_cast<size_t>(std::max(a, b))] = std::min(a, b);
+        return true;
+    };
+
+    std::vector<bool> isBone(nodeCount, false);
+    for (const std::vector<int32_t> &bones : skinBones)
+        for (int32_t bone : bones)
+        {
+            isBone[static_cast<size_t>(bone)] = true;
+            Unite(bones.front(), bone);
+        }
+
+    std::vector<int32_t> owner(nodeCount, -1);      // per group root
+    std::vector<int32_t> groupOfNode(nodeCount, -1);
+    for (bool changed = true; changed;)
+    {
+        changed = false;
+
+        // Each group's owner: the common ancestor of its bones' parents.
+        std::vector<bool> seen(nodeCount, false);
+        for (int32_t n : order)
+        {
+            if (!isBone[static_cast<size_t>(n)])
+                continue;
+            const int32_t g = Find(n);
+            const int32_t p = parents[static_cast<size_t>(n)];
+            owner[static_cast<size_t>(g)] = seen[static_cast<size_t>(g)] ? CommonAncestor(owner[static_cast<size_t>(g)], p) : p;
+            seen[static_cast<size_t>(g)] = true;
+        }
+
+        // Each group's joints: every node from a bone up to, not including, the owner.  A
+        // node claimed by two groups merges them.
+        std::fill(groupOfNode.begin(), groupOfNode.end(), -1);
+        for (int32_t n : order)
+        {
+            if (!isBone[static_cast<size_t>(n)])
+                continue;
+            const int32_t g = Find(n);
+            for (int32_t j = n; j >= 0 && j != owner[static_cast<size_t>(g)]; j = parents[static_cast<size_t>(j)])
+            {
+                int32_t &claim = groupOfNode[static_cast<size_t>(j)];
+                if (claim >= 0 && claim != g)
+                    changed |= Unite(claim, g);
+                claim = g;
+            }
+        }
+
+        // An owner is a model node: one that is another group's joint merges the two.
+        for (int32_t n : order)
+        {
+            if (!isBone[static_cast<size_t>(n)])
+                continue;
+            const int32_t g = Find(n);
+            const int32_t o = owner[static_cast<size_t>(g)];
+            if (o >= 0 && groupOfNode[static_cast<size_t>(o)] >= 0)
+                changed |= Unite(groupOfNode[static_cast<size_t>(o)], g);
+        }
+    }
+
+    // Number the skeletons, and their joints, in hierarchy order.
+    SkeletonLayout layout;
+    layout.SkeletonOfNode.assign(nodeCount, -1);
+    layout.JointOfNode.assign(nodeCount, 0);
+    std::unordered_map<int32_t, int32_t> skeletonOfGroup;
+    for (int32_t n : order)
+    {
+        const int32_t claim = groupOfNode[static_cast<size_t>(n)];
+        if (claim < 0)
+            continue;
+        const int32_t g = Find(claim);
+        auto [it, inserted] = skeletonOfGroup.try_emplace(g, static_cast<int32_t>(layout.Skeletons.size()));
+        if (inserted)
+        {
+            layout.Skeletons.emplace_back();
+            layout.Skeletons.back().OwnerNode = owner[static_cast<size_t>(g)];
+        }
+        SkeletonLayout::Skeleton &skeleton = layout.Skeletons[static_cast<size_t>(it->second)];
+        layout.SkeletonOfNode[static_cast<size_t>(n)] = it->second;
+        layout.JointOfNode[static_cast<size_t>(n)] = static_cast<uint32_t>(skeleton.Joints.size());
+        skeleton.Joints.push_back(n);
+    }
+    return layout;
+}
+
+Canvas::Transform NodeTransform(_In_ const ImportedNode &node)
+{
+    Canvas::Transform t;
+    t.Translation = node.Translation;
+    t.Rotation    = node.Rotation;
+    t.Scale       = node.Scale;
+    return t;
+}
+
+} // anonymous namespace
+
 Gem::Result BuildModel(
     _In_    Canvas::XCanvas        *pCanvas,
     _In_    Canvas::XGfxDevice     *pDevice,
@@ -1574,9 +1757,11 @@ Gem::Result BuildModel(
         ? options.pModelName
         : "ImportedModel";
 
-    // Create the model shell
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    Gem::Result gr = pCanvas->CreateModel(pDevice, &pModel, modelName);
+    Gem::TGemPtr<Canvas::XModelBuilder> pBuilder;
+    Gem::Result gr = pCanvas->CreateModelBuilder(pDevice, &pBuilder, "CanvasFbx.BuildModel");
+    if (Gem::Failed(gr))
+        return gr;
+    gr = pBuilder->Begin(modelName);
     if (Gem::Failed(gr))
         return gr;
 
@@ -1593,7 +1778,7 @@ Gem::Result BuildModel(
             if (options.TextureLoader(pDevice, scene.Textures[i], &pSurface))
             {
                 textures[i].Attach(pSurface);
-                pModel->AddTexture(textures[i]);
+                pBuilder->AddTexture(textures[i], nullptr);
             }
             else
             {
@@ -1647,13 +1832,13 @@ Gem::Result BuildModel(
         BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::Metallic,         srcMat.MetallicTextureIndex);
         BindRole(pMaterial.Get(), Canvas::MaterialLayerRole::AmbientOcclusion, srcMat.AmbientOcclusionTextureIndex);
         materials[i] = pMaterial;
-        pModel->AddMaterial(pMaterial);
+        pBuilder->AddMaterial(pMaterial, nullptr);
     }
 
     // -----------------------------------------------------------------
     // Mesh data: create GPU mesh data per imported mesh
     // -----------------------------------------------------------------
-    std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>> meshDataByIndex(scene.Meshes.size());
+    std::vector<uint32_t> meshDataIndex(scene.Meshes.size(), Canvas::InvalidIndex);
     for (size_t meshIndex = 0; meshIndex < scene.Meshes.size(); ++meshIndex)
     {
         const ImportedMesh &srcMesh = scene.Meshes[meshIndex];
@@ -1737,265 +1922,327 @@ Gem::Result BuildModel(
             continue;
         }
 
-        meshDataByIndex[meshIndex] = pMeshData;
-        pModel->AddMeshData(pMeshData);
+        gr = pBuilder->AddMeshData(pMeshData, &meshDataIndex[meshIndex]);
+        if (Gem::Failed(gr))
+            return gr;
     }
 
     // -----------------------------------------------------------------
-    // Lights
+    // Hierarchy: which imported nodes are model nodes and which are joints
     // -----------------------------------------------------------------
-    std::vector<Gem::TGemPtr<Canvas::XLight>> lightsByIndex(scene.Lights.size());
-    for (size_t lightIndex = 0; lightIndex < scene.Lights.size(); ++lightIndex)
+    const size_t nodeCount = scene.Nodes.size();
+    std::vector<int32_t> parents(nodeCount, -1);
+    for (size_t ni = 0; ni < nodeCount; ++ni)
     {
-        const ImportedLight &srcLight = scene.Lights[lightIndex];
-        const std::string lightName = srcLight.Name.empty()
-            ? ("ImportedLight_" + std::to_string(lightIndex))
-            : srcLight.Name;
-
-        Gem::TGemPtr<Canvas::XLight> pLight;
-        gr = pCanvas->CreateLight(srcLight.Type, &pLight, lightName.c_str());
-        if (Gem::Failed(gr))
-        {
-            Canvas::LogWarn(pLogger, "BuildModel: failed to create light '%s'", lightName.c_str());
-            continue;
-        }
-
-        pLight->SetColor(srcLight.Color);
-        pLight->SetIntensity(srcLight.Intensity);
-        pLight->SetRange(srcLight.Range);
-        pLight->SetAttenuation(srcLight.AttenuationConst, srcLight.AttenuationLinear, srcLight.AttenuationQuad);
-        if (srcLight.Type == Canvas::LightType::Spot)
-            pLight->SetSpotAngles(srcLight.SpotInnerAngle, srcLight.SpotOuterAngle);
-
-        lightsByIndex[lightIndex].Attach(pLight.Detach());
+        const int32_t parentIndex = scene.Nodes[ni].ParentIndex;
+        if (parentIndex >= 0 && static_cast<size_t>(parentIndex) < nodeCount && static_cast<size_t>(parentIndex) != ni)
+            parents[ni] = parentIndex;
+        else if (parentIndex >= 0)
+            Canvas::LogWarn(pLogger, "BuildModel: node %zu has an invalid parent index %d; treating it as a root", ni, parentIndex);
     }
+    const std::vector<int32_t> order = ParentsFirstOrder(parents);
 
-    // -----------------------------------------------------------------
-    // Cameras
-    // -----------------------------------------------------------------
-    std::vector<Gem::TGemPtr<Canvas::XCamera>> camerasByIndex(scene.Cameras.size());
-    for (size_t cameraIndex = 0; cameraIndex < scene.Cameras.size(); ++cameraIndex)
+    // A skin applies to the first node that carries its mesh; its other instances draw
+    // unskinned.  A skin with a bone outside the hierarchy is dropped.  skinNode is -1 for
+    // a mesh drawn without a skin.
+    std::vector<int32_t> skinNode(scene.Meshes.size(), -1);
+    for (size_t ni = 0; ni < nodeCount; ++ni)
     {
-        const ImportedCamera &srcCamera = scene.Cameras[cameraIndex];
-        const std::string cameraName = srcCamera.Name.empty()
-            ? ("ImportedCamera_" + std::to_string(cameraIndex))
-            : srcCamera.Name;
-
-        Gem::TGemPtr<Canvas::XCamera> pCamera;
-        gr = pCanvas->CreateCamera(&pCamera, cameraName.c_str());
-        if (Gem::Failed(gr))
-        {
-            Canvas::LogWarn(pLogger, "BuildModel: failed to create camera '%s'", cameraName.c_str());
-            continue;
-        }
-
-        pCamera->SetNearClip(srcCamera.NearClip);
-        pCamera->SetFarClip(srcCamera.FarClip);
-        pCamera->SetFovAngle(srcCamera.FovAngle);
-        pCamera->SetAspectRatio(srcCamera.AspectRatio);
-
-        camerasByIndex[cameraIndex].Attach(pCamera.Detach());
+        const int32_t meshIndex = scene.Nodes[ni].MeshIndex;
+        if (meshIndex >= 0 && static_cast<size_t>(meshIndex) < scene.Meshes.size() && skinNode[static_cast<size_t>(meshIndex)] < 0)
+            skinNode[static_cast<size_t>(meshIndex)] = static_cast<int32_t>(ni);
     }
-
-    // -----------------------------------------------------------------
-    // Scene-graph nodes: create, set TRS, bind mesh/light/camera elements
-    // -----------------------------------------------------------------
-    Canvas::XSceneGraphNode *pModelRoot = pModel->GetRootNode();
-    std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> nodes(scene.Nodes.size());
-
-    for (size_t nodeIndex = 0; nodeIndex < scene.Nodes.size(); ++nodeIndex)
+    std::vector<std::vector<int32_t>> skinBones;
+    for (size_t meshIndex = 0; meshIndex < scene.Meshes.size(); ++meshIndex)
     {
-        const ImportedNode &srcNode = scene.Nodes[nodeIndex];
-        const std::string nodeName = srcNode.Name.empty()
-            ? ("ImportedNode_" + std::to_string(nodeIndex))
-            : srcNode.Name;
-
-        Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
-        gr = pCanvas->CreateSceneGraphNode(&pNode, nodeName.c_str());
-        if (Gem::Failed(gr))
+        const ImportedSkin &skin = scene.Meshes[meshIndex].Skin;
+        if (!skin.HasSkin || skinNode[meshIndex] < 0 || meshDataIndex[meshIndex] == Canvas::InvalidIndex)
         {
-            Canvas::LogWarn(pLogger, "BuildModel: failed to create node '%s'", nodeName.c_str());
+            skinNode[meshIndex] = -1;
             continue;
         }
-
-        pNode->SetName(nodeName.c_str());
-        pNode->SetLocalTranslation(srcNode.Translation);
-        pNode->SetLocalRotation(srcNode.Rotation);
-        pNode->SetLocalScale(srcNode.Scale);
-
-        // Bind mesh instance
-        if (srcNode.MeshIndex >= 0 && static_cast<size_t>(srcNode.MeshIndex) < meshDataByIndex.size())
+        const bool bonesValid = !skin.BoneNodeIndices.empty() &&
+            skin.BoneNodeIndices.size() == skin.InvBindPoses.size() &&
+            std::all_of(skin.BoneNodeIndices.begin(), skin.BoneNodeIndices.end(),
+                [nodeCount](int32_t b) { return b >= 0 && static_cast<size_t>(b) < nodeCount; });
+        if (!bonesValid)
         {
-            Canvas::XGfxMeshData *pMeshData = meshDataByIndex[static_cast<size_t>(srcNode.MeshIndex)].Get();
-            if (pMeshData)
+            Canvas::LogWarn(pLogger, "BuildModel: mesh '%s' has a skin bone outside the hierarchy; drawing it unskinned",
+                scene.Meshes[meshIndex].Name.c_str());
+            skinNode[meshIndex] = -1;
+            continue;
+        }
+        skinBones.push_back(skin.BoneNodeIndices);
+    }
+    const SkeletonLayout layout = ComputeSkeletonLayout(parents, order, skinBones);
+
+    const auto NodeName = [&](size_t ni)
+    {
+        return scene.Nodes[ni].Name.empty() ? ("ImportedNode_" + std::to_string(ni)) : scene.Nodes[ni].Name;
+    };
+
+    try
+    {
+        std::vector<uint32_t> modelNodeOf(nodeCount, Canvas::InvalidIndex);
+        std::vector<uint32_t> skeletonIndex(layout.Skeletons.size(), Canvas::InvalidIndex);
+        std::vector<std::vector<uint32_t>> socketOf(layout.Skeletons.size());
+
+        // Adds the skeletons in the space of an imported node (or, for -1, the instance root).
+        const auto AddSkeletonsOwnedBy = [&](int32_t ownerNode)
+        {
+            for (size_t s = 0; s < layout.Skeletons.size(); ++s)
             {
-                const std::string meshInstanceName = nodeName + "_Mesh";
-                Gem::TGemPtr<Canvas::XMeshInstance> pMeshInstance;
-                gr = pCanvas->CreateMeshInstance(&pMeshInstance, meshInstanceName.c_str());
-                if (Gem::Succeeded(gr))
+                const SkeletonLayout::Skeleton &src = layout.Skeletons[s];
+                if (src.OwnerNode != ownerNode)
+                    continue;
+
+                std::vector<std::string> names;
+                std::vector<Canvas::ModelJointDesc> joints(src.Joints.size());
+                names.reserve(src.Joints.size());
+                for (size_t j = 0; j < src.Joints.size(); ++j)
                 {
-                    pMeshInstance->SetMeshData(pMeshData);
-                    pNode->BindElement(pMeshInstance);
+                    const size_t ni = static_cast<size_t>(src.Joints[j]);
+                    names.push_back(NodeName(ni));
+                }
+                for (size_t j = 0; j < src.Joints.size(); ++j)
+                {
+                    // A root joint's parent is the owner; every other joint's is a joint.
+                    const size_t ni = static_cast<size_t>(src.Joints[j]);
+                    const int32_t p = parents[ni];
+                    const bool parentIsJoint = p >= 0 && layout.SkeletonOfNode[static_cast<size_t>(p)] == static_cast<int32_t>(s);
+                    joints[j].Name          = names[j].c_str();
+                    joints[j].ParentIndex   = parentIsJoint ? layout.JointOfNode[static_cast<size_t>(p)] : Canvas::InvalidIndex;
+                    joints[j].RestTransform = NodeTransform(scene.Nodes[ni]);
+                }
+
+                Canvas::ModelSkeletonDesc desc{};
+                const std::string name = ownerNode >= 0 ? NodeName(static_cast<size_t>(ownerNode)) + "_Skeleton" : std::string("Skeleton");
+                desc.Name       = name.c_str();
+                desc.NodeIndex  = ownerNode >= 0 ? modelNodeOf[static_cast<size_t>(ownerNode)] : Canvas::InvalidIndex;
+                desc.JointCount = static_cast<uint32_t>(joints.size());
+                desc.pJoints    = joints.data();
+                Gem::ThrowGemError(pBuilder->AddSkeleton(&desc, &skeletonIndex[s]));
+                socketOf[s].assign(joints.size(), Canvas::InvalidIndex);
+            }
+        };
+
+        // The socket node that carries a joint's content, added when first needed.
+        const auto SocketFor = [&](size_t jointNode)
+        {
+            const size_t s = static_cast<size_t>(layout.SkeletonOfNode[jointNode]);
+            const uint32_t j = layout.JointOfNode[jointNode];
+            if (socketOf[s][j] == Canvas::InvalidIndex)
+            {
+                const std::string name = NodeName(jointNode) + "_Socket";
+                Canvas::ModelSocketDesc desc{};
+                desc.Name          = name.c_str();
+                desc.SkeletonIndex = skeletonIndex[s];
+                desc.JointIndex    = j;
+                Gem::ThrowGemError(pBuilder->AddSocket(&desc, &socketOf[s][j]));
+            }
+            return socketOf[s][j];
+        };
+
+        // Model nodes, parents first.  A model node under a joint hangs from the joint's socket.
+        AddSkeletonsOwnedBy(-1);
+        for (int32_t n : order)
+        {
+            const size_t ni = static_cast<size_t>(n);
+            if (layout.SkeletonOfNode[ni] >= 0)
+                continue;
+
+            const std::string name = NodeName(ni);
+            Canvas::ModelNodeDesc desc{};
+            desc.Name      = name.c_str();
+            desc.LocalTransform = NodeTransform(scene.Nodes[ni]);
+            const int32_t p = parents[ni];
+            if (p >= 0)
+                desc.ParentIndex = layout.SkeletonOfNode[static_cast<size_t>(p)] >= 0
+                    ? SocketFor(static_cast<size_t>(p))
+                    : modelNodeOf[static_cast<size_t>(p)];
+            Gem::ThrowGemError(pBuilder->AddNode(&desc, &modelNodeOf[ni]));
+            AddSkeletonsOwnedBy(n);
+        }
+
+        // Meshes, lights, and cameras.  Content on a joint goes on the joint's socket.
+        std::vector<uint32_t> cameraOfNode(nodeCount, Canvas::InvalidIndex);
+        for (int32_t n : order)
+        {
+            const size_t ni = static_cast<size_t>(n);
+            const ImportedNode &srcNode = scene.Nodes[ni];
+            const bool hasMesh = srcNode.MeshIndex >= 0 && static_cast<size_t>(srcNode.MeshIndex) < scene.Meshes.size() &&
+                                 meshDataIndex[static_cast<size_t>(srcNode.MeshIndex)] != Canvas::InvalidIndex;
+            const bool hasLight  = srcNode.LightIndex >= 0 && static_cast<size_t>(srcNode.LightIndex) < scene.Lights.size();
+            const bool hasCamera = srcNode.CameraIndex >= 0 && static_cast<size_t>(srcNode.CameraIndex) < scene.Cameras.size();
+            if (!hasMesh && !hasLight && !hasCamera)
+                continue;
+
+            const uint32_t node = layout.SkeletonOfNode[ni] >= 0 ? SocketFor(ni) : modelNodeOf[ni];
+            const std::string nodeName = NodeName(ni);
+
+            if (hasMesh)
+            {
+                const size_t meshIndex = static_cast<size_t>(srcNode.MeshIndex);
+                const std::string name = nodeName + "_Mesh";
+                Canvas::ModelMeshDesc desc{};
+                desc.Name          = name.c_str();
+                desc.NodeIndex     = node;
+                desc.MeshDataIndex = meshDataIndex[meshIndex];
+
+                std::vector<uint32_t> jointIndices;
+                const ImportedSkin &skin = scene.Meshes[meshIndex].Skin;
+                if (skinNode[meshIndex] == n)
+                {
+                    jointIndices.reserve(skin.BoneNodeIndices.size());
+                    for (int32_t bone : skin.BoneNodeIndices)
+                        jointIndices.push_back(layout.JointOfNode[static_cast<size_t>(bone)]);
+                    desc.SkeletonIndex = skeletonIndex[static_cast<size_t>(layout.SkeletonOfNode[static_cast<size_t>(skin.BoneNodeIndices.front())])];
+                    desc.BoneCount     = static_cast<uint32_t>(jointIndices.size());
+                    desc.pJointIndices = jointIndices.data();
+                    desc.pInvBindPoses = skin.InvBindPoses.data();
+                }
+                Gem::ThrowGemError(pBuilder->AddMesh(&desc, nullptr));
+            }
+
+            if (hasLight)
+            {
+                const ImportedLight &srcLight = scene.Lights[static_cast<size_t>(srcNode.LightIndex)];
+                const std::string name = srcLight.Name.empty()
+                    ? ("ImportedLight_" + std::to_string(srcNode.LightIndex))
+                    : srcLight.Name;
+                Canvas::ModelLightDesc desc{};
+                desc.Name                        = name.c_str();
+                desc.NodeIndex                   = node;
+                desc.Type                        = srcLight.Type;
+                desc.Params.Color                = srcLight.Color;
+                desc.Params.Intensity            = srcLight.Intensity;
+                desc.Params.Range                = srcLight.Range;
+                desc.Params.AttenuationConstant  = srcLight.AttenuationConst;
+                desc.Params.AttenuationLinear    = srcLight.AttenuationLinear;
+                desc.Params.AttenuationQuadratic = srcLight.AttenuationQuad;
+                if (srcLight.Type == Canvas::LightType::Spot)
+                {
+                    desc.Params.SpotInnerAngle = srcLight.SpotInnerAngle;
+                    desc.Params.SpotOuterAngle = srcLight.SpotOuterAngle;
+                }
+                Gem::ThrowGemError(pBuilder->AddLight(&desc, nullptr));
+            }
+
+            if (hasCamera)
+            {
+                const ImportedCamera &srcCamera = scene.Cameras[static_cast<size_t>(srcNode.CameraIndex)];
+                const std::string name = srcCamera.Name.empty()
+                    ? ("ImportedCamera_" + std::to_string(srcNode.CameraIndex))
+                    : srcCamera.Name;
+                Canvas::ModelCameraDesc desc{};
+                desc.Name               = name.c_str();
+                desc.NodeIndex          = node;
+                desc.Params.NearClip    = srcCamera.NearClip;
+                desc.Params.FarClip     = srcCamera.FarClip;
+                desc.Params.FovAngle    = srcCamera.FovAngle;
+                desc.Params.AspectRatio = srcCamera.AspectRatio;
+                Gem::ThrowGemError(pBuilder->AddCamera(&desc, &cameraOfNode[ni]));
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Active camera designation
+        // -----------------------------------------------------------------
+        if (scene.ActiveCameraNodeIndex >= 0 &&
+            static_cast<size_t>(scene.ActiveCameraNodeIndex) < nodeCount &&
+            cameraOfNode[static_cast<size_t>(scene.ActiveCameraNodeIndex)] != Canvas::InvalidIndex)
+        {
+            Gem::ThrowGemError(pBuilder->SetActiveCamera(cameraOfNode[static_cast<size_t>(scene.ActiveCameraNodeIndex)]));
+        }
+        else
+        {
+            // Fall back: use the first node that carries a camera
+            for (size_t ni = 0; ni < nodeCount; ++ni)
+            {
+                if (cameraOfNode[ni] != Canvas::InvalidIndex)
+                {
+                    Gem::ThrowGemError(pBuilder->SetActiveCamera(cameraOfNode[ni]));
+                    Canvas::LogWarn(pLogger, "BuildModel: no explicit active camera; using first camera node");
+                    break;
                 }
             }
         }
 
-        // Bind light
-        if (srcNode.LightIndex >= 0 && static_cast<size_t>(srcNode.LightIndex) < lightsByIndex.size())
+        // -----------------------------------------------------------------
+        // Animation clips.  An imported node's transform track animates its joint when the node
+        // is a joint, and its model node otherwise.  Descriptors live in local vectors that cover
+        // the AddAnimationClip call.
+        // -----------------------------------------------------------------
+        for (const ImportedAnimationClip& srcClip : scene.AnimationClips)
         {
-            Canvas::XLight *pLight = lightsByIndex[static_cast<size_t>(srcNode.LightIndex)].Get();
-            if (pLight)
-                pNode->BindElement(pLight);
-        }
+            std::vector<std::vector<Canvas::AnimationKeyframe>> keyframeArrays;
+            std::vector<Canvas::AnimationTrackDesc>             trackDescs;
+            keyframeArrays.reserve(srcClip.Tracks.size());
+            trackDescs.reserve(srcClip.Tracks.size());
 
-        // Bind camera
-        if (srcNode.CameraIndex >= 0 && static_cast<size_t>(srcNode.CameraIndex) < camerasByIndex.size())
-        {
-            Canvas::XCamera *pCamera = camerasByIndex[static_cast<size_t>(srcNode.CameraIndex)].Get();
-            if (pCamera)
-                pNode->BindElement(pCamera);
-        }
-
-        nodes[nodeIndex].Attach(pNode.Detach());
-    }
-
-    // -----------------------------------------------------------------
-    // Wire parent-child relationships
-    // -----------------------------------------------------------------
-    for (size_t nodeIndex = 0; nodeIndex < scene.Nodes.size(); ++nodeIndex)
-    {
-        if (!nodes[nodeIndex])
-            continue;
-        const int32_t parentIndex = scene.Nodes[nodeIndex].ParentIndex;
-        if (parentIndex >= 0 && static_cast<size_t>(parentIndex) < nodes.size() && nodes[static_cast<size_t>(parentIndex)])
-            nodes[static_cast<size_t>(parentIndex)]->AddChild(nodes[nodeIndex]);
-        else
-            pModelRoot->AddChild(nodes[nodeIndex]);
-    }
-
-    // -----------------------------------------------------------------
-    // Active camera designation
-    // -----------------------------------------------------------------
-    if (scene.ActiveCameraNodeIndex >= 0 &&
-        static_cast<size_t>(scene.ActiveCameraNodeIndex) < nodes.size() &&
-        nodes[static_cast<size_t>(scene.ActiveCameraNodeIndex)])
-    {
-        pModel->SetActiveCameraNode(nodes[static_cast<size_t>(scene.ActiveCameraNodeIndex)].Get());
-    }
-    else if (!camerasByIndex.empty())
-    {
-        // Fall back: use the first node that carries a camera
-        for (size_t nodeIndex = 0; nodeIndex < scene.Nodes.size(); ++nodeIndex)
-        {
-            if (scene.Nodes[nodeIndex].CameraIndex >= 0 && nodes[nodeIndex])
+            for (const ImportedAnimationTrack& srcTrack : srcClip.Tracks)
             {
-                pModel->SetActiveCameraNode(nodes[nodeIndex].Get());
-                Canvas::LogWarn(pLogger, "BuildModel: no explicit active camera; using first camera node");
-                break;
-            }
-        }
-    }
+                if (srcTrack.NodeIndex < 0 || static_cast<size_t>(srcTrack.NodeIndex) >= nodeCount)
+                    continue;
+                const size_t ni = static_cast<size_t>(srcTrack.NodeIndex);
 
-    // Register skin bindings - now that all nodes exist, resolve bone node ptrs and
-    // register each skinned mesh's skin descriptor with the model so Instantiate()
-    // can wire up cloned bone nodes at runtime.
-    for (size_t meshIndex = 0; meshIndex < scene.Meshes.size(); ++meshIndex)
-    {
-        const ImportedMesh& srcMesh = scene.Meshes[meshIndex];
-        if (!srcMesh.Skin.HasSkin)
-            continue;
-        Canvas::XGfxMeshData* pMeshData = meshDataByIndex[meshIndex].Get();
-        if (!pMeshData)
-            continue;
+                Canvas::AnimationTrackDesc td{};
+                if (layout.SkeletonOfNode[ni] >= 0)
+                {
+                    td.TargetType    = Canvas::AnimationTargetType::Joint;
+                    td.SkeletonIndex = skeletonIndex[static_cast<size_t>(layout.SkeletonOfNode[ni])];
+                    td.TargetIndex   = layout.JointOfNode[ni];
+                }
+                else if (modelNodeOf[ni] != Canvas::InvalidIndex)
+                {
+                    td.TargetType  = Canvas::AnimationTargetType::ModelNode;
+                    td.TargetIndex = modelNodeOf[ni];
+                }
+                else
+                {
+                    continue;
+                }
 
-        // Find the node whose MeshIndex references this mesh
-        Canvas::XSceneGraphNode* pMeshNode = nullptr;
-        for (size_t ni = 0; ni < scene.Nodes.size(); ++ni)
-        {
-            if (scene.Nodes[ni].MeshIndex == static_cast<int32_t>(meshIndex) && nodes[ni])
-            {
-                pMeshNode = nodes[ni].Get();
-                break;
-            }
-        }
-        if (!pMeshNode)
-            continue;
+                keyframeArrays.emplace_back();
+                auto& kfBuf = keyframeArrays.back();
+                kfBuf.reserve(srcTrack.Keyframes.size());
+                for (const ImportedAnimationKeyframe& kf : srcTrack.Keyframes)
+                {
+                    Canvas::AnimationKeyframe akf;
+                    akf.Time        = kf.Time;
+                    akf.Translation = kf.Translation;
+                    akf.Rotation    = kf.Rotation;
+                    akf.Scale       = kf.Scale;
+                    kfBuf.push_back(akf);
+                }
 
-        // Collect bone node pointers (may be null for out-of-range indices)
-        const uint32_t boneCount = static_cast<uint32_t>(srcMesh.Skin.BoneNodeIndices.size());
-        std::vector<Canvas::XSceneGraphNode*> boneNodes;
-        boneNodes.reserve(boneCount);
-        for (int32_t bni : srcMesh.Skin.BoneNodeIndices)
-        {
-            Canvas::XSceneGraphNode* pBone = nullptr;
-            if (bni >= 0 && static_cast<size_t>(bni) < nodes.size())
-                pBone = nodes[static_cast<size_t>(bni)].Get();
-            boneNodes.push_back(pBone);
-        }
-
-        Canvas::XModel::MeshSkinDesc skinDesc{};
-        skinDesc.pMeshNode    = pMeshNode;
-        skinDesc.BoneCount    = boneCount;
-        skinDesc.ppBoneNodes  = boneNodes.data();
-        skinDesc.pInvBindPoses = srcMesh.Skin.InvBindPoses.data();
-        gr = pModel->AddMeshSkin(&skinDesc);
-        if (Gem::Failed(gr))
-            Canvas::LogWarn(pLogger, "BuildModel: failed to add skin for mesh '%s'", srcMesh.Name.c_str());
-    }
-
-    // Forward animation clips from the imported scene into the model.
-    // Build POD descriptors in local vectors (lifetime covers the AddAnimationClip call).
-    for (const ImportedAnimationClip& srcClip : scene.AnimationClips)
-    {
-        // Build the flat keyframe arrays and track descriptors.
-        std::vector<std::vector<Canvas::AnimationKeyframe>> keyframeArrays;
-        std::vector<Canvas::AnimationTrackDesc>             trackDescs;
-        keyframeArrays.reserve(srcClip.Tracks.size());
-        trackDescs.reserve(srcClip.Tracks.size());
-
-        for (const ImportedAnimationTrack& srcTrack : srcClip.Tracks)
-        {
-            if (srcTrack.NodeIndex < 0 ||
-                static_cast<size_t>(srcTrack.NodeIndex) >= scene.Nodes.size())
-                continue;
-
-            keyframeArrays.emplace_back();
-            auto& kfBuf = keyframeArrays.back();
-            kfBuf.reserve(srcTrack.Keyframes.size());
-
-            for (const ImportedAnimationKeyframe& kf : srcTrack.Keyframes)
-            {
-                Canvas::AnimationKeyframe akf;
-                akf.Time        = kf.Time;
-                akf.Translation = kf.Translation;
-                akf.Rotation    = kf.Rotation;
-                akf.Scale       = kf.Scale;
-                kfBuf.push_back(akf);
+                td.Keyframes     = kfBuf.data();
+                td.KeyframeCount = static_cast<uint32_t>(kfBuf.size());
+                trackDescs.push_back(td);
             }
 
-            Canvas::AnimationTrackDesc td{};
-            td.NodeName      = scene.Nodes[static_cast<size_t>(srcTrack.NodeIndex)].Name.c_str();
-            td.Keyframes     = kfBuf.data();
-            td.KeyframeCount = static_cast<uint32_t>(kfBuf.size());
-            trackDescs.push_back(td);
+            Canvas::AnimationClipDesc desc{};
+            desc.Name       = srcClip.Name.c_str();
+            desc.Duration   = srcClip.DurationSeconds;
+            desc.Tracks     = trackDescs.data();
+            desc.TrackCount = static_cast<uint32_t>(trackDescs.size());
+
+            gr = pBuilder->AddAnimationClip(&desc, nullptr);
+            if (Gem::Failed(gr))
+                Canvas::LogWarn(pLogger, "BuildModel: failed to add animation clip '%s'",
+                    srcClip.Name.c_str());
         }
 
-        Canvas::AnimationClipDesc desc{};
-        desc.Name       = srcClip.Name.c_str();
-        desc.Duration   = srcClip.DurationSeconds;
-        desc.Tracks     = trackDescs.data();
-        desc.TrackCount = static_cast<uint32_t>(trackDescs.size());
-
-        gr = pModel->AddAnimationClip(&desc);
-        if (Gem::Failed(gr))
-            Canvas::LogWarn(pLogger, "BuildModel: failed to add animation clip '%s'",
-                srcClip.Name.c_str());
+        Gem::ThrowGemError(pBuilder->Build(ppModel));
+    }
+    catch (const Gem::GemError &e)
+    {
+        Canvas::LogError(pLogger, "BuildModel: model '%s' failed: %s", modelName, GemResultString(e.Result()));
+        return e.Result();
     }
 
-    *ppModel = pModel.Detach();
     return Gem::Result::Success;
 }
 
 } // namespace Fbx
 } // namespace Canvas
-

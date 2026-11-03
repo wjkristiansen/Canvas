@@ -7,7 +7,7 @@ StructuredBuffer<float2> UV0       : register(t2);
 StructuredBuffer<float4> Tangents  : register(t3);  // xyz = T, w = bitangent sign
 StructuredBuffer<uint4>  BoneIndices : register(t10); // 4 bone indices per vertex
 StructuredBuffer<float4> BoneWeights : register(t11); // 4 bone weights per vertex
-StructuredBuffer<float4x4> BoneMatrices : register(t12); // palette; bone i = InvBind[i] * boneWorldMatrix[i]
+StructuredBuffer<float4x4> BoneMatrices : register(t12); // palette; bone i = InvBind[i] * jointMatrix[i] * skeletonNodeWorld
 
 // Normal transform for the row-vector linear map L: the inverse-transpose up to a positive
 // scale (rows are cofactors), which normalize() removes. The determinant's sign keeps

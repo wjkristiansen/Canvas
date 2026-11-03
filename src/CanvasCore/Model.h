@@ -1,5 +1,16 @@
 //================================================================================================
 // Model
+//
+// ModelContent  : the tables of one model template - shared GPU resources, model nodes, the
+//                 elements on them, skeletons, sockets, and animation clips.  Indices between
+//                 tables are validated when entries are added, so a model's content is always
+//                 consistent.
+//
+// CModel        : an immutable template.  Its content is fixed when XModelBuilder::Build
+//                 creates it, so any number of instances (and threads) may read it at once.
+//
+// CModelBuilder : the mutable side.  Accumulates one model's content, then moves it into a
+//                 new CModel.
 //================================================================================================
 
 #pragma once
@@ -8,37 +19,79 @@
 #include "Canvas.h"
 #include "CanvasElement.h"
 #include "Animation.h"
+#include "Skeleton.h"
 
 namespace Canvas
 {
+
+//------------------------------------------------------------------------------------------------
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure padded due to alignment specifier
+struct ModelNodeData
+{
+    std::string         Name;
+    uint32_t            ParentIndex = InvalidIndex;   // less than the node's own index
+    Transform           LocalTransform;
+};
+
+struct ModelSocketData
+{
+    uint32_t            NodeIndex     = InvalidIndex;
+    uint32_t            SkeletonIndex = InvalidIndex;
+    uint32_t            JointIndex    = InvalidIndex;
+    Transform           LocalTransform;
+};
+#pragma warning(pop)
+
+struct ModelMeshData
+{
+    std::string                         Name;
+    uint32_t                            NodeIndex     = InvalidIndex;
+    uint32_t                            MeshDataIndex = InvalidIndex;
+    uint32_t                            SkeletonIndex = InvalidIndex;
+    std::vector<uint32_t>               JointIndices;
+    std::vector<Math::FloatMatrix4x4>   InvBindPoses;
+};
+
+struct ModelCameraData
+{
+    std::string         Name;
+    uint32_t            NodeIndex = InvalidIndex;
+    CameraParams        Params;
+};
+
+struct ModelLightData
+{
+    std::string         Name;
+    uint32_t            NodeIndex = InvalidIndex;
+    LightType           Type      = LightType::Point;
+    LightParams         Params;
+};
+
+struct ModelContent
+{
+    std::vector<Gem::TGemPtr<XGfxMeshData>> MeshData;
+    std::vector<Gem::TGemPtr<XGfxMaterial>> Materials;
+    std::vector<Gem::TGemPtr<XGfxSurface>>  Textures;
+
+    std::vector<ModelNodeData>          Nodes;          // parents first
+    std::vector<ModelMeshData>          Meshes;
+    std::vector<ModelCameraData>        Cameras;
+    std::vector<ModelLightData>         Lights;
+    std::vector<ModelSkeletonData>      Skeletons;
+    std::vector<ModelSocketData>        Sockets;
+    std::vector<CAnimationClip>         AnimClips;
+
+    uint32_t                            ActiveCameraIndex = InvalidIndex;
+    Math::AABB                          Bounds;     // meshes at rest, relative to the instance root
+};
 
 //------------------------------------------------------------------------------------------------
 class CModel :
     public TCanvasElement<XModel>
 {
     Gem::TGemPtr<XGfxDevice> m_pDevice;
-    Gem::TGemPtr<XSceneGraphNode> m_pRoot;
-
-    // Shared GPU resource libraries - kept alive by the model,
-    // shared across all instantiated copies.
-    std::vector<Gem::TGemPtr<XGfxMeshData>> m_MeshData;
-    std::vector<Gem::TGemPtr<XGfxMaterial>> m_Materials;
-    std::vector<Gem::TGemPtr<XGfxSurface>> m_Textures;
-
-    // The node in the model's hierarchy that carries the "default" camera.
-    XSceneGraphNode *m_pActiveCameraNode = nullptr; // Weak pointer
-
-    std::vector<CAnimationClip> m_AnimClips;    // shared, immutable after build
-
-    struct MeshSkinEntry
-    {
-        XSceneGraphNode*                    pMeshNode;   // weak, model owns the node
-        std::vector<XSceneGraphNode*>       BoneNodes;   // weak, model owns the nodes
-        std::vector<Math::FloatMatrix4x4>   InvBindPoses;
-    };
-    std::vector<MeshSkinEntry> m_MeshSkins;
-
-    Math::AABB m_Bounds;
+    ModelContent m_Content;     // immutable after construction
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -47,10 +100,18 @@ public:
         GEM_INTERFACE_ENTRY(XModel)
     END_GEM_INTERFACE_MAP()
 
-    CModel(XCanvas *pCanvas, XGfxDevice *pDevice);
+    // Moves content into the model.
+    CModel(XCanvas *pCanvas, XGfxDevice *pDevice, ModelContent &content) :
+        TCanvasElement(pCanvas),
+        m_pDevice(pDevice),
+        m_Content(std::move(content))
+    {}
 
-    Gem::Result Initialize();
+    Gem::Result Initialize() { return Gem::Result::Success; }
     void Uninitialize() {}
+
+    // Gives the content back to a builder whose Build could not complete.
+    ModelContent TakeContent() { return std::move(m_Content); }
 
 public: // XModel methods
     GEMMETHOD_(XGfxDevice *, GetDevice)() final
@@ -58,112 +119,141 @@ public: // XModel methods
         return m_pDevice.Get();
     }
 
-    GEMMETHOD_(XSceneGraphNode *, GetRootNode)() final
-    {
-        return m_pRoot.Get();
-    }
-
-    // Mesh data library
     GEMMETHOD_(uint32_t, GetMeshDataCount)() final
     {
-        return static_cast<uint32_t>(m_MeshData.size());
+        return static_cast<uint32_t>(m_Content.MeshData.size());
     }
 
     GEMMETHOD_(XGfxMeshData *, GetMeshData)(uint32_t index) final
     {
-        return (index < m_MeshData.size()) ? m_MeshData[index].Get() : nullptr;
+        return (index < m_Content.MeshData.size()) ? m_Content.MeshData[index].Get() : nullptr;
     }
 
-    GEMMETHOD(AddMeshData)(XGfxMeshData *pMeshData) final;
-
-    // Material library
     GEMMETHOD_(uint32_t, GetMaterialCount)() final
     {
-        return static_cast<uint32_t>(m_Materials.size());
+        return static_cast<uint32_t>(m_Content.Materials.size());
     }
 
     GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t index) final
     {
-        return (index < m_Materials.size()) ? m_Materials[index].Get() : nullptr;
+        return (index < m_Content.Materials.size()) ? m_Content.Materials[index].Get() : nullptr;
     }
 
-    GEMMETHOD(AddMaterial)(XGfxMaterial *pMaterial) final;
-
-    // Texture library
     GEMMETHOD_(uint32_t, GetTextureCount)() final
     {
-        return static_cast<uint32_t>(m_Textures.size());
+        return static_cast<uint32_t>(m_Content.Textures.size());
     }
 
     GEMMETHOD_(XGfxSurface *, GetTexture)(uint32_t index) final
     {
-        return (index < m_Textures.size()) ? m_Textures[index].Get() : nullptr;
+        return (index < m_Content.Textures.size()) ? m_Content.Textures[index].Get() : nullptr;
     }
 
-    GEMMETHOD(AddTexture)(XGfxSurface *pTexture) final;
-
-    // Active camera node - must be a node within this model's hierarchy.
-    // Passing a node that is not a descendant of GetRootNode() is
-    // undefined; a debug assertion guards against this.
-    GEMMETHOD_(void, SetActiveCameraNode)(XSceneGraphNode *pNode) final
+    GEMMETHOD_(uint32_t, GetNodeCount)() final
     {
-        if (pNode)
-        {
-            // Walk up to verify the node belongs to this model's hierarchy
-            bool found = false;
-            for (XSceneGraphNode *pCur = pNode; pCur; pCur = pCur->GetParent())
-            {
-                if (pCur == m_pRoot.Get())
-                {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found)
-            {
-                Canvas::LogWarn(m_pCanvas->GetLogger(),
-                    "XModel::SetActiveCameraNode: node '%s' is not in this model's hierarchy; ignoring",
-                    pNode->GetName() ? pNode->GetName() : "<unnamed>");
-                return;
-            }
-        }
-        m_pActiveCameraNode = pNode;
+        return static_cast<uint32_t>(m_Content.Nodes.size());
     }
 
-    GEMMETHOD_(XSceneGraphNode *, GetActiveCameraNode)() final
+    GEMMETHOD_(const char *, GetNodeName)(uint32_t index) final
     {
-        return m_pActiveCameraNode;
+        return (index < m_Content.Nodes.size()) ? m_Content.Nodes[index].Name.c_str() : nullptr;
     }
 
-    // Animation clip library
-    GEMMETHOD(AddAnimationClip)(const AnimationClipDesc* pDesc) final;
+    GEMMETHOD_(uint32_t, GetNodeParent)(uint32_t index) final
+    {
+        return (index < m_Content.Nodes.size()) ? m_Content.Nodes[index].ParentIndex : InvalidIndex;
+    }
 
-    GEMMETHOD(AddMeshSkin)(const MeshSkinDesc *pDesc) final;
+    GEMMETHOD(GetNodeTransform)(uint32_t index, Transform *pTransform) final
+    {
+        if (!pTransform)
+            return Gem::Result::BadPointer;
+        if (index >= m_Content.Nodes.size())
+            return Gem::Result::InvalidArg;
+        *pTransform = m_Content.Nodes[index].LocalTransform;
+        return Gem::Result::Success;
+    }
+
+    GEMMETHOD_(uint32_t, GetSkeletonCount)() final
+    {
+        return static_cast<uint32_t>(m_Content.Skeletons.size());
+    }
+
+    GEMMETHOD_(uint32_t, GetCameraCount)() final
+    {
+        return static_cast<uint32_t>(m_Content.Cameras.size());
+    }
+
+    GEMMETHOD_(uint32_t, GetActiveCameraIndex)() final
+    {
+        return m_Content.ActiveCameraIndex;
+    }
 
     GEMMETHOD_(uint32_t, GetAnimationClipCount)() final
     {
-        return static_cast<uint32_t>(m_AnimClips.size());
+        return static_cast<uint32_t>(m_Content.AnimClips.size());
     }
 
     GEMMETHOD_(const char *, GetAnimationClipName)(uint32_t index) final
     {
-        return (index < m_AnimClips.size()) ? m_AnimClips[index].Name.c_str() : nullptr;
+        return (index < m_Content.AnimClips.size()) ? m_Content.AnimClips[index].Name.c_str() : nullptr;
     }
 
-    // Instantiation
     GEMMETHOD(Instantiate)(XSceneGraphNode *pTargetParent, ModelInstantiateResult *pResult = nullptr) final;
 
-    // Bounds
     GEMMETHOD_(Math::AABB, GetBounds)() final
     {
-        return m_Bounds;
-    }
-
-    void SetBounds(const Math::AABB &bounds)
-    {
-        m_Bounds = bounds;
+        return m_Content.Bounds;
     }
 };
 
-}
+//------------------------------------------------------------------------------------------------
+class CModelBuilder :
+    public TCanvasElement<XModelBuilder>
+{
+    Gem::TGemPtr<XGfxDevice> m_pDevice;
+    bool m_Building = false;
+    std::string m_ModelName;
+    ModelContent m_Content;
 
+    // Rest pose of each skeleton, for placing sockets; parallel to m_Content.Skeletons.
+    std::vector<SkeletonPose> m_RestPoses;
+
+    Gem::Result ValidateClipTargets() const;
+
+public:
+    BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XNamedElement)
+        GEM_INTERFACE_ENTRY(XCanvasElement)
+        GEM_INTERFACE_ENTRY(XModelBuilder)
+    END_GEM_INTERFACE_MAP()
+
+    CModelBuilder(XCanvas *pCanvas, XGfxDevice *pDevice) :
+        TCanvasElement(pCanvas),
+        m_pDevice(pDevice)
+    {}
+
+    Gem::Result Initialize() { return Gem::Result::Success; }
+    void Uninitialize() {}
+
+public: // XModelBuilder methods
+    GEMMETHOD_(XGfxDevice *, GetDevice)() final { return m_pDevice.Get(); }
+    GEMMETHOD(Begin)(const char *name) final;
+    GEMMETHOD_(void, Reset)() final;
+    GEMMETHOD_(bool, IsBuilding)() const final { return m_Building; }
+
+    GEMMETHOD(AddMeshData)(_In_ XGfxMeshData *pMeshData, _Out_opt_ uint32_t *pIndex) final;
+    GEMMETHOD(AddMaterial)(_In_ XGfxMaterial *pMaterial, _Out_opt_ uint32_t *pIndex) final;
+    GEMMETHOD(AddTexture)(_In_ XGfxSurface *pTexture, _Out_opt_ uint32_t *pIndex) final;
+    GEMMETHOD(AddNode)(_In_ const ModelNodeDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
+    GEMMETHOD(AddMesh)(_In_ const ModelMeshDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
+    GEMMETHOD(AddCamera)(_In_ const ModelCameraDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
+    GEMMETHOD(AddLight)(_In_ const ModelLightDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
+    GEMMETHOD(AddSkeleton)(_In_ const ModelSkeletonDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
+    GEMMETHOD(AddSocket)(_In_ const ModelSocketDesc *pDesc, _Out_opt_ uint32_t *pNodeIndex) final;
+    GEMMETHOD(AddAnimationClip)(_In_ const AnimationClipDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
+    GEMMETHOD(SetActiveCamera)(uint32_t cameraIndex) final;
+    GEMMETHOD(Build)(_Out_ XModel **ppModel) final;
+};
+
+}
