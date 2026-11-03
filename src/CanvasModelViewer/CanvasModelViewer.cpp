@@ -522,10 +522,6 @@ class CApp
         Gem::TGemPtr<Canvas::XModel> pModel;
         Gem::ThrowGemError(Canvas::Fbx::BuildModel(pCanvas, pDevice, imported, buildOpts, &pModel));
 
-        // Store model bounds
-        // (SetBounds is on CModel, not the interface - we set it here since
-        // the model doesn't compute bounds automatically yet)
-
         // -----------------------------------------------------------------
         // Instantiate model into the scene
         // -----------------------------------------------------------------

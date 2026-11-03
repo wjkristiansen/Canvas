@@ -920,31 +920,139 @@ TEST(CanvasInterfacesTest, LightProperties)
 // ============================================================
 // XModel Tests
 // ============================================================
-TEST(CanvasInterfacesTest, ModelCreation)
+namespace {
+
+using Canvas::InvalidIndex;
+
+Canvas::Transform Translation(float x, float y, float z)
+{
+    Canvas::Transform t;
+    t.Translation = Canvas::Math::FloatVector4(x, y, z, 0.0f);
+    return t;
+}
+
+// Builds an AnimationKeyframe with an identity rotation and unit scale, varying only
+// the translation - enough to exercise the controller's TRS evaluation.
+Canvas::AnimationKeyframe TranslateKey(float time, const Canvas::Math::FloatVector4& t)
+{
+    Canvas::AnimationKeyframe k{};
+    k.Time        = time;
+    k.Translation = t;
+    k.Rotation    = Canvas::Math::FloatQuaternion();                       // identity (0,0,0,1)
+    k.Scale       = Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 0.0f);
+    return k;
+}
+
+// A new builder, already Building a model with the given name.
+Gem::TGemPtr<Canvas::XModelBuilder> BeginModel(XCanvas *pCanvas, Canvas::XGfxDevice *pDevice, const char *name)
+{
+    Gem::TGemPtr<Canvas::XModelBuilder> pBuilder;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateModelBuilder(pDevice, &pBuilder, "TestBuilder")));
+    if (pBuilder)
+        EXPECT_TRUE(Succeeded(pBuilder->Begin(name)));
+    return pBuilder;
+}
+
+uint32_t AddNode(Canvas::XModelBuilder *pBuilder, const char *name, uint32_t parent,
+                 const Canvas::Transform &transform = {})
+{
+    Canvas::ModelNodeDesc desc{};
+    desc.Name        = name;
+    desc.ParentIndex = parent;
+    desc.LocalTransform   = transform;
+    uint32_t index = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddNode(&desc, &index)));
+    return index;
+}
+
+Gem::TGemPtr<Canvas::XGfxMeshData> CreateTriangle(Canvas::XGfxDevice *pDevice, const char *name)
+{
+    using namespace Canvas::Math;
+    FloatVector4 positions[] = { {0, 0, 0, 1}, {1, 0, 0, 1}, {0, 1, 0, 1} };
+    FloatVector4 normals[]   = { {0, 0, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 0} };
+    Gem::TGemPtr<Canvas::XGfxMeshData> pMesh;
+    EXPECT_TRUE(Succeeded(pDevice->CreateDebugMeshData(3, positions, normals, &pMesh, name)));
+    return pMesh;
+}
+
+Gem::TGemPtr<Canvas::XModel> BuildModel(Canvas::XModelBuilder *pBuilder)
+{
+    Gem::TGemPtr<Canvas::XModel> pModel;
+    EXPECT_TRUE(Succeeded(pBuilder->Build(&pModel)));
+    return pModel;
+}
+
+// The first element of type T bound to pNode, or null.  The node keeps it alive.
+template<class T>
+T *FindElement(Canvas::XSceneGraphNode *pNode)
+{
+    for (uint32_t i = 0; i < pNode->GetBoundElementCount(); ++i)
+    {
+        Gem::TGemPtr<T> p;
+        if (Succeeded(pNode->GetBoundElement(i)->QueryInterface(&p)))
+            return p.Get();
+    }
+    return nullptr;
+}
+
+} // anonymous namespace
+
+TEST(CanvasInterfacesTest, ModelBuilderLifecycle)
 {
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    // Create a model
+    Gem::TGemPtr<Canvas::XModelBuilder> pBuilder;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateModelBuilder(pDevice, &pBuilder, "Builder")));
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    EXPECT_TRUE(pBuilder->GetDevice() == pDevice.Get());
+    EXPECT_FALSE(pBuilder->IsBuilding());
+
+    // Uninitialized: content and Build are refused.
+    Canvas::ModelNodeDesc node{};
+    node.Name = "Root";
+    EXPECT_EQ(Gem::Result::Uninitialized, pBuilder->AddNode(&node, nullptr));
     Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
-    EXPECT_NE(pModel.Get(), nullptr);
+    EXPECT_EQ(Gem::Result::Uninitialized, pBuilder->Build(&pModel));
+    EXPECT_EQ(pModel.Get(), nullptr);
 
-    // Model should have a root node
-    Canvas::XSceneGraphNode *pRoot = pModel->GetRootNode();
-    EXPECT_NE(pRoot, nullptr);
+    EXPECT_TRUE(Succeeded(pBuilder->Begin("First")));
+    EXPECT_TRUE(pBuilder->IsBuilding());
+    EXPECT_EQ(Gem::Result::AlreadyExists, pBuilder->Begin("Again"));
 
-    // Device should be accessible
+    // A model has at least one model node; a failed Build keeps building.
+    EXPECT_TRUE(Gem::Failed(pBuilder->Build(&pModel)));
+    EXPECT_EQ(pModel.Get(), nullptr);
+    EXPECT_TRUE(pBuilder->IsBuilding());
+
+    uint32_t index = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddNode(&node, &index)));
+    EXPECT_EQ(0u, index);
+    EXPECT_TRUE(Succeeded(pBuilder->Build(&pModel)));
+    ASSERT_NE(pModel.Get(), nullptr);
+    EXPECT_STREQ("First", pModel->GetName());
     EXPECT_TRUE(pModel->GetDevice() == pDevice.Get());
+    EXPECT_EQ(1u, pModel->GetNodeCount());
 
-    // Empty model should have no resources
-    EXPECT_EQ(0u, pModel->GetMeshDataCount());
-    EXPECT_EQ(0u, pModel->GetMaterialCount());
-    EXPECT_EQ(0u, pModel->GetTextureCount());
+    // A successful Build returns the builder to Uninitialized, so a second Build fails
+    // rather than producing another model.
+    EXPECT_FALSE(pBuilder->IsBuilding());
+    Gem::TGemPtr<Canvas::XModel> pSecond;
+    EXPECT_EQ(Gem::Result::Uninitialized, pBuilder->Build(&pSecond));
+    EXPECT_EQ(pSecond.Get(), nullptr);
 
-    // Active camera node should be null initially
-    EXPECT_EQ(pModel->GetActiveCameraNode(), nullptr);
+    // The next model starts empty, and Reset discards an unfinished one.
+    EXPECT_TRUE(Succeeded(pBuilder->Begin("Second")));
+    EXPECT_TRUE(Succeeded(pBuilder->AddNode(&node, &index)));
+    EXPECT_EQ(0u, index);
+    pBuilder->Reset();
+    EXPECT_FALSE(pBuilder->IsBuilding());
+    EXPECT_EQ(Gem::Result::Uninitialized, pBuilder->Build(&pSecond));
+
+    // Later use of the builder leaves the first model unchanged.
+    EXPECT_EQ(1u, pModel->GetNodeCount());
+    EXPECT_STREQ("Root", pModel->GetNodeName(0));
 }
 
 TEST(CanvasInterfacesTest, ModelResourceLibrary)
@@ -955,35 +1063,132 @@ TEST(CanvasInterfacesTest, ModelResourceLibrary)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "ResourceModel")));
+    auto pBuilder = BeginModel(pCanvas, pDevice, "ResourceModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
 
-    // Create a debug mesh and add it to the model
-    FloatVector4 positions[] = {
-        {0, 0, 0, 1}, {1, 0, 0, 1}, {0, 1, 0, 1}
-    };
-    FloatVector4 normals[] = {
-        {0, 0, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 0}
-    };
-    Gem::TGemPtr<Canvas::XGfxMeshData> pMesh;
-    EXPECT_TRUE(Succeeded(pDevice->CreateDebugMeshData(3, positions, normals, &pMesh, "TriMesh")));
+    auto pMesh = CreateTriangle(pDevice, "TriMesh");
+    uint32_t meshIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddMeshData(pMesh, &meshIndex)));
+    EXPECT_EQ(0u, meshIndex);
 
-    EXPECT_TRUE(Succeeded(pModel->AddMeshData(pMesh)));
+    Gem::TGemPtr<Canvas::XGfxMaterial> pMaterial;
+    EXPECT_TRUE(Succeeded(pDevice->CreateMaterial(&pMaterial)));
+    EXPECT_TRUE(Succeeded(pBuilder->AddMaterial(pMaterial, nullptr)));
+
+    // Null resources are rejected.
+    EXPECT_TRUE(Gem::Failed(pBuilder->AddMeshData(nullptr, nullptr)));
+    EXPECT_TRUE(Gem::Failed(pBuilder->AddMaterial(nullptr, nullptr)));
+    EXPECT_TRUE(Gem::Failed(pBuilder->AddTexture(nullptr, nullptr)));
+
+    // A mesh names mesh data that the model holds.
+    const uint32_t node = AddNode(pBuilder, "Node", InvalidIndex, Translation(5.0f, 0.0f, 0.0f));
+    Canvas::ModelMeshDesc mesh{};
+    mesh.NodeIndex     = node;
+    mesh.MeshDataIndex = 1;
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddMesh(&mesh, nullptr));
+    mesh.MeshDataIndex = meshIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddMesh(&mesh, nullptr)));
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
     EXPECT_EQ(1u, pModel->GetMeshDataCount());
     EXPECT_TRUE(pModel->GetMeshData(0) == pMesh.Get());
     EXPECT_EQ(pModel->GetMeshData(1), nullptr); // out of range
-
-    // Create and add a material
-    Gem::TGemPtr<Canvas::XGfxMaterial> pMaterial;
-    EXPECT_TRUE(Succeeded(pDevice->CreateMaterial(&pMaterial)));
-    EXPECT_TRUE(Succeeded(pModel->AddMaterial(pMaterial)));
     EXPECT_EQ(1u, pModel->GetMaterialCount());
     EXPECT_TRUE(pModel->GetMaterial(0) == pMaterial.Get());
+    EXPECT_EQ(0u, pModel->GetTextureCount());
+    EXPECT_EQ(0u, pModel->GetCameraCount());
+    EXPECT_EQ(InvalidIndex, pModel->GetActiveCameraIndex());
+    EXPECT_EQ(0u, pModel->GetSkeletonCount());
+    EXPECT_EQ(0u, pModel->GetAnimationClipCount());
 
-    // Null arguments should fail
-    EXPECT_TRUE(Gem::Failed(pModel->AddMeshData(nullptr)));
-    EXPECT_TRUE(Gem::Failed(pModel->AddMaterial(nullptr)));
-    EXPECT_TRUE(Gem::Failed(pModel->AddTexture(nullptr)));
+    // Bounds enclose the triangle where its node places it.
+    const AABB bounds = pModel->GetBounds();
+    EXPECT_FALSE(bounds.IsEmpty());
+    EXPECT_NEAR(5.0f, bounds.Min.X, 1e-5f);
+    EXPECT_NEAR(6.0f, bounds.Max.X, 1e-5f);
+    EXPECT_NEAR(1.0f, bounds.Max.Y, 1e-5f);
+}
+
+TEST(CanvasInterfacesTest, ModelBuilderValidatesIndices)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "Indices");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+
+    // Model nodes are listed parents first.
+    Canvas::ModelNodeDesc orphan{};
+    orphan.ParentIndex = 0;
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddNode(&orphan, nullptr));
+    const uint32_t root = AddNode(pBuilder, "Root", InvalidIndex);
+
+    Canvas::ModelCameraDesc camera{};
+    camera.NodeIndex = 5;
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddCamera(&camera, nullptr));
+    Canvas::ModelLightDesc light{};
+    light.NodeIndex = 5;
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddLight(&light, nullptr));
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->SetActiveCamera(0));
+
+    // Joints are listed parents first.
+    Canvas::ModelJointDesc joints[2] = {};
+    joints[0].ParentIndex = 1;
+    Canvas::ModelSkeletonDesc skeleton{};
+    skeleton.NodeIndex  = root;
+    skeleton.JointCount = 2;
+    skeleton.pJoints    = joints;
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddSkeleton(&skeleton, nullptr));
+    joints[0].ParentIndex = InvalidIndex;
+    joints[1].ParentIndex = 0;
+    uint32_t skeletonIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddSkeleton(&skeleton, &skeletonIndex)));
+
+    Canvas::ModelSocketDesc socket{};
+    socket.SkeletonIndex = skeletonIndex;
+    socket.JointIndex    = 2;
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddSocket(&socket, nullptr));
+
+    // A skinned mesh binds joints of its skeleton.
+    uint32_t meshIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddMeshData(CreateTriangle(pDevice, "Tri"), &meshIndex)));
+    const uint32_t badJoint = 2;
+    const FloatMatrix4x4 invBind = FloatMatrix4x4::Identity();
+    Canvas::ModelMeshDesc mesh{};
+    mesh.NodeIndex     = root;
+    mesh.MeshDataIndex = meshIndex;
+    mesh.SkeletonIndex = skeletonIndex;
+    mesh.BoneCount     = 1;
+    mesh.pJointIndices = &badJoint;
+    mesh.pInvBindPoses = &invBind;
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddMesh(&mesh, nullptr));
+
+    // Skin data names a skeleton.
+    mesh.SkeletonIndex = InvalidIndex;
+    EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddMesh(&mesh, nullptr));
+
+    // Build checks clip targets, and a failed Build keeps the model's content.
+    Canvas::AnimationKeyframe key = TranslateKey(0.0f, FloatVector4(0.0f, 0.0f, 0.0f, 0.0f));
+    Canvas::AnimationTrackDesc track{};
+    track.TargetType    = Canvas::AnimationTargetType::ModelNode;
+    track.TargetIndex   = 7;
+    track.Keyframes     = &key;
+    track.KeyframeCount = 1;
+    Canvas::AnimationClipDesc clip{};
+    clip.Name = "Bad"; clip.Duration = 1.0f; clip.Tracks = &track; clip.TrackCount = 1;
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
+
+    Gem::TGemPtr<Canvas::XModel> pModel;
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->Build(&pModel));
+    EXPECT_EQ(pModel.Get(), nullptr);
+    EXPECT_TRUE(pBuilder->IsBuilding());
+    uint32_t next = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddNode(&orphan, &next)));    // parent 0 now exists
+    EXPECT_EQ(1u, next);
 }
 
 TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
@@ -995,50 +1200,39 @@ TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
     // Build a model with a simple hierarchy:
-    // ModelRoot
     //   - NodeA (mesh)
     //   - NodeB
     //       - NodeC (mesh)
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
+    auto pBuilder = BeginModel(pCanvas, pDevice, "TestModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
 
-    FloatVector4 positions[] = {
-        {0, 0, 0, 1}, {1, 0, 0, 1}, {0, 1, 0, 1}
-    };
-    FloatVector4 normals[] = {
-        {0, 0, 1, 0}, {0, 0, 1, 0}, {0, 0, 1, 0}
-    };
-    Gem::TGemPtr<Canvas::XGfxMeshData> pMesh;
-    EXPECT_TRUE(Succeeded(pDevice->CreateDebugMeshData(3, positions, normals, &pMesh, "SharedMesh")));
-    pModel->AddMeshData(pMesh);
+    auto pMesh = CreateTriangle(pDevice, "SharedMesh");
+    uint32_t meshIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddMeshData(pMesh, &meshIndex)));
 
-    Canvas::XSceneGraphNode *pModelRoot = pModel->GetRootNode();
+    const uint32_t nodeA = AddNode(pBuilder, "NodeA", InvalidIndex, Translation(1.0f, 0.0f, 0.0f));
+    const uint32_t nodeB = AddNode(pBuilder, "NodeB", InvalidIndex, Translation(0.0f, 2.0f, 0.0f));
+    const uint32_t nodeC = AddNode(pBuilder, "NodeC", nodeB, Translation(0.0f, 0.0f, 3.0f));
 
-    // NodeA with mesh
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pNodeA;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodeA, "NodeA")));
-    pNodeA->SetLocalTranslation(FloatVector4(1.0f, 0.0f, 0.0f, 1.0f));
-    Gem::TGemPtr<Canvas::XMeshInstance> pMeshA;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateMeshInstance(&pMeshA, "MeshA")));
-    pMeshA->SetMeshData(pMesh);
-    EXPECT_TRUE(Succeeded(pNodeA->BindElement(pMeshA)));
-    EXPECT_TRUE(Succeeded(pModelRoot->AddChild(pNodeA)));
+    Canvas::ModelMeshDesc mesh{};
+    mesh.MeshDataIndex = meshIndex;
+    mesh.Name = "MeshA"; mesh.NodeIndex = nodeA;
+    EXPECT_TRUE(Succeeded(pBuilder->AddMesh(&mesh, nullptr)));
+    mesh.Name = "MeshC"; mesh.NodeIndex = nodeC;
+    EXPECT_TRUE(Succeeded(pBuilder->AddMesh(&mesh, nullptr)));
 
-    // NodeB
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pNodeB;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodeB, "NodeB")));
-    pNodeB->SetLocalTranslation(FloatVector4(0.0f, 2.0f, 0.0f, 1.0f));
-    EXPECT_TRUE(Succeeded(pModelRoot->AddChild(pNodeB)));
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
 
-    // NodeC under NodeB with mesh
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pNodeC;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodeC, "NodeC")));
-    pNodeC->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 3.0f, 1.0f));
-    Gem::TGemPtr<Canvas::XMeshInstance> pMeshC;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateMeshInstance(&pMeshC, "MeshC")));
-    pMeshC->SetMeshData(pMesh);
-    EXPECT_TRUE(Succeeded(pNodeC->BindElement(pMeshC)));
-    EXPECT_TRUE(Succeeded(pNodeB->AddChild(pNodeC)));
+    // The model's node table, parents first
+    EXPECT_EQ(3u, pModel->GetNodeCount());
+    EXPECT_STREQ("NodeC", pModel->GetNodeName(nodeC));
+    EXPECT_EQ(nodeB, pModel->GetNodeParent(nodeC));
+    EXPECT_EQ(InvalidIndex, pModel->GetNodeParent(nodeA));
+    Canvas::Transform transform;
+    EXPECT_TRUE(Succeeded(pModel->GetNodeTransform(nodeC, &transform)));
+    EXPECT_TRUE(AlmostEqual(transform.Translation, FloatVector4(0.0f, 0.0f, 3.0f, 0.0f)));
+    EXPECT_EQ(Gem::Result::InvalidArg, pModel->GetNodeTransform(3, &transform));
 
     // Instantiate into a scene
     Gem::TGemPtr<Canvas::XScene> pScene;
@@ -1050,39 +1244,42 @@ TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
     // Verify instance root was created
     EXPECT_NE(result.pInstanceRoot, nullptr);
     EXPECT_EQ(result.pActiveCamera, nullptr); // no camera in model
+    EXPECT_EQ(result.pAnimationController, nullptr); // no clips in model
 
     // Instance root should be a child of scene root
     Canvas::XSceneGraphNode *pSceneRoot = pScene->GetRootNode();
     EXPECT_TRUE(pSceneRoot->GetFirstChild() == result.pInstanceRoot);
 
-    // Instance root should have 2 children (cloned NodeA and NodeB)
-    Canvas::XSceneGraphNode *pClonedA = result.pInstanceRoot->GetFirstChild();
-    EXPECT_NE(pClonedA, nullptr);
-    Canvas::XSceneGraphNode *pClonedB = result.pInstanceRoot->GetNextChild(pClonedA);
-    EXPECT_NE(pClonedB, nullptr);
-    EXPECT_EQ(result.pInstanceRoot->GetNextChild(pClonedB), nullptr); // no more children
+    // Instance root should have 2 children (NodeA and NodeB)
+    Canvas::XSceneGraphNode *pNodeA = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pNodeA, nullptr);
+    Canvas::XSceneGraphNode *pNodeB = result.pInstanceRoot->GetNextChild(pNodeA);
+    ASSERT_NE(pNodeB, nullptr);
+    EXPECT_EQ(result.pInstanceRoot->GetNextChild(pNodeB), nullptr); // no more children
+    EXPECT_STREQ("NodeA", pNodeA->GetName());
+    EXPECT_STREQ("NodeB", pNodeB->GetName());
 
-    // Verify transforms were copied
-    EXPECT_TRUE(AlmostEqual(pClonedA->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 1.0f)));
-    EXPECT_TRUE(AlmostEqual(pClonedB->GetLocalTranslation(), FloatVector4(0.0f, 2.0f, 0.0f, 1.0f)));
+    // Transforms come from the model nodes
+    EXPECT_TRUE(AlmostEqual(pNodeA->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pNodeB->GetLocalTranslation(), FloatVector4(0.0f, 2.0f, 0.0f, 0.0f)));
 
-    // ClonedB should have one child (cloned NodeC)
-    Canvas::XSceneGraphNode *pClonedC = pClonedB->GetFirstChild();
-    EXPECT_NE(pClonedC, nullptr);
-    EXPECT_TRUE(AlmostEqual(pClonedC->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 3.0f, 1.0f)));
+    // NodeB should have one child (NodeC)
+    Canvas::XSceneGraphNode *pNodeC = pNodeB->GetFirstChild();
+    ASSERT_NE(pNodeC, nullptr);
+    EXPECT_TRUE(AlmostEqual(pNodeC->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 3.0f, 0.0f)));
 
-    // Verify mesh instances share the same GPU mesh data
-    EXPECT_EQ(1u, pClonedA->GetBoundElementCount());
-    Canvas::XSceneGraphElement *pClonedElemA = pClonedA->GetBoundElement(0);
-    Gem::TGemPtr<Canvas::XMeshInstance> pClonedMeshA;
-    EXPECT_TRUE(Succeeded(pClonedElemA->QueryInterface(&pClonedMeshA)));
-    EXPECT_TRUE(pClonedMeshA->GetMeshData() == pMesh.Get()); // shared GPU data
+    // Mesh instances share the model's GPU mesh data
+    EXPECT_EQ(1u, pNodeA->GetBoundElementCount());
+    Canvas::XMeshInstance *pMeshA = FindElement<Canvas::XMeshInstance>(pNodeA);
+    ASSERT_NE(pMeshA, nullptr);
+    EXPECT_STREQ("MeshA", pMeshA->GetName());
+    EXPECT_TRUE(pMeshA->GetMeshData() == pMesh.Get());
 
-    EXPECT_EQ(1u, pClonedC->GetBoundElementCount());
-    Canvas::XSceneGraphElement *pClonedElemC = pClonedC->GetBoundElement(0);
-    Gem::TGemPtr<Canvas::XMeshInstance> pClonedMeshC;
-    EXPECT_TRUE(Succeeded(pClonedElemC->QueryInterface(&pClonedMeshC)));
-    EXPECT_TRUE(pClonedMeshC->GetMeshData() == pMesh.Get()); // shared GPU data
+    EXPECT_EQ(1u, pNodeC->GetBoundElementCount());
+    Canvas::XMeshInstance *pMeshC = FindElement<Canvas::XMeshInstance>(pNodeC);
+    ASSERT_NE(pMeshC, nullptr);
+    EXPECT_TRUE(pMeshC->GetMeshData() == pMesh.Get());
+    EXPECT_EQ(0u, pMeshC->GetSkinBoneCount());
 }
 
 TEST(CanvasInterfacesTest, ModelInstantiateTransformIndependence)
@@ -1093,13 +1290,11 @@ TEST(CanvasInterfacesTest, ModelInstantiateTransformIndependence)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
-
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pNodeA;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodeA, "NodeA")));
-    pNodeA->SetLocalTranslation(FloatVector4(1.0f, 0.0f, 0.0f, 1.0f));
-    EXPECT_TRUE(Succeeded(pModel->GetRootNode()->AddChild(pNodeA)));
+    auto pBuilder = BeginModel(pCanvas, pDevice, "TestModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    AddNode(pBuilder, "NodeA", InvalidIndex, Translation(1.0f, 0.0f, 0.0f));
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
 
     // Create scene and instantiate twice
     Gem::TGemPtr<Canvas::XScene> pScene;
@@ -1115,15 +1310,18 @@ TEST(CanvasInterfacesTest, ModelInstantiateTransformIndependence)
     EXPECT_TRUE(result1.pInstanceRoot != result2.pInstanceRoot);
 
     // Modify instance 1's child transform
-    Canvas::XSceneGraphNode *pCloned1A = result1.pInstanceRoot->GetFirstChild();
-    Canvas::XSceneGraphNode *pCloned2A = result2.pInstanceRoot->GetFirstChild();
-    EXPECT_NE(pCloned1A, nullptr);
-    EXPECT_NE(pCloned2A, nullptr);
+    Canvas::XSceneGraphNode *pNode1A = result1.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneGraphNode *pNode2A = result2.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pNode1A, nullptr);
+    ASSERT_NE(pNode2A, nullptr);
 
-    pCloned1A->SetLocalTranslation(FloatVector4(99.0f, 0.0f, 0.0f, 1.0f));
+    pNode1A->SetLocalTranslation(FloatVector4(99.0f, 0.0f, 0.0f, 0.0f));
 
-    // Instance 2 should be unaffected
-    EXPECT_TRUE(AlmostEqual(pCloned2A->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 1.0f)));
+    // Instance 2 and the model are unaffected
+    EXPECT_TRUE(AlmostEqual(pNode2A->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 0.0f)));
+    Canvas::Transform transform;
+    EXPECT_TRUE(Succeeded(pModel->GetNodeTransform(0, &transform)));
+    EXPECT_TRUE(AlmostEqual(transform.Translation, FloatVector4(1.0f, 0.0f, 0.0f, 0.0f)));
 }
 
 TEST(CanvasInterfacesTest, ModelInstantiateCopiesTransforms)
@@ -1134,31 +1332,28 @@ TEST(CanvasInterfacesTest, ModelInstantiateCopiesTransforms)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
+    Canvas::Transform transform;
+    transform.Translation = FloatVector4(1.0f, 2.0f, 3.0f, 0.0f);
+    transform.Rotation    = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, 0.5f);
+    transform.Scale       = FloatVector4(100.0f, 2.0f, 0.5f, 0.0f);
 
-    const FloatVector4 translation(1.0f, 2.0f, 3.0f, 0.0f);
-    const FloatQuaternion rotation = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, 0.5f);
-    const FloatVector4 scale(100.0f, 2.0f, 0.5f, 0.0f);
-
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNode, "Scaled")));
-    pNode->SetLocalTranslation(translation);
-    pNode->SetLocalRotation(rotation);
-    pNode->SetLocalScale(scale);
-    EXPECT_TRUE(Succeeded(pModel->GetRootNode()->AddChild(pNode)));
+    auto pBuilder = BeginModel(pCanvas, pDevice, "TestModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    AddNode(pBuilder, "Scaled", InvalidIndex, transform);
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
 
     Gem::TGemPtr<Canvas::XScene> pScene;
     EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
 
     Canvas::ModelInstantiateResult result{};
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
-    Canvas::XSceneGraphNode *pClone = result.pInstanceRoot->GetFirstChild();
-    ASSERT_NE(pClone, nullptr);
+    Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pNode, nullptr);
 
-    EXPECT_TRUE(AlmostEqual(pClone->GetLocalTranslation(), translation));
-    EXPECT_TRUE(AlmostEqual(pClone->GetLocalRotation(), rotation));
-    EXPECT_TRUE(AlmostEqual(pClone->GetLocalScale(), scale));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), transform.Translation));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalRotation(), transform.Rotation));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalScale(), transform.Scale));
 }
 
 TEST(CanvasInterfacesTest, ModelActiveCameraInstantiation)
@@ -1169,49 +1364,46 @@ TEST(CanvasInterfacesTest, ModelActiveCameraInstantiation)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "CameraModel")));
+    auto pBuilder = BeginModel(pCanvas, pDevice, "CameraModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t camNode = AddNode(pBuilder, "CamNode", InvalidIndex, Translation(0.0f, -5.0f, 2.0f));
 
-    // Add a camera node to the model
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pCamNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pCamNode, "CamNode")));
-    pCamNode->SetLocalTranslation(FloatVector4(0.0f, -5.0f, 2.0f, 1.0f));
+    Canvas::ModelCameraDesc camera{};
+    camera.Name             = "ModelCamera";
+    camera.NodeIndex        = camNode;
+    camera.Params.FovAngle  = 1.2f;
+    camera.Params.NearClip  = 0.5f;
+    camera.Params.FarClip   = 500.0f;
+    uint32_t cameraIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddCamera(&camera, &cameraIndex)));
+    EXPECT_TRUE(Succeeded(pBuilder->SetActiveCamera(cameraIndex)));
 
-    Gem::TGemPtr<Canvas::XCamera> pCamera;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateCamera(&pCamera, "ModelCamera")));
-    pCamera->SetFovAngle(1.2f);
-    pCamera->SetNearClip(0.5f);
-    pCamera->SetFarClip(500.0f);
-    EXPECT_TRUE(Succeeded(pCamNode->BindElement(pCamera)));
-    EXPECT_TRUE(Succeeded(pModel->GetRootNode()->AddChild(pCamNode)));
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+    EXPECT_EQ(1u, pModel->GetCameraCount());
+    EXPECT_EQ(cameraIndex, pModel->GetActiveCameraIndex());
 
-    // Set as active camera node
-    pModel->SetActiveCameraNode(pCamNode);
-    EXPECT_TRUE(pModel->GetActiveCameraNode() == pCamNode.Get());
-
-    // Instantiate
     Gem::TGemPtr<Canvas::XScene> pScene;
     EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
 
     Canvas::ModelInstantiateResult result{};
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
 
-    // Active camera should be mapped in result
-    EXPECT_NE(result.pActiveCamera, nullptr);
-
-    // Camera properties should be cloned
+    // The instance's active camera carries the model camera's properties
+    ASSERT_NE(result.pActiveCamera, nullptr);
+    EXPECT_STREQ("ModelCamera", result.pActiveCamera->GetName());
     EXPECT_EQ(1.2f, result.pActiveCamera->GetFovAngle());
     EXPECT_EQ(0.5f, result.pActiveCamera->GetNearClip());
     EXPECT_EQ(500.0f, result.pActiveCamera->GetFarClip());
 
-    // Camera should be attached to the cloned node, not the model's node
-    Canvas::XSceneGraphNode *pClonedCamNode = result.pActiveCamera->GetAttachedNode();
-    EXPECT_NE(pClonedCamNode, nullptr);
-    EXPECT_TRUE(pClonedCamNode != pCamNode.Get()); // different node instance
-    EXPECT_TRUE(AlmostEqual(pClonedCamNode->GetLocalTranslation(), FloatVector4(0.0f, -5.0f, 2.0f, 1.0f)));
+    // ...and is attached to the instance's scene node for the camera's model node
+    Canvas::XSceneGraphNode *pCamNode = result.pActiveCamera->GetAttachedNode();
+    ASSERT_NE(pCamNode, nullptr);
+    EXPECT_TRUE(pCamNode == result.pInstanceRoot->GetFirstChild());
+    EXPECT_TRUE(AlmostEqual(pCamNode->GetLocalTranslation(), FloatVector4(0.0f, -5.0f, 2.0f, 0.0f)));
 }
 
-TEST(CanvasInterfacesTest, ModelLightCloning)
+TEST(CanvasInterfacesTest, ModelLightInstantiation)
 {
     using namespace Canvas::Math;
 
@@ -1219,51 +1411,21 @@ TEST(CanvasInterfacesTest, ModelLightCloning)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "LightModel")));
+    auto pBuilder = BeginModel(pCanvas, pDevice, "LightModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t lightNode = AddNode(pBuilder, "LightNode", InvalidIndex);
 
-    // Add a light node
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pLightNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode, "LightNode")));
+    Canvas::ModelLightDesc light{};
+    light.Name             = "PointLight";
+    light.NodeIndex        = lightNode;
+    light.Type             = Canvas::LightType::Point;
+    light.Params.Color     = FloatVector4(1.0f, 0.5f, 0.0f, 1.0f);
+    light.Params.Intensity = 3.0f;
+    light.Params.Range     = 50.0f;
+    EXPECT_TRUE(Succeeded(pBuilder->AddLight(&light, nullptr)));
 
-    Gem::TGemPtr<Canvas::XLight> pLight;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateLight(Canvas::LightType::Point, &pLight, "PointLight")));
-    pLight->SetColor(FloatVector4(1.0f, 0.5f, 0.0f, 1.0f));
-    pLight->SetIntensity(3.0f);
-    pLight->SetRange(50.0f);
-    EXPECT_TRUE(Succeeded(pLightNode->BindElement(pLight)));
-    EXPECT_TRUE(Succeeded(pModel->GetRootNode()->AddChild(pLightNode)));
-
-    // Instantiate
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
-
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
-
-    // Find cloned light
-    Canvas::XSceneGraphNode *pClonedLightNode = result.pInstanceRoot->GetFirstChild();
-    EXPECT_NE(pClonedLightNode, nullptr);
-    EXPECT_EQ(1u, pClonedLightNode->GetBoundElementCount());
-
-    Gem::TGemPtr<Canvas::XLight> pClonedLight;
-    EXPECT_TRUE(Succeeded(pClonedLightNode->GetBoundElement(0)->QueryInterface(&pClonedLight)));
-
-    EXPECT_TRUE(pClonedLight->GetType() == Canvas::LightType::Point);
-    EXPECT_TRUE(AlmostEqual(pClonedLight->GetColor(), FloatVector4(1.0f, 0.5f, 0.0f, 1.0f)));
-    EXPECT_EQ(3.0f, pClonedLight->GetIntensity());
-    EXPECT_EQ(50.0f, pClonedLight->GetRange());
-}
-
-TEST(CanvasInterfacesTest, ModelEmptyInstantiation)
-{
-    Gem::TGemPtr<XCanvas> pCanvas;
-    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
-    CreateTestCanvasAndDevice(pCanvas, pDevice);
-
-    // Create empty model (no child nodes)
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "EmptyModel")));
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
 
     Gem::TGemPtr<Canvas::XScene> pScene;
     EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
@@ -1271,12 +1433,17 @@ TEST(CanvasInterfacesTest, ModelEmptyInstantiation)
     Canvas::ModelInstantiateResult result{};
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
 
-    // Should still create a synthetic instance root
-    EXPECT_NE(result.pInstanceRoot, nullptr);
-    EXPECT_EQ(result.pActiveCamera, nullptr);
+    Canvas::XSceneGraphNode *pLightNode = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pLightNode, nullptr);
+    EXPECT_EQ(1u, pLightNode->GetBoundElementCount());
 
-    // Instance root should have no children
-    EXPECT_EQ(result.pInstanceRoot->GetFirstChild(), nullptr);
+    Canvas::XLight *pLight = FindElement<Canvas::XLight>(pLightNode);
+    ASSERT_NE(pLight, nullptr);
+    EXPECT_TRUE(pLight->GetType() == Canvas::LightType::Point);
+    EXPECT_TRUE(AlmostEqual(pLight->GetColor(), FloatVector4(1.0f, 0.5f, 0.0f, 1.0f)));
+    EXPECT_EQ(3.0f, pLight->GetIntensity());
+    EXPECT_EQ(50.0f, pLight->GetRange());
+    EXPECT_TRUE(pLight->GetFlags() == Canvas::LightFlags::Enabled);
 }
 
 TEST(CanvasInterfacesTest, ModelInstantiateNullTargetFails)
@@ -1285,14 +1452,20 @@ TEST(CanvasInterfacesTest, ModelInstantiateNullTargetFails)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "TestModel")));
+    auto pBuilder = BeginModel(pCanvas, pDevice, "TestModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    AddNode(pBuilder, "Node", InvalidIndex);
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
 
     // Null target should fail
     EXPECT_TRUE(Gem::Failed(pModel->Instantiate(nullptr)));
 }
 
-TEST(CanvasInterfacesTest, SkinBindingRoundTrip)
+// A skeleton instance composes its joints parents first, in the space of its node, and
+// moves its sockets (and the content under them) with their joints.  Scene-graph nodes
+// with the same transforms serve as the reference composition.
+TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
 {
     using namespace Canvas::Math;
 
@@ -1300,98 +1473,244 @@ TEST(CanvasInterfacesTest, SkinBindingRoundTrip)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pBone0, pBone1;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBone0, "Bone0")));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBone1, "Bone1")));
+    auto pBuilder = BeginModel(pCanvas, pDevice, "Rig");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t armature = AddNode(pBuilder, "Armature", InvalidIndex, Translation(10.0f, 0.0f, 0.0f));
 
-    Gem::TGemPtr<Canvas::XMeshInstance> pMeshInst;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateMeshInstance(&pMeshInst, "SkinnedMesh")));
+    Canvas::ModelJointDesc joints[2] = {};
+    joints[0].Name          = "Hip";
+    joints[0].RestTransform = Translation(0.0f, 0.0f, 1.0f);
+    joints[1].Name          = "Knee";
+    joints[1].ParentIndex   = 0;
+    joints[1].RestTransform = Translation(0.0f, 0.0f, -0.5f);
+    joints[1].RestTransform.Rotation = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, 0.5f);
 
-    // Unbound instance reports no skin and tolerates out-of-range queries.
-    EXPECT_EQ(0u, pMeshInst->GetSkinBoneCount());
-    EXPECT_EQ(nullptr, pMeshInst->GetSkinBoneNode(0));
-    EXPECT_EQ(nullptr, pMeshInst->GetSkinInvBindPose(0));
+    Canvas::ModelSkeletonDesc skeleton{};
+    skeleton.Name       = "Legs";
+    skeleton.NodeIndex  = armature;
+    skeleton.JointCount = 2;
+    skeleton.pJoints    = joints;
+    uint32_t skeletonIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddSkeleton(&skeleton, &skeletonIndex)));
 
-    Canvas::XSceneGraphNode* bones[] = { pBone0.Get(), pBone1.Get() };
+    Canvas::ModelSocketDesc socket{};
+    socket.Name           = "KneeSocket";
+    socket.SkeletonIndex  = skeletonIndex;
+    socket.JointIndex     = 1;
+    socket.LocalTransform = Translation(1.0f, 0.0f, 0.0f);
+    uint32_t socketNode = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddSocket(&socket, &socketNode)));
+    AddNode(pBuilder, "Prop", socketNode);
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+    EXPECT_EQ(1u, pModel->GetSkeletonCount());
+    EXPECT_EQ(3u, pModel->GetNodeCount());
+    EXPECT_EQ(armature, pModel->GetNodeParent(socketNode));
+
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+    Canvas::ModelInstantiateResult result{};
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+
+    Canvas::XSceneGraphNode *pArmature = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pArmature, nullptr);
+    Canvas::XSceneGraphNode *pSocket = pArmature->GetFirstChild();
+    ASSERT_NE(pSocket, nullptr);
+    EXPECT_STREQ("KneeSocket", pSocket->GetName());
+    Canvas::XSceneGraphNode *pProp = pSocket->GetFirstChild();
+    ASSERT_NE(pProp, nullptr);
+
+    // Joints are not scene nodes: the skeleton instance on the armature holds them.
+    Canvas::XSkeletonInstance *pSkeleton = FindElement<Canvas::XSkeletonInstance>(pArmature);
+    ASSERT_NE(pSkeleton, nullptr);
+    EXPECT_EQ(2u, pSkeleton->GetJointCount());
+    EXPECT_STREQ("Hip", pSkeleton->GetJointName(0));
+    EXPECT_EQ(1u, pSkeleton->FindJoint("Knee"));
+    EXPECT_EQ(InvalidIndex, pSkeleton->FindJoint("Ankle"));
+    EXPECT_EQ(0u, pSkeleton->GetJointParent(1));
+    EXPECT_EQ(InvalidIndex, pSkeleton->GetJointParent(0));
+
+    // Reference: the same chain as scene-graph nodes, in skeleton space.
+    const auto MakeNode = [&](const Canvas::Transform &t, Canvas::XSceneGraphNode *pParent)
+    {
+        Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
+        EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNode, "Reference")));
+        pNode->SetLocalTranslation(t.Translation);
+        pNode->SetLocalRotation(t.Rotation);
+        pNode->SetLocalScale(t.Scale);
+        if (pParent)
+            EXPECT_TRUE(Succeeded(pParent->AddChild(pNode)));
+        return pNode;
+    };
+    auto pRefHip    = MakeNode(joints[0].RestTransform, nullptr);
+    auto pRefKnee   = MakeNode(joints[1].RestTransform, pRefHip);
+    auto pRefSocket = MakeNode(socket.LocalTransform, pRefKnee);
+
+    EXPECT_TRUE(AlmostEqual(pSkeleton->GetJointMatrix(0), pRefHip->GetGlobalMatrix()));
+    EXPECT_TRUE(AlmostEqual(pSkeleton->GetJointMatrix(1), pRefKnee->GetGlobalMatrix()));
+    EXPECT_TRUE(AlmostEqual(pSkeleton->GetJointMatrix(2), FloatMatrix4x4::Identity())); // out of range
+
+    // At instantiation the socket is at its joint's rest pose: local * joint * armature.
+    EXPECT_TRUE(AlmostEqual(pSocket->GetGlobalMatrix(), pRefSocket->GetGlobalMatrix() * pArmature->GetGlobalMatrix()));
+
+    // Posing a joint moves the socket, and the content under it, on the next update.
+    Canvas::Transform bent = joints[1].RestTransform;
+    bent.Rotation = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, 1.2f);
+    EXPECT_TRUE(Succeeded(pSkeleton->SetJointLocalTransform(1, &bent)));
+    pRefKnee->SetLocalRotation(bent.Rotation);
+    EXPECT_TRUE(AlmostEqual(pSkeleton->GetJointMatrix(1), pRefKnee->GetGlobalMatrix()));
+
+    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
+    EXPECT_TRUE(AlmostEqual(pSocket->GetGlobalMatrix(), pRefSocket->GetGlobalMatrix() * pArmature->GetGlobalMatrix()));
+    EXPECT_TRUE(AlmostEqual(pProp->GetGlobalMatrix(), pSocket->GetGlobalMatrix()));
+
+    Canvas::Transform read;
+    EXPECT_TRUE(Succeeded(pSkeleton->GetJointLocalTransform(1, &read)));
+    EXPECT_TRUE(AlmostEqual(read.Rotation, bent.Rotation));
+    EXPECT_EQ(Gem::Result::InvalidArg, pSkeleton->GetJointLocalTransform(2, &read));
+    EXPECT_EQ(Gem::Result::InvalidArg, pSkeleton->SetJointLocalTransform(2, &bent));
+
+    // Resetting returns every joint, and after an update the socket, to rest.
+    pSkeleton->ResetToRestPose();
+    pRefKnee->SetLocalRotation(joints[1].RestTransform.Rotation);
+    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
+    EXPECT_TRUE(AlmostEqual(pSocket->GetGlobalMatrix(), pRefSocket->GetGlobalMatrix() * pArmature->GetGlobalMatrix()));
+
+    // A socket node removed from the skeleton's node keeps its last transform.
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pRemoved = pSocket;
+    const FloatVector4 lastTranslation = pRemoved->GetLocalTranslation();
+    EXPECT_TRUE(Succeeded(pArmature->RemoveChild(pRemoved)));
+    EXPECT_TRUE(Succeeded(pSkeleton->SetJointLocalTransform(1, &bent)));
+    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
+    EXPECT_TRUE(AlmostEqual(pRemoved->GetLocalTranslation(), lastTranslation));
+}
+
+// A skinned mesh instance's palette maps its geometry through each bone's inverse bind pose,
+// joint matrix, and the skeleton node's global matrix; the mesh node's own transform plays
+// no part.
+TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "Skinned");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t armature = AddNode(pBuilder, "Armature", InvalidIndex, Translation(0.0f, 5.0f, 0.0f));
+    const uint32_t body     = AddNode(pBuilder, "Body", armature, Translation(3.0f, 3.0f, 3.0f));
+
+    Canvas::ModelJointDesc joints[2] = {};
+    joints[0].Name          = "Root";
+    joints[0].RestTransform = Translation(1.0f, 0.0f, 0.0f);
+    joints[1].Name          = "Tip";
+    joints[1].ParentIndex   = 0;
+    joints[1].RestTransform = Translation(0.0f, 2.0f, 0.0f);
+    Canvas::ModelSkeletonDesc skeleton{};
+    skeleton.NodeIndex  = armature;
+    skeleton.JointCount = 2;
+    skeleton.pJoints    = joints;
+    uint32_t skeletonIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddSkeleton(&skeleton, &skeletonIndex)));
+
+    uint32_t meshIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddMeshData(CreateTriangle(pDevice, "Tri"), &meshIndex)));
+    uint32_t boneJoints[2] = { 1, 0 };
     FloatMatrix4x4 invBinds[2] = { FloatMatrix4x4::Identity(), FloatMatrix4x4::Identity() };
     invBinds[1][3][0] = 5.0f; // distinguish the second pose
+    Canvas::ModelMeshDesc mesh{};
+    mesh.NodeIndex     = body;
+    mesh.MeshDataIndex = meshIndex;
+    mesh.SkeletonIndex = skeletonIndex;
+    mesh.BoneCount     = 2;
+    mesh.pJointIndices = boneJoints;
+    mesh.pInvBindPoses = invBinds;
+    EXPECT_TRUE(Succeeded(pBuilder->AddMesh(&mesh, nullptr)));
 
-    Canvas::SkinBindingDesc desc{};
-    desc.BoneCount     = 2;
-    desc.ppBoneNodes   = bones;
-    desc.pInvBindPoses = invBinds;
-    EXPECT_TRUE(Succeeded(pMeshInst->SetSkinBinding(&desc)));
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
 
-    EXPECT_EQ(2u, pMeshInst->GetSkinBoneCount());
-    EXPECT_EQ(pBone0.Get(), pMeshInst->GetSkinBoneNode(0));
-    EXPECT_EQ(pBone1.Get(), pMeshInst->GetSkinBoneNode(1));
-    EXPECT_EQ(nullptr, pMeshInst->GetSkinBoneNode(2)); // out of range
-
-    const FloatMatrix4x4* pPose1 = pMeshInst->GetSkinInvBindPose(1);
-    ASSERT_NE(pPose1, nullptr);
-    EXPECT_FLOAT_EQ(5.0f, (*pPose1)[3][0]);
-
-    // Inverse-bind poses are copied (SetSkinBinding contract): mutating the
-    // source array after binding must not change the stored pose.
+    // The builder copied the inverse bind poses.
     invBinds[1][3][0] = 99.0f;
-    EXPECT_FLOAT_EQ(5.0f, (*pMeshInst->GetSkinInvBindPose(1))[3][0]);
 
-    // BoneCount == 0 clears the binding.
-    Canvas::SkinBindingDesc clearDesc{};
-    clearDesc.BoneCount = 0;
-    EXPECT_TRUE(Succeeded(pMeshInst->SetSkinBinding(&clearDesc)));
-    EXPECT_EQ(0u, pMeshInst->GetSkinBoneCount());
-    EXPECT_EQ(nullptr, pMeshInst->GetSkinBoneNode(0));
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+    Canvas::ModelInstantiateResult result{};
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
 
-    // A null descriptor also clears (no-op when already cleared).
-    EXPECT_TRUE(Succeeded(pMeshInst->SetSkinBinding(nullptr)));
-    EXPECT_EQ(0u, pMeshInst->GetSkinBoneCount());
+    Canvas::XSceneGraphNode *pArmature = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pArmature, nullptr);
+    Canvas::XSceneGraphNode *pBody = pArmature->GetFirstChild();
+    ASSERT_NE(pBody, nullptr);
+    Canvas::XSkeletonInstance *pSkeleton = FindElement<Canvas::XSkeletonInstance>(pArmature);
+    Canvas::XMeshInstance *pMesh = FindElement<Canvas::XMeshInstance>(pBody);
+    ASSERT_NE(pSkeleton, nullptr);
+    ASSERT_NE(pMesh, nullptr);
+
+    EXPECT_EQ(2u, pMesh->GetSkinBoneCount());
+    EXPECT_TRUE(pMesh->GetSkinSkeleton() == pSkeleton);
+    EXPECT_EQ(1u, pMesh->GetSkinJointIndex(0));
+    EXPECT_EQ(0u, pMesh->GetSkinJointIndex(1));
+    EXPECT_EQ(InvalidIndex, pMesh->GetSkinJointIndex(2)); // out of range
+    ASSERT_NE(pMesh->GetSkinInvBindPose(1), nullptr);
+    EXPECT_FLOAT_EQ(5.0f, (*pMesh->GetSkinInvBindPose(1))[3][0]);
+    EXPECT_EQ(nullptr, pMesh->GetSkinInvBindPose(2));
+
+    const auto ExpectPalette = [&]()
+    {
+        FloatMatrix4x4 palette[2];
+        ASSERT_TRUE(Succeeded(pMesh->ComputeSkinMatrices(palette, 2)));
+        for (uint32_t b = 0; b < 2; ++b)
+        {
+            const FloatMatrix4x4 expected = *pMesh->GetSkinInvBindPose(b) *
+                pSkeleton->GetJointMatrix(boneJoints[b]) * pArmature->GetGlobalMatrix();
+            EXPECT_TRUE(AlmostEqual(palette[b], expected)) << "bone " << b;
+        }
+    };
+    ExpectPalette();
+
+    // The model's bounds place the skinned mesh by its rest palette, not by its node.
+    {
+        FloatMatrix4x4 palette[2];
+        ASSERT_TRUE(Succeeded(pMesh->ComputeSkinMatrices(palette, 2)));
+        const AABB local = pMesh->GetMeshData()->GetLocalBounds();
+        AABB expected;
+        expected.Reset();
+        for (const FloatMatrix4x4 &m : palette)
+            expected.ExpandToInclude(local.Transform(m));
+        const AABB bounds = pModel->GetBounds();
+        EXPECT_TRUE(AlmostEqual(bounds.Min, expected.Min));
+        EXPECT_TRUE(AlmostEqual(bounds.Max, expected.Max));
+    }
+
+    FloatMatrix4x4 one[1];
+    EXPECT_EQ(Gem::Result::InvalidArg, pMesh->ComputeSkinMatrices(one, 1));
+
+    // Moving the instance, or posing a joint, moves the palette with it.
+    result.pInstanceRoot->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 7.0f, 0.0f));
+    Canvas::Transform pose = joints[1].RestTransform;
+    pose.Rotation = FloatQuaternion::FromEulerXYZ(0.3f, 0.0f, 0.0f);
+    EXPECT_TRUE(Succeeded(pSkeleton->SetJointLocalTransform(1, &pose)));
+    ExpectPalette();
+
+    // A binding to a joint the skeleton lacks is rejected and leaves the binding intact.
+    const uint32_t badJoint = 2;
+    Canvas::SkinBindingDesc bad{};
+    bad.pSkeleton     = pSkeleton;
+    bad.BoneCount     = 1;
+    bad.pJointIndices = &badJoint;
+    bad.pInvBindPoses = invBinds;
+    EXPECT_TRUE(Gem::Failed(pMesh->SetSkinBinding(&bad)));
+    EXPECT_EQ(2u, pMesh->GetSkinBoneCount());
+
+    // A null descriptor clears the binding.
+    EXPECT_TRUE(Succeeded(pMesh->SetSkinBinding(nullptr)));
+    EXPECT_EQ(0u, pMesh->GetSkinBoneCount());
+    EXPECT_EQ(nullptr, pMesh->GetSkinSkeleton());
+    EXPECT_TRUE(Succeeded(pMesh->ComputeSkinMatrices(nullptr, 0)));
 }
-
-// A skin binding with an unresolved (null) bone is rejected; rendering dereferences
-// every bone node, so this must fail at bind time rather than at draw time.
-TEST(CanvasInterfacesTest, SkinBindingRejectsNullBone)
-{
-    using namespace Canvas::Math;
-
-    Gem::TGemPtr<XCanvas> pCanvas;
-    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
-    CreateTestCanvasAndDevice(pCanvas, pDevice);
-
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pBone0;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBone0, "Bone0")));
-
-    Gem::TGemPtr<Canvas::XMeshInstance> pMeshInst;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateMeshInstance(&pMeshInst, "SkinnedMesh")));
-
-    Canvas::XSceneGraphNode* bones[] = { pBone0.Get(), nullptr }; // second bone unresolved
-    FloatMatrix4x4 invBinds[2] = { FloatMatrix4x4::Identity(), FloatMatrix4x4::Identity() };
-
-    Canvas::SkinBindingDesc desc{};
-    desc.BoneCount     = 2;
-    desc.ppBoneNodes   = bones;
-    desc.pInvBindPoses = invBinds;
-    EXPECT_TRUE(Gem::Failed(pMeshInst->SetSkinBinding(&desc)));
-
-    // The rejected call leaves the instance unbound.
-    EXPECT_EQ(0u, pMeshInst->GetSkinBoneCount());
-}
-
-namespace {
-
-// Builds an AnimationKeyframe with an identity rotation and unit scale, varying only
-// the translation - enough to exercise the controller's TRS evaluation.
-static Canvas::AnimationKeyframe TranslateKey(float time, const Canvas::Math::FloatVector4& t)
-{
-    Canvas::AnimationKeyframe k{};
-    k.Time        = time;
-    k.Translation = t;
-    k.Rotation    = Canvas::Math::FloatQuaternion();                       // identity (0,0,0,1)
-    k.Scale       = Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 0.0f);
-    return k;
-}
-
-} // anonymous namespace
 
 // Exercises the per-instance controller's playback, clip-time looping at the Duration
 // boundary, and bind-pose restoration.  Also confirms the controller keeps the model's
@@ -1404,14 +1723,10 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    // Model with a single joint authored at a distinctive bind pose.
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "AnimModel")));
-
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pJoint;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pJoint, "Joint")));
-    pJoint->SetLocalTranslation(FloatVector4(7.0f, 7.0f, 7.0f, 1.0f)); // bind pose
-    EXPECT_TRUE(Succeeded(pModel->GetRootNode()->AddChild(pJoint)));
+    // Model with a single node authored at a distinctive bind pose.
+    auto pBuilder = BeginModel(pCanvas, pDevice, "AnimModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t node = AddNode(pBuilder, "Joint", InvalidIndex, Translation(7.0f, 7.0f, 7.0f));
 
     // One clip translating X from 0 to 40 over 2 seconds.
     Canvas::AnimationKeyframe keys[2] = {
@@ -1419,7 +1734,8 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
         TranslateKey(2.0f, FloatVector4(40.0f, 0.0f, 0.0f, 0.0f)),
     };
     Canvas::AnimationTrackDesc track{};
-    track.NodeName      = "Joint";
+    track.TargetType    = Canvas::AnimationTargetType::ModelNode;
+    track.TargetIndex   = node;
     track.Keyframes     = keys;
     track.KeyframeCount = 2;
 
@@ -1428,7 +1744,12 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     clip.Duration   = 2.0f;
     clip.Tracks     = &track;
     clip.TrackCount = 1;
-    EXPECT_TRUE(Succeeded(pModel->AddAnimationClip(&clip)));
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+    EXPECT_EQ(1u, pModel->GetAnimationClipCount());
+    EXPECT_STREQ("Slide", pModel->GetAnimationClipName(0));
 
     Gem::TGemPtr<Canvas::XScene> pScene;
     EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "AnimScene")));
@@ -1438,9 +1759,9 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     ASSERT_NE(result.pAnimationController, nullptr);
     ASSERT_NE(result.pInstanceRoot, nullptr);
 
-    Canvas::XAnimationController* pCtrl        = result.pAnimationController;
-    Canvas::XSceneGraphNode*      pClonedJoint = result.pInstanceRoot->GetFirstChild();
-    ASSERT_NE(pClonedJoint, nullptr);
+    Canvas::XAnimationController* pCtrl = result.pAnimationController;
+    Canvas::XSceneGraphNode*      pNode = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pNode, nullptr);
 
     // Releasing the caller's model reference must not invalidate the controller's clips:
     // the controller holds its own strong reference to the model.
@@ -1457,20 +1778,20 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     EXPECT_TRUE(pCtrl->IsPlaying());
     EXPECT_TRUE(Succeeded(pCtrl->Update(1.0f)));
     EXPECT_FLOAT_EQ(1.0f, pCtrl->GetTime());
-    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
                             FloatVector4(20.0f, 0.0f, 0.0f, 0.0f)));
 
     // Advancing past Duration wraps the clip time back into [0, Duration).
     EXPECT_TRUE(Succeeded(pCtrl->Update(1.5f)));   // 1.0 + 1.5 = 2.5 -> 0.5
     EXPECT_FLOAT_EQ(0.5f, pCtrl->GetTime());
-    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
                             FloatVector4(10.0f, 0.0f, 0.0f, 0.0f)));
 
     // ResetToBindPose restores the instantiation-time TRS and stops playback.
     pCtrl->ResetToBindPose();
     EXPECT_FALSE(pCtrl->IsPlaying());
-    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
-                            FloatVector4(7.0f, 7.0f, 7.0f, 1.0f)));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
+                            FloatVector4(7.0f, 7.0f, 7.0f, 0.0f)));
 }
 
 // Exercises cross-fade blending between two clips: the pose interpolates from the
@@ -1484,27 +1805,27 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    Gem::TGemPtr<Canvas::XModel> pModel;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateModel(pDevice, &pModel, "BlendModel")));
+    auto pBuilder = BeginModel(pCanvas, pDevice, "BlendModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t node = AddNode(pBuilder, "Joint", InvalidIndex);
 
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pJoint;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pJoint, "Joint")));
-    EXPECT_TRUE(Succeeded(pModel->GetRootNode()->AddChild(pJoint)));
-
-    // Two single-key clips that hold the joint at constant, distinct translations.
+    // Two single-key clips that hold the node at constant, distinct translations.
     Canvas::AnimationKeyframe keyA = TranslateKey(0.0f, FloatVector4(0.0f,   0.0f, 0.0f, 0.0f));
     Canvas::AnimationTrackDesc trackA{};
-    trackA.NodeName = "Joint"; trackA.Keyframes = &keyA; trackA.KeyframeCount = 1;
+    trackA.TargetIndex = node; trackA.Keyframes = &keyA; trackA.KeyframeCount = 1;
     Canvas::AnimationClipDesc clipA{};
     clipA.Name = "A"; clipA.Duration = 10.0f; clipA.Tracks = &trackA; clipA.TrackCount = 1;
-    EXPECT_TRUE(Succeeded(pModel->AddAnimationClip(&clipA)));
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clipA, nullptr)));
 
     Canvas::AnimationKeyframe keyB = TranslateKey(0.0f, FloatVector4(100.0f, 0.0f, 0.0f, 0.0f));
     Canvas::AnimationTrackDesc trackB{};
-    trackB.NodeName = "Joint"; trackB.Keyframes = &keyB; trackB.KeyframeCount = 1;
+    trackB.TargetIndex = node; trackB.Keyframes = &keyB; trackB.KeyframeCount = 1;
     Canvas::AnimationClipDesc clipB{};
     clipB.Name = "B"; clipB.Duration = 10.0f; clipB.Tracks = &trackB; clipB.TrackCount = 1;
-    EXPECT_TRUE(Succeeded(pModel->AddAnimationClip(&clipB)));
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clipB, nullptr)));
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
 
     Gem::TGemPtr<Canvas::XScene> pScene;
     EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "BlendScene")));
@@ -1513,33 +1834,114 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
     ASSERT_NE(result.pAnimationController, nullptr);
 
-    Canvas::XAnimationController* pCtrl        = result.pAnimationController;
-    Canvas::XSceneGraphNode*      pClonedJoint = result.pInstanceRoot->GetFirstChild();
-    ASSERT_NE(pClonedJoint, nullptr);
+    Canvas::XAnimationController* pCtrl = result.pAnimationController;
+    Canvas::XSceneGraphNode*      pNode = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pNode, nullptr);
 
     // Settle on clip A (X = 0).
     EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
     EXPECT_TRUE(Succeeded(pCtrl->Update(0.1f)));
-    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
                             FloatVector4(0.0f, 0.0f, 0.0f, 0.0f)));
 
     // Cross-fade to clip B (X = 100) over 1 second; halfway through, X is the 50/50 blend.
     EXPECT_TRUE(Succeeded(pCtrl->PlayByName("B", 1.0f)));
     EXPECT_EQ(1u, pCtrl->GetActiveClipIndex());
     EXPECT_TRUE(Succeeded(pCtrl->Update(0.5f)));
-    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
                             FloatVector4(50.0f, 0.0f, 0.0f, 0.0f)));
 
     // Once the blend duration elapses the pose snaps fully to clip B.
     EXPECT_TRUE(Succeeded(pCtrl->Update(0.6f)));   // blend time 1.1 >= 1.0
-    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
                             FloatVector4(100.0f, 0.0f, 0.0f, 0.0f)));
 
     // Subsequent updates keep applying clip B directly (blend state cleared).
     EXPECT_TRUE(Succeeded(pCtrl->Update(0.1f)));
-    EXPECT_TRUE(AlmostEqual(pClonedJoint->GetLocalTranslation(),
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
                             FloatVector4(100.0f, 0.0f, 0.0f, 0.0f)));
 }
 
+// A joint track drives the joint in each instance's skeleton instance.  Ticked through the
+// instance root, the controller runs before the skeleton node updates, so the socket
+// follows the animated joint in the same update.
+TEST(CanvasInterfacesTest, AnimationControllerDrivesJoints)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "ArmModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t armature = AddNode(pBuilder, "Armature", InvalidIndex);
+
+    Canvas::ModelJointDesc joint{};
+    joint.Name          = "Arm";
+    joint.RestTransform = Translation(0.0f, 0.0f, 1.0f);
+    Canvas::ModelSkeletonDesc skeleton{};
+    skeleton.NodeIndex  = armature;
+    skeleton.JointCount = 1;
+    skeleton.pJoints    = &joint;
+    uint32_t skeletonIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddSkeleton(&skeleton, &skeletonIndex)));
+
+    Canvas::ModelSocketDesc socket{};
+    socket.Name          = "Hand";
+    socket.SkeletonIndex  = skeletonIndex;
+    socket.JointIndex    = 0;
+    EXPECT_TRUE(Succeeded(pBuilder->AddSocket(&socket, nullptr)));
+
+    // X from 0 to 4 over 2 seconds; Z held at the rest height.
+    Canvas::AnimationKeyframe keys[2] = {
+        TranslateKey(0.0f, FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)),
+        TranslateKey(2.0f, FloatVector4(4.0f, 0.0f, 1.0f, 0.0f)),
+    };
+    Canvas::AnimationTrackDesc track{};
+    track.TargetType    = Canvas::AnimationTargetType::Joint;
+    track.SkeletonIndex = skeletonIndex;
+    track.TargetIndex   = 0;
+    track.Keyframes     = keys;
+    track.KeyframeCount = 2;
+    Canvas::AnimationClipDesc clip{};
+    clip.Name = "Swing"; clip.Duration = 2.0f; clip.Tracks = &track; clip.TrackCount = 1;
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "ArmScene")));
+    Canvas::ModelInstantiateResult result{};
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    ASSERT_NE(result.pAnimationController, nullptr);
+
+    Canvas::XSceneGraphNode *pArmature = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pArmature, nullptr);
+    Canvas::XSceneGraphNode *pHand = pArmature->GetFirstChild();
+    ASSERT_NE(pHand, nullptr);
+    Canvas::XSkeletonInstance *pSkeleton = FindElement<Canvas::XSkeletonInstance>(pArmature);
+    ASSERT_NE(pSkeleton, nullptr);
+
+    Canvas::XAnimationController *pCtrl = result.pAnimationController;
+    EXPECT_TRUE(pCtrl->ValidateForNode(result.pInstanceRoot));
+    EXPECT_FALSE(pCtrl->ValidateForNode(pHand));   // the skeleton's node is not under the socket
+
+    EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
+    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(1.0f)));
+
+    Canvas::Transform pose;
+    EXPECT_TRUE(Succeeded(pSkeleton->GetJointLocalTransform(0, &pose)));
+    EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(2.0f, 0.0f, 1.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(2.0f, 0.0f, 1.0f, 0.0f)));
+
+    // ResetToBindPose returns the joint to rest; the socket follows on the next update.
+    pCtrl->ResetToBindPose();
+    EXPECT_TRUE(Succeeded(pSkeleton->GetJointLocalTransform(0, &pose)));
+    EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
+    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
+    EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
 }
 
+}

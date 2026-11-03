@@ -40,6 +40,9 @@
   #ifndef _Out_
     #define _Out_
   #endif
+  #ifndef _Out_opt_
+    #define _Out_opt_
+  #endif
 #endif
 
 //------------------------------------------------------------------------------------------------
@@ -86,6 +89,8 @@ struct XGfxMeshData;
 struct XGfxMaterial;
 struct XMeshInstance;
 struct XModel;
+struct XModelBuilder;
+struct XSkeletonInstance;
 struct XSceneGraphNode;
 struct XSceneGraphElement;
 struct XAnimationController;
@@ -229,7 +234,10 @@ XCanvas : public Gem::XGeneric
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, const char * name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, const char * name = nullptr) = 0;
     GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, const char * name = nullptr) = 0;
-    GEMMETHOD(CreateModel)(XGfxDevice *pDevice, XModel **ppModel, const char * name = nullptr) = 0;
+
+    // Creates a builder that produces immutable XModel templates whose GPU resources
+    // belong to pDevice.  See XModelBuilder.
+    GEMMETHOD(CreateModelBuilder)(XGfxDevice *pDevice, XModelBuilder **ppBuilder, const char * name = nullptr) = 0;
 
     // Text/UI factory methods
     GEMMETHOD(CreateFont)(const uint8_t* pTTFData, size_t dataSize, const char * name, XFont** ppFont) = 0;
@@ -268,15 +276,29 @@ XCanvasElement : public XNamedElement
 };
 
 //------------------------------------------------------------------------------------------------
-// Animation clip descriptors - ABI-safe POD; no STL types.
-// All pointer fields must remain valid for the duration of the AddAnimationClip call.
-// CModel copies the data into its internal storage immediately.
-//------------------------------------------------------------------------------------------------
+// Sentinel for an index that refers to nothing, such as the parent of a top-level model node,
+// the parent of a root joint, or a joint name that FindJoint does not find.
+static constexpr uint32_t InvalidIndex = UINT32_MAX;
 
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatQuaternion is alignas(16))
 #endif // _MSC_VER
+
+// A local transform as scale, rotation, and translation, composed like a scene-graph node's:
+// scale * rotation * translation.
+struct Transform
+{
+    Math::FloatVector4      Scale       = { 1.0f, 1.0f, 1.0f, 0.0f };
+    Math::FloatQuaternion   Rotation;                                   // identity
+    Math::FloatVector4      Translation = { 0.0f, 0.0f, 0.0f, 0.0f };
+};
+
+//------------------------------------------------------------------------------------------------
+// Animation clip descriptors - ABI-safe POD; no STL types.
+// All pointer fields must remain valid for the duration of the XModelBuilder::AddAnimationClip
+// call, which copies the data.
+//------------------------------------------------------------------------------------------------
 
 // One TRS keyframe. Rotation is always stored as a unit quaternion.
 struct AnimationKeyframe
@@ -290,13 +312,22 @@ struct AnimationKeyframe
 #pragma warning(pop)
 #endif // _MSC_VER
 
-// All keyframes for one node's track within a clip.
-// NodeName is matched against the cloned XSceneGraphNode names in XModel::Instantiate.
+// The kind of target an animation track names.
+enum class AnimationTargetType : uint32_t
+{
+    ModelNode = 0,  // the local transform of a model node's scene node in each instance
+    Joint     = 1,  // the local transform of a joint in each instance's skeleton instance
+};
+
+// All keyframes for one target's track within a clip.  TargetIndex is a model node index, or
+// for a Joint target, a joint index within skeleton SkeletonIndex.
 struct AnimationTrackDesc
 {
-    const char*                 NodeName;       // null-terminated
-    const AnimationKeyframe*    Keyframes;      // KeyframeCount entries, sorted ascending by Time
-    uint32_t                    KeyframeCount;
+    AnimationTargetType         TargetType    = AnimationTargetType::ModelNode;
+    uint32_t                    SkeletonIndex = InvalidIndex;  // Joint targets only
+    uint32_t                    TargetIndex   = InvalidIndex;
+    const AnimationKeyframe*    Keyframes     = nullptr;            // KeyframeCount entries, sorted ascending by Time
+    uint32_t                    KeyframeCount = 0;
 };
 
 // One animation clip (== one FBX AnimationStack / Blender Action).
@@ -312,12 +343,12 @@ struct AnimationClipDesc
 static constexpr uint32_t InvalidClipIndex = UINT32_MAX;
 
 //------------------------------------------------------------------------------------------------
-// XAnimationController - a behavior that drives the transforms of a subtree of scene-graph
-// nodes from baked animation clips.  It is NOT a spatial element: it does not describe a
-// node's presence in space (no bounds, no attachment).  Instead a scene-graph node holds
-// a typed reference to one via XSceneGraphNode::SetAnimationController, and the node's
-// Update(dtime) ticks the controller before its spatial elements and children, so animated
-// transforms are in place before they propagate down the hierarchy.
+// XAnimationController - a behavior that animates the content of a scene-graph subtree from
+// baked animation clips.  It is NOT a spatial element: it does not describe a node's presence
+// in space (no bounds, no attachment).  Instead a scene-graph node holds a typed reference to
+// one via XSceneGraphNode::SetAnimationController, and the node's Update(dtime) ticks the
+// controller before its spatial elements and children, so animated values are in place before
+// they propagate down the hierarchy.
 //
 // One controller is created per XModel::Instantiate call and holds its own playback state
 // (time, active clip, blend), while the heavy keyframe data is shared on the XModel.  This
@@ -332,12 +363,12 @@ XAnimationController : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XAnimationController, 0xA7C3F2B841DE9506);
 
-    // Advance playback by dtime seconds and write the resulting pose onto the driven nodes.
+    // Advance playback by dtime seconds and write the resulting values onto their targets.
     // Normally called for you by the owning node's Update(); call directly only if you are
     // ticking a controller outside the scene-graph cascade.
     GEMMETHOD(Update)(float dtime) = 0;
 
-    // Returns true if every node this controller drives is a descendant of pRoot (or IS pRoot).
+    // Returns true if everything this controller drives is in pRoot's subtree (pRoot included).
     // Called by XSceneGraphNode::SetAnimationController before accepting the assignment.
     GEMMETHOD_(bool, ValidateForNode)(_In_ XSceneGraphNode *pRoot) = 0;
 
@@ -353,7 +384,7 @@ XAnimationController : public XCanvasElement
     GEMMETHOD(PlayByName)(const char * clipName, float blendDuration) = 0;
     GEMMETHOD_(void, Stop)() = 0;           // freeze at current pose
 
-    // Restore every animated node to its bind-pose TRS (the pose at instantiation time).
+    // Restore everything the controller animates to its value at instantiation time.
     GEMMETHOD_(void, ResetToBindPose)() = 0;
 
     // Time / state
@@ -446,8 +477,8 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(uint32_t index) = 0;
 
     // Assign or clear (nullptr) the animation controller for this subtree.
-    // The controller's driven nodes must all be descendants of this node; SetAnimationController
-    // calls XAnimationController::ValidateForNode and returns InvalidArg if they are not.
+    // Everything the controller drives must be in this node's subtree; SetAnimationController
+    // calls XAnimationController::ValidateForNode and returns InvalidArg if it is not.
     GEMMETHOD(SetAnimationController)(_In_opt_ XAnimationController *pController) = 0;
 
     // Returns the animation controller currently driving this node's subtree, or null if none.
@@ -485,11 +516,10 @@ XSceneGraphElement : public XCanvasElement
     // spatial subdivision of the scene.
     //
     // The extent here is the element's physical region in space: a
-    // mesh's vertex envelope, a model's union-of-meshes envelope, a
-    // future particle system's emitter+lifetime envelope, a decal's
-    // projector volume.  Non-renderable elements (XLight, XCamera,
-    // ambient) return an empty AABB so they contribute nothing to
-    // renderable aggregates.
+    // mesh's vertex envelope, a future particle system's
+    // emitter+lifetime envelope, a decal's projector volume.
+    // Non-renderable elements (XLight, XCamera, ambient) return an
+    // empty AABB so they contribute nothing to renderable aggregates.
     //
     // Their AREAS OF INFLUENCE -- point/spot light attenuation volumes,
     // camera view frusta -- are a separate concept reported by
@@ -506,7 +536,7 @@ XSceneGraphElement : public XCanvasElement
     //   Spot light   -> attenuation + cone        -> AABB
     //   Camera       -> view frustum              -> AABB
     //   Directional / ambient light -> empty (infinite, no spatial bound)
-    //   XMeshInstance / XModel      -> empty (renderable-only, no influence)
+    //   XMeshInstance               -> empty (renderable-only, no influence)
     //
     // Aggregating shadow casters and aggregating light influences are
     // distinct queries served by separate methods (GetLocalBounds vs
@@ -644,12 +674,54 @@ XScene : public XCanvasElement
 };
 
 //------------------------------------------------------------------------------------------------
-// Skin binding: connects a mesh instance to its animated bone nodes + inverse bind poses.
-// ppBoneNodes / pInvBindPoses are BoneCount entries; they are copied on SetSkinBinding.
+// XSkeletonInstance - the pose of one skeleton in one model instance.
+//
+// A skeleton instance is bound to a scene-graph node, the node whose space the skeleton is in:
+// joint matrices are relative to that node, and a joint's world matrix is its joint matrix
+// times the node's global matrix.  Joints are not scene-graph nodes.  Each joint holds a local
+// transform relative to its parent joint (or, for a root joint, to the node); joint matrices
+// compose them parents first.
+//
+// Each socket is a scene-graph node, a child of the skeleton instance's node, with a local
+// transform relative to a joint; the skeleton instance composes it with the joint's matrix to
+// set the socket node's transform.  Content under a socket follows the joint.  Update(dtime), called by the node's own Update before its
+// children update, recomputes the joint matrices and socket transforms when the pose changed.
+// A socket node follows its joint while it is a child of the skeleton instance's node; a
+// socket node removed from that node keeps its last transform.
+//------------------------------------------------------------------------------------------------
+struct
+XSkeletonInstance : public XSceneGraphElement
+{
+    GEM_INTERFACE_DECLARE(XSkeletonInstance, 0x3D9A61F7C40E82B5);
+
+    GEMMETHOD_(uint32_t, GetJointCount)() const = 0;
+    GEMMETHOD_(const char *, GetJointName)(uint32_t index) const = 0;
+    GEMMETHOD_(uint32_t, GetJointParent)(uint32_t index) const = 0;    // InvalidIndex for a root joint
+    GEMMETHOD_(uint32_t, FindJoint)(const char *name) const = 0;        // InvalidIndex when absent
+
+    // A joint's local transform, relative to its parent joint.
+    // Return InvalidArg for an index out of range.
+    GEMMETHOD(GetJointLocalTransform)(uint32_t index, Transform *pTransform) const = 0;
+    GEMMETHOD(SetJointLocalTransform)(uint32_t index, const Transform *pTransform) = 0;
+
+    // Restores every joint to the skeleton's rest transform.
+    GEMMETHOD_(void, ResetToRestPose)() = 0;
+
+    // A joint's matrix in skeleton space: relative to the skeleton instance's node.
+    // Returns identity for an index out of range.
+    GEMMETHOD_(Math::FloatMatrix4x4, GetJointMatrix)(uint32_t index) = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+// Skin binding: connects a mesh instance to the joints of a skeleton instance.  Bone i of the
+// mesh's bone-index vertex stream is joint pJointIndices[i], and pInvBindPoses[i] maps the
+// mesh's geometry space to that joint's space at bind time.  BoneCount entries each; they are
+// copied on SetSkinBinding.
 struct SkinBindingDesc
 {
+    XSkeletonInstance*              pSkeleton     = nullptr;
     uint32_t                        BoneCount     = 0;
-    XSceneGraphNode* const*         ppBoneNodes   = nullptr;
+    const uint32_t*                 pJointIndices = nullptr;
     const Math::FloatMatrix4x4*     pInvBindPoses = nullptr;
 };
 
@@ -665,19 +737,34 @@ XMeshInstance : public XSceneGraphElement
     // Skin binding; pass nullptr or BoneCount==0 to clear.
     GEMMETHOD(SetSkinBinding)(const SkinBindingDesc *pDesc) = 0;
     GEMMETHOD_(uint32_t, GetSkinBoneCount)() const = 0;
-    GEMMETHOD_(XSceneGraphNode*, GetSkinBoneNode)(uint32_t index) const = 0;
+    GEMMETHOD_(XSkeletonInstance*, GetSkinSkeleton)() const = 0;
+    GEMMETHOD_(uint32_t, GetSkinJointIndex)(uint32_t index) const = 0;     // InvalidIndex out of range
     GEMMETHOD_(const Math::FloatMatrix4x4*, GetSkinInvBindPose)(uint32_t index) const = 0;
+
+    // Writes the skin palette: for each bone, the matrix that maps the mesh's geometry space
+    // to world space in the skeleton's current pose (InvBindPose * joint matrix * the skeleton
+    // node's global matrix).  count must equal GetSkinBoneCount().
+    GEMMETHOD(ComputeSkinMatrices)(Math::FloatMatrix4x4 *pMatrices, uint32_t count) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
 // Result of model instantiation - returned by XModel::Instantiate()
 struct ModelInstantiateResult
 {
-    XSceneGraphNode      *pInstanceRoot        = nullptr;   // Synthetic root of the cloned subtree
-    XCamera              *pActiveCamera        = nullptr;   // Cloned active camera (null if model has none)
+    XSceneGraphNode      *pInstanceRoot        = nullptr;   // Synthetic root of the instance's scene nodes
+    XCamera              *pActiveCamera        = nullptr;   // The instance's active camera (null if model has none)
     XAnimationController *pAnimationController = nullptr;   // Null if model has no animation clips
 };
 
+//------------------------------------------------------------------------------------------------
+// XModel - an immutable, instantiable template, produced by XModelBuilder::Build.
+//
+// A model holds tables, indexed from 0: model nodes, the meshes, cameras, and lights
+// attached to them, skeletons, sockets, and animation clips.  Model nodes are listed parents
+// first.  Instantiate creates one scene-graph node per model node, under a synthetic instance
+// root, with its elements; one skeleton instance per skeleton; and, when the model has clips,
+// one animation controller.  GPU resources (mesh data, materials, textures) are shared by
+// every instance.
 //------------------------------------------------------------------------------------------------
 struct
 XModel : public XCanvasElement
@@ -687,60 +774,199 @@ XModel : public XCanvasElement
     // Device that owns this model's GPU resources
     GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
 
-    // Node hierarchy authoring - the model's internal root node.
-    // Build the model by creating nodes/elements via XCanvas and
-    // adding them as children of this root.
-    GEMMETHOD_(XSceneGraphNode *, GetRootNode)() = 0;
-
-    // Shared GPU resource library - resources added here are kept
-    // alive by the model and shared across all instances.
+    // Shared GPU resources, kept alive by the model and shared across all instances.
     GEMMETHOD_(uint32_t, GetMeshDataCount)() = 0;
     GEMMETHOD_(XGfxMeshData *, GetMeshData)(uint32_t index) = 0;
-    GEMMETHOD(AddMeshData)(XGfxMeshData *pMeshData) = 0;
-
     GEMMETHOD_(uint32_t, GetMaterialCount)() = 0;
     GEMMETHOD_(XGfxMaterial *, GetMaterial)(uint32_t index) = 0;
-    GEMMETHOD(AddMaterial)(XGfxMaterial *pMaterial) = 0;
-
     GEMMETHOD_(uint32_t, GetTextureCount)() = 0;
     GEMMETHOD_(XGfxSurface *, GetTexture)(uint32_t index) = 0;
-    GEMMETHOD(AddTexture)(XGfxSurface *pTexture) = 0;
 
-    // Active camera designation - set to the node in the model's
-    // hierarchy that carries the "default" camera.  Instantiate()
-    // will map it to the cloned counterpart in the result.
-    GEMMETHOD_(void, SetActiveCameraNode)(XSceneGraphNode *pNode) = 0;
-    GEMMETHOD_(XSceneGraphNode *, GetActiveCameraNode)() = 0;
+    // Model nodes.  GetNodeParent returns InvalidIndex for a top-level node, whose scene
+    // node is a child of the instance root.  GetNodeTransform returns InvalidArg for an index
+    // out of range.
+    GEMMETHOD_(uint32_t, GetNodeCount)() = 0;
+    GEMMETHOD_(const char *, GetNodeName)(uint32_t index) = 0;
+    GEMMETHOD_(uint32_t, GetNodeParent)(uint32_t index) = 0;
+    GEMMETHOD(GetNodeTransform)(uint32_t index, Transform *pTransform) = 0;
 
-    // Animation clip library - clips added here are shared across all instances.
-    // Each clip corresponds to one FBX AnimationStack (Blender Action).
-    GEMMETHOD(AddAnimationClip)(const AnimationClipDesc* pClip) = 0;
+    GEMMETHOD_(uint32_t, GetSkeletonCount)() = 0;
+    GEMMETHOD_(uint32_t, GetCameraCount)() = 0;
+    GEMMETHOD_(uint32_t, GetActiveCameraIndex)() = 0;   // InvalidIndex when none
 
-    // Skin binding registration - called by BuildModel for each skinned mesh.
-    // pMeshNode is the model-template node carrying the skinned XMeshInstance.
-    // ppBoneNodes / pInvBindPoses are BoneCount entries (copied internally).
-    // On Instantiate(), bone nodes are resolved via the clone map and
-    // SetSkinBinding is called on the cloned XMeshInstance.
-    struct MeshSkinDesc
-    {
-        XSceneGraphNode*            pMeshNode     = nullptr;
-        uint32_t                    BoneCount     = 0;
-        XSceneGraphNode* const*     ppBoneNodes   = nullptr;
-        const Math::FloatMatrix4x4* pInvBindPoses = nullptr;
-    };
-    GEMMETHOD(AddMeshSkin)(const MeshSkinDesc *pDesc) = 0;
     GEMMETHOD_(uint32_t, GetAnimationClipCount)() = 0;
-    GEMMETHOD_(const char *,    GetAnimationClipName)(uint32_t index) = 0;
+    GEMMETHOD_(const char *, GetAnimationClipName)(uint32_t index) = 0;
 
-    // Instantiate: deep-clone the model's node hierarchy into the
-    // target scene graph.  A synthetic instance root is always
-    // created under pTargetParent.  If pResult is non-null, it
-    // receives the instance root, the cloned active camera, and
-    // (when clips are present) an XAnimationController bound to the root.
+    // Creates an instance of the model under pTargetParent.  If pResult is non-null, it
+    // receives the instance root, the instance's active camera, and the XAnimationController
+    // bound to the instance root, which is null when the model has no clips.
     GEMMETHOD(Instantiate)(XSceneGraphNode *pTargetParent, ModelInstantiateResult *pResult = nullptr) = 0;
 
-    // Axis-aligned bounding box of the model template
+    // Axis-aligned bounding box of the model's meshes at rest, relative to the instance root.
     GEMMETHOD_(Math::AABB, GetBounds)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+// Model builder descriptors - ABI-safe POD; no STL types.  All pointer fields must remain
+// valid for the duration of the call that takes them, which copies the data.  Every index
+// names an entry already added to the model being built.
+//------------------------------------------------------------------------------------------------
+
+// A model node.  ParentIndex is InvalidIndex for a top-level node.
+struct ModelNodeDesc
+{
+    const char*         Name        = nullptr;
+    uint32_t            ParentIndex = InvalidIndex;
+    Transform           LocalTransform;
+};
+
+// A mesh on a model node: mesh data the model holds, placed on the node.  A skinned mesh
+// names a skeleton and binds BoneCount bones to its joints (see SkinBindingDesc).
+struct ModelMeshDesc
+{
+    const char*                     Name          = nullptr;
+    uint32_t                        NodeIndex     = InvalidIndex;
+    uint32_t                        MeshDataIndex = InvalidIndex;
+    uint32_t                        SkeletonIndex = InvalidIndex;  // InvalidIndex: unskinned
+    uint32_t                        BoneCount     = 0;
+    const uint32_t*                 pJointIndices = nullptr;
+    const Math::FloatMatrix4x4*     pInvBindPoses = nullptr;
+};
+
+// The settable properties of an XCamera.  Defaults match XCanvas::CreateCamera.
+struct CameraParams
+{
+    float           NearClip      = 0.1f;
+    float           FarClip       = 1000.0f;
+    float           FovAngle      = static_cast<float>(Math::Pi / 4);
+    float           AspectRatio   = 16.0f / 9.0f;
+    float           ExposureStops = 0.0f;
+};
+
+// A camera on a model node.
+struct ModelCameraDesc
+{
+    const char*     Name      = nullptr;
+    uint32_t        NodeIndex = InvalidIndex;
+    CameraParams    Params;
+};
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure padded due to alignment specifier (FloatVector4 is alignas(16))
+#endif // _MSC_VER
+
+// The settable properties of an XLight.  Defaults match XCanvas::CreateLight.
+struct LightParams
+{
+    Math::FloatVector4  Color                = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float               Intensity            = 1.0f;
+    LightFlags          Flags                = LightFlags::Enabled;
+    float               Range                = 100.0f;
+    float               AttenuationConstant  = 1.0f;
+    float               AttenuationLinear    = 0.0f;
+    float               AttenuationQuadratic = 0.0f;
+    float               SpotInnerAngle       = 0.785398f;  // radians
+    float               SpotOuterAngle       = 1.047198f;  // radians
+};
+
+// A light on a model node.
+struct ModelLightDesc
+{
+    const char*         Name      = nullptr;
+    uint32_t            NodeIndex = InvalidIndex;
+    LightType           Type      = LightType::Point;
+    LightParams         Params;
+};
+
+// A skeleton joint.  ParentIndex is a joint index in the same skeleton, less than the joint's
+// own index, or InvalidIndex for a root joint.  RestTransform is relative to the parent
+// joint, or for a root joint to the skeleton's node.
+struct ModelJointDesc
+{
+    const char*         Name          = nullptr;
+    uint32_t            ParentIndex   = InvalidIndex;
+    Transform           RestTransform;
+};
+
+// A skeleton, in the space of a model node, whose scene node holds each instance's skeleton
+// instance.  NodeIndex InvalidIndex puts the skeleton in the space of the instance root.
+struct ModelSkeletonDesc
+{
+    const char*             Name       = nullptr;
+    uint32_t                NodeIndex  = InvalidIndex;
+    uint32_t                JointCount = 0;
+    const ModelJointDesc*   pJoints    = nullptr;
+};
+
+// A socket: a model node, a child of its skeleton's node, whose transform follows a joint.
+// LocalTransform is relative to the joint.  Like every Canvas transform, a socket's transform is
+// a translation, rotation, and scale, with no shear: it composes the rotations and the scales of
+// the joint and its ancestors separately.
+struct ModelSocketDesc
+{
+    const char*         Name          = nullptr;
+    uint32_t            SkeletonIndex = InvalidIndex;
+    uint32_t            JointIndex    = InvalidIndex;
+    Transform           LocalTransform;
+};
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif // _MSC_VER
+
+//------------------------------------------------------------------------------------------------
+// XModelBuilder - builds immutable XModel templates.
+//
+// A builder is Uninitialized when created, after a successful Build, and after Reset.  Begin
+// starts a model and puts the builder in the Building state, where the Add methods,
+// SetActiveCamera, and Build are available.  In the Uninitialized state they return
+// Gem::Result::Uninitialized, and Begin while Building returns Gem::Result::AlreadyExists.
+//
+// A successful Build moves the builder's content into a new XModel and returns the builder to
+// Uninitialized, so one builder can build any number of models, one at a time.  A failed Build
+// leaves the content in place.  A model has at least one model node.
+//
+// Each Add method validates its descriptor and, on success, writes the new entry's index to
+// *pIndex when pIndex is non-null.  A rejected call adds nothing.
+//------------------------------------------------------------------------------------------------
+struct
+XModelBuilder : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XModelBuilder, 0x6B1E93D4A27C58F1);
+
+    // Device whose GPU resources the models are built from
+    GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
+
+    // Starts a model.  name (optional) becomes the XModel's name.
+    GEMMETHOD(Begin)(const char *name) = 0;
+
+    // Discards the content and returns the builder to Uninitialized.
+    GEMMETHOD_(void, Reset)() = 0;
+
+    GEMMETHOD_(bool, IsBuilding)() const = 0;
+
+    // Shared GPU resources.  Meshes name mesh data by its index.
+    GEMMETHOD(AddMeshData)(_In_ XGfxMeshData *pMeshData, _Out_opt_ uint32_t *pIndex) = 0;
+    GEMMETHOD(AddMaterial)(_In_ XGfxMaterial *pMaterial, _Out_opt_ uint32_t *pIndex) = 0;
+    GEMMETHOD(AddTexture)(_In_ XGfxSurface *pTexture, _Out_opt_ uint32_t *pIndex) = 0;
+
+    GEMMETHOD(AddNode)(_In_ const ModelNodeDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
+    GEMMETHOD(AddMesh)(_In_ const ModelMeshDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
+    GEMMETHOD(AddCamera)(_In_ const ModelCameraDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
+    GEMMETHOD(AddLight)(_In_ const ModelLightDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
+    GEMMETHOD(AddSkeleton)(_In_ const ModelSkeletonDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
+
+    // Adds a socket's model node and writes the node's index to *pNodeIndex.
+    GEMMETHOD(AddSocket)(_In_ const ModelSocketDesc *pDesc, _Out_opt_ uint32_t *pNodeIndex) = 0;
+
+    // Clips are shared across all instances.  Track targets are checked by Build.
+    GEMMETHOD(AddAnimationClip)(_In_ const AnimationClipDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
+
+    // Designates the camera that Instantiate reports as the instance's active camera.
+    GEMMETHOD(SetActiveCamera)(uint32_t cameraIndex) = 0;
+
+    GEMMETHOD(Build)(_Out_ XModel **ppModel) = 0;
 };
 
 //================================================================================================

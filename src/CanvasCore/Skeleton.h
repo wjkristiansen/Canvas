@@ -1,0 +1,137 @@
+//================================================================================================
+// Skeleton - shared skeleton data and the per-instance skeleton pose
+//
+// ModelSkeletonData : immutable joint table stored on CModel, shared by every instance.
+//
+// SkeletonPose      : joint matrices (skeleton space), composed parents first from local
+//                     joint transforms, plus the composed rotation and scale used to give
+//                     socket nodes a translation/rotation/scale local transform.
+//
+// CSkeletonInstance : one instance's pose of one skeleton, bound as a scene-graph element to
+//                     the node whose space the skeleton is in.  Its Update recomputes the pose
+//                     and moves the instance's socket nodes when the joints changed.
+//
+// Joint matrices compose parents first, with row vectors:
+//   - Joint matrix: M[j] = local[j] * M[parent(j)]; M[root] = local[root]
+//   - Joint world matrix: M[j] * nodeGlobal
+//================================================================================================
+
+#pragma once
+
+#include "pch.h"
+#include "Canvas.h"
+#include "CanvasElement.h"
+#include "SceneGraph.h"
+
+namespace Canvas
+{
+
+//------------------------------------------------------------------------------------------------
+#pragma warning(push)
+#pragma warning(disable: 4324) // structure padded due to alignment specifier
+struct ModelJointData
+{
+    std::string         Name;
+    uint32_t            ParentIndex = InvalidIndex;   // less than the joint's own index
+    Transform           RestTransform;
+};
+#pragma warning(pop)
+
+struct ModelSkeletonData
+{
+    std::string                 Name;
+    uint32_t                    NodeIndex = InvalidIndex;  // InvalidIndex: the instance root
+    std::vector<ModelJointData> Joints;
+};
+
+//------------------------------------------------------------------------------------------------
+struct SkeletonPose
+{
+    std::vector<Math::FloatMatrix4x4>   Matrices;   // skeleton space
+    std::vector<Math::FloatQuaternion>  Rotations;  // composed rotation, skeleton space
+    std::vector<Math::FloatVector4>     Scales;     // composed per-axis scale, skeleton space
+
+    // Composes the joints' local transforms (one per joint) parents first.
+    void Compute(const ModelSkeletonData &skeleton, const Transform *pLocalTransforms);
+
+    // A socket node's transform, relative to the skeleton's node, from the socket's local
+    // transform relative to the given joint.
+    // Translation is exact; rotation and scale compose like XSceneGraphNode::GetGlobalRotation,
+    // which matches the matrix when ancestor scale is uniform.
+    Transform SocketTransform(uint32_t jointIndex, const Transform &localTransform) const;
+};
+
+//------------------------------------------------------------------------------------------------
+class CSkeletonInstance :
+    public TSceneGraphElement<XSkeletonInstance>
+{
+#pragma warning(push)
+#pragma warning(disable: 4324)
+    struct Socket
+    {
+        XSceneGraphNode    *pNode = nullptr;   // weak; written only while a child of this element's node
+        uint32_t            JointIndex = 0;
+        Transform           LocalTransform;   // relative to the joint
+    };
+#pragma warning(pop)
+
+    // Strong reference to the model that owns the shared skeleton data (m_pData points into it).
+    Gem::TGemPtr<XModel>        m_pModel;
+    const ModelSkeletonData    *m_pData = nullptr;
+
+    std::vector<Transform>      m_LocalTransforms;  // one per joint
+    SkeletonPose                m_Pose;
+    bool                        m_PoseDirty = true;
+    bool                        m_SocketsDirty = true;
+    std::vector<Socket>         m_Sockets;
+
+    void RefreshPose();
+
+public:
+    BEGIN_GEM_INTERFACE_MAP()
+        GEM_INTERFACE_ENTRY(XNamedElement)
+        GEM_INTERFACE_ENTRY(XCanvasElement)
+        GEM_INTERFACE_ENTRY(XSceneGraphElement)
+        GEM_INTERFACE_ENTRY(XSkeletonInstance)
+    END_GEM_INTERFACE_MAP()
+
+    explicit CSkeletonInstance(XCanvas *pCanvas) :
+        TSceneGraphElement<XSkeletonInstance>(pCanvas)
+    {}
+
+    Gem::Result Initialize() { return Gem::Result::Success; }
+    void Uninitialize() {}
+
+    // Called once after construction, before the element is bound to its node.
+    void Bind(XModel *pModel, const ModelSkeletonData *pData);
+
+    // Registers a socket node; its local transform is set on the next Update.
+    void AddSocket(XSceneGraphNode *pNode, uint32_t jointIndex, const Transform &localTransform);
+
+    // Direct joint access for the animation controller.  index must be in range.
+    const Transform &LocalTransform(uint32_t index) const { return m_LocalTransforms[index]; }
+    void SetLocalTransform(uint32_t index, const Transform &transform)
+    {
+        m_LocalTransforms[index] = transform;
+        m_PoseDirty = true;
+    }
+    const Transform &RestTransform(uint32_t index) const { return m_pData->Joints[index].RestTransform; }
+
+    // XSceneGraphElement
+    GEMMETHOD(Update)(float dtime) final;
+
+    // XSkeletonInstance
+    GEMMETHOD_(uint32_t, GetJointCount)() const final
+    {
+        return static_cast<uint32_t>(m_LocalTransforms.size());
+    }
+    GEMMETHOD_(const char *, GetJointName)(uint32_t index) const final;
+    GEMMETHOD_(uint32_t, GetJointParent)(uint32_t index) const final;
+    GEMMETHOD_(uint32_t, FindJoint)(const char *name) const final;
+    GEMMETHOD(GetJointLocalTransform)(uint32_t index, Transform *pTransform) const final;
+    GEMMETHOD(SetJointLocalTransform)(uint32_t index, const Transform *pTransform) final;
+    GEMMETHOD_(void, ResetToRestPose)() final;
+    GEMMETHOD_(Math::FloatMatrix4x4, GetJointMatrix)(uint32_t index) final;
+};
+
+} // namespace Canvas
