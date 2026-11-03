@@ -1,10 +1,7 @@
 //================================================================================================
 // Camera
 //
-// MATRIX CONVENTION: Canvas uses ROW VECTORS (v' = v * M)
-//   - View matrix is the inverse of the camera's world transform
-//   - Verification: world * view = identity (not view * world)
-//   - Translation in BOTTOM ROW of all matrices
+// The view matrix is the inverse of the camera's world matrix: world * view = identity.
 //================================================================================================
 
 #pragma once

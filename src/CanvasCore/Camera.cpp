@@ -40,7 +40,7 @@ GEMMETHODIMP_(Math::FloatMatrix4x4) CCamera::GetViewMatrix()
             //   up_world      =  up_world
             //   forward_world =  forward_world
             //
-            // For row vectors v' = v * View, the columns of View's 3x3 are
+            // With row vectors, the columns of View's 3x3 are
             // (right_world, up_world, forward_world). The translation row is
             // -cameraPos projected onto each view-space axis.
             auto worldMatrix = pNode->GetGlobalMatrix();
@@ -139,7 +139,6 @@ GEMMETHODIMP_(Math::FloatMatrix4x4) CCamera::GetViewProjectionMatrix()
         GetProjectionMatrix();
         
         // Compute view-projection matrix: ViewProjection = View * Projection
-        // For row vectors: v' = v * View * Projection
         m_ViewProjectionMatrix = m_ViewMatrix * m_ProjectionMatrix;
         
         // Clear all dirty bits since all matrices are now computed

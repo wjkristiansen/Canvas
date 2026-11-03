@@ -166,11 +166,11 @@ Graphics backends are loaded at runtime as shared libraries. The host calls `XCa
 
 ## Conventions
 
-### Row-Vector Matrix Convention
+### Matrix and Quaternion Conventions
 
-All transforms use row vectors: `v' = v * M`. Translation is stored in `matrix[3][0..2]` (the bottom row). Matrix concatenation reads left-to-right: `child_to_world = parent_to_world * child_to_parent`.
+Matrices use row vectors: a vector transforms as `v' = v * M`.
 
-This convention is enforced consistently across the math library, scene graph, camera matrices, and shaders.
+Quaternions are Hamilton quaternions: a unit quaternion `q` rotates a vector as `q * v * q⁻¹`.
 
 ### Coordinate System and Local Basis
 

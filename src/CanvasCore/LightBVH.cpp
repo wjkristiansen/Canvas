@@ -96,8 +96,7 @@ Math::AABB ComputePointInfluenceAABB(const Math::FloatVector4& position, float r
 
 // Derive (worldPosition, axisForward) from a light's attached node's
 // global matrix.  Position is row 3; the spot/directional "forward"
-// is row 0 (matches the row-vector basis convention used throughout
-// Canvas).  Returns false when no node is attached.
+// is row 0, the local forward axis.  Returns false when no node is attached.
 bool GetLightWorldPose(XLight* light,
                        Math::FloatVector4& outPosition,
                        Math::FloatVector4& outForward)

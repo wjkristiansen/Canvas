@@ -172,9 +172,8 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
     EXPECT_TRUE(AlmostEqual(tA_g, FloatVector4(1.0f, 2.0f, 0.0f, 1.0f)));
     EXPECT_TRUE(AlmostEqual(tB_g, FloatVector4(1.0f, 3.0f, 0.0f, 1.0f)));
 
-    // Global matrices: Mg = Mlocal * Mparent. Row-vector convention (v' = v*M)
-    // applies the local transform first, so the product is local * parent. This
-    // is consistent with GetGlobalRotation (qA * qB) and GetGlobalTranslation above.
+    // Global matrices: Mg = Mlocal * Mparent (row vectors), consistent with
+    // GetGlobalRotation (qA * qB) and GetGlobalTranslation above.
     auto mA_global = pA->GetGlobalMatrix();
     auto mB_global = pB->GetGlobalMatrix();
     auto mRoot = FloatMatrix4x4::Identity();
@@ -812,7 +811,7 @@ TEST(CanvasInterfacesTest, LightTransformPropagation)
     EXPECT_FALSE(AlmostEqual(lightTranslation1, lightTranslation2));
 
     // Verify the light's world transform is computed correctly
-    // Row vectors (v' = v*M): world = light_local * parent_global (local applied first)
+    // Row vectors: world = light_local * parent_global
     auto parentGlobal = pParent->GetGlobalMatrix();
     auto lightLocal = pLightNode->GetLocalMatrix();
     auto expectedLightGlobal = lightLocal * parentGlobal;

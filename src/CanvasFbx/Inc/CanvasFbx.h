@@ -6,7 +6,7 @@
 // anything about FBX SDK internals.
 //
 // The importer converts all data to Canvas conventions on output:
-//   - Row-vector matrices (v' = v * M), translation in row[3]
+//   - Row-vector matrices
 //   - Right-handed, Z-up world, in meters
 //   - Canvas local basis: +X = forward, +Y = left, +Z = up. A model's front
 //     faces +X, and cameras and lights look along their local +X

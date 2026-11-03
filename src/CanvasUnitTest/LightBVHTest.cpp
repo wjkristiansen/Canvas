@@ -94,7 +94,6 @@ FloatMatrix4x4 BuildViewProjLookingAlongX(const FloatVector4& eye,
 {
     FloatMatrix4x4 view = {};
     // basis: forward=+X, side=+Y, up=+Z stored as columns of view
-    // (row-vector: world->view multiply column-wise).
     view.M[0][0] = 0.0f; view.M[0][1] = 0.0f; view.M[0][2] = 1.0f; view.M[0][3] = 0.0f; // world X -> view forward (+Z)
     view.M[1][0] = 1.0f; view.M[1][1] = 0.0f; view.M[1][2] = 0.0f; view.M[1][3] = 0.0f; // world Y -> view side (+X)
     view.M[2][0] = 0.0f; view.M[2][1] = 1.0f; view.M[2][2] = 0.0f; view.M[2][3] = 0.0f; // world Z -> view up (+Y)
