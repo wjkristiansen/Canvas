@@ -219,40 +219,42 @@ struct ImportedNode
 #pragma warning(pop)
 
 //------------------------------------------------------------------------------------------------
-// One TRS keyframe, sampled from FBX FCurves at an authored key time.
-// Rotation is always stored as a quaternion (ufbx converts Euler->quat internally).
+// The property of a node's local transform that an imported track animates, and the form of
+// its values.
 //------------------------------------------------------------------------------------------------
-#pragma warning(push)
-#pragma warning(disable: 4324)
-struct ImportedAnimationKeyframe
+enum class ImportedTransformProperty : uint32_t
 {
-    float                   Time;           // seconds from clip start
-    Math::FloatVector4      Translation;    // W = 1
-    Math::FloatQuaternion   Rotation;       // unit quaternion (Canvas space)
-    Math::FloatVector4      Scale;          // W = 0
+    Translation = 0,    // a point, W = 1
+    Rotation    = 1,    // a unit quaternion, as (X, Y, Z, W)
+    Scale       = 2,    // a vector, W = 0
 };
-#pragma warning(pop)
 
 //------------------------------------------------------------------------------------------------
-// All keyframes for one scene node within a clip.
-// A "track" covers the full TRS for one node (T + R + S sampled at the union of all
-// FCurve key times for that node in this AnimationStack).
+// The keys of one property (translation, rotation, or scale) of one node within a clip, in the
+// forms ImportedTransformProperty describes.  Rotation keys are quaternions (ufbx converts Euler
+// rotation to quaternions), each in the same hemisphere as the key before it.
 //------------------------------------------------------------------------------------------------
 struct ImportedAnimationTrack
 {
-    int32_t                                 NodeIndex;   // -> ImportedScene::Nodes
-    std::vector<ImportedAnimationKeyframe>  Keyframes;   // sorted ascending by Time
+    int32_t                             NodeIndex = -1;     // -> ImportedScene::Nodes
+    ImportedTransformProperty           Property = ImportedTransformProperty::Translation;
+    AnimationInterpolation              Interpolation = AnimationInterpolation::Linear;
+    std::vector<float>                  Times;              // seconds from clip start, ascending
+    std::vector<Math::FloatVector4>     Values;             // parallel to Times
 };
 
 //------------------------------------------------------------------------------------------------
 // One FBX AnimationStack (== one Blender Action).
 // A file may contain zero or more of these.
+//
+// A property the clip holds at its node's imported pose (ImportedNode::LocalTransform) has no
+// track; one it holds anywhere else has a single-key track.
 //------------------------------------------------------------------------------------------------
 struct ImportedAnimationClip
 {
     std::string                         Name;               // from stack->name (Blender Action name)
     float                               DurationSeconds;
-    std::vector<ImportedAnimationTrack> Tracks;             // one per animated node
+    std::vector<ImportedAnimationTrack> Tracks;             // at most one per node and property
 };
 
 //------------------------------------------------------------------------------------------------
@@ -266,7 +268,7 @@ struct ImportedScene
     std::vector<ImportedMaterial>       Materials;
     std::vector<ImportedTextureRef>     Textures;
     std::vector<ImportedNode>           Nodes;
-    std::vector<ImportedAnimationClip>  AnimationClips;     // one per FBX AnimationStack / Blender Action
+    std::vector<ImportedAnimationClip>  AnimationClips;     // one per action; stacks named "Object|Action" merge by Action
     std::vector<ImportDiag>             Diagnostics;
     Math::AABB                          SceneBounds;    // world-space bounds of all mesh instances at rest
     int32_t                             ActiveCameraNodeIndex = -1;
@@ -291,10 +293,10 @@ struct ImportOptions
 //================================================================================================
 // Importer entry point
 //
-// Returns S_OK on success (scene may still carry warnings in Diagnostics).
-// Returns an error HRESULT on hard failure; Diagnostics explains why.
+// Returns Gem::Result::Success on success (scene may still carry warnings in Diagnostics).
+// Returns a failure result on hard failure; Diagnostics explains why.
 //================================================================================================
-CANVASFBX_API HRESULT ImportScene(
+CANVASFBX_API Gem::Result ImportScene(
     _In_z_  const wchar_t  *pFilePath,
     _In_    const ImportOptions &options,
     _Out_   ImportedScene  *pScene
@@ -312,8 +314,8 @@ CANVASFBX_API HRESULT ImportScene(
 // their nearest common ancestor, become the joints of one skeleton, in the space
 // of that ancestor.  Every other imported node becomes a model node.  Content on
 // a joint, and nodes parented to one, hang from a socket on that joint.  An
-// imported node's transform track animates its joint when the node is a joint,
-// and its model node otherwise.
+// imported node's tracks animate its joint when the node is a joint, and its
+// model node otherwise.
 //
 // Behaviour on malformed data:
 //   - Out-of-range material / mesh / light / camera / parent indices are
@@ -325,7 +327,7 @@ CANVASFBX_API HRESULT ImportScene(
 //   - A scene with no meshes is valid; cameras, lights, and nodes are still
 //     built into the model.
 //
-// Returns S_OK on success.  The returned XModel is not yet instantiated;
+// Returns Gem::Result::Success on success.  The returned XModel is not yet instantiated;
 // call XModel::Instantiate() to place it in a scene graph.
 //================================================================================================
 

@@ -303,50 +303,106 @@ struct Transform
         return m;
     }
 };
-
-//------------------------------------------------------------------------------------------------
-// Animation clip descriptors - ABI-safe POD; no STL types.
-// All pointer fields must remain valid for the duration of the XModelBuilder::AddAnimationClip
-// call, which copies the data.
-//------------------------------------------------------------------------------------------------
-
-// One TRS keyframe. Rotation is always stored as a unit quaternion.
-struct AnimationKeyframe
-{
-    float                   Time;           // seconds from clip start
-    Math::FloatVector4      Translation;    // W = 1
-    Math::FloatQuaternion   Rotation;       // unit quaternion (Canvas space)
-    Math::FloatVector4      Scale;          // W = 0
-};
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif // _MSC_VER
 
-// The kind of target an animation track names.
+//------------------------------------------------------------------------------------------------
+// Animation descriptors - ABI-safe POD; no STL types.
+// All pointer fields must remain valid for the duration of the XModelBuilder call that takes
+// them, which copies the data.
+//
+// A model's animation targets are the values its clips animate in each instance.  A track is
+// the keys of one value over a clip's time; a clip pairs each of its tracks with the target
+// it drives.
+//------------------------------------------------------------------------------------------------
+
+// The layout of an animated value.  A value of N components is N consecutive floats.
+enum class AnimationValueType : uint32_t
+{
+    Float      = 0,     // 1 component
+    Float2     = 1,     // 2 components
+    Float3     = 2,     // 3 components
+    Float4     = 3,     // 4 components
+    Quaternion = 4,     // 4 components: a unit quaternion, as (X, Y, Z, W)
+};
+
+// The number of floats in a value of the given type, or 0 for a type outside the enum.
+constexpr uint32_t AnimationValueComponents(AnimationValueType type) noexcept
+{
+    switch (type)
+    {
+    case AnimationValueType::Float:      return 1;
+    case AnimationValueType::Float2:     return 2;
+    case AnimationValueType::Float3:     return 3;
+    case AnimationValueType::Float4:     return 4;
+    case AnimationValueType::Quaternion: return 4;
+    default:                             return 0;
+    }
+}
+
+// What an animation target is, and the value type of every type but Value.  A scene node
+// target is the scene node that Instantiate creates for model node Index; a joint target is
+// joint Index of the skeleton instance for skeleton SkeletonIndex.
 enum class AnimationTargetType : uint32_t
 {
-    ModelNode = 0,  // the local transform of a model node's scene node in each instance
-    Joint     = 1,  // the local transform of a joint in each instance's skeleton instance
+    SceneNodeTranslation = 0,   // Float3: the local translation, a point (W = 1)
+    SceneNodeRotation    = 1,   // Quaternion: the local rotation
+    SceneNodeScale       = 2,   // Float3: the local scale, a vector (W = 0)
+    JointTranslation     = 3,   // Float3: the local translation, a point (W = 1)
+    JointRotation        = 4,   // Quaternion: the local rotation
+    JointScale           = 5,   // Float3: the local scale, a vector (W = 0)
+    Value                = 6,   // ValueType: a value the application reads from the controller
 };
 
-// All keyframes for one target's track within a clip.  TargetIndex is a model node index, or
-// for a Joint target, a joint index within skeleton SkeletonIndex.
+// How a track's value changes between two keys.
+enum class AnimationInterpolation : uint32_t
+{
+    Linear = 0,     // linear; spherical linear for Quaternion
+    Step   = 1,     // holds each key's value until the next key
+    Cubic  = 2,     // a cubic polynomial per segment, from the track's coefficients
+};
+
+// One animation target of a model.
+struct AnimationTargetDesc
+{
+    AnimationTargetType         Type          = AnimationTargetType::SceneNodeTranslation;
+    uint32_t                    SkeletonIndex = InvalidIndex;  // joint targets only
+    uint32_t                    Index         = InvalidIndex;  // scene node and joint targets only
+    AnimationValueType          ValueType     = AnimationValueType::Float;  // Value targets only
+};
+
+// The keys of one animated value.  Values and coefficients are packed: each takes as many
+// floats as ValueType has components.  Key times are in nondecreasing order, and two keys at the
+// same time make the value change instantly at that time, to the later key's value.  The value
+// at a time before the first key is the first key's value, and after the last key, the last key's.
+//
+// A Cubic track's segment i runs from key i to key i + 1.  With u = (t - Time[i]) /
+// (Time[i + 1] - Time[i]), its value is Value[i] + C1 * u + C2 * u^2 + C3 * u^3.
+// pCoefficients holds C1, C2, C3 for each segment in order: KeyCount - 1 segments of three
+// values each.
 struct AnimationTrackDesc
 {
-    AnimationTargetType         TargetType    = AnimationTargetType::ModelNode;
-    uint32_t                    SkeletonIndex = InvalidIndex;  // Joint targets only
-    uint32_t                    TargetIndex   = InvalidIndex;
-    const AnimationKeyframe*    Keyframes     = nullptr;            // KeyframeCount entries, sorted ascending by Time
-    uint32_t                    KeyframeCount = 0;
+    AnimationValueType          ValueType     = AnimationValueType::Float;
+    AnimationInterpolation      Interpolation = AnimationInterpolation::Linear;
+    const float*                pTimes        = nullptr;    // KeyCount entries, seconds from clip start, in order
+    const float*                pValues       = nullptr;    // KeyCount values
+    const float*                pCoefficients = nullptr;    // Cubic only: 3 * (KeyCount - 1) values
+    uint32_t                    KeyCount      = 0;
 };
 
-// One animation clip (== one FBX AnimationStack / Blender Action).
+// One animation clip.  Track i drives the model's animation target pTrackTargets[i], whose
+// value type is the track's.  While a clip plays, each of the model's animation targets takes
+// the value of the clip's track that drives it.  A target the clip has no track for takes its
+// value at instantiation: a scene node's or joint's transform property, or zero for a Value
+// target.
 struct AnimationClipDesc
 {
-    const char*                 Name;           // null-terminated
-    float                       Duration;       // seconds
-    const AnimationTrackDesc*   Tracks;         // TrackCount entries
-    uint32_t                    TrackCount;
+    const char*                 Name          = nullptr;    // null-terminated
+    float                       Duration      = 0.0f;       // seconds
+    const AnimationTrackDesc*   pTracks       = nullptr;    // TrackCount entries
+    const uint32_t*             pTrackTargets = nullptr;    // TrackCount animation target indices
+    uint32_t                    TrackCount    = 0;
 };
 
 // Sentinel returned by XAnimationController::FindClip when no clip matches the name.
@@ -396,6 +452,13 @@ XAnimationController : public XCanvasElement
 
     // Restore everything the controller animates to its value at instantiation time.
     GEMMETHOD_(void, ResetToBindPose)() = 0;
+
+    // The model's animation targets, by index.  GetTargetValue writes the target's value as last
+    // applied by the controller, or its value at instantiation before then, to pValue: count
+    // floats, as many as the target's value type has.  Returns OutOfRange for an index out of
+    // range, and InvalidArg for any other count.
+    GEMMETHOD_(uint32_t, GetTargetCount)() = 0;
+    GEMMETHOD(GetTargetValue)(uint32_t targetIndex, _Out_ float *pValue, uint32_t count) = 0;
 
     // Time / state
     GEMMETHOD_(uint32_t, GetActiveClipIndex)() = 0;
@@ -772,11 +835,11 @@ struct ModelInstantiateResult
 // XModel - an immutable, instantiable template, produced by XModelBuilder::Build.
 //
 // A model holds tables, indexed from 0: model nodes, the meshes, cameras, and lights
-// attached to them, skeletons, sockets, and animation clips.  Model nodes are listed parents
-// first.  Instantiate creates one scene-graph node per model node, under a synthetic instance
-// root, with its elements; one skeleton instance per skeleton; and, when the model has clips,
-// one animation controller.  GPU resources (mesh data, materials, textures) are shared by
-// every instance.
+// attached to them, skeletons, sockets, animation targets, and animation clips.  Model nodes
+// are listed parents first.  Instantiate creates one scene-graph node per model node, under a
+// synthetic instance root, with its elements; one skeleton instance per skeleton; and, when the
+// model has clips, one animation controller.  GPU resources (mesh data, materials, textures)
+// are shared by every instance.
 //------------------------------------------------------------------------------------------------
 struct
 XModel : public XCanvasElement
@@ -972,7 +1035,14 @@ XModelBuilder : public XCanvasElement
     // Adds a socket's model node and writes the node's index to *pNodeIndex.
     GEMMETHOD(AddSocket)(_In_ const ModelSocketDesc *pDesc, _Out_opt_ uint32_t *pNodeIndex) = 0;
 
-    // Clips are shared across all instances.  Track targets are checked by Build.
+    // Animation targets and clips are shared across all instances.  AddAnimationTarget returns
+    // AlreadyExists for a scene node or joint target of the same type and transform as an
+    // earlier one.  A clip's targets are added before the clip; AddAnimationClip
+    // returns OutOfRange for a track target that does not exist yet, and InvalidArg for a track
+    // whose value type differs from its target's, a track whose key times are out of order, or a
+    // target driven by more than one track.
+    // Model node, skeleton, and joint indices of targets are checked by Build.
+    GEMMETHOD(AddAnimationTarget)(_In_ const AnimationTargetDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
     GEMMETHOD(AddAnimationClip)(_In_ const AnimationClipDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
 
     // Designates the camera that Instantiate reports as the instance's active camera.

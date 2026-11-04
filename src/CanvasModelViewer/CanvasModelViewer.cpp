@@ -467,8 +467,8 @@ class CApp
 
         const std::wstring widePath = importPath.wstring();
         Canvas::LogInfo(m_pLogger.Get(), "Calling FBX importer...");
-        const HRESULT hr = Canvas::Fbx::ImportScene(widePath.c_str(), options, &imported);
-        Canvas::LogInfo(m_pLogger.Get(), "FBX importer returned hr=0x%08X", static_cast<unsigned int>(hr));
+        const Gem::Result importResult = Canvas::Fbx::ImportScene(widePath.c_str(), options, &imported);
+        Canvas::LogInfo(m_pLogger.Get(), "FBX importer returned %s", Gem::GemResultString(importResult));
         Canvas::LogInfo(m_pLogger.Get(), "FBX import counts: meshes=%zu lights=%zu nodes=%zu diagnostics=%zu",
             imported.Meshes.size(), imported.Lights.size(), imported.Nodes.size(), imported.Diagnostics.size());
 
@@ -482,7 +482,7 @@ class CApp
                 Canvas::LogInfo(m_pLogger.Get(), "FBX: %s", diag.Message.c_str());
         }
 
-        bool hasImportErrors = FAILED(hr);
+        bool hasImportErrors = Gem::Failed(importResult);
         for (const Canvas::Fbx::ImportDiag &diag : imported.Diagnostics)
         {
             if (diag.Level == Canvas::Fbx::DiagLevel::Error)

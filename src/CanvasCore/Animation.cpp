@@ -42,47 +42,75 @@ Math::FloatQuaternion CAnimationController::Slerp(
     return Math::FloatQuaternion(a * s0 + b * s1);
 }
 
-// Evaluate a track's SRT at time t.
-// Clamps to the first/last keyframe outside the range; linearly interpolates between
-// the bracketing keyframes within range.
-void CAnimationController::EvaluateTrack(
-    const std::vector<AnimationKeyframe>& keys, float t, Transform& out)
+// Overwrite the first n components of out with the packed value at p.
+static void LoadValue(const float* p, uint32_t n, Math::FloatVector4& out)
 {
-    if (keys.empty())
-        return;
-
-    if (keys.size() == 1 || t <= keys.front().Time)
-    {
-        out.Translation = keys.front().Translation;
-        out.Rotation    = keys.front().Rotation;
-        out.Scale       = keys.front().Scale;
-        return;
-    }
-
-    if (t >= keys.back().Time)
-    {
-        out.Translation = keys.back().Translation;
-        out.Rotation    = keys.back().Rotation;
-        out.Scale       = keys.back().Scale;
-        return;
-    }
-
-    // Binary search for the first key with Time > t
-    auto it = std::upper_bound(keys.begin(), keys.end(), t,
-        [](float val, const AnimationKeyframe& k) { return val < k.Time; });
-
-    const AnimationKeyframe& next = *it;
-    const AnimationKeyframe& prev = *std::prev(it);
-
-    const float span  = next.Time - prev.Time;
-    const float alpha = (span > 1e-7f) ? (t - prev.Time) / span : 0.0f;
-
-    out.Translation = prev.Translation + (next.Translation - prev.Translation) * alpha;
-    out.Rotation    = Slerp(prev.Rotation, next.Rotation, alpha);
-    out.Scale       = prev.Scale + (next.Scale - prev.Scale) * alpha;
+    for (uint32_t c = 0; c < n; ++c)
+        out[c] = p[c];
 }
 
-Transform CAnimationController::TransformTarget::Get() const
+// Evaluate a track at time t into the components of out that its value type has.
+// Clamps to the first/last key outside the range; within range, interpolates between the
+// bracketing keys as the track's interpolation says.
+void CAnimationController::EvaluateTrack(const AnimTrack& track, float t, Math::FloatVector4& out)
+{
+    const std::vector<float>& times = track.Times;
+    if (times.empty())
+        return;
+
+    const uint32_t n = AnimationValueComponents(track.ValueType);
+    const float* values = track.Values.data();
+
+    if (!(t >= times.front()))   // before the first key, or NaN
+    {
+        LoadValue(values, n, out);
+        return;
+    }
+    if (t >= times.back())
+    {
+        LoadValue(values + (times.size() - 1) * n, n, out);
+        return;
+    }
+
+    // Binary search for the first key with time > t, so at the time of two keys that share it the
+    // later key applies.  The bracketing keys are at different times, since t is at or after the
+    // earlier and before the later.
+    const size_t next = static_cast<size_t>(std::upper_bound(times.begin(), times.end(), t) - times.begin());
+    const size_t prev = next - 1;
+    const float* v0 = values + prev * n;
+    const float* v1 = values + next * n;
+    const float u = (t - times[prev]) / (times[next] - times[prev]);
+
+    switch (track.Interpolation)
+    {
+    case AnimationInterpolation::Step:
+        LoadValue(v0, n, out);
+        break;
+
+    case AnimationInterpolation::Cubic:
+    {
+        const float* c = track.Coefficients.data() + prev * 3 * n;
+        for (uint32_t i = 0; i < n; ++i)
+            out[i] = v0[i] + u * (c[i] + u * (c[n + i] + u * c[2 * n + i]));
+        break;
+    }
+
+    default:
+        if (track.ValueType == AnimationValueType::Quaternion)
+        {
+            out = Slerp(Math::FloatQuaternion(v0[0], v0[1], v0[2], v0[3]),
+                        Math::FloatQuaternion(v1[0], v1[1], v1[2], v1[3]), u);
+        }
+        else
+        {
+            for (uint32_t i = 0; i < n; ++i)
+                out[i] = v0[i] + (v1[i] - v0[i]) * u;
+        }
+        break;
+    }
+}
+
+Transform CAnimationController::BoundTransform::Get() const
 {
     if (pSkeleton)
         return pSkeleton->LocalTransform(Joint);
@@ -90,7 +118,7 @@ Transform CAnimationController::TransformTarget::Get() const
     return pNode->GetLocalTransform();
 }
 
-void CAnimationController::TransformTarget::Set(const Transform &transform) const
+void CAnimationController::BoundTransform::Set(const Transform &transform) const
 {
     if (pSkeleton)
     {
@@ -101,44 +129,81 @@ void CAnimationController::TransformTarget::Set(const Transform &transform) cons
     pNode->SetLocalTransform(transform);
 }
 
-void CAnimationController::SnapshotPose(std::vector<Transform>& dest) const
+// The value of one property of a transform.
+static Math::FloatVector4 PropertyOf(const Transform& transform, TransformProperty property)
 {
-    dest.clear();
-    dest.reserve(m_Targets.size());
-    for (const TransformTarget& target : m_Targets)
-        dest.push_back(target.Get());
+    switch (property)
+    {
+    case TransformProperty::Rotation: return transform.Rotation;
+    case TransformProperty::Scale:    return transform.Scale;
+    default:                          return transform.Translation;
+    }
 }
 
-void CAnimationController::ApplyClipPose(const BoundClip& clip, float t)
+Math::FloatVector4 CAnimationController::ReadTarget(size_t i) const
 {
-    for (const BoundTrack& bt : clip.Tracks)
+    const BoundTarget& target = m_Targets[i];
+    if (target.Transform == InvalidIndex)
+        return m_Values[i];
+    return PropertyOf(m_Transforms[target.Transform].Get(), target.Property);
+}
+
+void CAnimationController::EvaluateClipPose(const CAnimationClip& clip, float t)
+{
+    m_Pose = m_BindValues;
+    for (size_t ti = 0; ti < clip.Tracks.size(); ++ti)
+        EvaluateTrack(clip.Tracks[ti], t, m_Pose[clip.TrackTargets[ti]]);
+}
+
+void CAnimationController::ApplyValues(const std::vector<Math::FloatVector4>& values)
+{
+    // A transform keeps the properties no target writes.
+    for (size_t i = 0; i < m_Transforms.size(); ++i)
+        m_TransformScratch[i] = m_Transforms[i].Get();
+
+    for (size_t i = 0; i < m_Targets.size(); ++i)
     {
-        const TransformTarget& target = m_Targets[bt.TargetIndex];
-        Transform pose = target.Get();
-        EvaluateTrack(*bt.pKeys, t, pose);
-        target.Set(pose);
+        const Math::FloatVector4& v = values[i];
+        m_Values[i] = v;
+
+        const BoundTarget& target = m_Targets[i];
+        if (target.Transform == InvalidIndex)
+            continue;
+
+        Transform& transform = m_TransformScratch[target.Transform];
+        switch (target.Property)
+        {
+        case TransformProperty::Translation: transform.Translation = v; break;
+        case TransformProperty::Rotation:    transform.Rotation    = v; break;
+        case TransformProperty::Scale:       transform.Scale       = v; break;
+        }
     }
+
+    for (size_t i = 0; i < m_Transforms.size(); ++i)
+        m_Transforms[i].Set(m_TransformScratch[i]);
+}
+
+void CAnimationController::ApplyClipPose(const CAnimationClip& clip, float t)
+{
+    EvaluateClipPose(clip, t);
+    ApplyValues(m_Pose);
 }
 
 void CAnimationController::ApplyBlendedPose(float weight)
 {
     if (!m_pClipDefs || m_ActiveClipIndex >= m_pClipDefs->size()) return;
-    const BoundClip& toClip = m_BoundClips[m_ActiveClipIndex];
+    EvaluateClipPose((*m_pClipDefs)[m_ActiveClipIndex], m_Time);
 
-    for (const BoundTrack& bt : toClip.Tracks)
+    for (size_t i = 0; i < m_Targets.size(); ++i)
     {
-        const TransformTarget& target = m_Targets[bt.TargetIndex];
-        const Transform& from = m_BlendFromPose[bt.TargetIndex];
-
-        Transform to = from;
-        EvaluateTrack(*bt.pKeys, m_Time, to);
-
-        Transform blended;
-        blended.Translation = from.Translation + (to.Translation - from.Translation) * weight;
-        blended.Rotation    = Slerp(from.Rotation, to.Rotation, weight);
-        blended.Scale       = from.Scale + (to.Scale - from.Scale) * weight;
-        target.Set(blended);
+        const Math::FloatVector4& from = m_BlendFromPose[i];
+        Math::FloatVector4& to = m_Pose[i];
+        if (m_Targets[i].ValueType == AnimationValueType::Quaternion)
+            to = Slerp(from, to, weight);
+        else
+            to = from + (to - from) * weight;
     }
+    ApplyValues(m_Pose);
 }
 
 //================================================================================================
@@ -147,58 +212,65 @@ void CAnimationController::ApplyBlendedPose(float weight)
 
 void CAnimationController::BuildFromModel(
     XModel* pModel,
+    const std::vector<AnimTarget>& targets,
     const std::vector<CAnimationClip>& clipDefs,
     const std::vector<XSceneGraphNode*>& nodes,
     const std::vector<CSkeletonInstance*>& skeletons)
 {
     m_pModel    = pModel;       // keep the shared clip data alive for the controller's lifetime
     m_pClipDefs = &clipDefs;
-    m_BoundClips.clear();
+    m_Transforms.clear();
     m_Targets.clear();
-    m_BindPose.clear();
+    m_BindValues.clear();
     m_BlendFromPose.clear();
 
-    // One target slot per uniquely animated transform, keyed by (skeleton + 1, index);
+    // One bound transform per transform any target writes, keyed by (skeleton + 1, index);
     // 0 in the high half of the key stands for model nodes.
-    std::unordered_map<uint64_t, uint32_t> targetSlots;
+    std::unordered_map<uint64_t, uint32_t> transformSlots;
 
-    for (const CAnimationClip& def : clipDefs)
+    m_Targets.reserve(targets.size());
+    m_BindValues.reserve(targets.size());
+    for (const AnimTarget& def : targets)
     {
-        BoundClip bc;
-        bc.pDef = &def;
-        bc.Tracks.reserve(def.Tracks.size());
+        BoundTarget target;
+        target.ValueType = def.ValueType;
 
-        for (const AnimTrack& track : def.Tracks)
+        if (def.Type == AnimationTargetType::Value)
         {
-            const bool isJoint = track.TargetType == AnimationTargetType::Joint;
-            const uint64_t owner = isJoint ? static_cast<uint64_t>(track.SkeletonIndex) + 1 : 0;
-            const uint64_t key = (owner << 32) | track.TargetIndex;
-
-            auto [it, inserted] = targetSlots.try_emplace(key, static_cast<uint32_t>(m_Targets.size()));
-            if (inserted)
-            {
-                TransformTarget target;
-                if (isJoint)
-                {
-                    target.pSkeleton = skeletons[track.SkeletonIndex];
-                    target.Joint     = track.TargetIndex;
-                }
-                else
-                {
-                    target.pNode = nodes[track.TargetIndex];
-                }
-                m_Targets.push_back(target);
-                m_BindPose.push_back(target.Get());
-            }
-
-            BoundTrack bt;
-            bt.TargetIndex = it->second;
-            bt.pKeys       = &track.Keyframes;
-            bc.Tracks.push_back(bt);
+            m_Targets.push_back(target);
+            m_BindValues.push_back(Math::FloatVector4(0.0f, 0.0f, 0.0f, 0.0f));
+            continue;
         }
 
-        m_BoundClips.push_back(std::move(bc));
+        const bool isJoint = IsJointTarget(def.Type);
+        const uint64_t owner = isJoint ? static_cast<uint64_t>(def.SkeletonIndex) + 1 : 0;
+        const uint64_t key = (owner << 32) | def.Index;
+
+        auto [it, inserted] = transformSlots.try_emplace(key, static_cast<uint32_t>(m_Transforms.size()));
+        if (inserted)
+        {
+            BoundTransform transform;
+            if (isJoint)
+            {
+                transform.pSkeleton = skeletons[def.SkeletonIndex];
+                transform.Joint     = def.Index;
+            }
+            else
+            {
+                transform.pNode = nodes[def.Index];
+            }
+            m_Transforms.push_back(transform);
+        }
+
+        target.Transform = it->second;
+        target.Property  = TargetProperty(def.Type);
+        m_Targets.push_back(target);
+        m_BindValues.push_back(PropertyOf(m_Transforms[target.Transform].Get(), target.Property));
     }
+
+    m_TransformScratch.resize(m_Transforms.size());
+    m_Values = m_BindValues;
+    m_Pose   = m_BindValues;
 
     m_ActiveClipIndex = 0;
     m_Time            = 0.0f;
@@ -214,8 +286,8 @@ GEMMETHODIMP_(bool) CAnimationController::ValidateForNode(_In_ XSceneGraphNode *
 {
     if (!pRoot) return false;
 
-    // Every target must be in pRoot's subtree (pRoot included): a transform target's node,
-    // or for a joint, its skeleton instance's node.
+    // Every target must be in pRoot's subtree (pRoot included): a transform's node, or for a
+    // joint, its skeleton instance's node.
     auto IsDescendant = [](XSceneGraphNode* pCandidate, XSceneGraphNode* pAncestor) -> bool
     {
         for (XSceneGraphNode* p = pCandidate; p; p = p->GetParent())
@@ -223,9 +295,9 @@ GEMMETHODIMP_(bool) CAnimationController::ValidateForNode(_In_ XSceneGraphNode *
         return false;
     };
 
-    for (const TransformTarget& target : m_Targets)
+    for (const BoundTransform& transform : m_Transforms)
     {
-        XSceneGraphNode* pNode = target.pSkeleton ? target.pSkeleton->GetAttachedNode() : target.pNode;
+        XSceneGraphNode* pNode = transform.pSkeleton ? transform.pSkeleton->GetAttachedNode() : transform.pNode;
         if (!pNode || !IsDescendant(pNode, pRoot))
             return false;
     }
@@ -248,7 +320,9 @@ GEMMETHODIMP CAnimationController::Play(uint32_t clipIndex, float blendDuration)
 
     if (blendDuration > 0.0f)
     {
-        SnapshotPose(m_BlendFromPose);
+        m_BlendFromPose.resize(m_Targets.size());
+        for (size_t i = 0; i < m_Targets.size(); ++i)
+            m_BlendFromPose[i] = ReadTarget(i);
         m_BlendTime     = 0.0f;
         m_BlendDuration = blendDuration;
     }
@@ -284,13 +358,25 @@ GEMMETHODIMP_(void) CAnimationController::Stop()
 
 GEMMETHODIMP_(void) CAnimationController::ResetToBindPose()
 {
-    for (size_t i = 0; i < m_Targets.size(); ++i)
-        m_Targets[i].Set(m_BindPose[i]);
+    ApplyValues(m_BindValues);
     m_IsPlaying     = false;
     m_InBindPose    = true;
     m_BlendFromPose.clear();
     m_BlendDuration = 0.0f;
     m_BlendTime     = 0.0f;
+}
+
+GEMMETHODIMP CAnimationController::GetTargetValue(uint32_t targetIndex, _Out_ float *pValue, uint32_t count)
+{
+    if (!pValue)
+        return Gem::Result::BadPointer;
+    if (targetIndex >= m_Values.size())
+        return Gem::Result::OutOfRange;
+    if (count != AnimationValueComponents(m_Targets[targetIndex].ValueType))
+        return Gem::Result::InvalidArg;
+    for (uint32_t c = 0; c < count; ++c)
+        pValue[c] = m_Values[targetIndex][static_cast<int>(c)];
+    return Gem::Result::Success;
 }
 
 //================================================================================================
@@ -303,7 +389,6 @@ GEMMETHODIMP CAnimationController::Update(float dtime)
         return Gem::Result::Success;
 
     const CAnimationClip& clip = (*m_pClipDefs)[m_ActiveClipIndex];
-    const BoundClip& bound     = m_BoundClips[m_ActiveClipIndex];
 
     if (clip.Duration <= 0.0f)
         return Gem::Result::Success;
@@ -323,7 +408,7 @@ GEMMETHODIMP CAnimationController::Update(float dtime)
             m_BlendFromPose.clear();
             m_BlendDuration = 0.0f;
             m_BlendTime     = 0.0f;
-            ApplyClipPose(bound, m_Time);
+            ApplyClipPose(clip, m_Time);
         }
         else
         {
@@ -333,7 +418,7 @@ GEMMETHODIMP CAnimationController::Update(float dtime)
     }
     else
     {
-        ApplyClipPose(bound, m_Time);
+        ApplyClipPose(clip, m_Time);
     }
 
     return Gem::Result::Success;
