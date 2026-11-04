@@ -25,8 +25,10 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
+#ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4324) // structure padded due to alignment specifier
+#endif
 struct ModelNodeData
 {
     std::string         Name;
@@ -41,7 +43,9 @@ struct ModelSocketData
     uint32_t            JointIndex    = InvalidIndex;
     Transform           LocalTransform;
 };
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
 
 struct ModelMeshData
 {
@@ -80,6 +84,7 @@ struct ModelContent
     std::vector<ModelLightData>         Lights;
     std::vector<ModelSkeletonData>      Skeletons;
     std::vector<ModelSocketData>        Sockets;
+    std::vector<AnimTarget>             AnimTargets;
     std::vector<CAnimationClip>         AnimClips;
 
     uint32_t                            ActiveCameraIndex = InvalidIndex;
@@ -219,7 +224,7 @@ class CModelBuilder :
     // Rest pose of each skeleton, for placing sockets; parallel to m_Content.Skeletons.
     std::vector<SkeletonPose> m_RestPoses;
 
-    Gem::Result ValidateClipTargets() const;
+    Gem::Result ValidateAnimationTargets() const;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -251,6 +256,7 @@ public: // XModelBuilder methods
     GEMMETHOD(AddLight)(_In_ const ModelLightDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
     GEMMETHOD(AddSkeleton)(_In_ const ModelSkeletonDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
     GEMMETHOD(AddSocket)(_In_ const ModelSocketDesc *pDesc, _Out_opt_ uint32_t *pNodeIndex) final;
+    GEMMETHOD(AddAnimationTarget)(_In_ const AnimationTargetDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
     GEMMETHOD(AddAnimationClip)(_In_ const AnimationClipDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
     GEMMETHOD(SetActiveCamera)(uint32_t cameraIndex) final;
     GEMMETHOD(Build)(_Out_ XModel **ppModel) final;

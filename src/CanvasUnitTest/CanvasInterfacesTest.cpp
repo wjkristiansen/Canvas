@@ -981,16 +981,52 @@ Canvas::Transform Translation(float x, float y, float z)
     return t;
 }
 
-// Builds an AnimationKeyframe with an identity rotation and unit scale, varying only
-// the translation - enough to exercise the controller's TRS evaluation.
-Canvas::AnimationKeyframe TranslateKey(float time, const Canvas::Math::FloatVector4& t)
+// Adds a scene node animation target of the given type for a model node and returns its index.
+uint32_t AddNodeTarget(Canvas::XModelBuilder *pBuilder, uint32_t node, Canvas::AnimationTargetType type)
 {
-    Canvas::AnimationKeyframe k{};
-    k.Time        = time;
-    k.Translation = t;
-    k.Rotation    = Canvas::Math::FloatQuaternion();                       // identity (0,0,0,1)
-    k.Scale       = Canvas::Math::FloatVector4(1.0f, 1.0f, 1.0f, 0.0f);
-    return k;
+    Canvas::AnimationTargetDesc target{};
+    target.Type  = type;
+    target.Index = node;
+    uint32_t index = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationTarget(&target, &index)));
+    return index;
+}
+
+// Adds a Value animation target and returns its index.
+uint32_t AddValueTarget(Canvas::XModelBuilder *pBuilder, Canvas::AnimationValueType valueType)
+{
+    Canvas::AnimationTargetDesc target{};
+    target.Type      = Canvas::AnimationTargetType::Value;
+    target.ValueType = valueType;
+    uint32_t index = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationTarget(&target, &index)));
+    return index;
+}
+
+// A track with count keys; pValues holds count packed values of the given type.
+Canvas::AnimationTrackDesc Track(Canvas::AnimationValueType valueType, const float *pTimes, const float *pValues,
+    uint32_t count, Canvas::AnimationInterpolation interpolation = Canvas::AnimationInterpolation::Linear)
+{
+    Canvas::AnimationTrackDesc track{};
+    track.ValueType     = valueType;
+    track.Interpolation = interpolation;
+    track.pTimes        = pTimes;
+    track.pValues       = pValues;
+    track.KeyCount      = count;
+    return track;
+}
+
+// A clip whose track i drives target pTargets[i].
+Canvas::AnimationClipDesc Clip(const char *name, float duration,
+    const Canvas::AnimationTrackDesc *pTracks, const uint32_t *pTargets, uint32_t count)
+{
+    Canvas::AnimationClipDesc clip{};
+    clip.Name          = name;
+    clip.Duration      = duration;
+    clip.pTracks       = pTracks;
+    clip.pTrackTargets = pTargets;
+    clip.TrackCount    = count;
+    return clip;
 }
 
 // A new builder, already Building a model with the given name.
@@ -1221,16 +1257,8 @@ TEST(CanvasInterfacesTest, ModelBuilderValidatesIndices)
     mesh.SkeletonIndex = InvalidIndex;
     EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddMesh(&mesh, nullptr));
 
-    // Build checks clip targets, and a failed Build keeps the model's content.
-    Canvas::AnimationKeyframe key = TranslateKey(0.0f, FloatVector4(0.0f, 0.0f, 0.0f, 1.0f));
-    Canvas::AnimationTrackDesc track{};
-    track.TargetType    = Canvas::AnimationTargetType::ModelNode;
-    track.TargetIndex   = 7;
-    track.Keyframes     = &key;
-    track.KeyframeCount = 1;
-    Canvas::AnimationClipDesc clip{};
-    clip.Name = "Bad"; clip.Duration = 1.0f; clip.Tracks = &track; clip.TrackCount = 1;
-    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
+    // Build checks animation target transforms, and a failed Build keeps the model's content.
+    EXPECT_EQ(0u, AddNodeTarget(pBuilder, 7, Canvas::AnimationTargetType::SceneNodeTranslation));
 
     Gem::TGemPtr<Canvas::XModel> pModel;
     EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->Build(&pModel));
@@ -1779,21 +1807,11 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     const uint32_t node = AddNode(pBuilder, "Joint", InvalidIndex, Translation(7.0f, 7.0f, 7.0f));
 
     // One clip translating X from 0 to 40 over 2 seconds.
-    Canvas::AnimationKeyframe keys[2] = {
-        TranslateKey(0.0f, FloatVector4(0.0f,  0.0f, 0.0f, 1.0f)),
-        TranslateKey(2.0f, FloatVector4(40.0f, 0.0f, 0.0f, 1.0f)),
-    };
-    Canvas::AnimationTrackDesc track{};
-    track.TargetType    = Canvas::AnimationTargetType::ModelNode;
-    track.TargetIndex   = node;
-    track.Keyframes     = keys;
-    track.KeyframeCount = 2;
-
-    Canvas::AnimationClipDesc clip{};
-    clip.Name       = "Slide";
-    clip.Duration   = 2.0f;
-    clip.Tracks     = &track;
-    clip.TrackCount = 1;
+    const uint32_t target = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeTranslation);
+    const float times[2] = { 0.0f, 2.0f };
+    const float values[6] = { 0.0f, 0.0f, 0.0f,  40.0f, 0.0f, 0.0f };
+    const Canvas::AnimationTrackDesc track = Track(Canvas::AnimationValueType::Float3, times, values, 2);
+    const Canvas::AnimationClipDesc clip = Clip("Slide", 2.0f, &track, &target, 1);
     EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
 
     auto pModel = BuildModel(pBuilder);
@@ -1860,18 +1878,16 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
     const uint32_t node = AddNode(pBuilder, "Joint", InvalidIndex);
 
     // Two single-key clips that hold the node at constant, distinct translations.
-    Canvas::AnimationKeyframe keyA = TranslateKey(0.0f, FloatVector4(0.0f,   0.0f, 0.0f, 1.0f));
-    Canvas::AnimationTrackDesc trackA{};
-    trackA.TargetIndex = node; trackA.Keyframes = &keyA; trackA.KeyframeCount = 1;
-    Canvas::AnimationClipDesc clipA{};
-    clipA.Name = "A"; clipA.Duration = 10.0f; clipA.Tracks = &trackA; clipA.TrackCount = 1;
+    const uint32_t target = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeTranslation);
+    const float keyTime = 0.0f;
+    const float keyA[3] = { 0.0f, 0.0f, 0.0f };
+    const Canvas::AnimationTrackDesc trackA = Track(Canvas::AnimationValueType::Float3, &keyTime, keyA, 1);
+    const Canvas::AnimationClipDesc clipA = Clip("A", 10.0f, &trackA, &target, 1);
     EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clipA, nullptr)));
 
-    Canvas::AnimationKeyframe keyB = TranslateKey(0.0f, FloatVector4(100.0f, 0.0f, 0.0f, 1.0f));
-    Canvas::AnimationTrackDesc trackB{};
-    trackB.TargetIndex = node; trackB.Keyframes = &keyB; trackB.KeyframeCount = 1;
-    Canvas::AnimationClipDesc clipB{};
-    clipB.Name = "B"; clipB.Duration = 10.0f; clipB.Tracks = &trackB; clipB.TrackCount = 1;
+    const float keyB[3] = { 100.0f, 0.0f, 0.0f };
+    const Canvas::AnimationTrackDesc trackB = Track(Canvas::AnimationValueType::Float3, &keyTime, keyB, 1);
+    const Canvas::AnimationClipDesc clipB = Clip("B", 10.0f, &trackB, &target, 1);
     EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clipB, nullptr)));
 
     auto pModel = BuildModel(pBuilder);
@@ -1944,18 +1960,17 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesJoints)
     EXPECT_TRUE(Succeeded(pBuilder->AddSocket(&socket, nullptr)));
 
     // X from 0 to 4 over 2 seconds; Z held at the rest height.
-    Canvas::AnimationKeyframe keys[2] = {
-        TranslateKey(0.0f, FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)),
-        TranslateKey(2.0f, FloatVector4(4.0f, 0.0f, 1.0f, 1.0f)),
-    };
-    Canvas::AnimationTrackDesc track{};
-    track.TargetType    = Canvas::AnimationTargetType::Joint;
-    track.SkeletonIndex = skeletonIndex;
-    track.TargetIndex   = 0;
-    track.Keyframes     = keys;
-    track.KeyframeCount = 2;
-    Canvas::AnimationClipDesc clip{};
-    clip.Name = "Swing"; clip.Duration = 2.0f; clip.Tracks = &track; clip.TrackCount = 1;
+    Canvas::AnimationTargetDesc targetDesc{};
+    targetDesc.Type          = Canvas::AnimationTargetType::JointTranslation;
+    targetDesc.SkeletonIndex = skeletonIndex;
+    targetDesc.Index         = 0;
+    uint32_t target = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationTarget(&targetDesc, &target)));
+
+    const float times[2] = { 0.0f, 2.0f };
+    const float values[6] = { 0.0f, 0.0f, 1.0f,  4.0f, 0.0f, 1.0f };
+    const Canvas::AnimationTrackDesc track = Track(Canvas::AnimationValueType::Float3, times, values, 2);
+    const Canvas::AnimationClipDesc clip = Clip("Swing", 2.0f, &track, &target, 1);
     EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
 
     auto pModel = BuildModel(pBuilder);
@@ -1992,6 +2007,480 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesJoints)
     EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)));
     EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
     EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)));
+}
+
+// Each clip drives only the targets it has tracks for; every other target takes its value at
+// instantiation, including after switching from a clip that drove it.
+TEST(CanvasInterfacesTest, AnimationControllerFillsUntrackedTargets)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "PropertyModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+
+    // Bind pose: translated, turned 90 degrees about Z, and scaled by 2.
+    const float s45 = std::sqrt(0.5f);
+    Canvas::Transform bind;
+    bind.Translation = FloatVector4(7.0f, 7.0f, 7.0f, 1.0f);
+    bind.Rotation    = FloatQuaternion(0.0f, 0.0f, s45, s45);
+    bind.Scale       = FloatVector4(2.0f, 2.0f, 2.0f, 0.0f);
+    const uint32_t node = AddNode(pBuilder, "Node", InvalidIndex, bind);
+
+    // "Spin" turns from identity to 90 degrees about X over 2 seconds; "Slide" moves along X.
+    const uint32_t rotationTarget    = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeRotation);
+    const uint32_t translationTarget = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeTranslation);
+    const float times[2] = { 0.0f, 2.0f };
+    const float spin[8]  = { 0.0f, 0.0f, 0.0f, 1.0f,  s45, 0.0f, 0.0f, s45 };
+    const float slide[6] = { 0.0f, 0.0f, 0.0f,  10.0f, 0.0f, 0.0f };
+    const Canvas::AnimationTrackDesc spinTrack  = Track(Canvas::AnimationValueType::Quaternion, times, spin, 2);
+    const Canvas::AnimationTrackDesc slideTrack = Track(Canvas::AnimationValueType::Float3, times, slide, 2);
+    const Canvas::AnimationClipDesc spinClip  = Clip("Spin", 4.0f, &spinTrack, &rotationTarget, 1);
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&spinClip, nullptr)));
+    const Canvas::AnimationClipDesc slideClip = Clip("Slide", 4.0f, &slideTrack, &translationTarget, 1);
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&slideClip, nullptr)));
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "PropertyScene")));
+    Canvas::ModelInstantiateResult result{};
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    ASSERT_NE(result.pAnimationController, nullptr);
+    Canvas::XAnimationController *pCtrl = result.pAnimationController;
+    Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pNode, nullptr);
+
+    // Halfway through Spin: 45 degrees about X, with translation and scale at the bind pose.
+    const float s225 = std::sin(0.3926991f), c225 = std::cos(0.3926991f);
+    EXPECT_TRUE(Succeeded(pCtrl->PlayByName("Spin", 0.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->Update(1.0f)));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalRotation(), FloatQuaternion(s225, 0.0f, 0.0f, c225)));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), bind.Translation));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalScale(), bind.Scale));
+
+    // Slide moves the node and returns its rotation to the bind pose.
+    EXPECT_TRUE(Succeeded(pCtrl->PlayByName("Slide", 0.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->Update(1.0f)));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), FloatVector4(5.0f, 0.0f, 0.0f, 1.0f)));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalRotation(), bind.Rotation));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalScale(), bind.Scale));
+}
+
+// A step track holds each key's value until the next key.
+TEST(CanvasInterfacesTest, AnimationControllerStepInterpolation)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "StepModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t node = AddNode(pBuilder, "Node", InvalidIndex);
+
+    const uint32_t target = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeTranslation);
+    const float times[3] = { 0.0f, 1.0f, 2.0f };
+    const float values[9] = { 0.0f, 0.0f, 0.0f,  10.0f, 0.0f, 0.0f,  20.0f, 0.0f, 0.0f };
+    const Canvas::AnimationTrackDesc track =
+        Track(Canvas::AnimationValueType::Float3, times, values, 3, Canvas::AnimationInterpolation::Step);
+    const Canvas::AnimationClipDesc clip = Clip("Step", 3.0f, &track, &target, 1);
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "StepScene")));
+    Canvas::ModelInstantiateResult result{};
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    ASSERT_NE(result.pAnimationController, nullptr);
+    Canvas::XAnimationController *pCtrl = result.pAnimationController;
+    Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pNode, nullptr);
+
+    EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->Update(0.5f)));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 0.0f, 1.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->Update(1.0f)));     // t = 1.5
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), FloatVector4(10.0f, 0.0f, 0.0f, 1.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->Update(1.0f)));     // t = 2.5, past the last key
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), FloatVector4(20.0f, 0.0f, 0.0f, 1.0f)));
+}
+
+// Instantiates pModel in pScene and returns the instance's animation controller.
+Canvas::XAnimationController *InstantiateAnimated(Canvas::XModel *pModel, Canvas::XScene *pScene,
+    Canvas::ModelInstantiateResult &result)
+{
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    return result.pAnimationController;
+}
+
+// The value of target at clip time t: count components, with the rest zero.
+Canvas::Math::FloatVector4 ValueAt(Canvas::XAnimationController *pCtrl, uint32_t target, float t, uint32_t count = 1)
+{
+    pCtrl->SetTime(t);
+    EXPECT_TRUE(Succeeded(pCtrl->Update(0.0f)));
+    float value[4] = {};
+    EXPECT_TRUE(Succeeded(pCtrl->GetTargetValue(target, value, count)));
+    return Canvas::Math::FloatVector4(value[0], value[1], value[2], value[3]);
+}
+
+// A cubic segment's value is Value[i] + C1 u + C2 u^2 + C3 u^3, with u running from 0 to 1 over
+// the segment whatever its duration.
+TEST(CanvasInterfacesTest, AnimationControllerCubicInterpolation)
+{
+    using namespace Canvas::Math;
+    using Canvas::AnimationValueType;
+    using Canvas::AnimationInterpolation;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "CubicModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t node = AddNode(pBuilder, "Node", InvalidIndex);
+
+    const uint32_t curveTarget  = AddValueTarget(pBuilder, AnimationValueType::Float);
+    const uint32_t cubicTarget  = AddValueTarget(pBuilder, AnimationValueType::Float);
+    const uint32_t linearTarget = AddValueTarget(pBuilder, AnimationValueType::Float);
+    const uint32_t packedTarget = AddValueTarget(pBuilder, AnimationValueType::Float3);
+    const uint32_t jumpTarget   = AddValueTarget(pBuilder, AnimationValueType::Float);
+    const uint32_t nodeTarget   = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeTranslation);
+
+    // Segment 0 (1 s) eases from 0 to 10: the Hermite curve with zero tangents.  Segment 1
+    // (2 s) runs from 10 to 4 along an arbitrary cubic whose coefficients sum to -6.
+    const float curveTimes[3]  = { 0.0f, 1.0f, 3.0f };
+    const float curveValues[3] = { 0.0f, 10.0f, 4.0f };
+    const float curveCoefficients[6] = { 0.0f, 30.0f, -20.0f,  2.0f, -3.0f, -5.0f };
+    Canvas::AnimationTrackDesc curve = Track(AnimationValueType::Float, curveTimes, curveValues, 3, AnimationInterpolation::Cubic);
+    curve.pCoefficients = curveCoefficients;
+
+    // A cubic with only C1 is linear.
+    const float lineTimes[2]  = { 0.0f, 4.0f };
+    const float lineValues[2] = { 2.0f, 10.0f };
+    const float lineCoefficients[3] = { 8.0f, 0.0f, 0.0f };
+    Canvas::AnimationTrackDesc cubicLine = Track(AnimationValueType::Float, lineTimes, lineValues, 2, AnimationInterpolation::Cubic);
+    cubicLine.pCoefficients = lineCoefficients;
+    const Canvas::AnimationTrackDesc linearLine = Track(AnimationValueType::Float, lineTimes, lineValues, 2);
+
+    // Each component has its own coefficients: C1, C2, and C3 are each three floats.
+    const float packedTimes[2]  = { 0.0f, 2.0f };
+    const float packedValues[6] = { 1.0f, 2.0f, 3.0f,  2.0f, 3.0f, 4.0f };
+    const float packedCoefficients[9] = { 1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f };
+    Canvas::AnimationTrackDesc packed = Track(AnimationValueType::Float3, packedTimes, packedValues, 2, AnimationInterpolation::Cubic);
+    packed.pCoefficients = packedCoefficients;
+
+    // Two keys at t = 1 make the value jump from 10 to 20.
+    const float jumpTimes[4]  = { 0.0f, 1.0f, 1.0f, 2.0f };
+    const float jumpValues[4] = { 0.0f, 10.0f, 20.0f, 30.0f };
+    const float jumpCoefficients[9] = { 10.0f, 0.0f, 0.0f,  0.0f, 0.0f, 0.0f,  10.0f, 0.0f, 0.0f };
+    Canvas::AnimationTrackDesc jump = Track(AnimationValueType::Float, jumpTimes, jumpValues, 4, AnimationInterpolation::Cubic);
+    jump.pCoefficients = jumpCoefficients;
+
+    // A node's translation eases from the origin to X = 10 over 2 seconds.
+    const float nodeTimes[2]  = { 0.0f, 2.0f };
+    const float nodeValues[6] = { 0.0f, 0.0f, 0.0f,  10.0f, 0.0f, 0.0f };
+    const float nodeCoefficients[9] = { 0.0f, 0.0f, 0.0f,  30.0f, 0.0f, 0.0f,  -20.0f, 0.0f, 0.0f };
+    Canvas::AnimationTrackDesc nodeTrack = Track(AnimationValueType::Float3, nodeTimes, nodeValues, 2, AnimationInterpolation::Cubic);
+    nodeTrack.pCoefficients = nodeCoefficients;
+
+    const Canvas::AnimationTrackDesc tracks[6] = { curve, cubicLine, linearLine, packed, jump, nodeTrack };
+    const uint32_t targets[6] = { curveTarget, cubicTarget, linearTarget, packedTarget, jumpTarget, nodeTarget };
+    const Canvas::AnimationClipDesc clip = Clip("Curves", 5.0f, tracks, targets, 6);
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "CubicScene")));
+    Canvas::ModelInstantiateResult result{};
+    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pScene.Get(), result);
+    ASSERT_NE(pCtrl, nullptr);
+    Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
+    ASSERT_NE(pNode, nullptr);
+    EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
+
+    // Every key's value, and the closed form between them.
+    EXPECT_FLOAT_EQ(0.0f,      ValueAt(pCtrl, curveTarget, 0.0f).X);
+    EXPECT_FLOAT_EQ(1.5625f,   ValueAt(pCtrl, curveTarget, 0.25f).X);    // 30/16 - 20/64
+    EXPECT_FLOAT_EQ(5.0f,      ValueAt(pCtrl, curveTarget, 0.5f).X);
+    EXPECT_FLOAT_EQ(10.0f,     ValueAt(pCtrl, curveTarget, 1.0f).X);
+    EXPECT_FLOAT_EQ(9.625f,    ValueAt(pCtrl, curveTarget, 2.0f).X);     // u = 0.5 in a 2 s segment
+    EXPECT_FLOAT_EQ(7.703125f, ValueAt(pCtrl, curveTarget, 2.5f).X);     // u = 0.75
+    EXPECT_FLOAT_EQ(4.0f,      ValueAt(pCtrl, curveTarget, 3.0f).X);
+    EXPECT_FLOAT_EQ(4.0f,      ValueAt(pCtrl, curveTarget, 4.0f).X);     // held after the last key
+
+    for (float t : { 0.0f, 0.7f, 1.9f, 3.3f, 4.5f })
+        EXPECT_FLOAT_EQ(ValueAt(pCtrl, linearTarget, t).X, ValueAt(pCtrl, cubicTarget, t).X) << "t = " << t;
+
+    EXPECT_TRUE(AlmostEqual(ValueAt(pCtrl, packedTarget, 1.0f, 3), FloatVector4(1.5f, 2.25f, 3.125f, 0.0f)));
+
+    EXPECT_FLOAT_EQ(5.0f,  ValueAt(pCtrl, jumpTarget, 0.5f).X);
+    EXPECT_FLOAT_EQ(20.0f, ValueAt(pCtrl, jumpTarget, 1.0f).X);
+    EXPECT_FLOAT_EQ(25.0f, ValueAt(pCtrl, jumpTarget, 1.5f).X);
+
+    EXPECT_TRUE(AlmostEqual(ValueAt(pCtrl, nodeTarget, 1.0f, 3), FloatVector4(5.0f, 0.0f, 0.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), FloatVector4(5.0f, 0.0f, 0.0f, 1.0f)));
+}
+
+// Two keys at the same time change the value instantly, to the later key's value, wherever
+// the shared time falls in the track: at the first key, between keys, or at the last key.
+TEST(CanvasInterfacesTest, AnimationControllerSharedKeyTimes)
+{
+    using Canvas::AnimationValueType;
+    using Canvas::AnimationInterpolation;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "SharedKeyModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    AddNode(pBuilder, "Node", InvalidIndex);
+
+    const uint32_t firstTarget = AddValueTarget(pBuilder, AnimationValueType::Float);
+    const uint32_t lastTarget  = AddValueTarget(pBuilder, AnimationValueType::Float);
+    const uint32_t stepTarget  = AddValueTarget(pBuilder, AnimationValueType::Float);
+
+    const float firstTimes[3]  = { 1.0f, 1.0f, 2.0f };
+    const float firstValues[3] = { 10.0f, 20.0f, 30.0f };
+    const float lastTimes[3]   = { 0.0f, 2.0f, 2.0f };
+    const float lastValues[3]  = { 0.0f, 10.0f, 40.0f };
+    const float stepTimes[3]   = { 0.0f, 1.0f, 1.0f };
+    const float stepValues[3]  = { 5.0f, 6.0f, 7.0f };
+    const Canvas::AnimationTrackDesc tracks[3] =
+    {
+        Track(AnimationValueType::Float, firstTimes, firstValues, 3),
+        Track(AnimationValueType::Float, lastTimes, lastValues, 3),
+        Track(AnimationValueType::Float, stepTimes, stepValues, 3, AnimationInterpolation::Step),
+    };
+    const uint32_t targets[3] = { firstTarget, lastTarget, stepTarget };
+    const Canvas::AnimationClipDesc clip = Clip("Shared", 3.0f, tracks, targets, 3);
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "SharedKeyScene")));
+    Canvas::ModelInstantiateResult result{};
+    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pScene.Get(), result);
+    ASSERT_NE(pCtrl, nullptr);
+    EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
+
+    EXPECT_FLOAT_EQ(10.0f, ValueAt(pCtrl, firstTarget, 0.5f).X);
+    EXPECT_FLOAT_EQ(20.0f, ValueAt(pCtrl, firstTarget, 1.0f).X);
+    EXPECT_FLOAT_EQ(25.0f, ValueAt(pCtrl, firstTarget, 1.5f).X);
+
+    EXPECT_FLOAT_EQ(5.0f,  ValueAt(pCtrl, lastTarget, 1.0f).X);
+    EXPECT_FLOAT_EQ(40.0f, ValueAt(pCtrl, lastTarget, 2.0f).X);
+    EXPECT_FLOAT_EQ(40.0f, ValueAt(pCtrl, lastTarget, 2.5f).X);
+
+    EXPECT_FLOAT_EQ(5.0f, ValueAt(pCtrl, stepTarget, 0.5f).X);
+    EXPECT_FLOAT_EQ(7.0f, ValueAt(pCtrl, stepTarget, 1.0f).X);
+}
+
+// A Value target is zero while no clip drives it.  The application reads it from the
+// controller, as many floats as its value type has, including mid-blend.
+TEST(CanvasInterfacesTest, AnimationControllerValueTargets)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "WindModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    AddNode(pBuilder, "Node", InvalidIndex);
+
+    const uint32_t wind = AddValueTarget(pBuilder, Canvas::AnimationValueType::Float2);
+
+    const float times[2]  = { 0.0f, 2.0f };
+    const float values[4] = { 0.0f, 0.0f,  2.0f, 4.0f };
+    const Canvas::AnimationTrackDesc track = Track(Canvas::AnimationValueType::Float2, times, values, 2);
+    const Canvas::AnimationClipDesc gust = Clip("Gust", 4.0f, &track, &wind, 1);
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&gust, nullptr)));
+    const Canvas::AnimationClipDesc still = Clip("Still", 4.0f, nullptr, nullptr, 0);
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&still, nullptr)));
+
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "WindScene")));
+    Canvas::ModelInstantiateResult result{};
+    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pScene.Get(), result);
+    ASSERT_NE(pCtrl, nullptr);
+
+    // GetTargetValue writes exactly the target's components and nothing past them.
+    EXPECT_EQ(1u, pCtrl->GetTargetCount());
+    float value[3] = { -1.0f, -1.0f, -1.0f };
+    EXPECT_TRUE(Succeeded(pCtrl->GetTargetValue(wind, value, 2)));
+    EXPECT_FLOAT_EQ(0.0f, value[0]);
+    EXPECT_FLOAT_EQ(0.0f, value[1]);
+    EXPECT_FLOAT_EQ(-1.0f, value[2]);
+    EXPECT_EQ(Gem::Result::InvalidArg, pCtrl->GetTargetValue(wind, value, 3));
+    EXPECT_EQ(Gem::Result::OutOfRange, pCtrl->GetTargetValue(1, value, 2));
+    EXPECT_EQ(Gem::Result::BadPointer, pCtrl->GetTargetValue(wind, nullptr, 2));
+
+    EXPECT_TRUE(Succeeded(pCtrl->PlayByName("Gust", 0.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->Update(1.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->GetTargetValue(wind, value, 2)));
+    EXPECT_FLOAT_EQ(1.0f, value[0]);
+    EXPECT_FLOAT_EQ(2.0f, value[1]);
+
+    // Halfway through a cross-fade to a clip that does not drive it, the value is halfway back.
+    EXPECT_TRUE(Succeeded(pCtrl->PlayByName("Still", 1.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->Update(0.5f)));
+    EXPECT_TRUE(Succeeded(pCtrl->GetTargetValue(wind, value, 2)));
+    EXPECT_FLOAT_EQ(0.5f, value[0]);
+    EXPECT_FLOAT_EQ(1.0f, value[1]);
+    EXPECT_TRUE(Succeeded(pCtrl->Update(0.6f)));
+    EXPECT_TRUE(Succeeded(pCtrl->GetTargetValue(wind, value, 2)));
+    EXPECT_FLOAT_EQ(0.0f, value[0]);
+    EXPECT_FLOAT_EQ(0.0f, value[1]);
+
+    EXPECT_TRUE(Succeeded(pCtrl->PlayByName("Gust", 0.0f)));
+    EXPECT_TRUE(Succeeded(pCtrl->Update(2.0f)));
+    pCtrl->ResetToBindPose();
+    EXPECT_TRUE(Succeeded(pCtrl->GetTargetValue(wind, value, 2)));
+    EXPECT_FLOAT_EQ(0.0f, value[0]);
+    EXPECT_FLOAT_EQ(0.0f, value[1]);
+}
+
+// AddAnimationTarget and AddAnimationClip validate their descriptors; a rejected call adds nothing.
+TEST(CanvasInterfacesTest, ModelBuilderValidatesAnimation)
+{
+    using Canvas::AnimationValueType;
+    using Canvas::AnimationInterpolation;
+    using Canvas::AnimationTargetType;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "ValidationModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t node = AddNode(pBuilder, "Node", InvalidIndex);
+
+    // A target's type is known, and a Value target's value type.
+    Canvas::AnimationTargetDesc target{};
+    target.Type  = AnimationTargetType::SceneNodeTranslation;
+    target.Index = node;
+    EXPECT_EQ(Gem::Result::BadPointer, pBuilder->AddAnimationTarget(nullptr, nullptr));
+    target.Type = static_cast<AnimationTargetType>(7);
+    EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddAnimationTarget(&target, nullptr));
+    target.Type = AnimationTargetType::Value;
+    target.ValueType = static_cast<AnimationValueType>(5);
+    EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddAnimationTarget(&target, nullptr));
+    target.Type = AnimationTargetType::SceneNodeTranslation;
+
+    // One target of each type per transform; Value targets are each their own value.
+    uint32_t translation = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationTarget(&target, &translation)));
+    EXPECT_EQ(0u, translation);
+    EXPECT_EQ(Gem::Result::AlreadyExists, pBuilder->AddAnimationTarget(&target, nullptr));
+    const uint32_t rotation = AddNodeTarget(pBuilder, node, AnimationTargetType::SceneNodeRotation);
+    EXPECT_EQ(1u, rotation);
+    EXPECT_EQ(2u, AddValueTarget(pBuilder, AnimationValueType::Float));
+    EXPECT_EQ(3u, AddValueTarget(pBuilder, AnimationValueType::Float));
+
+    const float times[2]  = { 0.0f, 1.0f };
+    const float values[8] = { 0.0f, 0.0f, 0.0f, 1.0f,  0.0f, 0.0f, 0.0f, 1.0f };
+    const float coefficients[12] = {};
+    Canvas::AnimationTrackDesc track = Track(AnimationValueType::Float3, times, values, 2);
+    uint32_t trackTarget = translation;
+    Canvas::AnimationClipDesc clip = Clip("Clip", 1.0f, &track, &trackTarget, 1);
+
+    // A clip needs its track and target arrays, and each track its keys.
+    clip.pTrackTargets = nullptr;
+    EXPECT_EQ(Gem::Result::BadPointer, pBuilder->AddAnimationClip(&clip, nullptr));
+    clip.pTrackTargets = &trackTarget;
+    track.pTimes = nullptr;
+    EXPECT_EQ(Gem::Result::BadPointer, pBuilder->AddAnimationClip(&clip, nullptr));
+    track.pTimes = times;
+
+    // A track's value type and interpolation are known, its key times are in order, and it drives
+    // an existing target of its value type.
+    track.ValueType = static_cast<AnimationValueType>(5);
+    EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddAnimationClip(&clip, nullptr));
+    track.ValueType = AnimationValueType::Float3;
+    track.Interpolation = static_cast<AnimationInterpolation>(3);
+    EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddAnimationClip(&clip, nullptr));
+    track.Interpolation = AnimationInterpolation::Linear;
+    const float unsorted[2] = { 1.0f, 0.0f };
+    track.pTimes = unsorted;
+    EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddAnimationClip(&clip, nullptr));
+    track.pTimes = times;
+    trackTarget = 4;
+    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddAnimationClip(&clip, nullptr));
+    trackTarget = rotation;
+    EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddAnimationClip(&clip, nullptr));
+    trackTarget = translation;
+
+    // A clip drives each target with at most one track.
+    const Canvas::AnimationTrackDesc twoTracks[2] = { track, track };
+    const uint32_t sameTarget[2] = { translation, translation };
+    const Canvas::AnimationClipDesc twice = Clip("Twice", 1.0f, twoTracks, sameTarget, 2);
+    EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddAnimationClip(&twice, nullptr));
+
+    // A cubic track of more than one key needs its coefficients, and is not a Quaternion.
+    track.Interpolation = AnimationInterpolation::Cubic;
+    EXPECT_EQ(Gem::Result::BadPointer, pBuilder->AddAnimationClip(&clip, nullptr));
+    track.pCoefficients = coefficients;
+    trackTarget = rotation;
+    track.ValueType = AnimationValueType::Quaternion;
+    EXPECT_EQ(Gem::Result::InvalidArg, pBuilder->AddAnimationClip(&clip, nullptr));
+    track.ValueType = AnimationValueType::Float3;
+    trackTarget = translation;
+    uint32_t clipIndex = InvalidIndex;
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, &clipIndex)));
+    EXPECT_EQ(0u, clipIndex);    // the rejected clips added nothing
+
+    track.pCoefficients = nullptr;
+    track.KeyCount = 1;
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, &clipIndex)));
+    EXPECT_EQ(1u, clipIndex);
+
+    EXPECT_NE(BuildModel(pBuilder).Get(), nullptr);
+}
+
+// Instantiate writes every field of the result, so a result reused for a model without clips
+// holds no controller from an earlier instance.
+TEST(CanvasInterfacesTest, ModelInstantiateResultHasNoStaleController)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pAnimatedBuilder = BeginModel(pCanvas, pDevice, "Animated");
+    ASSERT_NE(pAnimatedBuilder.Get(), nullptr);
+    AddNode(pAnimatedBuilder, "Node", InvalidIndex);
+    const uint32_t target = AddValueTarget(pAnimatedBuilder, Canvas::AnimationValueType::Float);
+    const float times[1]  = { 0.0f };
+    const float values[1] = { 1.0f };
+    const Canvas::AnimationTrackDesc track = Track(Canvas::AnimationValueType::Float, times, values, 1);
+    const Canvas::AnimationClipDesc clip = Clip("Clip", 1.0f, &track, &target, 1);
+    EXPECT_TRUE(Succeeded(pAnimatedBuilder->AddAnimationClip(&clip, nullptr)));
+    auto pAnimated = BuildModel(pAnimatedBuilder);
+    ASSERT_NE(pAnimated.Get(), nullptr);
+
+    auto pStillBuilder = BeginModel(pCanvas, pDevice, "Still");
+    ASSERT_NE(pStillBuilder.Get(), nullptr);
+    AddNode(pStillBuilder, "Node", InvalidIndex);
+    auto pStill = BuildModel(pStillBuilder);
+    ASSERT_NE(pStill.Get(), nullptr);
+
+    Gem::TGemPtr<Canvas::XScene> pScene;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "ReuseScene")));
+    Canvas::ModelInstantiateResult result{};
+    EXPECT_NE(InstantiateAnimated(pAnimated.Get(), pScene.Get(), result), nullptr);
+    EXPECT_EQ(InstantiateAnimated(pStill.Get(), pScene.Get(), result), nullptr);
+    EXPECT_NE(result.pInstanceRoot, nullptr);
 }
 
 }

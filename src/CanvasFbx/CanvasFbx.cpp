@@ -5,6 +5,7 @@
 #include "CanvasFbx.h"
 #include "CanvasGfx.h"
 
+#include <map>
 #include <unordered_map>
 
 namespace Canvas
@@ -116,13 +117,32 @@ struct RootFold
 
     void Apply(_Inout_ Math::FloatVector4 &t, _Inout_ Math::FloatQuaternion &r, _Inout_ Math::FloatVector4 &s) const
     {
+        t = Fold(ImportedTransformProperty::Translation, t);
+        r = Fold(ImportedTransformProperty::Rotation, r);
+        s = Fold(ImportedTransformProperty::Scale, s);
+    }
+
+    // One property's value, in the form ImportedTransformProperty describes. Each property folds
+    // independently of the others.
+    Math::FloatVector4 Fold(ImportedTransformProperty property, Math::FloatVector4 v) const
+    {
         if (!Enabled)
-            return;
-        t = (t * Scale) * RotationMatrix + Translation;
-        t.W = 1.0f;
-        r = (Rotation * r).Normalize();
-        s = s * Scale;
-        s.W = 0.0f;
+            return v;
+        switch (property)
+        {
+        case ImportedTransformProperty::Translation:
+            v = (v * Scale) * RotationMatrix + Translation;
+            v.W = 1.0f;
+            break;
+        case ImportedTransformProperty::Rotation:
+            v = (Rotation * Math::FloatQuaternion(v)).Normalize();
+            break;
+        case ImportedTransformProperty::Scale:
+            v = v * Scale;
+            v.W = 0.0f;
+            break;
+        }
+        return v;
     }
 };
 #pragma warning(pop)
@@ -957,90 +977,145 @@ static std::string ExtractActionName(const std::string& stackName)
 }
 
 //------------------------------------------------------------------------------------------------
-// Convert one ufbx_baked_node's keyframes into an ImportedAnimationTrack.
-// Rotation keys are quaternions (ufbx_baked_quat); T/S keys are vec3.
-// The union of all authored key times across T, R, and S channels is built and
-// evaluated using ufbx's baked-keyframe interpolation helpers.
-static void BakedNodeToTrack(
-    _In_    const ufbx_baked_node&    bn,
-    _In_    double                    clipBegin,
-    _In_    const RootFold*           pRootFold,  // non-null for top-level nodes
-    _Inout_ ImportedAnimationTrack*   pOut)
+constexpr ImportedTransformProperty kTransformProperties[] = {
+    ImportedTransformProperty::Translation,
+    ImportedTransformProperty::Rotation,
+    ImportedTransformProperty::Scale,
+};
+
+//------------------------------------------------------------------------------------------------
+// A transform's value for one property, in the form ImportedTransformProperty describes.
+static Math::FloatVector4 PropertyValue(
+    _In_ const Transform&           transform,
+    _In_ ImportedTransformProperty  property)
 {
-    std::vector<double> times;
-    times.reserve(bn.translation_keys.count + bn.rotation_keys.count + bn.scale_keys.count);
-    for (size_t i = 0; i < bn.translation_keys.count; ++i)
-        times.push_back(bn.translation_keys.data[i].time);
-    for (size_t i = 0; i < bn.rotation_keys.count; ++i)
-        times.push_back(bn.rotation_keys.data[i].time);
-    for (size_t i = 0; i < bn.scale_keys.count; ++i)
-        times.push_back(bn.scale_keys.data[i].time);
-
-    std::sort(times.begin(), times.end());
-    times.erase(std::unique(times.begin(), times.end()), times.end());
-
-    pOut->Keyframes.reserve(times.size());
-    for (double absTime : times)
+    switch (property)
     {
-        const ufbx_vec3 t = ufbx_evaluate_baked_vec3(bn.translation_keys, absTime);
-        const ufbx_quat r = ufbx_evaluate_baked_quat(bn.rotation_keys,    absTime);
-        const ufbx_vec3 s = ufbx_evaluate_baked_vec3(bn.scale_keys,       absTime);
-
-        ImportedAnimationKeyframe kf;
-        kf.Time        = static_cast<float>(absTime - clipBegin);
-        kf.Translation = ToCanvasPoint(t);
-        kf.Rotation    = ToCanvasQuaternion(r);
-        kf.Scale       = ToCanvasVector(s);
-        if (pRootFold)
-            pRootFold->Apply(kf.Translation, kf.Rotation, kf.Scale);
-        pOut->Keyframes.push_back(kf);
+    case ImportedTransformProperty::Rotation: return transform.Rotation;
+    case ImportedTransformProperty::Scale:    return transform.Scale;
+    default:                                  return transform.Translation;
     }
 }
 
 //------------------------------------------------------------------------------------------------
-// The node's stored (file) local transform as a single keyframe at t = 0.
-static ImportedAnimationKeyframe StoredPoseKeyframe(
-    _In_ const ufbx_node& node,
-    _In_ const RootFold&  rootFold)
-{
-    ImportedAnimationKeyframe kf;
-    kf.Time        = 0.0f;
-    kf.Translation = ToCanvasPoint(node.local_transform.translation);
-    kf.Rotation    = ToCanvasQuaternion(node.local_transform.rotation);
-    kf.Scale       = ToCanvasVector(node.local_transform.scale);
-    if (node.parent && node.parent->is_root)
-        rootFold.Apply(kf.Translation, kf.Rotation, kf.Scale);
-    return kf;
-}
-
-//------------------------------------------------------------------------------------------------
-// True when the keyframe holds the node's imported (bind pose) local transform.
+// True when two values of a property are the same pose.
 //
-// The translation tolerance is absolute (meters), independent of distance from the origin,
+// The tolerance is absolute (meters for translation), independent of distance from the origin,
 // so a small offset far from the origin still counts as a different pose. Far out, float
 // rounding can make equal poses compare different; that only costs a redundant track.
-static bool IsImportedPose(
-    _In_ const ImportedAnimationKeyframe& kf,
-    _In_ const ImportedNode&              node)
+static bool IsSamePropertyValue(
+    _In_ ImportedTransformProperty  property,
+    _In_ const Math::FloatVector4&  a,
+    _In_ const Math::FloatVector4&  b)
 {
     constexpr float kEpsilon = 1e-5f;
-    const Math::FloatVector4 dt = kf.Translation - node.LocalTransform.Translation;
-    const Math::FloatVector4 ds = kf.Scale - node.LocalTransform.Scale;
 
     // q and -q are the same rotation, so compare against whichever sign is nearer. The
     // component distance is about half the angle between them (in radians).
-    const float sign = Math::DotProduct(kf.Rotation, node.LocalTransform.Rotation) < 0.0f ? -1.0f : 1.0f;
-    const Math::FloatVector4 q0 = kf.Rotation;
-    const Math::FloatVector4 q1 = node.LocalTransform.Rotation;
-    const Math::FloatVector4 dq = q0 - q1 * sign;
-
-    return std::sqrt(Math::DotProduct(dt, dt)) <= kEpsilon &&
-           std::sqrt(Math::DotProduct(ds, ds)) <= kEpsilon &&
-           std::sqrt(Math::DotProduct(dq, dq)) <= kEpsilon;
+    const float sign = property == ImportedTransformProperty::Rotation && Math::DotProduct(a, b) < 0.0f ? -1.0f : 1.0f;
+    const Math::FloatVector4 d = a - b * sign;
+    return std::sqrt(Math::DotProduct(d, d)) <= kEpsilon;
 }
 
 //------------------------------------------------------------------------------------------------
-// Bake all FBX AnimationStacks and append to pScene->AnimationClips.
+// Convert one property of a ufbx_baked_node into an ImportedAnimationTrack, keeping ufbx's
+// key times. A property that holds one value for the whole clip (within IsSamePropertyValue;
+// exporters leave float noise on properties they did not animate) becomes a single key at t = 0.
+static ImportedAnimationTrack BakedPropertyToTrack(
+    _In_     const ufbx_baked_node&     bn,
+    _In_     ImportedTransformProperty  property,
+    _In_     double                     clipBegin,
+    _In_opt_ const RootFold*            pRootFold)  // non-null for top-level nodes
+{
+    ImportedAnimationTrack track;
+    track.Property = property;
+
+    const auto AddKey = [&](double absTime, Math::FloatVector4 value)
+    {
+        if (pRootFold)
+            value = pRootFold->Fold(property, value);
+        // Keep each rotation key in the hemisphere of the one before it, so interpolation
+        // between them takes the short way.
+        if (property == ImportedTransformProperty::Rotation && !track.Values.empty() &&
+            Math::DotProduct(value, track.Values.back()) < 0.0f)
+            value = -value;
+        track.Times.push_back(static_cast<float>(absTime - clipBegin));
+        track.Values.push_back(value);
+    };
+
+    switch (property)
+    {
+    case ImportedTransformProperty::Translation:
+        for (const ufbx_baked_vec3& key : bn.translation_keys)
+            AddKey(key.time, ToCanvasPoint(key.value));
+        break;
+    case ImportedTransformProperty::Rotation:
+        for (const ufbx_baked_quat& key : bn.rotation_keys)
+            AddKey(key.time, ToCanvasQuaternion(key.value));
+        break;
+    case ImportedTransformProperty::Scale:
+        for (const ufbx_baked_vec3& key : bn.scale_keys)
+            AddKey(key.time, ToCanvasVector(key.value));
+        break;
+    }
+
+    const bool constant = std::all_of(track.Values.begin(), track.Values.end(),
+        [&](const Math::FloatVector4& v) { return IsSamePropertyValue(property, v, track.Values.front()); });
+    if (constant && !track.Values.empty())
+    {
+        track.Times.assign(1, 0.0f);
+        track.Values.resize(1);
+    }
+    return track;
+}
+
+//------------------------------------------------------------------------------------------------
+// The node's stored (file) local transform.
+static Transform StoredPose(
+    _In_ const ufbx_node& node,
+    _In_ const RootFold&  rootFold)
+{
+    Transform pose;
+    pose.Translation = ToCanvasPoint(node.local_transform.translation);
+    pose.Rotation    = ToCanvasQuaternion(node.local_transform.rotation);
+    pose.Scale       = ToCanvasVector(node.local_transform.scale);
+    if (node.parent && node.parent->is_root)
+        rootFold.Apply(pose.Translation, pose.Rotation, pose.Scale);
+    return pose;
+}
+
+//------------------------------------------------------------------------------------------------
+// The property's name in import diagnostics.
+static const char* PropertyName(_In_ ImportedTransformProperty property)
+{
+    switch (property)
+    {
+    case ImportedTransformProperty::Rotation: return "rotation";
+    case ImportedTransformProperty::Scale:    return "scale";
+    default:                                  return "translation";
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+// True when a layer of the stack animates the node's property, as opposed to the bake holding
+// it at its stored value.
+static bool StackAnimatesProperty(
+    _In_ const ufbx_anim_stack&     stack,
+    _In_ const ufbx_node&           node,
+    _In_ ImportedTransformProperty  property)
+{
+    const char* fbxProperty =
+        property == ImportedTransformProperty::Rotation ? UFBX_Lcl_Rotation :
+        property == ImportedTransformProperty::Scale    ? UFBX_Lcl_Scaling  : UFBX_Lcl_Translation;
+    for (const ufbx_anim_layer* pLayer : stack.layers)
+        if (ufbx_find_anim_prop(pLayer, &node.element, fbxProperty))
+            return true;
+    return false;
+}
+
+//------------------------------------------------------------------------------------------------
+// Bake all FBX AnimationStacks and append to pScene->AnimationClips.  Fails if any stack
+// cannot be baked, or if two stacks of one action animate the same property of a node.
 //
 // Blender (and some DCC tools) exports each object's action as a separate AnimationStack
 // named "ObjectName|ActionName".  Stacks sharing the same action-name suffix are merged
@@ -1049,7 +1124,7 @@ static bool IsImportedPose(
 //
 // Uses ufbx_bake_anim: rotation keyframes are stored as quaternions (ufbx_baked_quat)
 // so all rotation orders (including UFBX_ROTATION_ORDER_SPHERIC) are handled correctly.
-void ImportAnimationClips(
+Gem::Result ImportAnimationClips(
     _In_ const ufbx_scene* pLoaded,
     _In_ const RootFold& rootFold,
     _In_ const std::unordered_map<const ufbx_node*, int32_t>& nodeMap,
@@ -1078,10 +1153,21 @@ void ImportAnimationClips(
         }
     }
 
-    // Pass 2 - bake each stack and append its tracks to the matching clip.
-    // A clip is played if any of its stacks bakes, even when every baked track turns out to
-    // be redundant: it still holds unanimated nodes at their stored transforms (below).
+    // Pass 2 - bake each stack and collect its tracks for the matching clip.  The bake covers
+    // every property of the nodes it lists, including properties the stack does not animate;
+    // those come out as constant tracks.  Each (node, property) of a clip keeps one track: a
+    // property a stack animates replaces another stack's constant, and two stacks animating the
+    // same property fail the import.  Each clip also records which nodes its stacks baked.
+    struct ClipTrack
+    {
+        bool                    Animated = false;   // a stack of the clip animates the property
+        bool                    HasTrack = false;   // false: the property holds the imported pose
+        ImportedAnimationTrack  Track;
+    };
+    using ClipTrackKey = std::pair<int32_t, ImportedTransformProperty>;
+    std::vector<std::map<ClipTrackKey, ClipTrack>> clipTracks(pScene->AnimationClips.size());
     std::vector<bool> clipBaked(pScene->AnimationClips.size(), false);
+    std::vector<std::vector<bool>> nodeBaked(pScene->AnimationClips.size(), std::vector<bool>(pScene->Nodes.size(), false));
     for (size_t si = 0; si < pLoaded->anim_stacks.count; ++si)
     {
         const ufbx_anim_stack* pStack = pLoaded->anim_stacks.data[si];
@@ -1105,10 +1191,10 @@ void ImportAnimationClips(
         ufbx_baked_anim* pBaked = ufbx_bake_anim(pLoaded, pStack->anim, &bakeOpts, &bakeErr);
         if (!pBaked)
         {
-            AddDiag(pScene, DiagLevel::Warning,
+            AddDiag(pScene, DiagLevel::Error,
                 "Failed to bake '" + ToStdString(pStack->name) + "': " +
                 std::string(bakeErr.description.data, bakeErr.description.length));
-            continue;
+            return Gem::Result::Fail;
         }
         clipBaked[clipIndex] = true;
 
@@ -1121,107 +1207,108 @@ void ImportAnimationClips(
 
             const auto itNode = nodeMap.find(pNode);
             if (itNode == nodeMap.end()) continue;
-
-            ImportedAnimationTrack track;
-            track.NodeIndex = itNode->second;
+            const int32_t nodeIndex = itNode->second;
+            const ImportedNode& importedNode = pScene->Nodes[static_cast<size_t>(nodeIndex)];
             const bool topLevel = pNode->parent && pNode->parent->is_root;
-            BakedNodeToTrack(bn, pBaked->playback_time_begin, topLevel ? &rootFold : nullptr, &track);
+            nodeBaked[clipIndex][static_cast<size_t>(nodeIndex)] = true;
 
-            // A node held still at its imported pose needs no track, provided its stored pose
-            // matches too (otherwise the fallback below would hold it at the stored pose).
-            // Held anywhere else (e.g. a bone posed away from the bind pose for the whole
-            // clip), it keeps one.
-            const bool constant = bn.constant_translation && bn.constant_rotation && bn.constant_scale;
-            const ImportedNode& importedNode = pScene->Nodes[track.NodeIndex];
-            if (constant && !track.Keyframes.empty() &&
-                IsImportedPose(track.Keyframes.front(), importedNode) &&
-                IsImportedPose(StoredPoseKeyframe(*pNode, rootFold), importedNode))
-                continue;
-            if (constant && !track.Keyframes.empty())
+            for (ImportedTransformProperty property : kTransformProperties)
             {
-                track.Keyframes.resize(1);
-                track.Keyframes.front().Time = 0.0f;
-            }
+                const bool animated = StackAnimatesProperty(*pStack, *pNode, property);
+                ClipTrack& entry = clipTracks[clipIndex][{ nodeIndex, property }];
+                if (entry.Animated && animated)
+                {
+                    AddDiag(pScene, DiagLevel::Error,
+                        "Clip '" + clip.Name + "' has more than one stack animating the " +
+                        PropertyName(property) + " of node '" + ToStdString(pNode->name) +
+                        "'. Check for a stray action on this object.");
+                    ufbx_free_baked_anim(pBaked);
+                    return Gem::Result::Fail;
+                }
+                if (entry.Animated || (entry.HasTrack && !animated))
+                    continue;    // keep the animated track, or the first stack's constant
 
-            if (!track.Keyframes.empty())
-            {
-                // Each action maps to a single AnimationStack, so a node should be
-                // authored only once per clip. Warn if two same-action stacks drive the
-                // same node (e.g. a stray hidden action on the object) and keep the first.
-                bool duplicate = false;
-                for (const ImportedAnimationTrack& existing : clip.Tracks)
-                    if (existing.NodeIndex == track.NodeIndex) { duplicate = true; break; }
-
-                if (duplicate)
-                    AddDiag(pScene, DiagLevel::Warning,
-                        "Clip '" + clip.Name + "' has more than one stack animating node '" +
-                        std::string(pNode->name.data, pNode->name.length) +
-                        "'; keeping the first. Check for a stray action on this object.");
-                else
-                    clip.Tracks.push_back(std::move(track));
+                // A property held still at the node's imported pose needs no track. Held
+                // anywhere else (e.g. a bone posed away from the bind pose for the whole clip),
+                // it keeps one.
+                ImportedAnimationTrack track = BakedPropertyToTrack(bn, property, pBaked->playback_time_begin, topLevel ? &rootFold : nullptr);
+                entry.Animated = animated;
+                entry.HasTrack = !track.Values.empty() &&
+                    !(track.Values.size() == 1 && IsSamePropertyValue(property, track.Values.front(), PropertyValue(importedNode.LocalTransform, property)));
+                if (entry.HasTrack)
+                {
+                    track.NodeIndex = nodeIndex;
+                    entry.Track = std::move(track);
+                }
             }
         }
 
         ufbx_free_baked_anim(pBaked);
     }
+    for (size_t ci = 0; ci < pScene->AnimationClips.size(); ++ci)
+        for (auto& [key, entry] : clipTracks[ci])
+            if (entry.HasTrack)
+                pScene->AnimationClips[ci].Tracks.push_back(std::move(entry.Track));
 
-    // A node a clip that does not animate holds its stored (file) transform while the clip plays.
-    // Nodes start in the bind pose, so each one whose stored transform differs from it
-    // gets a single-key track holding the stored transform.
-    //
-    // So does every node another clip drives, even when its stored transform is the bind
-    // pose: playing a clip only writes that clip's tracks, so without one the node would keep
-    // whatever pose the previous clip left it in.
-    std::vector<bool> drivenByAnyClip(pScene->Nodes.size(), false);
-    for (const ImportedAnimationClip& clip : pScene->AnimationClips)
-        for (const ImportedAnimationTrack& track : clip.Tracks)
-            drivenByAnyClip[static_cast<size_t>(track.NodeIndex)] = true;
-
+    // A node a clip does not bake holds its stored (file) transform while the clip plays, so
+    // each of its properties whose stored value differs from the imported pose gets a single-key
+    // track holding the stored value.
     for (size_t ci = 0; ci < pScene->AnimationClips.size(); ++ci)
     {
         if (!clipBaked[ci])
             continue;
 
         ImportedAnimationClip& clip = pScene->AnimationClips[ci];
-        std::vector<bool> tracked(pScene->Nodes.size(), false);
-        for (const ImportedAnimationTrack& track : clip.Tracks)
-            tracked[static_cast<size_t>(track.NodeIndex)] = true;
-
         for (const ufbx_node* pNode : pLoaded->nodes)
         {
             const auto itNode = nodeMap.find(pNode);
             if (itNode == nodeMap.end()) continue;
 
             const int32_t nodeIndex = itNode->second;
-            if (tracked[static_cast<size_t>(nodeIndex)])
+            if (nodeBaked[ci][static_cast<size_t>(nodeIndex)])
                 continue;
 
-            const ImportedAnimationKeyframe stored = StoredPoseKeyframe(*pNode, rootFold);
-            if (!drivenByAnyClip[static_cast<size_t>(nodeIndex)] && IsImportedPose(stored, pScene->Nodes[nodeIndex]))
-                continue;
+            const Transform stored = StoredPose(*pNode, rootFold);
+            const Transform& imported = pScene->Nodes[static_cast<size_t>(nodeIndex)].LocalTransform;
+            for (ImportedTransformProperty property : kTransformProperties)
+            {
+                const Math::FloatVector4 value = PropertyValue(stored, property);
+                if (IsSamePropertyValue(property, value, PropertyValue(imported, property)))
+                    continue;
 
-            clip.Tracks.push_back(ImportedAnimationTrack{ nodeIndex, { stored } });
-            tracked[static_cast<size_t>(nodeIndex)] = true;
+                ImportedAnimationTrack track;
+                track.NodeIndex = nodeIndex;
+                track.Property  = property;
+                track.Times     = { 0.0f };
+                track.Values    = { value };
+                clip.Tracks.push_back(std::move(track));
+            }
         }
     }
 
-    // Remove clips that still have no tracks: no stack baked, or every node they touch holds
-    // its imported pose throughout.
-    pScene->AnimationClips.erase(
-        std::remove_if(pScene->AnimationClips.begin(), pScene->AnimationClips.end(),
-            [](const ImportedAnimationClip& c) { return c.Tracks.empty(); }),
-        pScene->AnimationClips.end());
+    // Remove clips that no stack baked. A baked clip with no tracks holds every node at its
+    // imported pose.
+    size_t kept = 0;
+    for (size_t ci = 0; ci < pScene->AnimationClips.size(); ++ci)
+        if (clipBaked[ci])
+        {
+            if (kept != ci)
+                pScene->AnimationClips[kept] = std::move(pScene->AnimationClips[ci]);
+            ++kept;
+        }
+    pScene->AnimationClips.resize(kept);
+    return Gem::Result::Success;
 }
 
 } // anonymous namespace
 
-HRESULT ImportScene(
+Gem::Result ImportScene(
     _In_z_  const wchar_t  *pFilePath,
     _In_    const ImportOptions &options,
     _Out_   ImportedScene  *pScene)
 {
     if (!pFilePath || !pScene)
-        return E_INVALIDARG;
+        return Gem::Result::InvalidArg;
 
     *pScene = {};
     pScene->SceneBounds.Reset();
@@ -1230,7 +1317,7 @@ HRESULT ImportScene(
     if (utf8Path.empty())
     {
         AddDiag(pScene, DiagLevel::Error, "Could not convert input file path to UTF-8");
-        return E_INVALIDARG;
+        return Gem::Result::InvalidArg;
     }
 
     ufbx_load_opts loadOpts = { 0 };
@@ -1319,7 +1406,7 @@ HRESULT ImportScene(
             message += ")";
         }
         AddDiag(pScene, DiagLevel::Error, message);
-        return E_FAIL;
+        return Gem::Result::Fail;
     }
 
     if (pLoaded->nodes.count > kMaxImportNodes)
@@ -1327,7 +1414,7 @@ HRESULT ImportScene(
         AddDiag(pScene, DiagLevel::Error,
             "ufbx scene node count is unreasonably large (" + std::to_string(static_cast<unsigned long long>(pLoaded->nodes.count)) + ")");
         ufbx_free_scene(pLoaded);
-        return E_FAIL;
+        return Gem::Result::Fail;
     }
 
     if (pLoaded->metadata.warnings.count > kMaxImportWarnings)
@@ -1335,7 +1422,7 @@ HRESULT ImportScene(
         AddDiag(pScene, DiagLevel::Error,
             "ufbx warning count is unreasonably large (" + std::to_string(static_cast<unsigned long long>(pLoaded->metadata.warnings.count)) + ")");
         ufbx_free_scene(pLoaded);
-        return E_FAIL;
+        return Gem::Result::Fail;
     }
 
     std::unordered_map<const ufbx_node*, int32_t> nodeMap;
@@ -1518,32 +1605,34 @@ HRESULT ImportScene(
 
     // Extract animation clips (FBX AnimationStacks / Blender Actions).
     // Must happen before ufbx_free_scene while the ufbx data is still live.
-    ImportAnimationClips(pLoaded, rootFold, nodeMap, pScene);
+    const Gem::Result clipsResult = ImportAnimationClips(pLoaded, rootFold, nodeMap, pScene);
 
     ufbx_free_scene(pLoaded);
+    if (Gem::Failed(clipsResult))
+        return clipsResult;
 
     if (!pScene->HasMeshes())
     {
         AddDiag(pScene, DiagLevel::Warning, "No importable mesh geometry found in file");
     }
 
-    return S_OK;
+    return Gem::Result::Success;
 }
 
 #else // stub when ufbx is not available
 
-HRESULT ImportScene(
+Gem::Result ImportScene(
     _In_z_  const wchar_t  *pFilePath,
     _In_    const ImportOptions &options,
     _Out_   ImportedScene  *pScene)
 {
     if (!pFilePath || !pScene)
-        return E_INVALIDARG;
+        return Gem::Result::InvalidArg;
 
     (void)options;
     *pScene = {};
     pScene->Diagnostics.push_back({ DiagLevel::Error, "CanvasFbx built without ufbx - import unavailable" });
-    return E_NOTIMPL;
+    return Gem::Result::NotImplemented;
 }
 
 #endif
@@ -1576,6 +1665,20 @@ struct SkeletonLayout
     std::vector<int32_t>    SkeletonOfNode;         // per imported node; -1 for a model node
     std::vector<uint32_t>   JointOfNode;            // per imported node; its joint index
 };
+
+// The animation target type for one property of a scene node's or joint's transform.
+AnimationTargetType TargetType(ImportedTransformProperty property, bool joint)
+{
+    switch (property)
+    {
+    case ImportedTransformProperty::Rotation:
+        return joint ? AnimationTargetType::JointRotation : AnimationTargetType::SceneNodeRotation;
+    case ImportedTransformProperty::Scale:
+        return joint ? AnimationTargetType::JointScale : AnimationTargetType::SceneNodeScale;
+    default:
+        return joint ? AnimationTargetType::JointTranslation : AnimationTargetType::SceneNodeTranslation;
+    }
+}
 
 // Imported node indices, parents first, with siblings in index order.
 std::vector<int32_t> ParentsFirstOrder(_In_ const std::vector<int32_t> &parents)
@@ -2155,63 +2258,74 @@ Gem::Result BuildModel(
         }
 
         // -----------------------------------------------------------------
-        // Animation clips.  An imported node's transform track animates its joint when the node
-        // is a joint, and its model node otherwise.  Descriptors live in local vectors that cover
-        // the AddAnimationClip call.
+        // Animation targets and clips.  An imported node's tracks animate its joint when the
+        // node is a joint, and its model node otherwise.  Each node property that any clip
+        // animates becomes one animation target, added before the first clip that drives it.
         // -----------------------------------------------------------------
+        std::map<std::pair<size_t, ImportedTransformProperty>, uint32_t> targetOf;
         for (const ImportedAnimationClip& srcClip : scene.AnimationClips)
         {
-            std::vector<std::vector<Canvas::AnimationKeyframe>> keyframeArrays;
-            std::vector<Canvas::AnimationTrackDesc>             trackDescs;
-            keyframeArrays.reserve(srcClip.Tracks.size());
+            std::vector<std::vector<float>> packedValues;
+            std::vector<Canvas::AnimationTrackDesc> trackDescs;
+            std::vector<uint32_t> trackTargets;
+            packedValues.reserve(srcClip.Tracks.size());
             trackDescs.reserve(srcClip.Tracks.size());
+            trackTargets.reserve(srcClip.Tracks.size());
 
             for (const ImportedAnimationTrack& srcTrack : srcClip.Tracks)
             {
                 if (srcTrack.NodeIndex < 0 || static_cast<size_t>(srcTrack.NodeIndex) >= nodeCount)
                     continue;
+                if (srcTrack.Times.size() != srcTrack.Values.size())
+                    continue;
                 const size_t ni = static_cast<size_t>(srcTrack.NodeIndex);
 
-                Canvas::AnimationTrackDesc td{};
-                if (layout.SkeletonOfNode[ni] >= 0)
+                Canvas::AnimationTargetDesc target{};
+                const bool joint = layout.SkeletonOfNode[ni] >= 0;
+                if (joint)
                 {
-                    td.TargetType    = Canvas::AnimationTargetType::Joint;
-                    td.SkeletonIndex = skeletonIndex[static_cast<size_t>(layout.SkeletonOfNode[ni])];
-                    td.TargetIndex   = layout.JointOfNode[ni];
+                    target.SkeletonIndex = skeletonIndex[static_cast<size_t>(layout.SkeletonOfNode[ni])];
+                    target.Index         = layout.JointOfNode[ni];
                 }
                 else if (modelNodeOf[ni] != Canvas::InvalidIndex)
                 {
-                    td.TargetType  = Canvas::AnimationTargetType::ModelNode;
-                    td.TargetIndex = modelNodeOf[ni];
+                    target.Index = modelNodeOf[ni];
                 }
                 else
                 {
                     continue;
                 }
+                target.Type = TargetType(srcTrack.Property, joint);
+                const bool rotation = srcTrack.Property == ImportedTransformProperty::Rotation;
 
-                keyframeArrays.emplace_back();
-                auto& kfBuf = keyframeArrays.back();
-                kfBuf.reserve(srcTrack.Keyframes.size());
-                for (const ImportedAnimationKeyframe& kf : srcTrack.Keyframes)
-                {
-                    Canvas::AnimationKeyframe akf;
-                    akf.Time        = kf.Time;
-                    akf.Translation = kf.Translation;
-                    akf.Rotation    = kf.Rotation;
-                    akf.Scale       = kf.Scale;
-                    kfBuf.push_back(akf);
-                }
+                auto [it, inserted] = targetOf.try_emplace({ ni, srcTrack.Property }, Canvas::InvalidIndex);
+                if (inserted)
+                    Gem::ThrowGemError(pBuilder->AddAnimationTarget(&target, &it->second));
 
-                td.Keyframes     = kfBuf.data();
-                td.KeyframeCount = static_cast<uint32_t>(kfBuf.size());
+                const AnimationValueType valueType = rotation ? AnimationValueType::Quaternion : AnimationValueType::Float3;
+                const size_t components = Canvas::AnimationValueComponents(valueType);
+                std::vector<float>& packed = packedValues.emplace_back();
+                packed.reserve(srcTrack.Values.size() * components);
+                for (const Math::FloatVector4& v : srcTrack.Values)
+                    for (size_t c = 0; c < components; ++c)
+                        packed.push_back(v[static_cast<int>(c)]);
+
+                Canvas::AnimationTrackDesc td{};
+                td.ValueType     = valueType;
+                td.Interpolation = srcTrack.Interpolation;
+                td.pTimes        = srcTrack.Times.data();
+                td.pValues       = packed.data();
+                td.KeyCount      = static_cast<uint32_t>(srcTrack.Times.size());
                 trackDescs.push_back(td);
+                trackTargets.push_back(it->second);
             }
 
             Canvas::AnimationClipDesc desc{};
-            desc.Name       = srcClip.Name.c_str();
-            desc.Duration   = srcClip.DurationSeconds;
-            desc.Tracks     = trackDescs.data();
-            desc.TrackCount = static_cast<uint32_t>(trackDescs.size());
+            desc.Name          = srcClip.Name.c_str();
+            desc.Duration      = srcClip.DurationSeconds;
+            desc.pTracks       = trackDescs.data();
+            desc.pTrackTargets = trackTargets.data();
+            desc.TrackCount    = static_cast<uint32_t>(trackDescs.size());
 
             gr = pBuilder->AddAnimationClip(&desc, nullptr);
             if (Gem::Failed(gr))

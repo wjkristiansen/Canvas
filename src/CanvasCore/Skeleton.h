@@ -27,15 +27,19 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
+#ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4324) // structure padded due to alignment specifier
+#endif
 struct ModelJointData
 {
     std::string         Name;
     uint32_t            ParentIndex = InvalidIndex;   // less than the joint's own index
     Transform           RestTransform;
 };
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
 
 struct ModelSkeletonData
 {
@@ -65,15 +69,19 @@ struct SkeletonPose
 class CSkeletonInstance :
     public TSceneGraphElement<XSkeletonInstance>
 {
+#ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4324)
+#endif
     struct Socket
     {
         XSceneGraphNode    *pNode = nullptr;   // weak; written only while a child of this element's node
         uint32_t            JointIndex = 0;
         Transform           LocalTransform;   // relative to the joint
     };
+#ifdef _MSC_VER
 #pragma warning(pop)
+#endif
 
     // Strong reference to the model that owns the shared skeleton data (m_pData points into it).
     Gem::TGemPtr<XModel>        m_pModel;

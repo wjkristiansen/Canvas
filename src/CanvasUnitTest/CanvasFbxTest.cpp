@@ -58,6 +58,7 @@ constexpr const char *kAllAssets[] = {
     "Blocky.fbx",
     "HAnimation.fbx",
     "WeirdLocomotive.fbx",
+    "Tick.fbx",
     "ufbx:maya_transformed_skin_7700_binary.fbx",
     "ufbx:maya_advanced_skinned_pivot_7700_binary.fbx",
 };
@@ -66,6 +67,7 @@ constexpr const char *kAllAssets[] = {
 // maya_instanced_skin has a second, unbound instance of its skinned mesh.
 constexpr const char *kSkinnedAssets[] = {
     "Blocky.fbx",
+    "Tick.fbx",
     "ufbx:maya_transformed_skin_7700_binary.fbx",
     "ufbx:maya_advanced_skinned_pivot_7700_binary.fbx",
     "ufbx:maya_instanced_skin_7700_binary.fbx",
@@ -118,7 +120,7 @@ struct ImportedFixture
         if (!std::filesystem::exists(path))
             return false;
 
-        EXPECT_TRUE(SUCCEEDED(Fbx::ImportScene(path.wstring().c_str(), Fbx::ImportOptions{}, &Scene)));
+        EXPECT_TRUE(Succeeded(Fbx::ImportScene(path.wstring().c_str(), Fbx::ImportOptions{}, &Scene)));
         pRef = LoadReference(path);
         EXPECT_NE(nullptr, pRef);
         EXPECT_TRUE(Succeeded(CreateCanvas(nullptr, &pCanvas)));
@@ -277,10 +279,26 @@ struct ImportedFixture
         }
     }
 
-    // Plays the imported clip: poses every tracked node at one of the clip's key times (a
-    // single-key track holds its node still for the whole clip; untracked nodes stay as
-    // imported), then compares globals and skin palettes with ufbx's evaluation of the
-    // matching stack at that time.
+    // A track's value at time: its key's value at a key time, and linearly interpolated
+    // between keys.
+    static Math::FloatVector4 SampleTrack(const Fbx::ImportedAnimationTrack &track, float time)
+    {
+        const std::vector<float> &times = track.Times;
+        const std::vector<Math::FloatVector4> &values = track.Values;
+        if (times.size() == 1 || time <= times.front())
+            return values.front();
+        if (time >= times.back())
+            return values.back();
+        const size_t next = static_cast<size_t>(std::upper_bound(times.begin(), times.end(), time) - times.begin());
+        const size_t prev = next - 1;
+        const float alpha = (time - times[prev]) / (times[next] - times[prev]);
+        const Math::FloatVector4 value = values[prev] + (values[next] - values[prev]) * alpha;
+        return track.Property == Fbx::ImportedTransformProperty::Rotation ? Math::FloatQuaternion(value).Normalize() : value;
+    }
+
+    // Plays the imported clip: poses every node at its imported pose, overwritten by the
+    // clip's tracks at one of the clip's key times, then compares globals and skin palettes
+    // with ufbx's evaluation of the matching stack at that time.
     void ExpectClipMatchesUfbx(std::string_view clipName)
     {
         const auto itClip = std::find_if(Scene.AnimationClips.begin(), Scene.AnimationClips.end(),
@@ -289,17 +307,24 @@ struct ImportedFixture
         ASSERT_FALSE(itClip->Tracks.empty());
         const float time = ClipKeyTime(*itClip);
 
+        std::vector<Transform> pose(Scene.Nodes.size());
+        for (size_t i = 0; i < Scene.Nodes.size(); ++i)
+            pose[i] = Scene.Nodes[i].LocalTransform;
         for (const Fbx::ImportedAnimationTrack &track : itClip->Tracks)
         {
-            const auto itKey = track.Keyframes.size() == 1 ? track.Keyframes.begin() :
-                std::find_if(track.Keyframes.begin(), track.Keyframes.end(),
-                    [time](const Fbx::ImportedAnimationKeyframe &k) { return std::abs(k.Time - time) < 1e-5f; });
-            ASSERT_NE(track.Keyframes.end(), itKey) << "track has no key at t=" << time;
-            XSceneGraphNode *pNode = Nodes[static_cast<size_t>(track.NodeIndex)];
-            pNode->SetLocalTranslation(itKey->Translation);
-            pNode->SetLocalRotation(itKey->Rotation);
-            pNode->SetLocalScale(itKey->Scale);
+            ASSERT_FALSE(track.Times.empty());
+            ASSERT_EQ(track.Times.size(), track.Values.size());
+            Transform &t = pose[static_cast<size_t>(track.NodeIndex)];
+            const Math::FloatVector4 value = SampleTrack(track, time);
+            switch (track.Property)
+            {
+            case Fbx::ImportedTransformProperty::Translation: t.Translation = value; break;
+            case Fbx::ImportedTransformProperty::Rotation:    t.Rotation    = value; break;
+            case Fbx::ImportedTransformProperty::Scale:       t.Scale       = value; break;
+            }
         }
+        for (size_t i = 0; i < Scene.Nodes.size(); ++i)
+            Nodes[i]->SetLocalTransform(pose[i]);
 
         const ufbx_anim_stack *pStack = FindStack(clipName);
         ASSERT_NE(nullptr, pStack) << "missing stack for clip " << clipName;
@@ -316,13 +341,13 @@ struct ImportedFixture
     // animation controller loops, so it plays the end time as the start.
     static float ClipKeyTime(const Fbx::ImportedAnimationClip &clip, bool beforeEnd = false)
     {
-        const auto &keys = std::max_element(clip.Tracks.begin(), clip.Tracks.end(),
+        const auto &times = std::max_element(clip.Tracks.begin(), clip.Tracks.end(),
             [](const Fbx::ImportedAnimationTrack &a, const Fbx::ImportedAnimationTrack &b)
-            { return a.Keyframes.size() < b.Keyframes.size(); })->Keyframes;
-        size_t k = keys.size() / 2;
-        while (beforeEnd && k > 0 && keys[k].Time >= clip.DurationSeconds)
+            { return a.Times.size() < b.Times.size(); })->Times;
+        size_t k = times.size() / 2;
+        while (beforeEnd && k > 0 && times[k] >= clip.DurationSeconds)
             --k;
-        return keys[k].Time;
+        return times[k];
     }
 
     // Blender names stacks "Object|Action"; the clip takes the action name.
@@ -343,8 +368,9 @@ struct ImportedFixture
     // skeleton joints, and instantiates it at the origin.  With no clip, the instance stays
     // at the bind pose, and every imported node's world matrix and every skin palette must
     // match the imported hierarchy's.  With a clip, the instance's animation controller plays
-    // it to a key time (see ClipKeyTime), and they must match ufbx's evaluation there.
-    void ExpectBuiltModelMatches(std::string_view clipName = {})
+    // it to a key time (see ClipKeyTime), and they must match ufbx's evaluation there.  With
+    // a prior clip too, the controller first plays the prior clip and then switches to clip.
+    void ExpectBuiltModelMatches(std::string_view clipName = {}, std::string_view priorClipName = {})
     {
         Gem::TGemPtr<XGfxDevice> pDevice;
         {
@@ -372,6 +398,14 @@ struct ImportedFixture
             const float time = ClipKeyTime(*itClip, true);
 
             ASSERT_NE(nullptr, result.pAnimationController);
+            if (!priorClipName.empty())
+            {
+                const auto itPrior = std::find_if(Scene.AnimationClips.begin(), Scene.AnimationClips.end(),
+                    [priorClipName](const Fbx::ImportedAnimationClip &c) { return c.Name == priorClipName; });
+                ASSERT_NE(Scene.AnimationClips.end(), itPrior) << "missing clip " << priorClipName;
+                ASSERT_TRUE(Succeeded(result.pAnimationController->PlayByName(std::string(priorClipName).c_str(), 0.0f)));
+                ASSERT_TRUE(Succeeded(result.pInstanceRoot->Update(ClipKeyTime(*itPrior, true))));
+            }
             ASSERT_TRUE(Succeeded(result.pAnimationController->PlayByName(std::string(clipName).c_str(), 0.0f)));
             ASSERT_TRUE(Succeeded(result.pInstanceRoot->Update(time)));
 
@@ -623,24 +657,36 @@ TEST(CanvasFbxTest, UnanimatedNodeFarFromOrigin)
         [](const Fbx::ImportedAnimationClip &c) { return c.Name == "Move"; });
     ASSERT_NE(f.Scene.AnimationClips.end(), itClip);
     const auto itTrack = std::find_if(itClip->Tracks.begin(), itClip->Tracks.end(),
-        [farIndex](const Fbx::ImportedAnimationTrack &t) { return t.NodeIndex == farIndex; });
+        [farIndex](const Fbx::ImportedAnimationTrack &t)
+        { return t.NodeIndex == farIndex && t.Property == Fbx::ImportedTransformProperty::Translation; });
     ASSERT_NE(itClip->Tracks.end(), itTrack) << "no track holds Far at its saved position";
-    ASSERT_EQ(1u, itTrack->Keyframes.size());
+    ASSERT_EQ(1u, itTrack->Values.size());
 
-    const Math::FloatVector4 d = itTrack->Keyframes[0].Translation - itNode->LocalTransform.Translation;
+    const Math::FloatVector4 d = itTrack->Values[0] - itNode->LocalTransform.Translation;
     EXPECT_NEAR(std::sqrt(Math::DotProduct(d, d)), 0.005f, 0.001f);
 }
 
 // Clip "Raise" animates only bone A and clip "Turn" only bone C; both are saved at bind.
-// Playing Raise and then Turn, without resetting in between (as the animation controller
-// does), must leave A where Turn holds it: its stored pose, not Raise's last pose.
+// The animation controller playing Raise and then switching to Turn must leave A where Turn
+// holds it: its stored pose, not Raise's last pose.
 TEST(CanvasFbxTest, SwitchingClipsResetsNodesTheyShare)
 {
     ImportedFixture f;
     ASSERT_TRUE(f.Load("data:SwitchClipsDisjointBones.fbx"));
-    f.ExpectClipMatchesUfbx("Raise");
-    f.ExpectClipMatchesUfbx("Turn");
-    f.ExpectClipMatchesUfbx("Raise");
+    f.ExpectBuiltModelMatches("Turn", "Raise");
+    f.ExpectBuiltModelMatches("Raise", "Turn");
+}
+
+// The tick's clips animate different properties of its bones. After each switch, the animation
+// controller must pose every bone as ufbx evaluates the new clip.
+TEST(CanvasFbxTest, SwitchingTickClipsMatchesUfbx)
+{
+    ImportedFixture f;
+    if (!f.Load("Tick.fbx"))
+        GTEST_SKIP() << "FBX asset not available";
+    f.ExpectBuiltModelMatches("Bite", "Walk");
+    f.ExpectBuiltModelMatches("Walk", "Idle");
+    f.ExpectBuiltModelMatches("Idle", "Bite");
 }
 
 // A clip leaves bone C unanimated, and C's stored rotation is 0.25 degrees from bind.
@@ -786,6 +832,9 @@ TEST(CanvasFbxTest, BuiltModelClipMatchesUfbx)
         { "data:PoseClipHoldsUnanimatedBone.fbx", "Pose" },
         { "data:UnanimatedBoneNearBindPose.fbx",  "Move" },
         { "Blocky.fbx",                           "Walk" },
+        { "Tick.fbx",                             "Bite" },
+        { "Tick.fbx",                             "Idle" },
+        { "Tick.fbx",                             "Walk" },
     };
     for (const auto &[asset, clip] : clips)
     {

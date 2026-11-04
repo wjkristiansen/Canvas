@@ -199,7 +199,7 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             Gem::TGemPtr<CAnimationController> pCtrl;
             pCtrl.Attach(pRaw);
 
-            pCtrl->BuildFromModel(this, m_Content.AnimClips, nodes, skeletons);
+            pCtrl->BuildFromModel(this, m_Content.AnimTargets, m_Content.AnimClips, nodes, skeletons);
             // Everything the controller drives is in pInstanceRoot's subtree by
             // construction, so ValidateForNode will always succeed here.
             Gem::ThrowGemError(pInstanceRoot->SetAnimationController(pCtrl.Get()));
@@ -501,6 +501,43 @@ GEMMETHODIMP CModelBuilder::AddSocket(_In_ const ModelSocketDesc *pDesc, _Out_op
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CModelBuilder::AddAnimationTarget(_In_ const AnimationTargetDesc *pDesc, _Out_opt_ uint32_t *pIndex)
+{
+    CANVAS_REQUIRE_BUILDING();
+    if (!pDesc)
+        return Gem::Result::BadPointer;
+    if (pDesc->Type > AnimationTargetType::Value)
+        return Gem::Result::InvalidArg;
+
+    AnimTarget target;
+    target.Type = pDesc->Type;
+    if (pDesc->Type == AnimationTargetType::Value)
+    {
+        if (pDesc->ValueType > AnimationValueType::Quaternion)
+            return Gem::Result::InvalidArg;
+        target.ValueType = pDesc->ValueType;
+    }
+    else
+    {
+        const bool isJoint = IsJointTarget(pDesc->Type);
+        for (const AnimTarget &existing : m_Content.AnimTargets)
+        {
+            if (existing.Type == pDesc->Type && existing.Index == pDesc->Index &&
+                (!isJoint || existing.SkeletonIndex == pDesc->SkeletonIndex))
+                return Gem::Result::AlreadyExists;
+        }
+        target.SkeletonIndex = isJoint ? pDesc->SkeletonIndex : InvalidIndex;
+        target.Index         = pDesc->Index;
+        target.ValueType     = TargetValueType(pDesc->Type);
+    }
+
+    if (pIndex)
+        *pIndex = static_cast<uint32_t>(m_Content.AnimTargets.size());
+    m_Content.AnimTargets.push_back(target);
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CModelBuilder::AddAnimationClip(_In_ const AnimationClipDesc *pDesc, _Out_opt_ uint32_t *pIndex)
 {
     CANVAS_REQUIRE_BUILDING();
@@ -508,28 +545,52 @@ GEMMETHODIMP CModelBuilder::AddAnimationClip(_In_ const AnimationClipDesc *pDesc
         return Gem::Result::BadPointer;
 
     // Validate the descriptor's nested arrays before building anything: a positive count
-    // with a null pointer is a caller error, and forming (nullptr + count) would be
-    // undefined behavior even when the count is zero.
-    if (!HasArray(pDesc->Tracks, pDesc->TrackCount))
+    // with a null pointer is a caller error.
+    if (!HasArray(pDesc->pTracks, pDesc->TrackCount) || !HasArray(pDesc->pTrackTargets, pDesc->TrackCount))
         return Gem::Result::BadPointer;
+
+    std::vector<bool> driven(m_Content.AnimTargets.size(), false);
     for (uint32_t ti = 0; ti < pDesc->TrackCount; ++ti)
-        if (!HasArray(pDesc->Tracks[ti].Keyframes, pDesc->Tracks[ti].KeyframeCount))
+    {
+        const AnimationTrackDesc &td = pDesc->pTracks[ti];
+        const bool cubic = td.Interpolation == AnimationInterpolation::Cubic;
+        if (!HasArray(td.pTimes, td.KeyCount) || !HasArray(td.pValues, td.KeyCount) ||
+            (cubic && td.KeyCount > 1 && !td.pCoefficients))
             return Gem::Result::BadPointer;
+        if (td.ValueType > AnimationValueType::Quaternion || td.Interpolation > AnimationInterpolation::Cubic ||
+            (cubic && td.ValueType == AnimationValueType::Quaternion))
+            return Gem::Result::InvalidArg;
+        if (!std::is_sorted(td.pTimes, td.pTimes + td.KeyCount))
+            return Gem::Result::InvalidArg;
+
+        const uint32_t targetIndex = pDesc->pTrackTargets[ti];
+        if (targetIndex >= m_Content.AnimTargets.size())
+            return Gem::Result::OutOfRange;
+        if (m_Content.AnimTargets[targetIndex].ValueType != td.ValueType || driven[targetIndex])
+            return Gem::Result::InvalidArg;
+        driven[targetIndex] = true;
+    }
 
     CAnimationClip clip;
     clip.Name     = StringOrEmpty(pDesc->Name);
     clip.Duration = pDesc->Duration;
     clip.Tracks.reserve(pDesc->TrackCount);
+    clip.TrackTargets.assign(pDesc->pTrackTargets, pDesc->pTrackTargets + pDesc->TrackCount);
 
     for (uint32_t ti = 0; ti < pDesc->TrackCount; ++ti)
     {
-        const AnimationTrackDesc &td = pDesc->Tracks[ti];
+        const AnimationTrackDesc &td = pDesc->pTracks[ti];
+        const size_t n = AnimationValueComponents(td.ValueType);
         AnimTrack track;
-        track.TargetType    = td.TargetType;
-        track.SkeletonIndex = td.SkeletonIndex;
-        track.TargetIndex   = td.TargetIndex;
-        if (td.KeyframeCount > 0)
-            track.Keyframes.assign(td.Keyframes, td.Keyframes + td.KeyframeCount);
+        track.ValueType     = td.ValueType;
+        track.Interpolation = td.Interpolation;
+        if (td.KeyCount > 0)
+        {
+            track.Times.assign(td.pTimes, td.pTimes + td.KeyCount);
+            track.Values.assign(td.pValues, td.pValues + td.KeyCount * n);
+        }
+        if (td.Interpolation == AnimationInterpolation::Cubic && td.KeyCount > 1)
+            track.Coefficients.assign(td.pCoefficients, td.pCoefficients + (td.KeyCount - 1) * 3 * n);
         clip.Tracks.push_back(std::move(track));
     }
 
@@ -551,29 +612,23 @@ GEMMETHODIMP CModelBuilder::SetActiveCamera(uint32_t cameraIndex)
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CModelBuilder::ValidateClipTargets() const
+Gem::Result CModelBuilder::ValidateAnimationTargets() const
 {
-    for (const CAnimationClip &clip : m_Content.AnimClips)
+    for (size_t i = 0; i < m_Content.AnimTargets.size(); ++i)
     {
-        for (const AnimTrack &track : clip.Tracks)
+        const AnimTarget &target = m_Content.AnimTargets[i];
+        bool valid = true;
+        if (IsJointTarget(target.Type))
+            valid = target.SkeletonIndex < m_Content.Skeletons.size() &&
+                    target.Index < m_Content.Skeletons[target.SkeletonIndex].Joints.size();
+        else if (target.Type != AnimationTargetType::Value)
+            valid = target.Index < m_Content.Nodes.size();
+        if (!valid)
         {
-            bool valid = false;
-            switch (track.TargetType)
-            {
-            case AnimationTargetType::ModelNode:
-                valid = track.TargetIndex < m_Content.Nodes.size();
-                break;
-            case AnimationTargetType::Joint:
-                valid = track.SkeletonIndex < m_Content.Skeletons.size() &&
-                        track.TargetIndex < m_Content.Skeletons[track.SkeletonIndex].Joints.size();
-                break;
-            }
-            if (!valid)
-            {
-                Canvas::LogError(m_pCanvas->GetLogger(),
-                    "XModelBuilder::Build: clip '%s' has a track whose target does not exist", clip.Name.c_str());
-                return Gem::Result::OutOfRange;
-            }
+            Canvas::LogError(m_pCanvas->GetLogger(),
+                "XModelBuilder::Build: model '%s' has an animation target (%zu) whose transform does not exist",
+                m_ModelName.c_str(), i);
+            return Gem::Result::OutOfRange;
         }
     }
     return Gem::Result::Success;
@@ -593,7 +648,7 @@ GEMMETHODIMP CModelBuilder::Build(_Out_ XModel **ppModel)
         return Gem::Result::InvalidArg;
     }
 
-    Gem::Result result = ValidateClipTargets();
+    Gem::Result result = ValidateAnimationTargets();
     if (Gem::Failed(result))
         return result;
 
