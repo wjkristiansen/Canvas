@@ -1221,36 +1221,36 @@ TEST(CanvasInterfacesTest, ModelBuilderValidatesIndices)
     EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddLight(&light, nullptr));
     EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->SetActiveCamera(0));
 
-    // Joints are listed parents first.
-    Canvas::ModelJointDesc joints[2] = {};
-    joints[0].ParentIndex = 1;
+    // Bones are listed parents first.
+    Canvas::ModelBoneDesc bones[2] = {};
+    bones[0].ParentIndex = 1;
     Canvas::ModelSkeletonDesc skeleton{};
-    skeleton.NodeIndex  = root;
-    skeleton.JointCount = 2;
-    skeleton.pJoints    = joints;
+    skeleton.NodeIndex = root;
+    skeleton.BoneCount = 2;
+    skeleton.pBones    = bones;
     EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddSkeleton(&skeleton, nullptr));
-    joints[0].ParentIndex = InvalidIndex;
-    joints[1].ParentIndex = 0;
+    bones[0].ParentIndex = InvalidIndex;
+    bones[1].ParentIndex = 0;
     uint32_t skeletonIndex = InvalidIndex;
     EXPECT_TRUE(Succeeded(pBuilder->AddSkeleton(&skeleton, &skeletonIndex)));
 
     Canvas::ModelSocketDesc socket{};
     socket.SkeletonIndex = skeletonIndex;
-    socket.JointIndex    = 2;
+    socket.BoneIndex     = 2;
     EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddSocket(&socket, nullptr));
 
-    // A skinned mesh binds joints of its skeleton.
+    // A skinned mesh binds bones of its skeleton.
     uint32_t meshIndex = InvalidIndex;
     EXPECT_TRUE(Succeeded(pBuilder->AddMeshData(CreateTriangle(pDevice, "Tri"), &meshIndex)));
-    const uint32_t badJoint = 2;
+    const uint32_t badBone = 2;
     const FloatMatrix4x4 invBind = FloatMatrix4x4::Identity();
     Canvas::ModelMeshDesc mesh{};
-    mesh.NodeIndex     = root;
-    mesh.MeshDataIndex = meshIndex;
-    mesh.SkeletonIndex = skeletonIndex;
-    mesh.BoneCount     = 1;
-    mesh.pJointIndices = &badJoint;
-    mesh.pInvBindPoses = &invBind;
+    mesh.NodeIndex            = root;
+    mesh.MeshDataIndex        = meshIndex;
+    mesh.SkeletonIndex        = skeletonIndex;
+    mesh.BoneCount            = 1;
+    mesh.pSkeletonBoneIndices = &badBone;
+    mesh.pInvBindPoses        = &invBind;
     EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddMesh(&mesh, nullptr));
 
     // Skin data names a skeleton.
@@ -1540,8 +1540,8 @@ TEST(CanvasInterfacesTest, ModelInstantiateNullTargetFails)
     EXPECT_TRUE(Gem::Failed(pModel->Instantiate(nullptr)));
 }
 
-// A skeleton instance composes its joints parents first, in the space of its node, and
-// moves its sockets (and the content under them) with their joints.  Scene-graph nodes
+// A skeleton instance composes its bones parents first, in the space of its node, and
+// moves its sockets (and the content under them) with their bones.  Scene-graph nodes
 // with the same transforms serve as the reference composition.
 TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
 {
@@ -1555,26 +1555,26 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     ASSERT_NE(pBuilder.Get(), nullptr);
     const uint32_t armature = AddNode(pBuilder, "Armature", InvalidIndex, Translation(10.0f, 0.0f, 0.0f));
 
-    Canvas::ModelJointDesc joints[2] = {};
-    joints[0].Name          = "Hip";
-    joints[0].RestTransform = Translation(0.0f, 0.0f, 1.0f);
-    joints[1].Name          = "Knee";
-    joints[1].ParentIndex   = 0;
-    joints[1].RestTransform = Translation(0.0f, 0.0f, -0.5f);
-    joints[1].RestTransform.Rotation = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, 0.5f);
+    Canvas::ModelBoneDesc bones[2] = {};
+    bones[0].Name          = "Hip";
+    bones[0].RestTransform = Translation(0.0f, 0.0f, 1.0f);
+    bones[1].Name          = "Knee";
+    bones[1].ParentIndex   = 0;
+    bones[1].RestTransform = Translation(0.0f, 0.0f, -0.5f);
+    bones[1].RestTransform.Rotation = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, 0.5f);
 
     Canvas::ModelSkeletonDesc skeleton{};
-    skeleton.Name       = "Legs";
-    skeleton.NodeIndex  = armature;
-    skeleton.JointCount = 2;
-    skeleton.pJoints    = joints;
+    skeleton.Name      = "Legs";
+    skeleton.NodeIndex = armature;
+    skeleton.BoneCount = 2;
+    skeleton.pBones    = bones;
     uint32_t skeletonIndex = InvalidIndex;
     EXPECT_TRUE(Succeeded(pBuilder->AddSkeleton(&skeleton, &skeletonIndex)));
 
     Canvas::ModelSocketDesc socket{};
     socket.Name           = "KneeSocket";
     socket.SkeletonIndex  = skeletonIndex;
-    socket.JointIndex     = 1;
+    socket.BoneIndex      = 1;
     socket.LocalTransform = Translation(1.0f, 0.0f, 0.0f);
     uint32_t socketNode = InvalidIndex;
     EXPECT_TRUE(Succeeded(pBuilder->AddSocket(&socket, &socketNode)));
@@ -1599,15 +1599,15 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     Canvas::XSceneGraphNode *pProp = pSocket->GetFirstChild();
     ASSERT_NE(pProp, nullptr);
 
-    // Joints are not scene nodes: the skeleton instance on the armature holds them.
+    // Bones are not scene nodes: the skeleton instance on the armature holds them.
     Canvas::XSkeletonInstance *pSkeleton = FindElement<Canvas::XSkeletonInstance>(pArmature);
     ASSERT_NE(pSkeleton, nullptr);
-    EXPECT_EQ(2u, pSkeleton->GetJointCount());
-    EXPECT_STREQ("Hip", pSkeleton->GetJointName(0));
-    EXPECT_EQ(1u, pSkeleton->FindJoint("Knee"));
-    EXPECT_EQ(InvalidIndex, pSkeleton->FindJoint("Ankle"));
-    EXPECT_EQ(0u, pSkeleton->GetJointParent(1));
-    EXPECT_EQ(InvalidIndex, pSkeleton->GetJointParent(0));
+    EXPECT_EQ(2u, pSkeleton->GetBoneCount());
+    EXPECT_STREQ("Hip", pSkeleton->GetBoneName(0));
+    EXPECT_EQ(1u, pSkeleton->FindBone("Knee"));
+    EXPECT_EQ(InvalidIndex, pSkeleton->FindBone("Ankle"));
+    EXPECT_EQ(0u, pSkeleton->GetBoneParent(1));
+    EXPECT_EQ(InvalidIndex, pSkeleton->GetBoneParent(0));
 
     // Reference: the same chain as scene-graph nodes, in skeleton space.
     const auto MakeNode = [&](const Canvas::Transform &t, Canvas::XSceneGraphNode *pParent)
@@ -1621,37 +1621,37 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
             EXPECT_TRUE(Succeeded(pParent->AddChild(pNode)));
         return pNode;
     };
-    auto pRefHip    = MakeNode(joints[0].RestTransform, nullptr);
-    auto pRefKnee   = MakeNode(joints[1].RestTransform, pRefHip);
+    auto pRefHip    = MakeNode(bones[0].RestTransform, nullptr);
+    auto pRefKnee   = MakeNode(bones[1].RestTransform, pRefHip);
     auto pRefSocket = MakeNode(socket.LocalTransform, pRefKnee);
 
-    EXPECT_TRUE(AlmostEqual(pSkeleton->GetJointMatrix(0), pRefHip->GetGlobalMatrix()));
-    EXPECT_TRUE(AlmostEqual(pSkeleton->GetJointMatrix(1), pRefKnee->GetGlobalMatrix()));
-    EXPECT_TRUE(AlmostEqual(pSkeleton->GetJointMatrix(2), FloatMatrix4x4::Identity())); // out of range
+    EXPECT_TRUE(AlmostEqual(pSkeleton->GetBoneMatrix(0), pRefHip->GetGlobalMatrix()));
+    EXPECT_TRUE(AlmostEqual(pSkeleton->GetBoneMatrix(1), pRefKnee->GetGlobalMatrix()));
+    EXPECT_TRUE(AlmostEqual(pSkeleton->GetBoneMatrix(2), FloatMatrix4x4::Identity())); // out of range
 
-    // At instantiation the socket is at its joint's rest pose: local * joint * armature.
+    // At instantiation the socket is at its bone's rest pose: local * bone * armature.
     EXPECT_TRUE(AlmostEqual(pSocket->GetGlobalMatrix(), pRefSocket->GetGlobalMatrix() * pArmature->GetGlobalMatrix()));
 
-    // Posing a joint moves the socket, and the content under it, on the next update.
-    Canvas::Transform bent = joints[1].RestTransform;
+    // Posing a bone moves the socket, and the content under it, on the next update.
+    Canvas::Transform bent = bones[1].RestTransform;
     bent.Rotation = FloatQuaternion::FromEulerXYZ(0.0f, 0.0f, 1.2f);
-    EXPECT_TRUE(Succeeded(pSkeleton->SetJointLocalTransform(1, &bent)));
+    EXPECT_TRUE(Succeeded(pSkeleton->SetBoneLocalTransform(1, &bent)));
     pRefKnee->SetLocalRotation(bent.Rotation);
-    EXPECT_TRUE(AlmostEqual(pSkeleton->GetJointMatrix(1), pRefKnee->GetGlobalMatrix()));
+    EXPECT_TRUE(AlmostEqual(pSkeleton->GetBoneMatrix(1), pRefKnee->GetGlobalMatrix()));
 
     EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
     EXPECT_TRUE(AlmostEqual(pSocket->GetGlobalMatrix(), pRefSocket->GetGlobalMatrix() * pArmature->GetGlobalMatrix()));
     EXPECT_TRUE(AlmostEqual(pProp->GetGlobalMatrix(), pSocket->GetGlobalMatrix()));
 
     Canvas::Transform read;
-    EXPECT_TRUE(Succeeded(pSkeleton->GetJointLocalTransform(1, &read)));
+    EXPECT_TRUE(Succeeded(pSkeleton->GetBoneLocalTransform(1, &read)));
     EXPECT_TRUE(AlmostEqual(read.Rotation, bent.Rotation));
-    EXPECT_EQ(Gem::Result::InvalidArg, pSkeleton->GetJointLocalTransform(2, &read));
-    EXPECT_EQ(Gem::Result::InvalidArg, pSkeleton->SetJointLocalTransform(2, &bent));
+    EXPECT_EQ(Gem::Result::InvalidArg, pSkeleton->GetBoneLocalTransform(2, &read));
+    EXPECT_EQ(Gem::Result::InvalidArg, pSkeleton->SetBoneLocalTransform(2, &bent));
 
-    // Resetting returns every joint, and after an update the socket, to rest.
+    // Resetting returns every bone, and after an update the socket, to rest.
     pSkeleton->ResetToRestPose();
-    pRefKnee->SetLocalRotation(joints[1].RestTransform.Rotation);
+    pRefKnee->SetLocalRotation(bones[1].RestTransform.Rotation);
     EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
     EXPECT_TRUE(AlmostEqual(pSocket->GetGlobalMatrix(), pRefSocket->GetGlobalMatrix() * pArmature->GetGlobalMatrix()));
 
@@ -1659,13 +1659,13 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     Gem::TGemPtr<Canvas::XSceneGraphNode> pRemoved = pSocket;
     const FloatVector4 lastTranslation = pRemoved->GetLocalTranslation();
     EXPECT_TRUE(Succeeded(pArmature->RemoveChild(pRemoved)));
-    EXPECT_TRUE(Succeeded(pSkeleton->SetJointLocalTransform(1, &bent)));
+    EXPECT_TRUE(Succeeded(pSkeleton->SetBoneLocalTransform(1, &bent)));
     EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
     EXPECT_TRUE(AlmostEqual(pRemoved->GetLocalTranslation(), lastTranslation));
 }
 
 // A skinned mesh instance's palette maps its geometry through each bone's inverse bind pose,
-// joint matrix, and the skeleton node's global matrix; the mesh node's own transform plays
+// bone matrix, and the skeleton node's global matrix; the mesh node's own transform plays
 // no part.
 TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
 {
@@ -1680,31 +1680,31 @@ TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
     const uint32_t armature = AddNode(pBuilder, "Armature", InvalidIndex, Translation(0.0f, 5.0f, 0.0f));
     const uint32_t body     = AddNode(pBuilder, "Body", armature, Translation(3.0f, 3.0f, 3.0f));
 
-    Canvas::ModelJointDesc joints[2] = {};
-    joints[0].Name          = "Root";
-    joints[0].RestTransform = Translation(1.0f, 0.0f, 0.0f);
-    joints[1].Name          = "Tip";
-    joints[1].ParentIndex   = 0;
-    joints[1].RestTransform = Translation(0.0f, 2.0f, 0.0f);
+    Canvas::ModelBoneDesc bones[2] = {};
+    bones[0].Name          = "Root";
+    bones[0].RestTransform = Translation(1.0f, 0.0f, 0.0f);
+    bones[1].Name          = "Tip";
+    bones[1].ParentIndex   = 0;
+    bones[1].RestTransform = Translation(0.0f, 2.0f, 0.0f);
     Canvas::ModelSkeletonDesc skeleton{};
-    skeleton.NodeIndex  = armature;
-    skeleton.JointCount = 2;
-    skeleton.pJoints    = joints;
+    skeleton.NodeIndex = armature;
+    skeleton.BoneCount = 2;
+    skeleton.pBones    = bones;
     uint32_t skeletonIndex = InvalidIndex;
     EXPECT_TRUE(Succeeded(pBuilder->AddSkeleton(&skeleton, &skeletonIndex)));
 
     uint32_t meshIndex = InvalidIndex;
     EXPECT_TRUE(Succeeded(pBuilder->AddMeshData(CreateTriangle(pDevice, "Tri"), &meshIndex)));
-    uint32_t boneJoints[2] = { 1, 0 };
+    uint32_t skeletonBoneIndices[2] = { 1, 0 };
     FloatMatrix4x4 invBinds[2] = { FloatMatrix4x4::Identity(), FloatMatrix4x4::Identity() };
     invBinds[1][3][0] = 5.0f; // distinguish the second pose
     Canvas::ModelMeshDesc mesh{};
-    mesh.NodeIndex     = body;
-    mesh.MeshDataIndex = meshIndex;
-    mesh.SkeletonIndex = skeletonIndex;
-    mesh.BoneCount     = 2;
-    mesh.pJointIndices = boneJoints;
-    mesh.pInvBindPoses = invBinds;
+    mesh.NodeIndex            = body;
+    mesh.MeshDataIndex        = meshIndex;
+    mesh.SkeletonIndex        = skeletonIndex;
+    mesh.BoneCount            = 2;
+    mesh.pSkeletonBoneIndices = skeletonBoneIndices;
+    mesh.pInvBindPoses        = invBinds;
     EXPECT_TRUE(Succeeded(pBuilder->AddMesh(&mesh, nullptr)));
 
     auto pModel = BuildModel(pBuilder);
@@ -1729,9 +1729,9 @@ TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
 
     EXPECT_EQ(2u, pMesh->GetSkinBoneCount());
     EXPECT_TRUE(pMesh->GetSkinSkeleton() == pSkeleton);
-    EXPECT_EQ(1u, pMesh->GetSkinJointIndex(0));
-    EXPECT_EQ(0u, pMesh->GetSkinJointIndex(1));
-    EXPECT_EQ(InvalidIndex, pMesh->GetSkinJointIndex(2)); // out of range
+    EXPECT_EQ(1u, pMesh->GetSkinSkeletonBoneIndex(0));
+    EXPECT_EQ(0u, pMesh->GetSkinSkeletonBoneIndex(1));
+    EXPECT_EQ(InvalidIndex, pMesh->GetSkinSkeletonBoneIndex(2)); // out of range
     ASSERT_NE(pMesh->GetSkinInvBindPose(1), nullptr);
     EXPECT_FLOAT_EQ(5.0f, (*pMesh->GetSkinInvBindPose(1))[3][0]);
     EXPECT_EQ(nullptr, pMesh->GetSkinInvBindPose(2));
@@ -1743,7 +1743,7 @@ TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
         for (uint32_t b = 0; b < 2; ++b)
         {
             const FloatMatrix4x4 expected = *pMesh->GetSkinInvBindPose(b) *
-                pSkeleton->GetJointMatrix(boneJoints[b]) * pArmature->GetGlobalMatrix();
+                pSkeleton->GetBoneMatrix(skeletonBoneIndices[b]) * pArmature->GetGlobalMatrix();
             EXPECT_TRUE(AlmostEqual(palette[b], expected)) << "bone " << b;
         }
     };
@@ -1766,20 +1766,20 @@ TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
     FloatMatrix4x4 one[1];
     EXPECT_EQ(Gem::Result::InvalidArg, pMesh->ComputeSkinMatrices(one, 1));
 
-    // Moving the instance, or posing a joint, moves the palette with it.
+    // Moving the instance, or posing a bone, moves the palette with it.
     result.pInstanceRoot->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 7.0f, 0.0f));
-    Canvas::Transform pose = joints[1].RestTransform;
+    Canvas::Transform pose = bones[1].RestTransform;
     pose.Rotation = FloatQuaternion::FromEulerXYZ(0.3f, 0.0f, 0.0f);
-    EXPECT_TRUE(Succeeded(pSkeleton->SetJointLocalTransform(1, &pose)));
+    EXPECT_TRUE(Succeeded(pSkeleton->SetBoneLocalTransform(1, &pose)));
     ExpectPalette();
 
-    // A binding to a joint the skeleton lacks is rejected and leaves the binding intact.
-    const uint32_t badJoint = 2;
+    // A binding to a bone the skeleton lacks is rejected and leaves the binding intact.
+    const uint32_t badBone = 2;
     Canvas::SkinBindingDesc bad{};
-    bad.pSkeleton     = pSkeleton;
-    bad.BoneCount     = 1;
-    bad.pJointIndices = &badJoint;
-    bad.pInvBindPoses = invBinds;
+    bad.pSkeleton            = pSkeleton;
+    bad.BoneCount            = 1;
+    bad.pSkeletonBoneIndices = &badBone;
+    bad.pInvBindPoses        = invBinds;
     EXPECT_TRUE(Gem::Failed(pMesh->SetSkinBinding(&bad)));
     EXPECT_EQ(2u, pMesh->GetSkinBoneCount());
 
@@ -1804,7 +1804,7 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     // Model with a single node authored at a distinctive bind pose.
     auto pBuilder = BeginModel(pCanvas, pDevice, "AnimModel");
     ASSERT_NE(pBuilder.Get(), nullptr);
-    const uint32_t node = AddNode(pBuilder, "Joint", InvalidIndex, Translation(7.0f, 7.0f, 7.0f));
+    const uint32_t node = AddNode(pBuilder, "Bone", InvalidIndex, Translation(7.0f, 7.0f, 7.0f));
 
     // One clip translating X from 0 to 40 over 2 seconds.
     const uint32_t target = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeTranslation);
@@ -1875,7 +1875,7 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
 
     auto pBuilder = BeginModel(pCanvas, pDevice, "BlendModel");
     ASSERT_NE(pBuilder.Get(), nullptr);
-    const uint32_t node = AddNode(pBuilder, "Joint", InvalidIndex);
+    const uint32_t node = AddNode(pBuilder, "Bone", InvalidIndex);
 
     // Two single-key clips that hold the node at constant, distinct translations.
     const uint32_t target = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeTranslation);
@@ -1928,10 +1928,10 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
                             FloatVector4(100.0f, 0.0f, 0.0f, 1.0f)));
 }
 
-// A joint track drives the joint in each instance's skeleton instance.  Ticked through the
+// A bone track drives the bone in each instance's skeleton instance.  Ticked through the
 // instance root, the controller runs before the skeleton node updates, so the socket
-// follows the animated joint in the same update.
-TEST(CanvasInterfacesTest, AnimationControllerDrivesJoints)
+// follows the animated bone in the same update.
+TEST(CanvasInterfacesTest, AnimationControllerDrivesBones)
 {
     using namespace Canvas::Math;
 
@@ -1943,25 +1943,25 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesJoints)
     ASSERT_NE(pBuilder.Get(), nullptr);
     const uint32_t armature = AddNode(pBuilder, "Armature", InvalidIndex);
 
-    Canvas::ModelJointDesc joint{};
-    joint.Name          = "Arm";
-    joint.RestTransform = Translation(0.0f, 0.0f, 1.0f);
+    Canvas::ModelBoneDesc bone{};
+    bone.Name          = "Arm";
+    bone.RestTransform = Translation(0.0f, 0.0f, 1.0f);
     Canvas::ModelSkeletonDesc skeleton{};
-    skeleton.NodeIndex  = armature;
-    skeleton.JointCount = 1;
-    skeleton.pJoints    = &joint;
+    skeleton.NodeIndex = armature;
+    skeleton.BoneCount = 1;
+    skeleton.pBones    = &bone;
     uint32_t skeletonIndex = InvalidIndex;
     EXPECT_TRUE(Succeeded(pBuilder->AddSkeleton(&skeleton, &skeletonIndex)));
 
     Canvas::ModelSocketDesc socket{};
     socket.Name          = "Hand";
-    socket.SkeletonIndex  = skeletonIndex;
-    socket.JointIndex    = 0;
+    socket.SkeletonIndex = skeletonIndex;
+    socket.BoneIndex     = 0;
     EXPECT_TRUE(Succeeded(pBuilder->AddSocket(&socket, nullptr)));
 
     // X from 0 to 4 over 2 seconds; Z held at the rest height.
     Canvas::AnimationTargetDesc targetDesc{};
-    targetDesc.Type          = Canvas::AnimationTargetType::JointTranslation;
+    targetDesc.Type          = Canvas::AnimationTargetType::BoneTranslation;
     targetDesc.SkeletonIndex = skeletonIndex;
     targetDesc.Index         = 0;
     uint32_t target = InvalidIndex;
@@ -1997,13 +1997,13 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesJoints)
     EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(1.0f)));
 
     Canvas::Transform pose;
-    EXPECT_TRUE(Succeeded(pSkeleton->GetJointLocalTransform(0, &pose)));
+    EXPECT_TRUE(Succeeded(pSkeleton->GetBoneLocalTransform(0, &pose)));
     EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(2.0f, 0.0f, 1.0f, 1.0f)));
     EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(2.0f, 0.0f, 1.0f, 1.0f)));
 
-    // ResetToBindPose returns the joint to rest; the socket follows on the next update.
+    // ResetToBindPose returns the bone to rest; the socket follows on the next update.
     pCtrl->ResetToBindPose();
-    EXPECT_TRUE(Succeeded(pSkeleton->GetJointLocalTransform(0, &pose)));
+    EXPECT_TRUE(Succeeded(pSkeleton->GetBoneLocalTransform(0, &pose)));
     EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)));
     EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
     EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)));

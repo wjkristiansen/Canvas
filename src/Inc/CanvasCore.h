@@ -268,7 +268,7 @@ XCanvasElement : public XNamedElement
 
 //------------------------------------------------------------------------------------------------
 // Sentinel for an index that refers to nothing, such as the parent of a top-level model node,
-// the parent of a root joint, or a joint name that FindJoint does not find.
+// the parent of a root bone, or a bone name that FindBone does not find.
 static constexpr uint32_t InvalidIndex = UINT32_MAX;
 
 #ifdef _MSC_VER
@@ -342,16 +342,16 @@ constexpr uint32_t AnimationValueComponents(AnimationValueType type) noexcept
 }
 
 // What an animation target is, and the value type of every type but Value.  A scene node
-// target is the scene node that Instantiate creates for model node Index; a joint target is
-// joint Index of the skeleton instance for skeleton SkeletonIndex.
+// target is the scene node that Instantiate creates for model node Index; a bone target is
+// bone Index of the skeleton instance for skeleton SkeletonIndex.
 enum class AnimationTargetType : uint32_t
 {
     SceneNodeTranslation = 0,   // Float3: the local translation, a point (W = 1)
     SceneNodeRotation    = 1,   // Quaternion: the local rotation
     SceneNodeScale       = 2,   // Float3: the local scale, a vector (W = 0)
-    JointTranslation     = 3,   // Float3: the local translation, a point (W = 1)
-    JointRotation        = 4,   // Quaternion: the local rotation
-    JointScale           = 5,   // Float3: the local scale, a vector (W = 0)
+    BoneTranslation      = 3,   // Float3: the local translation, a point (W = 1)
+    BoneRotation         = 4,   // Quaternion: the local rotation
+    BoneScale            = 5,   // Float3: the local scale, a vector (W = 0)
     Value                = 6,   // ValueType: a value the application reads from the controller
 };
 
@@ -367,8 +367,8 @@ enum class AnimationInterpolation : uint32_t
 struct AnimationTargetDesc
 {
     AnimationTargetType         Type          = AnimationTargetType::SceneNodeTranslation;
-    uint32_t                    SkeletonIndex = InvalidIndex;  // joint targets only
-    uint32_t                    Index         = InvalidIndex;  // scene node and joint targets only
+    uint32_t                    SkeletonIndex = InvalidIndex;  // bone targets only
+    uint32_t                    Index         = InvalidIndex;  // scene node and bone targets only
     AnimationValueType          ValueType     = AnimationValueType::Float;  // Value targets only
 };
 
@@ -394,7 +394,7 @@ struct AnimationTrackDesc
 // One animation clip.  Track i drives the model's animation target pTrackTargets[i], whose
 // value type is the track's.  While a clip plays, each of the model's animation targets takes
 // the value of the clip's track that drives it.  A target the clip has no track for takes its
-// value at instantiation: a scene node's or joint's transform property, or zero for a Value
+// value at instantiation: a scene node's or bone's transform property, or zero for a Value
 // target.
 struct AnimationClipDesc
 {
@@ -752,16 +752,16 @@ XScene : public XCanvasElement
 // XSkeletonInstance - the pose of one skeleton in one model instance.
 //
 // A skeleton instance is bound to a scene-graph node, the node whose space the skeleton is in:
-// joint matrices are relative to that node, and a joint's world matrix is its joint matrix
-// times the node's global matrix.  Joints are not scene-graph nodes.  Each joint holds a local
-// transform relative to its parent joint (or, for a root joint, to the node); joint matrices
-// compose them parents first.
+// bone matrices are relative to that node, and a bone's world matrix is its bone matrix
+// times the node's global matrix.  Bones are not scene-graph nodes.  Each bone holds a local
+// transform relative to its parent bone (or, for a root bone, to the node): the position and
+// rotation of its joint, the point it pivots about.  Bone matrices compose them parents first.
 //
 // Each socket is a scene-graph node, a child of the skeleton instance's node, with a local
-// transform relative to a joint; the skeleton instance composes it with the joint's matrix to
-// set the socket node's transform.  Content under a socket follows the joint.  Update(dtime), called by the node's own Update before its
-// children update, recomputes the joint matrices and socket transforms when the pose changed.
-// A socket node follows its joint while it is a child of the skeleton instance's node; a
+// transform relative to a bone; the skeleton instance composes it with the bone's matrix to
+// set the socket node's transform.  Content under a socket follows the bone.  Update(dtime), called by the node's own Update before its
+// children update, recomputes the bone matrices and socket transforms when the pose changed.
+// A socket node follows its bone while it is a child of the skeleton instance's node; a
 // socket node removed from that node keeps its last transform.
 //------------------------------------------------------------------------------------------------
 struct
@@ -769,35 +769,36 @@ XSkeletonInstance : public XSceneGraphElement
 {
     GEM_INTERFACE_DECLARE(XSkeletonInstance, 0x3D9A61F7C40E82B5);
 
-    GEMMETHOD_(uint32_t, GetJointCount)() const = 0;
-    GEMMETHOD_(const char *, GetJointName)(uint32_t index) const = 0;
-    GEMMETHOD_(uint32_t, GetJointParent)(uint32_t index) const = 0;    // InvalidIndex for a root joint
-    GEMMETHOD_(uint32_t, FindJoint)(const char *name) const = 0;        // InvalidIndex when absent
+    GEMMETHOD_(uint32_t, GetBoneCount)() const = 0;
+    GEMMETHOD_(const char *, GetBoneName)(uint32_t index) const = 0;
+    GEMMETHOD_(uint32_t, GetBoneParent)(uint32_t index) const = 0;    // InvalidIndex for a root bone
+    GEMMETHOD_(uint32_t, FindBone)(const char *name) const = 0;        // InvalidIndex when absent
 
-    // A joint's local transform, relative to its parent joint.
+    // A bone's local transform, relative to its parent bone.
     // Return InvalidArg for an index out of range.
-    GEMMETHOD(GetJointLocalTransform)(uint32_t index, Transform *pTransform) const = 0;
-    GEMMETHOD(SetJointLocalTransform)(uint32_t index, const Transform *pTransform) = 0;
+    GEMMETHOD(GetBoneLocalTransform)(uint32_t index, Transform *pTransform) const = 0;
+    GEMMETHOD(SetBoneLocalTransform)(uint32_t index, const Transform *pTransform) = 0;
 
-    // Restores every joint to the skeleton's rest transform.
+    // Restores every bone to the skeleton's rest transform.
     GEMMETHOD_(void, ResetToRestPose)() = 0;
 
-    // A joint's matrix in skeleton space: relative to the skeleton instance's node.
+    // A bone's matrix in skeleton space: relative to the skeleton instance's node.
     // Returns identity for an index out of range.
-    GEMMETHOD_(Math::FloatMatrix4x4, GetJointMatrix)(uint32_t index) = 0;
+    GEMMETHOD_(Math::FloatMatrix4x4, GetBoneMatrix)(uint32_t index) = 0;
 };
 
 //------------------------------------------------------------------------------------------------
-// Skin binding: connects a mesh instance to the joints of a skeleton instance.  Bone i of the
-// mesh's bone-index vertex stream is joint pJointIndices[i], and pInvBindPoses[i] maps the
-// mesh's geometry space to that joint's space at bind time.  BoneCount entries each; they are
+// Skin binding: connects a mesh instance to the bones of a skeleton instance.  The skin's bones
+// are the skeleton bones the mesh's bone-index vertex stream references, in the skin's own
+// order: skin bone i is skeleton bone pSkeletonBoneIndices[i], and pInvBindPoses[i] maps the
+// mesh's geometry space to that bone's space at bind time.  BoneCount entries each; they are
 // copied on SetSkinBinding.
 struct SkinBindingDesc
 {
-    XSkeletonInstance*              pSkeleton     = nullptr;
-    uint32_t                        BoneCount     = 0;
-    const uint32_t*                 pJointIndices = nullptr;
-    const Math::FloatMatrix4x4*     pInvBindPoses = nullptr;
+    XSkeletonInstance*              pSkeleton            = nullptr;
+    uint32_t                        BoneCount            = 0;
+    const uint32_t*                 pSkeletonBoneIndices = nullptr;
+    const Math::FloatMatrix4x4*     pInvBindPoses        = nullptr;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -813,11 +814,11 @@ XMeshInstance : public XSceneGraphElement
     GEMMETHOD(SetSkinBinding)(const SkinBindingDesc *pDesc) = 0;
     GEMMETHOD_(uint32_t, GetSkinBoneCount)() const = 0;
     GEMMETHOD_(XSkeletonInstance*, GetSkinSkeleton)() const = 0;
-    GEMMETHOD_(uint32_t, GetSkinJointIndex)(uint32_t index) const = 0;     // InvalidIndex out of range
+    GEMMETHOD_(uint32_t, GetSkinSkeletonBoneIndex)(uint32_t index) const = 0;     // InvalidIndex out of range
     GEMMETHOD_(const Math::FloatMatrix4x4*, GetSkinInvBindPose)(uint32_t index) const = 0;
 
-    // Writes the skin palette: for each bone, the matrix that maps the mesh's geometry space
-    // to world space in the skeleton's current pose (InvBindPose * joint matrix * the skeleton
+    // Writes the skin palette: for each skin bone, the matrix that maps the mesh's geometry space
+    // to world space in the skeleton's current pose (InvBindPose * bone matrix * the skeleton
     // node's global matrix).  count must equal GetSkinBoneCount().
     GEMMETHOD(ComputeSkinMatrices)(Math::FloatMatrix4x4 *pMatrices, uint32_t count) = 0;
 };
@@ -896,16 +897,17 @@ struct ModelNodeDesc
 };
 
 // A mesh on a model node: mesh data the model holds, placed on the node.  A skinned mesh
-// names a skeleton and binds BoneCount bones to its joints (see SkinBindingDesc).
+// names a skeleton and binds its BoneCount skin bones to the skeleton's bones (see
+// SkinBindingDesc).
 struct ModelMeshDesc
 {
-    const char*                     Name          = nullptr;
-    uint32_t                        NodeIndex     = InvalidIndex;
-    uint32_t                        MeshDataIndex = InvalidIndex;
-    uint32_t                        SkeletonIndex = InvalidIndex;  // InvalidIndex: unskinned
-    uint32_t                        BoneCount     = 0;
-    const uint32_t*                 pJointIndices = nullptr;
-    const Math::FloatMatrix4x4*     pInvBindPoses = nullptr;
+    const char*                     Name                 = nullptr;
+    uint32_t                        NodeIndex            = InvalidIndex;
+    uint32_t                        MeshDataIndex        = InvalidIndex;
+    uint32_t                        SkeletonIndex        = InvalidIndex;  // InvalidIndex: unskinned
+    uint32_t                        BoneCount            = 0;
+    const uint32_t*                 pSkeletonBoneIndices = nullptr;
+    const Math::FloatMatrix4x4*     pInvBindPoses        = nullptr;
 };
 
 // The settable properties of an XCamera.  Defaults match XCanvas::CreateCamera.
@@ -954,10 +956,10 @@ struct ModelLightDesc
     LightParams         Params;
 };
 
-// A skeleton joint.  ParentIndex is a joint index in the same skeleton, less than the joint's
-// own index, or InvalidIndex for a root joint.  RestTransform is relative to the parent
-// joint, or for a root joint to the skeleton's node.
-struct ModelJointDesc
+// A skeleton bone.  ParentIndex is a bone index in the same skeleton, less than the bone's
+// own index, or InvalidIndex for a root bone.  RestTransform is relative to the parent
+// bone, or for a root bone to the skeleton's node.
+struct ModelBoneDesc
 {
     const char*         Name          = nullptr;
     uint32_t            ParentIndex   = InvalidIndex;
@@ -970,19 +972,19 @@ struct ModelSkeletonDesc
 {
     const char*             Name       = nullptr;
     uint32_t                NodeIndex  = InvalidIndex;
-    uint32_t                JointCount = 0;
-    const ModelJointDesc*   pJoints    = nullptr;
+    uint32_t                BoneCount  = 0;
+    const ModelBoneDesc*    pBones     = nullptr;
 };
 
-// A socket: a model node, a child of its skeleton's node, whose transform follows a joint.
-// LocalTransform is relative to the joint.  Like every Canvas transform, a socket's transform is
+// A socket: a model node, a child of its skeleton's node, whose transform follows a bone.
+// LocalTransform is relative to the bone.  Like every Canvas transform, a socket's transform is
 // a translation, rotation, and scale, with no shear: it composes the rotations and the scales of
-// the joint and its ancestors separately.
+// the bone and its ancestors separately.
 struct ModelSocketDesc
 {
     const char*         Name          = nullptr;
     uint32_t            SkeletonIndex = InvalidIndex;
-    uint32_t            JointIndex    = InvalidIndex;
+    uint32_t            BoneIndex     = InvalidIndex;
     Transform           LocalTransform;
 };
 
@@ -1036,12 +1038,12 @@ XModelBuilder : public XCanvasElement
     GEMMETHOD(AddSocket)(_In_ const ModelSocketDesc *pDesc, _Out_opt_ uint32_t *pNodeIndex) = 0;
 
     // Animation targets and clips are shared across all instances.  AddAnimationTarget returns
-    // AlreadyExists for a scene node or joint target of the same type and transform as an
+    // AlreadyExists for a scene node or bone target of the same type and transform as an
     // earlier one.  A clip's targets are added before the clip; AddAnimationClip
     // returns OutOfRange for a track target that does not exist yet, and InvalidArg for a track
     // whose value type differs from its target's, a track whose key times are out of order, or a
     // target driven by more than one track.
-    // Model node, skeleton, and joint indices of targets are checked by Build.
+    // Model node, skeleton, and bone indices of targets are checked by Build.
     GEMMETHOD(AddAnimationTarget)(_In_ const AnimationTargetDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
     GEMMETHOD(AddAnimationClip)(_In_ const AnimationClipDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
 

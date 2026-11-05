@@ -1,7 +1,7 @@
 //================================================================================================
 // Animation - runtime clip storage and per-instance animation controller
 //
-// AnimTarget       : one animation target of a model: a property of a scene node's or joint's
+// AnimTarget       : one animation target of a model: a property of a scene node's or bone's
 //                    local transform, or a value the application reads.
 //
 // CAnimationClip   : immutable, shared clip data stored on CModel.  All instances of a model
@@ -28,7 +28,7 @@
 namespace Canvas
 {
 
-// The property of a transform that a scene node or joint target is.
+// The property of a transform that a scene node or bone target is.
 enum class TransformProperty : uint32_t
 {
     Translation,
@@ -36,22 +36,22 @@ enum class TransformProperty : uint32_t
     Scale,
 };
 
-constexpr bool IsJointTarget(AnimationTargetType type) noexcept
+constexpr bool IsBoneTarget(AnimationTargetType type) noexcept
 {
-    return type == AnimationTargetType::JointTranslation ||
-           type == AnimationTargetType::JointRotation ||
-           type == AnimationTargetType::JointScale;
+    return type == AnimationTargetType::BoneTranslation ||
+           type == AnimationTargetType::BoneRotation ||
+           type == AnimationTargetType::BoneScale;
 }
 
-// Scene node and joint targets.
+// Scene node and bone targets.
 constexpr TransformProperty TargetProperty(AnimationTargetType type) noexcept
 {
     switch (type)
     {
     case AnimationTargetType::SceneNodeRotation:
-    case AnimationTargetType::JointRotation:     return TransformProperty::Rotation;
+    case AnimationTargetType::BoneRotation:      return TransformProperty::Rotation;
     case AnimationTargetType::SceneNodeScale:
-    case AnimationTargetType::JointScale:        return TransformProperty::Scale;
+    case AnimationTargetType::BoneScale:         return TransformProperty::Scale;
     default:                                     return TransformProperty::Translation;
     }
 }
@@ -69,8 +69,8 @@ constexpr AnimationValueType TargetValueType(AnimationTargetType type) noexcept
 struct AnimTarget
 {
     AnimationTargetType     Type          = AnimationTargetType::SceneNodeTranslation;
-    uint32_t                SkeletonIndex = InvalidIndex;  // joint targets only
-    uint32_t                Index         = InvalidIndex;  // scene node and joint targets only
+    uint32_t                SkeletonIndex = InvalidIndex;  // bone targets only
+    uint32_t                Index         = InvalidIndex;  // scene node and bone targets only
     AnimationValueType      ValueType     = AnimationValueType::Float3;
 };
 
@@ -99,14 +99,14 @@ class CAnimationController :
     public TCanvasElement<XAnimationController>
 {
     //--------------------------------------------------------------------------------------------
-    // A transform that targets write to: a scene node, or one joint of a skeleton instance.
+    // A transform that targets write to: a scene node, or one bone of a skeleton instance.
     // Both pointers are non-owning; the instance's subtree owns the nodes and elements.
     //--------------------------------------------------------------------------------------------
     struct BoundTransform
     {
         XSceneGraphNode*        pNode     = nullptr;
         CSkeletonInstance*      pSkeleton = nullptr;
-        uint32_t                Joint     = 0;
+        uint32_t                Bone      = 0;
 
         Transform Get() const;
         void Set(const Transform &transform) const;

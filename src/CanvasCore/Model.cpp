@@ -59,10 +59,10 @@ Math::AABB ComputeBounds(const ModelContent &content, const std::vector<Skeleton
             ? Math::FloatMatrix4x4::Identity()
             : globals[skeletonNode];
         const SkeletonPose &pose = restPoses[mesh.SkeletonIndex];
-        for (size_t b = 0; b < mesh.JointIndices.size(); ++b)
+        for (size_t b = 0; b < mesh.SkeletonBoneIndices.size(); ++b)
         {
             const Math::FloatMatrix4x4 palette =
-                mesh.InvBindPoses[b] * pose.Matrices[mesh.JointIndices[b]] * skeletonGlobal;
+                mesh.InvBindPoses[b] * pose.Matrices[mesh.SkeletonBoneIndices[b]] * skeletonGlobal;
             bounds.ExpandToInclude(local.Transform(palette));
         }
     }
@@ -140,7 +140,7 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
         }
 
         for (const ModelSocketData &socket : m_Content.Sockets)
-            skeletons[socket.SkeletonIndex]->AddSocket(nodes[socket.NodeIndex], socket.JointIndex, socket.LocalTransform);
+            skeletons[socket.SkeletonIndex]->AddSocket(nodes[socket.NodeIndex], socket.BoneIndex, socket.LocalTransform);
 
         for (const ModelMeshData &src : m_Content.Meshes)
         {
@@ -150,10 +150,10 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             if (src.SkeletonIndex != InvalidIndex)
             {
                 SkinBindingDesc desc{};
-                desc.pSkeleton     = skeletons[src.SkeletonIndex];
-                desc.BoneCount     = static_cast<uint32_t>(src.JointIndices.size());
-                desc.pJointIndices = src.JointIndices.data();
-                desc.pInvBindPoses = src.InvBindPoses.data();
+                desc.pSkeleton            = skeletons[src.SkeletonIndex];
+                desc.BoneCount            = static_cast<uint32_t>(src.SkeletonBoneIndices.size());
+                desc.pSkeletonBoneIndices = src.SkeletonBoneIndices.data();
+                desc.pInvBindPoses        = src.InvBindPoses.data();
                 Gem::ThrowGemError(pMesh->SetSkinBinding(&desc));
             }
             Gem::ThrowGemError(nodes[src.NodeIndex]->BindElement(pMesh));
@@ -207,7 +207,7 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             pAnimationController = pCtrl.Get();
         }
 
-        // Place sockets at their joints' rest pose before the first update.
+        // Place sockets at their bones' rest pose before the first update.
         for (CSkeletonInstance *pSkeleton : skeletons)
             Gem::ThrowGemError(pSkeleton->Update(0.0f));
 
@@ -337,19 +337,19 @@ GEMMETHODIMP CModelBuilder::AddMesh(_In_ const ModelMeshDesc *pDesc, _Out_opt_ u
             return Gem::Result::OutOfRange;
         if (pDesc->BoneCount == 0)
             return Gem::Result::InvalidArg;
-        if (!pDesc->pJointIndices || !pDesc->pInvBindPoses)
+        if (!pDesc->pSkeletonBoneIndices || !pDesc->pInvBindPoses)
             return Gem::Result::BadPointer;
 
-        const size_t jointCount = m_Content.Skeletons[pDesc->SkeletonIndex].Joints.size();
+        const size_t skeletonBoneCount = m_Content.Skeletons[pDesc->SkeletonIndex].Bones.size();
         for (uint32_t b = 0; b < pDesc->BoneCount; ++b)
-            if (pDesc->pJointIndices[b] >= jointCount)
+            if (pDesc->pSkeletonBoneIndices[b] >= skeletonBoneCount)
                 return Gem::Result::OutOfRange;
 
         mesh.SkeletonIndex = pDesc->SkeletonIndex;
-        mesh.JointIndices.assign(pDesc->pJointIndices, pDesc->pJointIndices + pDesc->BoneCount);
+        mesh.SkeletonBoneIndices.assign(pDesc->pSkeletonBoneIndices, pDesc->pSkeletonBoneIndices + pDesc->BoneCount);
         mesh.InvBindPoses.assign(pDesc->pInvBindPoses, pDesc->pInvBindPoses + pDesc->BoneCount);
     }
-    else if (pDesc->BoneCount != 0 || pDesc->pJointIndices || pDesc->pInvBindPoses)
+    else if (pDesc->BoneCount != 0 || pDesc->pSkeletonBoneIndices || pDesc->pInvBindPoses)
     {
         return Gem::Result::InvalidArg;   // skin data without a skeleton
     }
@@ -407,17 +407,17 @@ GEMMETHODIMP CModelBuilder::AddSkeleton(_In_ const ModelSkeletonDesc *pDesc, _Ou
     CANVAS_REQUIRE_BUILDING();
     if (!pDesc)
         return Gem::Result::BadPointer;
-    if (pDesc->JointCount == 0)
+    if (pDesc->BoneCount == 0)
         return Gem::Result::InvalidArg;
-    if (!pDesc->pJoints)
+    if (!pDesc->pBones)
         return Gem::Result::BadPointer;
     if (pDesc->NodeIndex != InvalidIndex && pDesc->NodeIndex >= m_Content.Nodes.size())
         return Gem::Result::OutOfRange;
 
-    // Joints are listed parents first.
-    for (uint32_t j = 0; j < pDesc->JointCount; ++j)
+    // Bones are listed parents first.
+    for (uint32_t j = 0; j < pDesc->BoneCount; ++j)
     {
-        const uint32_t parent = pDesc->pJoints[j].ParentIndex;
+        const uint32_t parent = pDesc->pBones[j].ParentIndex;
         if (parent != InvalidIndex && parent >= j)
             return Gem::Result::OutOfRange;
     }
@@ -427,21 +427,21 @@ GEMMETHODIMP CModelBuilder::AddSkeleton(_In_ const ModelSkeletonDesc *pDesc, _Ou
         ModelSkeletonData skeleton;
         skeleton.Name      = StringOrEmpty(pDesc->Name);
         skeleton.NodeIndex = pDesc->NodeIndex;
-        skeleton.Joints.reserve(pDesc->JointCount);
-        for (uint32_t j = 0; j < pDesc->JointCount; ++j)
+        skeleton.Bones.reserve(pDesc->BoneCount);
+        for (uint32_t j = 0; j < pDesc->BoneCount; ++j)
         {
-            const ModelJointDesc &src = pDesc->pJoints[j];
-            ModelJointData joint;
-            joint.Name          = StringOrEmpty(src.Name);
-            joint.ParentIndex   = src.ParentIndex;
-            joint.RestTransform = src.RestTransform;
-            skeleton.Joints.push_back(std::move(joint));
+            const ModelBoneDesc &src = pDesc->pBones[j];
+            ModelBoneData bone;
+            bone.Name          = StringOrEmpty(src.Name);
+            bone.ParentIndex   = src.ParentIndex;
+            bone.RestTransform = src.RestTransform;
+            skeleton.Bones.push_back(std::move(bone));
         }
 
         std::vector<Transform> rest;
-        rest.reserve(skeleton.Joints.size());
-        for (const ModelJointData &joint : skeleton.Joints)
-            rest.push_back(joint.RestTransform);
+        rest.reserve(skeleton.Bones.size());
+        for (const ModelBoneData &bone : skeleton.Bones)
+            rest.push_back(bone.RestTransform);
         SkeletonPose pose;
         pose.Compute(skeleton, rest.data());
 
@@ -467,22 +467,22 @@ GEMMETHODIMP CModelBuilder::AddSocket(_In_ const ModelSocketDesc *pDesc, _Out_op
     if (!pDesc)
         return Gem::Result::BadPointer;
     if (pDesc->SkeletonIndex >= m_Content.Skeletons.size() ||
-        pDesc->JointIndex >= m_Content.Skeletons[pDesc->SkeletonIndex].Joints.size())
+        pDesc->BoneIndex >= m_Content.Skeletons[pDesc->SkeletonIndex].Bones.size())
         return Gem::Result::OutOfRange;
 
     try
     {
-        // The socket's model node is a child of the skeleton's node, placed at the joint's rest
-        // pose; each instance's skeleton instance moves it with the joint.
+        // The socket's model node is a child of the skeleton's node, placed at the bone's rest
+        // pose; each instance's skeleton instance moves it with the bone.
         ModelNodeData node;
         node.Name           = StringOrEmpty(pDesc->Name);
         node.ParentIndex    = m_Content.Skeletons[pDesc->SkeletonIndex].NodeIndex;
-        node.LocalTransform = m_RestPoses[pDesc->SkeletonIndex].SocketTransform(pDesc->JointIndex, pDesc->LocalTransform);
+        node.LocalTransform = m_RestPoses[pDesc->SkeletonIndex].SocketTransform(pDesc->BoneIndex, pDesc->LocalTransform);
 
         ModelSocketData socket;
         socket.NodeIndex      = static_cast<uint32_t>(m_Content.Nodes.size());
         socket.SkeletonIndex  = pDesc->SkeletonIndex;
-        socket.JointIndex     = pDesc->JointIndex;
+        socket.BoneIndex      = pDesc->BoneIndex;
         socket.LocalTransform = pDesc->LocalTransform;
 
         // Reserve both tables first so they stay in step.
@@ -519,14 +519,14 @@ GEMMETHODIMP CModelBuilder::AddAnimationTarget(_In_ const AnimationTargetDesc *p
     }
     else
     {
-        const bool isJoint = IsJointTarget(pDesc->Type);
+        const bool isBone = IsBoneTarget(pDesc->Type);
         for (const AnimTarget &existing : m_Content.AnimTargets)
         {
             if (existing.Type == pDesc->Type && existing.Index == pDesc->Index &&
-                (!isJoint || existing.SkeletonIndex == pDesc->SkeletonIndex))
+                (!isBone || existing.SkeletonIndex == pDesc->SkeletonIndex))
                 return Gem::Result::AlreadyExists;
         }
-        target.SkeletonIndex = isJoint ? pDesc->SkeletonIndex : InvalidIndex;
+        target.SkeletonIndex = isBone ? pDesc->SkeletonIndex : InvalidIndex;
         target.Index         = pDesc->Index;
         target.ValueType     = TargetValueType(pDesc->Type);
     }
@@ -618,9 +618,9 @@ Gem::Result CModelBuilder::ValidateAnimationTargets() const
     {
         const AnimTarget &target = m_Content.AnimTargets[i];
         bool valid = true;
-        if (IsJointTarget(target.Type))
+        if (IsBoneTarget(target.Type))
             valid = target.SkeletonIndex < m_Content.Skeletons.size() &&
-                    target.Index < m_Content.Skeletons[target.SkeletonIndex].Joints.size();
+                    target.Index < m_Content.Skeletons[target.SkeletonIndex].Bones.size();
         else if (target.Type != AnimationTargetType::Value)
             valid = target.Index < m_Content.Nodes.size();
         if (!valid)

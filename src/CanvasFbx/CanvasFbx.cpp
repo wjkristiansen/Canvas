@@ -1645,38 +1645,38 @@ namespace
 {
 
 //------------------------------------------------------------------------------------------------
-// How BuildModel divides the imported hierarchy between model nodes and skeleton joints.
+// How BuildModel divides the imported hierarchy between model nodes and skeleton bones.
 //
-// The bones of skins that share a bone form one skeleton.  A skeleton is in the space of its
-// owner: the nearest common ancestor of its bones' parents, or the instance root when they
-// have none.  Its joints are its bones and every node between a bone and the owner, so each
-// root joint is a child of the owner.  Skeletons whose joints overlap, or whose owner is a
-// joint of another skeleton, are merged.  Every other node is a model node.
+// The skin bones of skins that share a skin bone form one skeleton.  A skeleton is in the space
+// of its owner: the nearest common ancestor of its skin bones' parents, or the instance root
+// when they have none.  Its bones are its skin bones and every node between a skin bone and the
+// owner, so each root bone is a child of the owner.  Skeletons whose bones overlap, or whose owner is a
+// bone of another skeleton, are merged.  Every other node is a model node.
 //------------------------------------------------------------------------------------------------
 struct SkeletonLayout
 {
     struct Skeleton
     {
         int32_t                 OwnerNode = -1;     // imported node index; -1: the instance root
-        std::vector<int32_t>    Joints;             // imported node indices, parents first
+        std::vector<int32_t>    Bones;              // imported node indices, parents first
     };
 
     std::vector<Skeleton>   Skeletons;
     std::vector<int32_t>    SkeletonOfNode;         // per imported node; -1 for a model node
-    std::vector<uint32_t>   JointOfNode;            // per imported node; its joint index
+    std::vector<uint32_t>   BoneOfNode;             // per imported node; its bone index
 };
 
-// The animation target type for one property of a scene node's or joint's transform.
-AnimationTargetType TargetType(ImportedTransformProperty property, bool joint)
+// The animation target type for one property of a scene node's or bone's transform.
+AnimationTargetType TargetType(ImportedTransformProperty property, bool bone)
 {
     switch (property)
     {
     case ImportedTransformProperty::Rotation:
-        return joint ? AnimationTargetType::JointRotation : AnimationTargetType::SceneNodeRotation;
+        return bone ? AnimationTargetType::BoneRotation : AnimationTargetType::SceneNodeRotation;
     case ImportedTransformProperty::Scale:
-        return joint ? AnimationTargetType::JointScale : AnimationTargetType::SceneNodeScale;
+        return bone ? AnimationTargetType::BoneScale : AnimationTargetType::SceneNodeScale;
     default:
-        return joint ? AnimationTargetType::JointTranslation : AnimationTargetType::SceneNodeTranslation;
+        return bone ? AnimationTargetType::BoneTranslation : AnimationTargetType::SceneNodeTranslation;
     }
 }
 
@@ -1727,7 +1727,7 @@ SkeletonLayout ComputeSkeletonLayout(
         return (a >= 0 && b >= 0) ? a : -1;
     };
 
-    // Union-find over bones: bones that end up in one skeleton share a root.
+    // Union-find over skin bones: skin bones that end up in one skeleton share a root.
     std::vector<int32_t> uf(nodeCount);
     for (size_t i = 0; i < nodeCount; ++i)
         uf[i] = static_cast<int32_t>(i);
@@ -1747,11 +1747,11 @@ SkeletonLayout ComputeSkeletonLayout(
         return true;
     };
 
-    std::vector<bool> isBone(nodeCount, false);
+    std::vector<bool> isSkinBone(nodeCount, false);
     for (const std::vector<int32_t> &bones : skinBones)
         for (int32_t bone : bones)
         {
-            isBone[static_cast<size_t>(bone)] = true;
+            isSkinBone[static_cast<size_t>(bone)] = true;
             Unite(bones.front(), bone);
         }
 
@@ -1761,11 +1761,11 @@ SkeletonLayout ComputeSkeletonLayout(
     {
         changed = false;
 
-        // Each group's owner: the common ancestor of its bones' parents.
+        // Each group's owner: the common ancestor of its skin bones' parents.
         std::vector<bool> seen(nodeCount, false);
         for (int32_t n : order)
         {
-            if (!isBone[static_cast<size_t>(n)])
+            if (!isSkinBone[static_cast<size_t>(n)])
                 continue;
             const int32_t g = Find(n);
             const int32_t p = parents[static_cast<size_t>(n)];
@@ -1773,12 +1773,12 @@ SkeletonLayout ComputeSkeletonLayout(
             seen[static_cast<size_t>(g)] = true;
         }
 
-        // Each group's joints: every node from a bone up to, not including, the owner.  A
+        // Each group's bones: every node from a skin bone up to, not including, the owner.  A
         // node claimed by two groups merges them.
         std::fill(groupOfNode.begin(), groupOfNode.end(), -1);
         for (int32_t n : order)
         {
-            if (!isBone[static_cast<size_t>(n)])
+            if (!isSkinBone[static_cast<size_t>(n)])
                 continue;
             const int32_t g = Find(n);
             for (int32_t j = n; j >= 0 && j != owner[static_cast<size_t>(g)]; j = parents[static_cast<size_t>(j)])
@@ -1790,10 +1790,10 @@ SkeletonLayout ComputeSkeletonLayout(
             }
         }
 
-        // An owner is a model node: one that is another group's joint merges the two.
+        // An owner is a model node: one that is another group's bone merges the two.
         for (int32_t n : order)
         {
-            if (!isBone[static_cast<size_t>(n)])
+            if (!isSkinBone[static_cast<size_t>(n)])
                 continue;
             const int32_t g = Find(n);
             const int32_t o = owner[static_cast<size_t>(g)];
@@ -1802,10 +1802,10 @@ SkeletonLayout ComputeSkeletonLayout(
         }
     }
 
-    // Number the skeletons, and their joints, in hierarchy order.
+    // Number the skeletons, and their bones, in hierarchy order.
     SkeletonLayout layout;
     layout.SkeletonOfNode.assign(nodeCount, -1);
-    layout.JointOfNode.assign(nodeCount, 0);
+    layout.BoneOfNode.assign(nodeCount, 0);
     std::unordered_map<int32_t, int32_t> skeletonOfGroup;
     for (int32_t n : order)
     {
@@ -1821,8 +1821,8 @@ SkeletonLayout ComputeSkeletonLayout(
         }
         SkeletonLayout::Skeleton &skeleton = layout.Skeletons[static_cast<size_t>(it->second)];
         layout.SkeletonOfNode[static_cast<size_t>(n)] = it->second;
-        layout.JointOfNode[static_cast<size_t>(n)] = static_cast<uint32_t>(skeleton.Joints.size());
-        skeleton.Joints.push_back(n);
+        layout.BoneOfNode[static_cast<size_t>(n)] = static_cast<uint32_t>(skeleton.Bones.size());
+        skeleton.Bones.push_back(n);
     }
     return layout;
 }
@@ -2017,7 +2017,7 @@ Gem::Result BuildModel(
     }
 
     // -----------------------------------------------------------------
-    // Hierarchy: which imported nodes are model nodes and which are joints
+    // Hierarchy: which imported nodes are model nodes and which are bones
     // -----------------------------------------------------------------
     const size_t nodeCount = scene.Nodes.size();
     std::vector<int32_t> parents(nodeCount, -1);
@@ -2086,53 +2086,53 @@ Gem::Result BuildModel(
                     continue;
 
                 std::vector<std::string> names;
-                std::vector<Canvas::ModelJointDesc> joints(src.Joints.size());
-                names.reserve(src.Joints.size());
-                for (size_t j = 0; j < src.Joints.size(); ++j)
+                std::vector<Canvas::ModelBoneDesc> bones(src.Bones.size());
+                names.reserve(src.Bones.size());
+                for (size_t j = 0; j < src.Bones.size(); ++j)
                 {
-                    const size_t ni = static_cast<size_t>(src.Joints[j]);
+                    const size_t ni = static_cast<size_t>(src.Bones[j]);
                     names.push_back(NodeName(ni));
                 }
-                for (size_t j = 0; j < src.Joints.size(); ++j)
+                for (size_t j = 0; j < src.Bones.size(); ++j)
                 {
-                    // A root joint's parent is the owner; every other joint's is a joint.
-                    const size_t ni = static_cast<size_t>(src.Joints[j]);
+                    // A root bone's parent is the owner; every other bone's is a bone.
+                    const size_t ni = static_cast<size_t>(src.Bones[j]);
                     const int32_t p = parents[ni];
-                    const bool parentIsJoint = p >= 0 && layout.SkeletonOfNode[static_cast<size_t>(p)] == static_cast<int32_t>(s);
-                    joints[j].Name          = names[j].c_str();
-                    joints[j].ParentIndex   = parentIsJoint ? layout.JointOfNode[static_cast<size_t>(p)] : Canvas::InvalidIndex;
-                    joints[j].RestTransform = scene.Nodes[ni].LocalTransform;
+                    const bool parentIsBone = p >= 0 && layout.SkeletonOfNode[static_cast<size_t>(p)] == static_cast<int32_t>(s);
+                    bones[j].Name          = names[j].c_str();
+                    bones[j].ParentIndex   = parentIsBone ? layout.BoneOfNode[static_cast<size_t>(p)] : Canvas::InvalidIndex;
+                    bones[j].RestTransform = scene.Nodes[ni].LocalTransform;
                 }
 
                 Canvas::ModelSkeletonDesc desc{};
                 const std::string name = ownerNode >= 0 ? NodeName(static_cast<size_t>(ownerNode)) + "_Skeleton" : std::string("Skeleton");
-                desc.Name       = name.c_str();
-                desc.NodeIndex  = ownerNode >= 0 ? modelNodeOf[static_cast<size_t>(ownerNode)] : Canvas::InvalidIndex;
-                desc.JointCount = static_cast<uint32_t>(joints.size());
-                desc.pJoints    = joints.data();
+                desc.Name      = name.c_str();
+                desc.NodeIndex = ownerNode >= 0 ? modelNodeOf[static_cast<size_t>(ownerNode)] : Canvas::InvalidIndex;
+                desc.BoneCount = static_cast<uint32_t>(bones.size());
+                desc.pBones    = bones.data();
                 Gem::ThrowGemError(pBuilder->AddSkeleton(&desc, &skeletonIndex[s]));
-                socketOf[s].assign(joints.size(), Canvas::InvalidIndex);
+                socketOf[s].assign(bones.size(), Canvas::InvalidIndex);
             }
         };
 
-        // The socket node that carries a joint's content, added when first needed.
-        const auto SocketFor = [&](size_t jointNode)
+        // The socket node that carries a bone's content, added when first needed.
+        const auto SocketFor = [&](size_t boneNode)
         {
-            const size_t s = static_cast<size_t>(layout.SkeletonOfNode[jointNode]);
-            const uint32_t j = layout.JointOfNode[jointNode];
+            const size_t s = static_cast<size_t>(layout.SkeletonOfNode[boneNode]);
+            const uint32_t j = layout.BoneOfNode[boneNode];
             if (socketOf[s][j] == Canvas::InvalidIndex)
             {
-                const std::string name = NodeName(jointNode) + "_Socket";
+                const std::string name = NodeName(boneNode) + "_Socket";
                 Canvas::ModelSocketDesc desc{};
                 desc.Name          = name.c_str();
                 desc.SkeletonIndex = skeletonIndex[s];
-                desc.JointIndex    = j;
+                desc.BoneIndex     = j;
                 Gem::ThrowGemError(pBuilder->AddSocket(&desc, &socketOf[s][j]));
             }
             return socketOf[s][j];
         };
 
-        // Model nodes, parents first.  A model node under a joint hangs from the joint's socket.
+        // Model nodes, parents first.  A model node under a bone hangs from the bone's socket.
         AddSkeletonsOwnedBy(-1);
         for (int32_t n : order)
         {
@@ -2153,7 +2153,7 @@ Gem::Result BuildModel(
             AddSkeletonsOwnedBy(n);
         }
 
-        // Meshes, lights, and cameras.  Content on a joint goes on the joint's socket.
+        // Meshes, lights, and cameras.  Content on a bone goes on the bone's socket.
         std::vector<uint32_t> cameraOfNode(nodeCount, Canvas::InvalidIndex);
         for (int32_t n : order)
         {
@@ -2178,17 +2178,17 @@ Gem::Result BuildModel(
                 desc.NodeIndex     = node;
                 desc.MeshDataIndex = meshDataIndex[meshIndex];
 
-                std::vector<uint32_t> jointIndices;
+                std::vector<uint32_t> skeletonBoneIndices;
                 const ImportedSkin &skin = scene.Meshes[meshIndex].Skin;
                 if (skinNode[meshIndex] == n)
                 {
-                    jointIndices.reserve(skin.BoneNodeIndices.size());
+                    skeletonBoneIndices.reserve(skin.BoneNodeIndices.size());
                     for (int32_t bone : skin.BoneNodeIndices)
-                        jointIndices.push_back(layout.JointOfNode[static_cast<size_t>(bone)]);
-                    desc.SkeletonIndex = skeletonIndex[static_cast<size_t>(layout.SkeletonOfNode[static_cast<size_t>(skin.BoneNodeIndices.front())])];
-                    desc.BoneCount     = static_cast<uint32_t>(jointIndices.size());
-                    desc.pJointIndices = jointIndices.data();
-                    desc.pInvBindPoses = skin.InvBindPoses.data();
+                        skeletonBoneIndices.push_back(layout.BoneOfNode[static_cast<size_t>(bone)]);
+                    desc.SkeletonIndex        = skeletonIndex[static_cast<size_t>(layout.SkeletonOfNode[static_cast<size_t>(skin.BoneNodeIndices.front())])];
+                    desc.BoneCount            = static_cast<uint32_t>(skeletonBoneIndices.size());
+                    desc.pSkeletonBoneIndices = skeletonBoneIndices.data();
+                    desc.pInvBindPoses        = skin.InvBindPoses.data();
                 }
                 Gem::ThrowGemError(pBuilder->AddMesh(&desc, nullptr));
             }
@@ -2258,8 +2258,8 @@ Gem::Result BuildModel(
         }
 
         // -----------------------------------------------------------------
-        // Animation targets and clips.  An imported node's tracks animate its joint when the
-        // node is a joint, and its model node otherwise.  Each node property that any clip
+        // Animation targets and clips.  An imported node's tracks animate its bone when the
+        // node is a bone, and its model node otherwise.  Each node property that any clip
         // animates becomes one animation target, added before the first clip that drives it.
         // -----------------------------------------------------------------
         std::map<std::pair<size_t, ImportedTransformProperty>, uint32_t> targetOf;
@@ -2281,11 +2281,11 @@ Gem::Result BuildModel(
                 const size_t ni = static_cast<size_t>(srcTrack.NodeIndex);
 
                 Canvas::AnimationTargetDesc target{};
-                const bool joint = layout.SkeletonOfNode[ni] >= 0;
-                if (joint)
+                const bool bone = layout.SkeletonOfNode[ni] >= 0;
+                if (bone)
                 {
                     target.SkeletonIndex = skeletonIndex[static_cast<size_t>(layout.SkeletonOfNode[ni])];
-                    target.Index         = layout.JointOfNode[ni];
+                    target.Index         = layout.BoneOfNode[ni];
                 }
                 else if (modelNodeOf[ni] != Canvas::InvalidIndex)
                 {
@@ -2295,7 +2295,7 @@ Gem::Result BuildModel(
                 {
                     continue;
                 }
-                target.Type = TargetType(srcTrack.Property, joint);
+                target.Type = TargetType(srcTrack.Property, bone);
                 const bool rotation = srcTrack.Property == ImportedTransformProperty::Rotation;
 
                 auto [it, inserted] = targetOf.try_emplace({ ni, srcTrack.Property }, Canvas::InvalidIndex);

@@ -14,17 +14,17 @@ namespace Canvas
 
 void SkeletonPose::Compute(const ModelSkeletonData &skeleton, const Transform *pLocalTransforms)
 {
-    const size_t count = skeleton.Joints.size();
+    const size_t count = skeleton.Bones.size();
     Matrices.resize(count);
     Rotations.resize(count);
     Scales.resize(count);
 
-    // Joints are listed parents first, so each parent is composed before its children.
+    // Bones are listed parents first, so each parent is composed before its children.
     for (size_t j = 0; j < count; ++j)
     {
         const Transform &local = pLocalTransforms[j];
         const Math::FloatMatrix4x4 localMatrix = local.ToMatrix();
-        const uint32_t parent = skeleton.Joints[j].ParentIndex;
+        const uint32_t parent = skeleton.Bones[j].ParentIndex;
         if (parent == InvalidIndex)
         {
             Matrices[j]  = localMatrix;
@@ -40,14 +40,14 @@ void SkeletonPose::Compute(const ModelSkeletonData &skeleton, const Transform *p
     }
 }
 
-Transform SkeletonPose::SocketTransform(uint32_t jointIndex, const Transform &localTransform) const
+Transform SkeletonPose::SocketTransform(uint32_t boneIndex, const Transform &localTransform) const
 {
-    const Math::FloatMatrix4x4 m = localTransform.ToMatrix() * Matrices[jointIndex];
+    const Math::FloatMatrix4x4 m = localTransform.ToMatrix() * Matrices[boneIndex];
 
     Transform t;
     t.Translation = m[3];
-    t.Rotation    = Rotations[jointIndex] * localTransform.Rotation;
-    t.Scale       = Scales[jointIndex] * localTransform.Scale;
+    t.Rotation    = Rotations[boneIndex] * localTransform.Rotation;
+    t.Scale       = Scales[boneIndex] * localTransform.Scale;
     return t;
 }
 
@@ -60,19 +60,19 @@ void CSkeletonInstance::Bind(XModel *pModel, const ModelSkeletonData *pData)
     m_pModel = pModel;      // keep the shared skeleton data alive for the instance's lifetime
     m_pData  = pData;
     m_LocalTransforms.clear();
-    m_LocalTransforms.reserve(pData->Joints.size());
-    for (const ModelJointData &joint : pData->Joints)
-        m_LocalTransforms.push_back(joint.RestTransform);
+    m_LocalTransforms.reserve(pData->Bones.size());
+    for (const ModelBoneData &bone : pData->Bones)
+        m_LocalTransforms.push_back(bone.RestTransform);
     m_Sockets.clear();
     m_PoseDirty    = true;
     m_SocketsDirty = true;
 }
 
-void CSkeletonInstance::AddSocket(XSceneGraphNode *pNode, uint32_t jointIndex, const Transform &localTransform)
+void CSkeletonInstance::AddSocket(XSceneGraphNode *pNode, uint32_t boneIndex, const Transform &localTransform)
 {
     Socket socket;
     socket.pNode          = pNode;
-    socket.JointIndex     = jointIndex;
+    socket.BoneIndex      = boneIndex;
     socket.LocalTransform = localTransform;
     m_Sockets.push_back(socket);
     m_SocketsDirty = true;
@@ -101,7 +101,7 @@ GEMMETHODIMP CSkeletonInstance::Update(float /*dtime*/)
             {
                 if (socket.pNode != pChild)
                     continue;
-                pChild->SetLocalTransform(m_Pose.SocketTransform(socket.JointIndex, socket.LocalTransform));
+                pChild->SetLocalTransform(m_Pose.SocketTransform(socket.BoneIndex, socket.LocalTransform));
             }
         }
         m_SocketsDirty = false;
@@ -109,27 +109,27 @@ GEMMETHODIMP CSkeletonInstance::Update(float /*dtime*/)
     return Gem::Result::Success;
 }
 
-GEMMETHODIMP_(const char *) CSkeletonInstance::GetJointName(uint32_t index) const
+GEMMETHODIMP_(const char *) CSkeletonInstance::GetBoneName(uint32_t index) const
 {
-    return (m_pData && index < m_pData->Joints.size()) ? m_pData->Joints[index].Name.c_str() : nullptr;
+    return (m_pData && index < m_pData->Bones.size()) ? m_pData->Bones[index].Name.c_str() : nullptr;
 }
 
-GEMMETHODIMP_(uint32_t) CSkeletonInstance::GetJointParent(uint32_t index) const
+GEMMETHODIMP_(uint32_t) CSkeletonInstance::GetBoneParent(uint32_t index) const
 {
-    return (m_pData && index < m_pData->Joints.size()) ? m_pData->Joints[index].ParentIndex : InvalidIndex;
+    return (m_pData && index < m_pData->Bones.size()) ? m_pData->Bones[index].ParentIndex : InvalidIndex;
 }
 
-GEMMETHODIMP_(uint32_t) CSkeletonInstance::FindJoint(const char *name) const
+GEMMETHODIMP_(uint32_t) CSkeletonInstance::FindBone(const char *name) const
 {
     if (!m_pData || !name)
         return InvalidIndex;
-    for (size_t j = 0; j < m_pData->Joints.size(); ++j)
-        if (m_pData->Joints[j].Name == name)
+    for (size_t j = 0; j < m_pData->Bones.size(); ++j)
+        if (m_pData->Bones[j].Name == name)
             return static_cast<uint32_t>(j);
     return InvalidIndex;
 }
 
-GEMMETHODIMP CSkeletonInstance::GetJointLocalTransform(uint32_t index, Transform *pTransform) const
+GEMMETHODIMP CSkeletonInstance::GetBoneLocalTransform(uint32_t index, Transform *pTransform) const
 {
     if (!pTransform)
         return Gem::Result::BadPointer;
@@ -139,7 +139,7 @@ GEMMETHODIMP CSkeletonInstance::GetJointLocalTransform(uint32_t index, Transform
     return Gem::Result::Success;
 }
 
-GEMMETHODIMP CSkeletonInstance::SetJointLocalTransform(uint32_t index, const Transform *pTransform)
+GEMMETHODIMP CSkeletonInstance::SetBoneLocalTransform(uint32_t index, const Transform *pTransform)
 {
     if (!pTransform)
         return Gem::Result::BadPointer;
@@ -154,11 +154,11 @@ GEMMETHODIMP_(void) CSkeletonInstance::ResetToRestPose()
     if (!m_pData)
         return;
     for (size_t j = 0; j < m_LocalTransforms.size(); ++j)
-        m_LocalTransforms[j] = m_pData->Joints[j].RestTransform;
+        m_LocalTransforms[j] = m_pData->Bones[j].RestTransform;
     m_PoseDirty = true;
 }
 
-GEMMETHODIMP_(Math::FloatMatrix4x4) CSkeletonInstance::GetJointMatrix(uint32_t index)
+GEMMETHODIMP_(Math::FloatMatrix4x4) CSkeletonInstance::GetBoneMatrix(uint32_t index)
 {
     RefreshPose();
     return index < m_Pose.Matrices.size() ? m_Pose.Matrices[index] : Math::FloatMatrix4x4::Identity();
