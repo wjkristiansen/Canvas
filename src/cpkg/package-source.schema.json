@@ -67,12 +67,7 @@
       ]
     },
     "mobility": { "enum": ["static", "stationary", "movable"] },
-    "jointRef": {
-      "oneOf": [
-        { "$ref": "#/$defs/name" },
-        { "type": "integer", "minimum": 0 }
-      ]
-    },
+    "boneRef": { "$ref": "#/$defs/name" },
     "fileArray": {
       "type": "object",
       "required": ["file"],
@@ -123,7 +118,7 @@
         "meshes": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/mesh" } },
         "skeletons": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skeleton" } },
         "skins": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skin" } },
-        "jointAnimations": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/jointAnimation" } },
+        "skeletalAnimations": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skeletalAnimation" } },
         "skyboxes": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skybox" } },
         "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
         "placements": { "type": "array", "items": { "$ref": "#/$defs/placement" } },
@@ -245,20 +240,21 @@
 
     "skeleton": {
       "type": "object",
-      "required": ["joints"],
+      "required": ["bones"],
       "patternProperties": { "^x-": true },
       "additionalProperties": false,
       "properties": {
-        "joints": {
+        "bones": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
+            "required": ["name"],
             "patternProperties": { "^x-": true },
             "additionalProperties": false,
             "properties": {
               "name": { "$ref": "#/$defs/name" },
-              "parent": { "$ref": "#/$defs/jointRef" },
+              "parent": { "$ref": "#/$defs/boneRef" },
               "rest": { "$ref": "#/$defs/transform" }
             }
           }
@@ -268,12 +264,12 @@
 
     "skin": {
       "type": "object",
-      "required": ["skeleton", "joints"],
+      "required": ["skeleton", "bones"],
       "patternProperties": { "^x-": true },
       "additionalProperties": false,
       "properties": {
         "skeleton": { "$ref": "#/$defs/assetPath" },
-        "joints": { "type": "array", "items": { "$ref": "#/$defs/jointRef" }, "minItems": 1 },
+        "bones": { "type": "array", "items": { "$ref": "#/$defs/boneRef" }, "minItems": 1 },
         "invBindPoses": { "$ref": "#/$defs/numberArray" }
       }
     },
@@ -297,7 +293,7 @@
 
     "interpolation": { "enum": ["linear", "step", "cubic"] },
 
-    "jointAnimation": {
+    "skeletalAnimation": {
       "type": "object",
       "required": ["skeleton", "tracks"],
       "patternProperties": { "^x-": true },
@@ -308,12 +304,12 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["joint"],
+            "required": ["bone"],
             "$ref": "#/$defs/trackKeys",
             "patternProperties": { "^x-": true },
             "unevaluatedProperties": false,
             "properties": {
-              "joint": { "$ref": "#/$defs/jointRef" }
+              "bone": { "$ref": "#/$defs/boneRef" }
             }
           }
         }
@@ -339,7 +335,7 @@
             }
           }
         },
-        "jointAnimations": {
+        "skeletalAnimations": {
           "type": "array",
           "items": {
             "type": "object",
@@ -451,7 +447,7 @@
         "rotation": { "$ref": "#/$defs/rotation" },
         "scale": { "$ref": "#/$defs/vec3" },
         "mobility": { "$ref": "#/$defs/mobility" },
-        "joint": { "$ref": "#/$defs/jointRef" }
+        "bone": { "$ref": "#/$defs/boneRef" }
       }
     },
 
@@ -544,7 +540,7 @@
             "meshes": { "$ref": "#/$defs/nameTemplate" },
             "skeletons": { "$ref": "#/$defs/nameTemplate" },
             "skins": { "$ref": "#/$defs/nameTemplate" },
-            "jointAnimations": { "$ref": "#/$defs/nameTemplate" },
+            "skeletalAnimations": { "$ref": "#/$defs/nameTemplate" },
             "clips": { "$ref": "#/$defs/nameTemplate" },
             "nodes": { "$ref": "#/$defs/nameTemplate" }
           }
@@ -558,7 +554,7 @@
             "meshes": { "$ref": "#/$defs/renameMap" },
             "skeletons": { "$ref": "#/$defs/renameMap" },
             "skins": { "$ref": "#/$defs/renameMap" },
-            "jointAnimations": { "$ref": "#/$defs/renameMap" },
+            "skeletalAnimations": { "$ref": "#/$defs/renameMap" },
             "clips": { "$ref": "#/$defs/renameMap" },
             "nodes": { "$ref": "#/$defs/renameMap" }
           }

@@ -113,6 +113,8 @@ The engine resolves each [path reference](../CanvasPkg/README.md#paths) in a pac
 
 A path that does not resolve, or resolves to an asset of another type, fails the load of the content that holds it: a world whose content holds one fails its request. A project build validates every path, so such a path means the project's package files differ from the ones the build validated together.
 
+**Bone names** resolve when the engine loads the asset that holds them, within the skeleton that asset references (see CanvasPkg's [Package Data Types](../CanvasPkg/README.md#package-data-types)): a skin's bones and a socket's parent bone become bone indices of that skeleton, as does each bone track's bone. A skin or socket whose bone name does not resolve fails the load of the content that holds it, as a path does. A bone track whose bone name does not resolve is left out of its animation, and the load logs it, so the animation plays on the bones it does resolve. As with paths, a project build validates every bone name.
+
 **Shared assets are loaded once per project.** A shared asset that several instances or worlds use, such as a texture, is loaded once and kept while any loaded content uses it.
 
 ## Instantiation
@@ -126,16 +128,18 @@ Package content becomes engine objects through `XModel`. A bundle that the engin
 | `Camera`, `Light` | `XCamera`, `XLight` on their nodes |
 | `Material`, `Image` | `XGfxMaterial`, `XGfxSurface` |
 | `Placement` | A nested instance of the placed bundle's model per transform, under the placement's node |
-| `AnimationClip`, with the `JointAnimation` assets it binds | An animation clip, played through each instance's `XAnimationController` |
+| `SkeletonInstance`, with its `Skeleton` | A model skeleton, and in each instance an `XSkeletonInstance` on its node that holds the instance's pose |
+| A socket: a `TransformNode` whose parent is a bone | A model socket: an `XSceneGraphNode` that follows its bone |
+| `MeshSkin` | The skin binding of each `XMeshInstance` that draws with it |
+| `AnimationClip`, with the `SkeletalAnimation` assets it binds | An animation clip, played through each instance's `XAnimationController` |
 | `WorldSettings` | The world's `XScene` settings: its background and skyboxes, and its active camera |
 
 The node an instance is cloned under is its instance transform: a placement's node for a nested instance, and the world's scene root for a world bundle or world region.
 
-`XModel` covers a bundle's node hierarchy, meshes, materials, textures, cameras, lights, and animation clips. A bundle's other structure extends it:
+`XModel` covers a bundle's node hierarchy, meshes, materials, textures, cameras, lights, skeletons with their sockets and skins, and animation clips. A skeleton's bones are not scene-graph nodes: each instance's `XSkeletonInstance` holds their pose. A bundle's other structure extends it:
 
 - **Placements**: nested instances, instantiated with the instance that holds them.
 - **Exports and import nodes**: an import node resolves to the exported node of each nested instance its placement declares.
-- **Skeletons**: a `Skeleton` is shared data and a `SkeletonInstance` poses it, where `XModel` represents bones as scene-graph nodes and binds skins to them.
 - **Mobility**: each node's effective [mobility](../CanvasPkg/README.md#mobility), which the scene uses to treat static content as fixed.
 - **Shared assets across bundles**: an `XModel` holds the GPU resources of its own bundle, where a shared asset may be referenced from any bundle of any package in the project.
 
