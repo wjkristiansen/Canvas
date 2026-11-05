@@ -58,7 +58,7 @@ A source refers to other content in one of two ways, matching the class of what 
 
 A path names another package by the name the source's author uses for it, and the [project](../CanvasProject/README.md#package-names) that lists the package resolves that name to one of its packages. A reference by name requires its target to be named.
 
-**Joints** are referenced by name or by joint index. A name refers to the joint with that name in the relevant skeleton; an integer is a joint index.
+**Bones** are referenced by name: a bone reference is the name of a bone in the relevant skeleton.
 
 ## Values
 
@@ -90,7 +90,7 @@ A bundle is an object with a `name` and any of these members:
 | `meshes` | Map of name to [mesh](#meshes) | `MeshData` |
 | `skeletons` | Map of name to [skeleton](#skeletons) | `Skeleton` |
 | `skins` | Map of name to [skin](#skins) | `MeshSkin` |
-| `jointAnimations` | Map of name to [joint animation](#joint-animations) | `JointAnimation` |
+| `skeletalAnimations` | Map of name to [skeletal animation](#skeletal-animations) | `SkeletalAnimation` |
 | `skyboxes` | Map of name to [skybox](#skyboxes) | `Skybox` |
 | `nodes` | Array of root [nodes](#nodes) | `TransformNode` and its attachments |
 | `placements` | Array of [placements](#placements) relative to the instance transform | `Placement` with `NodeIndex = -1` |
@@ -102,7 +102,7 @@ A bundle is an object with a `name` and any of these members:
 
 Each map key is the name of the asset it builds. A bundle with a `world` member is a world bundle.
 
-The build appends a bundle's assets in CanvasPkg's [canonical order](../CanvasPkg/README.md#append-order), so source order affects only the order of entries within an array whose order is meaningful, such as a skeleton's joints.
+The build appends a bundle's assets in CanvasPkg's [canonical order](../CanvasPkg/README.md#append-order), so source order affects only the order of entries within an array whose order is meaningful, such as a skeleton's bones.
 
 ## Shared Assets
 
@@ -164,7 +164,7 @@ Each group has an optional `material` (asset path) and the vertex streams `posit
 
 ```json
 "GoblinSkeleton": {
-  "joints": [
+  "bones": [
     { "name": "Hips" },
     { "name": "Spine", "parent": "Hips", "rest": { "translation": [0, 0, 0.12] } },
     { "name": "Hand_R", "parent": "Spine", "rest": { "translation": [0.3, -0.1, 0.2] } }
@@ -172,25 +172,25 @@ Each group has an optional `material` (asset path) and the vertex streams `posit
 }
 ```
 
-`joints` lists the skeleton's joints in joint-index order, at least one. Each joint has an optional `name`, an optional `parent` (a joint reference to an earlier joint; omitted for a root), and an optional `rest` transform.
+`bones` lists the skeleton's bones in order, at least one, which builds their bone indices. Each bone has a `name`, required and unique within the skeleton, an optional `parent` (a bone reference to an earlier bone; omitted for a root), and an optional `rest` transform.
 
 ### Skins
 
 | Field | Default | Builds |
 |---|---|---|
 | `skeleton` | Required | `Skeleton`, an asset path |
-| `joints` | Required; at least one | `JointIndices`: one joint reference into `skeleton` per bone of the skin |
+| `bones` | Required; at least one | `Bones`: one bone reference into `skeleton` per bone of the skin, in the skin's order |
 | `invBindPoses` | Computed from the skeleton's rest pose | `InvBindPoses`: one row-major matrix of 16 numbers per bone, as a large numeric array |
 
-When `invBindPoses` is omitted, each bone's inverse bind pose is the inverse of its joint's rest pose relative to the skeleton instance's node: the joint's rest transform composed with those of its ancestor joints.
+When `invBindPoses` is omitted, each skin bone's inverse bind pose is the inverse of its skeleton bone's rest pose relative to the skeleton instance's node: that bone's rest transform composed with those of its ancestor bones.
 
-### Joint Animations
+### Skeletal Animations
 
 ```json
-"Walk.joints": {
+"Walk.anim": {
   "skeleton": "GoblinSkeleton",
   "tracks": [
-    { "joint": "Hips", "property": "translation", "times": [0, 0.6, 1.2], "values": [0, 0, 0.9, 0, 0, 0.95, 0, 0, 0.9] }
+    { "bone": "Hips", "property": "translation", "times": [0, 0.6, 1.2], "values": [0, 0, 0.9, 0, 0, 0.95, 0, 0, 0.9] }
   ]
 }
 ```
@@ -198,15 +198,15 @@ When `invBindPoses` is omitted, each bone's inverse bind pose is the inverse of 
 | Field | Default | Builds |
 |---|---|---|
 | `skeleton` | Required | `Skeleton`, an asset path |
-| `tracks` | Required | `Tracks`: each a [track](#tracks) with a `joint` reference |
+| `tracks` | Required | `Tracks`: each a [track](#tracks) with a `bone` reference |
 
 ### Tracks
 
-A track in a joint animation or an [animation clip](#animation-clips) builds one CanvasPkg [animation track](../CanvasPkg/README.md#animation-tracks):
+A track in a skeletal animation or an [animation clip](#animation-clips) builds one CanvasPkg [animation track](../CanvasPkg/README.md#animation-tracks):
 
 | Field | Default | Builds |
 |---|---|---|
-| `joint` or `node` | Required | `JointIndex`, from a joint reference, in a joint animation; `NodeIndex`, from the name of a node of this bundle, in a clip |
+| `bone` or `node` | Required | `Bone`, a bone reference, in a skeletal animation; `NodeIndex`, from the name of a node of this bundle, in a clip |
 | `property` | Required | `Property`: `"translation"`, `"rotation"`, or `"scale"` |
 | `times` | Required | `Times`, a large numeric array |
 | `values` | Required | `Values`, a large numeric array: three numbers per key for `translation` and `scale`, and a unit quaternion of four for `rotation` |
@@ -241,7 +241,7 @@ A track in a joint animation or an [animation clip](#animation-clips) builds one
     "skeletonInstance": { "skeleton": "GoblinSkeleton" },
     "meshInstances": [ { "mesh": "GoblinBody", "skin": "GoblinSkin" } ],
     "children": [
-      { "name": "Hand_R", "joint": "Hand_R" },
+      { "name": "Hand_R", "bone": "Hand_R" },
       { "name": "Eyes", "translation": [0.1, 0, 1.6], "camera": { "fovAngle": 1.2 } }
     ]
   }
@@ -253,7 +253,7 @@ A track in a joint animation or an [animation clip](#animation-clips) builds one
 | `name` | Unnamed | The node's asset name |
 | `translation`, `rotation`, `scale` | Identity | `LocalTransform` |
 | `mobility` | `"static"` | `Mobility` |
-| `joint` | None | A joint of the parent node's skeleton instance, which makes the node a [socket](../CanvasPkg/README.md#cpkgtransformnodedata-assettypetransformnode): its `ParentIndex` is that `SkeletonInstance` and its `ParentJoint` is the joint |
+| `bone` | None | A bone of the parent node's skeleton instance, which makes the node a [socket](../CanvasPkg/README.md#cpkgtransformnodedata-assettypetransformnode): its `ParentIndex` is that `SkeletonInstance` and its `ParentBone` is the bone's name |
 | `skeletonInstance` | None | A `SkeletonInstance` attached to the node: `{ "skeleton": asset path }` |
 | `meshInstances` | None | One `MeshInstance` attached to the node per entry (see below) |
 | `camera` | None | A `Camera` attached to the node (see below) |
@@ -261,7 +261,7 @@ A track in a joint animation or an [animation clip](#animation-clips) builds one
 | `placements` | None | One [placement](#placements) attached to the node per entry |
 | `children` | None | Child nodes |
 
-A node with `joint` is a child of a node that has a `skeletonInstance`. A node holds at most one `skeletonInstance`, `camera`, and `light`; more of one kind attach to child nodes.
+A node with `bone` is a child of a node that has a `skeletonInstance`. A node holds at most one `skeletonInstance`, `camera`, and `light`; more of one kind attach to child nodes.
 
 **Mesh instances.** Each entry has `mesh` (asset path, required) and `skin` (asset path, optional). A skinned entry binds to a skeleton instance: by default the one on the nearest node, starting with the entry's own node and moving toward the root, that has a `skeletonInstance`, or the one named by `skeletonInstance`, the name of a node of this bundle that has one.
 
@@ -314,16 +314,16 @@ Each entry of `importNodes` is a node representing a node exported by a placed b
     "tracks": [ { "node": "Hinge", "property": "rotation", "times": [0, 1.5], "values": [0, 0, 0, 1, 0, 0, 0.766, 0.6428] } ]
   },
   "Walk": {
-    "jointAnimations": [ { "skeletonInstance": "Goblin", "animation": "Walk.joints" } ]
+    "skeletalAnimations": [ { "skeletonInstance": "Goblin", "animation": "Walk.anim" } ]
   }
 }
 ```
 
 | Field | Default | Builds |
 |---|---|---|
-| `duration` | The greatest key time of its tracks and of the joint animations it binds | `Duration` |
+| `duration` | The greatest key time of its tracks and of the skeletal animations it binds | `Duration` |
 | `tracks` | None | `Tracks`: each a [track](#tracks) with a `node` |
-| `jointAnimations` | None | `JointAnimations`: each binds `animation`, the asset path of a `JointAnimation`, to `skeletonInstance`, the name of a node of this bundle that has a `skeletonInstance` |
+| `skeletalAnimations` | None | `SkeletalAnimations`: each binds `animation`, the asset path of a `SkeletalAnimation`, to `skeletonInstance`, the name of a node of this bundle that has a `skeletonInstance` |
 
 ### Exports
 
@@ -371,14 +371,14 @@ An **import** builds the content of an FBX file into the bundle that lists it: i
       "edits": {
         "Armature": {
           "mobility": "movable",
-          "children": [ { "name": "Hand_R_Grip", "joint": "Hand_R" } ]
+          "children": [ { "name": "Hand_R_Grip", "bone": "Hand_R" } ]
         }
       }
     },
     { "file": "art/goblin_attack.fbx", "nodes": false, "skeleton": "Hips.skeleton", "clips": [ { "name": "Attack" } ] }
   ],
   "clips": {
-    "Attack": { "jointAnimations": [ { "skeletonInstance": "Armature", "animation": "Attack.joints" } ] }
+    "Attack": { "skeletalAnimations": [ { "skeletonInstance": "Armature", "animation": "Attack.anim" } ] }
   },
   "exports": [ "Hand_R_Grip" ]
 }
@@ -391,7 +391,7 @@ An **import** builds the content of an FBX file into the bundle that lists it: i
 | `rotation` | Identity | A rotation applied to the file's content, after conversion to Canvas space |
 | `nodes` | `true` | Whether the import builds the file's node hierarchy (see [Imported Nodes](#imported-nodes)) |
 | `parent` | None | The name of a node of this bundle, not built by this import, that the file's root nodes attach to; without one they are root nodes of the bundle |
-| `skeleton` | None | The asset path of an existing `Skeleton` that the file's skins and joint animations use in place of a skeleton built from the file (see [Skeletons and Skins](#skeletons-and-skins)) |
+| `skeleton` | None | The asset path of an existing `Skeleton` that the file's skins and skeletal animations use in place of a skeleton built from the file (see [Skeletons and Skins](#skeletons-and-skins)) |
 | `names` | See [Imported Names](#imported-names) | A name template per kind of built asset |
 | `rename` | None | Per kind, a map from a name in the file to the built asset's name |
 | `replace` | None | `materials` and `images`: a map from a name in the file to the asset path of an existing asset used in its place |
@@ -402,7 +402,7 @@ A bundle may list any number of imports, of the same file or of different files.
 
 ### Conversion
 
-The build converts the file's content to CanvasPkg's [conventions](../CanvasPkg/README.md#conventions), using the unit scale and axis system the file declares, and then applies the import's `rotation` and `scale` about the file's origin. Both are baked into the built assets: `rotation` into vertex positions, normals, and tangents, node and joint transforms, inverse bind poses, and animation values; `scale` into positions and translations, bounds, inverse bind poses, animated translations, and distances such as light ranges and camera clip planes. `rotation` corrects a file whose declared axis system does not match its content; `scale` corrects a file whose declared unit does not, or resizes content on purpose.
+The build converts the file's content to CanvasPkg's [conventions](../CanvasPkg/README.md#conventions), using the unit scale and axis system the file declares, and then applies the import's `rotation` and `scale` about the file's origin. Both are baked into the built assets: `rotation` into vertex positions, normals, and tangents, node and bone transforms, inverse bind poses, and animation values; `scale` into positions and translations, bounds, inverse bind poses, animated translations, and distances such as light ranges and camera clip planes. `rotation` corrects a file whose declared axis system does not match its content; `scale` corrects a file whose declared unit does not, or resizes content on purpose.
 
 Polygons are triangulated, and normals are generated for geometry the file holds none for. This section defines what an import builds and how a source controls it; how the build reads an FBX file is described in `cpkg`'s [Imports](README.md#imports).
 
@@ -413,12 +413,12 @@ Polygons are triangulated, and normals are generated for geometry the file holds
 | A texture used by a built material | `Image`, its bytes stored unchanged | `images` |
 | A material | `Material`, with its factors and texture roles | `materials` |
 | A mesh | `MeshData`, one group per material the mesh uses | `meshes` |
-| A hierarchy of joints | `Skeleton` | `skeletons` |
+| A hierarchy of bones | `Skeleton` | `skeletons` |
 | A skinned mesh's skin | `MeshSkin`, with the file's inverse bind poses | `skins` |
-| A clip's joint tracks | `JointAnimation`, one per skeleton the clip animates | `jointAnimations` |
-| A clip | `AnimationClip`, with its node tracks, binding its joint animations | `clips` |
+| A clip's bone tracks | `SkeletalAnimation`, one per skeleton the clip animates | `skeletalAnimations` |
+| A clip | `AnimationClip`, with its node tracks, binding its skeletal animations | `clips` |
 | A node | `TransformNode` | `nodes` |
-| A joint that carries content | A socket: a `TransformNode` on the joint | None: named after the joint with `_Socket` appended |
+| A bone that carries content | A socket: a `TransformNode` on the bone | None: named after the bone with `_Socket` appended |
 | A camera, light, or mesh on a node | `Camera`, `Light`, or `MeshInstance` attached to the node's `TransformNode` | None: these are unnamed local assets |
 
 A texture file's encoding is one CanvasPkg stores, such as PNG, and its image is a `Texture2D` with one mip. A texture the file embeds is stored from the embedded bytes, and an external texture from the file the FBX file names (see `cpkg`'s [Imports](README.md#imports)). A texture in any other encoding is either replaced, with `replace`, or converted to a stored encoding before the build.
@@ -434,15 +434,15 @@ Each built asset's name comes from the file. A kind's **name template** forms it
 | `images` | The file name the file records for the texture, without its extension, or else the texture's own name in the file | `{name}.image` |
 | `materials` | The material's name | `{name}.material` |
 | `meshes` | The mesh's name | `{name}.mesh` |
-| `skeletons` | The name of the skeleton's root joint | `{name}.skeleton` |
+| `skeletons` | The name of the skeleton's root bone | `{name}.skeleton` |
 | `skins` | The skinned mesh's name | `{name}.skin` |
-| `jointAnimations` | The clip's name | `{name}.joints` |
+| `skeletalAnimations` | The clip's name | `{name}.anim` |
 | `clips` | The clip's name | `{name}` |
 | `nodes` | The node's name | `{name}` |
 
-A `jointAnimations` template may also hold `{skeleton}`, replaced by the skeleton's name in the file. It distinguishes the joint animations of a clip that animates more than one skeleton.
+A `skeletalAnimations` template may also hold `{skeleton}`, replaced by the skeleton's name in the file. It distinguishes the skeletal animations of a clip that animates more than one skeleton.
 
-The templates keep the names of different kinds from colliding where a file names them alike, as when a node and its mesh are both named `Crate`. Two imports of files with overlapping names give one of them templates such as `"Tree_{name}.mesh"`. Each `/` in a name in the file becomes `_`. An unnamed node builds an unnamed `TransformNode`. An unnamed mesh, material, clip, or texture takes the name `Mesh<n>`, `Material<n>`, `Clip<n>`, or `Image<n>`, and a skeleton whose root joint is unnamed takes the name `Skeleton<n>`, where `<n>` is its position among the file's content of that kind, counting from 0.
+The templates keep the names of different kinds from colliding where a file names them alike, as when a node and its mesh are both named `Crate`. Two imports of files with overlapping names give one of them templates such as `"Tree_{name}.mesh"`. Each `/` in a name in the file becomes `_`. An unnamed node builds an unnamed `TransformNode`. An unnamed mesh, material, clip, or texture takes the name `Mesh<n>`, `Material<n>`, `Clip<n>`, or `Image<n>`, and a skeleton whose root bone is unnamed takes the name `Skeleton<n>`, where `<n>` is its position among the file's content of that kind, counting from 0.
 
 `rename` and `names` are keyed by kind, using the kind names above:
 
@@ -453,17 +453,17 @@ The templates keep the names of different kinds from colliding where a file name
 
 ### Imported Nodes
 
-With `nodes` true, each node of the file builds a `TransformNode`, except the nodes that are joints, and keeps its parent and its local transform; a node whose parent is a joint is built under the joint's [socket](#skeletons-and-skins). The file's cameras, lights, and meshes attach to the nodes that hold them. Imported nodes are `"static"`, except nodes that a built clip's node tracks animate, which are `"movable"`, and edits may declare any mobility.
+With `nodes` true, each node of the file builds a `TransformNode`, except the nodes that are bones, and keeps its parent and its local transform; a node whose parent is a bone is built under the bone's [socket](#skeletons-and-skins). The file's cameras, lights, and meshes attach to the nodes that hold them. Imported nodes are `"static"`, except nodes that a built clip's node tracks animate, which are `"movable"`, and edits may declare any mobility.
 
-With `nodes` false, the import builds only shared assets: images, materials, meshes, skeletons, skins, and joint animations. It builds no nodes, attachments, or clips; a clip authored in the bundle binds the joint animations it builds, as the example's `Attack` clip does. An import of this kind is the way to build a library of meshes or materials, or animation alone, from a file.
+With `nodes` false, the import builds only shared assets: images, materials, meshes, skeletons, skins, and skeletal animations. It builds no nodes, attachments, or clips; a clip authored in the bundle binds the skeletal animations it builds, as the example's `Attack` clip does. An import of this kind is the way to build a library of meshes or materials, or animation alone, from a file.
 
 ### Skeletons and Skins
 
-A **joint** is a node that the file marks as a skeleton bone, or that a skin in the file deforms with. Each tree of connected joints builds one `Skeleton`. Its joints are in the file's order, with a parent before its children, and each joint's rest transform is its transform in the file's bind pose. The joint nodes themselves build no `TransformNode`: a `SkeletonInstance` of the skeleton attaches to the parent node of the skeleton's root joint, or, when the root joint has no parent node, to a node built to carry it, named after the root joint.
+A node builds a **bone** when the file marks it as a skeleton bone, or a skin in the file deforms with it. Each tree of connected bones builds one `Skeleton`. Its bones are in the file's order, with a parent before its children, and each bone's rest transform is its transform in the file's bind pose. The bone nodes themselves build no `TransformNode`: a `SkeletonInstance` of the skeleton attaches to the parent node of the skeleton's root bone, or, when the root bone has no parent node, to a node built to carry it, named after the root bone.
 
-Content the file places on a joint hangs from a **socket**, a node with [`joint`](#nodes) whose `ParentIndex` is the skeleton instance and whose `ParentJoint` is that joint. The import builds one socket for each joint that carries content, with an identity transform, named after the joint with `_Socket` appended. A node that the file parents to a joint builds a child of that joint's socket, keeping its local transform, so its node tracks animate it relative to the joint. A camera, light, or mesh on a joint attaches to the joint's socket. A skinned mesh's `MeshInstance` binds to the instance of its skin's skeleton.
+Content the file places on a bone hangs from a **socket**, a node with [`bone`](#nodes) whose `ParentIndex` is the skeleton instance and whose `ParentBone` names that bone. The import builds one socket for each bone that carries content, with an identity transform, named after the bone with `_Socket` appended. A node that the file parents to a bone builds a child of that bone's socket, keeping its local transform, so its node tracks animate it relative to the bone. A camera, light, or mesh on a bone attaches to the bone's socket. A skinned mesh's `MeshInstance` binds to the instance of its skin's skeleton.
 
-With `skeleton`, the import builds no skeleton from the file. Its skins and joint animations use the named skeleton, matching the file's joints to that skeleton's joints by name, and its skeleton instances instance that skeleton. A second import of a character's animation names the skeleton the first import built, as `goblin_attack.fbx` does above.
+With `skeleton`, the import builds no skeleton from the file. Its skins and skeletal animations use the named skeleton, matching the file's bones to that skeleton's bones by name, and its skeleton instances instance that skeleton. A second import of a character's animation names the skeleton the first import built, as `goblin_attack.fbx` does above.
 
 ### Imported Animation
 
@@ -476,7 +476,7 @@ Each entry of `clips` builds one clip from a range of an animation stack in the 
 | `start`, `end` | The stack's start and end | The clip's range in seconds |
 | `frames` | None | The clip's range as `[first, last]` frames at the file's frame rate, in place of `start` and `end` |
 
-The built clip starts at time 0, at the range's start. Each animated property of a node builds one track, holding the stack's keys within the range, plus keys sampled at the range's ends where the stack has none. Its `Duration` is the range's length. Tracks on joints build one joint animation per skeleton the clip animates, and the clip binds each to the skeleton's instance.
+The built clip starts at time 0, at the range's start. Each animated property of a node builds one track, holding the stack's keys within the range, plus keys sampled at the range's ends where the stack has none. Its `Duration` is the range's length. Tracks on bones build one skeletal animation per skeleton the clip animates, and the clip binds each to the skeleton's instance.
 
 Tracks on every other node are **rigid animation**: the node moves as one body with everything attached to it, such as a door, a vehicle's wheels, or a prop animated in a character's hand. They are the clip's node tracks, one for each property of a node that the stack animates, and the nodes they animate are built `"movable"`. A node that the stack animates while `nodes` is false builds no track, since the import builds no nodes, and the build reports each one.
 
@@ -494,7 +494,7 @@ An **edit** changes an imported node, or adds content to it, without changing th
 | `light` | Sets the listed light fields of the node's light, or attaches a light with them when the node has none; a light it attaches has a `type` |
 | `meshInstances`, `placements`, `children` | Adds mesh instances, placements, or child nodes to the node, as a [node](#nodes) holds them |
 
-An edit's `children` with `joint` parent to the skeleton instance on the edited node, as the example's `Hand_R_Grip` does. Content anywhere in the bundle refers to imported nodes by name: `exports`, a clip track's `node`, a clip binding's or mesh instance's `skeletonInstance`, and a world's `activeCamera` each accept an imported node.
+An edit's `children` with `bone` parent to the skeleton instance on the edited node, as the example's `Hand_R_Grip` does. Content anywhere in the bundle refers to imported nodes by name: `exports`, a clip track's `node`, a clip binding's or mesh instance's `skeletonInstance`, and a world's `activeCamera` each accept an imported node.
 
 ## Validation
 
@@ -502,11 +502,11 @@ The schema checks each file's shape. A package source is also valid only when it
 
 - **Files.** Every named file exists and is readable. Each bundle file is included once.
 - **Names.** Bundle names are unique within the package. Asset and node names are unique within their bundle (see [Names and References](#names-and-references)).
-- **References by name.** Each refers to an existing node or placement of the same bundle, of the kind the field requires: an `activeCamera` node has a `camera`, a mesh instance's or clip binding's `skeletonInstance` node has a `skeletonInstance`, a node with `joint` has a parent with a `skeletonInstance`, and an import's `parent` is a node that import does not build.
-- **Joint references.** Each names a joint of the relevant skeleton, or is less than its joint count. A skeleton's `parent` references refer to earlier joints.
-- **Tracks.** `times` is nondecreasing, and `values`, an `interpolation` array, and `tangents` hold the number of entries its keys and `property` call for (see [Animation Tracks](../CanvasPkg/README.md#animation-tracks)). A clip track's `node` has no `joint`, and its effective mobility is `"movable"`. A clip animates each node property, and binds each skeleton instance, at most once, and a joint animation animates each joint property at most once.
+- **References by name.** Each refers to an existing node or placement of the same bundle, of the kind the field requires: an `activeCamera` node has a `camera`, a mesh instance's or clip binding's `skeletonInstance` node has a `skeletonInstance`, a node with `bone` has a parent with a `skeletonInstance`, and an import's `parent` is a node that import does not build.
+- **Bone references.** Each names a bone of the relevant skeleton. A skeleton's bone names are unique, and its `parent` references refer to earlier bones.
+- **Tracks.** `times` is nondecreasing, and `values`, an `interpolation` array, and `tangents` hold the number of entries its keys and `property` call for (see [Animation Tracks](../CanvasPkg/README.md#animation-tracks)). A clip track's `node` has no `bone`, and its effective mobility is `"movable"`. A clip animates each node property, and binds each skeleton instance, at most once, and a skeletal animation animates each bone property at most once.
 - **Paths.** Each path is well formed for its kind. A path within the same package resolves to an existing asset of the declared type or to an existing bundle; a path into another package is checked when the build has a project.
 - **Arrays.** Each inline array's length is a multiple of its element size, and each binary array file's size is a multiple of its element size. Parallel streams have equal counts.
 - **Values.** Quaternions are non-zero; the build normalizes them. Bounds have `min <= max` on every axis.
-- **Imports.** Each `file` is an FBX file the build can read. Each clip's `stack` exists, and its range lies within the stack, with its start no later than its end. Each key of `rename` and `replace` names content of its kind in the file, and each key of `edits` names a node the import builds, so a misspelled key is reported. Each built name follows the name rules and is unique within the bundle. Each image the import builds has an encoding CanvasPkg stores. With `skeleton`, every joint a skin deforms with is a joint of that skeleton; a joint animation's tracks on joints the skeleton lacks are left out, and the build reports each one.
+- **Imports.** Each `file` is an FBX file the build can read. Each clip's `stack` exists, and its range lies within the stack, with its start no later than its end. Each key of `rename` and `replace` names content of its kind in the file, and each key of `edits` names a node the import builds, so a misspelled key is reported. Each built name follows the name rules and is unique within the bundle. Each image the import builds has an encoding CanvasPkg stores. With `skeleton`, every bone a skin deforms with is a bone of that skeleton; a skeletal animation's tracks on bones the skeleton lacks are left out, and the build reports each one.
 - **Hierarchy.** An import node's placement attaches outside that import node's own subtree. Every other rule of the [package format](../CanvasPkg/README.md) holds for the built package.
