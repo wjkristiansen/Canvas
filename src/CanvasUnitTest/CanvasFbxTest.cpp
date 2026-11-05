@@ -365,7 +365,7 @@ struct ImportedFixture
     }
 
     // Builds the imported scene into an XModel with BuildModel, which turns skin bones into
-    // skeleton joints, and instantiates it at the origin.  With no clip, the instance stays
+    // skeleton bones, and instantiates it at the origin.  With no clip, the instance stays
     // at the bind pose, and every imported node's world matrix and every skin palette must
     // match the imported hierarchy's.  With a clip, the instance's animation controller plays
     // it to a key time (see ClipKeyTime), and they must match ufbx's evaluation there.  With
@@ -440,16 +440,16 @@ struct ImportedFixture
         EXPECT_EQ(anySkin, !skeletons.empty());
         EXPECT_EQ(skeletons.size(), pModel->GetSkeletonCount());
 
-        // An imported node is a joint of one of the skeletons or a scene node of its own.
+        // An imported node is a bone of one of the skeletons or a scene node of its own.
         const auto WorldMatrix = [&](size_t ni, Math::FloatMatrix4x4 &world) -> bool
         {
             const std::string &name = Scene.Nodes[ni].Name;
             for (XSkeletonInstance *pSkeleton : skeletons)
             {
-                const uint32_t joint = pSkeleton->FindJoint(name.c_str());
-                if (joint != InvalidIndex)
+                const uint32_t bone = pSkeleton->FindBone(name.c_str());
+                if (bone != InvalidIndex)
                 {
-                    world = pSkeleton->GetJointMatrix(joint) * pSkeleton->GetAttachedNode()->GetGlobalMatrix();
+                    world = pSkeleton->GetBoneMatrix(bone) * pSkeleton->GetAttachedNode()->GetGlobalMatrix();
                     return true;
                 }
             }
@@ -477,7 +477,7 @@ struct ImportedFixture
         }
 
         // Each skin is bound on the first node that carries its mesh, or that node's socket
-        // when the node is a joint.
+        // when the node is a bone.
         for (size_t meshIndex = 0; meshIndex < Scene.Meshes.size(); ++meshIndex)
         {
             const Fbx::ImportedSkin &skin = Scene.Meshes[meshIndex].Skin;
@@ -823,7 +823,7 @@ TEST(CanvasFbxTest, BuiltModelMatchesBindPose)
         GTEST_SKIP() << "No FBX assets available";
 }
 
-// Clips played by a built model's animation controller, on its joints and model nodes,
+// Clips played by a built model's animation controller, on its bones and model nodes,
 // pose the instance as ufbx evaluates the clip.
 TEST(CanvasFbxTest, BuiltModelClipMatchesUfbx)
 {

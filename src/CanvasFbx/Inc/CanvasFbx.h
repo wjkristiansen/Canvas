@@ -310,11 +310,11 @@ CANVASFBX_API Gem::Result ImportScene(
 // supplies a texture-loading callback because image decoding is
 // platform-specific (e.g. WIC on Windows, stb_image elsewhere).
 //
-// The bones of skins that share a bone, and every node between those bones and
-// their nearest common ancestor, become the joints of one skeleton, in the space
+// The skin bones of skins that share a skin bone, and every node between those skin
+// bones and their nearest common ancestor, become the bones of one skeleton, in the space
 // of that ancestor.  Every other imported node becomes a model node.  Content on
-// a joint, and nodes parented to one, hang from a socket on that joint.  An
-// imported node's tracks animate its joint when the node is a joint, and its
+// a bone, and nodes parented to one, hang from a socket on that bone.  An
+// imported node's tracks animate its bone when the node is a bone, and its
 // model node otherwise.
 //
 // Behaviour on malformed data:

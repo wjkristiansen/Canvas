@@ -40,7 +40,7 @@ struct ModelSocketData
 {
     uint32_t            NodeIndex     = InvalidIndex;
     uint32_t            SkeletonIndex = InvalidIndex;
-    uint32_t            JointIndex    = InvalidIndex;
+    uint32_t            BoneIndex     = InvalidIndex;
     Transform           LocalTransform;
 };
 #ifdef _MSC_VER
@@ -53,7 +53,7 @@ struct ModelMeshData
     uint32_t                            NodeIndex     = InvalidIndex;
     uint32_t                            MeshDataIndex = InvalidIndex;
     uint32_t                            SkeletonIndex = InvalidIndex;
-    std::vector<uint32_t>               JointIndices;
+    std::vector<uint32_t>               SkeletonBoneIndices;
     std::vector<Math::FloatMatrix4x4>   InvBindPoses;
 };
 

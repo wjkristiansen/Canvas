@@ -113,7 +113,7 @@ void CAnimationController::EvaluateTrack(const AnimTrack& track, float t, Math::
 Transform CAnimationController::BoundTransform::Get() const
 {
     if (pSkeleton)
-        return pSkeleton->LocalTransform(Joint);
+        return pSkeleton->LocalTransform(Bone);
 
     return pNode->GetLocalTransform();
 }
@@ -122,7 +122,7 @@ void CAnimationController::BoundTransform::Set(const Transform &transform) const
 {
     if (pSkeleton)
     {
-        pSkeleton->SetLocalTransform(Joint, transform);
+        pSkeleton->SetLocalTransform(Bone, transform);
         return;
     }
 
@@ -242,18 +242,18 @@ void CAnimationController::BuildFromModel(
             continue;
         }
 
-        const bool isJoint = IsJointTarget(def.Type);
-        const uint64_t owner = isJoint ? static_cast<uint64_t>(def.SkeletonIndex) + 1 : 0;
+        const bool isBone = IsBoneTarget(def.Type);
+        const uint64_t owner = isBone ? static_cast<uint64_t>(def.SkeletonIndex) + 1 : 0;
         const uint64_t key = (owner << 32) | def.Index;
 
         auto [it, inserted] = transformSlots.try_emplace(key, static_cast<uint32_t>(m_Transforms.size()));
         if (inserted)
         {
             BoundTransform transform;
-            if (isJoint)
+            if (isBone)
             {
                 transform.pSkeleton = skeletons[def.SkeletonIndex];
-                transform.Joint     = def.Index;
+                transform.Bone      = def.Index;
             }
             else
             {
@@ -287,7 +287,7 @@ GEMMETHODIMP_(bool) CAnimationController::ValidateForNode(_In_ XSceneGraphNode *
     if (!pRoot) return false;
 
     // Every target must be in pRoot's subtree (pRoot included): a transform's node, or for a
-    // joint, its skeleton instance's node.
+    // bone, its skeleton instance's node.
     auto IsDescendant = [](XSceneGraphNode* pCandidate, XSceneGraphNode* pAncestor) -> bool
     {
         for (XSceneGraphNode* p = pCandidate; p; p = p->GetParent())
