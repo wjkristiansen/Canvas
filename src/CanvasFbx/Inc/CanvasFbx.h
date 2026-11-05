@@ -130,7 +130,7 @@ struct ImportedMeshPart
 //------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------
 // Skinning binding for one mesh: bone list + inverse bind-pose matrices.
-// BoneNodeIndices[i] -> ImportedScene::Nodes[i] (the scene node that is the bone).
+// BoneNodeIndices[i] -> ImportedScene::Nodes[i] (the scene node the bone follows).
 // InvBindPoses[i]   transforms a vertex from mesh/geometry space into bone i's local space
 //                   at the time the skin was bound.
 // When HasSkin == false the vectors are empty and SkinVertices in each mesh part is empty.
