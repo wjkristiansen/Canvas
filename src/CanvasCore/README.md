@@ -126,7 +126,7 @@ Package content becomes engine objects through `XModel`. A bundle that the engin
 | `Camera`, `Light` | `XCamera`, `XLight` on their nodes |
 | `Material`, `Image` | `XGfxMaterial`, `XGfxSurface` |
 | `Placement` | A nested instance of the placed bundle's model per transform, under the placement's node |
-| `NodeAnimationClip`, `BoneAnimationClip` | Animation clips, played through each instance's `XAnimationController` |
+| `AnimationClip`, with the `JointAnimation` assets it binds | An animation clip, played through each instance's `XAnimationController` |
 | `WorldSettings` | The world's `XScene` settings: its background and skyboxes, and its active camera |
 
 The node an instance is cloned under is its instance transform: a placement's node for a nested instance, and the world's scene root for a world bundle or world region.
