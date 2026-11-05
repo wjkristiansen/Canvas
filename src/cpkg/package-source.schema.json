@@ -283,12 +283,19 @@
       "required": ["property", "times", "values"],
       "properties": {
         "property": { "enum": ["translation", "rotation", "scale"] },
-        "interpolation": { "enum": ["linear", "step", "cubic"] },
         "times": { "$ref": "#/$defs/numberArray" },
         "values": { "$ref": "#/$defs/numberArray" },
-        "coefficients": { "$ref": "#/$defs/numberArray" }
+        "interpolation": {
+          "oneOf": [
+            { "$ref": "#/$defs/interpolation" },
+            { "type": "array", "items": { "$ref": "#/$defs/interpolation" }, "minItems": 1 }
+          ]
+        },
+        "tangents": { "$ref": "#/$defs/numberArray" }
       }
     },
+
+    "interpolation": { "enum": ["linear", "step", "cubic"] },
 
     "jointAnimation": {
       "type": "object",

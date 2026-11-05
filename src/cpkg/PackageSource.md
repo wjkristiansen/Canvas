@@ -208,10 +208,16 @@ A track in a joint animation or an [animation clip](#animation-clips) builds one
 |---|---|---|
 | `joint` or `node` | Required | `JointIndex`, from a joint reference, in a joint animation; `NodeIndex`, from the name of a node of this bundle, in a clip |
 | `property` | Required | `Property`: `"translation"`, `"rotation"`, or `"scale"` |
-| `interpolation` | `"linear"` | `Interpolation`: `"linear"`, `"step"`, or `"cubic"` |
 | `times` | Required | `Times`, a large numeric array |
 | `values` | Required | `Values`, a large numeric array: three numbers per key for `translation` and `scale`, and a unit quaternion of four for `rotation` |
-| `coefficients` | Empty | `Coefficients`, a large numeric array; for a `"cubic"` track with more than one key, required |
+| `interpolation` | `"linear"` | `Interpolations`: `"linear"`, `"step"`, or `"cubic"`, for every key, or an array of them, one per key |
+| `tangents` | Empty | `Tangents`, a large numeric array: per key, its in tangent and then its out tangent, each as many numbers as a value; for a track with a `"cubic"` key, required |
+
+```json
+{ "node": "Lid", "property": "translation", "times": [0, 0.5, 1], "values": [0, 0, 0, 0, 0, 0.3, 0, 0, 0],
+  "interpolation": ["cubic", "cubic", "step"],
+  "tangents": [0, 0, 0, 0, 0, 1.2,   0, 0, 0, 0, 0, 0,   0, 0, -1.2, 0, 0, 0] }
+```
 
 ### Skyboxes
 
@@ -498,7 +504,7 @@ The schema checks each file's shape. A package source is also valid only when it
 - **Names.** Bundle names are unique within the package. Asset and node names are unique within their bundle (see [Names and References](#names-and-references)).
 - **References by name.** Each refers to an existing node or placement of the same bundle, of the kind the field requires: an `activeCamera` node has a `camera`, a mesh instance's or clip binding's `skeletonInstance` node has a `skeletonInstance`, a node with `joint` has a parent with a `skeletonInstance`, and an import's `parent` is a node that import does not build.
 - **Joint references.** Each names a joint of the relevant skeleton, or is less than its joint count. A skeleton's `parent` references refer to earlier joints.
-- **Tracks.** `times` is nondecreasing, and `values` and `coefficients` hold the number of numbers its keys and `property` call for (see [Animation Tracks](../CanvasPkg/README.md#animation-tracks)). A clip track's `node` has no `joint`, and its effective mobility is `"movable"`. A clip animates each node property, and binds each skeleton instance, at most once, and a joint animation animates each joint property at most once.
+- **Tracks.** `times` is nondecreasing, and `values`, an `interpolation` array, and `tangents` hold the number of entries its keys and `property` call for (see [Animation Tracks](../CanvasPkg/README.md#animation-tracks)). A clip track's `node` has no `joint`, and its effective mobility is `"movable"`. A clip animates each node property, and binds each skeleton instance, at most once, and a joint animation animates each joint property at most once.
 - **Paths.** Each path is well formed for its kind. A path within the same package resolves to an existing asset of the declared type or to an existing bundle; a path into another package is checked when the build has a project.
 - **Arrays.** Each inline array's length is a multiple of its element size, and each binary array file's size is a multiple of its element size. Parallel streams have equal counts.
 - **Values.** Quaternions are non-zero; the build normalizes them. Bounds have `min <= max` on every axis.
