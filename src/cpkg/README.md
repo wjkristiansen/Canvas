@@ -127,7 +127,7 @@ A build runs these stages in order:
 | **Load** | Reads the package file and the bundle files it includes, and checks each file against [package-source.schema.json](package-source.schema.json) |
 | **Translate** | Reads each import's FBX file and applies the import's settings (see [Imports](#imports)), and reads the header of each image file |
 | **Validate** | Checks the [validation rules](PackageSource.md#validation) of the package source, and, with a [project](#project-context), the paths into other packages |
-| **Resolve** | Turns references by name into asset indices and bone indices, fills defaults, and orders each bundle's assets in CanvasPkg's [canonical order](../CanvasPkg/README.md#append-order) |
+| **Resolve** | Turns references by name into asset indices and joint indices, fills defaults, and orders each bundle's assets in CanvasPkg's [canonical order](../CanvasPkg/README.md#append-order) |
 | **Write** | Encodes each asset's payload and writes the package with `CCpkgWriter` |
 
 ### Project Context
@@ -138,7 +138,7 @@ With an authored project, validation also checks the paths into other packages. 
 
 ### Imports
 
-`cpkg` reads an FBX file with ufbx and translates its content to CanvasPkg data, in CanvasPkg's [conventions](../CanvasPkg/README.md#conventions): it converts units and axes, applies an import's `scale` and `rotation`, triangulates, generates missing normals, identifies bones, and samples animation stacks. It then applies everything else the [import](PackageSource.md#imports) declares: which content is built, its names, replacements, clip ranges, the node hierarchy's `parent`, a shared `skeleton`, and edits. `cpkg`'s FBX reading is its own, separate from CanvasFbx, which builds engine model data from FBX files for tools such as the model viewer.
+`cpkg` reads an FBX file with ufbx and translates its content to CanvasPkg data, in CanvasPkg's [conventions](../CanvasPkg/README.md#conventions): it converts units and axes, applies an import's `scale` and `rotation`, triangulates, generates missing normals, identifies joints, and samples animation stacks. It then applies everything else the [import](PackageSource.md#imports) declares: which content is built, its names, replacements, clip ranges, the node hierarchy's `parent`, a shared `skeleton`, and edits. `cpkg`'s FBX reading is its own, separate from CanvasFbx, which builds engine model data from FBX files for tools such as the model viewer.
 
 A texture an FBX file uses is either **embedded**, its encoded bytes held in the FBX file, or **external**, held in an image file the FBX file names. The bytes of an embedded texture become the built image's encoded image, as an external file's bytes do, with no file written. The build reads nothing from disk for an embedded texture; any file name the FBX file records for it serves only to [name the image](PackageSource.md#imported-names). An external texture is found at the relative path the file records, resolved against the FBX file's directory, and otherwise at the absolute path the file records. An external texture found at neither is reported as an error at the import, naming the texture and the material that uses it, unless the import replaces it.
 

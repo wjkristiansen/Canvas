@@ -1,6 +1,6 @@
 # CanvasPkg
 
-A CanvasPkg (Cpkg) is a package file containing world data - including models, geometry, materials, textures, lights, cameras, animations, (and eventually scripts, sounds, and other world data). The file is organized into bundles which contain related assets. A shared asset, such as a mesh or a texture, may be referenced by path from any bundle of any package in the same [project](#projects); a bundle's local assets reference each other by asset index. For example, a bundle might contain model data with object/bone hierarchy, meshes, materials, textures, animation clips. Other bundles might contain sky-box texture, scripts, music or sound effects.
+A CanvasPkg (Cpkg) is a package file containing world data - including models, geometry, materials, textures, lights, cameras, animations, (and eventually scripts, sounds, and other world data). The file is organized into bundles which contain related assets. A shared asset, such as a mesh or a texture, may be referenced by path from any bundle of any package in the same [project](#projects); a bundle's local assets reference each other by asset index. For example, a bundle might contain model data with a node hierarchy and skeleton, meshes, materials, textures, animation clips. Other bundles might contain sky-box texture, scripts, music or sound effects.
 
 CanvasPkg is a static library. API Success/failure codes use type `Gem::Result`.
 
@@ -69,8 +69,8 @@ Every asset type is one of two classes, fixed by its `AssetType`. The class deci
 
 | Class | Asset types | Referenced by | Across instances |
 |---|---|---|---|
-| **Shared** | `Image`, `Material`, `MeshData`, `MeshSkin`, `Skeleton`, `BoneAnimationClip`, `Skybox` | [Asset path](#paths) only | One asset, common to every instance |
-| **Local** | `TransformNode`, `Placement`, `ImportNode`, `SkeletonInstance`, `MeshInstance`, `Camera`, `Light`, `NodeAnimationClip`, `ExportList`, `WorldSettings` | Asset index within its bundle | Part of each instance |
+| **Shared** | `Image`, `Material`, `MeshData`, `MeshSkin`, `Skeleton`, `JointAnimation`, `Skybox` | [Asset path](#paths) only | One asset, common to every instance |
+| **Local** | `TransformNode`, `Placement`, `ImportNode`, `SkeletonInstance`, `MeshInstance`, `Camera`, `Light`, `AnimationClip`, `ExportList`, `WorldSettings` | Asset index within its bundle | Part of each instance |
 
 **A shared asset's payload cannot reference other assets by index.** It references other assets only by path, so its meaning does not depend on the bundle that holds it, and any bundle of any package in its project may reference it. A bundle may hold only shared assets, such as a material library that other bundles reference. A shared asset is always named, since a path finds it by name.
 
@@ -92,13 +92,13 @@ A producer satisfies the rule by appending each asset after every asset it index
 | Field | Held by | References |
 |---|---|---|
 | `ParentIndex` | `TransformNode` | [node](#cpkgtransformnodedata-assettypetransformnode) or `SkeletonInstance` |
-| `NodeIndex` | `Placement`, `SkeletonInstance`, `MeshInstance`, `Camera`, `Light`, `NodeAnimationClip` (per track) | node |
+| `NodeIndex` | `Placement`, `SkeletonInstance`, `MeshInstance`, `Camera`, `Light`, `AnimationClip` (per node track) | node |
 | `PlacementIndex` | `ImportNode` | `Placement` |
-| `SkeletonInstanceIndex` | `MeshInstance` | `SkeletonInstance` |
+| `SkeletonInstanceIndex` | `MeshInstance`, `AnimationClip` (per joint animation binding) | `SkeletonInstance` |
 | `NodeIndices` | `ExportList` | node |
 | `ActiveCameraIndex` | `WorldSettings` | `Camera` |
 
-The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Skeleton`, `MeshSkin`, `BoneAnimationClip`, the hierarchy assets, `MeshInstance`, `Camera`, `Light`, `NodeAnimationClip`, `ExportList`, `WorldSettings`. The **hierarchy assets** are `TransformNode`, `Placement`, `ImportNode`, and `SkeletonInstance`: each is relative to one other asset (a node's parent, a placement's node, an import node's placement, a skeleton instance's node), so together they form one hierarchy. Appending them together in pre-order satisfies the rule for every index among them and guarantees parent-before-child, so an asset's parent always precedes it.
+The canonical order is: `Image`, `Skybox`, `Material`, `MeshData`, `Skeleton`, `MeshSkin`, `JointAnimation`, the hierarchy assets, `MeshInstance`, `Camera`, `Light`, `AnimationClip`, `ExportList`, `WorldSettings`. The **hierarchy assets** are `TransformNode`, `Placement`, `ImportNode`, and `SkeletonInstance`: each is relative to one other asset (a node's parent, a placement's node, an import node's placement, a skeleton instance's node), so together they form one hierarchy. Appending them together in pre-order satisfies the rule for every index among them and guarantees parent-before-child, so an asset's parent always precedes it.
 
 `AppendAsset` takes an opaque payload and does not interpret indices out of it, so the writer cannot enforce this rule. It is a contract on whoever produces the payloads, and a package that violates it is malformed.
 
@@ -239,7 +239,7 @@ The bundles that placements reference must form an acyclic graph: no bundle plac
 
 ### Exports and Imports
 
-A bundle may **export** nodes, which lets a bundle that places it attach content to those nodes in each nested instance. For example, a goblin bundle exports `Hand_R`, a node [parented to its hand bone](#cpkgtransformnodedata-assettypetransformnode), and a region that places the goblin bundle attaches a sword there.
+A bundle may **export** nodes, which lets a bundle that places it attach content to those nodes in each nested instance. For example, a goblin bundle exports `Hand_R`, a [socket](#cpkgtransformnodedata-assettypetransformnode) on its hand joint, and a region that places the goblin bundle attaches a sword there.
 
 **Exports.** A bundle's [`ExportList`](#cpkgexportlistdata-assettypeexportlist) lists the nodes it exports, which are nodes of that bundle. Each exported node is named, and its name is its **export name**. A bundle's exports are exactly the nodes its `ExportList` lists, and a bundle holds at most one `ExportList`.
 
@@ -249,7 +249,7 @@ A bundle may **export** nodes, which lets a bundle that places it attach content
 
 **Re-exporting.** A bundle may export an import node, which passes an export of a bundle it places through to any bundle that places it. For example, a goblin rider bundle that places a goblin exports its `Hand_R` import node, so a region that places the rider can arm the goblin in turn.
 
-**Imports from a batch.** An import node represents one node in each nested instance its placement declares. A `TransformNode` represents one node, and a placement declares its entry count times the number of nodes its `NodeIndex` represents (one for `-1`). Only a placement may attach to an import node that represents more than one node; it declares nested instances at each of them, once per entry. If one placement in a region declares 50 nested instances of the goblin bundle, a one-entry sword placement attached to their `Hand_R` import node declares 50 nested instances of the sword bundle, one in each hand. Every other reference to an import node, such as a `TransformNode`'s parent, a skeleton instance, mesh instance, camera, or light, a clip track, or an `ExportList` entry, requires one that represents exactly one node.
+**Imports from a batch.** An import node represents one node in each nested instance its placement declares. A `TransformNode` represents one node, and a placement declares its entry count times the number of nodes its `NodeIndex` represents (one for `-1`). Only a placement may attach to an import node that represents more than one node; it declares nested instances at each of them, once per entry. If one placement in a region declares 50 nested instances of the goblin bundle, a one-entry sword placement attached to their `Hand_R` import node declares 50 nested instances of the sword bundle, one in each hand. Every other reference to an import node, such as a `TransformNode`'s parent, a skeleton instance, mesh instance, camera, or light, or an `ExportList` entry, requires one that represents exactly one node.
 
 ### World Regions
 
@@ -312,7 +312,7 @@ The two declarations describe different things. A placement's mobility describes
 
 **Mobility is inherited from parent to child.** Mobility values are ordered `Static` < `Stationary` < `Movable`, and each node and instance has an **effective mobility**, the most mobile of its declared mobility and its parent's effective mobility:
 
-- A `TransformNode` whose `ParentIndex` references a node has that node as its parent. One parented to a bone has, as its parent, the node its skeleton instance attaches to. One with `ParentIndex = -1` has its instance as its parent.
+- A `TransformNode` whose `ParentIndex` references a node has that node as its parent. A [socket](#cpkgtransformnodedata-assettypetransformnode) has, as its parent, the node its skeleton instance attaches to, or its instance when the skeleton instance's `NodeIndex` is `-1`. One with `ParentIndex = -1` has its instance as its parent.
 - A nested instance has, as its parent, the node its placement attaches to, or the instance holding the placement when `NodeIndex` is `-1`. Its declared mobility is its placement's.
 - A world bundle or world region instance has the effective mobility `Static`, because its instance transform is the world origin.
 - An instance the engine user requests at runtime has the mobility the engine user supplies along with its instance transform.
@@ -330,7 +330,7 @@ Mobility passes only from parent to child. A region's `Movable` camera rig makes
 
 **Every payload has the same shape: a header struct at offset 0, followed by a data area holding the payload's variable-length arrays.** The `AssetType` determines the header struct (`CpkgMeshData` for `AssetType::MeshData`, and so on). The header refers to each array through a `CpkgSpan<T>` member, and an array's elements may themselves hold spans. An asset type with no variable-length data (`TransformNode`, `Camera`, `Light`) has a payload that is exactly its header, with no data area. The structs in this section follow the [On-Disk Encoding](#on-disk-encoding) rules, and [Payload Layout](#payload-layout) defines spans and the data area.
 
-A relationship between assets is stored according to the referenced asset's [class](#shared-and-local-assets). A field referencing a shared asset - the mesh a mesh instance draws, the skin that deforms it, the skeleton a skeleton instance poses, the material a mesh group draws with, an image a material samples - is an asset path (see [Paths](#paths)). A field referencing a local asset - a node's parent, the node an asset attaches to, the skeleton instance whose bone is a node's parent - is the intra-bundle asset index of that asset. An import node names an export of a placed bundle (see [Exports and Imports](#exports-and-imports)). Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `AnimationClipDesc`, `MeshSkinDesc`, and so on.
+A relationship between assets is stored according to the referenced asset's [class](#shared-and-local-assets). A field referencing a shared asset - the mesh a mesh instance draws, the skin that deforms it, the skeleton a skeleton instance poses, the material a mesh group draws with, an image a material samples - is an asset path (see [Paths](#paths)). A field referencing a local asset - a node's parent, the node an asset attaches to, the skeleton instance whose joint is a socket's parent - is the intra-bundle asset index of that asset. An import node names an export of a placed bundle (see [Exports and Imports](#exports-and-imports)). Records correspond to the descriptors in `CanvasCore.h`/`CanvasGfx.h`: `MeshDataDesc`, `ModelSkeletonDesc`, `AnimationClipDesc`, and so on.
 
 ### Conventions
 
@@ -347,7 +347,7 @@ Every payload stores values in the Canvas engine's own conventions, so they need
 - `CpkgVertexTangent::XYZW[3]` is +1 or -1, and the bitangent is `XYZW[3] * cross(N, T)`.
 - Angles are radians and times are seconds.
 
-**Transforms.** Every local transform a payload stores is a `CpkgTransform`. `CpkgTransformNodeData`, `CpkgImportNodeData`, `CpkgPlacementData`, and `CpkgKeyframe` all use it.
+**Transforms.** Every local transform a payload stores is a `CpkgTransform`. `CpkgTransformNodeData`, `CpkgImportNodeData`, `CpkgPlacementData`, and `CpkgSkeletonJoint` all use it, and an [animation track](#animation-tracks) animates one of its properties.
 
 ```cpp
 struct CpkgTransform
@@ -387,7 +387,7 @@ enum class AssetType : uint32_t
     MeshData          = 2,
     Material          = 3,
     Image             = 4,
-    NodeAnimationClip = 5,
+    AnimationClip     = 5,   // see CpkgAnimationClipData
     MeshSkin          = 6,
     Camera            = 7,
     Light             = 8,
@@ -399,7 +399,7 @@ enum class AssetType : uint32_t
     ExportList        = 14,  // see Exports and Imports
     Skeleton          = 15,  // see CpkgSkeletonData
     SkeletonInstance  = 16,
-    BoneAnimationClip = 17,
+    JointAnimation    = 17,  // see CpkgJointAnimationData
 };
 ```
 
@@ -479,7 +479,7 @@ constexpr size_t kCpkgPayloadAlignment = 16;
 
 Payloads are not aligned within the file. Alignment applies to the buffer that `ReadAsset` fills.
 
-Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and `InvBindPoses` with `Bones`.
+Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and `InvBindPoses` with `JointIndices`. An animation track's `Values` and `Coefficients` are sized by its `Times` (see [Animation Tracks](#animation-tracks)).
 
 ### Payload Encoding Helpers
 
@@ -545,7 +545,7 @@ The helpers check only structure. Schema rules - parallel counts, the streams ea
 
 ### CpkgTransformNodeData (AssetType::TransformNode)
 
-One node of a bundle's node hierarchy: a parent and a local transform. `ParentIndex` links a node to its parent by asset index. The parent is another node, or one bone of a [skeleton instance](#cpkgskeletoninstancedata-assettypeskeletoninstance).
+One node of a bundle's node hierarchy: a parent and a local transform. `ParentIndex` links a node to its parent by asset index. The parent is another node, or one joint of a [skeleton instance](#cpkgskeletoninstancedata-assettypeskeletoninstance).
 
 Fixed size: the payload is one `CpkgTransformNodeData`.
 
@@ -553,21 +553,21 @@ Fixed size: the payload is one `CpkgTransformNodeData`.
 struct CpkgTransformNodeData
 {
     int32_t        ParentIndex = -1;                    // asset index of the parent node or SkeletonInstance; -1 = instance transform
-    int32_t        ParentBone  = -1;                    // bone index of the parent bone when ParentIndex is a SkeletonInstance; otherwise -1
+    int32_t        ParentJoint = -1;                    // joint index of the parent joint when ParentIndex is a SkeletonInstance; otherwise -1
     CpkgMobility   Mobility    = CpkgMobility::Static;  // see Mobility; inherited by descendants
-    CpkgTransform  LocalTransform;                      // relative to the parent node or bone (see Conventions)
+    CpkgTransform  LocalTransform;                      // relative to the parent node or joint (see Conventions)
 };
 ```
 
 `Mobility` declares whether the node's local transform and its attachments may change after instantiation. The node's effective mobility is the most mobile of its declared `Mobility` and its parent's effective mobility, so `Static`, the default, makes the node exactly as mobile as its parent (see [Mobility](#mobility)).
 
-When `ParentIndex` references a `SkeletonInstance`, `ParentBone` is less than the bone count of its `Skeleton`, and the node follows that bone in the skeleton instance's pose. When `ParentIndex` references a node or is `-1`, `ParentBone` is `-1`.
+**A node parented to a joint is a socket.** When `ParentIndex` references a `SkeletonInstance`, `ParentJoint` is less than the joint count of its `Skeleton`, and the node follows that joint in the skeleton instance's pose, offset by its `LocalTransform`. When `ParentIndex` references a node or is `-1`, `ParentJoint` is `-1`.
 
-**A node parented to a bone attaches content to that bone**, such as a sword in a hand or a helmet on a head. Placements and other attachments attach to the node, and an `ExportList` may export it, which lets a bundle that places this one attach content to the bone (see [Exports and Imports](#exports-and-imports)). Only bones that content attaches to need such a node.
+**A socket attaches content to its joint**, such as a sword in a hand or a helmet on a head. Placements and other attachments attach to the socket, other nodes may use it as their parent, and an `ExportList` may export it, which lets a bundle that places this one attach content to the joint (see [Exports and Imports](#exports-and-imports)). Only joints that content attaches to need a socket.
 
-A node's name is the optional `name` it was appended with. A node parented to a bone has its own name, separate from the bone's name in the skeleton; when the node is exported, its own name is its export name.
+A node's name is the optional `name` it was appended with. A socket has its own name, separate from its joint's name in the skeleton; when the socket is exported, its own name is its export name.
 
-A **node** is a `TransformNode` or an [`ImportNode`](#cpkgimportnodedata-assettypeimportnode). `SkeletonInstance`, `MeshInstance`, `Camera`, `Light`, and [`Placement`](#placements) assets each attach to one node through a `NodeIndex` field. A node may have any number of attachments, of any types, or none; a node with none is a pure transform, such as a pivot. `NodeIndex` is required, except that a placement's may be `-1` to place relative to the instance transform. Like every asset index, a `NodeIndex` references an earlier asset, so attachments are appended after the nodes they attach to.
+A **node** is a `TransformNode` or an [`ImportNode`](#cpkgimportnodedata-assettypeimportnode). `SkeletonInstance`, `MeshInstance`, `Camera`, `Light`, and [`Placement`](#placements) assets each attach to one node through a `NodeIndex` field. A node may have any number of attachments, of any types, or none; a node with none is a pure transform, such as a pivot. `NodeIndex` is required, except that a placement's or a skeleton instance's may be `-1`, which makes it relative to the instance transform. Like every asset index, a `NodeIndex` references an earlier asset, so attachments are appended after the nodes they attach to.
 
 ### CpkgImportNodeData (AssetType::ImportNode)
 
@@ -602,43 +602,43 @@ Each listed node appears once, and each listed `ImportNode` represents exactly o
 
 ### CpkgSkeletonData (AssetType::Skeleton)
 
-A skeleton: a hierarchy of bones, each with a name, a parent bone, and a rest transform. A skeleton is a shared asset, used by any number of bundles much as an image is. A skeleton's bones are data within the asset, not nodes. A bundle poses a skeleton through a [`SkeletonInstance`](#cpkgskeletoninstancedata-assettypeskeletoninstance), and a [`TransformNode`](#cpkgtransformnodedata-assettypetransformnode) attaches to a bone by naming the skeleton instance as its parent. Skins, clips, and transform nodes reference a skeleton's bones by **bone index**, a position in its `Bones` array (see [`CpkgMeshSkinData`](#cpkgmeshskindata-assettypemeshskin) and [`CpkgBoneAnimClipData`](#cpkgboneanimclipdata-assettypeboneanimationclip)).
+A skeleton: a hierarchy of joints, each with a name, a parent joint, and a rest transform. A skeleton is a shared asset, used by any number of bundles much as an image is. A skeleton's joints are data within the asset, not nodes. A bundle poses a skeleton through a [`SkeletonInstance`](#cpkgskeletoninstancedata-assettypeskeletoninstance), and a [socket](#cpkgtransformnodedata-assettypetransformnode) attaches to a joint by naming the skeleton instance as its parent. Skins, joint animations, and sockets reference a skeleton's joints by **joint index**, a position in its `Joints` array (see [`CpkgMeshSkinData`](#cpkgmeshskindata-assettypemeshskin) and [`CpkgJointAnimationData`](#cpkgjointanimationdata-assettypejointanimation)).
 
-Variable size. The payload's header is one `CpkgSkeletonData`. Its `Bones` span refers to an array of `CpkgSkeletonBone` in the data area, and each bone's `Name` span refers to that bone's name:
+Variable size. The payload's header is one `CpkgSkeletonData`. Its `Joints` span refers to an array of `CpkgSkeletonJoint` in the data area, and each joint's `Name` span refers to that joint's name:
 
 ```cpp
-struct CpkgSkeletonBone
+struct CpkgSkeletonJoint
 {
-    int32_t         ParentBone = -1;  // bone index of the parent bone; -1 = root
-    uint32_t        Padding    = 0;
-    CpkgSpan<char>  Name;             // empty = unnamed; a non-empty name is unique within the skeleton
-    CpkgTransform   RestTransform;    // relative to the parent bone, or for a root to the skeleton instance's node
+    int32_t         ParentJoint = -1;  // joint index of the parent joint; -1 = root
+    uint32_t        Padding     = 0;
+    CpkgSpan<char>  Name;              // empty = unnamed; a non-empty name is unique within the skeleton
+    CpkgTransform   RestTransform;     // relative to the parent joint, or for a root to the skeleton instance's node
 };
 
 struct CpkgSkeletonData
 {
-    CpkgSpan<CpkgSkeletonBone>  Bones;  // at least one
+    CpkgSpan<CpkgSkeletonJoint>  Joints;  // at least one
 };
 ```
 
-The skeleton's bone count is `Bones.Count`. Every bone's `ParentBone` is less than its own bone index, so a bone's parent always precedes it and the bones form one or more trees. Bone names let the engine user and tools find bones by name; skins, clips, and transform nodes reference bones by bone index.
+The skeleton's joint count is `Joints.Count`. Every joint's `ParentJoint` is less than its own joint index, so a joint's parent always precedes it and the joints form one or more trees. Joint names let the engine user and tools find joints by name; skins, joint animations, and sockets reference joints by joint index.
 
 ### CpkgSkeletonInstanceData (AssetType::SkeletonInstance)
 
-Describes a skeleton attached to a node: the node carries a pose of a shared `Skeleton`, with its root bones relative to the node. Each instance of the bundle has its own skeleton instance, and so its own pose. Skinned [mesh instances](#cpkgmeshinstancedata-assettypemeshinstance) bind to a skeleton instance, and [transform nodes](#cpkgtransformnodedata-assettypetransformnode) parented to its bones follow them. Several mesh instances, such as a character's body and armor, may bind to one skeleton instance and share its pose.
+Describes a skeleton attached to a node: the node carries a pose of a shared `Skeleton`, with its root joints relative to the node. Each instance of the bundle has its own skeleton instance, and so its own pose. Skinned [mesh instances](#cpkgmeshinstancedata-assettypemeshinstance) bind to a skeleton instance, and [sockets](#cpkgtransformnodedata-assettypetransformnode) on its joints follow them. Several mesh instances, such as a character's body and armor, may bind to one skeleton instance and share its pose.
 
 The payload is a `CpkgSkeletonInstanceData` header followed by a data area holding the skeleton path.
 
 ```cpp
 struct CpkgSkeletonInstanceData
 {
-    int32_t         NodeIndex = -1;  // asset index of the node this skeleton instance attaches to; required
+    int32_t         NodeIndex = -1;  // asset index of the node this skeleton instance attaches to; -1 = instance transform
     uint32_t        Padding   = 0;
     CpkgSpan<char>  Skeleton;        // asset path to a Skeleton; required
 };
 ```
 
-The clips a skeleton instance may play are the [bone animation clips](#cpkgboneanimclipdata-assettypeboneanimationclip) built for its `Skeleton`. Which clip plays, and when, is supplied by the engine user.
+With `NodeIndex = -1`, the skeleton instance's root joints are relative to the instance transform. A skeleton instance's pose is animated by the [clips](#cpkganimationclipdata-assettypeanimationclip) of its bundle that bind a joint animation to it.
 
 
 ### CpkgMeshInstanceData (AssetType::MeshInstance)
@@ -657,7 +657,7 @@ struct CpkgMeshInstanceData
 };
 ```
 
-**A skinned mesh instance binds its skin to a skeleton instance.** When `Skin` is not null, `SkeletonInstanceIndex` references a [`SkeletonInstance`](#cpkgskeletoninstancedata-assettypeskeletoninstance) whose `Skeleton` path resolves to the same skeleton as the skin's `Skeleton` path, and the skin's bones are that skeleton instance's bones. When `Skin` is null, `SkeletonInstanceIndex` is `-1`.
+**A skinned mesh instance binds its skin to a skeleton instance.** When `Skin` is not null, `SkeletonInstanceIndex` references a [`SkeletonInstance`](#cpkgskeletoninstancedata-assettypeskeletoninstance) whose `Skeleton` path resolves to the same skeleton as the skin's `Skeleton` path, and the skin's bones follow the joints of that skeleton instance. When `Skin` is null, `SkeletonInstanceIndex` is `-1`.
 
 ### CpkgMeshData (AssetType::MeshData)
 
@@ -687,7 +687,7 @@ struct CpkgMeshDataGroup
     CpkgSpan<CpkgVertexNormal>      Normals;             // required by every topology
     CpkgSpan<CpkgVertexUV>          UV0;                 // required by PatchList4CP, optional otherwise
     CpkgSpan<CpkgVertexTangent>     Tangents;            // optional
-    CpkgSpan<CpkgVertexBoneIndices> BoneIndices;         // optional; palette-relative, see below
+    CpkgSpan<CpkgVertexBoneIndices> BoneIndices;         // optional; bones of the mesh's skin, see below
     CpkgSpan<CpkgVertexBoneWeights> BoneWeights;         // optional
 };
 
@@ -706,9 +706,9 @@ struct CpkgMeshData
 
 **Which streams are required depends on `Topology`**, matching what the backend enforces in `CreateMeshData`: `TriangleList` requires `Positions` and `Normals`; `PatchList4CP` requires `Positions`, `Normals`, and `UV0` (per-control-point map UVs, and the base direction along which displacement extends each control point). `Tangents`, `BoneIndices`, and `BoneWeights` are optional under either topology.
 
-A skinned mesh holds no asset index, so like any shared asset it may live in any bundle. `BoneIndices` references bones without naming an asset: it is a palette-relative index into the `Bones` array of the [`MeshSkin`](#cpkgmeshskindata-assettypemeshskin) that deforms the mesh, and by the ordering correspondence into its `InvBindPoses`. This matches the runtime skinning convention. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
+A skinned mesh holds no asset index, so like any shared asset it may live in any bundle. `BoneIndices` references bones without naming an asset: each entry is a bone of the [`MeshSkin`](#cpkgmeshskindata-assettypemeshskin) that deforms the mesh, an index into its `JointIndices` and `InvBindPoses`. This matches the runtime skinning convention. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
 
-**A mesh drawn with a `MeshSkin` carries bone streams in every group.** The mesh of a mesh instance whose `Skin` is not null must be a skinned mesh in the sense above, and each `BoneIndices` entry of an influence with a nonzero weight must be less than the skin's palette size. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, drawn by a mesh instance attached to a node parented to the bone. A mesh instance whose skin deforms a mesh that lacks bone streams is malformed.
+**A mesh drawn with a `MeshSkin` carries bone streams in every group.** The mesh of a mesh instance whose `Skin` is not null must be a skinned mesh in the sense above, and each `BoneIndices` entry of an influence with a nonzero weight must be less than the skin's bone count. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, drawn by a mesh instance attached to a socket on the joint. A mesh instance whose skin deforms a mesh that lacks bone streams is malformed.
 
 ### CpkgMaterialData (AssetType::Material)
 
@@ -822,64 +822,114 @@ struct CpkgSkyboxData
 
 `Orientation` lets a cubemap authored in any basis appear upright in Canvas space; it is `GfxBackgroundDesc::Orientation`. The image is a color role (see [Conventions](#conventions)).
 
-### CpkgNodeAnimClipData (AssetType::NodeAnimationClip)
+### Animation Tracks
 
-Corresponds to `AnimationClipDesc`/`AnimationTrackDesc`. A node animation clip animates nodes of its own bundle, such as a door swinging on its hinge node or a windmill turning its blades. Each track targets one node by asset index. The clips that animate a bundle's nodes are the `NodeAnimationClip` assets that bundle holds. A skeleton's bones are animated by [bone animation clips](#cpkgboneanimclipdata-assettypeboneanimationclip).
-
-Variable size. The payload's header is one `CpkgNodeAnimClipData`. Its `Tracks` span refers to an array of `CpkgNodeAnimTrack` in the data area, and each track's `Keyframes` span refers to that track's keyframes:
+A **track** holds the keys of one property of one local transform over a clip's time: its translation, rotation, or scale. A clip's [node tracks](#cpkganimationclipdata-assettypeanimationclip) animate nodes, and a joint animation's [joint tracks](#cpkgjointanimationdata-assettypejointanimation) animate joints. Both encode their keys the same way, with these fields:
 
 ```cpp
-struct CpkgKeyframe
+// The property of a local transform that a track animates, and the form of its values.
+enum class CpkgAnimationProperty : uint32_t
 {
-    float          Time;       // seconds from clip start
-    CpkgTransform  Transform;  // the node's or bone's local transform at Time
-};
-
-struct CpkgNodeAnimTrack
-{
-    int32_t                 NodeIndex = -1;  // asset index of the node this track animates
-    uint32_t                Padding   = 0;
-    CpkgSpan<CpkgKeyframe>  Keyframes;       // sorted ascending by Time
-};
-
-struct CpkgNodeAnimClipData
-{
-    float                       Duration;    // seconds
-    uint32_t                    Padding = 0;
-    CpkgSpan<CpkgNodeAnimTrack> Tracks;
+    Translation = 0,  // 3 floats: xyz, meters
+    Rotation    = 1,  // 4 floats: a unit quaternion, XYZW
+    Scale       = 2,  // 3 floats: xyz
 };
 ```
 
-### CpkgBoneAnimClipData (AssetType::BoneAnimationClip)
+| Track field | Holds |
+|---|---|
+| `Property` | The property the track animates |
+| `Interpolation` | How the value changes between keys, as `CanvasCore.h`'s `AnimationInterpolation` |
+| `Times` | Key times in seconds from clip start, nondecreasing; at least one |
+| `Values` | One value per key, packed |
+| `Coefficients` | For `Cubic`, three values per segment, packed; otherwise empty |
 
-Corresponds to `AnimationClipDesc`/`AnimationTrackDesc`. A bone animation clip animates the bones of a shared [`Skeleton`](#cpkgskeletondata-assettypeskeleton), such as a walk cycle or an attack. It is a shared asset: it declares the skeleton it animates, and each track targets one bone by bone index, so every skeleton instance of that skeleton can play it. A skeleton's clips typically live in the skeleton's bundle.
+A value takes as many floats as its `Property` has, and values are packed: `Values` holds `Times.Count` values, each immediately after the one before. A track's values are in the same space as the local transform it animates (see [Conventions](#conventions)).
 
-Variable size. The payload's header is one `CpkgBoneAnimClipData`. Its `Skeleton` span refers to the skeleton path and its `Tracks` span to an array of `CpkgBoneAnimTrack` in the data area, and each track's `Keyframes` span refers to that track's keyframes:
+The value at a time between two keys depends on `Interpolation`. Segment `i` runs from key `i` to key `i + 1`, and `u = (t - Times[i]) / (Times[i + 1] - Times[i])`:
+
+| `Interpolation` | Value in segment `i` |
+|---|---|
+| `Linear` | Linear from `Values[i]` to `Values[i + 1]`; spherical linear for `Rotation` |
+| `Step` | `Values[i]` |
+| `Cubic` | `Values[i] + C1 * u + C2 * u^2 + C3 * u^3`, where `C1`, `C2`, `C3` are segment `i`'s coefficients |
+
+`Coefficients` holds `C1`, `C2`, `C3` for each segment in order: `3 * (Times.Count - 1)` values. It is empty for `Linear` and `Step`, and for a `Cubic` track with one key. Two keys at the same time make the value change at that time to the later key's value. Before the first key the value is the first key's, and after the last key it is the last key's.
+
+### CpkgAnimationClipData (AssetType::AnimationClip)
+
+Corresponds to `AnimationClipDesc`. An animation clip is one animation of its bundle, such as a door swinging open, a windmill turning its blades, or a goblin's walk. It is a local asset: its node tracks animate nodes of its bundle by asset index, and it binds shared [joint animations](#cpkgjointanimationdata-assettypejointanimation) to the bundle's skeleton instances, so one clip can move a character's skeleton and the nodes around it together. A bundle's clips are the `AnimationClip` assets it holds, and a clip's name is its asset name. Which clip plays, and when, is supplied by the engine user.
+
+Variable size. The payload's header is one `CpkgAnimationClipData`. Its `Tracks` span refers to an array of `CpkgNodeTrack` in the data area, each with spans referring to its keys, and its `JointAnimations` span refers to an array of `CpkgJointAnimationBinding`, each with a span referring to its path:
 
 ```cpp
-struct CpkgBoneAnimTrack
+struct CpkgNodeTrack
 {
-    uint32_t                BoneIndex = 0;  // bone index of the bone this track animates
-    uint32_t                Padding   = 0;
-    CpkgSpan<CpkgKeyframe>  Keyframes;      // sorted ascending by Time
+    int32_t                 NodeIndex     = -1;  // asset index of the node this track animates; required
+    CpkgAnimationProperty   Property      = CpkgAnimationProperty::Translation;
+    AnimationInterpolation  Interpolation = AnimationInterpolation::Linear;
+    uint32_t                Padding       = 0;
+    CpkgSpan<float>         Times;               // see Animation Tracks
+    CpkgSpan<float>         Values;
+    CpkgSpan<float>         Coefficients;
 };
 
-struct CpkgBoneAnimClipData
+struct CpkgJointAnimationBinding
 {
-    float                       Duration;    // seconds
-    uint32_t                    Padding = 0;
-    CpkgSpan<char>              Skeleton;    // asset path to the Skeleton this clip animates; required
-    CpkgSpan<CpkgBoneAnimTrack> Tracks;
+    int32_t         SkeletonInstanceIndex = -1;  // asset index of the SkeletonInstance the animation poses; required
+    uint32_t        Padding               = 0;
+    CpkgSpan<char>  Animation;                   // asset path to a JointAnimation; required
+};
+
+struct CpkgAnimationClipData
+{
+    float                                Duration;     // seconds
+    uint32_t                             Padding = 0;
+    CpkgSpan<CpkgNodeTrack>              Tracks;
+    CpkgSpan<CpkgJointAnimationBinding>  JointAnimations;
 };
 ```
 
-Each track's `BoneIndex` is less than the skeleton's bone count. A keyframe's transform is relative to the bone's parent bone, or for a root bone to the skeleton instance's node.
+**Node tracks move rigid content.** A node track animates one property of a `TransformNode`'s `LocalTransform`, relative to the node's parent, so the node moves as one rigid body with its attachments and descendants: a door on its hinge, a windmill's blades, a vehicle's wheels, or a prop moving in a character's hand. A node track's node is a `TransformNode` whose `ParentIndex` references a node or is `-1`, and its effective [mobility](#mobility) is `Movable`. A socket's `LocalTransform` is its fixed offset from its joint, so content that moves relative to a joint is a child of a socket on that joint, and its node tracks animate it relative to the socket.
+
+**A clip animates each property once.** No two of its node tracks have the same `NodeIndex` and `Property`, and no two of its bindings reference the same skeleton instance. A binding's `Animation` path resolves to a joint animation whose `Skeleton` path resolves to the same skeleton as the skeleton instance's `Skeleton` path, and the joint animation's tracks animate that skeleton instance's joints over the clip's time.
+
+A clip declares values only for the properties its tracks animate. The [Canvas engine spec](../CanvasCore/README.md) defines the value of every other property while the clip plays.
+
+### CpkgJointAnimationData (AssetType::JointAnimation)
+
+Corresponds to the joint tracks of an `AnimationClipDesc`. A joint animation animates the joints of a shared [`Skeleton`](#cpkgskeletondata-assettypeskeleton), such as a walk cycle or an attack. It is a shared asset: it declares the skeleton it animates, and each track targets one joint by joint index, so a [clip](#cpkganimationclipdata-assettypeanimationclip) in any bundle can bind it to any skeleton instance of that skeleton. A skeleton's joint animations typically live in the skeleton's bundle.
+
+Variable size. The payload's header is one `CpkgJointAnimationData`. Its `Skeleton` span refers to the skeleton path and its `Tracks` span to an array of `CpkgJointTrack` in the data area, each with spans referring to its keys:
+
+```cpp
+struct CpkgJointTrack
+{
+    uint32_t                JointIndex    = 0;   // joint index of the joint this track animates
+    CpkgAnimationProperty   Property      = CpkgAnimationProperty::Translation;
+    AnimationInterpolation  Interpolation = AnimationInterpolation::Linear;
+    uint32_t                Padding       = 0;
+    CpkgSpan<float>         Times;               // see Animation Tracks
+    CpkgSpan<float>         Values;
+    CpkgSpan<float>         Coefficients;
+};
+
+struct CpkgJointAnimationData
+{
+    CpkgSpan<char>            Skeleton;  // asset path to the Skeleton this animation poses; required
+    CpkgSpan<CpkgJointTrack>  Tracks;
+};
+```
+
+Each track's `JointIndex` is less than the skeleton's joint count, and no two tracks have the same `JointIndex` and `Property`. A track animates the joint's local transform, which is relative to its parent joint, or for a root joint to the skeleton instance's node.
 
 ### CpkgMeshSkinData (AssetType::MeshSkin)
 
-Corresponds to `MeshSkinDesc`. A skin deforms a skinned mesh by the bones of a [skeleton](#cpkgskeletondata-assettypeskeleton). It references the skeleton by asset path and its bones by bone index, so it holds no asset index and may live in any bundle, typically beside the mesh it deforms. A [mesh instance](#cpkgmeshinstancedata-assettypemeshinstance) selects the skin and binds it to a skeleton instance. Several meshes of one character may share one skin.
+Corresponds to the skin of a `ModelMeshDesc`. A skin deforms a skinned mesh by the joints of a [skeleton](#cpkgskeletondata-assettypeskeleton). It references the skeleton by asset path and its joints by joint index, so it holds no asset index and may live in any bundle, typically beside the mesh it deforms. A [mesh instance](#cpkgmeshinstancedata-assettypemeshinstance) selects the skin and binds it to a skeleton instance. Several meshes of one character may share one skin.
 
-Variable size. The payload's header is one `CpkgMeshSkinData`, whose spans refer to the skeleton path and the two per-palette-entry arrays in the data area:
+A skin's **bones** are the entries of its parallel `JointIndices` and `InvBindPoses` arrays: bone `i` follows joint `JointIndices[i]`, and `InvBindPoses[i]` maps the mesh's space to that joint's space at bind time. A skinned mesh's `BoneIndices` stream references these bones.
+
+Variable size. The payload's header is one `CpkgMeshSkinData`, whose spans refer to the skeleton path and the two per-bone arrays in the data area:
 
 ```cpp
 // Row-major, Canvas row-vector convention: v' = v * M, translation in row 3.
@@ -888,12 +938,12 @@ struct CpkgInvBindPose { float M[16]; };
 struct CpkgMeshSkinData
 {
     CpkgSpan<char>              Skeleton;      // asset path to the Skeleton this skin is built for; required
-    CpkgSpan<uint32_t>          Bones;         // palette: one bone index into that skeleton per entry; at least one
-    CpkgSpan<CpkgInvBindPose>   InvBindPoses;  // one per palette entry, same order as Bones
+    CpkgSpan<uint32_t>          JointIndices;  // one joint index into that skeleton per bone; at least one
+    CpkgSpan<CpkgInvBindPose>   InvBindPoses;  // one per bone, same order as JointIndices
 };
 ```
 
-The palette size is `Bones.Count`; `InvBindPoses.Count` must equal it. Every `Bones` entry is less than the skeleton's bone count.
+The skin's bone count is `JointIndices.Count`; `InvBindPoses.Count` must equal it. Every `JointIndices` entry is less than the skeleton's joint count.
 
 ### CpkgCameraData (AssetType::Camera)
 
@@ -1190,5 +1240,8 @@ Directions the current design leaves room for. None are committed plans:
 - **Equirectangular skies**: many HDR skies ship as latitude-longitude images. A skybox could accept one through a mapping field, or a writer could convert it to a `Cube` image at build time.
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
-- **Proportional skeleton variants**: characters of different proportions sharing one skeleton and its clips, each mesh with its own rest pose, with per-bone translation retargeting.
+- **Proportional skeleton variants**: characters of different proportions sharing one skeleton and its joint animations, each mesh with its own rest pose, with per-joint translation retargeting.
+- **Root motion**: clips that move a character through the world from its animation, such as a walk cycle whose root joint travels so that each planted foot stays fixed on the ground. A clip's joint animation binding would declare the joint that carries the motion and the parts of it, such as horizontal translation and rotation about +Z, that move the instance's transform, with the rest of the motion staying in the pose.
+- **Animated attributes**: tracks for properties other than local transforms, such as a light's color and intensity, a camera's field of view, or a material parameter. `CpkgAnimationProperty` and the packed track values leave room for them.
+- **Named value tracks**: tracks whose values the engine user reads by name while a clip plays, such as a footstep weight, a muzzle-flash intensity, or a facial expression weight, keyed alongside the transform tracks they go with. Each would carry a name and a value width, and the engine would expose the value under that name. A value track could live in an `AnimationClip`, or in a `JointAnimation` so that it is shared with the skeleton's motion, such as footstep timing traveling with a walk cycle. Imported source formats such as FBX rarely carry such values; they come mainly from an editor that authors package content directly.
 - **UI content**: menus and loading screens are worlds whose content is mostly UI graph, and packages have no asset types for UI graph content yet. Composing them in an editor needs such types.
