@@ -479,7 +479,7 @@ constexpr size_t kCpkgPayloadAlignment = 16;
 
 Payloads are not aligned within the file. Alignment applies to the buffer that `ReadAsset` fills.
 
-Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and `InvBindPoses` with `JointIndices`. An animation track's `Values` and `Coefficients` are sized by its `Times` (see [Animation Tracks](#animation-tracks)).
+Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and `InvBindPoses` with `JointIndices`. An animation track's `Values`, `Interpolations`, and `Tangents` are sized by its `Times` (see [Animation Tracks](#animation-tracks)).
 
 ### Payload Encoding Helpers
 
@@ -839,22 +839,22 @@ enum class CpkgAnimationProperty : uint32_t
 | Track field | Holds |
 |---|---|
 | `Property` | The property the track animates |
-| `Interpolation` | How the value changes between keys, as `CanvasCore.h`'s `AnimationInterpolation` |
 | `Times` | Key times in seconds from clip start, nondecreasing; at least one |
 | `Values` | One value per key, packed |
-| `Coefficients` | For `Cubic`, three values per segment, packed; otherwise empty |
+| `Interpolations` | One `AnimationInterpolation` per key, from `CanvasCore.h`: how the value changes from the key to the next; empty when every key's is `Linear` |
+| `Tangents` | Two tangents per key, packed: its in tangent, then its out tangent; empty when no key's interpolation is `Cubic` |
 
-A value takes as many floats as its `Property` has, and values are packed: `Values` holds `Times.Count` values, each immediately after the one before. A track's values are in the same space as the local transform it animates (see [Conventions](#conventions)).
+A value takes as many floats as its `Property` has, and values are packed: `Values` holds `Times.Count` values, each immediately after the one before. A tangent takes as many floats as a value and is the value's rate of change in units per second, so `Tangents` holds `2 * Times.Count` of them. A track's values and tangents are in the same space as the local transform it animates (see [Conventions](#conventions)).
 
-The value at a time between two keys depends on `Interpolation`. Segment `i` runs from key `i` to key `i + 1`, and `u = (t - Times[i]) / (Times[i + 1] - Times[i])`:
+The value at a time between two keys depends on the earlier key's interpolation. Segment `i` runs from key `i` to key `i + 1`, with `d = Times[i + 1] - Times[i]` and `u = (t - Times[i]) / d`:
 
-| `Interpolation` | Value in segment `i` |
+| Key `i`'s interpolation | Value in segment `i` |
 |---|---|
 | `Linear` | Linear from `Values[i]` to `Values[i + 1]`; spherical linear for `Rotation` |
 | `Step` | `Values[i]` |
-| `Cubic` | `Values[i] + C1 * u + C2 * u^2 + C3 * u^3`, where `C1`, `C2`, `C3` are segment `i`'s coefficients |
+| `Cubic` | The cubic Hermite curve from `Values[i]` to `Values[i + 1]`, leaving with key `i`'s out tangent and arriving with key `i + 1`'s in tangent, component by component: `h00(u) * Values[i] + h10(u) * d * Out[i] + h01(u) * Values[i + 1] + h11(u) * d * In[i + 1]` |
 
-`Coefficients` holds `C1`, `C2`, `C3` for each segment in order: `3 * (Times.Count - 1)` values. It is empty for `Linear` and `Step`, and for a `Cubic` track with one key. Two keys at the same time make the value change at that time to the later key's value. Before the first key the value is the first key's, and after the last key it is the last key's.
+The Hermite basis functions are `h00(u) = 2u^3 - 3u^2 + 1`, `h10(u) = u^3 - 2u^2 + u`, `h01(u) = -2u^3 + 3u^2`, and `h11(u) = u^3 - u^2`. A key's in tangent shapes only a `Cubic` segment that ends at it, and its out tangent only a `Cubic` segment that starts at it; the last key's interpolation shapes no segment. A key whose in and out tangents differ makes a corner in the curve. Two keys at the same time make the value change at that time to the later key's value. Before the first key the value is the first key's, and after the last key it is the last key's.
 
 ### CpkgAnimationClipData (AssetType::AnimationClip)
 
@@ -865,13 +865,12 @@ Variable size. The payload's header is one `CpkgAnimationClipData`. Its `Tracks`
 ```cpp
 struct CpkgNodeTrack
 {
-    int32_t                 NodeIndex     = -1;  // asset index of the node this track animates; required
-    CpkgAnimationProperty   Property      = CpkgAnimationProperty::Translation;
-    AnimationInterpolation  Interpolation = AnimationInterpolation::Linear;
-    uint32_t                Padding       = 0;
-    CpkgSpan<float>         Times;               // see Animation Tracks
-    CpkgSpan<float>         Values;
-    CpkgSpan<float>         Coefficients;
+    int32_t                           NodeIndex = -1;  // asset index of the node this track animates; required
+    CpkgAnimationProperty             Property  = CpkgAnimationProperty::Translation;
+    CpkgSpan<float>                   Times;           // see Animation Tracks
+    CpkgSpan<float>                   Values;
+    CpkgSpan<AnimationInterpolation>  Interpolations;
+    CpkgSpan<float>                   Tangents;
 };
 
 struct CpkgJointAnimationBinding
@@ -905,13 +904,12 @@ Variable size. The payload's header is one `CpkgJointAnimationData`. Its `Skelet
 ```cpp
 struct CpkgJointTrack
 {
-    uint32_t                JointIndex    = 0;   // joint index of the joint this track animates
-    CpkgAnimationProperty   Property      = CpkgAnimationProperty::Translation;
-    AnimationInterpolation  Interpolation = AnimationInterpolation::Linear;
-    uint32_t                Padding       = 0;
-    CpkgSpan<float>         Times;               // see Animation Tracks
-    CpkgSpan<float>         Values;
-    CpkgSpan<float>         Coefficients;
+    uint32_t                          JointIndex = 0;  // joint index of the joint this track animates
+    CpkgAnimationProperty             Property   = CpkgAnimationProperty::Translation;
+    CpkgSpan<float>                   Times;           // see Animation Tracks
+    CpkgSpan<float>                   Values;
+    CpkgSpan<AnimationInterpolation>  Interpolations;
+    CpkgSpan<float>                   Tangents;
 };
 
 struct CpkgJointAnimationData
