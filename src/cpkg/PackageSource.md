@@ -94,6 +94,7 @@ A bundle is an object with a `name` and any of these members:
 | `skyboxes` | Map of name to [skybox](#skyboxes) | `Skybox` |
 | `nodes` | Array of root [nodes](#nodes) | `TransformNode` and its attachments |
 | `placements` | Array of [placements](#placements) relative to the instance transform | `Placement` with `NodeIndex = -1` |
+| `meshFields` | Array of [mesh fields](#mesh-fields) relative to the instance transform | `MeshField` with `NodeIndex = -1` |
 | `importNodes` | Array of [import nodes](#import-nodes) | `ImportNode` and its attachments |
 | `clips` | Map of name to [animation clip](#animation-clips) | `AnimationClip` |
 | `exports` | Array of node names | `ExportList` |
@@ -256,6 +257,7 @@ A track in a skeletal animation or an [animation clip](#animation-clips) builds 
 | `bone` | None | A bone of the parent node's skeleton instance, which makes the node a [socket](../CanvasPkg/README.md#cpkgtransformnodedata-assettypetransformnode): its `ParentIndex` is that `SkeletonInstance` and its `ParentBone` is the bone's name |
 | `skeletonInstance` | None | A `SkeletonInstance` attached to the node: `{ "skeleton": asset path }` |
 | `meshInstances` | None | One `MeshInstance` attached to the node per entry (see below) |
+| `meshFields` | None | One [mesh field](#mesh-fields) attached to the node per entry |
 | `camera` | None | A `Camera` attached to the node (see below) |
 | `light` | None | A `Light` attached to the node (see below) |
 | `placements` | None | One [placement](#placements) attached to the node per entry |
@@ -275,8 +277,8 @@ A placement in a node's `placements` attaches to that node; one in the bundle's 
 
 ```json
 "placements": [
-  { "bundle": "Characters/Goblin", "mobility": "movable", "translation": [12, 4, 0] },
-  { "name": "Flowers", "bundle": "Flower", "transforms": [ { "translation": [1, 2, 0] }, { "translation": [3, 1, 0] } ] }
+  { "name": "Goblin1", "bundle": "Characters/Goblin", "mobility": "movable", "translation": [12, 4, 0] },
+  { "name": "Goblin2", "bundle": "Characters/Goblin", "mobility": "movable", "translation": [14, 5, 0] }
 ]
 ```
 
@@ -285,9 +287,28 @@ A placement in a node's `placements` attaches to that node; one in the bundle's 
 | `name` | Unnamed | The placement's asset name; required for an [import node](#import-nodes) to refer to it |
 | `bundle` | Required | `Bundle`, a bundle path |
 | `mobility` | `"static"` | `Mobility` |
-| `transforms` | One entry, from the placement's own `translation`, `rotation`, and `scale` | `Transforms`: one transform per nested instance, at least one |
+| `translation`, `rotation`, `scale` | Identity | `Transform` |
 
-A placement holds either `transforms` or its own transform fields.
+### Mesh Fields
+
+A mesh field in a node's `meshFields` attaches to that node; one in the bundle's `meshFields` is relative to the instance transform.
+
+```json
+"meshFields": [
+  {
+    "mesh": "Plants/WhiteFlower",
+    "cullDistance": 60,
+    "transforms": [ { "translation": [1, 2, 0] }, { "translation": [3, 1, 0], "rotation": { "degrees": [0, 0, 40] } } ]
+  }
+]
+```
+
+| Field | Default | Builds |
+|---|---|---|
+| `name` | Unnamed | The mesh field's asset name |
+| `mesh` | Required | `MeshData`, an asset path |
+| `cullDistance` | `0` (no limit) | `CullDistance` |
+| `transforms` | Required | `Transforms`: each entry has `translation`, `rotation`, and `scale`, each defaulting to identity; at least one entry |
 
 ### Import Nodes
 
@@ -304,7 +325,7 @@ Each entry of `importNodes` is a node representing a node exported by a placed b
 ]
 ```
 
-`placement` names a placement of this bundle and `export` names an export of its placed bundle. The transform fields build `LocalTransform`, relative to the exported node. An import node may hold `placements`, `meshInstances`, `camera`, `light`, `skeletonInstance`, and `children`, as a node does, and may be named so other content refers to it.
+`placement` names a placement of this bundle and `export` names an export of its placed bundle. The transform fields build `LocalTransform`, relative to the exported node. An import node may hold `placements`, `meshInstances`, `meshFields`, `camera`, `light`, `skeletonInstance`, and `children`, as a node does, and may be named so other content refers to it.
 
 ### Animation Clips
 
@@ -492,7 +513,7 @@ An **edit** changes an imported node, or adds content to it, without changing th
 | `mobility` | Replaces the node's mobility |
 | `camera` | Sets the listed camera fields of the node's camera, or attaches a camera with them when the node has none |
 | `light` | Sets the listed light fields of the node's light, or attaches a light with them when the node has none; a light it attaches has a `type` |
-| `meshInstances`, `placements`, `children` | Adds mesh instances, placements, or child nodes to the node, as a [node](#nodes) holds them |
+| `meshInstances`, `meshFields`, `placements`, `children` | Adds mesh instances, mesh fields, placements, or child nodes to the node, as a [node](#nodes) holds them |
 
 An edit's `children` with `bone` parent to the skeleton instance on the edited node, as the example's `Hand_R_Grip` does. Content anywhere in the bundle refers to imported nodes by name: `exports`, a clip track's `node`, a clip binding's or mesh instance's `skeletonInstance`, and a world's `activeCamera` each accept an imported node.
 
