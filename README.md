@@ -157,7 +157,7 @@ while (running)
 
 ## Engine Spec
 
-The engine's design is specified in [CanvasCore](src/CanvasCore/README.md): the GEM interface model, the plugin architecture, the thread rules, and the project runtime, which opens a project and runs its worlds. Content is stored in [CanvasPkg](src/CanvasPkg/README.md) packages, grouped into [projects](src/CanvasProject/README.md), and built by [`cpkg`](src/cpkg/README.md).
+The engine's design is specified in [CanvasCore](src/CanvasCore/README.md): the GEM interface model, the plugin architecture, the thread rules, worlds and world objects, and the project runtime, which opens a project and runs its worlds. Content is stored in [CanvasPkg](src/CanvasPkg/README.md) packages, grouped into [projects](src/CanvasProject/README.md), and built by [`cpkg`](src/cpkg/README.md).
 
 ## Conventions
 
