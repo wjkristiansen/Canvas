@@ -85,7 +85,12 @@ GEMMETHODIMP CCanvas::RegisterElement(XCanvasElement *pElement)
         }
         else
         {
-            Canvas::LogError(GetLogger(), "Registered unnamed element: %s", pElement->GetTypeName());
+            // A world object's name is an optional label
+            Gem::TGemPtr<XWorldObject> pWorldObject;
+            if (Gem::Succeeded(pElement->QueryInterface(&pWorldObject)))
+                Canvas::LogInfo(GetLogger(), "Registered element: %s", pElement->GetTypeName());
+            else
+                Canvas::LogError(GetLogger(), "Registered unnamed element: %s", pElement->GetTypeName());
         }
     }
     

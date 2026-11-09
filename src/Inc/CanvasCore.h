@@ -73,6 +73,7 @@ constexpr bool HasAnyFlag(E flags, E mask) noexcept
 
 // Forward declarations
 struct XWorld;
+struct XWorldObject;
 struct XCamera;
 struct XLight;
 struct XGfxBuffer;
@@ -560,6 +561,11 @@ XSceneGraphNode : public XCanvasElement
     GEMMETHOD_(XAnimationController *, GetAnimationController)() = 0;
 
     GEMMETHOD(Update)(float dtime) = 0;
+
+    // Returns a weak pointer to the world object this node belongs to, or nullptr if it belongs
+    // to none.  An anchor node belongs to the world object anchored at it, and every other node
+    // inherits the world object of its parent.
+    GEMMETHOD_(XWorldObject *, GetWorldObject)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------
@@ -722,6 +728,20 @@ XWorld : public XCanvasElement
     GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetRootNode)() = 0;
 
+    // Creates a world object anchored at pAnchorNode, and holds it.  An anchor node in this
+    // world's scene graph gives a world object in the scene graph; any other gives a detached
+    // world object; nullptr gives a world object with no anchor node.  name is an
+    // optional label for logs and debugging.  Returns Gem::Result::InvalidArg when pAnchorNode
+    // is already an anchor node or is this world's root node.
+    GEMMETHOD(CreateWorldObject)(_In_opt_ XSceneGraphNode *pAnchorNode, XWorldObject **ppObject, const char *name = nullptr) = 0;
+
+    // A world object is active or inactive, and starts active.  Update updates the active world
+    // objects and leaves the inactive ones as they are.  Activating an active world object, or
+    // deactivating an inactive one, changes nothing.  Each returns Gem::Result::NotFound when
+    // pObject is not one of this world's world objects.
+    GEMMETHOD(ActivateObject)(_In_ XWorldObject *pObject) = 0;
+    GEMMETHOD(DeactivateObject)(_In_ XWorldObject *pObject) = 0;
+
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
     GEMMETHOD_(XCamera *, GetActiveCamera)() const = 0;
 
@@ -746,7 +766,8 @@ XWorld : public XCanvasElement
     // UI graphs.
     GEMMETHOD(RemoveUIGraph)(XUIGraph *pGraph) = 0;
 
-    // Updates the scene graph, then the world's UI graphs.
+    // Updates the active world objects, in the scene graph or detached, by updating the scene graph
+    // and the nodes of each active detached world object, then updates the world's UI graphs.
     GEMMETHOD(Update)(float dtime) = 0;
     // Submits the world's scene content, then its UI graphs.
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
@@ -760,6 +781,28 @@ XWorld : public XCanvasElement
     // again after scene graph topology changes is also safe; it discards any
     // prior state.
     GEMMETHOD_(void, BuildBVH)() = 0;
+};
+
+//------------------------------------------------------------------------------------------------
+// XWorldObject - the identity and state of what a set of scene graph nodes represents, such as
+// an instance of a model.  A world object is anchored at a scene graph node, its anchor node,
+// or has none, and its nodes are the nodes that belong to it (see
+// XSceneGraphNode::GetWorldObject).  A world object whose anchor node is not in its world's
+// scene graph, or that has no anchor node, is detached: it stays in its world and is updated,
+// and its world does not draw its nodes.  The world holds each of its world objects strongly, and a
+// world object holds its anchor node strongly; the anchor node refers back to its world object
+// weakly.  Created by XWorld::CreateWorldObject.
+struct
+XWorldObject : public XCanvasElement
+{
+    GEM_INTERFACE_DECLARE(XWorldObject, 0xD0695B47395323A7);
+
+    // Returns a weak pointer to the world the world object is in, or nullptr once that world
+    // is released.
+    GEMMETHOD_(XWorld *, GetWorld)() = 0;
+
+    // Returns a weak pointer to the world object's anchor node, or nullptr when it has none.
+    GEMMETHOD_(XSceneGraphNode *, GetAnchorNode)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

@@ -35,9 +35,128 @@ GEMMETHODIMP CWorld::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
+void CWorld::Uninitialize()
+{
+    // A world object the app still holds outlives its world.
+    for (auto &pObject : m_WorldObjects)
+        pObject->ClearWorld();
+    m_WorldObjects.clear();
+    m_ActiveObjectCount = 0;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP_(XSceneGraphNode *) CWorld::GetRootNode()
 {
     return m_pRoot.Get();
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::CreateWorldObject(XSceneGraphNode *pAnchorNode, XWorldObject **ppObject, const char *name)
+{
+    CFunctionSentinel sentinel("XWorld::CreateWorldObject", m_pCanvas->GetLogger());
+
+    if (!ppObject)
+        return Gem::Result::BadPointer;
+    *ppObject = nullptr;
+
+    CSceneGraphNode *pAnchor = nullptr;
+    if (pAnchorNode)
+    {
+        pAnchor = static_cast<CSceneGraphNode *>(pAnchorNode);
+        const char *problem = nullptr;
+        if (pAnchor->GetAnchoredObject())
+            problem = "is already an anchor node";
+        else if (pAnchor == m_pRoot.Get())
+            problem = "is this world's root node";
+
+        if (problem)
+        {
+            Canvas::LogError(m_pCanvas->GetLogger(), "XWorld::CreateWorldObject: the anchor node %s", problem);
+            return Gem::Result::InvalidArg;
+        }
+    }
+
+    try
+    {
+        Gem::TGemPtr<CWorldObject> pObject;
+        Gem::ThrowGemError(TCanvasElement<XWorldObject>::CreateAndRegister(
+            &pObject, m_pCanvas, name, this, pAnchor));
+
+        // A new world object starts active
+        const size_t index = m_WorldObjects.size();
+        m_WorldObjects.push_back(pObject);
+        pObject->SetWorldIndex(index);
+        SwapObjects(index, m_ActiveObjectCount);
+        ++m_ActiveObjectCount;
+
+        *ppObject = pObject.Detach();
+    }
+    catch (const Gem::GemError &e)
+    {
+        return e.Result();
+    }
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+CWorldObject *CWorld::FindObject(XWorldObject *pObject) const
+{
+    if (!pObject)
+        return nullptr;
+    CWorldObject *pImpl = static_cast<CWorldObject *>(pObject);
+    const size_t index = pImpl->GetWorldIndex();
+    if (index >= m_WorldObjects.size() || m_WorldObjects[index].Get() != pImpl)
+        return nullptr;
+    return pImpl;
+}
+
+//------------------------------------------------------------------------------------------------
+void CWorld::SwapObjects(size_t a, size_t b)
+{
+    if (a == b)
+        return;
+    std::swap(m_WorldObjects[a], m_WorldObjects[b]);
+    m_WorldObjects[a]->SetWorldIndex(a);
+    m_WorldObjects[b]->SetWorldIndex(b);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::ActivateObject(XWorldObject *pObject)
+{
+    CWorldObject *pImpl = FindObject(pObject);
+    if (!pImpl)
+        return Gem::Result::NotFound;
+
+    // Swap it with the first inactive world object and move the boundary past it
+    const size_t index = pImpl->GetWorldIndex();
+    if (index >= m_ActiveObjectCount)
+    {
+        SwapObjects(index, m_ActiveObjectCount);
+        ++m_ActiveObjectCount;
+    }
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::DeactivateObject(XWorldObject *pObject)
+{
+    CWorldObject *pImpl = FindObject(pObject);
+    if (!pImpl)
+        return Gem::Result::NotFound;
+
+    // Swap it with the last active world object and move the boundary before it
+    const size_t index = pImpl->GetWorldIndex();
+    if (index < m_ActiveObjectCount)
+    {
+        SwapObjects(index, m_ActiveObjectCount - 1);
+        --m_ActiveObjectCount;
+    }
+    return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -84,6 +203,30 @@ GEMMETHODIMP CWorld::Update(float dtime)
     Gem::Result result = m_pRoot->Update(dtime);
     if (Gem::Failed(result))
         return result;
+
+    // An active detached world object's nodes are outside this world's scene graph, so the walk
+    // from the root node misses them.  Each is updated from its anchor node, unless it is
+    // anchored below another of this world's active world objects, whose update covers it.
+    for (size_t i = 0; i < m_ActiveObjectCount; ++i)
+    {
+        CSceneGraphNode *pAnchor = m_WorldObjects[i]->GetAnchor();
+        if (!pAnchor)
+            continue;
+
+        bool covered = false;
+        for (CSceneGraphNode *pNode = pAnchor->GetParentNode(); pNode && !covered; pNode = pNode->GetParentNode())
+        {
+            CWorldObject *pAbove = pNode->GetAnchoredObject();
+            covered = pNode == m_pRoot.Get() ||
+                      (pAbove && pAbove->GetWorld() == this && pAbove->GetWorldIndex() < m_ActiveObjectCount);
+        }
+        if (covered)
+            continue;
+
+        result = pAnchor->Update(dtime);
+        if (Gem::Failed(result))
+            return result;
+    }
 
     for (auto &pGraph : m_UIGraphs)
     {

@@ -8,6 +8,7 @@
 #include "SceneGraph.h"
 #include "WorldBVH.h"
 #include "LightBVH.h"
+#include "WorldObject.h"
 
 namespace Canvas
 {
@@ -55,6 +56,16 @@ private:
     // The world's UI graphs, in creation order, which is their draw order.
     std::vector<Gem::TGemPtr<XUIGraph>> m_UIGraphs;
 
+    // The world's world objects, active ones first: [0, m_ActiveObjectCount) are active and the
+    // rest inactive.  Each object stores its index here, so activating or deactivating one is a
+    // swap across the boundary.  Each refers back to the world weakly, cleared in Uninitialize.
+    std::vector<Gem::TGemPtr<CWorldObject>> m_WorldObjects;
+    size_t m_ActiveObjectCount = 0;
+
+    // Finds pObject among this world's world objects, or returns nullptr.
+    CWorldObject *FindObject(XWorldObject *pObject) const;
+    void SwapObjects(size_t a, size_t b);
+
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
@@ -65,7 +76,7 @@ public:
     CWorld(XCanvas *pCanvas, XGfxDevice *pDevice);
 
     Gem::Result Initialize();
-    void Uninitialize() {}
+    void Uninitialize();
     
 public: // XWorld methods
     GEMMETHOD_(XGfxDevice *, GetDevice)() final
@@ -74,6 +85,10 @@ public: // XWorld methods
     }
 
     GEMMETHOD_(XSceneGraphNode *, GetRootNode)();
+
+    GEMMETHOD(CreateWorldObject)(_In_opt_ XSceneGraphNode *pAnchorNode, XWorldObject **ppObject, const char *name) final;
+    GEMMETHOD(ActivateObject)(_In_ XWorldObject *pObject) final;
+    GEMMETHOD(DeactivateObject)(_In_ XWorldObject *pObject) final;
 
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) final
     {

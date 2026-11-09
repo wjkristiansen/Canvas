@@ -6,6 +6,7 @@
 
 #include "SceneGraph.h"
 #include "Camera.h"
+#include "WorldObject.h"
 
 namespace Canvas
 {
@@ -31,11 +32,13 @@ Gem::Result CSceneGraphNode::Initialize()
 //------------------------------------------------------------------------------------------------
 void CSceneGraphNode::Uninitialize()
 {
-    // Clean up all child wrapper nodes
+    // Clean up all child wrapper nodes.  A child held elsewhere, such as the anchor node of a
+    // world object, outlives this node, so its parent pointer is cleared first.
     ChildNode* pChild = m_pFirstChild;
     while (pChild)
     {
         ChildNode* pNext = pChild->m_pNext;
+        static_cast<CSceneGraphNode*>(pChild->m_pNode.Get())->m_pParent = nullptr;
         delete pChild;
         pChild = pNext;
     }
@@ -43,6 +46,17 @@ void CSceneGraphNode::Uninitialize()
     m_pLastChild = nullptr;
     m_ChildMap.clear();
     m_pAnimController = nullptr;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(XWorldObject *) CSceneGraphNode::GetWorldObject()
+{
+    for (CSceneGraphNode *pNode = this; pNode; pNode = pNode->m_pParent)
+    {
+        if (pNode->m_pAnchoredObject)
+            return pNode->m_pAnchoredObject;
+    }
+    return nullptr;
 }
 
 //------------------------------------------------------------------------------------------------
