@@ -1,14 +1,14 @@
 //================================================================================================
-// SceneBVH implementation.
+// WorldBVH implementation.
 //================================================================================================
 
 #include "pch.h"
-#include "SceneBVH.h"
+#include "WorldBVH.h"
 
 namespace Canvas
 {
 
-void SceneBVH::Clear()
+void WorldBVH::Clear()
 {
     m_Primitives.clear();
     m_RenderableNodes.clear();
@@ -17,7 +17,7 @@ void SceneBVH::Clear()
     m_Built = false;
 }
 
-void SceneBVH::Build(XSceneGraphNode* root)
+void WorldBVH::Build(XSceneGraphNode* root)
 {
     Clear();
 
@@ -84,19 +84,19 @@ void SceneBVH::Build(XSceneGraphNode* root)
     if (!m_Primitives.empty())
         m_BVH.Build(m_Primitives.data(), m_Primitives.size());
 
-    // Mark built even when the scene has no renderable elements;
+    // Mark built even when the world has no renderable elements;
     // otherwise we'd re-walk the graph every frame.
     m_Built = true;
 }
 
-bool SceneBVH::IsRenderableNode(XSceneGraphNode* node) const
+bool WorldBVH::IsRenderableNode(XSceneGraphNode* node) const
 {
     if (!node)
         return false;
     return m_RenderableNodes.find(node) != m_RenderableNodes.end();
 }
 
-void SceneBVH::QueryFrustum(XCamera* camera,
+void WorldBVH::QueryFrustum(XCamera* camera,
                             std::unordered_set<XSceneGraphNode*>& outVisibleNodes) const
 {
     outVisibleNodes.clear();
@@ -108,7 +108,7 @@ void SceneBVH::QueryFrustum(XCamera* camera,
     QueryFrustum(f, outVisibleNodes);
 }
 
-void SceneBVH::QueryFrustum(const Math::Frustum& frustum,
+void WorldBVH::QueryFrustum(const Math::Frustum& frustum,
                             std::unordered_set<XSceneGraphNode*>& outVisibleNodes) const
 {
     outVisibleNodes.clear();

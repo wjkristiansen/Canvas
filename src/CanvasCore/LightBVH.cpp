@@ -130,7 +130,7 @@ void LightBVH::Build(XSceneGraphNode* root)
     if (!root)
         return;
 
-    // Iterative DFS to match SceneBVH (and to defend against the
+    // Iterative DFS to match WorldBVH (and to defend against the
     // deep instanced subtrees that can occur in imported scenes).
     std::vector<XSceneGraphNode*> stack;
     stack.reserve(64);

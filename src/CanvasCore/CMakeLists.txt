@@ -18,7 +18,7 @@ add_library(CanvasCore SHARED
     TextLayout.cpp
     UIGraph.cpp
     BVH.cpp
-    SceneBVH.cpp
+    WorldBVH.cpp
     LightBVH.cpp
 
     # Header files (for IDE organization)
@@ -43,7 +43,7 @@ add_library(CanvasCore SHARED
     Timeline.h
     Timer.h
     BVH.h
-    SceneBVH.h
+    WorldBVH.h
     LightBVH.h
     pch.h
     targetver.h

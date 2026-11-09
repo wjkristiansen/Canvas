@@ -52,8 +52,8 @@ GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
 
         // Auto-build if the caller didn't invoke BuildBVH() at load
         // time.  Eats the first-frame cost rather than failing.
-        if (!m_SceneBVH.IsBuilt())
-            m_SceneBVH.Build(m_pRoot.Get());
+        if (!m_WorldBVH.IsBuilt())
+            m_WorldBVH.Build(m_pRoot.Get());
         if (!m_LightBVH.IsBuilt())
             m_LightBVH.Build(m_pRoot.Get());
 
@@ -63,7 +63,7 @@ GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
         // nothing renderable is submitted.
         m_VisibleNodeScratch.clear();
         if (m_pActiveCamera)
-            m_SceneBVH.QueryFrustum(m_pActiveCamera.Get(), m_VisibleNodeScratch);
+            m_WorldBVH.QueryFrustum(m_pActiveCamera.Get(), m_VisibleNodeScratch);
 
         // Light visibility: union of untracked lights (ambient /
         // directional / area -- always relevant) and frustum-culled
@@ -107,7 +107,7 @@ GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
             // after Build), so a stale BVH never hides geometry.
             if (pNode->GetBoundElementCount() > 0)
             {
-                const bool renderable = m_SceneBVH.IsRenderableNode(pNode);
+                const bool renderable = m_WorldBVH.IsRenderableNode(pNode);
                 const bool visible    = !renderable || m_VisibleNodeScratch.count(pNode) > 0;
                 if (visible)
                     Gem::ThrowGemError(pRenderQueue->SubmitForRender(pNode));
