@@ -41,6 +41,61 @@ GEMMETHODIMP_(XSceneGraphNode *) CWorld::GetRootNode()
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::CreateUIGraph(XUIGraph **ppGraph)
+{
+    if (!ppGraph)
+        return Gem::Result::BadPointer;
+    *ppGraph = nullptr;
+
+    try
+    {
+        Gem::TGemPtr<XUIGraph> pGraph;
+        Gem::ThrowGemError(m_pCanvas->CreateUIGraph(m_pDevice, &pGraph));
+        m_UIGraphs.push_back(pGraph);
+        *ppGraph = pGraph.Detach();
+    }
+    catch (const Gem::GemError &e)
+    {
+        return e.Result();
+    }
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::RemoveUIGraph(XUIGraph *pGraph)
+{
+    auto it = std::find_if(m_UIGraphs.begin(), m_UIGraphs.end(),
+        [pGraph](const Gem::TGemPtr<XUIGraph> &p) { return p.Get() == pGraph; });
+    if (!pGraph || it == m_UIGraphs.end())
+        return Gem::Result::NotFound;
+
+    m_UIGraphs.erase(it);
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::Update(float dtime)
+{
+    Gem::Result result = m_pRoot->Update(dtime);
+    if (Gem::Failed(result))
+        return result;
+
+    for (auto &pGraph : m_UIGraphs)
+    {
+        result = pGraph->Update();
+        if (Gem::Failed(result))
+            return result;
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
 {
     try
@@ -119,6 +174,10 @@ GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
                 m_TraversalStack.push_back(pChild);
             }
         }
+
+        // UI graphs draw over the world's scene content, in creation order
+        for (auto &pGraph : m_UIGraphs)
+            Gem::ThrowGemError(pGraph->SubmitRenderables(pRenderQueue));
     }
     catch (const Gem::GemError &e)
     {

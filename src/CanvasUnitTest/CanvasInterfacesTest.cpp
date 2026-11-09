@@ -68,6 +68,43 @@ TEST(CanvasInterfacesTest, SimpleInterfaces)
     EXPECT_TRUE(0 == strncmp(pSceneGraphNode->GetName(), szNodeName, _countof(szNodeName)));
 }
 
+TEST(CanvasInterfacesTest, WorldUIGraphs)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "UIWorld")));
+
+    EXPECT_EQ(Gem::Result::BadPointer, pWorld->CreateUIGraph(nullptr));
+
+    // The world creates its UI graphs on its own device
+    Gem::TGemPtr<Canvas::XUIGraph> pHud;
+    Gem::TGemPtr<Canvas::XUIGraph> pMenu;
+    ASSERT_TRUE(Succeeded(pWorld->CreateUIGraph(&pHud)));
+    ASSERT_TRUE(Succeeded(pWorld->CreateUIGraph(&pMenu)));
+    ASSERT_NE(nullptr, pHud.Get());
+    ASSERT_NE(nullptr, pMenu.Get());
+    EXPECT_NE(pHud.Get(), pMenu.Get());
+    EXPECT_EQ(pDevice.Get(), pHud->GetDevice());
+
+    Gem::TGemPtr<Canvas::XUIGraphNode> pNode;
+    ASSERT_TRUE(Succeeded(pHud->CreateNode(nullptr, &pNode)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
+
+    // A UI graph created on its own is not one of the world's
+    Gem::TGemPtr<Canvas::XUIGraph> pConsole;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateUIGraph(pDevice, &pConsole)));
+    EXPECT_EQ(Gem::Result::NotFound, pWorld->RemoveUIGraph(pConsole));
+    EXPECT_EQ(Gem::Result::NotFound, pWorld->RemoveUIGraph(nullptr));
+
+    EXPECT_TRUE(Succeeded(pWorld->RemoveUIGraph(pMenu)));
+    EXPECT_EQ(Gem::Result::NotFound, pWorld->RemoveUIGraph(pMenu));
+    EXPECT_TRUE(Succeeded(pWorld->RemoveUIGraph(pHud)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
+}
+
 TEST(CanvasInterfacesTest, SceneGraphNodesTest)
 {
     // Create XCanvas object

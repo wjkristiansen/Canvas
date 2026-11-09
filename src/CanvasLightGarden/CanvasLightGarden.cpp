@@ -658,13 +658,11 @@ public:
             if (m_pInput->IsKeyDown(VK_ESCAPE))
                 running = false;
 
+            UpdateHud();
+
             m_pRenderQueue->BeginFrame(m_pSwapChain);
             m_pWorld->Update(dt);
             m_pWorld->SubmitRenderables(m_pRenderQueue);
-
-            UpdateHud();
-            m_pUIGraph->Update();
-            m_pUIGraph->SubmitRenderables(m_pRenderQueue);
 
             m_pRenderQueue->EndFrame();
             m_pRenderQueue->FlushAndPresent(m_pSwapChain);
@@ -733,7 +731,7 @@ private:
         m_pFont     = LoadFont(fontsDir / "Inter-Regular.ttf",         "Inter");
         m_pFontMono = LoadFont(fontsDir / "JetBrainsMono-Regular.ttf", "JetBrainsMono");
 
-        Gem::ThrowGemError(m_pCanvas->CreateUIGraph(m_pDevice, &m_pUIGraph));
+        Gem::ThrowGemError(m_pWorld->CreateUIGraph(&m_pUIGraph));
 
         Gem::TGemPtr<Canvas::XUIGraphNode> pHud;
         Gem::ThrowGemError(m_pUIGraph->CreateNode(nullptr, &pHud));

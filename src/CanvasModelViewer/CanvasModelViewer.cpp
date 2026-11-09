@@ -815,9 +815,9 @@ public:
             pFontMono = LoadFont(fontsDir / "JetBrainsMono-Regular.ttf", "JetBrainsMono");
 
             initStep = "create_ui_graph";
-            // Create UI graph for text rendering
+            // Create the world's UI graph for the HUD
             Gem::TGemPtr<Canvas::XUIGraph> pUIGraph;
-            Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, &pUIGraph));
+            Gem::ThrowGemError(pWorld->CreateUIGraph(&pUIGraph));
 
             // Single HUD node for all UI elements
             Gem::TGemPtr<Canvas::XUIGraphNode> pHudNode;
@@ -1108,11 +1108,6 @@ public:
                 }
             }
 
-            // Update world, submit renderables (including lights), render
-            m_pGfxRenderQueue->BeginFrame(m_pGfxSwapChain);
-            m_pWorld->Update(dtime);
-            m_pWorld->SubmitRenderables(m_pGfxRenderQueue);
-            
             // Update FPS text only when the formatted string changes
             if (m_fps > 0.0f)
             {
@@ -1143,8 +1138,10 @@ public:
                 }
             }
 
-            m_pUIGraph->Update();
-            m_pUIGraph->SubmitRenderables(m_pGfxRenderQueue);
+            // Update world, submit renderables (including lights and UI), render
+            m_pGfxRenderQueue->BeginFrame(m_pGfxSwapChain);
+            m_pWorld->Update(dtime);
+            m_pWorld->SubmitRenderables(m_pGfxRenderQueue);
 
             m_pGfxRenderQueue->EndFrame();
             m_pGfxRenderQueue->FlushAndPresent(m_pGfxSwapChain);

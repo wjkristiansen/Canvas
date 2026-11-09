@@ -52,6 +52,9 @@ private:
     Gem::TGemPtr<XGfxSurface>         m_pSkyboxCubemapA;
     Gem::TGemPtr<XGfxSurface>         m_pSkyboxCubemapB;
 
+    // The world's UI graphs, in creation order, which is their draw order.
+    std::vector<Gem::TGemPtr<XUIGraph>> m_UIGraphs;
+
 public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
@@ -103,10 +106,10 @@ public: // XWorld methods
         return &m_Background;
     }
 
-    GEMMETHOD(Update)(float dtime) final
-    {
-        return m_pRoot->Update(dtime);
-    }
+    GEMMETHOD(CreateUIGraph)(XUIGraph **ppGraph) final;
+    GEMMETHOD(RemoveUIGraph)(XUIGraph *pGraph) final;
+
+    GEMMETHOD(Update)(float dtime) final;
 
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) final;
 
