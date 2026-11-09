@@ -1,23 +1,23 @@
 //================================================================================================
-// Scene
+// World
 //================================================================================================
 
 #include "pch.h"
 
-#include "Scene.h"
+#include "World.h"
 
 namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CScene::CScene(XCanvas *pCanvas, XGfxDevice *pDevice) :
+CWorld::CWorld(XCanvas *pCanvas, XGfxDevice *pDevice) :
     TCanvasElement(pCanvas),
     m_pDevice(pDevice)
 {
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CScene::Initialize()
+GEMMETHODIMP CWorld::Initialize()
 {
     try
     {
@@ -35,13 +35,13 @@ GEMMETHODIMP CScene::Initialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CScene::GetRootNode()
+GEMMETHODIMP_(XSceneGraphNode *) CWorld::GetRootNode()
 {
     return m_pRoot.Get();
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CScene::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
+GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
 {
     try
     {

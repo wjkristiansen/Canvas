@@ -95,7 +95,7 @@ public:
 
     void Initialize(
         Canvas::XCanvas*           pCanvas,
-        Canvas::XScene*       pScene)
+        Canvas::XWorld*       pWorld)
     {
         Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &m_pSun, "Sun"));
         Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &m_pMoon, "Moon"));
@@ -124,7 +124,7 @@ public:
         m_pMoonNode->BindElement(m_pMoon);
         m_pAmbientNode->BindElement(m_pAmbient);
 
-        Canvas::XSceneGraphNode* pRoot = pScene->GetRootNode();
+        Canvas::XSceneGraphNode* pRoot = pWorld->GetRootNode();
         pRoot->AddChild(m_pSunNode);
         pRoot->AddChild(m_pMoonNode);
         pRoot->AddChild(m_pAmbientNode);
@@ -345,7 +345,7 @@ class CTerrainApp
     Gem::TGemPtr<Canvas::Platform::Win32::XAppWindow> m_pWindow;
     Gem::TGemPtr<Canvas::Platform::Win32::XRawInput>  m_pInput;
     Gem::TGemPtr<Canvas::XCanvas>           m_pCanvas;
-    Gem::TGemPtr<Canvas::XScene>       m_pScene;
+    Gem::TGemPtr<Canvas::XWorld>       m_pWorld;
     Gem::TGemPtr<Canvas::XCamera>           m_pCamera;
     Gem::TGemPtr<Canvas::XCanvasPlugin>     m_pGfxPlugin;
     Gem::TGemPtr<Canvas::XGfxDevice>        m_pGfxDevice;
@@ -560,7 +560,7 @@ class CTerrainApp
         Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&m_pTerrainRootNode, "TerrainRoot"));
         m_pTerrainRootNode->SetLocalTranslation(
             Canvas::Math::FloatVector4{ matOpts.OriginX, matOpts.OriginY, 0.0f, 1.0f });
-        m_pScene->GetRootNode()->AddChild(m_pTerrainRootNode);
+        m_pWorld->GetRootNode()->AddChild(m_pTerrainRootNode);
 
         m_SubtileMeshes   .reserve(static_cast<size_t>(N) * N);
         m_SubtileInstances.reserve(static_cast<size_t>(N) * N);
@@ -719,7 +719,7 @@ class CTerrainApp
     // assets directory as the heightmap, and schedule the COMMON ->
     // SHADER_RESOURCE transitions so the composite pass can sample them.  The
     // per-frame UpdateSkyBackground picks an adjacent pair + crossfade factor
-    // by time of day and pushes it into XScene::SetBackground.
+    // by time of day and pushes it into XWorld::SetBackground.
     bool LoadSky()
     {
         // Sky assets live next to the rest of the bundled tile assets
@@ -779,7 +779,7 @@ class CTerrainApp
     }
 
     // Pick the adjacent (A, B) cubemap pair and blend factor for the current
-    // time of day, then publish them through the scene background API.  The
+    // time of day, then publish them through the world background API.  The
     // four anchor presets across the 24-hour cycle are
     //   phase 0.00 = night   0.25 = dusk    0.50 = day    0.75 = dusk
     // each segment crossfading linearly to the next, so dusk is the shared
@@ -841,7 +841,7 @@ class CTerrainApp
         bg.MoonColor         = moonColor;
         bg.MoonAngularRadius = 0.05f;    // ~3 deg
 
-        m_pScene->SetBackground(&bg);
+        m_pWorld->SetBackground(&bg);
     }
 
 public:
@@ -909,9 +909,9 @@ public:
             // (no-op in release builds / on backends without a debug layer).
             pDevice->SetDebugMessageSeverity(m_gfxDebugSeverity);
 
-            initStep = "create_scene";
-            Gem::TGemPtr<Canvas::XScene> pScene;
-            Gem::ThrowGemError(pCanvas->CreateScene(pDevice, &pScene, "TerrainScene"));
+            initStep = "create_world";
+            Gem::TGemPtr<Canvas::XWorld> pWorld;
+            Gem::ThrowGemError(pCanvas->CreateWorld(pDevice, &pWorld, "TerrainWorld"));
 
             initStep = "create_render_queue";
             Gem::TGemPtr<Canvas::XGfxRenderQueue> pRq;
@@ -933,12 +933,12 @@ public:
             Gem::TGemPtr<Canvas::XSceneGraphNode> pCameraNode;
             Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pCameraNode, "MainCameraNode"));
             pCameraNode->BindElement(pCamera);
-            pScene->GetRootNode()->AddChild(pCameraNode);
-            pScene->SetActiveCamera(pCamera);
+            pWorld->GetRootNode()->AddChild(pCameraNode);
+            pWorld->SetActiveCamera(pCamera);
 
             // Stash early so LoadTerrain can use them.
             m_pCanvas = pCanvas;
-            m_pScene  = pScene;
+            m_pWorld  = pWorld;
             m_pGfxPlugin = pGfxPlugin;
             m_pGfxDevice = pDevice;
             m_pGfxRenderQueue = pRq;
@@ -947,7 +947,7 @@ public:
 
             initStep = "init_day_night";
             m_DayNight.SetCycleSeconds(m_CycleSeconds);
-            m_DayNight.Initialize(pCanvas, pScene);
+            m_DayNight.Initialize(pCanvas, pWorld);
 
             initStep = "load_terrain";
             if (!LoadTerrain())
@@ -1200,8 +1200,8 @@ public:
 
             // Frame submit.
             m_pGfxRenderQueue->BeginFrame(m_pGfxSwapChain);
-            m_pScene->Update(dtime);
-            m_pScene->SubmitRenderables(m_pGfxRenderQueue);
+            m_pWorld->Update(dtime);
+            m_pWorld->SubmitRenderables(m_pGfxRenderQueue);
 
             // Refresh status HUD.
             char buf[128];

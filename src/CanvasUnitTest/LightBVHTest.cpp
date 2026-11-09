@@ -3,7 +3,7 @@
 //
 // Tests run against the real CanvasCore factory (XCanvas, XLight,
 // XSceneGraphNode) and the engine-loaded CanvasGfx12 plugin (only
-// because XScene construction needs an XGfxDevice).  No GPU work is
+// because XWorld construction needs an XGfxDevice).  No GPU work is
 // dispatched; we just exercise the LightBVH classification and
 // frustum-query logic against a hand-built scene graph.
 //================================================================================================
@@ -113,17 +113,17 @@ bool ListContains(const std::vector<XLight*>& v, XLight* p)
 
 } // anonymous namespace
 
-TEST(LightBVHTest, EmptySceneBuildsCleanly)
+TEST(LightBVHTest, EmptyWorldBuildsCleanly)
 {
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     LightBVH bvh;
-    bvh.Build(pScene->GetRootNode());
+    bvh.Build(pWorld->GetRootNode());
     EXPECT_TRUE(bvh.IsBuilt());
     EXPECT_EQ(size_t(0), bvh.TrackedLightCount());
     EXPECT_EQ(size_t(0), bvh.UntrackedLightCount());
@@ -144,18 +144,18 @@ TEST(LightBVHTest, NonSpatialLightsAreUntracked)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     Gem::TGemPtr<XLight> pDir, pAmb;
     Gem::TGemPtr<XSceneGraphNode> pDirNode, pAmbNode;
-    MakeDirectionalLight(pCanvas, pScene->GetRootNode(), pDir, pDirNode);
-    MakeAmbientLight   (pCanvas, pScene->GetRootNode(), pAmb, pAmbNode);
+    MakeDirectionalLight(pCanvas, pWorld->GetRootNode(), pDir, pDirNode);
+    MakeAmbientLight   (pCanvas, pWorld->GetRootNode(), pAmb, pAmbNode);
 
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     LightBVH bvh;
-    bvh.Build(pScene->GetRootNode());
+    bvh.Build(pWorld->GetRootNode());
     EXPECT_EQ(size_t(0), bvh.TrackedLightCount());
     EXPECT_EQ(size_t(2), bvh.UntrackedLightCount());
     EXPECT_FALSE(bvh.IsTrackedLight(pDir.Get()));
@@ -177,8 +177,8 @@ TEST(LightBVHTest, PointLightsAreTrackedAndCulled)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Three point lights:
     //   pInFront -- inside the camera frustum
@@ -186,17 +186,17 @@ TEST(LightBVHTest, PointLightsAreTrackedAndCulled)
     //   pBehind  -- behind the camera
     Gem::TGemPtr<XLight> pInFront, pSide, pBehind;
     Gem::TGemPtr<XSceneGraphNode> pInFrontNode, pSideNode, pBehindNode;
-    MakePointLight(pCanvas, pScene->GetRootNode(),
+    MakePointLight(pCanvas, pWorld->GetRootNode(),
                    FloatVector4(10.0f, 0.0f, 0.0f, 1.0f), 1.0f, pInFront, pInFrontNode);
-    MakePointLight(pCanvas, pScene->GetRootNode(),
+    MakePointLight(pCanvas, pWorld->GetRootNode(),
                    FloatVector4(10.0f, 50.0f, 0.0f, 1.0f), 1.0f, pSide,    pSideNode);
-    MakePointLight(pCanvas, pScene->GetRootNode(),
+    MakePointLight(pCanvas, pWorld->GetRootNode(),
                    FloatVector4(-10.0f, 0.0f, 0.0f, 1.0f), 1.0f, pBehind,  pBehindNode);
 
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     LightBVH bvh;
-    bvh.Build(pScene->GetRootNode());
+    bvh.Build(pWorld->GetRootNode());
     EXPECT_EQ(size_t(3), bvh.TrackedLightCount());
     EXPECT_EQ(size_t(0), bvh.UntrackedLightCount());
     EXPECT_TRUE(bvh.IsTrackedLight(pInFront.Get()));
@@ -222,20 +222,20 @@ TEST(LightBVHTest, SpotLightsAreTracked)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     Gem::TGemPtr<XLight> pSpot;
     Gem::TGemPtr<XSceneGraphNode> pSpotNode;
-    MakeSpotLight(pCanvas, pScene->GetRootNode(),
+    MakeSpotLight(pCanvas, pWorld->GetRootNode(),
                   FloatVector4(5.0f, 0.0f, 0.0f, 1.0f),
                   10.0f, /*outerDeg*/ 30.0f,
                   pSpot, pSpotNode);
 
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     LightBVH bvh;
-    bvh.Build(pScene->GetRootNode());
+    bvh.Build(pWorld->GetRootNode());
     EXPECT_EQ(size_t(1), bvh.TrackedLightCount());
     EXPECT_TRUE(bvh.IsTrackedLight(pSpot.Get()));
 
@@ -258,18 +258,18 @@ TEST(LightBVHTest, RebuildClearsPriorState)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     Gem::TGemPtr<XLight> pPt;
     Gem::TGemPtr<XSceneGraphNode> pPtNode;
-    MakePointLight(pCanvas, pScene->GetRootNode(),
+    MakePointLight(pCanvas, pWorld->GetRootNode(),
                    FloatVector4(1.0f, 0.0f, 0.0f, 1.0f), 1.0f, pPt, pPtNode);
 
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     LightBVH bvh;
-    bvh.Build(pScene->GetRootNode());
+    bvh.Build(pWorld->GetRootNode());
     EXPECT_EQ(size_t(1), bvh.TrackedLightCount());
     XLight* pPtRaw = pPt.Get();
     EXPECT_TRUE(bvh.IsTrackedLight(pPtRaw));

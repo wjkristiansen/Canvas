@@ -26,7 +26,7 @@ void SceneBVH::Build(XSceneGraphNode* root)
 
     // Iterative DFS rather than recursion: scene graphs can be very deep
     // (instanced model subtrees, hierarchical rigs) and Canvas already
-    // uses this pattern in CScene::SubmitRenderables for the same reason.
+    // uses this pattern in CWorld::SubmitRenderables for the same reason.
     std::vector<XSceneGraphNode*> stack;
     stack.reserve(64);
     stack.push_back(root);

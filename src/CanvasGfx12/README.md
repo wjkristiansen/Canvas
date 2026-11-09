@@ -36,7 +36,7 @@ Before diving into subsystems, here is the end-to-end sequence for rendering a s
 ```
 Application                      CanvasGfx12
 -----------                      -----------
-pScene->Update(dt)               Scene graph propagates dirty transforms.
+pWorld->Update(dt)               Scene graph propagates dirty transforms.
                                  SubmitRenderables walks the tree, calling
                                  SubmitForRender on the render queue for
                                  each node with a bound element.
@@ -464,7 +464,7 @@ The displaced shadow PSO shares the VS and HS bytecode (ensuring shadow tessella
 
 ### Light Submission
 
-Lights are accumulated during scene graph traversal (gated by the LightBVH-driven visibility filter that `XScene::SubmitRenderables` installs via `XGfxRenderQueue::SetVisibleLights`). Each light's attenuation and cull distance are pre-computed on the CPU and packed into an `HlslLight` struct. The packed lights are uploaded each frame as a `StructuredBuffer<HlslLight>` (bound at root slot 2 / shader register `t8`), sized to the actual visible-light count - no fixed cap; the count scales with scene complexity the same way mesh-instance count does.
+Lights are accumulated during scene graph traversal (gated by the LightBVH-driven visibility filter that `XWorld::SubmitRenderables` installs via `XGfxRenderQueue::SetVisibleLights`). Each light's attenuation and cull distance are pre-computed on the CPU and packed into an `HlslLight` struct. The packed lights are uploaded each frame as a `StructuredBuffer<HlslLight>` (bound at root slot 2 / shader register `t8`), sized to the actual visible-light count - no fixed cap; the count scales with scene complexity the same way mesh-instance count does.
 
 After SubmitLight aggregation and `ResolveShadowCasters`, `BuildTileLightLists` divides the framebuffer into `LIGHT_TILE_SIZE_PIXELS` * `LIGHT_TILE_SIZE_PIXELS` (32x32) screen tiles, constructs each tile's sub-frustum by remapping the camera view-projection to the tile's NDC sub-rect, and bins each spatial light's influence AABB against it. Always-on lights (ambient / directional) are pre-baked into every tile's list. The resulting per-tile counts and packed indices are uploaded as two `StructuredBuffer<uint>`s (root slots 3 / 4 at `t9` / `t10`) capped at `MAX_LIGHTS_PER_TILE` (32) per tile. The composite shader picks the owning tile from `SV_Position`, reads its count, and iterates only those light indices - turning the per-pixel cost from O(visible lights) into O(tile lights).
 
@@ -498,7 +498,7 @@ The composition task binds the composition PSO, sets the back buffer as the sing
 
 ### Background and Skybox
 
-For pixels with no geometry, the composition shader falls back to the scene background, configured per-scene via `XScene::SetBackground` (which the render queue picks up via `XGfxRenderQueue::SetBackground`). The background is described by `GfxBackgroundDesc`:
+For pixels with no geometry, the composition shader falls back to the world background, configured per world via `XWorld::SetBackground` (which the render queue picks up via `XGfxRenderQueue::SetBackground`). The background is described by `GfxBackgroundDesc`:
 
 - **Solid color fallback**: when no skybox is bound, the scene fills empty pixels with `SolidColor`. This is the default for newly created scenes (opaque black).
 - **Skybox cubemap**: when `pSkyboxCubemapA` is set, empty pixels are filled by sampling the cubemap in the world-space view direction, rotated by the inverse of `Orientation`. `Intensity` is a linear multiplier on the sample.
@@ -713,7 +713,7 @@ CanvasCore owns the scene graph and UI graph; CanvasGfx12 consumes them during r
 
 ### Scene Graph
 
-`XScene` is a hierarchical transform graph. Each `XSceneGraphNode` carries a local rotation (quaternion), translation, and scale. Global transforms are computed lazily with dirty-flag propagation, avoiding redundant matrix recomputation when only a few nodes change.
+An `XWorld` holds a scene graph, a hierarchical transform graph. Each `XSceneGraphNode` carries a local rotation (quaternion), translation, and scale. Global transforms are computed lazily with dirty-flag propagation, avoiding redundant matrix recomputation when only a few nodes change.
 
 During `Update`, the scene graph marks dirty transforms and propagates them down the hierarchy. `SubmitRenderables` then traverses the graph and calls `SubmitForRender` on the render queue for each node that carries a bound element. Lights are extracted and routed to `SubmitLight`. Mesh instances are queued for drawing in `EndFrame`.
 

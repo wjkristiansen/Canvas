@@ -1,7 +1,7 @@
 //================================================================================================
 // SceneBVH
 //
-// Owns the primitive table for a CScene and the BVH built over it.
+// Owns the primitive table for a CWorld and the BVH built over it.
 //
 //   1. Walk a scene-graph subtree on demand (Build) to extract a flat
 //      list of BVHPrimitive from every (node, element) pair whose

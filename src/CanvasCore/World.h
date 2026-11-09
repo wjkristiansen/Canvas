@@ -1,5 +1,5 @@
 //================================================================================================
-// Scene
+// World
 //================================================================================================
 
 #pragma once
@@ -13,8 +13,8 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-class CScene :
-    public TCanvasElement<XScene>
+class CWorld :
+    public TCanvasElement<XWorld>
 {
 private:
     Gem::TGemPtr<XGfxDevice> m_pDevice;
@@ -44,7 +44,7 @@ private:
     mutable std::vector<XLight*> m_VisibleTrackedLightsScratch;
     mutable std::vector<XLight*> m_VisibleLightsScratch;
 
-    // Background storage.  Every scene has a background; default-constructed
+    // Background storage.  Every world has a background; default-constructed
     // GfxBackgroundDesc is opaque black with no cubemap.  pSkyboxCubemapA/B
     // raw observer pointers in m_Background are kept alive by the strong
     // refs m_pSkyboxCubemapA/B; setter populates both together.
@@ -56,15 +56,15 @@ public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
         GEM_INTERFACE_ENTRY(XCanvasElement)
-        GEM_INTERFACE_ENTRY(XScene)
+        GEM_INTERFACE_ENTRY(XWorld)
     END_GEM_INTERFACE_MAP()
 
-    CScene(XCanvas *pCanvas, XGfxDevice *pDevice);
+    CWorld(XCanvas *pCanvas, XGfxDevice *pDevice);
 
     Gem::Result Initialize();
     void Uninitialize() {}
     
-public: // XScene methods
+public: // XWorld methods
     GEMMETHOD_(XGfxDevice *, GetDevice)() final
     {
         return m_pDevice.Get();

@@ -382,10 +382,10 @@ struct ImportedFixture
 
         Gem::TGemPtr<XModel> pModel;
         ASSERT_TRUE(Succeeded(Fbx::BuildModel(pCanvas, pDevice, Scene, Fbx::BuildModelOptions{}, &pModel)));
-        Gem::TGemPtr<XScene> pScene;
-        ASSERT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "BuiltModelScene")));
+        Gem::TGemPtr<XWorld> pWorld;
+        ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "BuiltModelWorld")));
         ModelInstantiateResult result{};
-        ASSERT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+        ASSERT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
 
         std::unique_ptr<ufbx_scene, decltype(&ufbx_free_scene)> posed(nullptr, &ufbx_free_scene);
         if (!clipName.empty())
