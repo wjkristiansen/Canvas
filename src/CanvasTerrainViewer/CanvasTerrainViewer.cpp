@@ -983,7 +983,7 @@ public:
             m_pFontMono = LoadFont(fontsDir / "JetBrainsMono-Regular.ttf", "JetBrainsMono");
 
             initStep = "create_ui";
-            Gem::ThrowGemError(pCanvas->CreateUIGraph(pDevice, &m_pUIGraph));
+            Gem::ThrowGemError(pWorld->CreateUIGraph(&m_pUIGraph));
 
             Gem::TGemPtr<Canvas::XUIGraphNode> pHudNode;
             Gem::ThrowGemError(m_pUIGraph->CreateNode(nullptr, &pHudNode));
@@ -1198,11 +1198,6 @@ public:
             m_DayNight.Update(dtime);
             UpdateSkyBackground();
 
-            // Frame submit.
-            m_pGfxRenderQueue->BeginFrame(m_pGfxSwapChain);
-            m_pWorld->Update(dtime);
-            m_pWorld->SubmitRenderables(m_pGfxRenderQueue);
-
             // Refresh status HUD.
             char buf[128];
             snprintf(buf, sizeof(buf),
@@ -1233,8 +1228,10 @@ public:
                 }
             }
 
-            m_pUIGraph->Update();
-            m_pUIGraph->SubmitRenderables(m_pGfxRenderQueue);
+            // Frame submit.
+            m_pGfxRenderQueue->BeginFrame(m_pGfxSwapChain);
+            m_pWorld->Update(dtime);
+            m_pWorld->SubmitRenderables(m_pGfxRenderQueue);
 
             m_pGfxRenderQueue->EndFrame();
             m_pGfxRenderQueue->FlushAndPresent(m_pGfxSwapChain);

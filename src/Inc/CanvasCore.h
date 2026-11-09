@@ -734,7 +734,21 @@ XWorld : public XCanvasElement
     // Returns the current background (never nullptr).
     GEMMETHOD_(const GfxBackgroundDesc *, GetBackground)() const = 0;
 
+    // UI graphs of the world's screen-space UI, such as its HUD and menus.
+    // The world holds each UI graph it creates until RemoveUIGraph or the
+    // world's release.  Update updates them after the scene graph, and
+    // SubmitRenderables submits them after the world's scene content, in
+    // the order they were created, so each draws over the world and over
+    // the UI graphs created before it.  A UI graph shown independently of
+    // every world is created with XCanvas::CreateUIGraph.
+    GEMMETHOD(CreateUIGraph)(XUIGraph **ppGraph) = 0;
+    // Returns Gem::Result::NotFound when pGraph is not one of this world's
+    // UI graphs.
+    GEMMETHOD(RemoveUIGraph)(XUIGraph *pGraph) = 0;
+
+    // Updates the scene graph, then the world's UI graphs.
     GEMMETHOD(Update)(float dtime) = 0;
+    // Submits the world's scene content, then its UI graphs.
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
 
     // Rebuild the world's BVH over renderable scene graph elements.  Today:
