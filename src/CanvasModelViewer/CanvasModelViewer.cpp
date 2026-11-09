@@ -183,7 +183,7 @@ class CApp
     Gem::TGemPtr<Canvas::Platform::Win32::XAppWindow> m_pWindow;
     Gem::TGemPtr<Canvas::Platform::Win32::XRawInput>  m_pInput;
     Gem::TGemPtr<Canvas::XCanvas> m_pCanvas;
-    Gem::TGemPtr<Canvas::XScene> m_pScene;
+    Gem::TGemPtr<Canvas::XWorld> m_pWorld;
     Gem::TGemPtr<Canvas::XCamera> m_pCamera;
     Gem::TGemPtr<Canvas::XCanvasPlugin> m_pGfxPlugin;
     Gem::TGemPtr<Canvas::XGfxDevice> m_pGfxDevice;
@@ -394,7 +394,7 @@ class CApp
 
     // Ambient fill plus a sun from above the default camera's side, so models without
     // lights are visible.
-    void AddDefaultLights(Canvas::XCanvas *pCanvas, Canvas::XScene *pScene)
+    void AddDefaultLights(Canvas::XCanvas *pCanvas, Canvas::XWorld *pWorld)
     {
         Gem::TGemPtr<Canvas::XLight> pAmbientLight;
         Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Ambient, &pAmbientLight, "DefaultAmbientLight"));
@@ -404,7 +404,7 @@ class CApp
         Gem::TGemPtr<Canvas::XSceneGraphNode> pAmbientNode;
         Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pAmbientNode, "DefaultAmbientLightNode"));
         Gem::ThrowGemError(pAmbientNode->BindElement(pAmbientLight));
-        Gem::ThrowGemError(pScene->GetRootNode()->AddChild(pAmbientNode));
+        Gem::ThrowGemError(pWorld->GetRootNode()->AddChild(pAmbientNode));
 
         Gem::TGemPtr<Canvas::XLight> pSunLight;
         Gem::ThrowGemError(pCanvas->CreateLight(Canvas::LightType::Directional, &pSunLight, "DefaultSunLight"));
@@ -422,7 +422,7 @@ class CApp
             Canvas::Math::ComposePointToBasisVectors(up, sunRotation[0], sunRotation[1], sunRotation[2]);
             pSunNode->SetLocalRotation(Canvas::Math::QuaternionFromRotationMatrix(sunRotation));
         }
-        Gem::ThrowGemError(pScene->GetRootNode()->AddChild(pSunNode));
+        Gem::ThrowGemError(pWorld->GetRootNode()->AddChild(pSunNode));
 
         m_pAmbientLight = pAmbientLight;
         m_pSunLight = pSunLight;
@@ -430,11 +430,11 @@ class CApp
 
     bool TryLoadImportedScene(
         Canvas::XCanvas *pCanvas,
-        Canvas::XScene *pScene,
+        Canvas::XWorld *pWorld,
         Canvas::XCamera *pDefaultCamera,
         Canvas::XSceneGraphNode *pDefaultCameraNode)
     {
-        Canvas::XGfxDevice *pDevice = pScene->GetDevice();
+        Canvas::XGfxDevice *pDevice = pWorld->GetDevice();
         try
         {
         if (m_ModelPath.empty())
@@ -524,10 +524,10 @@ class CApp
         Gem::ThrowGemError(Canvas::Fbx::BuildModel(pCanvas, pDevice, imported, buildOpts, &pModel));
 
         // -----------------------------------------------------------------
-        // Instantiate model into the scene
+        // Instantiate model into the world
         // -----------------------------------------------------------------
         Canvas::ModelInstantiateResult result{};
-        Gem::ThrowGemError(pModel->Instantiate(pScene->GetRootNode(), &result));
+        Gem::ThrowGemError(pModel->Instantiate(pWorld->GetRootNode(), &result));
 
         m_pModel = pModel;
         m_pInstanceRoot = result.pInstanceRoot;
@@ -554,7 +554,7 @@ class CApp
         if (imported.Lights.empty())
         {
             Canvas::LogInfo(m_pLogger.Get(), "Imported scene has no lights; adding default ambient and sun lights");
-            AddDefaultLights(pCanvas, pScene);
+            AddDefaultLights(pCanvas, pWorld);
         }
         for (const Canvas::Fbx::ImportedLight &light : imported.Lights)
         {
@@ -570,7 +570,7 @@ class CApp
 
         if (pSelectedCamera)
         {
-            pScene->SetActiveCamera(pSelectedCamera);
+            pWorld->SetActiveCamera(pSelectedCamera);
             m_pCamera = pSelectedCamera;
             LogCameraTransform("Imported active camera", pSelectedCamera);
             LogCameraAffineMatrix("Imported camera affine", pSelectedCamera);
@@ -589,7 +589,7 @@ class CApp
                 Canvas::LogWarn(m_pLogger.Get(), "Selected imported camera is not attached to a node; using default viewer camera framing");
                 if (pDefaultCamera && pDefaultCameraNode)
                 {
-                    pScene->SetActiveCamera(pDefaultCamera);
+                    pWorld->SetActiveCamera(pDefaultCamera);
                     m_pCamera = pDefaultCamera;
                     FrameCameraToBounds(pDefaultCamera, pDefaultCameraNode, imported.SceneBounds);
                     LogCameraTransform("Fallback default camera", pDefaultCamera);
@@ -604,7 +604,7 @@ class CApp
         }
         else if (pDefaultCamera && pDefaultCameraNode)
         {
-            pScene->SetActiveCamera(pDefaultCamera);
+            pWorld->SetActiveCamera(pDefaultCamera);
             m_pCamera = pDefaultCamera;
             FrameCameraToBounds(pDefaultCamera, pDefaultCameraNode, imported.SceneBounds);
             LogCameraTransform("Fallback default camera", pDefaultCamera);
@@ -719,9 +719,9 @@ public:
             // (no-op in release builds / on backends without a debug layer).
             pDevice->SetDebugMessageSeverity(m_gfxDebugSeverity);
 
-            initStep = "create_scene";
-            Gem::TGemPtr<Canvas::XScene> pScene;
-            Gem::ThrowGemError(pCanvas->CreateScene(pDevice, &pScene, "MainScene"));
+            initStep = "create_world";
+            Gem::TGemPtr<Canvas::XWorld> pWorld;
+            Gem::ThrowGemError(pCanvas->CreateWorld(pDevice, &pWorld, "MainWorld"));
 
             initStep = "create_render_queue";
             // Create the render queue
@@ -771,11 +771,11 @@ public:
             m_CameraYaw = atan2f(basisForward[1], basisForward[0]);
             m_CameraPitch = asinf(std::clamp(basisForward[2], -1.0f, 1.0f));
             
-            pScene->GetRootNode()->AddChild(pCameraNode);
-            pScene->SetActiveCamera(pCamera);
+            pWorld->GetRootNode()->AddChild(pCameraNode);
+            pWorld->SetActiveCamera(pCamera);
 
-            initStep = "load_or_build_scene";
-            if (!TryLoadImportedScene(pCanvas, pScene, pCamera, pCameraNode))
+            initStep = "load_or_build_world";
+            if (!TryLoadImportedScene(pCanvas, pWorld, pCamera, pCameraNode))
             {
                 Canvas::LogError(m_pLogger.Get(), "Failed to load model scene; initialization aborted");
                 return false;
@@ -895,7 +895,7 @@ public:
             if (!m_pCamera.Get())
                 m_pCamera.Attach(pCamera.Detach());
             m_pCanvas.Attach(pCanvas.Detach());
-            m_pScene.Attach(pScene.Detach());
+            m_pWorld.Attach(pWorld.Detach());
             m_pFont.Attach(pFont.Detach());
             m_pFontMono.Attach(pFontMono.Detach());
             m_pUIGraph.Attach(pUIGraph.Detach());
@@ -1108,10 +1108,10 @@ public:
                 }
             }
 
-            // Update scene, submit renderables (including lights), render
+            // Update world, submit renderables (including lights), render
             m_pGfxRenderQueue->BeginFrame(m_pGfxSwapChain);
-            m_pScene->Update(dtime);
-            m_pScene->SubmitRenderables(m_pGfxRenderQueue);
+            m_pWorld->Update(dtime);
+            m_pWorld->SubmitRenderables(m_pGfxRenderQueue);
             
             // Update FPS text only when the formatted string changes
             if (m_fps > 0.0f)

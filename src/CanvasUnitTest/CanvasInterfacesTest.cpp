@@ -50,9 +50,9 @@ TEST(CanvasInterfacesTest, SimpleInterfaces)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    // Create XScene object
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    // Create XWorld object
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create an empty XSceneGraphNode
     Gem::TGemPtr<Canvas::XSceneGraphNode> pSceneGraphNode;
@@ -75,9 +75,9 @@ TEST(CanvasInterfacesTest, SceneGraphNodesTest)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
-    // Create XScene object
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    // Create XWorld object
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create nodes
     Gem::TGemPtr<XSceneGraphNode> pNodes[6];
@@ -103,7 +103,7 @@ TEST(CanvasInterfacesTest, SceneGraphNodesTest)
     //      - Node4
     //          - Node5
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
+    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pNodes[0])));
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pNodes[1])));
@@ -121,15 +121,15 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create a small hierarchy: root -> A -> B
     Gem::TGemPtr<XSceneGraphNode> pA, pB;
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
+    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pA)));
     EXPECT_TRUE(Succeeded(pA->AddChild(pB)));
@@ -287,13 +287,13 @@ TEST(CanvasInterfacesTest, SceneGraphGlobalTranslationInheritsScale)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     Gem::TGemPtr<XSceneGraphNode> pParent, pChild;
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pChild)));
-    EXPECT_TRUE(Succeeded(pScene->GetRootNode()->AddChild(pParent)));
+    EXPECT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pParent)));
     EXPECT_TRUE(Succeeded(pParent->AddChild(pChild)));
 
     // Parent: non-uniform scale (2,3,1), then +90 deg about Z, then translate (10,0,0).
@@ -321,13 +321,13 @@ TEST(CanvasInterfacesTest, SceneGraphLocalTransform)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     Gem::TGemPtr<XSceneGraphNode> pParent, pChild;
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pChild)));
-    EXPECT_TRUE(Succeeded(pScene->GetRootNode()->AddChild(pParent)));
+    EXPECT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pParent)));
     EXPECT_TRUE(Succeeded(pParent->AddChild(pChild)));
     pChild->SetLocalTranslation(FloatVector4(1.0f, 1.0f, 0.0f, 1.0f));
 
@@ -373,8 +373,8 @@ TEST(CanvasInterfacesTest, CameraTest)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create a hierarchy: root -> A -> B -> cameraNode
     Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
@@ -382,7 +382,7 @@ TEST(CanvasInterfacesTest, CameraTest)
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
+    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pA)));
     EXPECT_TRUE(Succeeded(pA->AddChild(pB)));
@@ -416,7 +416,7 @@ TEST(CanvasInterfacesTest, CameraTest)
     pCameraNode->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 5.0f, 1.0f));
 
     // Update scene graph and camera (simulates frame update)
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     // Get initial matrices - this will compute and cache them
     auto viewMatrix1 = pCamera->GetViewMatrix();
@@ -462,7 +462,7 @@ TEST(CanvasInterfacesTest, CameraTest)
     // Test 1: Modify camera node's local transform
     // This should invalidate view matrix after Update()
     pCameraNode->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 10.0f, 1.0f));
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     auto viewMatrix2 = pCamera->GetViewMatrix();
     EXPECT_FALSE(AlmostEqual(viewMatrix1, viewMatrix2)); // Should be different
@@ -478,7 +478,7 @@ TEST(CanvasInterfacesTest, CameraTest)
     // Test 2: Modify parent node B's transform
     // This should invalidate camera's view matrix (ancestor changed)
     pB->SetLocalTranslation(FloatVector4(0.0f, 2.0f, 0.0f, 1.0f));
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     auto viewMatrix3 = pCamera->GetViewMatrix();
     EXPECT_FALSE(AlmostEqual(viewMatrix2, viewMatrix3)); // Should be different from previous
@@ -486,7 +486,7 @@ TEST(CanvasInterfacesTest, CameraTest)
     // Test 3: Modify grandparent node A's transform
     // This should also invalidate camera's view matrix
     pA->SetLocalTranslation(FloatVector4(2.0f, 0.0f, 0.0f, 1.0f));
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     auto viewMatrix4 = pCamera->GetViewMatrix();
     EXPECT_FALSE(AlmostEqual(viewMatrix3, viewMatrix4)); // Should be different
@@ -529,8 +529,8 @@ TEST(CanvasInterfacesTest, CameraNodeReparenting)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create two separate branches: root -> A and root -> B
     Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
@@ -538,7 +538,7 @@ TEST(CanvasInterfacesTest, CameraNodeReparenting)
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
+    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
 
     // Initial setup: cameraNode is under A
@@ -564,7 +564,7 @@ TEST(CanvasInterfacesTest, CameraNodeReparenting)
     pCameraNode->SetLocalTranslation(FloatVector4(1.0f, 0.0f, 0.0f, 1.0f));
 
     // Update and get initial view matrix (camera is under A)
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
     auto viewMatrix1 = pCamera->GetViewMatrix();
     auto viewProjMatrix1 = pCamera->GetViewProjectionMatrix();
 
@@ -573,7 +573,7 @@ TEST(CanvasInterfacesTest, CameraNodeReparenting)
     EXPECT_TRUE(Succeeded(pB->AddChild(pCameraNode)));
 
     // Update scene to mark view matrix dirty
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     // Get new matrices - should be different due to different parent transform
     auto viewMatrix2 = pCamera->GetViewMatrix();
@@ -599,7 +599,7 @@ TEST(CanvasInterfacesTest, CameraNodeReparenting)
 
     // Test moving to root (no parent transform)
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pCameraNode)));
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     auto viewMatrix3 = pCamera->GetViewMatrix();
     EXPECT_FALSE(AlmostEqual(viewMatrix2, viewMatrix3));
@@ -618,14 +618,14 @@ TEST(CanvasInterfacesTest, CameraMatrixConsistency)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create camera node
     Gem::TGemPtr<XSceneGraphNode> pCameraNode;
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
+    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pCameraNode)));
 
     // Create and attach camera
@@ -645,7 +645,7 @@ TEST(CanvasInterfacesTest, CameraMatrixConsistency)
     pCameraNode->SetLocalRotation(qCamera);
     pCameraNode->SetLocalTranslation(FloatVector4(10.0f, 5.0f, 0.0f, 1.0f));
 
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     // Test: Calling GetViewProjectionMatrix should compute all three matrices
     auto viewProjMatrix = pCamera->GetViewProjectionMatrix();
@@ -660,7 +660,7 @@ TEST(CanvasInterfacesTest, CameraMatrixConsistency)
 
     // Test: Calling individual getters first, then combined
     pCameraNode->SetLocalTranslation(FloatVector4(20.0f, 10.0f, 0.0f, 1.0f));
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     auto viewMatrix2 = pCamera->GetViewMatrix();
     auto projMatrix2 = pCamera->GetProjectionMatrix();
@@ -688,8 +688,8 @@ TEST(CanvasInterfacesTest, LightTest)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create a hierarchy: root -> A -> B -> lightNode
     Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
@@ -697,7 +697,7 @@ TEST(CanvasInterfacesTest, LightTest)
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
+    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pA)));
     EXPECT_TRUE(Succeeded(pA->AddChild(pB)));
@@ -727,7 +727,7 @@ TEST(CanvasInterfacesTest, LightTest)
     pLightNode->SetLocalTranslation(FloatVector4(2.0f, 0.0f, 0.0f, 1.0f));
 
     // Update scene to compute global transforms
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     // Verify light's world transform through its attached node
     auto lightWorldMatrix = pLightNode->GetGlobalMatrix();
@@ -739,7 +739,7 @@ TEST(CanvasInterfacesTest, LightTest)
 
     // Change ancestor transform and verify light position updates
     pA->SetLocalTranslation(FloatVector4(10.0f, 0.0f, 0.0f, 1.0f));
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     auto lightWorldTranslation2 = pLightNode->GetGlobalTranslation();
 
@@ -755,8 +755,8 @@ TEST(CanvasInterfacesTest, LightNodeReparenting)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create nodes: A, B, and lightNode
     Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
@@ -764,7 +764,7 @@ TEST(CanvasInterfacesTest, LightNodeReparenting)
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
+    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
 
     // Initial hierarchy: root -> A -> lightNode
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pA)));
@@ -789,13 +789,13 @@ TEST(CanvasInterfacesTest, LightNodeReparenting)
     pLightNode->SetLocalTranslation(FloatVector4(1.0f, 0.0f, 0.0f, 1.0f));
 
     // Get initial light world transform (under A)
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
     auto lightTranslation1 = pLightNode->GetGlobalTranslation();
     auto lightRotation1 = pLightNode->GetGlobalRotation();
 
     // Move light node from A to B
     EXPECT_TRUE(Succeeded(pB->AddChild(pLightNode)));
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     // Light's world transform should be different (different parent)
     auto lightTranslation2 = pLightNode->GetGlobalTranslation();
@@ -806,7 +806,7 @@ TEST(CanvasInterfacesTest, LightNodeReparenting)
 
     // Move light to root (no parent transform)
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pLightNode)));
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     auto lightTranslation3 = pLightNode->GetGlobalTranslation();
     auto lightRotation3 = pLightNode->GetGlobalRotation();
@@ -827,15 +827,15 @@ TEST(CanvasInterfacesTest, LightTransformPropagation)
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
-    Gem::TGemPtr<XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene)));
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create hierarchy: root -> parent -> lightNode
     Gem::TGemPtr<XSceneGraphNode> pParent, pLightNode;
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
     EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pScene->GetRootNode();
+    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pParent)));
     EXPECT_TRUE(Succeeded(pParent->AddChild(pLightNode)));
 
@@ -851,12 +851,12 @@ TEST(CanvasInterfacesTest, LightTransformPropagation)
     pParent->SetLocalTranslation(FloatVector4(5.0f, 5.0f, 0.0f, 1.0f));
     pLightNode->SetLocalTranslation(FloatVector4(2.0f, 0.0f, 0.0f, 1.0f));
 
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
     auto lightTranslation1 = pLightNode->GetGlobalTranslation();
 
     // Change parent's translation - light should update
     pParent->SetLocalTranslation(FloatVector4(10.0f, 10.0f, 0.0f, 1.0f));
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     auto lightTranslation2 = pLightNode->GetGlobalTranslation();
     EXPECT_FALSE(AlmostEqual(lightTranslation1, lightTranslation2));
@@ -872,7 +872,7 @@ TEST(CanvasInterfacesTest, LightTransformPropagation)
     // Change parent's rotation - light should update
     auto qParentNew = FloatQuaternion::FromEulerXYZ(0.0f, ninety, 0.0f);
     pParent->SetLocalRotation(qParentNew);
-    EXPECT_TRUE(Succeeded(pScene->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
     auto lightTranslation3 = pLightNode->GetGlobalTranslation();
     EXPECT_FALSE(AlmostEqual(lightTranslation2, lightTranslation3));
@@ -1313,11 +1313,11 @@ TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
     EXPECT_EQ(Gem::Result::InvalidArg, pModel->GetNodeTransform(3, &transform));
 
     // Instantiate into a scene
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
 
     // Verify instance root was created
     EXPECT_NE(result.pInstanceRoot, nullptr);
@@ -1325,7 +1325,7 @@ TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
     EXPECT_EQ(result.pAnimationController, nullptr); // no clips in model
 
     // Instance root should be a child of scene root
-    Canvas::XSceneGraphNode *pSceneRoot = pScene->GetRootNode();
+    Canvas::XSceneGraphNode *pSceneRoot = pWorld->GetRootNode();
     EXPECT_TRUE(pSceneRoot->GetFirstChild() == result.pInstanceRoot);
 
     // Instance root should have 2 children (NodeA and NodeB)
@@ -1375,12 +1375,12 @@ TEST(CanvasInterfacesTest, ModelInstantiateTransformIndependence)
     ASSERT_NE(pModel.Get(), nullptr);
 
     // Create scene and instantiate twice
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
     Canvas::ModelInstantiateResult result1{}, result2{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result1)));
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result2)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result1)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result2)));
 
     // Both instances should exist independently
     EXPECT_NE(result1.pInstanceRoot, nullptr);
@@ -1421,11 +1421,11 @@ TEST(CanvasInterfacesTest, ModelInstantiateCopiesTransforms)
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
@@ -1461,11 +1461,11 @@ TEST(CanvasInterfacesTest, ModelActiveCameraInstantiation)
     EXPECT_EQ(1u, pModel->GetCameraCount());
     EXPECT_EQ(cameraIndex, pModel->GetActiveCameraIndex());
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
 
     // The instance's active camera carries the model camera's properties
     ASSERT_NE(result.pActiveCamera, nullptr);
@@ -1505,11 +1505,11 @@ TEST(CanvasInterfacesTest, ModelLightInstantiation)
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
 
     Canvas::XSceneGraphNode *pLightNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pLightNode, nullptr);
@@ -1586,10 +1586,10 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     EXPECT_EQ(3u, pModel->GetNodeCount());
     EXPECT_EQ(armature, pModel->GetNodeParent(socketNode));
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
 
     Canvas::XSceneGraphNode *pArmature = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pArmature, nullptr);
@@ -1713,10 +1713,10 @@ TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
     // The builder copied the inverse bind poses.
     invBinds[1][3][0] = 99.0f;
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "TestScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
 
     Canvas::XSceneGraphNode *pArmature = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pArmature, nullptr);
@@ -1819,11 +1819,11 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     EXPECT_EQ(1u, pModel->GetAnimationClipCount());
     EXPECT_STREQ("Slide", pModel->GetAnimationClipName(0));
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "AnimScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "AnimWorld")));
 
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     ASSERT_NE(result.pAnimationController, nullptr);
     ASSERT_NE(result.pInstanceRoot, nullptr);
 
@@ -1893,11 +1893,11 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "BlendScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "BlendWorld")));
 
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     ASSERT_NE(result.pAnimationController, nullptr);
 
     Canvas::XAnimationController* pCtrl = result.pAnimationController;
@@ -1976,10 +1976,10 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesBones)
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "ArmScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ArmWorld")));
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     ASSERT_NE(result.pAnimationController, nullptr);
 
     Canvas::XSceneGraphNode *pArmature = result.pInstanceRoot->GetFirstChild();
@@ -2045,10 +2045,10 @@ TEST(CanvasInterfacesTest, AnimationControllerFillsUntrackedTargets)
 
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "PropertyScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "PropertyWorld")));
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     ASSERT_NE(result.pAnimationController, nullptr);
     Canvas::XAnimationController *pCtrl = result.pAnimationController;
     Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
@@ -2093,10 +2093,10 @@ TEST(CanvasInterfacesTest, AnimationControllerStepInterpolation)
 
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "StepScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "StepWorld")));
     Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     ASSERT_NE(result.pAnimationController, nullptr);
     Canvas::XAnimationController *pCtrl = result.pAnimationController;
     Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
@@ -2111,11 +2111,11 @@ TEST(CanvasInterfacesTest, AnimationControllerStepInterpolation)
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), FloatVector4(20.0f, 0.0f, 0.0f, 1.0f)));
 }
 
-// Instantiates pModel in pScene and returns the instance's animation controller.
-Canvas::XAnimationController *InstantiateAnimated(Canvas::XModel *pModel, Canvas::XScene *pScene,
+// Instantiates pModel in pWorld and returns the instance's animation controller.
+Canvas::XAnimationController *InstantiateAnimated(Canvas::XModel *pModel, Canvas::XWorld *pWorld,
     Canvas::ModelInstantiateResult &result)
 {
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pScene->GetRootNode(), &result)));
+    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     return result.pAnimationController;
 }
 
@@ -2196,10 +2196,10 @@ TEST(CanvasInterfacesTest, AnimationControllerCubicInterpolation)
 
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "CubicScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "CubicWorld")));
     Canvas::ModelInstantiateResult result{};
-    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pScene.Get(), result);
+    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), result);
     ASSERT_NE(pCtrl, nullptr);
     Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
@@ -2265,10 +2265,10 @@ TEST(CanvasInterfacesTest, AnimationControllerSharedKeyTimes)
 
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "SharedKeyScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "SharedKeyWorld")));
     Canvas::ModelInstantiateResult result{};
-    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pScene.Get(), result);
+    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), result);
     ASSERT_NE(pCtrl, nullptr);
     EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
 
@@ -2310,10 +2310,10 @@ TEST(CanvasInterfacesTest, AnimationControllerValueTargets)
 
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "WindScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "WindWorld")));
     Canvas::ModelInstantiateResult result{};
-    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pScene.Get(), result);
+    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), result);
     ASSERT_NE(pCtrl, nullptr);
 
     // GetTargetValue writes exactly the target's components and nothing past them.
@@ -2475,11 +2475,11 @@ TEST(CanvasInterfacesTest, ModelInstantiateResultHasNoStaleController)
     auto pStill = BuildModel(pStillBuilder);
     ASSERT_NE(pStill.Get(), nullptr);
 
-    Gem::TGemPtr<Canvas::XScene> pScene;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateScene(pDevice, &pScene, "ReuseScene")));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ReuseWorld")));
     Canvas::ModelInstantiateResult result{};
-    EXPECT_NE(InstantiateAnimated(pAnimated.Get(), pScene.Get(), result), nullptr);
-    EXPECT_EQ(InstantiateAnimated(pStill.Get(), pScene.Get(), result), nullptr);
+    EXPECT_NE(InstantiateAnimated(pAnimated.Get(), pWorld.Get(), result), nullptr);
+    EXPECT_EQ(InstantiateAnimated(pStill.Get(), pWorld.Get(), result), nullptr);
     EXPECT_NE(result.pInstanceRoot, nullptr);
 }
 

@@ -10,7 +10,7 @@
 #include "Light.h"
 #include "Mesh.h"
 #include "Model.h"
-#include "Scene.h"
+#include "World.h"
 #include "CanvasGfx.h"
 #include "FontImpl.h"
 #include "UIGraph.h"
@@ -140,11 +140,11 @@ GEMMETHODIMP CCanvas::UnregisterElement(XCanvasElement *pElement)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateScene(XGfxDevice *pDevice, XScene **ppScene, const char * name)
+GEMMETHODIMP CCanvas::CreateWorld(XGfxDevice *pDevice, XWorld **ppWorld, const char * name)
 {
-    CFunctionSentinel sentinel("XCanvas::CreateScene", m_pLogger);
+    CFunctionSentinel sentinel("XCanvas::CreateWorld", m_pLogger);
 
-    return CreateElement<CScene>(ppScene, name, pDevice);
+    return CreateElement<CWorld>(ppWorld, name, pDevice);
 }
 
 //------------------------------------------------------------------------------------------------

@@ -356,7 +356,7 @@ The terrain needs something behind it.
 
 #### Implemented sky system
 
-The sky is integrated into `PSComposite` (not a separate sky shader) via the engine's `GfxBackgroundDesc` / `XScene::SetBackground` API. The viewer configures:
+The sky is integrated into `PSComposite` (not a separate sky shader) via the engine's `GfxBackgroundDesc` / `XWorld::SetBackground` API. The viewer configures:
 
 - **Up to two cubemaps** (`pSkyboxCubemapA`, `pSkyboxCubemapB`) with a CPU-driven `BlendFactor` for crossfading between presets (e.g. day -> dusk -> night). Both cubemaps can be bound simultaneously; the composite lerps between them in the shader so transitions are smooth without per-frame texture authoring.
 - **Stars cubemap** (`pStarsCubemap`): additively blended over the sky, lower hemisphere clipped, driven by `StarsOrientation` for sidereal-motion animation.
@@ -429,7 +429,7 @@ scripts/terrain/                 (sandbox asset generators, dev-time)
     gen_starscube.py             (separate star-field cubemap generator)
 ```
 
-The displaced PSO family (`VSDisplaced` + `HSDisplaced` + `DSDisplaced` + `PSDisplaced`, and the depth-only shadow variant) lives entirely inside `CanvasGfx12`. A material with `GfxDisplacementDesc` attached triggers this path automatically; `XGfxDevice` requires no new factory methods. Sky, stars, sun, and moon rendering are integrated into `PSComposite` and configured via `GfxBackgroundDesc` on `XScene`.
+The displaced PSO family (`VSDisplaced` + `HSDisplaced` + `DSDisplaced` + `PSDisplaced`, and the depth-only shadow variant) lives entirely inside `CanvasGfx12`. A material with `GfxDisplacementDesc` attached triggers this path automatically; `XGfxDevice` requires no new factory methods. Sky, stars, sun, and moon rendering are integrated into `PSComposite` and configured via `GfxBackgroundDesc` on `XWorld`.
 
 ### Source asset ingest
 

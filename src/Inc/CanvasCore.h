@@ -72,7 +72,7 @@ constexpr bool HasAnyFlag(E flags, E mask) noexcept
 #endif
 
 // Forward declarations
-struct XScene;
+struct XWorld;
 struct XCamera;
 struct XLight;
 struct XGfxBuffer;
@@ -220,7 +220,7 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(LoadPlugin)(const char * path, struct XCanvasPlugin **ppPlugin) = 0;
 
-    GEMMETHOD(CreateScene)(XGfxDevice *pDevice, XScene **ppScene, const char * name = nullptr) = 0;
+    GEMMETHOD(CreateWorld)(XGfxDevice *pDevice, XWorld **ppWorld, const char * name = nullptr) = 0;
     GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, const char * name = nullptr) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, const char * name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, const char * name = nullptr) = 0;
@@ -715,9 +715,9 @@ XLight : public XSceneGraphElement
 
 //------------------------------------------------------------------------------------------------
 struct
-XScene : public XCanvasElement
+XWorld : public XCanvasElement
 {
-    GEM_INTERFACE_DECLARE(XScene, 0x0A470E86351AF96A);
+    GEM_INTERFACE_DECLARE(XWorld, 0x0A470E86351AF96A);
 
     GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
     GEMMETHOD_(XSceneGraphNode *, GetRootNode)() = 0;
@@ -725,9 +725,9 @@ XScene : public XCanvasElement
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
     GEMMETHOD_(XCamera *, GetActiveCamera)() const = 0;
 
-    // Scene background (what fills G-buffer pixels with no geometry).
-    // Every scene has a background; the default for a newly created
-    // scene is opaque black.  Stored by value; any surface referenced
+    // World background (what fills G-buffer pixels with no geometry).
+    // Every world has a background; the default for a newly created
+    // world is opaque black.  Stored by value; any surface referenced
     // by the desc (sky cubemaps) is held strongly for as long as the
     // background references it.  Pass nullptr to reset to the default.
     GEMMETHOD_(void, SetBackground)(const GfxBackgroundDesc *pDesc) = 0;
@@ -737,13 +737,13 @@ XScene : public XCanvasElement
     GEMMETHOD(Update)(float dtime) = 0;
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
 
-    // Rebuild the scene's BVH over renderable scene elements.  Today:
-    // static-only, called explicitly after scene construction / load
-    // (e.g. asset bake step or end of viewer scene-setup).  The first
+    // Rebuild the world's BVH over renderable scene graph elements.  Today:
+    // static-only, called explicitly after world construction / load
+    // (e.g. asset bake step or end of viewer world setup).  The first
     // SubmitRenderables call also auto-builds the BVH lazily if it has
     // not been built yet, so omitting this call is correctness-safe --
     // it just shifts the build cost to frame 1.  Calling BuildBVH
-    // again after scene topology changes is also safe; it discards any
+    // again after scene graph topology changes is also safe; it discards any
     // prior state.
     GEMMETHOD_(void, BuildBVH)() = 0;
 };

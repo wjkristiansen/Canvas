@@ -228,13 +228,13 @@ class GardenBuilder
 {
     Canvas::XCanvas*     m_pCanvas    = nullptr;
     Canvas::XGfxDevice*  m_pDevice    = nullptr;
-    Canvas::XScene*      m_pScene     = nullptr;
+    Canvas::XWorld*      m_pWorld     = nullptr;
     Canvas::XLogger*     m_pLogger    = nullptr;
 
     Gem::TGemPtr<Canvas::XGfxMeshData> m_pFloorMesh;
     Gem::TGemPtr<Canvas::XGfxMeshData> m_pCubeMesh;
 
-    // Keep all instances alive for the lifetime of the scene.
+    // Keep all instances alive for the lifetime of the world.
     std::vector<Gem::TGemPtr<Canvas::XMeshInstance>> m_Instances;
     std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> m_Nodes;
     std::vector<Gem::TGemPtr<Canvas::XLight>> m_Lights;
@@ -244,9 +244,9 @@ public:
 
     GardenBuilder(Canvas::XCanvas* pCanvas,
                   Canvas::XGfxDevice* pDevice,
-                  Canvas::XScene* pScene,
+                  Canvas::XWorld* pWorld,
                   Canvas::XLogger* pLogger)
-        : m_pCanvas(pCanvas), m_pDevice(pDevice), m_pScene(pScene), m_pLogger(pLogger)
+        : m_pCanvas(pCanvas), m_pDevice(pDevice), m_pWorld(pWorld), m_pLogger(pLogger)
     {}
 
     void Build(const GardenConfig& cfg)
@@ -403,7 +403,7 @@ private:
         pNode->SetLocalScale(scale);
         pNode->SetLocalRotation(rotation);
         pNode->BindElement(pInst);
-        m_pScene->GetRootNode()->AddChild(pNode);
+        m_pWorld->GetRootNode()->AddChild(pNode);
 
         m_Instances.emplace_back(std::move(pInst));
         m_Nodes    .emplace_back(std::move(pNode));
@@ -487,14 +487,14 @@ private:
         pNode->SetLocalTranslation(position);
         pNode->SetLocalRotation(rotation);
         pNode->BindElement(pLight);
-        m_pScene->GetRootNode()->AddChild(pNode);
+        m_pWorld->GetRootNode()->AddChild(pNode);
         m_Lights.emplace_back(std::move(pLight));
         m_Nodes .emplace_back(std::move(pNode));
     }
 };
 
 // ------------------------------------------------------------------
-// CApp - window, device, scene, render loop.  Slim version of the
+// CApp - window, device, world, render loop.  Slim version of the
 // CApp used by CanvasModelViewer; FBX path removed, procedural scene
 // inlined.
 // ------------------------------------------------------------------
@@ -510,7 +510,7 @@ class CApp
     Gem::TGemPtr<Canvas::XGfxDevice>        m_pDevice;
     Gem::TGemPtr<Canvas::XGfxRenderQueue>   m_pRenderQueue;
     Gem::TGemPtr<Canvas::XGfxSwapChain>     m_pSwapChain;
-    Gem::TGemPtr<Canvas::XScene>            m_pScene;
+    Gem::TGemPtr<Canvas::XWorld>            m_pWorld;
     Gem::TGemPtr<Canvas::XCamera>           m_pCamera;
     Gem::TGemPtr<Canvas::XSceneGraphNode>   m_pCameraNode;
 
@@ -579,8 +579,8 @@ public:
             // (no-op in release builds / on backends without a debug layer).
             m_pDevice->SetDebugMessageSeverity(m_gfxDebugSeverity);
 
-            step = "create_scene";
-            Gem::ThrowGemError(m_pCanvas->CreateScene(m_pDevice, &m_pScene, "LightGarden"));
+            step = "create_world";
+            Gem::ThrowGemError(m_pCanvas->CreateWorld(m_pDevice, &m_pWorld, "LightGarden"));
 
             step = "create_render_queue";
             Gem::ThrowGemError(m_pDevice->CreateRenderQueue(&m_pRenderQueue));
@@ -593,14 +593,14 @@ public:
             step = "create_camera";
             CreateCamera();
 
-            step = "build_scene";
+            step = "build_world";
             m_pGarden = std::make_unique<GardenBuilder>(
-                m_pCanvas.Get(), m_pDevice.Get(), m_pScene.Get(), m_pLogger.Get());
+                m_pCanvas.Get(), m_pDevice.Get(), m_pWorld.Get(), m_pLogger.Get());
             m_pGarden->Build(m_GardenConfig);
 
             // Pre-build the BVH so we can log its size up front (and
             // shift the cost off of frame 1).
-            m_pScene->BuildBVH();
+            m_pWorld->BuildBVH();
 
             step = "load_fonts";
             LoadFontsAndUi();
@@ -659,8 +659,8 @@ public:
                 running = false;
 
             m_pRenderQueue->BeginFrame(m_pSwapChain);
-            m_pScene->Update(dt);
-            m_pScene->SubmitRenderables(m_pRenderQueue);
+            m_pWorld->Update(dt);
+            m_pWorld->SubmitRenderables(m_pRenderQueue);
 
             UpdateHud();
             m_pUIGraph->Update();
@@ -703,8 +703,8 @@ private:
         m_CameraYaw   = std::atan2(forward.Y, forward.X);
         m_CameraPitch = std::asin(std::clamp(forward.Z, -1.0f, 1.0f));
 
-        m_pScene->GetRootNode()->AddChild(m_pCameraNode);
-        m_pScene->SetActiveCamera(m_pCamera);
+        m_pWorld->GetRootNode()->AddChild(m_pCameraNode);
+        m_pWorld->SetActiveCamera(m_pCamera);
     }
 
     void LoadFontsAndUi()

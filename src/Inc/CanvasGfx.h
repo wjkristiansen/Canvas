@@ -75,7 +75,7 @@ namespace Canvas
     };
 
     //------------------------------------------------------------------------------------------------
-    // Scene background description.  Owned by XScene via SetBackground.
+    // World background description.  Owned by XWorld via SetBackground.
     // The background is what fills G-buffer pixels with no geometry; it
     // has no transform in the scene graph and is sampled by view direction
     // in the composite pass.  Every scene has a background -- the default
@@ -419,7 +419,7 @@ namespace Canvas
         // pixels with no geometry.  Pass nullptr to clear back to opaque
         // black with no skybox.  The render queue takes its own strong
         // references to any surfaces referenced by the desc (sky cubes)
-        // for the life of the binding.  XScene::SubmitRenderables
+        // for the life of the binding.  XWorld::SubmitRenderables
         // forwards the scene's background here at the start of each
         // submission so apps only set background once on the scene.
         GEMMETHOD_(void, SetBackground)(const GfxBackgroundDesc *pDesc) = 0;

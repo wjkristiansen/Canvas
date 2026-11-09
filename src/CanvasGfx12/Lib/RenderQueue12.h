@@ -587,7 +587,7 @@ public:
     Canvas::XCamera *m_pActiveCamera = nullptr;     // Set by scene via SetActiveCamera during Update
 
     // Scene background.  Populated by SetBackground (typically forwarded
-    // from XScene at the start of each submission); the cubemap surfaces
+    // from XWorld at the start of each submission); the cubemap surfaces
     // are held via strong refs that parallel the raw pointers in
     // m_Background so the surfaces stay alive while bound.  When no
     // background has been set the default is opaque black with no skybox.
