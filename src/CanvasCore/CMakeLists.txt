@@ -10,6 +10,7 @@ add_library(CanvasCore SHARED
     dllmain.cpp
     Model.cpp
     World.cpp
+    WorldObject.cpp
     Timer.cpp
     SceneGraph.cpp
     Skeleton.cpp
@@ -37,6 +38,7 @@ add_library(CanvasCore SHARED
     Mesh.h
     Model.h
     World.h
+    WorldObject.h
     SceneGraph.h
     Skeleton.h
     ScopedUtils.h

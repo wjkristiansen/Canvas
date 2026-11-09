@@ -105,6 +105,155 @@ TEST(CanvasInterfacesTest, WorldUIGraphs)
     EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 }
 
+TEST(CanvasInterfacesTest, WorldObjectNodes)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ObjectWorld")));
+    Canvas::XSceneGraphNode *pRoot = pWorld->GetRootNode();
+
+    // A windmill with an arrow in one of its blades, beside hand-built ground
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pWindmillNode, pShaft, pBlade1, pBlade2, pGround, pArrowNode, pTip;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pWindmillNode, "Windmill")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pShaft, "Shaft")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBlade1, "Blade1")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBlade2, "Blade2")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pGround, "Ground")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pArrowNode, "Arrow")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pTip, "Tip")));
+    ASSERT_TRUE(Succeeded(pRoot->AddChild(pWindmillNode)));
+    ASSERT_TRUE(Succeeded(pWindmillNode->AddChild(pShaft)));
+    ASSERT_TRUE(Succeeded(pShaft->AddChild(pBlade1)));
+    ASSERT_TRUE(Succeeded(pShaft->AddChild(pBlade2)));
+    ASSERT_TRUE(Succeeded(pRoot->AddChild(pGround)));
+    ASSERT_TRUE(Succeeded(pBlade2->AddChild(pArrowNode)));
+    ASSERT_TRUE(Succeeded(pArrowNode->AddChild(pTip)));
+
+    // Before any world object exists, no node belongs to one
+    EXPECT_EQ(nullptr, pBlade2->GetWorldObject());
+
+    Gem::TGemPtr<Canvas::XWorldObject> pWindmill, pArrow;
+    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pWindmillNode, &pWindmill, "Windmill")));
+    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pArrowNode, &pArrow)));  // unnamed
+    EXPECT_EQ(pWindmillNode.Get(), pWindmill->GetAnchorNode());
+    EXPECT_EQ(pWorld.Get(), pWindmill->GetWorld());
+    EXPECT_STREQ("Windmill", pWindmill->GetName());
+
+    // An anchor node belongs to its world object; other nodes inherit their parent's
+    EXPECT_EQ(nullptr, pRoot->GetWorldObject());
+    EXPECT_EQ(nullptr, pGround->GetWorldObject());
+    EXPECT_EQ(pWindmill.Get(), pWindmillNode->GetWorldObject());
+    EXPECT_EQ(pWindmill.Get(), pShaft->GetWorldObject());
+    EXPECT_EQ(pWindmill.Get(), pBlade1->GetWorldObject());
+    EXPECT_EQ(pWindmill.Get(), pBlade2->GetWorldObject());
+    EXPECT_EQ(pArrow.Get(), pArrowNode->GetWorldObject());
+    EXPECT_EQ(pArrow.Get(), pTip->GetWorldObject());
+
+    // Inheritance follows the graph: moving the shaft under the ground moves its nodes out
+    // of the windmill, and the arrow's nodes stay with the arrow
+    ASSERT_TRUE(Succeeded(pGround->AddChild(pShaft)));
+    EXPECT_EQ(nullptr, pBlade2->GetWorldObject());
+    EXPECT_EQ(pArrow.Get(), pTip->GetWorldObject());
+}
+
+TEST(CanvasInterfacesTest, WorldObjectDetachedAndUnanchored)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "DetachedWorld")));
+
+    // A world object with no anchor node has no nodes
+    Gem::TGemPtr<Canvas::XWorldObject> pRules;
+    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(nullptr, &pRules, "Rules")));
+    EXPECT_EQ(nullptr, pRules->GetAnchorNode());
+    EXPECT_EQ(pWorld.Get(), pRules->GetWorld());
+
+    // A world object anchored at a node in no scene graph is detached; adding its anchor
+    // node to the graph puts it in the scene graph
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pProjectileNode, pTrail;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pProjectileNode, "Projectile")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pTrail, "Trail")));
+    ASSERT_TRUE(Succeeded(pProjectileNode->AddChild(pTrail)));
+    Gem::TGemPtr<Canvas::XWorldObject> pProjectile;
+    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pProjectileNode, &pProjectile, "Projectile")));
+    EXPECT_EQ(nullptr, pProjectileNode->GetParent());
+    EXPECT_EQ(pProjectile.Get(), pTrail->GetWorldObject());
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.016f)));
+
+    ASSERT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pProjectileNode)));
+    EXPECT_EQ(pProjectile.Get(), pTrail->GetWorldObject());
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.016f)));
+}
+
+TEST(CanvasInterfacesTest, WorldObjectCreationErrors)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XWorld> pWorld, pOtherWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "World")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pOtherWorld, "OtherWorld")));
+
+    EXPECT_EQ(Gem::Result::BadPointer, pWorld->CreateWorldObject(nullptr, nullptr));
+
+    Gem::TGemPtr<Canvas::XWorldObject> pObject;
+
+    // The world's root node is not an anchor node
+    EXPECT_EQ(Gem::Result::InvalidArg, pWorld->CreateWorldObject(pWorld->GetRootNode(), &pObject));
+    EXPECT_EQ(nullptr, pObject.Get());
+    EXPECT_EQ(nullptr, pWorld->GetRootNode()->GetWorldObject());
+
+    // A node anchors one world object at most
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNode, "Node")));
+    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pNode, &pObject)));
+    Gem::TGemPtr<Canvas::XWorldObject> pSecond;
+    EXPECT_EQ(Gem::Result::InvalidArg, pWorld->CreateWorldObject(pNode, &pSecond));
+    EXPECT_EQ(Gem::Result::InvalidArg, pOtherWorld->CreateWorldObject(pNode, &pSecond));
+    EXPECT_EQ(nullptr, pSecond.Get());
+    EXPECT_EQ(pObject.Get(), pNode->GetWorldObject());
+}
+
+TEST(CanvasInterfacesTest, WorldObjectLifetime)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XWorldObject> pObject;
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pAnchor, pChild;
+    {
+        Gem::TGemPtr<Canvas::XWorld> pWorld;
+        ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ShortWorld")));
+        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pAnchor, "Survivor")));
+        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pChild, "Child")));
+        ASSERT_TRUE(Succeeded(pAnchor->AddChild(pChild)));
+        ASSERT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pAnchor)));
+        ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pAnchor, &pObject, "Survivor")));
+    }
+
+    // A world object the app holds outlives its world, with its anchor node and the
+    // nodes below it; the anchor node no longer has a parent
+    EXPECT_EQ(nullptr, pObject->GetWorld());
+    EXPECT_EQ(pAnchor.Get(), pObject->GetAnchorNode());
+    EXPECT_EQ(nullptr, pAnchor->GetParent());
+    EXPECT_EQ(pObject.Get(), pAnchor->GetWorldObject());
+    EXPECT_EQ(pObject.Get(), pChild->GetWorldObject());
+    (void)pChild->GetGlobalMatrix();
+
+    // Releasing the world object clears its anchor node's back-reference
+    pObject = nullptr;
+    EXPECT_EQ(nullptr, pAnchor->GetWorldObject());
+    EXPECT_EQ(nullptr, pChild->GetWorldObject());
+}
+
 TEST(CanvasInterfacesTest, SceneGraphNodesTest)
 {
     // Create XCanvas object
@@ -1897,6 +2046,136 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     EXPECT_FALSE(pCtrl->IsPlaying());
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(),
                             FloatVector4(7.0f, 7.0f, 7.0f, 1.0f)));
+}
+
+// XWorld::Update updates every world object, including a detached one whose nodes are outside
+// the scene graph: its animation controller advances like one in the scene graph.
+TEST(CanvasInterfacesTest, WorldUpdateAdvancesDetachedWorldObjects)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "SlideModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t node = AddNode(pBuilder, "Body", InvalidIndex, Translation(0.0f, 0.0f, 0.0f));
+    const uint32_t target = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeTranslation);
+    const float times[2] = { 0.0f, 2.0f };
+    const float values[6] = { 0.0f, 0.0f, 0.0f,  40.0f, 0.0f, 0.0f };
+    const Canvas::AnimationTrackDesc track = Track(Canvas::AnimationValueType::Float3, times, values, 2);
+    const Canvas::AnimationClipDesc clip = Clip("Slide", 2.0f, &track, &target, 1);
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "PoolWorld")));
+
+    // One instance in the scene graph, one under a node outside it
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pShownNode, pPooledNode;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pShownNode, "Shown")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pPooledNode, "Pooled")));
+    ASSERT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pShownNode)));
+
+    Canvas::ModelInstantiateResult shown{}, pooled{};
+    ASSERT_TRUE(Succeeded(pModel->Instantiate(pShownNode, &shown)));
+    ASSERT_TRUE(Succeeded(pModel->Instantiate(pPooledNode, &pooled)));
+    ASSERT_NE(shown.pAnimationController, nullptr);
+    ASSERT_NE(pooled.pAnimationController, nullptr);
+
+    Gem::TGemPtr<Canvas::XWorldObject> pShown, pPooled;
+    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pShownNode, &pShown, "Shown")));
+    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pPooledNode, &pPooled, "Pooled")));
+
+    ASSERT_TRUE(Succeeded(shown.pAnimationController->Play(0, 0.0f)));
+    ASSERT_TRUE(Succeeded(pooled.pAnimationController->Play(0, 0.0f)));
+    ASSERT_TRUE(Succeeded(pWorld->Update(1.0f)));
+
+    EXPECT_FLOAT_EQ(1.0f, shown.pAnimationController->GetTime());
+    EXPECT_FLOAT_EQ(1.0f, pooled.pAnimationController->GetTime());
+}
+
+// XWorld::Update updates the active world objects and leaves the inactive ones as they are.
+// Deactivating and activating in mixed order exercises the swaps across the active boundary.
+TEST(CanvasInterfacesTest, WorldUpdateSkipsInactiveWorldObjects)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pBuilder = BeginModel(pCanvas, pDevice, "SlideModel");
+    ASSERT_NE(pBuilder.Get(), nullptr);
+    const uint32_t node = AddNode(pBuilder, "Body", InvalidIndex, Translation(0.0f, 0.0f, 0.0f));
+    const uint32_t target = AddNodeTarget(pBuilder, node, Canvas::AnimationTargetType::SceneNodeTranslation);
+    const float times[2] = { 0.0f, 8.0f };
+    const float values[6] = { 0.0f, 0.0f, 0.0f,  80.0f, 0.0f, 0.0f };
+    const Canvas::AnimationTrackDesc track = Track(Canvas::AnimationValueType::Float3, times, values, 2);
+    const Canvas::AnimationClipDesc clip = Clip("Slide", 8.0f, &track, &target, 1);
+    EXPECT_TRUE(Succeeded(pBuilder->AddAnimationClip(&clip, nullptr)));
+    auto pModel = BuildModel(pBuilder);
+    ASSERT_NE(pModel.Get(), nullptr);
+
+    Gem::TGemPtr<Canvas::XWorld> pWorld, pOtherWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "PoolWorld")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pOtherWorld, "OtherWorld")));
+
+    // Three pooled projectiles, each a detached world object playing the same clip
+    constexpr int kCount = 3;
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pNodes[kCount];
+    Gem::TGemPtr<Canvas::XWorldObject> pObjects[kCount];
+    Canvas::XAnimationController *pControllers[kCount] = {};
+    for (int i = 0; i < kCount; ++i)
+    {
+        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodes[i], "Projectile")));
+        Canvas::ModelInstantiateResult instance{};
+        ASSERT_TRUE(Succeeded(pModel->Instantiate(pNodes[i], &instance)));
+        ASSERT_NE(instance.pAnimationController, nullptr);
+        pControllers[i] = instance.pAnimationController;
+        ASSERT_TRUE(Succeeded(pControllers[i]->Play(0, 0.0f)));
+        ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pNodes[i], &pObjects[i], "Projectile")));
+    }
+
+    auto expectTimes = [&](float t0, float t1, float t2)
+    {
+        EXPECT_FLOAT_EQ(t0, pControllers[0]->GetTime());
+        EXPECT_FLOAT_EQ(t1, pControllers[1]->GetTime());
+        EXPECT_FLOAT_EQ(t2, pControllers[2]->GetTime());
+    };
+
+    // All start active
+    ASSERT_TRUE(Succeeded(pWorld->Update(1.0f)));
+    expectTimes(1.0f, 1.0f, 1.0f);
+
+    // Deactivate the first; deactivating it again changes nothing
+    ASSERT_TRUE(Succeeded(pWorld->DeactivateObject(pObjects[0])));
+    ASSERT_TRUE(Succeeded(pWorld->DeactivateObject(pObjects[0])));
+    ASSERT_TRUE(Succeeded(pWorld->Update(1.0f)));
+    expectTimes(1.0f, 2.0f, 2.0f);
+
+    // Deactivate the last, then reactivate the first
+    ASSERT_TRUE(Succeeded(pWorld->DeactivateObject(pObjects[2])));
+    ASSERT_TRUE(Succeeded(pWorld->ActivateObject(pObjects[0])));
+    ASSERT_TRUE(Succeeded(pWorld->ActivateObject(pObjects[0])));
+    ASSERT_TRUE(Succeeded(pWorld->Update(1.0f)));
+    expectTimes(2.0f, 3.0f, 2.0f);
+
+    // Deactivate all, then reactivate the middle one
+    for (int i = 0; i < kCount; ++i)
+        ASSERT_TRUE(Succeeded(pWorld->DeactivateObject(pObjects[i])));
+    ASSERT_TRUE(Succeeded(pWorld->Update(1.0f)));
+    expectTimes(2.0f, 3.0f, 2.0f);
+    ASSERT_TRUE(Succeeded(pWorld->ActivateObject(pObjects[1])));
+    ASSERT_TRUE(Succeeded(pWorld->Update(1.0f)));
+    expectTimes(2.0f, 4.0f, 2.0f);
+
+    // Only the world's own world objects
+    EXPECT_EQ(Gem::Result::NotFound, pOtherWorld->DeactivateObject(pObjects[1]));
+    EXPECT_EQ(Gem::Result::NotFound, pOtherWorld->ActivateObject(pObjects[0]));
+    EXPECT_EQ(Gem::Result::NotFound, pWorld->ActivateObject(nullptr));
 }
 
 // Exercises cross-fade blending between two clips: the pose interpolates from the

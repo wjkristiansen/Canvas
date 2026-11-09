@@ -12,6 +12,8 @@
 namespace Canvas
 {
 
+class CWorldObject;
+
 //------------------------------------------------------------------------------------------------
 template<class _Base>
 class TSceneGraphElement :
@@ -245,7 +247,18 @@ public: // XSceneGraphNode methods
 
     GEMMETHOD(Update)(float dtime) final;
 
+    GEMMETHOD_(XWorldObject *, GetWorldObject)() final;
+
+    // The world object anchored at this node, or nullptr when this node is not an anchor node.
+    // Set by the world object, which clears it before it is destroyed.
+    CWorldObject *GetAnchoredObject() const { return m_pAnchoredObject; }
+    void SetAnchoredObject(CWorldObject *pObject) { m_pAnchoredObject = pObject; }
+
+    CSceneGraphNode *GetParentNode() const { return m_pParent; }
+
 private:
+    CWorldObject *m_pAnchoredObject = nullptr; // Weak pointer
+
     // Helper to invalidate transforms on this node and propagate to children
     void InvalidateTransforms(TransformDirtyFlags flags);
 };
