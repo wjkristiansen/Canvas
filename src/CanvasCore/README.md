@@ -41,46 +41,49 @@ A **world** (`XWorld`) is everything that exists in one place, such as a game le
 
 A world holds a scene graph, a set of **world objects** (`XWorldObject`), and the **UI graphs** of its screen-space UI, such as its HUD and menus, drawn over the rendered world. A UI graph shown independently of every world, such as a console, is created on its own.
 
-A world object owns a branch of the scene graph and holds the state of what that branch represents: an instance of a model, with its skeleton instances and animation controller, or a branch the app builds itself. The world creates, attaches, removes, and registers its world objects, and instantiating a model into a world creates a world object.
+A world object is anchored at a scene graph node, its **anchor node**, and holds the state of what its nodes represent: an instance of a model, with its skeleton instances and animation controller, or nodes the app builds itself. The world creates, attaches, removes, and registers its world objects, and instantiating a model into a world creates a world object.
 
-**References.** The world holds a strong reference to each of its world objects, and a world object holds a strong reference to its **root node**. The graph holds the rest of the branch, through each node's references to its children. A world object holds a weak reference to its world, and a root node holds a weak reference back to its world object. The world object that owns any node is found by walking up to the nearest root node.
+**References.** The world holds a strong reference to each of its world objects, and a world object holds a strong reference to its anchor node. The graph holds every other node, through each node's references to its children. A world object holds a weak reference to its world, and an anchor node holds a weak reference back to its world object.
 
 In this world, a windmill has an arrow stuck in one of its blades, and an elevator carries a car and its driver:
 
 ```
-(Scene root) <============================ [Root object]
- +-- (Windmill root) <==================== [Windmill]
+(Scene root)
+ +-- (Ground)
+ +-- (Windmill) <====================== [Windmill]
  |    +-- (Frame)
  |         +-- (Shaft)
  |              +-- (Blade 1)
  |              +-- (Blade 2)
- |                   +-- (Arrow root) <=== [Arrow]
- +-- (Elevator root) <==================== [Elevator]
+ |                   +-- (Arrow) <===== [Arrow]
+ +-- (Elevator) <====================== [Elevator]
       +-- (Platform)
-           +-- (Car root) <=============== [Car]
+           +-- (Car) <================= [Car]
                 +-- (Seat)
-                     +-- (Driver root) <== [Driver]
+                     +-- (Driver) <==== [Driver]
 
 (node)   a scene graph node; each node holds its children strongly
 [name]   a world object; the world holds every world object strongly
-<===     the world object holds its root node strongly, and the root
-         node refers back to its world object weakly
+<===     the world object holds its anchor node strongly, and the
+         anchor node refers back to its world object weakly
 ```
 
-**Branches.** A world object's branch is its root node and the root's descendants, down to the root node of any other world object. Each node belongs to exactly one branch. A world object is **attached to** the world object whose branch holds the parent of its root node, which is its **parent object**. In the example, the windmill's branch runs from `(Windmill root)` through `(Blade 2)`, so the arrow is attached to the windmill. The car is attached to the elevator, the driver to the car, and the windmill and the elevator to the root object. A world object's parent object follows from where its root node is attached, and changes when it is attached elsewhere. Attachment says where a world object is, not what keeps it alive: the world holds every world object, and a world object whose orphan policy is Keep outlives its parent object.
+**World object nodes.** A world object's nodes, its anchor node included, are ordinary scene graph nodes. An anchor node **belongs to** the world object anchored at it, and every other node inherits the world object of its parent. The scene graph's root node belongs to no world object, so a node the app adds under it inherits none. In the example, `(Windmill)` through `(Blade 2)` belong to the windmill, and `(Scene root)` and `(Ground)` belong to no world object.
 
-**The root object.** Each world has one **root object**, returned by `XWorld::GetRootObject`. Its root node is the root node of the world's scene graph. Creating a world creates both, and they last as long as the world; the app uses them and never creates or removes them. The root object's branch holds every node attached directly under that root node, and every top-level world object is attached to it. Every other world object therefore has exactly one parent object. The root object stays in its world for the world's lifetime: it is the one world object that has no parent object and is not attached elsewhere, removed, or orphaned. In every other respect it is an ordinary world object.
+**Attachment.** A world object is **attached to** the world object that its anchor node's parent belongs to. In the example, the arrow is attached to the windmill, the car to the elevator, and the driver to the car. A world object whose anchor node's parent belongs to no world object, such as the windmill or the elevator, is a **top-level** world object. Which world object a world object is attached to follows from where its anchor node is, and changes when it is attached elsewhere. Attachment says where a world object is, not what keeps it alive: the world holds every world object, and a world object whose orphan policy is Keep outlives the world object it is attached to.
 
-**Attachment.** Attaching a world object to a node moves its root node there, with its whole branch and every world object attached within it, keeping either its local transform or its world transform, as the caller chooses. The world object is then attached to the world object whose branch holds that node. A world object attaches only to a node outside its own branch and outside the branches of the world objects attached to it, directly or in turn.
+Attaching a world object to a node moves its anchor node there, with the anchor node's subtree, which holds every world object attached to it, directly or in turn, keeping either its local transform or its world transform, as the caller chooses. The world object is then attached to the world object that node belongs to, or is top-level when the node belongs to none. A world object attaches only to a node outside its anchor node's subtree.
 
-**Removal and orphans.** Removing a world object from its world takes its branch out of the graph. Each world object attached to it is **orphaned**, and the engine applies the orphan's **orphan policy**:
+**Removal and orphans.** Removing a world object from its world takes its anchor node's subtree out of the graph. Each world object attached to it is **orphaned**, and the engine applies the orphan's **orphan policy**:
 
-| Policy     | Effect                                                                                                                                         |
-|------------|------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Keep**   | The orphan's root node is attached to the removed object's former parent node, keeping its world transform. The orphan stays in the world.     |
-| **Remove** | The orphan is removed too, and the world objects attached to it are orphaned in turn.                                                          |
+| Policy     | Effect                                                                                                                                                                                        |
+|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Keep**   | The orphan's anchor node is attached to the node the removal detached from, the former parent of the node taken out of the graph, keeping its world transform. The orphan stays in the world. |
+| **Remove** | The orphan is removed too, and the world objects attached to it are orphaned in turn.                                                                                                         |
 
-The engine applies the policies during the removal, depth first, so removing a car that stands on an elevator platform leaves its driver, whose policy is Keep, on the platform. A world object that instantiating a model creates defaults to Remove, so the doors of a removed house and the knobs of those doors go with it. Any other world object defaults to Keep. Each orphan that is kept is reported to the app in the next `XWorld::Update`, which may then change the orphan's state, such as a sleeper whose bed was removed switching from a sleeping animation to an idle one, or remove it. When the world's active camera is in a branch that leaves the world, the world has no active camera until the app sets one, and the next `XWorld::Update` reports it.
+The engine applies the policies during the removal, depth first, so removing a car that stands on an elevator platform leaves its driver, whose policy is Keep, on the platform. A world object that instantiating a model creates defaults to Remove, so the doors of a removed house and the knobs of those doors go with it. Any other world object defaults to Keep. Each orphan that is kept is reported to the app in the next `XWorld::Update`, which may then change the orphan's state, such as a sleeper whose bed was removed switching from a sleeping animation to an idle one, or remove it. When the world's active camera is on a node that leaves the world, the world has no active camera until the app sets one, and the next `XWorld::Update` reports it.
+
+**Node operations.** The scene graph's node operations follow the same rules. Moving a node to a new parent in the same scene graph moves its subtree with every world object anchored in it, and moving an anchor node attaches its world object there, as attaching the world object does. Removing a node from its parent takes its subtree out of the graph, and the world objects anchored in the subtree that are attached to no other world object in it are orphaned, as for a removed world object. Removing an anchor node from its parent removes its world object. Removing a node and then adding it elsewhere is a removal followed by an add, so the world objects anchored in its subtree are orphaned by the removal and do not move with it. A node operation fails, and logs a critical error, when it would move a node from one world's scene graph into another's, or add to a world's scene graph a node whose subtree holds the anchor node of a world object that is not in that world.
 
 **Names.** A world object's name is a label, for logs and debugging, and any number of world objects may share one. A world object that needs to be found by name is registered with its world under a **key**, unique within the world. Registering a key that is already in use fails, and removing a world object from its world releases its key.
 
@@ -168,7 +171,7 @@ A path that does not resolve, or resolves to an asset of another type, fails the
 
 ## Instantiation
 
-Package content becomes engine objects through `XModel`. A bundle that the engine instantiates loads into an `XModel`, which serves as its **template**: the bundle's local assets become the model's node hierarchy and elements, and the shared assets they reference become the GPU resources the model shares across its instances. Each [instance](../CanvasPkg/README.md#instances) of the bundle is a [world object](#worlds-and-world-objects), created by instantiating the model into a world, whose branch is a clone of the template's hierarchy.
+Package content becomes engine objects through `XModel`. A bundle that the engine instantiates loads into an `XModel`, which serves as its **template**: the bundle's local assets become the model's node hierarchy and elements, and the shared assets they reference become the GPU resources the model shares across its instances. Each [instance](../CanvasPkg/README.md#instances) of the bundle is a [world object](#worlds-and-world-objects), created by instantiating the model into a world. The world object's nodes are a clone of the template's hierarchy.
 
 | Package asset | Engine object |
 |---|---|
@@ -184,7 +187,7 @@ Package content becomes engine objects through `XModel`. A bundle that the engin
 | `AnimationClip`, with the `SkeletalAnimation` assets it binds | An animation clip, played through each instance's `XAnimationController` |
 | `WorldSettings` | The world's settings: its background and skyboxes, and its initial active camera |
 
-The node an instance's world object is attached to is its instance transform: a placement's node for a nested instance, and the scene graph's root node for a world bundle or world region, whose world objects are attached to the world's root object. A nested instance's world object is attached within the instance that holds it and has the orphan policy Remove, so removing an instance, such as a region that unloads, removes its nested instances with it.
+An instance's world object is anchored at a node whose local transform is the instance's instance transform, and the bundle's nodes and attachments that are relative to the instance transform are on that anchor node. A nested instance's anchor node is a child of its placement's node, with the placement's `Transform`, so its world object is attached to the instance that holds the placement. Its orphan policy is Remove, so removing an instance, such as a region that unloads, removes its nested instances with it. A world bundle's or world region's anchor node is a child of the scene graph's root node, with the identity transform, so its world object is top-level.
 
 `XModel` covers a bundle's node hierarchy, meshes, materials, textures, cameras, lights, skeletons with their sockets and skins, and animation clips. A skeleton's bones are not scene-graph nodes: each instance's `XSkeletonInstance` holds their pose. A bundle's other structure extends it:
 
@@ -205,7 +208,7 @@ A project's content moves through these states:
 | **Project open** | Every package's header and name directories |
 | **World loaded** | A world bundle's always-present content, and the shared assets it uses |
 | **World active** | The loaded world that is the project's active world |
-| **Region resident** | A world region's content, loaded while the region's `StreamingBounds` is near a streaming source, as a world object attached to the world's root object |
+| **Region resident** | A world region's content, loaded while the region's `StreamingBounds` is near a streaming source, as a top-level world object |
 
 Loading runs on worker threads, and its results are applied inside `Update`. Which worlds stay loaded when they are not active, what a streaming source is, the distances at which regions load and unload, and how content requested at runtime is loaded, are open; they are the next part of this spec to define.
 
