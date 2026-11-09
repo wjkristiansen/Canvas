@@ -5,7 +5,7 @@
 // an array of BVHPrimitive entries.  Produces a binary tree of AABB
 // nodes whose leaf nodes reference contiguous ranges of a reordered
 // primitive-index array.  The BVHPrimitive array itself is owned
-// externally (SceneBVH) and is NOT reordered by the BVH; only the
+// externally (WorldBVH) and is NOT reordered by the BVH; only the
 // BVH's internal index array is permuted, so caller-held
 // BVHPrimitiveIds remain valid across rebuilds.
 //
@@ -35,14 +35,14 @@ enum class BVHPrimitiveFlags : uint32_t
 };
 CANVAS_ENUM_FLAG_OPERATORS(BVHPrimitiveFlags)
 
-// Stable index into the SceneBVH-owned primitive table.
+// Stable index into the WorldBVH-owned primitive table.
 using BVHPrimitiveId = uint32_t;
 
 constexpr BVHPrimitiveId kInvalidBVHPrimitiveId = UINT32_MAX;
 
 // A BVHPrimitive is the BVH's user-level payload: pairs a world-space
 // AABB with a back-pointer to the XSceneGraphNode that produced it.
-// Primitives live in a flat array owned by SceneBVH.
+// Primitives live in a flat array owned by WorldBVH.
 struct BVHPrimitive
 {
     // World-space AABB.  Currently set once at Build() time as

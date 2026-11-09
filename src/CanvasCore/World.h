@@ -6,7 +6,7 @@
 
 #include "Canvas.h"
 #include "SceneGraph.h"
-#include "SceneBVH.h"
+#include "WorldBVH.h"
 #include "LightBVH.h"
 
 namespace Canvas
@@ -29,13 +29,13 @@ private:
     // honor the empty-AABB contract and contribute no primitives; they
     // continue to flow through SubmitRenderables unfiltered.  Built
     // explicitly via BuildBVH(), or lazily on the first
-    // SubmitRenderables when not yet built.  See SceneBVH for the
+    // SubmitRenderables when not yet built.  See WorldBVH for the
     // current scope and capabilities.
-    SceneBVH m_SceneBVH;
+    WorldBVH m_WorldBVH;
     mutable std::unordered_set<XSceneGraphNode*> m_VisibleNodeScratch; // reused per frame
 
     // BVH over per-light influence volumes.  Built alongside the
-    // SceneBVH (same lifecycle rules); consumed by SubmitRenderables
+    // WorldBVH (same lifecycle rules); consumed by SubmitRenderables
     // to compute a frustum-culled visible-light list that gets pushed
     // to the render queue via SetVisibleLights.  See LightBVH for
     // tracked vs untracked light handling and the per-light
@@ -112,7 +112,7 @@ public: // XWorld methods
 
     GEMMETHOD_(void, BuildBVH)() final
     {
-        m_SceneBVH.Build(m_pRoot.Get());
+        m_WorldBVH.Build(m_pRoot.Get());
         m_LightBVH.Build(m_pRoot.Get());
     }
 };

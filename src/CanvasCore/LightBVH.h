@@ -2,7 +2,7 @@
 // LightBVH
 //
 // Owns the per-light primitive table for a CWorld and the BVH built
-// over it.  Parallel structure to SceneBVH, but the primitive AABBs
+// over it.  Parallel structure to WorldBVH, but the primitive AABBs
 // describe each light's spatial *influence* (the volume within which
 // the light can contribute >= cutoff radiance) rather than its mesh
 // bounds.  This lets the renderer cull lights against the camera

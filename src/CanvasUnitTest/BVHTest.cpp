@@ -1,5 +1,5 @@
 //================================================================================================
-// BVHTest -- keystone correctness test for the scene BVH.
+// BVHTest -- keystone correctness test for the world BVH.
 //
 // Contract: the BVH must produce EXACTLY the same visible set as a
 // brute-force linear scan that applies Frustum::IntersectsAABB to every

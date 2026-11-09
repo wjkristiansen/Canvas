@@ -1,5 +1,5 @@
 //================================================================================================
-// SceneBVH
+// WorldBVH
 //
 // Owns the primitive table for a CWorld and the BVH built over it.
 //
@@ -29,14 +29,14 @@ namespace Canvas
 struct XCamera;
 struct XSceneGraphNode;
 
-class SceneBVH
+class WorldBVH
 {
 public:
-    SceneBVH() = default;
+    WorldBVH() = default;
 
     // Walks the subtree rooted at `root`, extracts renderable
     // primitives, and builds the BVH.  Discards any prior state first;
-    // safe to call repeatedly when scene topology changes.  Null root
+    // safe to call repeatedly when scene graph topology changes.  Null root
     // is a no-op (leaves IsBuilt() == false).
     //
     // Primitive criterion: an element contributes a primitive iff
