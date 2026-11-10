@@ -99,206 +99,145 @@ GEMMETHODIMP CSceneGraphNode::Update(float dtime)
 }
 
 //------------------------------------------------------------------------------------------------
+// Unlinks pWrapper from this node's child list, leaving its map entry and the wrapper itself.
+void CSceneGraphNode::UnlinkWrapper(ChildNode *pWrapper)
+{
+    if (pWrapper->m_pPrev)
+        pWrapper->m_pPrev->m_pNext = pWrapper->m_pNext;
+    else
+        m_pFirstChild = pWrapper->m_pNext;
+
+    if (pWrapper->m_pNext)
+        pWrapper->m_pNext->m_pPrev = pWrapper->m_pPrev;
+    else
+        m_pLastChild = pWrapper->m_pPrev;
+
+    pWrapper->m_pPrev = nullptr;
+    pWrapper->m_pNext = nullptr;
+}
+
+//------------------------------------------------------------------------------------------------
+// Makes pChild a child of this node, placed before pBefore, which is one of this node's child
+// wrappers, or last when pBefore is nullptr.  pChild moves from its parent in one step: the new
+// wrapper holds it before the old parent releases it, and nothing can fail after it leaves its
+// old parent.
+Gem::Result CSceneGraphNode::MoveChild(XSceneGraphNode *pChild, ChildNode *pBefore)
+{
+    CSceneGraphNode *pChildNode = static_cast<CSceneGraphNode *>(pChild);
+
+    // A node is never its own ancestor
+    for (CSceneGraphNode *pNode = this; pNode; pNode = pNode->m_pParent)
+    {
+        if (pNode == pChildNode)
+        {
+            Canvas::LogError(m_pCanvas->GetLogger(),
+                "XSceneGraphNode: a node cannot be added to its own subtree");
+            return Gem::Result::InvalidArg;
+        }
+    }
+
+    ChildNode *pWrapper = nullptr;
+    if (pChildNode->m_pParent == this)
+    {
+        // A move within this node's children reuses its wrapper
+        pWrapper = m_ChildMap.at(pChild);
+        if (pWrapper == pBefore)
+            return Gem::Result::Success;
+        UnlinkWrapper(pWrapper);
+    }
+    else
+    {
+        try
+        {
+            auto pNew = std::make_unique<ChildNode>();
+            pNew->m_pNode = pChild;
+            m_ChildMap.emplace(pChild, pNew.get());
+            pWrapper = pNew.release();
+        }
+        catch (const std::bad_alloc &)
+        {
+            return Gem::Result::OutOfMemory;
+        }
+
+        if (pChildNode->m_pParent)
+            pChildNode->m_pParent->ReleaseChild(pChildNode);
+    }
+
+    // Link before pBefore, or last
+    pWrapper->m_pNext = pBefore;
+    pWrapper->m_pPrev = pBefore ? pBefore->m_pPrev : m_pLastChild;
+    if (pWrapper->m_pPrev)
+        pWrapper->m_pPrev->m_pNext = pWrapper;
+    else
+        m_pFirstChild = pWrapper;
+    if (pBefore)
+        pBefore->m_pPrev = pWrapper;
+    else
+        m_pLastChild = pWrapper;
+
+    pChildNode->m_pParent = this;
+    pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation);
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+// Takes pChild, one of this node's children, out of its child list.  Its world transform is
+// then its local transform.  Releasing the wrapper may destroy pChild.
+void CSceneGraphNode::ReleaseChild(CSceneGraphNode *pChild)
+{
+    auto it = m_ChildMap.find(pChild);
+    ChildNode *pWrapper = it->second;
+    m_ChildMap.erase(it);
+    UnlinkWrapper(pWrapper);
+
+    pChild->m_pParent = nullptr;
+    pChild->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation);
+    delete pWrapper;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode* pChild)
 {
     if (!pChild)
         return Gem::Result::InvalidArg;
-
-    // If child already has a parent, remove it from old parent's child list
-    XSceneGraphNode* pCurrentParent = pChild->GetParent();
-    if (pCurrentParent)
-    {
-        Gem::ThrowGemError(pCurrentParent->RemoveChild(pChild));
-    }
-
-    // Create wrapper node for intrusive linking
-    ChildNode* pWrapper = new ChildNode();
-    pWrapper->m_pNode = pChild;
-
-    // For CSceneGraphNode children, update internal parent pointer
-    CSceneGraphNode* pChildNode = dynamic_cast<CSceneGraphNode*>(pChild);
-    if (pChildNode)
-    {
-        pChildNode->m_pParent = this;
-        
-        // Mark dirty global state on child (parent changed - but local matrix unaffected)
-        pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | 
-                                         TransformDirtyFlags::GlobalRotation);
-    }
-
-    // Append to child list
-    if (!m_pFirstChild)
-    {
-        m_pFirstChild = pWrapper;
-        m_pLastChild = pWrapper;
-    }
-    else
-    {
-        pWrapper->m_pPrev = m_pLastChild;
-        m_pLastChild->m_pNext = pWrapper;
-        m_pLastChild = pWrapper;
-    }
-
-    m_ChildMap[pChild] = pWrapper;
-
-    return Gem::Result::Success;
+    return MoveChild(pChild, nullptr);
 }
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneGraphNode::RemoveChild(_In_ XSceneGraphNode* pChild)
 {
-    if (!pChild)
+    if (!pChild || m_ChildMap.find(pChild) == m_ChildMap.end())
         return Gem::Result::InvalidArg;
-
-    // Find wrapper in map
-    auto it = m_ChildMap.find(pChild);
-    if (it == m_ChildMap.end())
-    {
-        return Gem::Result::InvalidArg;  // Child not found
-    }
-
-    ChildNode* pWrapper = it->second;
-
-    // Unlink from doubly-linked list
-    if (pWrapper->m_pPrev)
-    {
-        pWrapper->m_pPrev->m_pNext = pWrapper->m_pNext;
-    }
-    else
-    {
-        m_pFirstChild = pWrapper->m_pNext;
-    }
-
-    if (pWrapper->m_pNext)
-    {
-        pWrapper->m_pNext->m_pPrev = pWrapper->m_pPrev;
-    }
-    else
-    {
-        m_pLastChild = pWrapper->m_pPrev;
-    }
-
-    // For CSceneGraphNode children, clear internal parent pointer
-    CSceneGraphNode* pChildNode = dynamic_cast<CSceneGraphNode*>(pChild);
-    if (pChildNode)
-    {
-        pChildNode->m_pParent = nullptr;
-    }
-
-    m_ChildMap.erase(it);
-    delete pWrapper;
-
+    ReleaseChild(static_cast<CSceneGraphNode *>(pChild));
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneGraphNode::InsertChildBefore(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling)
 {
-    if (!pChild || !pSibling)
+    if (!pChild || !pSibling || pChild == pSibling)
         return Gem::Result::InvalidArg;
-
-    // If child already has a parent, remove it from old parent's child list
-    XSceneGraphNode* pCurrentParent = pChild->GetParent();
-    if (pCurrentParent)
-    {
-        Gem::ThrowGemError(pCurrentParent->RemoveChild(pChild));
-    }
-
-    // Find sibling wrapper
     auto it = m_ChildMap.find(pSibling);
     if (it == m_ChildMap.end())
-    {
-        return Gem::Result::InvalidArg;  // Sibling not found
-    }
-
-    ChildNode* pSiblingWrapper = it->second;
-
-    // Create wrapper node for the child
-    ChildNode* pWrapper = new ChildNode();
-    pWrapper->m_pNode = pChild;
-
-    // For CSceneGraphNode children, update internal parent pointer
-    CSceneGraphNode* pChildNode = dynamic_cast<CSceneGraphNode*>(pChild);
-    if (pChildNode)
-    {
-        pChildNode->m_pParent = this;
-        pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | 
-                                         TransformDirtyFlags::GlobalRotation);
-    }
-
-    // Insert before sibling in the doubly-linked list
-    pWrapper->m_pNext = pSiblingWrapper;
-    pWrapper->m_pPrev = pSiblingWrapper->m_pPrev;
-
-    if (pSiblingWrapper->m_pPrev)
-    {
-        pSiblingWrapper->m_pPrev->m_pNext = pWrapper;
-    }
-    else
-    {
-        m_pFirstChild = pWrapper;
-    }
-
-    pSiblingWrapper->m_pPrev = pWrapper;
-
-    m_ChildMap[pChild] = pWrapper;
-
-    return Gem::Result::Success;
+        return Gem::Result::InvalidArg;
+    return MoveChild(pChild, it->second);
 }
 
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneGraphNode::InsertChildAfter(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling)
 {
-    if (!pChild || !pSibling)
+    if (!pChild || !pSibling || pChild == pSibling)
         return Gem::Result::InvalidArg;
-
-    // If child already has a parent, remove it from old parent's child list
-    XSceneGraphNode* pCurrentParent = pChild->GetParent();
-    if (pCurrentParent)
-    {
-        Gem::ThrowGemError(pCurrentParent->RemoveChild(pChild));
-    }
-
-    // Find sibling wrapper
     auto it = m_ChildMap.find(pSibling);
     if (it == m_ChildMap.end())
-    {
-        return Gem::Result::InvalidArg;  // Sibling not found
-    }
+        return Gem::Result::InvalidArg;
 
-    ChildNode* pSiblingWrapper = it->second;
-
-    // Create wrapper node for the child
-    ChildNode* pWrapper = new ChildNode();
-    pWrapper->m_pNode = pChild;
-
-    // For CSceneGraphNode children, update internal parent pointer
-    CSceneGraphNode* pChildNode = dynamic_cast<CSceneGraphNode*>(pChild);
-    if (pChildNode)
-    {
-        pChildNode->m_pParent = this;
-        pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | 
-                                         TransformDirtyFlags::GlobalRotation);
-    }
-
-    // Insert after sibling in the doubly-linked list
-    pWrapper->m_pPrev = pSiblingWrapper;
-    pWrapper->m_pNext = pSiblingWrapper->m_pNext;
-
-    if (pSiblingWrapper->m_pNext)
-    {
-        pSiblingWrapper->m_pNext->m_pPrev = pWrapper;
-    }
-    else
-    {
-        m_pLastChild = pWrapper;
-    }
-
-    pSiblingWrapper->m_pNext = pWrapper;
-
-    m_ChildMap[pChild] = pWrapper;
-
-    return Gem::Result::Success;
+    // Placed before the node after pSibling.  When that node is pChild itself, pChild is
+    // already in place.
+    ChildNode *pBefore = it->second->m_pNext;
+    if (pBefore && pBefore->m_pNode.Get() == pChild)
+        return Gem::Result::Success;
+    return MoveChild(pChild, pBefore);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -411,13 +350,7 @@ void CSceneGraphNode::InvalidateTransforms(TransformDirtyFlags flags)
     
     for (ChildNode* pWrapper = m_pFirstChild; pWrapper; pWrapper = pWrapper->m_pNext)
     {
-        // Only invalidate our own implementation children
-        // External implementations manage their own transform invalidation
-        CSceneGraphNode* pChildImpl = dynamic_cast<CSceneGraphNode*>(pWrapper->m_pNode.Get());
-        if (pChildImpl)
-        {
-            pChildImpl->InvalidateTransforms(childFlags);
-        }
+        static_cast<CSceneGraphNode *>(pWrapper->m_pNode.Get())->InvalidateTransforms(childFlags);
     }
 }
 

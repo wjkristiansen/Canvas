@@ -261,6 +261,10 @@ private:
 
     // Helper to invalidate transforms on this node and propagate to children
     void InvalidateTransforms(TransformDirtyFlags flags);
+
+    void UnlinkWrapper(ChildNode *pWrapper);
+    Gem::Result MoveChild(XSceneGraphNode *pChild, ChildNode *pBefore);
+    void ReleaseChild(CSceneGraphNode *pChild);
 };
 
 //------------------------------------------------------------------------------------------------
