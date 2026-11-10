@@ -21,7 +21,7 @@ Canvas objects expose functionality through **GEM interfaces**, a COM-inspired s
 
 Interfaces are declared with `GEM_INTERFACE_DECLARE` and mapped in concrete classes via `BEGIN_GEM_INTERFACE_MAP` / `GEM_INTERFACE_ENTRY` macros. This gives Canvas a binary-stable ABI boundary and makes the plugin architecture possible. Every call that can fail returns a `Gem::Result`.
 
-Canvas implements its own interfaces, and an app passes to Canvas only objects that Canvas or its graphics backend created. The interfaces an app implements are named as such, such as the `XLogger` it passes to `CreateCanvas`.
+Canvas implements its own interfaces, and an app passes to Canvas only objects that Canvas or its graphics backend created. The interfaces an app implements are named as such, such as the `XLogger` it passes to `CreateCanvas`. A **listener**, which receives the callbacks a Canvas object delivers, is a plain struct of virtual methods that the app implements, such as `WorldListener`, rather than a GEM interface. The object refers to a listener by pointer, without reference counting, from the listener's registration until its unregistration or the object's release, and the app keeps the listener alive for that time.
 
 ## Plugin Architecture
 
@@ -72,7 +72,7 @@ In this world, a windmill has an arrow stuck in one of its blades, and an elevat
 
 **World object nodes.** A world object's nodes, its anchor node included, are ordinary scene graph nodes. An anchor node **belongs to** the world object anchored at it, and every other node inherits the world object of its parent. The scene graph's root node belongs to no world object, so a node the app adds under it inherits none. In the example, `(Windmill)` through `(Blade 2)` belong to the windmill, and `(Scene root)` and `(Ground)` belong to no world object.
 
-**Attachment.** A world object is **attached to** the world object that its anchor node's parent belongs to. In the example, the arrow is attached to the windmill, the car to the elevator, and the driver to the car. A world object in the scene graph whose anchor node's parent belongs to no world object, such as the windmill or the elevator, is a **top-level** world object. Which world object a world object is attached to follows from where its anchor node is, and changes when it is attached elsewhere. Attachment says where a world object is, not what keeps it alive: the world holds every world object, and a world object whose orphan policy is Keep outlives the world object it is attached to.
+**Attachment.** A world object is **attached to** the world object that its anchor node's parent belongs to. In the example, the arrow is attached to the windmill, the car to the elevator, and the driver to the car. A world object in the scene graph whose anchor node's parent belongs to no world object, such as the windmill or the elevator, is a **top-level** world object. Which world object a world object is attached to follows from where its anchor node is, and changes when it is attached elsewhere. Attachment says where a world object is, not what keeps it alive: the world holds every world object, and a world object outlives the world object it is attached to unless it belongs to it.
 
 Attaching a world object to a node moves its anchor node there, with the anchor node's subtree, which holds every world object attached to it, directly or in turn, keeping either its local transform or its world transform, as the caller chooses. The world object is then attached to the world object that node belongs to, or is top-level when the node belongs to none. A world object attaches only to a node outside its anchor node's subtree.
 
@@ -80,18 +80,30 @@ Attaching a world object to a node moves its anchor node there, with the anchor 
 
 **Active world objects.** Each world object is **active** or **inactive**, and starts active. `XWorld::Update` updates the world's active world objects, in the scene graph or detached, and leaves its inactive ones as they are. `XWorld::DeactivateObject` and `XWorld::ActivateObject` change which world objects are active, such as a pool deactivating the projectiles it holds until their next shot. A change made during `XWorld::Update` takes effect after it.
 
-**Removal and orphans.** Removing a world object from its world takes its anchor node's subtree out of the graph. Each world object attached to it is **orphaned**, and the engine applies the orphan's **orphan policy**:
+**Removal and orphans.** Removing a world object from its world takes its anchor node's subtree out of the graph, and removes with it each world object that **belongs to** it. A world object that instantiating a model creates inside the model's instance belongs to the world object it is attached to, so the doors of a removed house and the knobs of those doors are removed with it. Each other world object attached to a removed world object is **orphaned**: its anchor node is attached to the node the removal detached from, the former parent of the node taken out of the graph, keeping its world transform, and it stays in the world. Removing a car that stands on an elevator platform leaves its driver on the platform. The world reports each orphan to its [listeners](#world-callbacks), so the app can change an orphan's state, such as a sleeper whose bed was removed switching from a sleeping animation to an idle one, or remove it. The world's active camera is a camera in its scene graph. `XWorld::Update` clears an active camera that is not, such as one whose node was removed or detached, or destroyed with the world object that held it, and reports the loss to the world's listeners; the world then has no active camera until the app sets one.
 
-| Policy     | Effect                                                                                                                                                                                        |
-|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Keep**   | The orphan's anchor node is attached to the node the removal detached from, the former parent of the node taken out of the graph, keeping its world transform. The orphan stays in the world. |
-| **Remove** | The orphan is removed too, and the world objects attached to it are orphaned in turn.                                                                                                         |
-
-The engine applies the policies during the removal, depth first, so removing a car that stands on an elevator platform leaves its driver, whose policy is Keep, on the platform. A world object that instantiating a model creates defaults to Remove, so the doors of a removed house and the knobs of those doors go with it. Any other world object defaults to Keep. Each orphan that is kept is reported to the app in the next `XWorld::Update`, which may then change the orphan's state, such as a sleeper whose bed was removed switching from a sleeping animation to an idle one, or remove it. When the world's active camera is on a node that leaves the world, the world has no active camera until the app sets one, and the next `XWorld::Update` reports it.
-
-**Node operations.** The scene graph's node operations follow the same rules. Moving a node to a new parent moves its subtree with every world object anchored in it, and moving an anchor node attaches its world object there, as attaching the world object does. Removing a node from its parent takes its subtree out of the graph, and the world objects anchored in the subtree that are attached to no other world object in it are orphaned, as for a removed world object. Removing an anchor node from its parent removes its world object. Removing a node and then adding it elsewhere is a removal followed by an add, so the world objects anchored in its subtree are orphaned by the removal and do not move with it. A world draws the nodes in its scene graph and updates the world objects it holds, wherever their nodes are, so a node moved into another world's scene graph is drawn by that world, and a world object stays in the world that created it.
+**Node operations.** The scene graph's node operations follow the same rules. Moving a node to a new parent moves its subtree with every world object anchored in it, and moving an anchor node attaches its world object there, as attaching the world object does. Removing a node from its parent takes its subtree out of the graph, and the world objects anchored in the subtree that are attached to no other world object in it are orphaned, as for a removed world object. Removing an anchor node from its parent detaches its world object. Removing a node and then adding it elsewhere is a removal followed by an add, so the world objects anchored in its subtree are orphaned by the removal and do not move with it. A world draws the nodes in its scene graph and updates the world objects it holds, wherever their nodes are, so a node moved into another world's scene graph is drawn by that world, and a world object stays in the world that created it.
 
 **Names.** A world object's name is a label, for logs and debugging, and any number of world objects may share one. A world object that needs to be found by name is registered with its world under a **key**, unique within the world. Registering a key that is already in use fails, and removing a world object from its world releases its key.
+
+### World Callbacks
+
+An app that registers a `WorldListener` with a world receives the world's events as callbacks:
+
+| Callback                                      | Delivered when                                                        |
+|-----------------------------------------------|-----------------------------------------------------------------------|
+| `OnObjectOrphaned(XWorld *, XWorldObject *)`  | A world object is orphaned                                            |
+| `OnActiveCameraLost(XWorld *)`                | The world clears an active camera that is not in its scene graph      |
+
+```cpp
+Gem::Result XWorld::RegisterListener(WorldListener *pListener);
+Gem::Result XWorld::UnregisterListener(WorldListener *pListener);
+```
+
+- **Callback thread.** A world that a project creates has the project's [callback thread](#threads). A world that `XCanvas::CreateWorld` creates has the thread that created it as its callback thread. `XWorld::Update`, `RegisterListener`, and `UnregisterListener` are bound to the callback thread.
+- **Delivery.** Callbacks are delivered on the world's callback thread, from inside `XWorld::Update`, before it updates the world's world objects, in the order their events happen. `XWorld::Update` checks the active camera before it delivers the callbacks and after each event's callbacks, so a camera that a callback takes out of the scene graph is reported by the same `XWorld::Update`. A call that causes an event, such as `XWorld::RemoveObject`, delivers no callback itself. An orphan that is no longer in the world when its callback is due receives none.
+- **Registration.** After `UnregisterListener` returns, including when it is called from inside a callback, the listener receives no further callback. Each callback does nothing by default, so a listener overrides the callbacks it handles.
+- **Calls from a callback.** A callback may call any world method except `XWorld::Update`. The events its calls cause are delivered by the same `XWorld::Update`, before it updates the world's world objects.
 
 ## Projects
 
@@ -146,7 +158,7 @@ An `XWorldRequest` reports its progress. Its status changes only inside `Update`
 
 ### World Events
 
-An app that registers an `XProjectListener` receives the project's world events as callbacks:
+An app that registers a `ProjectListener` receives the project's world events as callbacks:
 
 | Callback | Delivered when |
 |---|---|
@@ -155,8 +167,8 @@ An app that registers an `XProjectListener` receives the project's world events 
 | `OnWorldRequestFailed(XWorldRequest *)` | A request fails |
 
 ```cpp
-Gem::Result XProject::RegisterListener(XProjectListener *pListener);
-Gem::Result XProject::UnregisterListener(XProjectListener *pListener);
+Gem::Result XProject::RegisterListener(ProjectListener *pListener);
+Gem::Result XProject::UnregisterListener(ProjectListener *pListener);
 ```
 
 - **Delivery.** Callbacks are delivered on the project's callback thread, from inside `Update`, in the order their events happen. A call that causes an event, such as `RequestWorld`, delivers no callback itself.
@@ -193,7 +205,7 @@ Package content becomes engine objects through `XModel`. A bundle that the engin
 | `AnimationClip`, with the `SkeletalAnimation` assets it binds | An animation clip, played through each instance's `XAnimationController` |
 | `WorldSettings` | The world's settings: its background and skyboxes, and its initial active camera |
 
-An instance's world object is anchored at a node whose local transform is the instance's instance transform, and the bundle's nodes and attachments that are relative to the instance transform are on that anchor node. A nested instance's anchor node is a child of its placement's node, with the placement's `Transform`, so its world object is attached to the instance that holds the placement. Its orphan policy is Remove, so removing an instance, such as a region that unloads, removes its nested instances with it. A world bundle's or world region's anchor node is a child of the scene graph's root node, with the identity transform, so its world object is top-level.
+An instance's world object is anchored at a node whose local transform is the instance's instance transform, and the bundle's nodes and attachments that are relative to the instance transform are on that anchor node. A nested instance's anchor node is a child of its placement's node, with the placement's `Transform`, so its world object is attached to the instance that holds the placement. It belongs to that instance, so removing an instance, such as a region that unloads, removes its nested instances with it. A world bundle's or world region's anchor node is a child of the scene graph's root node, with the identity transform, so its world object is top-level.
 
 `XModel` covers a bundle's node hierarchy, meshes, materials, textures, cameras, lights, skeletons with their sockets and skins, and animation clips. A skeleton's bones are not scene-graph nodes: each instance's `XSkeletonInstance` holds their pose. A bundle's other structure extends it:
 

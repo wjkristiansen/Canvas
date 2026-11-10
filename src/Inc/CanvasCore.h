@@ -720,6 +720,27 @@ XLight : public XSceneGraphElement
 };
 
 //------------------------------------------------------------------------------------------------
+// WorldListener - the callbacks a world delivers to the app, which implements this struct and
+// registers it with XWorld::RegisterListener.  The world refers to the listener by pointer,
+// without holding it, from RegisterListener until UnregisterListener returns or the world is
+// released.  The world delivers callbacks on its callback thread, from inside XWorld::Update,
+// before Update updates the world objects, in the order the events happened.  Each callback
+// does nothing by default.
+struct WorldListener
+{
+    // pObject was orphaned: the world object it was attached to was removed, and its anchor
+    // node was attached to the node the removal detached from, keeping its world transform.
+    // pObject is still in pWorld.
+    virtual void OnObjectOrphaned(XWorld * /*pWorld*/, XWorldObject * /*pObject*/) {}
+
+    // pWorld's active camera was not in its scene graph, and pWorld cleared it.
+    virtual void OnActiveCameraLost(XWorld * /*pWorld*/) {}
+
+protected:
+    ~WorldListener() = default;
+};
+
+//------------------------------------------------------------------------------------------------
 struct
 XWorld : public XCanvasElement
 {
@@ -742,6 +763,35 @@ XWorld : public XCanvasElement
     GEMMETHOD(ActivateObject)(_In_ XWorldObject *pObject) = 0;
     GEMMETHOD(DeactivateObject)(_In_ XWorldObject *pObject) = 0;
 
+    // Attaches pObject by moving its anchor node, with the anchor node's subtree, to be the last
+    // child of pParent, keeping either its local transform or its world transform.  A world
+    // object in the scene graph moves in one step.  Returns Gem::Result::InvalidArg when pObject
+    // has no anchor node, pParent is nullptr, or pParent is in the anchor node's subtree, and
+    // Gem::Result::NotFound when pObject is not one of this world's world objects.
+    GEMMETHOD(AttachObject)(_In_ XWorldObject *pObject, _In_ XSceneGraphNode *pParent, bool keepWorldTransform) = 0;
+
+    // Detaches pObject by taking its anchor node, with the anchor node's subtree, out of its
+    // parent, keeping its local transform.  The world objects attached to it are detached with
+    // it, and its activation is unchanged.  Returns Gem::Result::NotFound when pObject is not
+    // one of this world's world objects.
+    GEMMETHOD(DetachObject)(_In_ XWorldObject *pObject) = 0;
+
+    // Removes pObject from this world, orphaning the world objects attached to it (see
+    // WorldListener::OnObjectOrphaned).  The world releases each world object it removes;
+    // one the app still holds keeps its anchor node and returns nullptr from GetWorld.  Returns
+    // Gem::Result::NotFound when pObject is not one of this world's world objects.
+    GEMMETHOD(RemoveObject)(_In_ XWorldObject *pObject) = 0;
+
+    // Registers pListener to receive this world's callbacks.  Returns Gem::Result::InvalidArg
+    // when pListener is nullptr and Gem::Result::AlreadyExists when it is already registered.
+    GEMMETHOD(RegisterListener)(_In_ WorldListener *pListener) = 0;
+    // After UnregisterListener returns, including when it is called from a callback, pListener
+    // receives no further callback.  Returns Gem::Result::NotFound when pListener is not
+    // registered.
+    GEMMETHOD(UnregisterListener)(_In_ WorldListener *pListener) = 0;
+
+    // The active camera is a camera in this world's scene graph.  Update clears an active camera
+    // that is not (see WorldListener::OnActiveCameraLost).
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
     GEMMETHOD_(XCamera *, GetActiveCamera)() const = 0;
 
@@ -766,8 +816,10 @@ XWorld : public XCanvasElement
     // UI graphs.
     GEMMETHOD(RemoveUIGraph)(XUIGraph *pGraph) = 0;
 
-    // Updates the active world objects, in the scene graph or detached, by updating the scene graph
-    // and the nodes of each active detached world object, then updates the world's UI graphs.
+    // Delivers the callbacks for the events since the previous Update, then updates the active
+    // world objects, in the scene graph or detached, by updating the scene graph and the nodes of
+    // each active detached world object, then updates the world's UI graphs.  Returns
+    // Gem::Result::Unavailable when called from a callback.
     GEMMETHOD(Update)(float dtime) = 0;
     // Submits the world's scene content, then its UI graphs.
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;

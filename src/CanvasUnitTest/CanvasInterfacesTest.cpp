@@ -2178,6 +2178,364 @@ TEST(CanvasInterfacesTest, WorldUpdateSkipsInactiveWorldObjects)
     EXPECT_EQ(Gem::Result::NotFound, pWorld->ActivateObject(nullptr));
 }
 
+namespace
+{
+// A node named name, with the given local translation, added as the last child of pParent when
+// pParent is not nullptr.
+Gem::TGemPtr<Canvas::XSceneGraphNode> MakeNode(XCanvas *pCanvas, Canvas::XSceneGraphNode *pParent,
+                                               const char *name, float x, float y, float z)
+{
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNode, name)));
+    pNode->SetLocalTransform(Translation(x, y, z));
+    if (pParent)
+        EXPECT_TRUE(Succeeded(pParent->AddChild(pNode)));
+    return pNode;
+}
+
+// The elevator example from the spec: an elevator carries a car, and the car its driver.
+struct ElevatorWorld
+{
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pElevatorNode, pPlatform, pCarNode, pSeat, pDriverNode;
+    Gem::TGemPtr<Canvas::XWorldObject> pElevator, pCar, pDriver;
+
+    ElevatorWorld(XCanvas *pCanvas, Canvas::XGfxDevice *pDevice)
+    {
+        EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ElevatorWorld")));
+        Canvas::XSceneGraphNode *pRoot = pWorld->GetRootNode();
+        pElevatorNode = MakeNode(pCanvas, pRoot, "Elevator", 10.0f, 0.0f, 0.0f);
+        pPlatform     = MakeNode(pCanvas, pElevatorNode, "Platform", 0.0f, 5.0f, 0.0f);
+        pCarNode      = MakeNode(pCanvas, pPlatform, "Car", 1.0f, 0.0f, 0.0f);
+        pSeat         = MakeNode(pCanvas, pCarNode, "Seat", 0.0f, 1.0f, 0.0f);
+        pDriverNode   = MakeNode(pCanvas, pSeat, "Driver", 0.0f, 0.0f, 0.5f);
+        EXPECT_TRUE(Succeeded(pWorld->CreateWorldObject(pElevatorNode, &pElevator, "Elevator")));
+        EXPECT_TRUE(Succeeded(pWorld->CreateWorldObject(pCarNode, &pCar, "Car")));
+        EXPECT_TRUE(Succeeded(pWorld->CreateWorldObject(pDriverNode, &pDriver, "Driver")));
+    }
+};
+} // anonymous namespace
+
+TEST(CanvasInterfacesTest, WorldObjectAttach)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+    Canvas::XSceneGraphNode *pRoot = w.pWorld->GetRootNode();
+
+    // The driver at (11, 6, 0.5) gets out onto the ground, keeping its world transform
+    auto pGround = MakeNode(pCanvas, pRoot, "Ground", 0.0f, -1.0f, 0.0f);
+    EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
+    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pDriver, pGround, true)));
+    EXPECT_EQ(pGround.Get(), w.pDriverNode->GetParent());
+    EXPECT_EQ(w.pDriver.Get(), w.pDriverNode->GetWorldObject());
+    EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
+    EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetLocalTranslation(), FloatVector4(11.0f, 7.0f, 0.5f, 1.0f)));
+
+    // Keeping the world transform under a rotated, scaled, and mirrored parent
+    auto pTurntable = MakeNode(pCanvas, pRoot, "Turntable", 3.0f, 2.0f, -4.0f);
+    Canvas::Transform turn = pTurntable->GetLocalTransform();
+    turn.Rotation = QuaternionFromAngleAxis(FloatVector4(0.0f, 1.0f, 0.0f, 1.2f));
+    turn.Scale    = FloatVector4(-2.0f, 2.0f, 2.0f, 0.0f);
+    pTurntable->SetLocalTransform(turn);
+    w.pDriverNode->SetLocalRotation(QuaternionFromAngleAxis(FloatVector4(1.0f, 0.0f, 0.0f, 0.4f)));
+    const FloatMatrix4x4 before = w.pDriverNode->GetGlobalMatrix();
+    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pDriver, pTurntable, true)));
+    const FloatMatrix4x4 after = w.pDriverNode->GetGlobalMatrix();
+    for (int r = 0; r < 4; ++r)
+        EXPECT_TRUE(AlmostEqual(after[r], before[r])) << "row " << r;
+
+    // Back in the seat, keeping its local transform
+    w.pDriverNode->SetLocalTransform(Translation(11.0f, 7.0f, 0.5f));
+    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pDriver, w.pSeat, false)));
+    EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetLocalTranslation(), FloatVector4(11.0f, 7.0f, 0.5f, 1.0f)));
+    EXPECT_EQ(w.pDriver.Get(), w.pDriverNode->GetWorldObject());
+
+    // Moving the car moves the driver attached to it
+    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pCar, pGround, false)));
+    EXPECT_EQ(pGround.Get(), w.pCarNode->GetParent());
+    EXPECT_EQ(w.pSeat.Get(), w.pDriverNode->GetParent());
+    EXPECT_EQ(w.pCar.Get(), w.pSeat->GetWorldObject());
+
+    // A world object attaches only outside its anchor node's subtree
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->AttachObject(w.pCar, w.pCarNode, false));
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->AttachObject(w.pCar, w.pDriverNode, false));
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->AttachObject(w.pCar, nullptr, false));
+
+    // A world object with no anchor node has nothing to attach
+    Gem::TGemPtr<Canvas::XWorldObject> pRules;
+    ASSERT_TRUE(Succeeded(w.pWorld->CreateWorldObject(nullptr, &pRules)));
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->AttachObject(pRules, pGround, false));
+
+    // Only the world's own world objects
+    Gem::TGemPtr<Canvas::XWorld> pOtherWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pOtherWorld, "OtherWorld")));
+    EXPECT_EQ(Gem::Result::NotFound, pOtherWorld->AttachObject(w.pCar, pGround, false));
+}
+
+TEST(CanvasInterfacesTest, WorldObjectDetach)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+
+    // The camera rides in the car
+    Gem::TGemPtr<Canvas::XCamera> pCamera;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateCamera(&pCamera, "CarCamera")));
+    ASSERT_TRUE(Succeeded(w.pSeat->BindElement(pCamera)));
+    w.pWorld->SetActiveCamera(pCamera);
+
+    // Detaching the car takes it, its driver, and the camera out of the scene graph, keeping
+    // the car's local transform; the car stays in the world
+    ASSERT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
+    EXPECT_EQ(nullptr, w.pCarNode->GetParent());
+    EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
+    EXPECT_TRUE(AlmostEqual(w.pCarNode->GetLocalTranslation(), FloatVector4(1.0f, 0.0f, 0.0f, 1.0f)));
+    EXPECT_EQ(w.pCar.Get(), w.pSeat->GetWorldObject());
+    EXPECT_EQ(w.pDriver.Get(), w.pDriverNode->GetWorldObject());
+    EXPECT_EQ(w.pSeat.Get(), w.pDriverNode->GetParent());
+
+    // The next Update clears the active camera, which left the scene graph
+    EXPECT_EQ(pCamera.Get(), w.pWorld->GetActiveCamera());
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
+
+    // Detaching a detached world object changes nothing; attaching puts it back
+    EXPECT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
+    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pCar, w.pPlatform, false)));
+    EXPECT_EQ(w.pPlatform.Get(), w.pCarNode->GetParent());
+    EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
+
+    // Only the world's own world objects
+    Gem::TGemPtr<Canvas::XWorld> pOtherWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pOtherWorld, "OtherWorld")));
+    EXPECT_EQ(Gem::Result::NotFound, pOtherWorld->DetachObject(w.pCar));
+}
+
+namespace
+{
+// A WorldListener that records each callback as "orphaned <name>" or "camera lost", and runs
+// onEvent after recording it.
+struct RecordingListener : Canvas::WorldListener
+{
+    std::vector<std::string> events;
+    std::function<void()> onEvent;
+
+    void OnObjectOrphaned(Canvas::XWorld *, Canvas::XWorldObject *pObject) override
+    {
+        events.push_back(std::string("orphaned ") + pObject->GetName());
+        if (onEvent)
+            onEvent();
+    }
+    void OnActiveCameraLost(Canvas::XWorld *) override
+    {
+        events.push_back("camera lost");
+        if (onEvent)
+            onEvent();
+    }
+};
+} // anonymous namespace
+
+TEST(CanvasInterfacesTest, WorldObjectRemoveKeepsOrphans)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+    RecordingListener listener;
+    ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
+
+    // The camera is on the driver, who is kept
+    Gem::TGemPtr<Canvas::XCamera> pCamera;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateCamera(&pCamera, "DriverCamera")));
+    ASSERT_TRUE(Succeeded(w.pDriverNode->BindElement(pCamera)));
+    w.pWorld->SetActiveCamera(pCamera);
+
+    // Removing the car leaves its driver on the platform, where it was
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+    EXPECT_EQ(nullptr, w.pCar->GetWorld());
+    EXPECT_EQ(nullptr, w.pCarNode->GetParent());
+    EXPECT_EQ(w.pPlatform.Get(), w.pDriverNode->GetParent());
+    EXPECT_EQ(w.pElevator.Get(), w.pDriverNode->GetParent()->GetWorldObject());
+    EXPECT_EQ(w.pWorld.Get(), w.pDriver->GetWorld());
+    EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
+    EXPECT_EQ(pCamera.Get(), w.pWorld->GetActiveCamera());
+
+    // The removed world object is no longer one of the world's
+    EXPECT_EQ(Gem::Result::NotFound, w.pWorld->RemoveObject(w.pCar));
+
+    // The removal delivers no callback; the next Update does, once
+    EXPECT_TRUE(listener.events.empty());
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(std::vector<std::string>({ "orphaned Driver" }), listener.events);
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(1u, listener.events.size());
+}
+
+TEST(CanvasInterfacesTest, WorldObjectRemoveTopLevel)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+    RecordingListener listener;
+    ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
+
+    // The camera rides on the platform, which goes with the elevator
+    Gem::TGemPtr<Canvas::XCamera> pCamera;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateCamera(&pCamera, "PlatformCamera")));
+    ASSERT_TRUE(Succeeded(w.pPlatform->BindElement(pCamera)));
+    w.pWorld->SetActiveCamera(pCamera);
+
+    // Removing the elevator orphans the car, which lands where the elevator was attached: the
+    // root node, keeping its world transform.  The driver stays in the car.
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pElevator)));
+    EXPECT_EQ(nullptr, w.pElevator->GetWorld());
+    EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
+    EXPECT_EQ(w.pWorld->GetRootNode(), w.pCarNode->GetParent());
+    EXPECT_EQ(w.pSeat.Get(), w.pDriverNode->GetParent());
+    EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
+
+    // An orphan removed before the next Update gets no callback.  The next Update clears the
+    // active camera and reports its loss.
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+    EXPECT_EQ(pCamera.Get(), w.pWorld->GetActiveCamera());
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
+    EXPECT_EQ(std::vector<std::string>({ "orphaned Driver", "camera lost" }), listener.events);
+}
+
+TEST(CanvasInterfacesTest, WorldListenerCallbacks)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+    RecordingListener first, second;
+
+    // Registration
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->RegisterListener(nullptr));
+    ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&first)));
+    EXPECT_EQ(Gem::Result::AlreadyExists, w.pWorld->RegisterListener(&first));
+    ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&second)));
+    EXPECT_EQ(Gem::Result::NotFound, w.pWorld->UnregisterListener(nullptr));
+
+    // A callback may remove a world object, and the callbacks that causes are delivered by the
+    // same Update.  The first listener unregisters the second, which receives nothing after it.
+    first.onEvent = [&]
+    {
+        if (first.events.size() == 1)
+        {
+            EXPECT_EQ(Gem::Result::Unavailable, w.pWorld->Update(0.0f));
+            EXPECT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+            EXPECT_TRUE(Succeeded(w.pWorld->UnregisterListener(&second)));
+        }
+    };
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pElevator)));
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(std::vector<std::string>({ "orphaned Car", "orphaned Driver" }), first.events);
+    EXPECT_TRUE(second.events.empty());
+    EXPECT_EQ(w.pWorld->GetRootNode(), w.pDriverNode->GetParent());
+    EXPECT_EQ(Gem::Result::NotFound, w.pWorld->UnregisterListener(&second));
+
+    // Releasing a world delivers no callback
+    first.onEvent = nullptr;
+    Gem::TGemPtr<Canvas::XWorldObject> pRider;
+    auto pRiderNode = MakeNode(pCanvas, w.pDriverNode, "Rider", 0.0f, 0.0f, 0.0f);
+    ASSERT_TRUE(Succeeded(w.pWorld->CreateWorldObject(pRiderNode, &pRider, "Rider")));
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pDriver)));
+    w.pWorld = nullptr;
+    EXPECT_EQ(2u, first.events.size());
+}
+
+TEST(CanvasInterfacesTest, WorldActiveCameraLeavesSceneGraph)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+    RecordingListener listener;
+    ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
+
+    // A camera with no node is not in the scene graph
+    Gem::TGemPtr<Canvas::XCamera> pCamera;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateCamera(&pCamera, "Camera")));
+    w.pWorld->SetActiveCamera(pCamera);
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
+    EXPECT_EQ(std::vector<std::string>({ "camera lost" }), listener.events);
+
+    // A camera whose node is destroyed has no node
+    {
+        auto pNode = MakeNode(pCanvas, w.pWorld->GetRootNode(), "CameraNode", 0.0f, 0.0f, 0.0f);
+        ASSERT_TRUE(Succeeded(pNode->BindElement(pCamera)));
+    }
+    w.pWorld->SetActiveCamera(pCamera);
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(pCamera.Get(), w.pWorld->GetActiveCamera());
+    Canvas::XSceneGraphNode *pRoot = w.pWorld->GetRootNode();
+    ASSERT_TRUE(Succeeded(pRoot->RemoveChild(pCamera->GetAttachedNode())));
+    EXPECT_EQ(nullptr, pCamera->GetAttachedNode());
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
+    EXPECT_EQ(2u, listener.events.size());
+
+    // A callback that takes the active camera out of the scene graph has its loss reported by
+    // the same Update
+    ASSERT_TRUE(Succeeded(w.pSeat->BindElement(pCamera)));
+    w.pWorld->SetActiveCamera(pCamera);
+    listener.onEvent = [&]
+    {
+        if (listener.events.back() == "orphaned Car")
+            EXPECT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
+    };
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pElevator)));
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
+    EXPECT_EQ(std::vector<std::string>({ "camera lost", "camera lost", "orphaned Car", "camera lost" }),
+              listener.events);
+}
+
+TEST(CanvasInterfacesTest, WorldObjectRemoveDetached)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+
+    // Removing a detached car leaves its orphaned driver detached, with no parent
+    ASSERT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+    EXPECT_EQ(nullptr, w.pDriverNode->GetParent());
+    EXPECT_EQ(w.pWorld.Get(), w.pDriver->GetWorld());
+    EXPECT_EQ(w.pDriver.Get(), w.pDriverNode->GetWorldObject());
+
+    // A world object with no anchor node is removed like any other
+    Gem::TGemPtr<Canvas::XWorldObject> pRules;
+    ASSERT_TRUE(Succeeded(w.pWorld->CreateWorldObject(nullptr, &pRules)));
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(pRules)));
+    EXPECT_EQ(nullptr, pRules->GetWorld());
+
+    // Removed and remaining world objects keep the active collection consistent
+    ASSERT_TRUE(Succeeded(w.pWorld->DeactivateObject(w.pElevator)));
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pElevator)));
+    EXPECT_TRUE(Succeeded(w.pWorld->DeactivateObject(w.pDriver)));
+    EXPECT_TRUE(Succeeded(w.pWorld->ActivateObject(w.pDriver)));
+    EXPECT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+}
+
 // Exercises cross-fade blending between two clips: the pose interpolates from the
 // pre-blend snapshot toward the new clip, and snaps fully to the new clip once the
 // blend duration elapses.

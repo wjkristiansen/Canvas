@@ -37,6 +37,10 @@ GEMMETHODIMP CWorld::Initialize()
 //------------------------------------------------------------------------------------------------
 void CWorld::Uninitialize()
 {
+    // Teardown delivers no callbacks
+    m_Events.clear();
+    m_Listeners.clear();
+
     // A world object the app still holds outlives its world.
     for (auto &pObject : m_WorldObjects)
         pObject->ClearWorld();
@@ -160,6 +164,214 @@ GEMMETHODIMP CWorld::DeactivateObject(XWorldObject *pObject)
 }
 
 //------------------------------------------------------------------------------------------------
+void CWorld::EraseObject(size_t index)
+{
+    // Keep the active range contiguous, then move the object to the end and drop it
+    if (index < m_ActiveObjectCount)
+    {
+        SwapObjects(index, m_ActiveObjectCount - 1);
+        index = --m_ActiveObjectCount;
+    }
+    SwapObjects(index, m_WorldObjects.size() - 1);
+    m_WorldObjects.back()->ClearWorld();
+    m_WorldObjects.pop_back();
+}
+
+//------------------------------------------------------------------------------------------------
+Gem::Result CWorld::CheckActiveCamera()
+{
+    if (!m_pActiveCamera)
+        return Gem::Result::Success;
+    XSceneGraphNode *pNode = m_pActiveCamera->GetAttachedNode();
+    while (pNode && pNode->GetParent())
+        pNode = pNode->GetParent();
+    if (pNode != m_pRoot.Get())
+    {
+        const char *cameraName = m_pActiveCamera->GetName();
+        const char *worldName = GetName();
+        Canvas::LogWarn(m_pCanvas->GetLogger(),
+            "XWorld '%s': active camera '%s' is not in the scene graph; the world has no active camera "
+            "and renders only its background until one is set",
+            worldName ? worldName : "", cameraName ? cameraName : "");
+        m_pActiveCamera = nullptr;
+        try
+        {
+            m_Events.push_back({ EventType::ActiveCameraLost, nullptr });
+        }
+        catch (const std::bad_alloc &)
+        {
+            return Gem::Result::OutOfMemory;
+        }
+    }
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+// The scale, rotation, and translation of an affine matrix (row vectors).  A matrix sheared by
+// non-uniform scale under rotation has no exact decomposition; the shear is lost.
+static Transform TransformFromMatrix(const Math::FloatMatrix4x4 &m)
+{
+    Math::FloatVector4 rows[3] = { m[0], m[1], m[2] };
+    float scale[3];
+    for (int i = 0; i < 3; ++i)
+        scale[i] = std::sqrt(Math::DotProduct(rows[i], rows[i]));
+
+    // A mirrored basis gets a negative X scale
+    if (Math::DotProduct(Math::CrossProduct(rows[0], rows[1]), rows[2]) < 0.0f)
+        scale[0] = -scale[0];
+
+    Math::FloatMatrix4x4 rotation = Math::IdentityMatrix<float, 4, 4>();
+    for (int i = 0; i < 3; ++i)
+    {
+        const float inv = scale[i] != 0.0f ? 1.0f / scale[i] : 0.0f;
+        for (int c = 0; c < 3; ++c)
+            rotation[i][c] = rows[i][c] * inv;
+    }
+
+    Transform t;
+    t.Scale       = Math::FloatVector4(scale[0], scale[1], scale[2], 0.0f);
+    t.Rotation    = Math::QuaternionFromRotationMatrix(rotation);
+    t.Translation = Math::FloatVector4(m[3][0], m[3][1], m[3][2], 1.0f);
+    return t;
+}
+
+//------------------------------------------------------------------------------------------------
+// Adds pNode as the last child of pParent, or leaves it with no parent when pParent is nullptr,
+// with the local transform that keeps the given world matrix.
+static Gem::Result ReparentKeepingWorld(XSceneGraphNode *pNode, XSceneGraphNode *pParent,
+                                        const Math::FloatMatrix4x4 &world)
+{
+    Math::FloatMatrix4x4 local = world;
+    if (pParent)
+        local = world * Math::AffineInverse(pParent->GetGlobalMatrix());
+
+    Gem::Result result = Gem::Result::Success;
+    if (pParent)
+        result = pParent->AddChild(pNode);
+    else if (pNode->GetParent())
+        result = pNode->GetParent()->RemoveChild(pNode);
+    if (Gem::Failed(result))
+        return result;
+
+    pNode->SetLocalTransform(TransformFromMatrix(local));
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::AttachObject(XWorldObject *pObject, XSceneGraphNode *pParent, bool keepWorldTransform)
+{
+    CWorldObject *pImpl = FindObject(pObject);
+    if (!pImpl)
+        return Gem::Result::NotFound;
+
+    CSceneGraphNode *pAnchor = pImpl->GetAnchor();
+    if (!pAnchor || !pParent)
+        return Gem::Result::InvalidArg;
+
+    // The new parent must be outside the anchor node's subtree
+    for (XSceneGraphNode *pNode = pParent; pNode; pNode = pNode->GetParent())
+    {
+        if (pNode == pAnchor)
+        {
+            Canvas::LogError(m_pCanvas->GetLogger(),
+                "XWorld::AttachObject: the parent node is in the world object's anchor node's subtree");
+            return Gem::Result::InvalidArg;
+        }
+    }
+
+    try
+    {
+        if (keepWorldTransform)
+            Gem::ThrowGemError(ReparentKeepingWorld(pAnchor, pParent, pAnchor->GetGlobalMatrix()));
+        else
+            Gem::ThrowGemError(pParent->AddChild(pAnchor));
+    }
+    catch (const Gem::GemError &e)
+    {
+        return e.Result();
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::DetachObject(XWorldObject *pObject)
+{
+    CWorldObject *pImpl = FindObject(pObject);
+    if (!pImpl)
+        return Gem::Result::NotFound;
+
+    CSceneGraphNode *pAnchor = pImpl->GetAnchor();
+    if (pAnchor && pAnchor->GetParent())
+    {
+        Gem::Result result = pAnchor->GetParent()->RemoveChild(pAnchor);
+        if (Gem::Failed(result))
+            return result;
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::RemoveObject(XWorldObject *pObject)
+{
+    CWorldObject *pImpl = FindObject(pObject);
+    if (!pImpl)
+        return Gem::Result::NotFound;
+
+    try
+    {
+        // Find the world objects the removal orphans: those anchored in the removed world
+        // object's subtree and attached to no other world object in it.  Their world matrices
+        // are taken before any node moves.
+        struct Orphan { Gem::TGemPtr<CWorldObject> pObject; Math::FloatMatrix4x4 world; };
+        std::vector<Orphan> orphans;
+        std::vector<XSceneGraphNode *> stack;
+
+        if (pImpl->GetAnchor())
+            stack.push_back(pImpl->GetAnchor());
+        while (!stack.empty())
+        {
+            XSceneGraphNode *pNode = stack.back();
+            stack.pop_back();
+            for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+            {
+                CWorldObject *pOrphan = static_cast<CSceneGraphNode *>(pChild)->GetAnchoredObject();
+                if (pOrphan && pOrphan->GetWorld() == this)
+                    orphans.push_back({ pOrphan, pChild->GetGlobalMatrix() });
+                else
+                    stack.push_back(pChild);
+            }
+        }
+
+        // Take the removed world object's anchor node out of the graph, then attach each orphan
+        // to the node the removal detached from
+        CSceneGraphNode *pAnchor = pImpl->GetAnchor();
+        XSceneGraphNode *pDetachedFrom = pAnchor ? pAnchor->GetParent() : nullptr;
+        if (pDetachedFrom)
+            Gem::ThrowGemError(pDetachedFrom->RemoveChild(pAnchor));
+
+        for (Orphan &orphan : orphans)
+        {
+            Gem::ThrowGemError(ReparentKeepingWorld(orphan.pObject->GetAnchor(), pDetachedFrom, orphan.world));
+            m_Events.push_back({ EventType::ObjectOrphaned, orphan.pObject });
+        }
+
+        EraseObject(pImpl->GetWorldIndex());
+    }
+    catch (const Gem::GemError &e)
+    {
+        return e.Result();
+    }
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
+    }
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CWorld::CreateUIGraph(XUIGraph **ppGraph)
 {
     if (!ppGraph)
@@ -198,9 +410,92 @@ GEMMETHODIMP CWorld::RemoveUIGraph(XUIGraph *pGraph)
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::RegisterListener(WorldListener *pListener)
+{
+    if (!pListener)
+        return Gem::Result::InvalidArg;
+    if (std::find(m_Listeners.begin(), m_Listeners.end(), pListener) != m_Listeners.end())
+        return Gem::Result::AlreadyExists;
+
+    try
+    {
+        m_Listeners.push_back(pListener);
+    }
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
+    }
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::UnregisterListener(WorldListener *pListener)
+{
+    auto it = pListener ? std::find(m_Listeners.begin(), m_Listeners.end(), pListener) : m_Listeners.end();
+    if (it == m_Listeners.end())
+        return Gem::Result::NotFound;
+
+    // During delivery the list is being walked, so the slot is cleared and compacted afterward
+    if (m_Delivering)
+        *it = nullptr;
+    else
+        m_Listeners.erase(it);
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+// Delivers each queued event to each listener, in order.  Events that callbacks cause are
+// queued behind the rest and delivered in the same pass.  An orphan no longer in this world
+// gets no callback.  The active camera is checked first and after each event's callbacks.
+Gem::Result CWorld::DeliverEvents()
+{
+    m_Delivering = true;
+    Gem::Result result = CheckActiveCamera();
+    for (size_t e = 0; Gem::Succeeded(result) && e < m_Events.size(); ++e)
+    {
+        Event event = m_Events[e];  // A copy, since callbacks may queue events
+        if (event.type == EventType::ObjectOrphaned && !FindObject(event.pObject.Get()))
+            continue;
+
+        for (size_t l = 0; l < m_Listeners.size(); ++l)
+        {
+            WorldListener *pListener = m_Listeners[l];
+            if (!pListener)
+                continue;
+            switch (event.type)
+            {
+            case EventType::ObjectOrphaned:
+                pListener->OnObjectOrphaned(this, event.pObject.Get());
+                break;
+            case EventType::ActiveCameraLost:
+                pListener->OnActiveCameraLost(this);
+                break;
+            }
+        }
+
+        // A callback may have moved the active camera
+        result = CheckActiveCamera();
+    }
+    m_Events.clear();
+    m_Listeners.erase(std::remove(m_Listeners.begin(), m_Listeners.end(), nullptr), m_Listeners.end());
+    m_Delivering = false;
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CWorld::Update(float dtime)
 {
-    Gem::Result result = m_pRoot->Update(dtime);
+    if (m_Delivering)
+    {
+        Canvas::LogError(m_pCanvas->GetLogger(), "XWorld::Update: called from a WorldListener callback");
+        return Gem::Result::Unavailable;
+    }
+
+    Gem::Result result = DeliverEvents();
+    if (Gem::Failed(result))
+        return result;
+
+    result = m_pRoot->Update(dtime);
     if (Gem::Failed(result))
         return result;
 
