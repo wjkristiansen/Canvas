@@ -2506,6 +2506,160 @@ TEST(CanvasInterfacesTest, WorldActiveCameraLeavesSceneGraph)
               listener.events);
 }
 
+TEST(CanvasInterfacesTest, WorldRootNestedInAnotherWorld)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+    RecordingListener listener;
+    ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
+
+    Gem::TGemPtr<Canvas::XCamera> pCamera;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateCamera(&pCamera, "SeatCamera")));
+    ASSERT_TRUE(Succeeded(w.pSeat->BindElement(pCamera)));
+    w.pWorld->SetActiveCamera(pCamera);
+
+    // With its root node under a node of another world, the world keeps its active camera
+    Gem::TGemPtr<Canvas::XWorld> pOuterWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pOuterWorld, "OuterWorld")));
+    auto pHolder = MakeNode(pCanvas, pOuterWorld->GetRootNode(), "Holder", 0.0f, 0.0f, 0.0f);
+    ASSERT_TRUE(Succeeded(pHolder->AddChild(w.pWorld->GetRootNode())));
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(pCamera.Get(), w.pWorld->GetActiveCamera());
+    EXPECT_TRUE(listener.events.empty());
+
+    // A camera outside the world's own scene graph is still lost, even inside the outer world
+    ASSERT_TRUE(Succeeded(pHolder->BindElement(pCamera)));
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
+    EXPECT_EQ(std::vector<std::string>({ "camera lost" }), listener.events);
+
+    ASSERT_TRUE(Succeeded(pHolder->RemoveChild(w.pWorld->GetRootNode())));
+}
+
+namespace
+{
+// The names of pParent's children, in order.
+std::vector<std::string> ChildNames(Canvas::XSceneGraphNode *pParent)
+{
+    std::vector<std::string> names;
+    for (Canvas::XSceneGraphNode *pChild = pParent->GetFirstChild(); pChild; pChild = pParent->GetNextChild(pChild))
+        names.push_back(pChild->GetName());
+    return names;
+}
+} // anonymous namespace
+
+TEST(CanvasInterfacesTest, SceneGraphNodeMoves)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pA = MakeNode(pCanvas, nullptr, "A", 0.0f, 0.0f, 0.0f);
+    auto pB = MakeNode(pCanvas, nullptr, "B", 0.0f, 0.0f, 0.0f);
+
+    // A node that only its parent holds moves to a new parent intact
+    {
+        auto pChild = MakeNode(pCanvas, pA, "Child", 1.0f, 2.0f, 3.0f);
+        auto pGrandchild = MakeNode(pCanvas, pChild, "Grandchild", 0.0f, 0.0f, 0.0f);
+    }
+    ASSERT_TRUE(Succeeded(pB->AddChild(pA->GetFirstChild())));
+    EXPECT_EQ(nullptr, pA->GetFirstChild());
+    ASSERT_NE(nullptr, pB->GetFirstChild());
+    EXPECT_STREQ("Child", pB->GetFirstChild()->GetName());
+    EXPECT_EQ(pB.Get(), pB->GetFirstChild()->GetParent());
+    EXPECT_STREQ("Grandchild", pB->GetFirstChild()->GetFirstChild()->GetName());
+
+    // Ordering among siblings, moving within a parent and from another
+    auto pX = MakeNode(pCanvas, pB, "X", 0.0f, 0.0f, 0.0f);
+    auto pY = MakeNode(pCanvas, pB, "Y", 0.0f, 0.0f, 0.0f);
+    EXPECT_EQ(std::vector<std::string>({ "Child", "X", "Y" }), ChildNames(pB));
+    ASSERT_TRUE(Succeeded(pB->InsertChildBefore(pY, pX)));
+    EXPECT_EQ(std::vector<std::string>({ "Child", "Y", "X" }), ChildNames(pB));
+    ASSERT_TRUE(Succeeded(pB->InsertChildAfter(pX, pY)));
+    EXPECT_EQ(std::vector<std::string>({ "Child", "Y", "X" }), ChildNames(pB));
+    ASSERT_TRUE(Succeeded(pB->InsertChildAfter(pB->GetFirstChild(), pX)));
+    EXPECT_EQ(std::vector<std::string>({ "Y", "X", "Child" }), ChildNames(pB));
+    ASSERT_TRUE(Succeeded(pB->AddChild(pY)));
+    EXPECT_EQ(std::vector<std::string>({ "X", "Child", "Y" }), ChildNames(pB));
+    auto pZ = MakeNode(pCanvas, pA, "Z", 0.0f, 0.0f, 0.0f);
+    ASSERT_TRUE(Succeeded(pB->InsertChildBefore(pZ, pX)));
+    EXPECT_EQ(std::vector<std::string>({ "Z", "X", "Child", "Y" }), ChildNames(pB));
+    EXPECT_EQ(nullptr, pA->GetFirstChild());
+
+    // A failed insertion leaves the node where it was
+    ASSERT_TRUE(Succeeded(pA->AddChild(pZ)));
+    EXPECT_EQ(Gem::Result::InvalidArg, pA->InsertChildBefore(pX, pY));
+    EXPECT_EQ(Gem::Result::InvalidArg, pB->InsertChildAfter(pX, pX));
+    EXPECT_EQ(pB.Get(), pX->GetParent());
+    EXPECT_EQ(std::vector<std::string>({ "X", "Child", "Y" }), ChildNames(pB));
+
+    // A node is never added to its own subtree
+    Canvas::XSceneGraphNode *pChild = pB->GetNextChild(pX);
+    ASSERT_NE(nullptr, pChild);
+    EXPECT_EQ(Gem::Result::InvalidArg, pChild->GetFirstChild()->AddChild(pB));
+    EXPECT_EQ(Gem::Result::InvalidArg, pChild->AddChild(pChild));
+    EXPECT_EQ(Gem::Result::InvalidArg, pB->InsertChildBefore(pB, pX));
+    EXPECT_EQ(nullptr, pB->GetParent());
+
+    // A removed node's world transform is its local transform
+    pB->SetLocalTransform(Translation(10.0f, 0.0f, 0.0f));
+    EXPECT_TRUE(AlmostEqual(pChild->GetFirstChild()->GetGlobalTranslation(), FloatVector4(11.0f, 2.0f, 3.0f, 1.0f)));
+    Gem::TGemPtr<Canvas::XSceneGraphNode> pHeld = pChild;
+    ASSERT_TRUE(Succeeded(pB->RemoveChild(pHeld)));
+    EXPECT_EQ(nullptr, pHeld->GetParent());
+    EXPECT_TRUE(AlmostEqual(pHeld->GetGlobalTranslation(), FloatVector4(1.0f, 2.0f, 3.0f, 1.0f)));
+    EXPECT_TRUE(AlmostEqual(pHeld->GetFirstChild()->GetGlobalTranslation(), FloatVector4(1.0f, 2.0f, 3.0f, 1.0f)));
+    EXPECT_EQ(Gem::Result::InvalidArg, pB->RemoveChild(pHeld));
+}
+
+TEST(CanvasInterfacesTest, SceneGraphNodeOperationsOnWorldObjects)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+    RecordingListener listener;
+    ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
+    Canvas::XSceneGraphNode *pRoot = w.pWorld->GetRootNode();
+
+    // Removing a node detaches the world objects anchored in its subtree, which stay in the
+    // world and attached to each other
+    ASSERT_TRUE(Succeeded(w.pElevatorNode->RemoveChild(w.pPlatform)));
+    EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
+    EXPECT_EQ(w.pPlatform.Get(), w.pCarNode->GetParent());
+    EXPECT_EQ(w.pCar.Get(), w.pSeat->GetWorldObject());
+    EXPECT_EQ(nullptr, w.pPlatform->GetWorldObject());
+
+    // Adding it elsewhere moves them with it
+    auto pGround = MakeNode(pCanvas, pRoot, "Ground", 0.0f, 0.0f, 0.0f);
+    ASSERT_TRUE(Succeeded(pGround->AddChild(w.pPlatform)));
+    EXPECT_EQ(w.pPlatform.Get(), w.pCarNode->GetParent());
+    EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(1.0f, 6.0f, 0.5f, 1.0f)));
+
+    // Moving an anchor node attaches its world object to the world object of its new parent
+    ASSERT_TRUE(Succeeded(w.pElevatorNode->AddChild(w.pCarNode)));
+    EXPECT_EQ(w.pElevator.Get(), w.pCarNode->GetParent()->GetWorldObject());
+    ASSERT_TRUE(Succeeded(w.pElevatorNode->InsertChildBefore(w.pPlatform, w.pCarNode)));
+    EXPECT_EQ(w.pElevator.Get(), w.pPlatform->GetWorldObject());
+
+    // Removing an anchor node detaches its world object; its world objects stay attached to it
+    ASSERT_TRUE(Succeeded(w.pElevatorNode->RemoveChild(w.pCarNode)));
+    EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
+    EXPECT_EQ(w.pSeat.Get(), w.pDriverNode->GetParent());
+    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pCar, w.pPlatform, false)));
+    EXPECT_EQ(w.pPlatform.Get(), w.pCarNode->GetParent());
+
+    // No world object was orphaned
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_TRUE(listener.events.empty());
+}
+
 TEST(CanvasInterfacesTest, WorldObjectRemoveDetached)
 {
     using namespace Canvas::Math;

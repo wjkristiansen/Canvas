@@ -182,10 +182,12 @@ Gem::Result CWorld::CheckActiveCamera()
 {
     if (!m_pActiveCamera)
         return Gem::Result::Success;
+    // The camera is in this world's scene graph when this world's root node is its node or an
+    // ancestor of it, wherever the root node is
     XSceneGraphNode *pNode = m_pActiveCamera->GetAttachedNode();
-    while (pNode && pNode->GetParent())
+    while (pNode && pNode != m_pRoot.Get())
         pNode = pNode->GetParent();
-    if (pNode != m_pRoot.Get())
+    if (!pNode)
     {
         const char *cameraName = m_pActiveCamera->GetName();
         const char *worldName = GetName();
