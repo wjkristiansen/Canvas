@@ -40,6 +40,7 @@ void CWorld::Uninitialize()
     // Teardown delivers no callbacks
     m_Events.clear();
     m_Listeners.clear();
+    m_UniqueNames.clear();
 
     // A world object the app still holds outlives its world.
     for (auto &pObject : m_WorldObjects)
@@ -173,6 +174,7 @@ void CWorld::EraseObject(size_t index)
         index = --m_ActiveObjectCount;
     }
     SwapObjects(index, m_WorldObjects.size() - 1);
+    ReleaseUniqueName(m_WorldObjects.back());
     m_WorldObjects.back()->ClearWorld();
     m_WorldObjects.pop_back();
 }
@@ -371,6 +373,85 @@ GEMMETHODIMP CWorld::RemoveObject(XWorldObject *pObject)
     }
 
     return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+// Erases pObject's unique-name entry, if it has one, and clears its pointer to the entry's string.
+void CWorld::ReleaseUniqueName(CWorldObject *pObject)
+{
+    if (!FindObject(pObject))
+    {
+        Canvas::LogError(m_pCanvas->GetLogger(),
+            "CWorld::ReleaseUniqueName: the world object is not one of this world's world objects");
+        return;
+    }
+
+    const std::string *pName = pObject->GetUniqueNamePtr();
+    if (!pName)
+        return;
+
+    auto it = m_UniqueNames.find(std::string_view(*pName));
+    if (it == m_UniqueNames.end() || it->second != pObject)
+    {
+        Canvas::LogError(m_pCanvas->GetLogger(),
+            "CWorld::ReleaseUniqueName: unique name '%s' is not this world object's entry", pName->c_str());
+        return;
+    }
+
+    m_UniqueNames.erase(it);
+    pObject->SetUniqueNamePtr(nullptr);
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP CWorld::SetUniqueName(XWorldObject *pObject, const char *uniqueName)
+{
+    CWorldObject *pImpl = FindObject(pObject);
+    if (!pImpl)
+        return Gem::Result::NotFound;
+    if (uniqueName && !*uniqueName)
+        return Gem::Result::InvalidArg;
+
+    const std::string *pCurrent = pImpl->GetUniqueNamePtr();
+    if (uniqueName && pCurrent && *pCurrent == uniqueName)
+        return Gem::Result::Success;
+
+    // Claiming the new unique name is the only step that can fail, so it comes before the
+    // current one is released
+    const std::string *pNew = nullptr;
+    if (uniqueName)
+    {
+        if (m_UniqueNames.find(std::string_view(uniqueName)) != m_UniqueNames.end())
+        {
+            const char *name = pObject->GetName();
+            Canvas::LogError(m_pCanvas->GetLogger(),
+                "XWorld::SetUniqueName: '%s' is already the unique name of another world object; "
+                "world object '%s' keeps its unique name", uniqueName, name ? name : "");
+            return Gem::Result::AlreadyExists;
+        }
+
+        try
+        {
+            pNew = &m_UniqueNames.emplace(uniqueName, pImpl).first->first;
+        }
+        catch (const std::bad_alloc &)
+        {
+            return Gem::Result::OutOfMemory;
+        }
+    }
+
+    ReleaseUniqueName(pImpl);
+    pImpl->SetUniqueNamePtr(pNew);
+
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(XWorldObject *) CWorld::FindObject(const char *uniqueName)
+{
+    if (!uniqueName)
+        return nullptr;
+    auto it = m_UniqueNames.find(std::string_view(uniqueName));
+    return it != m_UniqueNames.end() ? it->second : nullptr;
 }
 
 //------------------------------------------------------------------------------------------------

@@ -782,6 +782,9 @@ XWorld : public XCanvasElement
     // Gem::Result::NotFound when pObject is not one of this world's world objects.
     GEMMETHOD(RemoveObject)(_In_ XWorldObject *pObject) = 0;
 
+    GEMMETHOD(SetUniqueName)(_In_ XWorldObject *pObject, _In_opt_z_ const char *uniqueName) = 0;
+    GEMMETHOD_(XWorldObject *, FindObject)(_In_opt_z_ const char *uniqueName) = 0;
+
     // Registers pListener to receive this world's callbacks.  Returns Gem::Result::InvalidArg
     // when pListener is nullptr and Gem::Result::AlreadyExists when it is already registered.
     GEMMETHOD(RegisterListener)(_In_ WorldListener *pListener) = 0;
@@ -855,6 +858,8 @@ XWorldObject : public XCanvasElement
 
     // Returns a weak pointer to the world object's anchor node, or nullptr when it has none.
     GEMMETHOD_(XSceneGraphNode *, GetAnchorNode)() = 0;
+
+    GEMMETHOD_(const char *, GetUniqueName)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

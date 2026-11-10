@@ -62,6 +62,18 @@ private:
     std::vector<Gem::TGemPtr<CWorldObject>> m_WorldObjects;
     size_t m_ActiveObjectCount = 0;
 
+    // The world objects that have unique names, by unique name.  The map stores each unique
+    // name, and each object points at its entry's string, which stays in place until the entry
+    // is erased, since rehashing moves no element.  The hash is transparent, so a lookup by
+    // const char * builds no string.
+    struct UniqueNameHash
+    {
+        using is_transparent = void;
+        size_t operator()(std::string_view name) const noexcept { return std::hash<std::string_view>{}(name); }
+    };
+    std::unordered_map<std::string, CWorldObject *, UniqueNameHash, std::equal_to<>> m_UniqueNames;
+    void ReleaseUniqueName(CWorldObject *pObject);
+
     // Finds pObject among this world's world objects, or returns nullptr.
     CWorldObject *FindObject(XWorldObject *pObject) const;
     void SwapObjects(size_t a, size_t b);
@@ -116,6 +128,8 @@ public: // XWorld methods
     GEMMETHOD(AttachObject)(_In_ XWorldObject *pObject, _In_ XSceneGraphNode *pParent, bool keepWorldTransform) final;
     GEMMETHOD(DetachObject)(_In_ XWorldObject *pObject) final;
     GEMMETHOD(RemoveObject)(_In_ XWorldObject *pObject) final;
+    GEMMETHOD(SetUniqueName)(_In_ XWorldObject *pObject, _In_opt_z_ const char *uniqueName) final;
+    GEMMETHOD_(XWorldObject *, FindObject)(_In_opt_z_ const char *uniqueName) final;
     GEMMETHOD(RegisterListener)(_In_ WorldListener *pListener) final;
     GEMMETHOD(UnregisterListener)(_In_ WorldListener *pListener) final;
 

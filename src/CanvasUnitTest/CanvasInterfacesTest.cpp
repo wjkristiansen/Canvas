@@ -2690,6 +2690,65 @@ TEST(CanvasInterfacesTest, WorldObjectRemoveDetached)
     EXPECT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
 }
 
+TEST(CanvasInterfacesTest, WorldObjectUniqueNames)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+
+    // A world object has no unique name until it is given one
+    EXPECT_EQ(nullptr, w.pCar->GetUniqueName());
+    EXPECT_EQ(nullptr, w.pWorld->FindObject("Car"));
+    EXPECT_EQ(nullptr, w.pWorld->FindObject(nullptr));
+
+    ASSERT_TRUE(Succeeded(w.pWorld->SetUniqueName(w.pCar, "Car")));
+    EXPECT_STREQ("Car", w.pCar->GetUniqueName());
+    EXPECT_EQ(w.pCar.Get(), w.pWorld->FindObject("Car"));
+    EXPECT_EQ(nullptr, w.pWorld->FindObject("car"));
+    EXPECT_TRUE(Succeeded(w.pWorld->SetUniqueName(w.pCar, "Car")));
+
+    // A unique name in use is not given to another world object
+    EXPECT_EQ(Gem::Result::AlreadyExists, w.pWorld->SetUniqueName(w.pDriver, "Car"));
+    EXPECT_EQ(nullptr, w.pDriver->GetUniqueName());
+    EXPECT_EQ(w.pCar.Get(), w.pWorld->FindObject("Car"));
+
+    // Errors
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->SetUniqueName(w.pCar, ""));
+    EXPECT_STREQ("Car", w.pCar->GetUniqueName());
+    Gem::TGemPtr<Canvas::XWorld> pOtherWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pOtherWorld, "OtherWorld")));
+    EXPECT_EQ(Gem::Result::NotFound, pOtherWorld->SetUniqueName(w.pCar, "Car"));
+    EXPECT_EQ(nullptr, pOtherWorld->FindObject("Car"));
+
+    // Changing a unique name releases the old one, and nullptr clears it
+    ASSERT_TRUE(Succeeded(w.pWorld->SetUniqueName(w.pCar, "Sedan")));
+    EXPECT_EQ(nullptr, w.pWorld->FindObject("Car"));
+    ASSERT_TRUE(Succeeded(w.pWorld->SetUniqueName(w.pDriver, "Car")));
+    EXPECT_EQ(w.pDriver.Get(), w.pWorld->FindObject("Car"));
+    ASSERT_TRUE(Succeeded(w.pWorld->SetUniqueName(w.pDriver, nullptr)));
+    EXPECT_EQ(nullptr, w.pDriver->GetUniqueName());
+    EXPECT_EQ(nullptr, w.pWorld->FindObject("Car"));
+
+    // Names need not be unique
+    Gem::TGemPtr<Canvas::XWorldObject> pSecondCar;
+    ASSERT_TRUE(Succeeded(w.pWorld->CreateWorldObject(nullptr, &pSecondCar, "Car")));
+    EXPECT_STREQ(w.pCar->GetName(), pSecondCar->GetName());
+
+    // A detached world object keeps its unique name; a removed one releases it
+    ASSERT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
+    EXPECT_EQ(w.pCar.Get(), w.pWorld->FindObject("Sedan"));
+    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+    EXPECT_EQ(nullptr, w.pWorld->FindObject("Sedan"));
+    EXPECT_EQ(nullptr, w.pCar->GetUniqueName());
+    EXPECT_TRUE(Succeeded(w.pWorld->SetUniqueName(pSecondCar, "Sedan")));
+
+    // A world object that outlives its world has no unique name
+    w.pWorld = nullptr;
+    EXPECT_EQ(nullptr, pSecondCar->GetWorld());
+    EXPECT_EQ(nullptr, pSecondCar->GetUniqueName());
+}
+
 // Exercises cross-fade blending between two clips: the pose interpolates from the
 // pre-blend snapshot toward the new clip, and snaps fully to the new clip once the
 // blend duration elapses.
