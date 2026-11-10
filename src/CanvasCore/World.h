@@ -65,6 +65,30 @@ private:
     // Finds pObject among this world's world objects, or returns nullptr.
     CWorldObject *FindObject(XWorldObject *pObject) const;
     void SwapObjects(size_t a, size_t b);
+    void EraseObject(size_t index);
+
+    // Clears the active camera, and queues its event, when it is not in this world's scene graph.
+    Gem::Result CheckActiveCamera();
+
+    // The events for the next Update to deliver, in the order they happened.  Each event type
+    // matches a WorldListener callback, and its payload holds that callback's arguments.
+    enum class EventType
+    {
+        ObjectOrphaned,     // pObject is the orphan
+        ActiveCameraLost,   // no payload
+    };
+    struct Event
+    {
+        EventType type;
+        Gem::TGemPtr<CWorldObject> pObject;
+    };
+    std::vector<Event> m_Events;
+
+    // Registered listeners.  A listener unregistered while callbacks are being delivered is set
+    // to nullptr, and the list is compacted after delivery.
+    std::vector<WorldListener *> m_Listeners;
+    bool m_Delivering = false;
+    Gem::Result DeliverEvents();
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -89,6 +113,11 @@ public: // XWorld methods
     GEMMETHOD(CreateWorldObject)(_In_opt_ XSceneGraphNode *pAnchorNode, XWorldObject **ppObject, const char *name) final;
     GEMMETHOD(ActivateObject)(_In_ XWorldObject *pObject) final;
     GEMMETHOD(DeactivateObject)(_In_ XWorldObject *pObject) final;
+    GEMMETHOD(AttachObject)(_In_ XWorldObject *pObject, _In_ XSceneGraphNode *pParent, bool keepWorldTransform) final;
+    GEMMETHOD(DetachObject)(_In_ XWorldObject *pObject) final;
+    GEMMETHOD(RemoveObject)(_In_ XWorldObject *pObject) final;
+    GEMMETHOD(RegisterListener)(_In_ WorldListener *pListener) final;
+    GEMMETHOD(UnregisterListener)(_In_ WorldListener *pListener) final;
 
     GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) final
     {

@@ -46,6 +46,15 @@ void CSceneGraphNode::Uninitialize()
     m_pLastChild = nullptr;
     m_ChildMap.clear();
     m_pAnimController = nullptr;
+
+    // An element held elsewhere, such as the active camera of a world, outlives this node, so
+    // its pointer to this node is cleared
+    for (auto &pElement : m_Elements)
+    {
+        if (pElement->GetAttachedNode() == this)
+            pElement->NotifyNodeContextChanged(nullptr);
+    }
+    m_Elements.clear();
 }
 
 //------------------------------------------------------------------------------------------------
