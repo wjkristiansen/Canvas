@@ -32,7 +32,7 @@ Key concepts:
 |-------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **XCanvas**                         | Root object and factory.  Creates worlds, cameras, lights, meshes, fonts, and UI graphs.                                                                           |
 | **XWorld / XSceneNode**             | A world and its scene graph, a hierarchical transform graph.  Nodes carry local rotation (quaternion), translation, and scale; global transforms are lazily computed with dirty-flag propagation. |
-| **XWorldObject**                    | The identity and state of what a set of scene nodes represents, such as a model instance.  Anchored at a scene node.                                               |
+| **XWorldObject**                    | The identity and state of something in a world, such as a model instance.  Made of the scene nodes under its root node.                                            |
 | **XCamera**                         | Perspective camera (FOV, near/far clip, aspect ratio, exposure compensation).  Attaches to a scene node for positioning.                                           |
 | **XLight**                          | Point, directional, spot, ambient, and area light types with attenuation and spot-angle parameters.                                                                |
 | **XMeshInstance**                   | Binds GPU mesh data to a scene node for rendering.                                                                                                                 |

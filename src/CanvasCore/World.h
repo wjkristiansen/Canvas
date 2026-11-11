@@ -122,12 +122,12 @@ public: // XWorld methods
 
     GEMMETHOD_(XSceneNode *, GetRootNode)();
 
-    GEMMETHOD(CreateWorldObject)(_In_opt_ XSceneNode *pAnchorNode, XWorldObject **ppObject, const char *name) final;
+    GEMMETHOD(AddWorldObject)(_In_ XWorldObject *pObject) final;
     GEMMETHOD(ActivateObject)(_In_ XWorldObject *pObject) final;
     GEMMETHOD(DeactivateObject)(_In_ XWorldObject *pObject) final;
-    GEMMETHOD(AttachObject)(_In_ XWorldObject *pObject, _In_ XSceneNode *pParent, bool keepWorldTransform) final;
+    GEMMETHOD(PlaceObject)(_In_ XWorldObject *pObject, _In_ XSceneNode *pParent, bool keepWorldTransform) final;
     GEMMETHOD(DetachObject)(_In_ XWorldObject *pObject) final;
-    GEMMETHOD(RemoveObject)(_In_ XWorldObject *pObject) final;
+    GEMMETHOD(ReleaseWorldObject)(_In_ XWorldObject *pObject) final;
     GEMMETHOD(SetUniqueName)(_In_ XWorldObject *pObject, _In_opt_z_ const char *uniqueName) final;
     GEMMETHOD_(XWorldObject *, FindObject)(_In_opt_z_ const char *uniqueName) final;
     GEMMETHOD(RegisterListener)(_In_ WorldListener *pListener) final;

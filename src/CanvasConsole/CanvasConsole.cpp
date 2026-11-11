@@ -44,9 +44,6 @@ int main()
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     result = pCanvas->CreateWorld(pDevice, &pWorld);
 
-    Gem::TGemPtr<Canvas::XSceneNode> pRootSceneNode;
-    result = pWorld->QueryInterface(&pRootSceneNode);
-
-    DumpNode(pRootSceneNode, "");
+    DumpNode(pWorld->GetRootNode(), "");
 }
 

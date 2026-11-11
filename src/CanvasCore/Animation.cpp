@@ -282,28 +282,6 @@ void CAnimationController::BuildFromModel(
 // XAnimationController interface methods
 //================================================================================================
 
-GEMMETHODIMP_(bool) CAnimationController::ValidateForNode(_In_ XSceneNode *pRoot)
-{
-    if (!pRoot) return false;
-
-    // Every target must be in pRoot's subtree (pRoot included): a transform's node, or for a
-    // bone, its skeleton instance's node.
-    auto IsDescendant = [](XSceneNode* pCandidate, XSceneNode* pAncestor) -> bool
-    {
-        for (XSceneNode* p = pCandidate; p; p = p->GetParent())
-            if (p == pAncestor) return true;
-        return false;
-    };
-
-    for (const BoundTransform& transform : m_Transforms)
-    {
-        XSceneNode* pNode = transform.pSkeleton ? transform.pSkeleton->GetAttachedNode() : transform.pNode;
-        if (!pNode || !IsDescendant(pNode, pRoot))
-            return false;
-    }
-    return true;
-}
-
 GEMMETHODIMP_(uint32_t) CAnimationController::FindClip(const char * name)
 {
     if (!m_pClipDefs || !name) return InvalidClipIndex;
@@ -380,7 +358,7 @@ GEMMETHODIMP CAnimationController::GetTargetValue(uint32_t targetIndex, _Out_ fl
 }
 
 //================================================================================================
-// Update - called each frame by CSceneNode::Update
+// Update - called each frame by CSceneNode::UpdateObjectNodes
 //================================================================================================
 
 GEMMETHODIMP CAnimationController::Update(float dtime)

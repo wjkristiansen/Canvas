@@ -204,7 +204,9 @@ public: // XModel methods
         return (index < m_Content.AnimClips.size()) ? m_Content.AnimClips[index].Name.c_str() : nullptr;
     }
 
-    GEMMETHOD(Instantiate)(XSceneNode *pTargetParent, ModelInstantiateResult *pResult = nullptr) final;
+    // Creates the nodes and elements of an instance under a new instance root, which has no
+    // parent and holds the instance's animation controller when the model has clips.
+    Gem::Result CreateInstance(XSceneNode **ppInstanceRoot);
 
     GEMMETHOD_(Math::AABB, GetBounds)() final
     {

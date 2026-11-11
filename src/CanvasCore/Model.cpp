@@ -76,29 +76,13 @@ Math::AABB ComputeBounds(const ModelContent &content, const std::vector<Skeleton
 //================================================================================================
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CModel::Instantiate(XSceneNode *pTargetParent, ModelInstantiateResult *pResult)
+Gem::Result CModel::CreateInstance(XSceneNode **ppInstanceRoot)
 {
-    if (!pTargetParent)
-        return Gem::Result::BadPointer;
-
-    // Validate canvas affinity
-    {
-        Gem::TGemPtr<XCanvasElement> pTargetElement;
-        if (Gem::Succeeded(pTargetParent->QueryInterface(&pTargetElement)))
-        {
-            XCanvas *pTargetCanvas = pTargetElement->GetCanvas();
-            if (pTargetCanvas && pTargetCanvas != m_pCanvas)
-            {
-                Canvas::LogError(m_pCanvas->GetLogger(),
-                    "XModel::Instantiate: target node belongs to a different XCanvas");
-                return Gem::Result::InvalidArg;
-            }
-        }
-    }
+    *ppInstanceRoot = nullptr;
 
     try
     {
-        // Synthetic instance root
+        // Instance root
         Gem::TGemPtr<XSceneNode> pInstanceRoot;
         {
             std::string instanceName = std::string(GetName() ? GetName() : "Model") + "_Instance";
@@ -159,10 +143,8 @@ GEMMETHODIMP CModel::Instantiate(XSceneNode *pTargetParent, ModelInstantiateResu
             Gem::ThrowGemError(nodes[src.NodeIndex]->BindElement(pMesh));
         }
 
-        XCamera *pActiveCamera = nullptr;
-        for (size_t c = 0; c < m_Content.Cameras.size(); ++c)
+        for (const ModelCameraData &src : m_Content.Cameras)
         {
-            const ModelCameraData &src = m_Content.Cameras[c];
             Gem::TGemPtr<XCamera> pCamera;
             Gem::ThrowGemError(m_pCanvas->CreateCamera(&pCamera, src.Name.c_str()));
             pCamera->SetNearClip(src.Params.NearClip);
@@ -171,8 +153,6 @@ GEMMETHODIMP CModel::Instantiate(XSceneNode *pTargetParent, ModelInstantiateResu
             pCamera->SetAspectRatio(src.Params.AspectRatio);
             pCamera->SetExposureStops(src.Params.ExposureStops);
             Gem::ThrowGemError(nodes[src.NodeIndex]->BindElement(pCamera));
-            if (c == m_Content.ActiveCameraIndex)
-                pActiveCamera = pCamera.Get();
         }
 
         for (const ModelLightData &src : m_Content.Lights)
@@ -189,7 +169,6 @@ GEMMETHODIMP CModel::Instantiate(XSceneNode *pTargetParent, ModelInstantiateResu
         }
 
         // Animation controller when the model has clips
-        XAnimationController *pAnimationController = nullptr;
         if (!m_Content.AnimClips.empty())
         {
             CAnimationController* pRaw = nullptr;
@@ -200,32 +179,24 @@ GEMMETHODIMP CModel::Instantiate(XSceneNode *pTargetParent, ModelInstantiateResu
             pCtrl.Attach(pRaw);
 
             pCtrl->BuildFromModel(this, m_Content.AnimTargets, m_Content.AnimClips, nodes, skeletons);
-            // Everything the controller drives is in pInstanceRoot's subtree by
-            // construction, so ValidateForNode will always succeed here.
-            Gem::ThrowGemError(pInstanceRoot->SetAnimationController(pCtrl.Get()));
-
-            pAnimationController = pCtrl.Get();
+            static_cast<CSceneNode *>(pInstanceRoot.Get())->SetAnimationController(pCtrl.Get());
         }
 
         // Place sockets at their bones' rest pose before the first update.
         for (CSkeletonInstance *pSkeleton : skeletons)
             Gem::ThrowGemError(pSkeleton->Update(0.0f));
 
-        // Attach instance root to target parent
-        Gem::ThrowGemError(pTargetParent->AddChild(pInstanceRoot));
-
-        if (pResult)
-        {
-            pResult->pInstanceRoot = pInstanceRoot.Get();
-            pResult->pActiveCamera = pActiveCamera;
-            pResult->pAnimationController = pAnimationController;
-        }
+        *ppInstanceRoot = pInstanceRoot.Detach();
     }
     catch (const Gem::GemError &e)
     {
         Canvas::LogError(m_pCanvas->GetLogger(),
-            "XModel::Instantiate failed: %s", GemResultString(e.Result()));
+            "XCanvas::CreateWorldObject: instantiating the model failed: %s", GemResultString(e.Result()));
         return e.Result();
+    }
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
     }
 
     return Gem::Result::Success;

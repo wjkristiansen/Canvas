@@ -32,7 +32,7 @@ Gem::Result CSceneNode::Initialize()
 //------------------------------------------------------------------------------------------------
 void CSceneNode::Uninitialize()
 {
-    // Clean up all child wrapper nodes.  A child held elsewhere, such as the anchor node of a
+    // Clean up all child wrapper nodes.  A child held elsewhere, such as the root node of a
     // world object, outlives this node, so its parent pointer is cleared first.
     ChildNode* pChild = m_pFirstChild;
     while (pChild)
@@ -45,7 +45,7 @@ void CSceneNode::Uninitialize()
     m_pFirstChild = nullptr;
     m_pLastChild = nullptr;
     m_ChildMap.clear();
-    m_pAnimController = nullptr;
+    m_pAnimationController = nullptr;
 
     // An element held elsewhere, such as the active camera of a world, outlives this node, so
     // its pointer to this node is cleared
@@ -62,37 +62,38 @@ GEMMETHODIMP_(XWorldObject *) CSceneNode::GetWorldObject()
 {
     for (CSceneNode *pNode = this; pNode; pNode = pNode->m_pParent)
     {
-        if (pNode->m_pAnchoredObject)
-            return pNode->m_pAnchoredObject;
+        if (pNode->m_pRootedObject)
+            return pNode->m_pRootedObject;
     }
     return nullptr;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneNode::Update(float dtime)
+Gem::Result CSceneNode::UpdateObjectNodes(float dtime)
 {
-    try
+    // The controller writes the values the elements observe, so it updates first
+    if (m_pAnimationController)
     {
-        // Tick the animation controller first so the transforms it writes onto this
-        // subtree are in place before spatial elements and children observe them.
-        if (m_pAnimController)
-        {
-            Gem::ThrowGemError(m_pAnimController->Update(dtime));
-        }
-
-        for (auto& element : m_Elements)
-        {
-            Gem::ThrowGemError(element->Update(dtime));
-        }
-
-        for (ChildNode* pChild = m_pFirstChild; pChild; pChild = pChild->m_pNext)
-        {
-            Gem::ThrowGemError(pChild->m_pNode->Update(dtime));
-        }
+        Gem::Result result = m_pAnimationController->Update(dtime);
+        if (Gem::Failed(result))
+            return result;
     }
-    catch(const Gem::GemError &e)
+
+    for (auto &pElement : m_Elements)
     {
-        return e.Result();
+        Gem::Result result = pElement->Update(dtime);
+        if (Gem::Failed(result))
+            return result;
+    }
+
+    for (ChildNode *pChild = m_pFirstChild; pChild; pChild = pChild->m_pNext)
+    {
+        CSceneNode *pNode = static_cast<CSceneNode *>(pChild->m_pNode.Get());
+        if (pNode->m_pRootedObject)
+            continue;
+        Gem::Result result = pNode->UpdateObjectNodes(dtime);
+        if (Gem::Failed(result))
+            return result;
     }
 
     return Gem::Result::Success;

@@ -93,9 +93,7 @@ protected:
     Math::FloatMatrix4x4 m_GlobalMatrix;
 
     std::vector<Gem::TGemPtr<XSceneElement>> m_Elements;
-
-    // Optional animation controller driving this subtree (not a spatial element).
-    Gem::TGemPtr<XAnimationController> m_pAnimController;
+    Gem::TGemPtr<XAnimationController> m_pAnimationController;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -122,19 +120,7 @@ public: // XSceneNode methods
 
     GEMMETHOD_(uint32_t, GetBoundElementCount)() final { return static_cast<uint32_t>(m_Elements.size()); }
     GEMMETHOD_(XSceneElement *, GetBoundElement)(uint32_t index) final { return m_Elements[index].Get(); }
-
-    GEMMETHOD(SetAnimationController)(_In_opt_ XAnimationController *pController) final
-    {
-        if (pController && !pController->ValidateForNode(this))
-            return Gem::Result::InvalidArg;
-        m_pAnimController = pController;
-        return Gem::Result::Success;
-    }
-
-    GEMMETHOD_(XAnimationController *, GetAnimationController)() final
-    {
-        return m_pAnimController.Get();
-    }
+    GEMMETHOD_(XAnimationController *, GetAnimationController)() final { return m_pAnimationController.Get(); }
 
     GEMMETHOD_(const Transform &, GetLocalTransform)() const final
     {
@@ -245,19 +231,32 @@ public: // XSceneNode methods
     }
 
 
-    GEMMETHOD(Update)(float dtime) final;
+    // Updates this node's animation controller, then the elements bound to this node, in binding
+    // order, then each child in order, leaving out the children that are world objects' root
+    // nodes and their subtrees: the nodes that belong to the same world object as this node, when
+    // this node is a world object's root node.  Returns the first failure, and updates nothing
+    // after it.
+    Gem::Result UpdateObjectNodes(float dtime);
+
+    // The controller that instantiation puts on an instance root.
+    void SetAnimationController(XAnimationController *pController) { m_pAnimationController = pController; }
 
     GEMMETHOD_(XWorldObject *, GetWorldObject)() final;
 
-    // The world object anchored at this node, or nullptr when this node is not an anchor node.
-    // Set by the world object, which clears it before it is destroyed.
-    CWorldObject *GetAnchoredObject() const { return m_pAnchoredObject; }
-    void SetAnchoredObject(CWorldObject *pObject) { m_pAnchoredObject = pObject; }
+    // The world object whose root node this node is, or nullptr when it is none's.  Set by the
+    // world object, which clears it when the node stops being its root node.
+    CWorldObject *GetRootedObject() const { return m_pRootedObject; }
+    void SetRootedObject(CWorldObject *pObject) { m_pRootedObject = pObject; }
 
     CSceneNode *GetParentNode() const { return m_pParent; }
 
+    // Whether this node is a world's root node.  Set by the world that creates it.
+    bool IsWorldRoot() const { return m_IsWorldRoot; }
+    void SetWorldRoot() { m_IsWorldRoot = true; }
+
 private:
-    CWorldObject *m_pAnchoredObject = nullptr; // Weak pointer
+    CWorldObject *m_pRootedObject = nullptr; // Weak pointer
+    bool m_IsWorldRoot = false;
 
     // Helper to invalidate transforms on this node and propagate to children
     void InvalidateTransforms(TransformDirtyFlags flags);

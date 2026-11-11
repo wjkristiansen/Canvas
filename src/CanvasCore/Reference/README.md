@@ -12,11 +12,14 @@ The reference for the CanvasCore public API, declared in [`CanvasCore.h`](../../
 
 ## Interfaces
 
-| Interface                               | Description                     |
-|-----------------------------------------|---------------------------------|
-| [`XSceneNode`](XSceneNode.md)           | A node in a scene graph         |
-| [`XWorld`](XWorld.md)                   | A world and its world objects   |
-| [`XWorldObject`](XWorldObject.md)       | A world object                  |
+| Interface                                         | Description                                   |
+|---------------------------------------------------|-----------------------------------------------|
+| [`XAnimationController`](XAnimationController.md) | The playback of a model instance's clips      |
+| [`XCanvas`](XCanvas.md)                           | The object that creates every other object    |
+| [`XModel`](XModel.md)                             | A template for world objects                  |
+| [`XSceneNode`](XSceneNode.md)                     | A node in a scene graph                       |
+| [`XWorld`](XWorld.md)                             | A world and its world objects                 |
+| [`XWorldObject`](XWorldObject.md)                 | A world object                                |
 
 
 ## Functions
@@ -27,7 +30,7 @@ The reference for the CanvasCore public API, declared in [`CanvasCore.h`](../../
 Gem::Result CreateCanvas(XLogger *pLogger, XCanvas **ppCanvas);
 ```
 
-Creates a canvas, the object that creates every other CanvasCore object and loads graphics plugins. The canvas holds `pLogger`, which may be `nullptr`, and logs to it from any thread, as the [thread rules](../README.md#threads) describe. `*ppCanvas` receives the canvas.
+Creates a [canvas](XCanvas.md), the object that creates every other CanvasCore object and loads graphics plugins. The canvas holds `pLogger`, which may be `nullptr`, and logs to it from any thread, as the [thread rules](../README.md#threads) describe. `*ppCanvas` receives the canvas.
 
 ### Log Functions
 

@@ -22,7 +22,7 @@ The world queues its events and delivers their callbacks from inside [`XWorld::U
 void OnObjectOrphaned(XWorld *pWorld, XWorldObject *pObject);
 ```
 
-`pObject` was orphaned: the world object it was attached to was removed, and its anchor node was attached to the node the removal detached from, keeping its world transform. `pObject` is still in `pWorld`. An orphan removed before its callback is due receives none.
+`pObject` was orphaned: the world object whose node it was attached to was released, and `pObject` was attached to the node the release detached from, keeping its world transform. `pObject` is still in `pWorld`. An orphan released before its callback is due receives none.
 
 ### OnActiveCameraLost
 

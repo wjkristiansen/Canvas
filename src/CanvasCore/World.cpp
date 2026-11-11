@@ -25,6 +25,7 @@ GEMMETHODIMP CWorld::Initialize()
         Gem::TGemPtr<XSceneNode> pRoot;
         Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&pRoot, "SceneRoot"));
         m_pRoot = pRoot;
+        static_cast<CSceneNode *>(pRoot.Get())->SetWorldRoot();
     }
     catch(const Gem::GemError &e)
     {
@@ -56,49 +57,39 @@ GEMMETHODIMP_(XSceneNode *) CWorld::GetRootNode()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CWorld::CreateWorldObject(XSceneNode *pAnchorNode, XWorldObject **ppObject, const char *name)
+GEMMETHODIMP CWorld::AddWorldObject(XWorldObject *pObject)
 {
-    CFunctionSentinel sentinel("XWorld::CreateWorldObject", m_pCanvas->GetLogger());
-
-    if (!ppObject)
+    if (!pObject)
         return Gem::Result::BadPointer;
-    *ppObject = nullptr;
 
-    CSceneNode *pAnchor = nullptr;
-    if (pAnchorNode)
+    CWorldObject *pImpl = static_cast<CWorldObject *>(pObject);
+    const char *problem = nullptr;
+    Gem::Result failure = Gem::Result::InvalidArg;
+    if (pImpl->GetCanvas() != m_pCanvas)
+        problem = "was created by another canvas";
+    else if (pImpl->GetWorld())
     {
-        pAnchor = static_cast<CSceneNode *>(pAnchorNode);
-        const char *problem = nullptr;
-        if (pAnchor->GetAnchoredObject())
-            problem = "is already an anchor node";
-        else if (pAnchor == m_pRoot.Get())
-            problem = "is this world's root node";
+        problem = "is already in a world";
+        failure = Gem::Result::AlreadyExists;
+    }
+    else if (pImpl->GetDevice() && pImpl->GetDevice() != m_pDevice.Get())
+        problem = "instantiates a model whose GPU resources are on another device";
 
-        if (problem)
-        {
-            Canvas::LogError(m_pCanvas->GetLogger(), "XWorld::CreateWorldObject: the anchor node %s", problem);
-            return Gem::Result::InvalidArg;
-        }
+    if (problem)
+    {
+        Canvas::LogError(m_pCanvas->GetLogger(), "XWorld::AddWorldObject: the world object %s", problem);
+        return failure;
     }
 
     try
     {
-        Gem::TGemPtr<CWorldObject> pObject;
-        Gem::ThrowGemError(TCanvasElement<XWorldObject>::CreateAndRegister(
-            &pObject, m_pCanvas, name, this, pAnchor));
-
-        // A new world object starts active
+        // A world object starts active in the world it joins
         const size_t index = m_WorldObjects.size();
-        m_WorldObjects.push_back(pObject);
-        pObject->SetWorldIndex(index);
+        m_WorldObjects.push_back(pImpl);
+        pImpl->SetWorldIndex(index);
+        pImpl->SetWorld(this);
         SwapObjects(index, m_ActiveObjectCount);
         ++m_ActiveObjectCount;
-
-        *ppObject = pObject.Detach();
-    }
-    catch (const Gem::GemError &e)
-    {
-        return e.Result();
     }
     catch (const std::bad_alloc &)
     {
@@ -262,23 +253,29 @@ static Gem::Result ReparentKeepingWorld(XSceneNode *pNode, XSceneNode *pParent,
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CWorld::AttachObject(XWorldObject *pObject, XSceneNode *pParent, bool keepWorldTransform)
+GEMMETHODIMP CWorld::PlaceObject(XWorldObject *pObject, XSceneNode *pParent, bool keepWorldTransform)
 {
     CWorldObject *pImpl = FindObject(pObject);
     if (!pImpl)
         return Gem::Result::NotFound;
 
-    CSceneNode *pAnchor = pImpl->GetAnchor();
-    if (!pAnchor || !pParent)
+    CSceneNode *pObjectRoot = pImpl->GetRoot();
+    if (!pObjectRoot || !pParent)
         return Gem::Result::InvalidArg;
 
-    // The new parent must be outside the anchor node's subtree
+    if (pParent->GetCanvas() != m_pCanvas)
+    {
+        Canvas::LogError(m_pCanvas->GetLogger(), "XWorld::PlaceObject: the parent node was created by another canvas");
+        return Gem::Result::InvalidArg;
+    }
+
+    // The new parent must be outside the root node's subtree
     for (XSceneNode *pNode = pParent; pNode; pNode = pNode->GetParent())
     {
-        if (pNode == pAnchor)
+        if (pNode == pObjectRoot)
         {
             Canvas::LogError(m_pCanvas->GetLogger(),
-                "XWorld::AttachObject: the parent node is in the world object's anchor node's subtree");
+                "XWorld::PlaceObject: the parent node is in the world object's root node's subtree");
             return Gem::Result::InvalidArg;
         }
     }
@@ -286,9 +283,9 @@ GEMMETHODIMP CWorld::AttachObject(XWorldObject *pObject, XSceneNode *pParent, bo
     try
     {
         if (keepWorldTransform)
-            Gem::ThrowGemError(ReparentKeepingWorld(pAnchor, pParent, pAnchor->GetGlobalMatrix()));
+            Gem::ThrowGemError(ReparentKeepingWorld(pObjectRoot, pParent, pObjectRoot->GetGlobalMatrix()));
         else
-            Gem::ThrowGemError(pParent->AddChild(pAnchor));
+            Gem::ThrowGemError(pParent->AddChild(pObjectRoot));
     }
     catch (const Gem::GemError &e)
     {
@@ -305,10 +302,10 @@ GEMMETHODIMP CWorld::DetachObject(XWorldObject *pObject)
     if (!pImpl)
         return Gem::Result::NotFound;
 
-    CSceneNode *pAnchor = pImpl->GetAnchor();
-    if (pAnchor && pAnchor->GetParent())
+    CSceneNode *pObjectRoot = pImpl->GetRoot();
+    if (pObjectRoot && pObjectRoot->GetParent())
     {
-        Gem::Result result = pAnchor->GetParent()->RemoveChild(pAnchor);
+        Gem::Result result = pObjectRoot->GetParent()->RemoveChild(pObjectRoot);
         if (Gem::Failed(result))
             return result;
     }
@@ -317,7 +314,7 @@ GEMMETHODIMP CWorld::DetachObject(XWorldObject *pObject)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CWorld::RemoveObject(XWorldObject *pObject)
+GEMMETHODIMP CWorld::ReleaseWorldObject(XWorldObject *pObject)
 {
     CWorldObject *pImpl = FindObject(pObject);
     if (!pImpl)
@@ -325,22 +322,22 @@ GEMMETHODIMP CWorld::RemoveObject(XWorldObject *pObject)
 
     try
     {
-        // Find the world objects the removal orphans: those anchored in the removed world
-        // object's subtree and attached to no other world object in it.  Their world matrices
+        // Find the world objects the release orphans: those attached to the released world object's
+        // nodes, which are its root node and the nodes below it down to other root nodes.  Their world matrices
         // are taken before any node moves.
         struct Orphan { Gem::TGemPtr<CWorldObject> pObject; Math::FloatMatrix4x4 world; };
         std::vector<Orphan> orphans;
         std::vector<XSceneNode *> stack;
 
-        if (pImpl->GetAnchor())
-            stack.push_back(pImpl->GetAnchor());
+        if (pImpl->GetRoot())
+            stack.push_back(pImpl->GetRoot());
         while (!stack.empty())
         {
             XSceneNode *pNode = stack.back();
             stack.pop_back();
             for (XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
             {
-                CWorldObject *pOrphan = static_cast<CSceneNode *>(pChild)->GetAnchoredObject();
+                CWorldObject *pOrphan = static_cast<CSceneNode *>(pChild)->GetRootedObject();
                 if (pOrphan && pOrphan->GetWorld() == this)
                     orphans.push_back({ pOrphan, pChild->GetGlobalMatrix() });
                 else
@@ -348,16 +345,16 @@ GEMMETHODIMP CWorld::RemoveObject(XWorldObject *pObject)
             }
         }
 
-        // Take the removed world object's anchor node out of the graph, then attach each orphan
-        // to the node the removal detached from
-        CSceneNode *pAnchor = pImpl->GetAnchor();
-        XSceneNode *pDetachedFrom = pAnchor ? pAnchor->GetParent() : nullptr;
+        // Take the released world object's root node out of the graph, then attach each orphan
+        // to the node the release detached from
+        CSceneNode *pObjectRoot = pImpl->GetRoot();
+        XSceneNode *pDetachedFrom = pObjectRoot ? pObjectRoot->GetParent() : nullptr;
         if (pDetachedFrom)
-            Gem::ThrowGemError(pDetachedFrom->RemoveChild(pAnchor));
+            Gem::ThrowGemError(pDetachedFrom->RemoveChild(pObjectRoot));
 
         for (Orphan &orphan : orphans)
         {
-            Gem::ThrowGemError(ReparentKeepingWorld(orphan.pObject->GetAnchor(), pDetachedFrom, orphan.world));
+            Gem::ThrowGemError(ReparentKeepingWorld(orphan.pObject->GetRoot(), pDetachedFrom, orphan.world));
             m_Events.push_back({ EventType::ObjectOrphaned, orphan.pObject });
         }
 
@@ -578,30 +575,9 @@ GEMMETHODIMP CWorld::Update(float dtime)
     if (Gem::Failed(result))
         return result;
 
-    result = m_pRoot->Update(dtime);
-    if (Gem::Failed(result))
-        return result;
-
-    // An active detached world object's nodes are outside this world's scene graph, so the walk
-    // from the root node misses them.  Each is updated from its anchor node, unless it is
-    // anchored below another of this world's active world objects, whose update covers it.
     for (size_t i = 0; i < m_ActiveObjectCount; ++i)
     {
-        CSceneNode *pAnchor = m_WorldObjects[i]->GetAnchor();
-        if (!pAnchor)
-            continue;
-
-        bool covered = false;
-        for (CSceneNode *pNode = pAnchor->GetParentNode(); pNode && !covered; pNode = pNode->GetParentNode())
-        {
-            CWorldObject *pAbove = pNode->GetAnchoredObject();
-            covered = pNode == m_pRoot.Get() ||
-                      (pAbove && pAbove->GetWorld() == this && pAbove->GetWorldIndex() < m_ActiveObjectCount);
-        }
-        if (covered)
-            continue;
-
-        result = pAnchor->Update(dtime);
+        result = m_WorldObjects[i]->Update(dtime);
         if (Gem::Failed(result))
             return result;
     }

@@ -1,6 +1,6 @@
 # XSceneNode
 
-A node in a scene graph. A node has a local transform, an ordered list of children, and the scene elements bound to it, such as meshes, lights, and cameras. A node holds its children and its bound elements, and refers to its parent weakly. A node that a [world object](../README.md#worlds-and-world-objects) is anchored at is that world object's anchor node.
+A node in a scene graph. A node has a local transform, an ordered list of children, and the scene elements bound to it, such as meshes, lights, and cameras. A node holds its children and its bound elements, and refers to its parent weakly. A node can be a [world object](XWorldObject.md)'s root node.
 
 Inherits `XCanvasElement`. Created by `XCanvas::CreateSceneNode`.
 
@@ -16,7 +16,7 @@ A node's local transform is a `Transform`: a scale, a rotation, and a translatio
 Gem::Result AddChild(XSceneNode *pChild);
 ```
 
-Makes `pChild` this node's last child. A child that has a parent, this node or another, moves in one step, with its subtree. Moving an anchor node attaches its world object, as [attaching](../README.md#worlds-and-world-objects) the world object does.
+Makes `pChild` this node's last child. A child that has a parent, this node or another, moves in one step, with its subtree. Moving a world object's root node attaches the world object to this node, as [placing](../README.md#worlds-and-world-objects) it does.
 
 | Result        | When                                                          |
 |---------------|---------------------------------------------------------------|
@@ -43,7 +43,7 @@ Makes `pChild` a child of this node, placed just before or just after `pSibling`
 Gem::Result RemoveChild(XSceneNode *pChild);
 ```
 
-Takes `pChild`, with its subtree, out of this node's children. `pChild` then has no parent, and its global matrix is its local matrix. This node releases `pChild`, which is destroyed when nothing else holds it. The world objects anchored in the subtree are [detached](../README.md#worlds-and-world-objects) and stay in their worlds.
+Takes `pChild`, with its subtree, out of this node's children. `pChild` then has no parent, and its global matrix is its local matrix. This node releases `pChild`, which is destroyed when nothing else holds it. The world objects whose root nodes are in the subtree are [detached](../README.md#worlds-and-world-objects) and stay in their worlds.
 
 | Result        | When                                      |
 |---------------|-------------------------------------------|
@@ -85,6 +85,16 @@ XSceneElement *GetBoundElement(uint32_t index);
 ```
 
 `GetBoundElementCount` returns the number of elements bound to this node. `GetBoundElement` returns a weak pointer to the element at `index`, in binding order, where `index` is less than `GetBoundElementCount()`.
+
+## Animation
+
+### GetAnimationController
+
+```cpp
+XAnimationController *GetAnimationController();
+```
+
+Returns a weak pointer to the [animation controller](XAnimationController.md) this node holds, or `nullptr` when it holds none. The root node of an instance of a model that has animation clips holds the instance's controller, which animates the nodes of the instance. [`XWorld::Update`](XWorld.md#update) updates a node's controller, before the elements bound to it, when the node belongs to an active world object.
 
 ## Transform Methods
 
@@ -135,29 +145,6 @@ const Math::FloatQuaternion GetGlobalRotation();
 
 Returns the rotations of this node and its ancestors composed, without their scales. It matches the rotation in the global matrix when every ancestor's scale is uniform. A non-uniform ancestor scale under a rotated child shears the global matrix, which no rotation describes.
 
-## Animation and Update
-
-### SetAnimationController, GetAnimationController
-
-```cpp
-Gem::Result SetAnimationController(XAnimationController *pController);
-XAnimationController *GetAnimationController();
-```
-
-`SetAnimationController` sets the animation controller that drives this node's subtree, and holds it, or clears it when `pController` is `nullptr`. `GetAnimationController` returns a weak pointer to the controller, or `nullptr` when there is none.
-
-| Result        | When                                                                                                    |
-|---------------|---------------------------------------------------------------------------------------------------------|
-| `InvalidArg`  | Something the controller drives is outside this node's subtree, as `XAnimationController::ValidateForNode` reports |
-
-### Update
-
-```cpp
-Gem::Result Update(float dtime);
-```
-
-Advances this node's subtree by `dtime` seconds: this node's animation controller, then its bound elements in binding order, then each child's subtree in order. Returns the first failure, and updates nothing after it.
-
 ## World Objects
 
 ### GetWorldObject
@@ -166,4 +153,4 @@ Advances this node's subtree by `dtime` seconds: this node's animation controlle
 XWorldObject *GetWorldObject();
 ```
 
-Returns a weak pointer to the world object this node [belongs to](../README.md#worlds-and-world-objects), or `nullptr` when it belongs to none. An anchor node belongs to the world object anchored at it, and every other node belongs to the world object of its parent.
+Returns a weak pointer to the world object this node [belongs to](../README.md#worlds-and-world-objects), or `nullptr` when it belongs to none. A world object's root node belongs to that world object, and every other node belongs to the world object of its parent.

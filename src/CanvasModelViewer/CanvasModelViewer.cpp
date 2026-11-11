@@ -99,6 +99,26 @@ const char *NonContributingLightReason(const Canvas::Fbx::ImportedLight &light)
     return nullptr;
 }
 
+//------------------------------------------------------------------------------------------------
+// The first camera bound to pNode or a node in its subtree, in pre-order, or nullptr.
+Canvas::XCamera *FindCamera(Canvas::XSceneNode *pNode)
+{
+    if (!pNode)
+        return nullptr;
+    for (uint32_t i = 0; i < pNode->GetBoundElementCount(); ++i)
+    {
+        Gem::TGemPtr<Canvas::XCamera> pCamera;
+        if (Gem::Succeeded(pNode->GetBoundElement(i)->QueryInterface(&pCamera)))
+            return pCamera.Get();
+    }
+    for (Canvas::XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+    {
+        if (Canvas::XCamera *pCamera = FindCamera(pChild))
+            return pCamera;
+    }
+    return nullptr;
+}
+
 } // anonymous namespace
 
 //------------------------------------------------------------------------------------------------
@@ -215,7 +235,7 @@ class CApp
     std::filesystem::path m_ModelPath;
 
     Gem::TGemPtr<Canvas::XModel> m_pModel;
-    Gem::TGemPtr<Canvas::XSceneNode> m_pInstanceRoot;
+    Gem::TGemPtr<Canvas::XWorldObject> m_pInstance;
     Gem::TGemPtr<Canvas::XAnimationController> m_pAnimCtrl;
     bool m_inBindPose = true;
 
@@ -526,16 +546,18 @@ class CApp
         // -----------------------------------------------------------------
         // Instantiate model into the world
         // -----------------------------------------------------------------
-        Canvas::ModelInstantiateResult result{};
-        Gem::ThrowGemError(pModel->Instantiate(pWorld->GetRootNode(), &result));
+        Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+        Gem::ThrowGemError(pCanvas->CreateWorldObject(pModel, &pInstance));
+        Gem::ThrowGemError(pWorld->AddWorldObject(pInstance));
+        Gem::ThrowGemError(pWorld->PlaceObject(pInstance, pWorld->GetRootNode(), false));
 
         m_pModel = pModel;
-        m_pInstanceRoot = result.pInstanceRoot;
+        m_pInstance = pInstance;
 
         // Store animation controller (null for static models with no clips)
-        if (result.pAnimationController)
+        if (Canvas::XAnimationController *pAnimCtrl = pInstance->GetRootNode()->GetAnimationController())
         {
-            m_pAnimCtrl = result.pAnimationController;
+            m_pAnimCtrl = pAnimCtrl;
             m_pAnimCtrl->ResetToBindPose();
             m_inBindPose = true;
         }
@@ -564,9 +586,9 @@ class CApp
         }
 
         // -----------------------------------------------------------------
-        // Camera selection from instantiate result
+        // Camera selection: the instance's first camera
         // -----------------------------------------------------------------
-        Canvas::XCamera *pSelectedCamera = result.pActiveCamera;
+        Canvas::XCamera *pSelectedCamera = FindCamera(pInstance->GetRootNode());
 
         if (pSelectedCamera)
         {

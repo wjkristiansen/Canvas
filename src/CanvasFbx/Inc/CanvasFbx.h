@@ -328,7 +328,7 @@ CANVASFBX_API Gem::Result ImportScene(
 //     built into the model.
 //
 // Returns Gem::Result::Success on success.  The returned XModel is not yet instantiated;
-// call XModel::Instantiate() to place it in a scene graph.
+// call XCanvas::CreateWorldObject() to create an instance of it.
 //================================================================================================
 
 //------------------------------------------------------------------------------------------------

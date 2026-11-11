@@ -41,6 +41,56 @@ static bool AlmostEqual(const Canvas::Math::FloatMatrix4x4 &m0, const Canvas::Ma
     return true;
 }
 
+// Creates an instance of pModel, adds it to pWorld, and places it under pParent, or leaves it
+// not placed when pParent is nullptr.
+Gem::Result InstantiateModel(Canvas::XWorld *pWorld, Canvas::XModel *pModel, Canvas::XSceneNode *pParent,
+                             Canvas::XWorldObject **ppObject)
+{
+    if (!ppObject)
+        return Gem::Result::BadPointer;
+    Gem::TGemPtr<Canvas::XWorldObject> pObject;
+    Gem::Result result = pWorld->GetCanvas()->CreateWorldObject(pModel, &pObject);
+    if (Gem::Succeeded(result))
+        result = pWorld->AddWorldObject(pObject);
+    if (Gem::Succeeded(result) && pParent)
+        result = pWorld->PlaceObject(pObject, pParent, false);
+    if (Gem::Succeeded(result))
+        *ppObject = pObject.Detach();
+    return result;
+}
+
+// Creates a world object in pWorld whose root node is pRootNode, or that has no root node when
+// pRootNode is nullptr.  A root node that has a parent keeps its place among its siblings.
+Gem::Result MakeWorldObject(Canvas::XWorld *pWorld, Canvas::XSceneNode *pRootNode,
+                            Canvas::XWorldObject **ppObject, const char *name = nullptr)
+{
+    if (!ppObject)
+        return Gem::Result::BadPointer;
+    Gem::TGemPtr<Canvas::XWorldObject> pObject;
+    Gem::Result result = pWorld->GetCanvas()->CreateWorldObject(nullptr, &pObject, name);
+    if (Gem::Succeeded(result) && pRootNode)
+    {
+        Gem::TGemPtr<Canvas::XSceneNode> pHold = pRootNode;
+        Canvas::XSceneNode *pParent = pRootNode->GetParent();
+        Canvas::XSceneNode *pNext = pParent ? pParent->GetNextChild(pRootNode) : nullptr;
+        if (pParent)
+            result = pParent->RemoveChild(pRootNode);
+        if (Gem::Succeeded(result))
+            result = pObject->SetRootNode(pRootNode);
+        if (pParent)
+        {
+            const Gem::Result restored = pNext ? pParent->InsertChildBefore(pRootNode, pNext) : pParent->AddChild(pRootNode);
+            if (Gem::Succeeded(result))
+                result = restored;
+        }
+    }
+    if (Gem::Succeeded(result))
+        result = pWorld->AddWorldObject(pObject);
+    if (Gem::Succeeded(result))
+        *ppObject = pObject.Detach();
+    return result;
+}
+
 } // anonymous namespace
 
 TEST(CanvasInterfacesTest, SimpleInterfaces)
@@ -136,13 +186,13 @@ TEST(CanvasInterfacesTest, WorldObjectNodes)
     EXPECT_EQ(nullptr, pBlade2->GetWorldObject());
 
     Gem::TGemPtr<Canvas::XWorldObject> pWindmill, pArrow;
-    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pWindmillNode, &pWindmill, "Windmill")));
-    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pArrowNode, &pArrow)));  // unnamed
-    EXPECT_EQ(pWindmillNode.Get(), pWindmill->GetAnchorNode());
+    ASSERT_TRUE(Succeeded(MakeWorldObject(pWorld, pWindmillNode, &pWindmill, "Windmill")));
+    ASSERT_TRUE(Succeeded(MakeWorldObject(pWorld, pArrowNode, &pArrow)));  // unnamed
+    EXPECT_EQ(pWindmillNode.Get(), pWindmill->GetRootNode());
     EXPECT_EQ(pWorld.Get(), pWindmill->GetWorld());
     EXPECT_STREQ("Windmill", pWindmill->GetName());
 
-    // An anchor node belongs to its world object; other nodes inherit their parent's
+    // A root node belongs to its world object; other nodes inherit their parent's
     EXPECT_EQ(nullptr, pRoot->GetWorldObject());
     EXPECT_EQ(nullptr, pGround->GetWorldObject());
     EXPECT_EQ(pWindmill.Get(), pWindmillNode->GetWorldObject());
@@ -159,29 +209,29 @@ TEST(CanvasInterfacesTest, WorldObjectNodes)
     EXPECT_EQ(pArrow.Get(), pTip->GetWorldObject());
 }
 
-TEST(CanvasInterfacesTest, WorldObjectDetachedAndUnanchored)
+TEST(CanvasInterfacesTest, WorldObjectPlacementStates)
 {
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
     Gem::TGemPtr<Canvas::XWorld> pWorld;
-    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "DetachedWorld")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "StatesWorld")));
 
-    // A world object with no anchor node has no nodes
+    // A world object with no root node has no nodes, and is not placed
     Gem::TGemPtr<Canvas::XWorldObject> pRules;
-    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(nullptr, &pRules, "Rules")));
-    EXPECT_EQ(nullptr, pRules->GetAnchorNode());
+    ASSERT_TRUE(Succeeded(MakeWorldObject(pWorld, nullptr, &pRules, "Rules")));
+    EXPECT_EQ(nullptr, pRules->GetRootNode());
     EXPECT_EQ(pWorld.Get(), pRules->GetWorld());
 
-    // A world object anchored at a node in no scene graph is detached; adding its anchor
-    // node to the graph puts it in the scene graph
+    // A world object whose root node is in no scene graph is not placed; adding its root node
+    // to the graph places it
     Gem::TGemPtr<Canvas::XSceneNode> pProjectileNode, pTrail;
     ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pProjectileNode, "Projectile")));
     ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pTrail, "Trail")));
     ASSERT_TRUE(Succeeded(pProjectileNode->AddChild(pTrail)));
     Gem::TGemPtr<Canvas::XWorldObject> pProjectile;
-    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pProjectileNode, &pProjectile, "Projectile")));
+    ASSERT_TRUE(Succeeded(MakeWorldObject(pWorld, pProjectileNode, &pProjectile, "Projectile")));
     EXPECT_EQ(nullptr, pProjectileNode->GetParent());
     EXPECT_EQ(pProjectile.Get(), pTrail->GetWorldObject());
     EXPECT_TRUE(Succeeded(pWorld->Update(0.016f)));
@@ -201,24 +251,49 @@ TEST(CanvasInterfacesTest, WorldObjectCreationErrors)
     ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "World")));
     ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pOtherWorld, "OtherWorld")));
 
-    EXPECT_EQ(Gem::Result::BadPointer, pWorld->CreateWorldObject(nullptr, nullptr));
+    EXPECT_EQ(Gem::Result::BadPointer, pCanvas->CreateWorldObject(nullptr, nullptr));
 
-    Gem::TGemPtr<Canvas::XWorldObject> pObject;
+    // A new world object is empty and in no world
+    Gem::TGemPtr<Canvas::XWorldObject> pObject, pSecond;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorldObject(nullptr, &pObject, "Object")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorldObject(nullptr, &pSecond, "Second")));
+    EXPECT_EQ(nullptr, pObject->GetWorld());
+    EXPECT_EQ(nullptr, pObject->GetRootNode());
+    EXPECT_EQ(Gem::Result::NotFound, pWorld->PlaceObject(pObject, pWorld->GetRootNode(), false));
+    EXPECT_EQ(Gem::Result::NotFound, pWorld->SetUniqueName(pObject, "Object"));
 
-    // The world's root node is not an anchor node
-    EXPECT_EQ(Gem::Result::InvalidArg, pWorld->CreateWorldObject(pWorld->GetRootNode(), &pObject));
-    EXPECT_EQ(nullptr, pObject.Get());
-    EXPECT_EQ(nullptr, pWorld->GetRootNode()->GetWorldObject());
-
-    // A node anchors one world object at most
-    Gem::TGemPtr<Canvas::XSceneNode> pNode;
+    // A root node has no parent and is the root node of one world object at most
+    Gem::TGemPtr<Canvas::XSceneNode> pNode, pPlaced;
     ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNode, "Node")));
-    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pNode, &pObject)));
-    Gem::TGemPtr<Canvas::XWorldObject> pSecond;
-    EXPECT_EQ(Gem::Result::InvalidArg, pWorld->CreateWorldObject(pNode, &pSecond));
-    EXPECT_EQ(Gem::Result::InvalidArg, pOtherWorld->CreateWorldObject(pNode, &pSecond));
-    EXPECT_EQ(nullptr, pSecond.Get());
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pPlaced, "Placed")));
+    ASSERT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pPlaced)));
+    EXPECT_EQ(Gem::Result::InvalidArg, pObject->SetRootNode(pPlaced));
+    ASSERT_TRUE(Succeeded(pObject->SetRootNode(pNode)));
+    EXPECT_EQ(Gem::Result::InvalidArg, pSecond->SetRootNode(pNode));
+    EXPECT_EQ(nullptr, pSecond->GetRootNode());
     EXPECT_EQ(pObject.Get(), pNode->GetWorldObject());
+
+    // A world object is in one world at most
+    EXPECT_EQ(Gem::Result::BadPointer, pWorld->AddWorldObject(nullptr));
+    ASSERT_TRUE(Succeeded(pWorld->AddWorldObject(pObject)));
+    EXPECT_EQ(pWorld.Get(), pObject->GetWorld());
+    EXPECT_EQ(Gem::Result::AlreadyExists, pWorld->AddWorldObject(pObject));
+    EXPECT_EQ(Gem::Result::AlreadyExists, pOtherWorld->AddWorldObject(pObject));
+
+    // A world's root node is not the root node of a world object, in that world or in none
+    EXPECT_EQ(Gem::Result::InvalidArg, pObject->SetRootNode(pWorld->GetRootNode()));
+    EXPECT_EQ(pNode.Get(), pObject->GetRootNode());
+    EXPECT_EQ(Gem::Result::InvalidArg, pSecond->SetRootNode(pOtherWorld->GetRootNode()));
+    EXPECT_EQ(Gem::Result::InvalidArg, pSecond->SetRootNode(pWorld->GetRootNode()));
+    EXPECT_EQ(nullptr, pSecond->GetRootNode());
+
+    // A world object is placed under a node of its own canvas
+    Gem::TGemPtr<Canvas::XCanvas> pForeignCanvas;
+    ASSERT_TRUE(Succeeded(Canvas::CreateCanvas(nullptr, &pForeignCanvas)));
+    Gem::TGemPtr<Canvas::XSceneNode> pForeignNode;
+    ASSERT_TRUE(Succeeded(pForeignCanvas->CreateSceneNode(&pForeignNode, "Foreign")));
+    EXPECT_EQ(Gem::Result::InvalidArg, pWorld->PlaceObject(pObject, pForeignNode, false));
+    EXPECT_EQ(nullptr, pNode->GetParent());
 }
 
 TEST(CanvasInterfacesTest, WorldObjectLifetime)
@@ -228,30 +303,116 @@ TEST(CanvasInterfacesTest, WorldObjectLifetime)
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
     Gem::TGemPtr<Canvas::XWorldObject> pObject;
-    Gem::TGemPtr<Canvas::XSceneNode> pAnchor, pChild;
+    Gem::TGemPtr<Canvas::XSceneNode> pObjectRoot, pChild;
     {
         Gem::TGemPtr<Canvas::XWorld> pWorld;
         ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ShortWorld")));
-        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pAnchor, "Survivor")));
+        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pObjectRoot, "Survivor")));
         ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pChild, "Child")));
-        ASSERT_TRUE(Succeeded(pAnchor->AddChild(pChild)));
-        ASSERT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pAnchor)));
-        ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pAnchor, &pObject, "Survivor")));
+        ASSERT_TRUE(Succeeded(pObjectRoot->AddChild(pChild)));
+        ASSERT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pObjectRoot)));
+        ASSERT_TRUE(Succeeded(MakeWorldObject(pWorld, pObjectRoot, &pObject, "Survivor")));
     }
 
-    // A world object the app holds outlives its world, with its anchor node and the
-    // nodes below it; the anchor node no longer has a parent
+    // A world object the app holds outlives its world, with its root node and the
+    // nodes below it; the root node no longer has a parent
     EXPECT_EQ(nullptr, pObject->GetWorld());
-    EXPECT_EQ(pAnchor.Get(), pObject->GetAnchorNode());
-    EXPECT_EQ(nullptr, pAnchor->GetParent());
-    EXPECT_EQ(pObject.Get(), pAnchor->GetWorldObject());
+    EXPECT_EQ(pObjectRoot.Get(), pObject->GetRootNode());
+    EXPECT_EQ(nullptr, pObjectRoot->GetParent());
+    EXPECT_EQ(pObject.Get(), pObjectRoot->GetWorldObject());
     EXPECT_EQ(pObject.Get(), pChild->GetWorldObject());
     (void)pChild->GetGlobalMatrix();
 
-    // Releasing the world object clears its anchor node's back-reference
+    // Releasing the world object clears its root node's back-reference
     pObject = nullptr;
-    EXPECT_EQ(nullptr, pAnchor->GetWorldObject());
+    EXPECT_EQ(nullptr, pObjectRoot->GetWorldObject());
     EXPECT_EQ(nullptr, pChild->GetWorldObject());
+}
+
+// Replacing a placed world object's root node puts the new root node in the old one's place, and
+// the old root node, with its subtree, leaves the scene graph and the world object.
+TEST(CanvasInterfacesTest, WorldObjectSetRootNode)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "SwapWorld")));
+    Canvas::XSceneNode *pRoot = pWorld->GetRootNode();
+
+    Gem::TGemPtr<Canvas::XSceneNode> pBefore, pStanding, pStandingArm, pFallen, pAfter;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pBefore, "Before")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pStanding, "Standing")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pStandingArm, "StandingArm")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pFallen, "Fallen")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pAfter, "After")));
+    ASSERT_TRUE(Succeeded(pStanding->AddChild(pStandingArm)));
+    ASSERT_TRUE(Succeeded(pRoot->AddChild(pBefore)));
+
+    Gem::TGemPtr<Canvas::XWorldObject> pStatue;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorldObject(nullptr, &pStatue, "Statue")));
+    ASSERT_TRUE(Succeeded(pStatue->SetRootNode(pStanding)));
+    ASSERT_TRUE(Succeeded(pWorld->AddWorldObject(pStatue)));
+    ASSERT_TRUE(Succeeded(pWorld->PlaceObject(pStatue, pRoot, false)));
+    ASSERT_TRUE(Succeeded(pRoot->AddChild(pAfter)));
+
+    // The fallen tree takes the standing tree's place between its siblings
+    ASSERT_TRUE(Succeeded(pStatue->SetRootNode(pFallen)));
+    EXPECT_EQ(pFallen.Get(), pStatue->GetRootNode());
+    EXPECT_EQ(pFallen.Get(), pRoot->GetNextChild(pBefore));
+    EXPECT_EQ(pAfter.Get(), pRoot->GetNextChild(pFallen));
+    EXPECT_EQ(pStatue.Get(), pFallen->GetWorldObject());
+    EXPECT_EQ(nullptr, pStanding->GetParent());
+    EXPECT_EQ(nullptr, pStandingArm->GetWorldObject());
+
+    // The app keeps the standing tree and swaps it back
+    ASSERT_TRUE(Succeeded(pStatue->SetRootNode(pStanding)));
+    EXPECT_EQ(pStanding.Get(), pRoot->GetNextChild(pBefore));
+    EXPECT_EQ(pStatue.Get(), pStandingArm->GetWorldObject());
+    EXPECT_EQ(nullptr, pFallen->GetParent());
+
+    // Clearing the root node takes it out of the scene graph
+    ASSERT_TRUE(Succeeded(pStatue->SetRootNode(nullptr)));
+    EXPECT_EQ(nullptr, pStatue->GetRootNode());
+    EXPECT_EQ(pAfter.Get(), pRoot->GetNextChild(pBefore));
+    EXPECT_EQ(nullptr, pStanding->GetWorldObject());
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
+}
+
+// Releasing a world object takes it out of its world, which releases its unique name, and it can
+// then be added to another world.
+TEST(CanvasInterfacesTest, WorldObjectMovesBetweenWorlds)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XWorld> pLevel, pNextLevel;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pLevel, "Level")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pNextLevel, "NextLevel")));
+
+    Gem::TGemPtr<Canvas::XSceneNode> pNode;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNode, "Hero")));
+    Gem::TGemPtr<Canvas::XWorldObject> pHero;
+    ASSERT_TRUE(Succeeded(MakeWorldObject(pLevel, pNode, &pHero, "Hero")));
+    ASSERT_TRUE(Succeeded(pLevel->PlaceObject(pHero, pLevel->GetRootNode(), false)));
+    ASSERT_TRUE(Succeeded(pLevel->SetUniqueName(pHero, "Hero")));
+
+    ASSERT_TRUE(Succeeded(pLevel->ReleaseWorldObject(pHero)));
+    EXPECT_EQ(nullptr, pHero->GetWorld());
+    EXPECT_EQ(nullptr, pHero->GetUniqueName());
+    EXPECT_EQ(nullptr, pLevel->FindObject("Hero"));
+    EXPECT_EQ(nullptr, pNode->GetParent());
+    EXPECT_EQ(pNode.Get(), pHero->GetRootNode());
+    EXPECT_EQ(Gem::Result::NotFound, pLevel->ReleaseWorldObject(pHero));
+
+    ASSERT_TRUE(Succeeded(pNextLevel->AddWorldObject(pHero)));
+    EXPECT_EQ(pNextLevel.Get(), pHero->GetWorld());
+    ASSERT_TRUE(Succeeded(pNextLevel->PlaceObject(pHero, pNextLevel->GetRootNode(), false)));
+    ASSERT_TRUE(Succeeded(pNextLevel->SetUniqueName(pHero, "Hero")));
+    EXPECT_EQ(pHero.Get(), pNextLevel->FindObject("Hero"));
+    EXPECT_TRUE(Succeeded(pNextLevel->Update(0.0f)));
 }
 
 TEST(CanvasInterfacesTest, SceneNodesTest)
@@ -1502,24 +1663,27 @@ TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
 
-    // Verify instance root was created
-    EXPECT_NE(result.pInstanceRoot, nullptr);
-    EXPECT_EQ(result.pActiveCamera, nullptr); // no camera in model
-    EXPECT_EQ(result.pAnimationController, nullptr); // no clips in model
+    // The instance is a world object in the world, whose root node is the instance root
+    ASSERT_NE(pInstance.Get(), nullptr);
+    EXPECT_TRUE(pInstance->GetWorld() == pWorld.Get());
+    EXPECT_STREQ("TestModel", pInstance->GetName());
+    EXPECT_NE(pInstance->GetRootNode(), nullptr);
+    EXPECT_TRUE(pInstance->GetRootNode()->GetWorldObject() == pInstance.Get());
+    EXPECT_EQ(pInstance->GetRootNode()->GetAnimationController(), nullptr); // no clips in model
 
     // Instance root should be a child of scene root
     Canvas::XSceneNode *pSceneRoot = pWorld->GetRootNode();
-    EXPECT_TRUE(pSceneRoot->GetFirstChild() == result.pInstanceRoot);
+    EXPECT_TRUE(pSceneRoot->GetFirstChild() == pInstance->GetRootNode());
 
     // Instance root should have 2 children (NodeA and NodeB)
-    Canvas::XSceneNode *pNodeA = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNodeA = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pNodeA, nullptr);
-    Canvas::XSceneNode *pNodeB = result.pInstanceRoot->GetNextChild(pNodeA);
+    Canvas::XSceneNode *pNodeB = pInstance->GetRootNode()->GetNextChild(pNodeA);
     ASSERT_NE(pNodeB, nullptr);
-    EXPECT_EQ(result.pInstanceRoot->GetNextChild(pNodeB), nullptr); // no more children
+    EXPECT_EQ(pInstance->GetRootNode()->GetNextChild(pNodeB), nullptr); // no more children
     EXPECT_STREQ("NodeA", pNodeA->GetName());
     EXPECT_STREQ("NodeB", pNodeB->GetName());
 
@@ -1564,18 +1728,18 @@ TEST(CanvasInterfacesTest, ModelInstantiateTransformIndependence)
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
-    Canvas::ModelInstantiateResult result1{}, result2{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result1)));
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result2)));
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance1, pInstance2;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance1)));
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance2)));
 
     // Both instances should exist independently
-    EXPECT_NE(result1.pInstanceRoot, nullptr);
-    EXPECT_NE(result2.pInstanceRoot, nullptr);
-    EXPECT_TRUE(result1.pInstanceRoot != result2.pInstanceRoot);
+    EXPECT_NE(pInstance1->GetRootNode(), nullptr);
+    EXPECT_NE(pInstance2->GetRootNode(), nullptr);
+    EXPECT_TRUE(pInstance1->GetRootNode() != pInstance2->GetRootNode());
 
     // Modify instance 1's child transform
-    Canvas::XSceneNode *pNode1A = result1.pInstanceRoot->GetFirstChild();
-    Canvas::XSceneNode *pNode2A = result2.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNode1A = pInstance1->GetRootNode()->GetFirstChild();
+    Canvas::XSceneNode *pNode2A = pInstance2->GetRootNode()->GetFirstChild();
     ASSERT_NE(pNode1A, nullptr);
     ASSERT_NE(pNode2A, nullptr);
 
@@ -1610,9 +1774,9 @@ TEST(CanvasInterfacesTest, ModelInstantiateCopiesTransforms)
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
-    Canvas::XSceneNode *pNode = result.pInstanceRoot->GetFirstChild();
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
+    Canvas::XSceneNode *pNode = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), transform.Translation));
@@ -1650,20 +1814,23 @@ TEST(CanvasInterfacesTest, ModelActiveCameraInstantiation)
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
 
-    // The instance's active camera carries the model camera's properties
-    ASSERT_NE(result.pActiveCamera, nullptr);
-    EXPECT_STREQ("ModelCamera", result.pActiveCamera->GetName());
-    EXPECT_EQ(1.2f, result.pActiveCamera->GetFovAngle());
-    EXPECT_EQ(0.5f, result.pActiveCamera->GetNearClip());
-    EXPECT_EQ(500.0f, result.pActiveCamera->GetFarClip());
+    // Instantiation leaves the world's active camera to the app
+    EXPECT_EQ(pWorld->GetActiveCamera(), nullptr);
 
-    // ...and is attached to the instance's scene node for the camera's model node
-    Canvas::XSceneNode *pCamNode = result.pActiveCamera->GetAttachedNode();
+    // The instance's camera is on the instance's scene node for the camera's model node, and
+    // carries the model camera's name and properties
+    Canvas::XSceneNode *pCamNode = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pCamNode, nullptr);
-    EXPECT_TRUE(pCamNode == result.pInstanceRoot->GetFirstChild());
+    Canvas::XCamera *pCamera = FindElement<Canvas::XCamera>(pCamNode);
+    ASSERT_NE(pCamera, nullptr);
+    EXPECT_STREQ("ModelCamera", pCamera->GetName());
+    EXPECT_EQ(1.2f, pCamera->GetFovAngle());
+    EXPECT_EQ(0.5f, pCamera->GetNearClip());
+    EXPECT_EQ(500.0f, pCamera->GetFarClip());
+    EXPECT_TRUE(pCamera->GetAttachedNode() == pCamNode);
     EXPECT_TRUE(AlmostEqual(pCamNode->GetLocalTranslation(), FloatVector4(0.0f, -5.0f, 2.0f, 1.0f)));
 }
 
@@ -1694,10 +1861,10 @@ TEST(CanvasInterfacesTest, ModelLightInstantiation)
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
 
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
 
-    Canvas::XSceneNode *pLightNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pLightNode = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pLightNode, nullptr);
     EXPECT_EQ(1u, pLightNode->GetBoundElementCount());
 
@@ -1710,7 +1877,9 @@ TEST(CanvasInterfacesTest, ModelLightInstantiation)
     EXPECT_TRUE(pLight->GetFlags() == Canvas::LightFlags::Enabled);
 }
 
-TEST(CanvasInterfacesTest, ModelInstantiateNullTargetFails)
+// Creating a world object from a model instantiates it, in no world and with no parent; adding it
+// to a world leaves it not placed until it is placed.
+TEST(CanvasInterfacesTest, ModelInstantiateNotPlaced)
 {
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
@@ -1722,8 +1891,28 @@ TEST(CanvasInterfacesTest, ModelInstantiateNullTargetFails)
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
 
-    // Null target should fail
-    EXPECT_TRUE(Gem::Failed(pModel->Instantiate(nullptr)));
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
+
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance, pNamed;
+    EXPECT_EQ(Gem::Result::BadPointer, pCanvas->CreateWorldObject(pModel, nullptr));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorldObject(pModel, &pInstance)));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorldObject(pModel, &pNamed, "Named")));
+    EXPECT_STREQ("TestModel", pInstance->GetName());
+    EXPECT_STREQ("Named", pNamed->GetName());
+    EXPECT_EQ(nullptr, pInstance->GetWorld());
+    ASSERT_NE(pInstance->GetRootNode(), nullptr);
+    EXPECT_EQ(pInstance->GetRootNode()->GetParent(), nullptr);
+    EXPECT_NE(pInstance->GetRootNode()->GetFirstChild(), nullptr);
+    EXPECT_TRUE(pInstance->GetRootNode()->GetFirstChild()->GetWorldObject() == pInstance.Get());
+
+    ASSERT_TRUE(Succeeded(pWorld->AddWorldObject(pInstance)));
+    EXPECT_TRUE(pInstance->GetWorld() == pWorld.Get());
+    EXPECT_EQ(pWorld->GetRootNode()->GetFirstChild(), nullptr);
+
+    // Placing the instance puts it in the scene graph
+    EXPECT_TRUE(Succeeded(pWorld->PlaceObject(pInstance, pWorld->GetRootNode(), false)));
+    EXPECT_TRUE(pWorld->GetRootNode()->GetFirstChild() == pInstance->GetRootNode());
 }
 
 // A skeleton instance composes its bones parents first, in the space of its node, and
@@ -1774,10 +1963,10 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
 
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
 
-    Canvas::XSceneNode *pArmature = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pArmature = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pArmature, nullptr);
     Canvas::XSceneNode *pSocket = pArmature->GetFirstChild();
     ASSERT_NE(pSocket, nullptr);
@@ -1825,7 +2014,7 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     pRefKnee->SetLocalRotation(bent.Rotation);
     EXPECT_TRUE(AlmostEqual(pSkeleton->GetBoneMatrix(1), pRefKnee->GetGlobalMatrix()));
 
-    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
     EXPECT_TRUE(AlmostEqual(pSocket->GetGlobalMatrix(), pRefSocket->GetGlobalMatrix() * pArmature->GetGlobalMatrix()));
     EXPECT_TRUE(AlmostEqual(pProp->GetGlobalMatrix(), pSocket->GetGlobalMatrix()));
 
@@ -1838,7 +2027,7 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     // Resetting returns every bone, and after an update the socket, to rest.
     pSkeleton->ResetToRestPose();
     pRefKnee->SetLocalRotation(bones[1].RestTransform.Rotation);
-    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
     EXPECT_TRUE(AlmostEqual(pSocket->GetGlobalMatrix(), pRefSocket->GetGlobalMatrix() * pArmature->GetGlobalMatrix()));
 
     // A socket node removed from the skeleton's node keeps its last transform.
@@ -1846,7 +2035,7 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     const FloatVector4 lastTranslation = pRemoved->GetLocalTranslation();
     EXPECT_TRUE(Succeeded(pArmature->RemoveChild(pRemoved)));
     EXPECT_TRUE(Succeeded(pSkeleton->SetBoneLocalTransform(1, &bent)));
-    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
     EXPECT_TRUE(AlmostEqual(pRemoved->GetLocalTranslation(), lastTranslation));
 }
 
@@ -1901,10 +2090,10 @@ TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
 
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
 
-    Canvas::XSceneNode *pArmature = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pArmature = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pArmature, nullptr);
     Canvas::XSceneNode *pBody = pArmature->GetFirstChild();
     ASSERT_NE(pBody, nullptr);
@@ -1953,7 +2142,7 @@ TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
     EXPECT_EQ(Gem::Result::InvalidArg, pMesh->ComputeSkinMatrices(one, 1));
 
     // Moving the instance, or posing a bone, moves the palette with it.
-    result.pInstanceRoot->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 7.0f, 0.0f));
+    pInstance->GetRootNode()->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 7.0f, 0.0f));
     Canvas::Transform pose = bones[1].RestTransform;
     pose.Rotation = FloatQuaternion::FromEulerXYZ(0.3f, 0.0f, 0.0f);
     EXPECT_TRUE(Succeeded(pSkeleton->SetBoneLocalTransform(1, &pose)));
@@ -2008,13 +2197,13 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "AnimWorld")));
 
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
-    ASSERT_NE(result.pAnimationController, nullptr);
-    ASSERT_NE(result.pInstanceRoot, nullptr);
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
+    ASSERT_NE(pInstance->GetRootNode()->GetAnimationController(), nullptr);
+    ASSERT_NE(pInstance->GetRootNode(), nullptr);
 
-    Canvas::XAnimationController* pCtrl = result.pAnimationController;
-    Canvas::XSceneNode*      pNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XAnimationController* pCtrl = pInstance->GetRootNode()->GetAnimationController();
+    Canvas::XSceneNode*      pNode = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     // Releasing the caller's model reference must not invalidate the controller's clips:
@@ -2048,9 +2237,10 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
                             FloatVector4(7.0f, 7.0f, 7.0f, 1.0f)));
 }
 
-// XWorld::Update updates every world object, including a detached one whose nodes are outside
-// the scene graph: its animation controller advances like one in the scene graph.
-TEST(CanvasInterfacesTest, WorldUpdateAdvancesDetachedWorldObjects)
+// XWorld::Update updates each active world object once, wherever its nodes are: in the scene
+// graph, attached to another world object's node, or not placed.  An inactive world object in
+// the scene graph is left as it is, and the world objects attached to its nodes are still updated.
+TEST(CanvasInterfacesTest, WorldUpdateAdvancesWorldObjectsNotPlaced)
 {
     using namespace Canvas::Math;
 
@@ -2073,28 +2263,34 @@ TEST(CanvasInterfacesTest, WorldUpdateAdvancesDetachedWorldObjects)
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "PoolWorld")));
 
-    // One instance in the scene graph, one under a node outside it
-    Gem::TGemPtr<Canvas::XSceneNode> pShownNode, pPooledNode;
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pShownNode, "Shown")));
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pPooledNode, "Pooled")));
-    ASSERT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pShownNode)));
+    // One instance in the scene graph, one attached to its node, and one not placed
+    Gem::TGemPtr<Canvas::XWorldObject> pShown, pRider, pPooled;
+    ASSERT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pShown)));
+    ASSERT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pShown->GetRootNode()->GetFirstChild(), &pRider)));
+    ASSERT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, nullptr, &pPooled)));
+    Canvas::XAnimationController *pShownCtrl = pShown->GetRootNode()->GetAnimationController();
+    Canvas::XAnimationController *pRiderCtrl = pRider->GetRootNode()->GetAnimationController();
+    Canvas::XAnimationController *pPooledCtrl = pPooled->GetRootNode()->GetAnimationController();
+    ASSERT_NE(pShownCtrl, nullptr);
+    ASSERT_NE(pRiderCtrl, nullptr);
+    ASSERT_NE(pPooledCtrl, nullptr);
+    EXPECT_TRUE(pShownCtrl != pRiderCtrl);
 
-    Canvas::ModelInstantiateResult shown{}, pooled{};
-    ASSERT_TRUE(Succeeded(pModel->Instantiate(pShownNode, &shown)));
-    ASSERT_TRUE(Succeeded(pModel->Instantiate(pPooledNode, &pooled)));
-    ASSERT_NE(shown.pAnimationController, nullptr);
-    ASSERT_NE(pooled.pAnimationController, nullptr);
+    ASSERT_TRUE(Succeeded(pShownCtrl->Play(0, 0.0f)));
+    ASSERT_TRUE(Succeeded(pRiderCtrl->Play(0, 0.0f)));
+    ASSERT_TRUE(Succeeded(pPooledCtrl->Play(0, 0.0f)));
+    ASSERT_TRUE(Succeeded(pWorld->Update(0.5f)));
 
-    Gem::TGemPtr<Canvas::XWorldObject> pShown, pPooled;
-    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pShownNode, &pShown, "Shown")));
-    ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pPooledNode, &pPooled, "Pooled")));
+    EXPECT_FLOAT_EQ(0.5f, pShownCtrl->GetTime());
+    EXPECT_FLOAT_EQ(0.5f, pRiderCtrl->GetTime());
+    EXPECT_FLOAT_EQ(0.5f, pPooledCtrl->GetTime());
 
-    ASSERT_TRUE(Succeeded(shown.pAnimationController->Play(0, 0.0f)));
-    ASSERT_TRUE(Succeeded(pooled.pAnimationController->Play(0, 0.0f)));
-    ASSERT_TRUE(Succeeded(pWorld->Update(1.0f)));
+    ASSERT_TRUE(Succeeded(pWorld->DeactivateObject(pShown)));
+    ASSERT_TRUE(Succeeded(pWorld->Update(0.5f)));
 
-    EXPECT_FLOAT_EQ(1.0f, shown.pAnimationController->GetTime());
-    EXPECT_FLOAT_EQ(1.0f, pooled.pAnimationController->GetTime());
+    EXPECT_FLOAT_EQ(0.5f, pShownCtrl->GetTime());
+    EXPECT_FLOAT_EQ(1.0f, pRiderCtrl->GetTime());
+    EXPECT_FLOAT_EQ(1.0f, pPooledCtrl->GetTime());
 }
 
 // XWorld::Update updates the active world objects and leaves the inactive ones as they are.
@@ -2123,20 +2319,16 @@ TEST(CanvasInterfacesTest, WorldUpdateSkipsInactiveWorldObjects)
     ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "PoolWorld")));
     ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pOtherWorld, "OtherWorld")));
 
-    // Three pooled projectiles, each a detached world object playing the same clip
+    // Three pooled projectiles, each a world object that is not placed, playing the same clip
     constexpr int kCount = 3;
-    Gem::TGemPtr<Canvas::XSceneNode> pNodes[kCount];
     Gem::TGemPtr<Canvas::XWorldObject> pObjects[kCount];
     Canvas::XAnimationController *pControllers[kCount] = {};
     for (int i = 0; i < kCount; ++i)
     {
-        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNodes[i], "Projectile")));
-        Canvas::ModelInstantiateResult instance{};
-        ASSERT_TRUE(Succeeded(pModel->Instantiate(pNodes[i], &instance)));
-        ASSERT_NE(instance.pAnimationController, nullptr);
-        pControllers[i] = instance.pAnimationController;
+        ASSERT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, nullptr, &pObjects[i])));
+        pControllers[i] = pObjects[i]->GetRootNode()->GetAnimationController();
+        ASSERT_NE(pControllers[i], nullptr);
         ASSERT_TRUE(Succeeded(pControllers[i]->Play(0, 0.0f)));
-        ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pNodes[i], &pObjects[i], "Projectile")));
     }
 
     auto expectTimes = [&](float t0, float t1, float t2)
@@ -2209,14 +2401,14 @@ struct ElevatorWorld
         pCarNode      = MakeNode(pCanvas, pPlatform, "Car", 1.0f, 0.0f, 0.0f);
         pSeat         = MakeNode(pCanvas, pCarNode, "Seat", 0.0f, 1.0f, 0.0f);
         pDriverNode   = MakeNode(pCanvas, pSeat, "Driver", 0.0f, 0.0f, 0.5f);
-        EXPECT_TRUE(Succeeded(pWorld->CreateWorldObject(pElevatorNode, &pElevator, "Elevator")));
-        EXPECT_TRUE(Succeeded(pWorld->CreateWorldObject(pCarNode, &pCar, "Car")));
-        EXPECT_TRUE(Succeeded(pWorld->CreateWorldObject(pDriverNode, &pDriver, "Driver")));
+        EXPECT_TRUE(Succeeded(MakeWorldObject(pWorld, pElevatorNode, &pElevator, "Elevator")));
+        EXPECT_TRUE(Succeeded(MakeWorldObject(pWorld, pCarNode, &pCar, "Car")));
+        EXPECT_TRUE(Succeeded(MakeWorldObject(pWorld, pDriverNode, &pDriver, "Driver")));
     }
 };
 } // anonymous namespace
 
-TEST(CanvasInterfacesTest, WorldObjectAttach)
+TEST(CanvasInterfacesTest, WorldObjectPlace)
 {
     using namespace Canvas::Math;
 
@@ -2229,7 +2421,7 @@ TEST(CanvasInterfacesTest, WorldObjectAttach)
     // The driver at (11, 6, 0.5) gets out onto the ground, keeping its world transform
     auto pGround = MakeNode(pCanvas, pRoot, "Ground", 0.0f, -1.0f, 0.0f);
     EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
-    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pDriver, pGround, true)));
+    ASSERT_TRUE(Succeeded(w.pWorld->PlaceObject(w.pDriver, pGround, true)));
     EXPECT_EQ(pGround.Get(), w.pDriverNode->GetParent());
     EXPECT_EQ(w.pDriver.Get(), w.pDriverNode->GetWorldObject());
     EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
@@ -2243,37 +2435,37 @@ TEST(CanvasInterfacesTest, WorldObjectAttach)
     pTurntable->SetLocalTransform(turn);
     w.pDriverNode->SetLocalRotation(QuaternionFromAngleAxis(FloatVector4(1.0f, 0.0f, 0.0f, 0.4f)));
     const FloatMatrix4x4 before = w.pDriverNode->GetGlobalMatrix();
-    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pDriver, pTurntable, true)));
+    ASSERT_TRUE(Succeeded(w.pWorld->PlaceObject(w.pDriver, pTurntable, true)));
     const FloatMatrix4x4 after = w.pDriverNode->GetGlobalMatrix();
     for (int r = 0; r < 4; ++r)
         EXPECT_TRUE(AlmostEqual(after[r], before[r])) << "row " << r;
 
     // Back in the seat, keeping its local transform
     w.pDriverNode->SetLocalTransform(Translation(11.0f, 7.0f, 0.5f));
-    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pDriver, w.pSeat, false)));
+    ASSERT_TRUE(Succeeded(w.pWorld->PlaceObject(w.pDriver, w.pSeat, false)));
     EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetLocalTranslation(), FloatVector4(11.0f, 7.0f, 0.5f, 1.0f)));
     EXPECT_EQ(w.pDriver.Get(), w.pDriverNode->GetWorldObject());
 
-    // Moving the car moves the driver attached to it
-    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pCar, pGround, false)));
+    // Moving the car moves the driver attached to its seat
+    ASSERT_TRUE(Succeeded(w.pWorld->PlaceObject(w.pCar, pGround, false)));
     EXPECT_EQ(pGround.Get(), w.pCarNode->GetParent());
     EXPECT_EQ(w.pSeat.Get(), w.pDriverNode->GetParent());
     EXPECT_EQ(w.pCar.Get(), w.pSeat->GetWorldObject());
 
-    // A world object attaches only outside its anchor node's subtree
-    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->AttachObject(w.pCar, w.pCarNode, false));
-    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->AttachObject(w.pCar, w.pDriverNode, false));
-    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->AttachObject(w.pCar, nullptr, false));
+    // A world object is placed only outside its root node's subtree
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->PlaceObject(w.pCar, w.pCarNode, false));
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->PlaceObject(w.pCar, w.pDriverNode, false));
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->PlaceObject(w.pCar, nullptr, false));
 
-    // A world object with no anchor node has nothing to attach
+    // A world object with no root node has nothing to place
     Gem::TGemPtr<Canvas::XWorldObject> pRules;
-    ASSERT_TRUE(Succeeded(w.pWorld->CreateWorldObject(nullptr, &pRules)));
-    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->AttachObject(pRules, pGround, false));
+    ASSERT_TRUE(Succeeded(MakeWorldObject(w.pWorld, nullptr, &pRules)));
+    EXPECT_EQ(Gem::Result::InvalidArg, w.pWorld->PlaceObject(pRules, pGround, false));
 
     // Only the world's own world objects
     Gem::TGemPtr<Canvas::XWorld> pOtherWorld;
     ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pOtherWorld, "OtherWorld")));
-    EXPECT_EQ(Gem::Result::NotFound, pOtherWorld->AttachObject(w.pCar, pGround, false));
+    EXPECT_EQ(Gem::Result::NotFound, pOtherWorld->PlaceObject(w.pCar, pGround, false));
 }
 
 TEST(CanvasInterfacesTest, WorldObjectDetach)
@@ -2306,9 +2498,9 @@ TEST(CanvasInterfacesTest, WorldObjectDetach)
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
     EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
 
-    // Detaching a detached world object changes nothing; attaching puts it back
+    // Detaching a world object that is not placed changes nothing; placing puts it back
     EXPECT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
-    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pCar, w.pPlatform, false)));
+    ASSERT_TRUE(Succeeded(w.pWorld->PlaceObject(w.pCar, w.pPlatform, false)));
     EXPECT_EQ(w.pPlatform.Get(), w.pCarNode->GetParent());
     EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
 
@@ -2342,7 +2534,7 @@ struct RecordingListener : Canvas::WorldListener
 };
 } // anonymous namespace
 
-TEST(CanvasInterfacesTest, WorldObjectRemoveKeepsOrphans)
+TEST(CanvasInterfacesTest, WorldObjectReleaseKeepsOrphans)
 {
     using namespace Canvas::Math;
 
@@ -2360,7 +2552,7 @@ TEST(CanvasInterfacesTest, WorldObjectRemoveKeepsOrphans)
     w.pWorld->SetActiveCamera(pCamera);
 
     // Removing the car leaves its driver on the platform, where it was
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pCar)));
     EXPECT_EQ(nullptr, w.pCar->GetWorld());
     EXPECT_EQ(nullptr, w.pCarNode->GetParent());
     EXPECT_EQ(w.pPlatform.Get(), w.pDriverNode->GetParent());
@@ -2369,8 +2561,8 @@ TEST(CanvasInterfacesTest, WorldObjectRemoveKeepsOrphans)
     EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
     EXPECT_EQ(pCamera.Get(), w.pWorld->GetActiveCamera());
 
-    // The removed world object is no longer one of the world's
-    EXPECT_EQ(Gem::Result::NotFound, w.pWorld->RemoveObject(w.pCar));
+    // The released world object is no longer one of the world's
+    EXPECT_EQ(Gem::Result::NotFound, w.pWorld->ReleaseWorldObject(w.pCar));
 
     // The removal delivers no callback; the next Update does, once
     EXPECT_TRUE(listener.events.empty());
@@ -2380,7 +2572,7 @@ TEST(CanvasInterfacesTest, WorldObjectRemoveKeepsOrphans)
     EXPECT_EQ(1u, listener.events.size());
 }
 
-TEST(CanvasInterfacesTest, WorldObjectRemoveTopLevel)
+TEST(CanvasInterfacesTest, WorldObjectReleaseTopLevel)
 {
     using namespace Canvas::Math;
 
@@ -2399,16 +2591,16 @@ TEST(CanvasInterfacesTest, WorldObjectRemoveTopLevel)
 
     // Removing the elevator orphans the car, which lands where the elevator was attached: the
     // root node, keeping its world transform.  The driver stays in the car.
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pElevator)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pElevator)));
     EXPECT_EQ(nullptr, w.pElevator->GetWorld());
     EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
     EXPECT_EQ(w.pWorld->GetRootNode(), w.pCarNode->GetParent());
     EXPECT_EQ(w.pSeat.Get(), w.pDriverNode->GetParent());
     EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
 
-    // An orphan removed before the next Update gets no callback.  The next Update clears the
+    // An orphan released before the next Update gets no callback.  The next Update clears the
     // active camera and reports its loss.
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pCar)));
     EXPECT_EQ(pCamera.Get(), w.pWorld->GetActiveCamera());
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
     EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
@@ -2437,11 +2629,11 @@ TEST(CanvasInterfacesTest, WorldListenerCallbacks)
         if (first.events.size() == 1)
         {
             EXPECT_EQ(Gem::Result::Unavailable, w.pWorld->Update(0.0f));
-            EXPECT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+            EXPECT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pCar)));
             EXPECT_TRUE(Succeeded(w.pWorld->UnregisterListener(&second)));
         }
     };
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pElevator)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pElevator)));
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
     EXPECT_EQ(std::vector<std::string>({ "orphaned Car", "orphaned Driver" }), first.events);
     EXPECT_TRUE(second.events.empty());
@@ -2452,8 +2644,8 @@ TEST(CanvasInterfacesTest, WorldListenerCallbacks)
     first.onEvent = nullptr;
     Gem::TGemPtr<Canvas::XWorldObject> pRider;
     auto pRiderNode = MakeNode(pCanvas, w.pDriverNode, "Rider", 0.0f, 0.0f, 0.0f);
-    ASSERT_TRUE(Succeeded(w.pWorld->CreateWorldObject(pRiderNode, &pRider, "Rider")));
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pDriver)));
+    ASSERT_TRUE(Succeeded(MakeWorldObject(w.pWorld, pRiderNode, &pRider, "Rider")));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pDriver)));
     w.pWorld = nullptr;
     EXPECT_EQ(2u, first.events.size());
 }
@@ -2499,7 +2691,7 @@ TEST(CanvasInterfacesTest, WorldActiveCameraLeavesSceneGraph)
         if (listener.events.back() == "orphaned Car")
             EXPECT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
     };
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pElevator)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pElevator)));
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
     EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
     EXPECT_EQ(std::vector<std::string>({ "camera lost", "camera lost", "orphaned Car", "camera lost" }),
@@ -2628,8 +2820,8 @@ TEST(CanvasInterfacesTest, SceneNodeOperationsOnWorldObjects)
     ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
     Canvas::XSceneNode *pRoot = w.pWorld->GetRootNode();
 
-    // Removing a node detaches the world objects anchored in its subtree, which stay in the
-    // world and attached to each other
+    // Removing a node detaches the world objects whose root nodes are in its subtree, which stay in the
+    // world and attached to each other's nodes
     ASSERT_TRUE(Succeeded(w.pElevatorNode->RemoveChild(w.pPlatform)));
     EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
     EXPECT_EQ(w.pPlatform.Get(), w.pCarNode->GetParent());
@@ -2642,17 +2834,17 @@ TEST(CanvasInterfacesTest, SceneNodeOperationsOnWorldObjects)
     EXPECT_EQ(w.pPlatform.Get(), w.pCarNode->GetParent());
     EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(1.0f, 6.0f, 0.5f, 1.0f)));
 
-    // Moving an anchor node attaches its world object to the world object of its new parent
+    // Moving a root node attaches its world object to its new parent
     ASSERT_TRUE(Succeeded(w.pElevatorNode->AddChild(w.pCarNode)));
     EXPECT_EQ(w.pElevator.Get(), w.pCarNode->GetParent()->GetWorldObject());
     ASSERT_TRUE(Succeeded(w.pElevatorNode->InsertChildBefore(w.pPlatform, w.pCarNode)));
     EXPECT_EQ(w.pElevator.Get(), w.pPlatform->GetWorldObject());
 
-    // Removing an anchor node detaches its world object; its world objects stay attached to it
+    // Removing a root node detaches its world object; the world objects attached to its nodes stay
     ASSERT_TRUE(Succeeded(w.pElevatorNode->RemoveChild(w.pCarNode)));
     EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
     EXPECT_EQ(w.pSeat.Get(), w.pDriverNode->GetParent());
-    ASSERT_TRUE(Succeeded(w.pWorld->AttachObject(w.pCar, w.pPlatform, false)));
+    ASSERT_TRUE(Succeeded(w.pWorld->PlaceObject(w.pCar, w.pPlatform, false)));
     EXPECT_EQ(w.pPlatform.Get(), w.pCarNode->GetParent());
 
     // No world object was orphaned
@@ -2660,7 +2852,7 @@ TEST(CanvasInterfacesTest, SceneNodeOperationsOnWorldObjects)
     EXPECT_TRUE(listener.events.empty());
 }
 
-TEST(CanvasInterfacesTest, WorldObjectRemoveDetached)
+TEST(CanvasInterfacesTest, WorldObjectReleaseNotPlaced)
 {
     using namespace Canvas::Math;
 
@@ -2669,22 +2861,22 @@ TEST(CanvasInterfacesTest, WorldObjectRemoveDetached)
     CreateTestCanvasAndDevice(pCanvas, pDevice);
     ElevatorWorld w(pCanvas, pDevice);
 
-    // Removing a detached car leaves its orphaned driver detached, with no parent
+    // Releasing a car that is not placed leaves its orphaned driver not placed, with no parent
     ASSERT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pCar)));
     EXPECT_EQ(nullptr, w.pDriverNode->GetParent());
     EXPECT_EQ(w.pWorld.Get(), w.pDriver->GetWorld());
     EXPECT_EQ(w.pDriver.Get(), w.pDriverNode->GetWorldObject());
 
-    // A world object with no anchor node is removed like any other
+    // A world object with no root node is released like any other
     Gem::TGemPtr<Canvas::XWorldObject> pRules;
-    ASSERT_TRUE(Succeeded(w.pWorld->CreateWorldObject(nullptr, &pRules)));
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(pRules)));
+    ASSERT_TRUE(Succeeded(MakeWorldObject(w.pWorld, nullptr, &pRules)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(pRules)));
     EXPECT_EQ(nullptr, pRules->GetWorld());
 
-    // Removed and remaining world objects keep the active collection consistent
+    // Released and remaining world objects keep the active collection consistent
     ASSERT_TRUE(Succeeded(w.pWorld->DeactivateObject(w.pElevator)));
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pElevator)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pElevator)));
     EXPECT_TRUE(Succeeded(w.pWorld->DeactivateObject(w.pDriver)));
     EXPECT_TRUE(Succeeded(w.pWorld->ActivateObject(w.pDriver)));
     EXPECT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
@@ -2732,13 +2924,13 @@ TEST(CanvasInterfacesTest, WorldObjectUniqueNames)
 
     // Names need not be unique
     Gem::TGemPtr<Canvas::XWorldObject> pSecondCar;
-    ASSERT_TRUE(Succeeded(w.pWorld->CreateWorldObject(nullptr, &pSecondCar, "Car")));
+    ASSERT_TRUE(Succeeded(MakeWorldObject(w.pWorld, nullptr, &pSecondCar, "Car")));
     EXPECT_STREQ(w.pCar->GetName(), pSecondCar->GetName());
 
-    // A detached world object keeps its unique name; a removed one releases it
+    // A world object that is not placed keeps its unique name; releasing one releases it
     ASSERT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
     EXPECT_EQ(w.pCar.Get(), w.pWorld->FindObject("Sedan"));
-    ASSERT_TRUE(Succeeded(w.pWorld->RemoveObject(w.pCar)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pCar)));
     EXPECT_EQ(nullptr, w.pWorld->FindObject("Sedan"));
     EXPECT_EQ(nullptr, w.pCar->GetUniqueName());
     EXPECT_TRUE(Succeeded(w.pWorld->SetUniqueName(pSecondCar, "Sedan")));
@@ -2783,12 +2975,12 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "BlendWorld")));
 
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
-    ASSERT_NE(result.pAnimationController, nullptr);
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
+    ASSERT_NE(pInstance->GetRootNode()->GetAnimationController(), nullptr);
 
-    Canvas::XAnimationController* pCtrl = result.pAnimationController;
-    Canvas::XSceneNode*      pNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XAnimationController* pCtrl = pInstance->GetRootNode()->GetAnimationController();
+    Canvas::XSceneNode*      pNode = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     // Settle on clip A (X = 0).
@@ -2815,9 +3007,9 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
                             FloatVector4(100.0f, 0.0f, 0.0f, 1.0f)));
 }
 
-// A bone track drives the bone in each instance's skeleton instance.  Ticked through the
-// instance root, the controller runs before the skeleton node updates, so the socket
-// follows the animated bone in the same update.
+// A bone track drives the bone in each instance's skeleton instance.  XWorld::Update runs the
+// world object's controller before the elements bound to its nodes, so the socket follows the
+// animated bone in the same update.
 TEST(CanvasInterfacesTest, AnimationControllerDrivesBones)
 {
     using namespace Canvas::Math;
@@ -2865,23 +3057,21 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesBones)
 
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ArmWorld")));
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
-    ASSERT_NE(result.pAnimationController, nullptr);
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
+    ASSERT_NE(pInstance->GetRootNode()->GetAnimationController(), nullptr);
 
-    Canvas::XSceneNode *pArmature = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pArmature = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pArmature, nullptr);
     Canvas::XSceneNode *pHand = pArmature->GetFirstChild();
     ASSERT_NE(pHand, nullptr);
     Canvas::XSkeletonInstance *pSkeleton = FindElement<Canvas::XSkeletonInstance>(pArmature);
     ASSERT_NE(pSkeleton, nullptr);
 
-    Canvas::XAnimationController *pCtrl = result.pAnimationController;
-    EXPECT_TRUE(pCtrl->ValidateForNode(result.pInstanceRoot));
-    EXPECT_FALSE(pCtrl->ValidateForNode(pHand));   // the skeleton's node is not under the socket
+    Canvas::XAnimationController *pCtrl = pInstance->GetRootNode()->GetAnimationController();
 
     EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
-    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(1.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(1.0f)));
 
     Canvas::Transform pose;
     EXPECT_TRUE(Succeeded(pSkeleton->GetBoneLocalTransform(0, &pose)));
@@ -2892,7 +3082,7 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesBones)
     pCtrl->ResetToBindPose();
     EXPECT_TRUE(Succeeded(pSkeleton->GetBoneLocalTransform(0, &pose)));
     EXPECT_TRUE(AlmostEqual(pose.Translation, FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)));
-    EXPECT_TRUE(Succeeded(result.pInstanceRoot->Update(0.0f)));
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
     EXPECT_TRUE(AlmostEqual(pHand->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 1.0f, 1.0f)));
 }
 
@@ -2934,11 +3124,11 @@ TEST(CanvasInterfacesTest, AnimationControllerFillsUntrackedTargets)
     ASSERT_NE(pModel.Get(), nullptr);
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "PropertyWorld")));
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
-    ASSERT_NE(result.pAnimationController, nullptr);
-    Canvas::XAnimationController *pCtrl = result.pAnimationController;
-    Canvas::XSceneNode *pNode = result.pInstanceRoot->GetFirstChild();
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
+    ASSERT_NE(pInstance->GetRootNode()->GetAnimationController(), nullptr);
+    Canvas::XAnimationController *pCtrl = pInstance->GetRootNode()->GetAnimationController();
+    Canvas::XSceneNode *pNode = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     // Halfway through Spin: 45 degrees about X, with translation and scale at the bind pose.
@@ -2982,11 +3172,11 @@ TEST(CanvasInterfacesTest, AnimationControllerStepInterpolation)
     ASSERT_NE(pModel.Get(), nullptr);
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "StepWorld")));
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
-    ASSERT_NE(result.pAnimationController, nullptr);
-    Canvas::XAnimationController *pCtrl = result.pAnimationController;
-    Canvas::XSceneNode *pNode = result.pInstanceRoot->GetFirstChild();
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
+    ASSERT_NE(pInstance->GetRootNode()->GetAnimationController(), nullptr);
+    Canvas::XAnimationController *pCtrl = pInstance->GetRootNode()->GetAnimationController();
+    Canvas::XSceneNode *pNode = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
@@ -3000,10 +3190,11 @@ TEST(CanvasInterfacesTest, AnimationControllerStepInterpolation)
 
 // Instantiates pModel in pWorld and returns the instance's animation controller.
 Canvas::XAnimationController *InstantiateAnimated(Canvas::XModel *pModel, Canvas::XWorld *pWorld,
-    Canvas::ModelInstantiateResult &result)
+    Gem::TGemPtr<Canvas::XWorldObject> &pInstance)
 {
-    EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
-    return result.pAnimationController;
+    pInstance = nullptr;
+    EXPECT_TRUE(Succeeded(InstantiateModel(pWorld, pModel, pWorld->GetRootNode(), &pInstance)));
+    return pInstance ? pInstance->GetRootNode()->GetAnimationController() : nullptr;
 }
 
 // The value of target at clip time t: count components, with the rest zero.
@@ -3085,10 +3276,10 @@ TEST(CanvasInterfacesTest, AnimationControllerCubicInterpolation)
     ASSERT_NE(pModel.Get(), nullptr);
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "CubicWorld")));
-    Canvas::ModelInstantiateResult result{};
-    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), result);
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), pInstance);
     ASSERT_NE(pCtrl, nullptr);
-    Canvas::XSceneNode *pNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNode = pInstance->GetRootNode()->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
     EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
 
@@ -3154,8 +3345,8 @@ TEST(CanvasInterfacesTest, AnimationControllerSharedKeyTimes)
     ASSERT_NE(pModel.Get(), nullptr);
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "SharedKeyWorld")));
-    Canvas::ModelInstantiateResult result{};
-    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), result);
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), pInstance);
     ASSERT_NE(pCtrl, nullptr);
     EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
 
@@ -3199,8 +3390,8 @@ TEST(CanvasInterfacesTest, AnimationControllerValueTargets)
     ASSERT_NE(pModel.Get(), nullptr);
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "WindWorld")));
-    Canvas::ModelInstantiateResult result{};
-    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), result);
+    Gem::TGemPtr<Canvas::XWorldObject> pInstance;
+    Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), pInstance);
     ASSERT_NE(pCtrl, nullptr);
 
     // GetTargetValue writes exactly the target's components and nothing past them.
@@ -3336,9 +3527,9 @@ TEST(CanvasInterfacesTest, ModelBuilderValidatesAnimation)
     EXPECT_NE(BuildModel(pBuilder).Get(), nullptr);
 }
 
-// Instantiate writes every field of the result, so a result reused for a model without clips
-// holds no controller from an earlier instance.
-TEST(CanvasInterfacesTest, ModelInstantiateResultHasNoStaleController)
+// The instance root of a model with clips holds the instance's own animation controller; the
+// instance root of a model without clips, and a node the app builds, hold none.
+TEST(CanvasInterfacesTest, SceneNodeAnimationController)
 {
     Gem::TGemPtr<XCanvas> pCanvas;
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
@@ -3364,10 +3555,37 @@ TEST(CanvasInterfacesTest, ModelInstantiateResultHasNoStaleController)
 
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ReuseWorld")));
-    Canvas::ModelInstantiateResult result{};
-    EXPECT_NE(InstantiateAnimated(pAnimated.Get(), pWorld.Get(), result), nullptr);
-    EXPECT_EQ(InstantiateAnimated(pStill.Get(), pWorld.Get(), result), nullptr);
-    EXPECT_NE(result.pInstanceRoot, nullptr);
+    Gem::TGemPtr<Canvas::XWorldObject> pFirst, pSecond, pStillInstance, pBuilt;
+    Canvas::XAnimationController *pFirstCtrl = InstantiateAnimated(pAnimated.Get(), pWorld.Get(), pFirst);
+    Canvas::XAnimationController *pSecondCtrl = InstantiateAnimated(pAnimated.Get(), pWorld.Get(), pSecond);
+    EXPECT_NE(pFirstCtrl, nullptr);
+    EXPECT_NE(pSecondCtrl, nullptr);
+    EXPECT_TRUE(pFirstCtrl != pSecondCtrl);
+    EXPECT_EQ(InstantiateAnimated(pStill.Get(), pWorld.Get(), pStillInstance), nullptr);
+    EXPECT_NE(pStillInstance->GetRootNode(), nullptr);
+
+    Gem::TGemPtr<Canvas::XSceneNode> pBuiltNode;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pBuiltNode, "Built")));
+    ASSERT_TRUE(Succeeded(MakeWorldObject(pWorld, pBuiltNode, &pBuilt, "Built")));
+    EXPECT_EQ(pBuiltNode->GetAnimationController(), nullptr);
+
+    // The controller belongs to its tree: a world object updates the controller of its current
+    // root node, so a swapped-out tree's animation pauses and resumes when it is swapped back
+    ASSERT_TRUE(Succeeded(pFirstCtrl->Play(0, 0.0f)));
+    ASSERT_TRUE(Succeeded(pWorld->Update(0.25f)));
+    EXPECT_FLOAT_EQ(0.25f, pFirstCtrl->GetTime());
+
+    Gem::TGemPtr<Canvas::XSceneNode> pAnimatedTree = pFirst->GetRootNode();
+    ASSERT_TRUE(Succeeded(pBuilt->SetRootNode(nullptr)));
+    ASSERT_TRUE(Succeeded(pFirst->SetRootNode(pBuiltNode)));
+    EXPECT_EQ(pFirst->GetRootNode()->GetAnimationController(), nullptr);
+    EXPECT_EQ(pAnimatedTree->GetAnimationController(), pFirstCtrl);
+    ASSERT_TRUE(Succeeded(pWorld->Update(0.25f)));
+    EXPECT_FLOAT_EQ(0.25f, pFirstCtrl->GetTime());
+
+    ASSERT_TRUE(Succeeded(pFirst->SetRootNode(pAnimatedTree)));
+    ASSERT_TRUE(Succeeded(pWorld->Update(0.25f)));
+    EXPECT_FLOAT_EQ(0.5f, pFirstCtrl->GetTime());
 }
 
 }
