@@ -11,7 +11,7 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CWorldObject::CWorldObject(XCanvas *pCanvas, CWorld *pWorld, CSceneGraphNode *pAnchorNode) :
+CWorldObject::CWorldObject(XCanvas *pCanvas, CWorld *pWorld, CSceneNode *pAnchorNode) :
     TCanvasElement(pCanvas),
     m_pWorld(pWorld),
     m_pAnchorNode(pAnchorNode)

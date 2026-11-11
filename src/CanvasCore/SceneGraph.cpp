@@ -12,7 +12,7 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-CSceneGraphNode::CSceneGraphNode(XCanvas *pCanvas) :
+CSceneNode::CSceneNode(XCanvas *pCanvas) :
     TCanvasElement(pCanvas)
 {
     // Initialize cached matrices/quaternions
@@ -24,13 +24,13 @@ CSceneGraphNode::CSceneGraphNode(XCanvas *pCanvas) :
 }
 
 //------------------------------------------------------------------------------------------------
-Gem::Result CSceneGraphNode::Initialize()
+Gem::Result CSceneNode::Initialize()
 {
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-void CSceneGraphNode::Uninitialize()
+void CSceneNode::Uninitialize()
 {
     // Clean up all child wrapper nodes.  A child held elsewhere, such as the anchor node of a
     // world object, outlives this node, so its parent pointer is cleared first.
@@ -38,7 +38,7 @@ void CSceneGraphNode::Uninitialize()
     while (pChild)
     {
         ChildNode* pNext = pChild->m_pNext;
-        static_cast<CSceneGraphNode*>(pChild->m_pNode.Get())->m_pParent = nullptr;
+        static_cast<CSceneNode*>(pChild->m_pNode.Get())->m_pParent = nullptr;
         delete pChild;
         pChild = pNext;
     }
@@ -58,9 +58,9 @@ void CSceneGraphNode::Uninitialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XWorldObject *) CSceneGraphNode::GetWorldObject()
+GEMMETHODIMP_(XWorldObject *) CSceneNode::GetWorldObject()
 {
-    for (CSceneGraphNode *pNode = this; pNode; pNode = pNode->m_pParent)
+    for (CSceneNode *pNode = this; pNode; pNode = pNode->m_pParent)
     {
         if (pNode->m_pAnchoredObject)
             return pNode->m_pAnchoredObject;
@@ -69,7 +69,7 @@ GEMMETHODIMP_(XWorldObject *) CSceneGraphNode::GetWorldObject()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraphNode::Update(float dtime)
+GEMMETHODIMP CSceneNode::Update(float dtime)
 {
     try
     {
@@ -100,7 +100,7 @@ GEMMETHODIMP CSceneGraphNode::Update(float dtime)
 
 //------------------------------------------------------------------------------------------------
 // Unlinks pWrapper from this node's child list, leaving its map entry and the wrapper itself.
-void CSceneGraphNode::UnlinkWrapper(ChildNode *pWrapper)
+void CSceneNode::UnlinkWrapper(ChildNode *pWrapper)
 {
     if (pWrapper->m_pPrev)
         pWrapper->m_pPrev->m_pNext = pWrapper->m_pNext;
@@ -121,17 +121,17 @@ void CSceneGraphNode::UnlinkWrapper(ChildNode *pWrapper)
 // wrappers, or last when pBefore is nullptr.  pChild moves from its parent in one step: the new
 // wrapper holds it before the old parent releases it, and nothing can fail after it leaves its
 // old parent.
-Gem::Result CSceneGraphNode::MoveChild(XSceneGraphNode *pChild, ChildNode *pBefore)
+Gem::Result CSceneNode::MoveChild(XSceneNode *pChild, ChildNode *pBefore)
 {
-    CSceneGraphNode *pChildNode = static_cast<CSceneGraphNode *>(pChild);
+    CSceneNode *pChildNode = static_cast<CSceneNode *>(pChild);
 
     // A node is never its own ancestor
-    for (CSceneGraphNode *pNode = this; pNode; pNode = pNode->m_pParent)
+    for (CSceneNode *pNode = this; pNode; pNode = pNode->m_pParent)
     {
         if (pNode == pChildNode)
         {
             Canvas::LogError(m_pCanvas->GetLogger(),
-                "XSceneGraphNode: a node cannot be added to its own subtree");
+                "XSceneNode: a node cannot be added to its own subtree");
             return Gem::Result::InvalidArg;
         }
     }
@@ -183,7 +183,7 @@ Gem::Result CSceneGraphNode::MoveChild(XSceneGraphNode *pChild, ChildNode *pBefo
 //------------------------------------------------------------------------------------------------
 // Takes pChild, one of this node's children, out of its child list.  Its world transform is
 // then its local transform.  Releasing the wrapper may destroy pChild.
-void CSceneGraphNode::ReleaseChild(CSceneGraphNode *pChild)
+void CSceneNode::ReleaseChild(CSceneNode *pChild)
 {
     auto it = m_ChildMap.find(pChild);
     ChildNode *pWrapper = it->second;
@@ -196,7 +196,7 @@ void CSceneGraphNode::ReleaseChild(CSceneGraphNode *pChild)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode* pChild)
+GEMMETHODIMP CSceneNode::AddChild(_In_ XSceneNode* pChild)
 {
     if (!pChild)
         return Gem::Result::InvalidArg;
@@ -204,16 +204,16 @@ GEMMETHODIMP CSceneGraphNode::AddChild(_In_ XSceneGraphNode* pChild)
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraphNode::RemoveChild(_In_ XSceneGraphNode* pChild)
+GEMMETHODIMP CSceneNode::RemoveChild(_In_ XSceneNode* pChild)
 {
     if (!pChild || m_ChildMap.find(pChild) == m_ChildMap.end())
         return Gem::Result::InvalidArg;
-    ReleaseChild(static_cast<CSceneGraphNode *>(pChild));
+    ReleaseChild(static_cast<CSceneNode *>(pChild));
     return Gem::Result::Success;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraphNode::InsertChildBefore(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling)
+GEMMETHODIMP CSceneNode::InsertChildBefore(_In_ XSceneNode* pChild, _In_ XSceneNode* pSibling)
 {
     if (!pChild || !pSibling || pChild == pSibling)
         return Gem::Result::InvalidArg;
@@ -224,7 +224,7 @@ GEMMETHODIMP CSceneGraphNode::InsertChildBefore(_In_ XSceneGraphNode* pChild, _I
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraphNode::InsertChildAfter(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling)
+GEMMETHODIMP CSceneNode::InsertChildAfter(_In_ XSceneNode* pChild, _In_ XSceneNode* pSibling)
 {
     if (!pChild || !pSibling || pChild == pSibling)
         return Gem::Result::InvalidArg;
@@ -241,13 +241,13 @@ GEMMETHODIMP CSceneGraphNode::InsertChildAfter(_In_ XSceneGraphNode* pChild, _In
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetParent()
+GEMMETHODIMP_(XSceneNode *) CSceneNode::GetParent()
 {
     return this->m_pParent;
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetNextChild(_In_ XSceneGraphNode* pCurrent)
+GEMMETHODIMP_(XSceneNode *) CSceneNode::GetNextChild(_In_ XSceneNode* pCurrent)
 {
     if (!pCurrent)
         return nullptr;
@@ -265,7 +265,7 @@ GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetNextChild(_In_ XSceneGraphN
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetPrevChild(_In_ XSceneGraphNode* pCurrent)
+GEMMETHODIMP_(XSceneNode *) CSceneNode::GetPrevChild(_In_ XSceneNode* pCurrent)
 {
     if (!pCurrent)
         return nullptr;
@@ -283,7 +283,7 @@ GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetPrevChild(_In_ XSceneGraphN
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetFirstChild()
+GEMMETHODIMP_(XSceneNode *) CSceneNode::GetFirstChild()
 {
     if (!m_pFirstChild)
         return nullptr;
@@ -291,7 +291,7 @@ GEMMETHODIMP_(XSceneGraphNode *) CSceneGraphNode::GetFirstChild()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CSceneGraphNode::BindElement(_In_ XSceneGraphElement *pElement)
+GEMMETHODIMP CSceneNode::BindElement(_In_ XSceneElement *pElement)
 {
     if (pElement)
     {
@@ -310,7 +310,7 @@ GEMMETHODIMP CSceneGraphNode::BindElement(_In_ XSceneGraphElement *pElement)
 }
 
 //------------------------------------------------------------------------------------------------
-void CSceneGraphNode::InvalidateTransforms(TransformDirtyFlags flags)
+void CSceneNode::InvalidateTransforms(TransformDirtyFlags flags)
 {
     // Check if this node's transforms need updating
     TransformDirtyFlags requestedFlags = flags & TransformDirtyFlags::All;
@@ -350,7 +350,7 @@ void CSceneGraphNode::InvalidateTransforms(TransformDirtyFlags flags)
     
     for (ChildNode* pWrapper = m_pFirstChild; pWrapper; pWrapper = pWrapper->m_pNext)
     {
-        static_cast<CSceneGraphNode *>(pWrapper->m_pNode.Get())->InvalidateTransforms(childFlags);
+        static_cast<CSceneNode *>(pWrapper->m_pNode.Get())->InvalidateTransforms(childFlags);
     }
 }
 

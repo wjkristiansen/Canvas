@@ -7,7 +7,7 @@
 //                     bone transforms, plus the composed rotation and scale used to give
 //                     socket nodes a translation/rotation/scale local transform.
 //
-// CSkeletonInstance : one instance's pose of one skeleton, bound as a scene-graph element to
+// CSkeletonInstance : one instance's pose of one skeleton, bound as a scene element to
 //                     the node whose space the skeleton is in.  Its Update recomputes the pose
 //                     and moves the instance's socket nodes when the bones changed.
 //
@@ -60,14 +60,14 @@ struct SkeletonPose
 
     // A socket node's transform, relative to the skeleton's node, from the socket's local
     // transform relative to the given bone.
-    // Translation is exact; rotation and scale compose like XSceneGraphNode::GetGlobalRotation,
+    // Translation is exact; rotation and scale compose like XSceneNode::GetGlobalRotation,
     // which matches the matrix when ancestor scale is uniform.
     Transform SocketTransform(uint32_t boneIndex, const Transform &localTransform) const;
 };
 
 //------------------------------------------------------------------------------------------------
 class CSkeletonInstance :
-    public TSceneGraphElement<XSkeletonInstance>
+    public TSceneElement<XSkeletonInstance>
 {
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -75,7 +75,7 @@ class CSkeletonInstance :
 #endif
     struct Socket
     {
-        XSceneGraphNode    *pNode = nullptr;   // weak; written only while a child of this element's node
+        XSceneNode    *pNode = nullptr;   // weak; written only while a child of this element's node
         uint32_t            BoneIndex = 0;
         Transform           LocalTransform;   // relative to the bone
     };
@@ -99,12 +99,12 @@ public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
         GEM_INTERFACE_ENTRY(XCanvasElement)
-        GEM_INTERFACE_ENTRY(XSceneGraphElement)
+        GEM_INTERFACE_ENTRY(XSceneElement)
         GEM_INTERFACE_ENTRY(XSkeletonInstance)
     END_GEM_INTERFACE_MAP()
 
     explicit CSkeletonInstance(XCanvas *pCanvas) :
-        TSceneGraphElement<XSkeletonInstance>(pCanvas)
+        TSceneElement<XSkeletonInstance>(pCanvas)
     {}
 
     Gem::Result Initialize() { return Gem::Result::Success; }
@@ -114,7 +114,7 @@ public:
     void Bind(XModel *pModel, const ModelSkeletonData *pData);
 
     // Registers a socket node; its local transform is set on the next Update.
-    void AddSocket(XSceneGraphNode *pNode, uint32_t boneIndex, const Transform &localTransform);
+    void AddSocket(XSceneNode *pNode, uint32_t boneIndex, const Transform &localTransform);
 
     // Direct bone access for the animation controller.  index must be in range.
     const Transform &LocalTransform(uint32_t index) const { return m_LocalTransforms[index]; }
@@ -125,7 +125,7 @@ public:
     }
     const Transform &RestTransform(uint32_t index) const { return m_pData->Bones[index].RestTransform; }
 
-    // XSceneGraphElement
+    // XSceneElement
     GEMMETHOD(Update)(float dtime) final;
 
     // XSkeletonInstance

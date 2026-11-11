@@ -16,7 +16,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CLight :
-    public TSceneGraphElement<XLight>
+    public TSceneElement<XLight>
 {
     // Immutable attributes (set at construction)
     const LightType m_Type;
@@ -53,7 +53,7 @@ public:
     END_GEM_INTERFACE_MAP()
 
     CLight(XCanvas *pCanvas, LightType type = LightType::Point) :
-        TSceneGraphElement(pCanvas),
+        TSceneElement(pCanvas),
         m_Type(type),
         m_Color(1.0f, 1.0f, 1.0f, 1.0f),
         m_Intensity(1.0f),
@@ -69,13 +69,13 @@ public:
     Gem::Result Initialize() { return Gem::Result::Success; }
     void Uninitialize() {}
     
-    // XSceneGraphElement methods
+    // XSceneElement methods
     GEMMETHOD(Update)(float) final { return Gem::Result::Success; }
 
-    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode) final 
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneNode *pNode) final 
     { 
         // Call base class to actually set m_pNode
-        return TSceneGraphElement<XLight>::NotifyNodeContextChanged(pNode);
+        return TSceneElement<XLight>::NotifyNodeContextChanged(pNode);
     }
 
     // XLight methods - Immutable attributes

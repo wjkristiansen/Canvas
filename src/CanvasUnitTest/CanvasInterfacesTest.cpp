@@ -54,18 +54,18 @@ TEST(CanvasInterfacesTest, SimpleInterfaces)
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
-    // Create an empty XSceneGraphNode
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pSceneGraphNode;
+    // Create an empty XSceneNode
+    Gem::TGemPtr<Canvas::XSceneNode> pSceneNode;
     const char szNodeName[] = "NullNode";
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pSceneGraphNode)));
-    pSceneGraphNode->SetName(szNodeName);
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pSceneNode)));
+    pSceneNode->SetName(szNodeName);
 
     // Verify QI for XGeneric
     Gem::TGemPtr<XGeneric> pGeneric;
-    EXPECT_TRUE(Succeeded(pSceneGraphNode->QueryInterface(&pGeneric)));
+    EXPECT_TRUE(Succeeded(pSceneNode->QueryInterface(&pGeneric)));
 
     // Validate the name
-    EXPECT_TRUE(0 == strncmp(pSceneGraphNode->GetName(), szNodeName, _countof(szNodeName)));
+    EXPECT_TRUE(0 == strncmp(pSceneNode->GetName(), szNodeName, _countof(szNodeName)));
 }
 
 TEST(CanvasInterfacesTest, WorldUIGraphs)
@@ -113,17 +113,17 @@ TEST(CanvasInterfacesTest, WorldObjectNodes)
 
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ObjectWorld")));
-    Canvas::XSceneGraphNode *pRoot = pWorld->GetRootNode();
+    Canvas::XSceneNode *pRoot = pWorld->GetRootNode();
 
     // A windmill with an arrow in one of its blades, beside hand-built ground
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pWindmillNode, pShaft, pBlade1, pBlade2, pGround, pArrowNode, pTip;
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pWindmillNode, "Windmill")));
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pShaft, "Shaft")));
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBlade1, "Blade1")));
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pBlade2, "Blade2")));
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pGround, "Ground")));
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pArrowNode, "Arrow")));
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pTip, "Tip")));
+    Gem::TGemPtr<Canvas::XSceneNode> pWindmillNode, pShaft, pBlade1, pBlade2, pGround, pArrowNode, pTip;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pWindmillNode, "Windmill")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pShaft, "Shaft")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pBlade1, "Blade1")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pBlade2, "Blade2")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pGround, "Ground")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pArrowNode, "Arrow")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pTip, "Tip")));
     ASSERT_TRUE(Succeeded(pRoot->AddChild(pWindmillNode)));
     ASSERT_TRUE(Succeeded(pWindmillNode->AddChild(pShaft)));
     ASSERT_TRUE(Succeeded(pShaft->AddChild(pBlade1)));
@@ -176,9 +176,9 @@ TEST(CanvasInterfacesTest, WorldObjectDetachedAndUnanchored)
 
     // A world object anchored at a node in no scene graph is detached; adding its anchor
     // node to the graph puts it in the scene graph
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pProjectileNode, pTrail;
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pProjectileNode, "Projectile")));
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pTrail, "Trail")));
+    Gem::TGemPtr<Canvas::XSceneNode> pProjectileNode, pTrail;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pProjectileNode, "Projectile")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pTrail, "Trail")));
     ASSERT_TRUE(Succeeded(pProjectileNode->AddChild(pTrail)));
     Gem::TGemPtr<Canvas::XWorldObject> pProjectile;
     ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pProjectileNode, &pProjectile, "Projectile")));
@@ -211,8 +211,8 @@ TEST(CanvasInterfacesTest, WorldObjectCreationErrors)
     EXPECT_EQ(nullptr, pWorld->GetRootNode()->GetWorldObject());
 
     // A node anchors one world object at most
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNode, "Node")));
+    Gem::TGemPtr<Canvas::XSceneNode> pNode;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNode, "Node")));
     ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pNode, &pObject)));
     Gem::TGemPtr<Canvas::XWorldObject> pSecond;
     EXPECT_EQ(Gem::Result::InvalidArg, pWorld->CreateWorldObject(pNode, &pSecond));
@@ -228,12 +228,12 @@ TEST(CanvasInterfacesTest, WorldObjectLifetime)
     CreateTestCanvasAndDevice(pCanvas, pDevice);
 
     Gem::TGemPtr<Canvas::XWorldObject> pObject;
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pAnchor, pChild;
+    Gem::TGemPtr<Canvas::XSceneNode> pAnchor, pChild;
     {
         Gem::TGemPtr<Canvas::XWorld> pWorld;
         ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ShortWorld")));
-        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pAnchor, "Survivor")));
-        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pChild, "Child")));
+        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pAnchor, "Survivor")));
+        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pChild, "Child")));
         ASSERT_TRUE(Succeeded(pAnchor->AddChild(pChild)));
         ASSERT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pAnchor)));
         ASSERT_TRUE(Succeeded(pWorld->CreateWorldObject(pAnchor, &pObject, "Survivor")));
@@ -254,7 +254,7 @@ TEST(CanvasInterfacesTest, WorldObjectLifetime)
     EXPECT_EQ(nullptr, pChild->GetWorldObject());
 }
 
-TEST(CanvasInterfacesTest, SceneGraphNodesTest)
+TEST(CanvasInterfacesTest, SceneNodesTest)
 {
     // Create XCanvas object
     Gem::TGemPtr<XCanvas> pCanvas;
@@ -266,18 +266,18 @@ TEST(CanvasInterfacesTest, SceneGraphNodesTest)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create nodes
-    Gem::TGemPtr<XSceneGraphNode> pNodes[6];
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodes[0])));
+    Gem::TGemPtr<XSceneNode> pNodes[6];
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNodes[0])));
     pNodes[0]->SetName("Node0");
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodes[1])));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNodes[1])));
     pNodes[1]->SetName("Node1");
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodes[2])));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNodes[2])));
     pNodes[2]->SetName("Node2");
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodes[3])));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNodes[3])));
     pNodes[3]->SetName("Node3");
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodes[4])));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNodes[4])));
     pNodes[4]->SetName("Node4");
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodes[5])));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNodes[5])));
     pNodes[5]->SetName("Node5");
 
     // Build the following tree
@@ -289,7 +289,7 @@ TEST(CanvasInterfacesTest, SceneGraphNodesTest)
     //      - Node4
     //          - Node5
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
+    Gem::TGemPtr<XSceneNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pNodes[0])));
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pNodes[1])));
@@ -311,11 +311,11 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create a small hierarchy: root -> A -> B
-    Gem::TGemPtr<XSceneGraphNode> pA, pB;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
+    Gem::TGemPtr<XSceneNode> pA, pB;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pA)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pB)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
+    Gem::TGemPtr<XSceneNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pA)));
     EXPECT_TRUE(Succeeded(pA->AddChild(pB)));
@@ -380,8 +380,8 @@ TEST(CanvasInterfacesTest, SceneGraphTransforms)
     // This tests that dirty flags are properly set when parent changes
 
     // First, create a new node C under Root for verification
-    Gem::TGemPtr<XSceneGraphNode> pC;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pC)));
+    Gem::TGemPtr<XSceneNode> pC;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pC)));
     auto qC = FloatQuaternion::FromEulerXYZ(0.0f, ninety, 0.0f);  // 90° around Y
     pC->SetLocalRotation(qC);
     pC->SetLocalTranslation(FloatVector4(0.0f, 0.0f, 1.0f, 1.0f));
@@ -476,9 +476,9 @@ TEST(CanvasInterfacesTest, SceneGraphGlobalTranslationInheritsScale)
     Gem::TGemPtr<XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
-    Gem::TGemPtr<XSceneGraphNode> pParent, pChild;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pChild)));
+    Gem::TGemPtr<XSceneNode> pParent, pChild;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pParent)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pChild)));
     EXPECT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pParent)));
     EXPECT_TRUE(Succeeded(pParent->AddChild(pChild)));
 
@@ -510,9 +510,9 @@ TEST(CanvasInterfacesTest, SceneGraphLocalTransform)
     Gem::TGemPtr<XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
-    Gem::TGemPtr<XSceneGraphNode> pParent, pChild;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pChild)));
+    Gem::TGemPtr<XSceneNode> pParent, pChild;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pParent)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pChild)));
     EXPECT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pParent)));
     EXPECT_TRUE(Succeeded(pParent->AddChild(pChild)));
     pChild->SetLocalTranslation(FloatVector4(1.0f, 1.0f, 0.0f, 1.0f));
@@ -563,12 +563,12 @@ TEST(CanvasInterfacesTest, CameraTest)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create a hierarchy: root -> A -> B -> cameraNode
-    Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
+    Gem::TGemPtr<XSceneNode> pA, pB, pCameraNode;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pA)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pB)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pCameraNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
+    Gem::TGemPtr<XSceneNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pA)));
     EXPECT_TRUE(Succeeded(pA->AddChild(pB)));
@@ -719,12 +719,12 @@ TEST(CanvasInterfacesTest, CameraNodeReparenting)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create two separate branches: root -> A and root -> B
-    Gem::TGemPtr<XSceneGraphNode> pA, pB, pCameraNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
+    Gem::TGemPtr<XSceneNode> pA, pB, pCameraNode;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pA)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pB)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pCameraNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
+    Gem::TGemPtr<XSceneNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
 
     // Initial setup: cameraNode is under A
@@ -808,10 +808,10 @@ TEST(CanvasInterfacesTest, CameraMatrixConsistency)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create camera node
-    Gem::TGemPtr<XSceneGraphNode> pCameraNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pCameraNode)));
+    Gem::TGemPtr<XSceneNode> pCameraNode;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pCameraNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
+    Gem::TGemPtr<XSceneNode> pRoot = pWorld->GetRootNode();
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pCameraNode)));
 
     // Create and attach camera
@@ -878,12 +878,12 @@ TEST(CanvasInterfacesTest, LightTest)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create a hierarchy: root -> A -> B -> lightNode
-    Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
+    Gem::TGemPtr<XSceneNode> pA, pB, pLightNode;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pA)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pB)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pLightNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
+    Gem::TGemPtr<XSceneNode> pRoot = pWorld->GetRootNode();
     EXPECT_NE(pRoot.Get(), nullptr);
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pA)));
     EXPECT_TRUE(Succeeded(pA->AddChild(pB)));
@@ -945,12 +945,12 @@ TEST(CanvasInterfacesTest, LightNodeReparenting)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create nodes: A, B, and lightNode
-    Gem::TGemPtr<XSceneGraphNode> pA, pB, pLightNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pA)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pB)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
+    Gem::TGemPtr<XSceneNode> pA, pB, pLightNode;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pA)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pB)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pLightNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
+    Gem::TGemPtr<XSceneNode> pRoot = pWorld->GetRootNode();
 
     // Initial hierarchy: root -> A -> lightNode
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pA)));
@@ -1017,11 +1017,11 @@ TEST(CanvasInterfacesTest, LightTransformPropagation)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     // Create hierarchy: root -> parent -> lightNode
-    Gem::TGemPtr<XSceneGraphNode> pParent, pLightNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pParent)));
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pLightNode)));
+    Gem::TGemPtr<XSceneNode> pParent, pLightNode;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pParent)));
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pLightNode)));
 
-    Gem::TGemPtr<XSceneGraphNode> pRoot = pWorld->GetRootNode();
+    Gem::TGemPtr<XSceneNode> pRoot = pWorld->GetRootNode();
     EXPECT_TRUE(Succeeded(pRoot->AddChild(pParent)));
     EXPECT_TRUE(Succeeded(pParent->AddChild(pLightNode)));
 
@@ -1256,7 +1256,7 @@ Gem::TGemPtr<Canvas::XModel> BuildModel(Canvas::XModelBuilder *pBuilder)
 
 // The first element of type T bound to pNode, or null.  The node keeps it alive.
 template<class T>
-T *FindElement(Canvas::XSceneGraphNode *pNode)
+T *FindElement(Canvas::XSceneNode *pNode)
 {
     for (uint32_t i = 0; i < pNode->GetBoundElementCount(); ++i)
     {
@@ -1511,13 +1511,13 @@ TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
     EXPECT_EQ(result.pAnimationController, nullptr); // no clips in model
 
     // Instance root should be a child of scene root
-    Canvas::XSceneGraphNode *pSceneRoot = pWorld->GetRootNode();
+    Canvas::XSceneNode *pSceneRoot = pWorld->GetRootNode();
     EXPECT_TRUE(pSceneRoot->GetFirstChild() == result.pInstanceRoot);
 
     // Instance root should have 2 children (NodeA and NodeB)
-    Canvas::XSceneGraphNode *pNodeA = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNodeA = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNodeA, nullptr);
-    Canvas::XSceneGraphNode *pNodeB = result.pInstanceRoot->GetNextChild(pNodeA);
+    Canvas::XSceneNode *pNodeB = result.pInstanceRoot->GetNextChild(pNodeA);
     ASSERT_NE(pNodeB, nullptr);
     EXPECT_EQ(result.pInstanceRoot->GetNextChild(pNodeB), nullptr); // no more children
     EXPECT_STREQ("NodeA", pNodeA->GetName());
@@ -1528,7 +1528,7 @@ TEST(CanvasInterfacesTest, ModelAuthoringAndInstantiation)
     EXPECT_TRUE(AlmostEqual(pNodeB->GetLocalTranslation(), FloatVector4(0.0f, 2.0f, 0.0f, 1.0f)));
 
     // NodeB should have one child (NodeC)
-    Canvas::XSceneGraphNode *pNodeC = pNodeB->GetFirstChild();
+    Canvas::XSceneNode *pNodeC = pNodeB->GetFirstChild();
     ASSERT_NE(pNodeC, nullptr);
     EXPECT_TRUE(AlmostEqual(pNodeC->GetLocalTranslation(), FloatVector4(0.0f, 0.0f, 3.0f, 1.0f)));
 
@@ -1574,8 +1574,8 @@ TEST(CanvasInterfacesTest, ModelInstantiateTransformIndependence)
     EXPECT_TRUE(result1.pInstanceRoot != result2.pInstanceRoot);
 
     // Modify instance 1's child transform
-    Canvas::XSceneGraphNode *pNode1A = result1.pInstanceRoot->GetFirstChild();
-    Canvas::XSceneGraphNode *pNode2A = result2.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNode1A = result1.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNode2A = result2.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNode1A, nullptr);
     ASSERT_NE(pNode2A, nullptr);
 
@@ -1612,7 +1612,7 @@ TEST(CanvasInterfacesTest, ModelInstantiateCopiesTransforms)
 
     Canvas::ModelInstantiateResult result{};
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
-    Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalTranslation(), transform.Translation));
@@ -1661,7 +1661,7 @@ TEST(CanvasInterfacesTest, ModelActiveCameraInstantiation)
     EXPECT_EQ(500.0f, result.pActiveCamera->GetFarClip());
 
     // ...and is attached to the instance's scene node for the camera's model node
-    Canvas::XSceneGraphNode *pCamNode = result.pActiveCamera->GetAttachedNode();
+    Canvas::XSceneNode *pCamNode = result.pActiveCamera->GetAttachedNode();
     ASSERT_NE(pCamNode, nullptr);
     EXPECT_TRUE(pCamNode == result.pInstanceRoot->GetFirstChild());
     EXPECT_TRUE(AlmostEqual(pCamNode->GetLocalTranslation(), FloatVector4(0.0f, -5.0f, 2.0f, 1.0f)));
@@ -1697,7 +1697,7 @@ TEST(CanvasInterfacesTest, ModelLightInstantiation)
     Canvas::ModelInstantiateResult result{};
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
 
-    Canvas::XSceneGraphNode *pLightNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pLightNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pLightNode, nullptr);
     EXPECT_EQ(1u, pLightNode->GetBoundElementCount());
 
@@ -1727,7 +1727,7 @@ TEST(CanvasInterfacesTest, ModelInstantiateNullTargetFails)
 }
 
 // A skeleton instance composes its bones parents first, in the space of its node, and
-// moves its sockets (and the content under them) with their bones.  Scene-graph nodes
+// moves its sockets (and the content under them) with their bones.  Scene nodes
 // with the same transforms serve as the reference composition.
 TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
 {
@@ -1777,12 +1777,12 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     Canvas::ModelInstantiateResult result{};
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
 
-    Canvas::XSceneGraphNode *pArmature = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pArmature = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pArmature, nullptr);
-    Canvas::XSceneGraphNode *pSocket = pArmature->GetFirstChild();
+    Canvas::XSceneNode *pSocket = pArmature->GetFirstChild();
     ASSERT_NE(pSocket, nullptr);
     EXPECT_STREQ("KneeSocket", pSocket->GetName());
-    Canvas::XSceneGraphNode *pProp = pSocket->GetFirstChild();
+    Canvas::XSceneNode *pProp = pSocket->GetFirstChild();
     ASSERT_NE(pProp, nullptr);
 
     // Bones are not scene nodes: the skeleton instance on the armature holds them.
@@ -1795,11 +1795,11 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     EXPECT_EQ(0u, pSkeleton->GetBoneParent(1));
     EXPECT_EQ(InvalidIndex, pSkeleton->GetBoneParent(0));
 
-    // Reference: the same chain as scene-graph nodes, in skeleton space.
-    const auto MakeNode = [&](const Canvas::Transform &t, Canvas::XSceneGraphNode *pParent)
+    // Reference: the same chain as scene nodes, in skeleton space.
+    const auto MakeNode = [&](const Canvas::Transform &t, Canvas::XSceneNode *pParent)
     {
-        Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
-        EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNode, "Reference")));
+        Gem::TGemPtr<Canvas::XSceneNode> pNode;
+        EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNode, "Reference")));
         pNode->SetLocalTranslation(t.Translation);
         pNode->SetLocalRotation(t.Rotation);
         pNode->SetLocalScale(t.Scale);
@@ -1842,7 +1842,7 @@ TEST(CanvasInterfacesTest, SkeletonInstancePoseAndSockets)
     EXPECT_TRUE(AlmostEqual(pSocket->GetGlobalMatrix(), pRefSocket->GetGlobalMatrix() * pArmature->GetGlobalMatrix()));
 
     // A socket node removed from the skeleton's node keeps its last transform.
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pRemoved = pSocket;
+    Gem::TGemPtr<Canvas::XSceneNode> pRemoved = pSocket;
     const FloatVector4 lastTranslation = pRemoved->GetLocalTranslation();
     EXPECT_TRUE(Succeeded(pArmature->RemoveChild(pRemoved)));
     EXPECT_TRUE(Succeeded(pSkeleton->SetBoneLocalTransform(1, &bent)));
@@ -1904,9 +1904,9 @@ TEST(CanvasInterfacesTest, SkinBindingComputesPalette)
     Canvas::ModelInstantiateResult result{};
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
 
-    Canvas::XSceneGraphNode *pArmature = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pArmature = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pArmature, nullptr);
-    Canvas::XSceneGraphNode *pBody = pArmature->GetFirstChild();
+    Canvas::XSceneNode *pBody = pArmature->GetFirstChild();
     ASSERT_NE(pBody, nullptr);
     Canvas::XSkeletonInstance *pSkeleton = FindElement<Canvas::XSkeletonInstance>(pArmature);
     Canvas::XMeshInstance *pMesh = FindElement<Canvas::XMeshInstance>(pBody);
@@ -2014,7 +2014,7 @@ TEST(CanvasInterfacesTest, AnimationControllerPlaybackLoopAndReset)
     ASSERT_NE(result.pInstanceRoot, nullptr);
 
     Canvas::XAnimationController* pCtrl = result.pAnimationController;
-    Canvas::XSceneGraphNode*      pNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode*      pNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     // Releasing the caller's model reference must not invalidate the controller's clips:
@@ -2074,9 +2074,9 @@ TEST(CanvasInterfacesTest, WorldUpdateAdvancesDetachedWorldObjects)
     ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "PoolWorld")));
 
     // One instance in the scene graph, one under a node outside it
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pShownNode, pPooledNode;
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pShownNode, "Shown")));
-    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pPooledNode, "Pooled")));
+    Gem::TGemPtr<Canvas::XSceneNode> pShownNode, pPooledNode;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pShownNode, "Shown")));
+    ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pPooledNode, "Pooled")));
     ASSERT_TRUE(Succeeded(pWorld->GetRootNode()->AddChild(pShownNode)));
 
     Canvas::ModelInstantiateResult shown{}, pooled{};
@@ -2125,12 +2125,12 @@ TEST(CanvasInterfacesTest, WorldUpdateSkipsInactiveWorldObjects)
 
     // Three pooled projectiles, each a detached world object playing the same clip
     constexpr int kCount = 3;
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pNodes[kCount];
+    Gem::TGemPtr<Canvas::XSceneNode> pNodes[kCount];
     Gem::TGemPtr<Canvas::XWorldObject> pObjects[kCount];
     Canvas::XAnimationController *pControllers[kCount] = {};
     for (int i = 0; i < kCount; ++i)
     {
-        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNodes[i], "Projectile")));
+        ASSERT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNodes[i], "Projectile")));
         Canvas::ModelInstantiateResult instance{};
         ASSERT_TRUE(Succeeded(pModel->Instantiate(pNodes[i], &instance)));
         ASSERT_NE(instance.pAnimationController, nullptr);
@@ -2182,11 +2182,11 @@ namespace
 {
 // A node named name, with the given local translation, added as the last child of pParent when
 // pParent is not nullptr.
-Gem::TGemPtr<Canvas::XSceneGraphNode> MakeNode(XCanvas *pCanvas, Canvas::XSceneGraphNode *pParent,
+Gem::TGemPtr<Canvas::XSceneNode> MakeNode(XCanvas *pCanvas, Canvas::XSceneNode *pParent,
                                                const char *name, float x, float y, float z)
 {
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pNode, name)));
+    Gem::TGemPtr<Canvas::XSceneNode> pNode;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNode, name)));
     pNode->SetLocalTransform(Translation(x, y, z));
     if (pParent)
         EXPECT_TRUE(Succeeded(pParent->AddChild(pNode)));
@@ -2197,13 +2197,13 @@ Gem::TGemPtr<Canvas::XSceneGraphNode> MakeNode(XCanvas *pCanvas, Canvas::XSceneG
 struct ElevatorWorld
 {
     Gem::TGemPtr<Canvas::XWorld> pWorld;
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pElevatorNode, pPlatform, pCarNode, pSeat, pDriverNode;
+    Gem::TGemPtr<Canvas::XSceneNode> pElevatorNode, pPlatform, pCarNode, pSeat, pDriverNode;
     Gem::TGemPtr<Canvas::XWorldObject> pElevator, pCar, pDriver;
 
     ElevatorWorld(XCanvas *pCanvas, Canvas::XGfxDevice *pDevice)
     {
         EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "ElevatorWorld")));
-        Canvas::XSceneGraphNode *pRoot = pWorld->GetRootNode();
+        Canvas::XSceneNode *pRoot = pWorld->GetRootNode();
         pElevatorNode = MakeNode(pCanvas, pRoot, "Elevator", 10.0f, 0.0f, 0.0f);
         pPlatform     = MakeNode(pCanvas, pElevatorNode, "Platform", 0.0f, 5.0f, 0.0f);
         pCarNode      = MakeNode(pCanvas, pPlatform, "Car", 1.0f, 0.0f, 0.0f);
@@ -2224,7 +2224,7 @@ TEST(CanvasInterfacesTest, WorldObjectAttach)
     Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
     CreateTestCanvasAndDevice(pCanvas, pDevice);
     ElevatorWorld w(pCanvas, pDevice);
-    Canvas::XSceneGraphNode *pRoot = w.pWorld->GetRootNode();
+    Canvas::XSceneNode *pRoot = w.pWorld->GetRootNode();
 
     // The driver at (11, 6, 0.5) gets out onto the ground, keeping its world transform
     auto pGround = MakeNode(pCanvas, pRoot, "Ground", 0.0f, -1.0f, 0.0f);
@@ -2483,7 +2483,7 @@ TEST(CanvasInterfacesTest, WorldActiveCameraLeavesSceneGraph)
     w.pWorld->SetActiveCamera(pCamera);
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
     EXPECT_EQ(pCamera.Get(), w.pWorld->GetActiveCamera());
-    Canvas::XSceneGraphNode *pRoot = w.pWorld->GetRootNode();
+    Canvas::XSceneNode *pRoot = w.pWorld->GetRootNode();
     ASSERT_TRUE(Succeeded(pRoot->RemoveChild(pCamera->GetAttachedNode())));
     EXPECT_EQ(nullptr, pCamera->GetAttachedNode());
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
@@ -2541,16 +2541,16 @@ TEST(CanvasInterfacesTest, WorldRootNestedInAnotherWorld)
 namespace
 {
 // The names of pParent's children, in order.
-std::vector<std::string> ChildNames(Canvas::XSceneGraphNode *pParent)
+std::vector<std::string> ChildNames(Canvas::XSceneNode *pParent)
 {
     std::vector<std::string> names;
-    for (Canvas::XSceneGraphNode *pChild = pParent->GetFirstChild(); pChild; pChild = pParent->GetNextChild(pChild))
+    for (Canvas::XSceneNode *pChild = pParent->GetFirstChild(); pChild; pChild = pParent->GetNextChild(pChild))
         names.push_back(pChild->GetName());
     return names;
 }
 } // anonymous namespace
 
-TEST(CanvasInterfacesTest, SceneGraphNodeMoves)
+TEST(CanvasInterfacesTest, SceneNodeMoves)
 {
     using namespace Canvas::Math;
 
@@ -2598,7 +2598,7 @@ TEST(CanvasInterfacesTest, SceneGraphNodeMoves)
     EXPECT_EQ(std::vector<std::string>({ "X", "Child", "Y" }), ChildNames(pB));
 
     // A node is never added to its own subtree
-    Canvas::XSceneGraphNode *pChild = pB->GetNextChild(pX);
+    Canvas::XSceneNode *pChild = pB->GetNextChild(pX);
     ASSERT_NE(nullptr, pChild);
     EXPECT_EQ(Gem::Result::InvalidArg, pChild->GetFirstChild()->AddChild(pB));
     EXPECT_EQ(Gem::Result::InvalidArg, pChild->AddChild(pChild));
@@ -2608,7 +2608,7 @@ TEST(CanvasInterfacesTest, SceneGraphNodeMoves)
     // A removed node's world transform is its local transform
     pB->SetLocalTransform(Translation(10.0f, 0.0f, 0.0f));
     EXPECT_TRUE(AlmostEqual(pChild->GetFirstChild()->GetGlobalTranslation(), FloatVector4(11.0f, 2.0f, 3.0f, 1.0f)));
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pHeld = pChild;
+    Gem::TGemPtr<Canvas::XSceneNode> pHeld = pChild;
     ASSERT_TRUE(Succeeded(pB->RemoveChild(pHeld)));
     EXPECT_EQ(nullptr, pHeld->GetParent());
     EXPECT_TRUE(AlmostEqual(pHeld->GetGlobalTranslation(), FloatVector4(1.0f, 2.0f, 3.0f, 1.0f)));
@@ -2616,7 +2616,7 @@ TEST(CanvasInterfacesTest, SceneGraphNodeMoves)
     EXPECT_EQ(Gem::Result::InvalidArg, pB->RemoveChild(pHeld));
 }
 
-TEST(CanvasInterfacesTest, SceneGraphNodeOperationsOnWorldObjects)
+TEST(CanvasInterfacesTest, SceneNodeOperationsOnWorldObjects)
 {
     using namespace Canvas::Math;
 
@@ -2626,7 +2626,7 @@ TEST(CanvasInterfacesTest, SceneGraphNodeOperationsOnWorldObjects)
     ElevatorWorld w(pCanvas, pDevice);
     RecordingListener listener;
     ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
-    Canvas::XSceneGraphNode *pRoot = w.pWorld->GetRootNode();
+    Canvas::XSceneNode *pRoot = w.pWorld->GetRootNode();
 
     // Removing a node detaches the world objects anchored in its subtree, which stay in the
     // world and attached to each other
@@ -2788,7 +2788,7 @@ TEST(CanvasInterfacesTest, AnimationControllerCrossFadeBlend)
     ASSERT_NE(result.pAnimationController, nullptr);
 
     Canvas::XAnimationController* pCtrl = result.pAnimationController;
-    Canvas::XSceneGraphNode*      pNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode*      pNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     // Settle on clip A (X = 0).
@@ -2869,9 +2869,9 @@ TEST(CanvasInterfacesTest, AnimationControllerDrivesBones)
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     ASSERT_NE(result.pAnimationController, nullptr);
 
-    Canvas::XSceneGraphNode *pArmature = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pArmature = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pArmature, nullptr);
-    Canvas::XSceneGraphNode *pHand = pArmature->GetFirstChild();
+    Canvas::XSceneNode *pHand = pArmature->GetFirstChild();
     ASSERT_NE(pHand, nullptr);
     Canvas::XSkeletonInstance *pSkeleton = FindElement<Canvas::XSkeletonInstance>(pArmature);
     ASSERT_NE(pSkeleton, nullptr);
@@ -2938,7 +2938,7 @@ TEST(CanvasInterfacesTest, AnimationControllerFillsUntrackedTargets)
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     ASSERT_NE(result.pAnimationController, nullptr);
     Canvas::XAnimationController *pCtrl = result.pAnimationController;
-    Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     // Halfway through Spin: 45 degrees about X, with translation and scale at the bind pose.
@@ -2986,7 +2986,7 @@ TEST(CanvasInterfacesTest, AnimationControllerStepInterpolation)
     EXPECT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
     ASSERT_NE(result.pAnimationController, nullptr);
     Canvas::XAnimationController *pCtrl = result.pAnimationController;
-    Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
 
     EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
@@ -3088,7 +3088,7 @@ TEST(CanvasInterfacesTest, AnimationControllerCubicInterpolation)
     Canvas::ModelInstantiateResult result{};
     Canvas::XAnimationController *pCtrl = InstantiateAnimated(pModel.Get(), pWorld.Get(), result);
     ASSERT_NE(pCtrl, nullptr);
-    Canvas::XSceneGraphNode *pNode = result.pInstanceRoot->GetFirstChild();
+    Canvas::XSceneNode *pNode = result.pInstanceRoot->GetFirstChild();
     ASSERT_NE(pNode, nullptr);
     EXPECT_TRUE(Succeeded(pCtrl->Play(0, 0.0f)));
 

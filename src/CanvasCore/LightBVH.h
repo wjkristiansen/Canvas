@@ -37,7 +37,7 @@ namespace Canvas
 
 struct XCamera;
 struct XLight;
-struct XSceneGraphNode;
+struct XSceneNode;
 
 class LightBVH
 {
@@ -52,7 +52,7 @@ public:
     // (see IsTrackedLight).  Discards prior state first; safe to call
     // repeatedly when scene topology changes.  Null root is a no-op
     // (leaves IsBuilt() == false).
-    CANVAS_API void Build(XSceneGraphNode* root);
+    CANVAS_API void Build(XSceneNode* root);
 
     // Reset to the pre-Build state.  Frees BVH / primitive memory.
     CANVAS_API void Clear();

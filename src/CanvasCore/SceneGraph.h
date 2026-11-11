@@ -16,19 +16,19 @@ class CWorldObject;
 
 //------------------------------------------------------------------------------------------------
 template<class _Base>
-class TSceneGraphElement :
+class TSceneElement :
     public TCanvasElement<_Base>
 {
-    XSceneGraphNode *m_pNode = nullptr;
+    XSceneNode *m_pNode = nullptr;
 
 public:
-    TSceneGraphElement(XCanvas *pCanvas) :
+    TSceneElement(XCanvas *pCanvas) :
         TCanvasElement<_Base>(pCanvas) {}
 
 public:
     GEMMETHOD(Detach)() final;
-    GEMMETHOD_(XSceneGraphNode *, GetAttachedNode)() final;
-    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode)
+    GEMMETHOD_(XSceneNode *, GetAttachedNode)() final;
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneNode *pNode)
     {
         m_pNode = pNode;
         return Gem::Result::Success;
@@ -55,7 +55,7 @@ public:
 };
 
 //------------------------------------------------------------------------------------------------
-// Which of a scene graph node's cached transforms are stale.
+// Which of a scene node's cached transforms are stale.
 enum class TransformDirtyFlags : uint32_t
 {
     None              = 0,
@@ -68,22 +68,22 @@ CANVAS_ENUM_FLAG_OPERATORS(TransformDirtyFlags)
 
 //------------------------------------------------------------------------------------------------
 class 
-CSceneGraphNode :
-    public TCanvasElement<XSceneGraphNode>
+CSceneNode :
+    public TCanvasElement<XSceneNode>
 {
     // Internal wrapper node for intrusive doubly-linked list of children
     struct ChildNode
     {
-        Gem::TGemPtr<XSceneGraphNode> m_pNode;
+        Gem::TGemPtr<XSceneNode> m_pNode;
         ChildNode* m_pPrev = nullptr;
         ChildNode* m_pNext = nullptr;
     };
 
 protected:
-    CSceneGraphNode *m_pParent = nullptr; // Weak pointer
+    CSceneNode *m_pParent = nullptr; // Weak pointer
     ChildNode* m_pFirstChild = nullptr;   // Intrusive doubly-linked list for O(1) insertion anywhere
     ChildNode* m_pLastChild = nullptr;    // Tail pointer for O(1) AddChild
-    std::unordered_map<XSceneGraphNode*, ChildNode*> m_ChildMap;  // For O(1) lookup of wrapper given child pointer
+    std::unordered_map<XSceneNode*, ChildNode*> m_ChildMap;  // For O(1) lookup of wrapper given child pointer
     Transform m_LocalTransform;
 
     TransformDirtyFlags m_DirtyFlags = TransformDirtyFlags::All;
@@ -92,7 +92,7 @@ protected:
     Math::FloatQuaternion m_GlobalRotation;
     Math::FloatMatrix4x4 m_GlobalMatrix;
 
-    std::vector<Gem::TGemPtr<XSceneGraphElement>> m_Elements;
+    std::vector<Gem::TGemPtr<XSceneElement>> m_Elements;
 
     // Optional animation controller driving this subtree (not a spatial element).
     Gem::TGemPtr<XAnimationController> m_pAnimController;
@@ -101,27 +101,27 @@ public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
         GEM_INTERFACE_ENTRY(XCanvasElement)
-        GEM_INTERFACE_ENTRY(XSceneGraphNode)
+        GEM_INTERFACE_ENTRY(XSceneNode)
     END_GEM_INTERFACE_MAP()
 
-    CSceneGraphNode(XCanvas *pCanvas);
+    CSceneNode(XCanvas *pCanvas);
     
     Gem::Result Initialize();
     void Uninitialize();    
 
-public: // XSceneGraphNode methods
-    GEMMETHOD(AddChild)(_In_ XSceneGraphNode* pChild) final;
-    GEMMETHOD(RemoveChild)(_In_ XSceneGraphNode* pChild) final;
-    GEMMETHOD(InsertChildBefore)(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling) final;
-    GEMMETHOD(InsertChildAfter)(_In_ XSceneGraphNode* pChild, _In_ XSceneGraphNode* pSibling) final;
-    GEMMETHOD(BindElement)(_In_ XSceneGraphElement *pElement) final;
-    GEMMETHOD_(XSceneGraphNode *, GetParent)() final;
-    GEMMETHOD_(XSceneGraphNode *, GetFirstChild)() final;
-    GEMMETHOD_(XSceneGraphNode *, GetNextChild)(_In_ XSceneGraphNode* pCurrent) final;
-    GEMMETHOD_(XSceneGraphNode *, GetPrevChild)(_In_ XSceneGraphNode* pCurrent) final;
+public: // XSceneNode methods
+    GEMMETHOD(AddChild)(_In_ XSceneNode* pChild) final;
+    GEMMETHOD(RemoveChild)(_In_ XSceneNode* pChild) final;
+    GEMMETHOD(InsertChildBefore)(_In_ XSceneNode* pChild, _In_ XSceneNode* pSibling) final;
+    GEMMETHOD(InsertChildAfter)(_In_ XSceneNode* pChild, _In_ XSceneNode* pSibling) final;
+    GEMMETHOD(BindElement)(_In_ XSceneElement *pElement) final;
+    GEMMETHOD_(XSceneNode *, GetParent)() final;
+    GEMMETHOD_(XSceneNode *, GetFirstChild)() final;
+    GEMMETHOD_(XSceneNode *, GetNextChild)(_In_ XSceneNode* pCurrent) final;
+    GEMMETHOD_(XSceneNode *, GetPrevChild)(_In_ XSceneNode* pCurrent) final;
 
     GEMMETHOD_(uint32_t, GetBoundElementCount)() final { return static_cast<uint32_t>(m_Elements.size()); }
-    GEMMETHOD_(XSceneGraphElement *, GetBoundElement)(uint32_t index) final { return m_Elements[index].Get(); }
+    GEMMETHOD_(XSceneElement *, GetBoundElement)(uint32_t index) final { return m_Elements[index].Get(); }
 
     GEMMETHOD(SetAnimationController)(_In_opt_ XAnimationController *pController) final
     {
@@ -254,7 +254,7 @@ public: // XSceneGraphNode methods
     CWorldObject *GetAnchoredObject() const { return m_pAnchoredObject; }
     void SetAnchoredObject(CWorldObject *pObject) { m_pAnchoredObject = pObject; }
 
-    CSceneGraphNode *GetParentNode() const { return m_pParent; }
+    CSceneNode *GetParentNode() const { return m_pParent; }
 
 private:
     CWorldObject *m_pAnchoredObject = nullptr; // Weak pointer
@@ -263,22 +263,22 @@ private:
     void InvalidateTransforms(TransformDirtyFlags flags);
 
     void UnlinkWrapper(ChildNode *pWrapper);
-    Gem::Result MoveChild(XSceneGraphNode *pChild, ChildNode *pBefore);
-    void ReleaseChild(CSceneGraphNode *pChild);
+    Gem::Result MoveChild(XSceneNode *pChild, ChildNode *pBefore);
+    void ReleaseChild(CSceneNode *pChild);
 };
 
 //------------------------------------------------------------------------------------------------
 // Template method implementations
 //------------------------------------------------------------------------------------------------
 template<class _Base>
-GEMMETHODIMP TSceneGraphElement<_Base>::Detach()
+GEMMETHODIMP TSceneElement<_Base>::Detach()
 {
     // TODO: Implement detachment logic
     return Gem::Result::Success;
 }
 
 template<class _Base>
-GEMMETHODIMP_(XSceneGraphNode *) TSceneGraphElement<_Base>::GetAttachedNode()
+GEMMETHODIMP_(XSceneNode *) TSceneElement<_Base>::GetAttachedNode()
 {
     return m_pNode;
 }

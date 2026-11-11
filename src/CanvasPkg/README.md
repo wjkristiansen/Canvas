@@ -196,7 +196,7 @@ A package's **declared name** is the name `CCpkgWriter::Open` stores in its file
 
 ## Instantiation Model
 
-This section describes, at a high level, how the content of a package becomes objects in a Canvas world. The [Canvas engine spec](../CanvasCore/README.md) defines the actual mapping to engine objects (scene-graph nodes, `XModel`, GPU resources, physics bodies). What this section defines is what a package *declares*, so that any conforming engine instantiates it the same way.
+This section describes, at a high level, how the content of a package becomes objects in a Canvas world. The [Canvas engine spec](../CanvasCore/README.md) defines the actual mapping to engine objects (scene nodes, `XModel`, GPU resources, physics bodies). What this section defines is what a package *declares*, so that any conforming engine instantiates it the same way.
 
 **The package declares structural roles; the engine user supplies gameplay meaning.** A package says what its content is and how the engine may treat it: which bundles a bundle places, which nodes it exports, whether placed content may move, and (later) what collision or scripts are attached.
 

@@ -388,7 +388,7 @@ namespace Canvas
         GEMMETHOD(EndFrame)() = 0;
 
         // Scene/UI graph submission
-        GEMMETHOD(SubmitForRender)(XSceneGraphNode *pNode) = 0;
+        GEMMETHOD(SubmitForRender)(XSceneNode *pNode) = 0;
         GEMMETHOD(SubmitForUIRender)(XUIGraphNode *pNode) = 0;
         GEMMETHOD_(void, SetActiveCamera)(XCamera *pCamera) = 0;
 

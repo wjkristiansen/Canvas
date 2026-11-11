@@ -76,7 +76,7 @@ Math::AABB ComputeBounds(const ModelContent &content, const std::vector<Skeleton
 //================================================================================================
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiateResult *pResult)
+GEMMETHODIMP CModel::Instantiate(XSceneNode *pTargetParent, ModelInstantiateResult *pResult)
 {
     if (!pTargetParent)
         return Gem::Result::BadPointer;
@@ -99,24 +99,24 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
     try
     {
         // Synthetic instance root
-        Gem::TGemPtr<XSceneGraphNode> pInstanceRoot;
+        Gem::TGemPtr<XSceneNode> pInstanceRoot;
         {
             std::string instanceName = std::string(GetName() ? GetName() : "Model") + "_Instance";
-            Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pInstanceRoot, instanceName.c_str()));
+            Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&pInstanceRoot, instanceName.c_str()));
         }
 
         // One scene node per model node.  Nodes are listed parents first, and are added to
         // their parents in index order, so siblings keep the model's order.  The scene graph
         // owns each node through its parent; the vector holds weak pointers.
-        std::vector<XSceneGraphNode *> nodes(m_Content.Nodes.size(), nullptr);
+        std::vector<XSceneNode *> nodes(m_Content.Nodes.size(), nullptr);
         for (size_t i = 0; i < m_Content.Nodes.size(); ++i)
         {
             const ModelNodeData &src = m_Content.Nodes[i];
-            Gem::TGemPtr<XSceneGraphNode> pNode;
-            Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pNode, src.Name.c_str()));
+            Gem::TGemPtr<XSceneNode> pNode;
+            Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&pNode, src.Name.c_str()));
             pNode->SetLocalTransform(src.LocalTransform);
 
-            XSceneGraphNode *pParent = src.ParentIndex == InvalidIndex ? pInstanceRoot.Get() : nodes[src.ParentIndex];
+            XSceneNode *pParent = src.ParentIndex == InvalidIndex ? pInstanceRoot.Get() : nodes[src.ParentIndex];
             Gem::ThrowGemError(pParent->AddChild(pNode));
             nodes[i] = pNode.Get();
         }
@@ -134,7 +134,7 @@ GEMMETHODIMP CModel::Instantiate(XSceneGraphNode *pTargetParent, ModelInstantiat
             pSkeleton.Attach(pRaw);
             pSkeleton->Bind(this, &src);
 
-            XSceneGraphNode *pNode = src.NodeIndex == InvalidIndex ? pInstanceRoot.Get() : nodes[src.NodeIndex];
+            XSceneNode *pNode = src.NodeIndex == InvalidIndex ? pInstanceRoot.Get() : nodes[src.NodeIndex];
             Gem::ThrowGemError(pNode->BindElement(pSkeleton));
             skeletons[s] = pSkeleton.Get();
         }

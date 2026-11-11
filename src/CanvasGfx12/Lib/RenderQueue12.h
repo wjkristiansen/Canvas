@@ -664,7 +664,7 @@ public:
     D3D12_RECT                   m_BackBufferScissor  = {};
 
     // Renderable nodes enqueued during scene graph update, dispatched during EndFrame
-    std::vector<Canvas::XSceneGraphNode*> m_RenderableQueue;
+    std::vector<Canvas::XSceneNode*> m_RenderableQueue;
 
     // World-space AABB of every spatial element submitted this frame.
     // Accumulated in SubmitForRender by transforming each bound
@@ -725,7 +725,7 @@ public:
     GEMMETHOD(CreateSwapChain)(const Canvas::NativeWindow &window, bool Windowed, Canvas::XGfxSwapChain **ppSwapChain, Canvas::GfxFormat Format, UINT NumBuffers) final;
     GEMMETHOD(FlushAndPresent)(Canvas::XGfxSwapChain *pSwapChain) final;
     GEMMETHOD(BeginFrame)(Canvas::XGfxSwapChain *pSwapChain) final;
-    GEMMETHOD(SubmitForRender)(Canvas::XSceneGraphNode *pNode) final;
+    GEMMETHOD(SubmitForRender)(Canvas::XSceneNode *pNode) final;
     GEMMETHOD(SubmitForUIRender)(Canvas::XUIGraphNode *pNode) final;
     GEMMETHOD_(void, SetActiveCamera)(Canvas::XCamera *pCamera) final;
     GEMMETHOD_(void, SetVisibleLights)(Canvas::XLight* const* ppLights, size_t count) final;

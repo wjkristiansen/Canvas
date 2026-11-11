@@ -1,7 +1,7 @@
 //================================================================================================
 // CanvasFbxTest -- checks imported FBX transforms against ufbx's own evaluation.
 //
-// The imported node TRS values are loaded into Canvas scene-graph nodes. As imported, every
+// The imported node TRS values are loaded into Canvas scene nodes. As imported, every
 // global matrix must match ufbx's bind pose and the skin must leave the mesh undeformed.
 // Mid-animation, globals must match ufbx's node_to_world and skin palettes (InvBind *
 // boneGlobal) ufbx's per-cluster geometry_to_world.
@@ -105,7 +105,7 @@ struct ImportedFixture
     Fbx::ImportedScene                             Scene;
     ufbx_scene                                    *pRef = nullptr;
     Gem::TGemPtr<XCanvas>                          pCanvas;
-    std::vector<Gem::TGemPtr<XSceneGraphNode>>     Nodes;
+    std::vector<Gem::TGemPtr<XSceneNode>>     Nodes;
 
     ~ImportedFixture() { if (pRef) ufbx_free_scene(pRef); }
 
@@ -131,7 +131,7 @@ struct ImportedFixture
         for (size_t i = 0; i < Scene.Nodes.size(); ++i)
         {
             const Fbx::ImportedNode &src = Scene.Nodes[i];
-            EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&Nodes[i], src.Name.c_str())));
+            EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&Nodes[i], src.Name.c_str())));
             Nodes[i]->SetLocalTransform(src.LocalTransform);
         }
         for (size_t i = 0; i < Scene.Nodes.size(); ++i)
@@ -416,12 +416,12 @@ struct ImportedFixture
         const ufbx_scene *pPosed = posed.get();
 
         // The instance's scene nodes by name, and its skeleton instances.
-        std::unordered_map<std::string, XSceneGraphNode *> sceneNodes;
+        std::unordered_map<std::string, XSceneNode *> sceneNodes;
         std::vector<XSkeletonInstance *> skeletons;
-        std::vector<XSceneGraphNode *> stack{ result.pInstanceRoot };
+        std::vector<XSceneNode *> stack{ result.pInstanceRoot };
         while (!stack.empty())
         {
-            XSceneGraphNode *pNode = stack.back();
+            XSceneNode *pNode = stack.back();
             stack.pop_back();
             sceneNodes.emplace(pNode->GetName() ? pNode->GetName() : "", pNode);
             for (uint32_t e = 0; e < pNode->GetBoundElementCount(); ++e)
@@ -430,7 +430,7 @@ struct ImportedFixture
                 if (Succeeded(pNode->GetBoundElement(e)->QueryInterface(&pSkeleton)))
                     skeletons.push_back(pSkeleton.Get());
             }
-            for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+            for (XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
                 stack.push_back(pChild);
         }
 

@@ -101,7 +101,7 @@ bool GetLightWorldPose(XLight* light,
                        Math::FloatVector4& outPosition,
                        Math::FloatVector4& outForward)
 {
-    XSceneGraphNode* node = light->GetAttachedNode();
+    XSceneNode* node = light->GetAttachedNode();
     if (!node)
         return false;
     const Math::FloatMatrix4x4 world = node->GetGlobalMatrix();
@@ -123,7 +123,7 @@ void LightBVH::Clear()
     m_Built = false;
 }
 
-void LightBVH::Build(XSceneGraphNode* root)
+void LightBVH::Build(XSceneNode* root)
 {
     Clear();
 
@@ -132,14 +132,14 @@ void LightBVH::Build(XSceneGraphNode* root)
 
     // Iterative DFS to match WorldBVH (and to defend against the
     // deep instanced subtrees that can occur in imported scenes).
-    std::vector<XSceneGraphNode*> stack;
+    std::vector<XSceneNode*> stack;
     stack.reserve(64);
     stack.push_back(root);
 
     BVHPrimitiveId nextId = 0;
     while (!stack.empty())
     {
-        XSceneGraphNode* node = stack.back();
+        XSceneNode* node = stack.back();
         stack.pop_back();
         if (!node)
             continue;
@@ -147,7 +147,7 @@ void LightBVH::Build(XSceneGraphNode* root)
         const uint32_t elementCount = node->GetBoundElementCount();
         for (uint32_t i = 0; i < elementCount; ++i)
         {
-            XSceneGraphElement* element = node->GetBoundElement(i);
+            XSceneElement* element = node->GetBoundElement(i);
             if (!element)
                 continue;
 
@@ -231,7 +231,7 @@ void LightBVH::Build(XSceneGraphNode* root)
             m_TrackedLightSet.insert(lightRaw);
         }
 
-        for (XSceneGraphNode* child = node->GetFirstChild();
+        for (XSceneNode* child = node->GetFirstChild();
              child;
              child = node->GetNextChild(child))
         {

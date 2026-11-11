@@ -14,7 +14,7 @@ The reference for the CanvasCore public API, declared in [`CanvasCore.h`](../../
 
 | Interface                               | Description                     |
 |-----------------------------------------|---------------------------------|
-| [`XSceneGraphNode`](XSceneGraphNode.md) | A node in a scene graph         |
+| [`XSceneNode`](XSceneNode.md)           | A node in a scene graph         |
 | [`XWorld`](XWorld.md)                   | A world and its world objects   |
 | [`XWorldObject`](XWorldObject.md)       | A world object                  |
 

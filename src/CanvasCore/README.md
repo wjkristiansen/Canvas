@@ -10,7 +10,7 @@ CanvasCore's API has two layers:
 
 | Layer | Holds | Used by |
 |---|---|---|
-| **World API** | `XWorld`, `XWorldObject`, scene-graph nodes and their elements (`XMeshInstance`, `XMeshField`, `XCamera`, `XLight`, ...), `XModel`, `XUIGraph` | An app that builds and renders its own worlds, such as a model viewer, and the project runtime |
+| **World API** | `XWorld`, `XWorldObject`, scene nodes and their elements (`XMeshInstance`, `XMeshField`, `XCamera`, `XLight`, ...), `XModel`, `XUIGraph` | An app that builds and renders its own worlds, such as a model viewer, and the project runtime |
 | **Project runtime** | `XProject`, `XWorldRequest`, and the [streaming](#streaming) of package content | An app that runs a project's content |
 
 The project runtime is built on the world API: each world it runs is an `XWorld`, and each instance of package content is a world object. The world API holds no reference to the project runtime. An app may use the world API alone, the project runtime, or both.
@@ -43,7 +43,7 @@ A **world** (`XWorld`) is everything that exists in one place, such as a game le
 
 A world holds a scene graph, a set of **world objects** (`XWorldObject`), and the **UI graphs** of its screen-space UI, such as its HUD and menus, drawn over the rendered world. A UI graph shown independently of every world, such as a console, is created on its own.
 
-A world object holds the state of something in its world: an instance of a model, with its skeleton instances and animation controller, or nodes the app builds itself. A world object is anchored at a scene graph node, its **anchor node**, or has no anchor node and no nodes. The world creates, attaches, removes, and registers its world objects, and instantiating a model into a world creates a world object.
+A world object holds the state of something in its world: an instance of a model, with its skeleton instances and animation controller, or nodes the app builds itself. A world object is anchored at a scene node, its **anchor node**, or has no anchor node and no nodes. The world creates, attaches, removes, and registers its world objects, and instantiating a model into a world creates a world object.
 
 **References.** The world holds a strong reference to each of its world objects, and a world object holds a strong reference to its anchor node, if it has one. The graph holds every other node, through each node's references to its children. A world object holds a weak reference to its world, and an anchor node holds a weak reference back to its world object.
 
@@ -64,13 +64,13 @@ In this world, a windmill has an arrow stuck in one of its blades, and an elevat
                 +-- (Seat)
                      +-- (Driver) <==== [Driver]
 
-(node)   a scene graph node; each node holds its children strongly
+(node)   a scene node; each node holds its children strongly
 [name]   a world object; the world holds every world object strongly
 <===     the world object holds its anchor node strongly, and the
          anchor node refers back to its world object weakly
 ```
 
-**World object nodes.** A world object's nodes, its anchor node included, are ordinary scene graph nodes. An anchor node **belongs to** the world object anchored at it, and every other node inherits the world object of its parent. The scene graph's root node belongs to no world object, so a node the app adds under it inherits none. In the example, `(Windmill)` through `(Blade 2)` belong to the windmill, and `(Scene root)` and `(Ground)` belong to no world object.
+**World object nodes.** A world object's nodes, its anchor node included, are ordinary scene nodes. An anchor node **belongs to** the world object anchored at it, and every other node inherits the world object of its parent. The scene graph's root node belongs to no world object, so a node the app adds under it inherits none. In the example, `(Windmill)` through `(Blade 2)` belong to the windmill, and `(Scene root)` and `(Ground)` belong to no world object.
 
 **Attachment.** A world object is **attached to** the world object that its anchor node's parent belongs to. In the example, the arrow is attached to the windmill, the car to the elevator, and the driver to the car. A world object in the scene graph whose anchor node's parent belongs to no world object, such as the windmill or the elevator, is a **top-level** world object. Which world object a world object is attached to follows from where its anchor node is, and changes when it is attached elsewhere. Attachment says where a world object is, not what keeps it alive: the world holds every world object, and a world object outlives the world object it is attached to unless it belongs to it.
 
@@ -193,21 +193,21 @@ Package content becomes engine objects through `XModel`. A bundle that the engin
 
 | Package asset | Engine object |
 |---|---|
-| `TransformNode` | `XSceneGraphNode` |
+| `TransformNode` | `XSceneNode` |
 | `MeshInstance` | `XMeshInstance` on its node, drawing the `MeshData`'s `XGfxMeshData` |
 | `Camera`, `Light` | `XCamera`, `XLight` on their nodes |
 | `Material`, `Image` | `XGfxMaterial`, `XGfxSurface` |
 | `MeshField` | `XMeshField` on its node, drawing the `MeshData`'s `XGfxMeshData` at each of its transforms |
 | `Placement` | A world object, a nested instance of the placed bundle's model, attached to the placement's node |
 | `SkeletonInstance`, with its `Skeleton` | A model skeleton, and in each instance an `XSkeletonInstance` on its node that holds the instance's pose |
-| A socket: a `TransformNode` whose parent is a bone | A model socket: an `XSceneGraphNode` that follows its bone |
+| A socket: a `TransformNode` whose parent is a bone | A model socket: an `XSceneNode` that follows its bone |
 | `MeshSkin` | The skin binding of each `XMeshInstance` that draws with it |
 | `AnimationClip`, with the `SkeletalAnimation` assets it binds | An animation clip, played through each instance's `XAnimationController` |
 | `WorldSettings` | The world's settings: its background and skyboxes, and its initial active camera |
 
 An instance's world object is anchored at a node whose local transform is the instance's instance transform, and the bundle's nodes and attachments that are relative to the instance transform are on that anchor node. A nested instance's anchor node is a child of its placement's node, with the placement's `Transform`, so its world object is attached to the instance that holds the placement. It belongs to that instance, so removing an instance, such as a region that unloads, removes its nested instances with it. A world bundle's or world region's anchor node is a child of the scene graph's root node, with the identity transform, so its world object is top-level.
 
-`XModel` covers a bundle's node hierarchy, meshes, materials, textures, cameras, lights, skeletons with their sockets and skins, and animation clips. A skeleton's bones are not scene-graph nodes: each instance's `XSkeletonInstance` holds their pose. A bundle's other structure extends it:
+`XModel` covers a bundle's node hierarchy, meshes, materials, textures, cameras, lights, skeletons with their sockets and skins, and animation clips. A skeleton's bones are not scene nodes: each instance's `XSkeletonInstance` holds their pose. A bundle's other structure extends it:
 
 - **Placements**: nested instances, instantiated with the instance that holds them, each as its own world object.
 - **Exports and import nodes**: an import node resolves to the exported node of its placement's nested instance.

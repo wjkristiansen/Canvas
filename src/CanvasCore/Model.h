@@ -204,7 +204,7 @@ public: // XModel methods
         return (index < m_Content.AnimClips.size()) ? m_Content.AnimClips[index].Name.c_str() : nullptr;
     }
 
-    GEMMETHOD(Instantiate)(XSceneGraphNode *pTargetParent, ModelInstantiateResult *pResult = nullptr) final;
+    GEMMETHOD(Instantiate)(XSceneNode *pTargetParent, ModelInstantiateResult *pResult = nullptr) final;
 
     GEMMETHOD_(Math::AABB, GetBounds)() final
     {

@@ -763,7 +763,7 @@ private:
 
 //------------------------------------------------------------------------------------------------
 // Global matrix of every imported node: its local transform's matrix times its parent's
-// global matrix (row vectors), as a Canvas scene-graph node composes it.
+// global matrix (row vectors), as a Canvas scene node composes it.
 std::vector<Math::FloatMatrix4x4> ImportedGlobalMatrices(_In_ const std::vector<ImportedNode> &nodes)
 {
     std::vector<Math::FloatMatrix4x4> globals(nodes.size());

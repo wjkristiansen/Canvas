@@ -191,7 +191,7 @@ class CApp
     Gem::TGemPtr<Canvas::XGfxRenderQueue> m_pGfxRenderQueue;
     Gem::TGemPtr<Canvas::XGfxMeshData> m_pCubeMesh;
     Gem::TGemPtr<Canvas::XMeshInstance> m_pCubeMeshInstance;
-    Gem::TGemPtr<Canvas::XSceneGraphNode> m_pDebugCubeNode;
+    Gem::TGemPtr<Canvas::XSceneNode> m_pDebugCubeNode;
     Gem::TGemPtr<Canvas::XFont> m_pFont;
     Gem::TGemPtr<Canvas::XFont> m_pFontMono;
     Gem::TGemPtr<Canvas::XLight> m_pSunLight;
@@ -215,7 +215,7 @@ class CApp
     std::filesystem::path m_ModelPath;
 
     Gem::TGemPtr<Canvas::XModel> m_pModel;
-    Gem::TGemPtr<Canvas::XSceneGraphNode> m_pInstanceRoot;
+    Gem::TGemPtr<Canvas::XSceneNode> m_pInstanceRoot;
     Gem::TGemPtr<Canvas::XAnimationController> m_pAnimCtrl;
     bool m_inBindPose = true;
 
@@ -244,7 +244,7 @@ class CApp
 
     void FrameCameraToBounds(
         Canvas::XCamera *pCamera,
-        Canvas::XSceneGraphNode *pCameraNode,
+        Canvas::XSceneNode *pCameraNode,
         const Canvas::Math::AABB &bounds)
     {
         if (!pCameraNode || bounds.IsEmpty())
@@ -293,7 +293,7 @@ class CApp
             return;
         }
 
-        Canvas::XSceneGraphNode *pNode = pCamera->GetAttachedNode();
+        Canvas::XSceneNode *pNode = pCamera->GetAttachedNode();
         if (!pNode)
         {
             Canvas::LogWarn(m_pLogger.Get(), "%s: camera '%s' is not attached to a node", label, pCamera->GetName());
@@ -345,7 +345,7 @@ class CApp
             radius);
     }
 
-    void LogNodeTransform(const char *label, Canvas::XSceneGraphNode *pNode)
+    void LogNodeTransform(const char *label, Canvas::XSceneNode *pNode)
     {
         if (!pNode)
         {
@@ -376,7 +376,7 @@ class CApp
         if (!pCamera)
             return;
 
-        Canvas::XSceneGraphNode *pNode = pCamera->GetAttachedNode();
+        Canvas::XSceneNode *pNode = pCamera->GetAttachedNode();
         if (!pNode)
             return;
 
@@ -401,8 +401,8 @@ class CApp
         pAmbientLight->SetColor(Canvas::Math::FloatVector4(0.15f, 0.15f, 0.2f, 0.0f));
         pAmbientLight->SetIntensity(1.0f);
 
-        Gem::TGemPtr<Canvas::XSceneGraphNode> pAmbientNode;
-        Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pAmbientNode, "DefaultAmbientLightNode"));
+        Gem::TGemPtr<Canvas::XSceneNode> pAmbientNode;
+        Gem::ThrowGemError(pCanvas->CreateSceneNode(&pAmbientNode, "DefaultAmbientLightNode"));
         Gem::ThrowGemError(pAmbientNode->BindElement(pAmbientLight));
         Gem::ThrowGemError(pWorld->GetRootNode()->AddChild(pAmbientNode));
 
@@ -412,8 +412,8 @@ class CApp
         pSunLight->SetIntensity(1.0f);
 
         // A directional light emits along its node's +X (forward) row.
-        Gem::TGemPtr<Canvas::XSceneGraphNode> pSunNode;
-        Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pSunNode, "DefaultSunLightNode"));
+        Gem::TGemPtr<Canvas::XSceneNode> pSunNode;
+        Gem::ThrowGemError(pCanvas->CreateSceneNode(&pSunNode, "DefaultSunLightNode"));
         Gem::ThrowGemError(pSunNode->BindElement(pSunLight));
         {
             const Canvas::Math::FloatVector4 up(0.0f, 0.0f, 1.0f, 0.0f);
@@ -432,7 +432,7 @@ class CApp
         Canvas::XCanvas *pCanvas,
         Canvas::XWorld *pWorld,
         Canvas::XCamera *pDefaultCamera,
-        Canvas::XSceneGraphNode *pDefaultCameraNode)
+        Canvas::XSceneNode *pDefaultCameraNode)
     {
         Canvas::XGfxDevice *pDevice = pWorld->GetDevice();
         try
@@ -576,7 +576,7 @@ class CApp
             LogCameraAffineMatrix("Imported camera affine", pSelectedCamera);
 
             // Keep mouse-look deltas aligned with imported camera orientation.
-            Canvas::XSceneGraphNode *pActiveNode = pSelectedCamera->GetAttachedNode();
+            Canvas::XSceneNode *pActiveNode = pSelectedCamera->GetAttachedNode();
             if (pActiveNode)
             {
                 const Canvas::Math::FloatMatrix4x4 world = pActiveNode->GetGlobalMatrix();
@@ -740,8 +740,8 @@ public:
             pCamera->SetNearClip(0.1f);
             pCamera->SetFarClip(1000.f);
             pCamera->SetFovAngle(float(Canvas::Math::Pi / 4));
-            Gem::TGemPtr<Canvas::XSceneGraphNode> pCameraNode;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pCameraNode, "MainCameraNode"));
+            Gem::TGemPtr<Canvas::XSceneNode> pCameraNode;
+            Gem::ThrowGemError(pCanvas->CreateSceneNode(&pCameraNode, "MainCameraNode"));
             pCameraNode->SetName("MainCameraNode");
             Gem::ThrowGemError(pCameraNode->BindElement(pCamera));
             

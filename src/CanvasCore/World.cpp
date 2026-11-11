@@ -22,8 +22,8 @@ GEMMETHODIMP CWorld::Initialize()
     try
     {
         
-        Gem::TGemPtr<XSceneGraphNode> pRoot;
-        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pRoot, "SceneRoot"));
+        Gem::TGemPtr<XSceneNode> pRoot;
+        Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&pRoot, "SceneRoot"));
         m_pRoot = pRoot;
     }
     catch(const Gem::GemError &e)
@@ -50,13 +50,13 @@ void CWorld::Uninitialize()
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP_(XSceneGraphNode *) CWorld::GetRootNode()
+GEMMETHODIMP_(XSceneNode *) CWorld::GetRootNode()
 {
     return m_pRoot.Get();
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CWorld::CreateWorldObject(XSceneGraphNode *pAnchorNode, XWorldObject **ppObject, const char *name)
+GEMMETHODIMP CWorld::CreateWorldObject(XSceneNode *pAnchorNode, XWorldObject **ppObject, const char *name)
 {
     CFunctionSentinel sentinel("XWorld::CreateWorldObject", m_pCanvas->GetLogger());
 
@@ -64,10 +64,10 @@ GEMMETHODIMP CWorld::CreateWorldObject(XSceneGraphNode *pAnchorNode, XWorldObjec
         return Gem::Result::BadPointer;
     *ppObject = nullptr;
 
-    CSceneGraphNode *pAnchor = nullptr;
+    CSceneNode *pAnchor = nullptr;
     if (pAnchorNode)
     {
-        pAnchor = static_cast<CSceneGraphNode *>(pAnchorNode);
+        pAnchor = static_cast<CSceneNode *>(pAnchorNode);
         const char *problem = nullptr;
         if (pAnchor->GetAnchoredObject())
             problem = "is already an anchor node";
@@ -186,7 +186,7 @@ Gem::Result CWorld::CheckActiveCamera()
         return Gem::Result::Success;
     // The camera is in this world's scene graph when this world's root node is its node or an
     // ancestor of it, wherever the root node is
-    XSceneGraphNode *pNode = m_pActiveCamera->GetAttachedNode();
+    XSceneNode *pNode = m_pActiveCamera->GetAttachedNode();
     while (pNode && pNode != m_pRoot.Get())
         pNode = pNode->GetParent();
     if (!pNode)
@@ -242,7 +242,7 @@ static Transform TransformFromMatrix(const Math::FloatMatrix4x4 &m)
 //------------------------------------------------------------------------------------------------
 // Adds pNode as the last child of pParent, or leaves it with no parent when pParent is nullptr,
 // with the local transform that keeps the given world matrix.
-static Gem::Result ReparentKeepingWorld(XSceneGraphNode *pNode, XSceneGraphNode *pParent,
+static Gem::Result ReparentKeepingWorld(XSceneNode *pNode, XSceneNode *pParent,
                                         const Math::FloatMatrix4x4 &world)
 {
     Math::FloatMatrix4x4 local = world;
@@ -262,18 +262,18 @@ static Gem::Result ReparentKeepingWorld(XSceneGraphNode *pNode, XSceneGraphNode 
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CWorld::AttachObject(XWorldObject *pObject, XSceneGraphNode *pParent, bool keepWorldTransform)
+GEMMETHODIMP CWorld::AttachObject(XWorldObject *pObject, XSceneNode *pParent, bool keepWorldTransform)
 {
     CWorldObject *pImpl = FindObject(pObject);
     if (!pImpl)
         return Gem::Result::NotFound;
 
-    CSceneGraphNode *pAnchor = pImpl->GetAnchor();
+    CSceneNode *pAnchor = pImpl->GetAnchor();
     if (!pAnchor || !pParent)
         return Gem::Result::InvalidArg;
 
     // The new parent must be outside the anchor node's subtree
-    for (XSceneGraphNode *pNode = pParent; pNode; pNode = pNode->GetParent())
+    for (XSceneNode *pNode = pParent; pNode; pNode = pNode->GetParent())
     {
         if (pNode == pAnchor)
         {
@@ -305,7 +305,7 @@ GEMMETHODIMP CWorld::DetachObject(XWorldObject *pObject)
     if (!pImpl)
         return Gem::Result::NotFound;
 
-    CSceneGraphNode *pAnchor = pImpl->GetAnchor();
+    CSceneNode *pAnchor = pImpl->GetAnchor();
     if (pAnchor && pAnchor->GetParent())
     {
         Gem::Result result = pAnchor->GetParent()->RemoveChild(pAnchor);
@@ -330,17 +330,17 @@ GEMMETHODIMP CWorld::RemoveObject(XWorldObject *pObject)
         // are taken before any node moves.
         struct Orphan { Gem::TGemPtr<CWorldObject> pObject; Math::FloatMatrix4x4 world; };
         std::vector<Orphan> orphans;
-        std::vector<XSceneGraphNode *> stack;
+        std::vector<XSceneNode *> stack;
 
         if (pImpl->GetAnchor())
             stack.push_back(pImpl->GetAnchor());
         while (!stack.empty())
         {
-            XSceneGraphNode *pNode = stack.back();
+            XSceneNode *pNode = stack.back();
             stack.pop_back();
-            for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+            for (XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
             {
-                CWorldObject *pOrphan = static_cast<CSceneGraphNode *>(pChild)->GetAnchoredObject();
+                CWorldObject *pOrphan = static_cast<CSceneNode *>(pChild)->GetAnchoredObject();
                 if (pOrphan && pOrphan->GetWorld() == this)
                     orphans.push_back({ pOrphan, pChild->GetGlobalMatrix() });
                 else
@@ -350,8 +350,8 @@ GEMMETHODIMP CWorld::RemoveObject(XWorldObject *pObject)
 
         // Take the removed world object's anchor node out of the graph, then attach each orphan
         // to the node the removal detached from
-        CSceneGraphNode *pAnchor = pImpl->GetAnchor();
-        XSceneGraphNode *pDetachedFrom = pAnchor ? pAnchor->GetParent() : nullptr;
+        CSceneNode *pAnchor = pImpl->GetAnchor();
+        XSceneNode *pDetachedFrom = pAnchor ? pAnchor->GetParent() : nullptr;
         if (pDetachedFrom)
             Gem::ThrowGemError(pDetachedFrom->RemoveChild(pAnchor));
 
@@ -587,12 +587,12 @@ GEMMETHODIMP CWorld::Update(float dtime)
     // anchored below another of this world's active world objects, whose update covers it.
     for (size_t i = 0; i < m_ActiveObjectCount; ++i)
     {
-        CSceneGraphNode *pAnchor = m_WorldObjects[i]->GetAnchor();
+        CSceneNode *pAnchor = m_WorldObjects[i]->GetAnchor();
         if (!pAnchor)
             continue;
 
         bool covered = false;
-        for (CSceneGraphNode *pNode = pAnchor->GetParentNode(); pNode && !covered; pNode = pNode->GetParentNode())
+        for (CSceneNode *pNode = pAnchor->GetParentNode(); pNode && !covered; pNode = pNode->GetParentNode())
         {
             CWorldObject *pAbove = pNode->GetAnchoredObject();
             covered = pNode == m_pRoot.Get() ||
@@ -674,7 +674,7 @@ GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
 
         while (!m_TraversalStack.empty())
         {
-            XSceneGraphNode *pNode = m_TraversalStack.back();
+            XSceneNode *pNode = m_TraversalStack.back();
             m_TraversalStack.pop_back();
 
             // Skip only when the node is renderable AND not in the
@@ -690,7 +690,7 @@ GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
             }
 
             // Push children onto stack for traversal
-            for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+            for (XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
             {
                 m_TraversalStack.push_back(pChild);
             }

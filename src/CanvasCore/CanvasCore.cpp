@@ -153,11 +153,11 @@ GEMMETHODIMP CCanvas::CreateWorld(XGfxDevice *pDevice, XWorld **ppWorld, const c
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CCanvas::CreateSceneGraphNode(XSceneGraphNode **ppNode, const char * name)
+GEMMETHODIMP CCanvas::CreateSceneNode(XSceneNode **ppNode, const char * name)
 {
-    CFunctionSentinel sentinel("XCanvas::CreateSceneGraphNode", m_pLogger);
+    CFunctionSentinel sentinel("XCanvas::CreateSceneNode", m_pLogger);
 
-    return CreateElement<CSceneGraphNode>(ppNode, name);
+    return CreateElement<CSceneNode>(ppNode, name);
 }
 
 //------------------------------------------------------------------------------------------------

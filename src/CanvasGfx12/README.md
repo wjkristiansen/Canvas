@@ -326,7 +326,7 @@ The `RecordFunc` lambda on a `CGpuTask` is invoked inline by `InsertTask` while 
 
 ```
 BeginFrame        Set up G-buffer pass, clear targets, open UI graph
-  SubmitForRender   Enqueue scene graph nodes (meshes, lights)
+  SubmitForRender   Enqueue scene nodes (meshes, lights)
   SubmitForUIRender Enqueue UI graph nodes (text, rectangles)
 EndFrame          Draw geometry, compose lighting, draw UI
 FlushAndPresent   Dispatch task graphs, present, reclaim resources
@@ -713,7 +713,7 @@ CanvasCore owns the scene graph and UI graph; CanvasGfx12 consumes them during r
 
 ### Scene Graph
 
-An `XWorld` holds a scene graph, a hierarchical transform graph. Each `XSceneGraphNode` carries a local rotation (quaternion), translation, and scale. Global transforms are computed lazily with dirty-flag propagation, avoiding redundant matrix recomputation when only a few nodes change.
+An `XWorld` holds a scene graph, a hierarchical transform graph. Each `XSceneNode` carries a local rotation (quaternion), translation, and scale. Global transforms are computed lazily with dirty-flag propagation, avoiding redundant matrix recomputation when only a few nodes change.
 
 During `Update`, the scene graph marks dirty transforms and propagates them down the hierarchy. `SubmitRenderables` then traverses the graph and calls `SubmitForRender` on the render queue for each node that carries a bound element. Lights are extracted and routed to `SubmitLight`. Mesh instances are queued for drawing in `EndFrame`.
 
