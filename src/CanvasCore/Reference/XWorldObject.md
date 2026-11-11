@@ -29,6 +29,14 @@ Gem::Result SetRootNode(XSceneNode *pNode);
 |--------------|--------------------------------------------------------------------------------------------------------------|
 | `InvalidArg` | `pNode` has a parent, is another world object's root node, is the root node of the world the world object is in, or was created by another canvas |
 
+### FindNode
+
+```cpp
+XSceneNode *FindNode(const char *name);
+```
+
+Returns a weak pointer to the first of the world object's nodes whose name is `name`, compared exactly, or `nullptr` when there is none, `name` is `nullptr`, or the world object has no root node. The nodes are searched in pre-order from the root node: each node, then its children in order. The search leaves out the nodes of world objects attached to the world object's nodes, since those nodes belong to the attached world objects. Node names are usually unique within a world object, but some authoring tools allow repeats, and then the first match is returned.
+
 ### GetUniqueName
 
 ```cpp

@@ -292,6 +292,20 @@ GEMMETHODIMP_(XSceneNode *) CSceneNode::GetFirstChild()
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(XSceneNode *) CSceneNode::FindChild(const char *name)
+{
+    if (!name)
+        return nullptr;
+    for (ChildNode *pChild = m_pFirstChild; pChild; pChild = pChild->m_pNext)
+    {
+        const char *childName = pChild->m_pNode->GetName();
+        if (childName && std::strcmp(childName, name) == 0)
+            return pChild->m_pNode.Get();
+    }
+    return nullptr;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneNode::BindElement(_In_ XSceneElement *pElement)
 {
     if (pElement)

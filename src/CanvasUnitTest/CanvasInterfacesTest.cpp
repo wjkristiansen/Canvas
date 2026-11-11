@@ -209,6 +209,64 @@ TEST(CanvasInterfacesTest, WorldObjectNodes)
     EXPECT_EQ(pArrow.Get(), pTip->GetWorldObject());
 }
 
+// FindChild finds a node's first child with a name.  FindNode finds the first node with a name
+// among a world object's own nodes, in pre-order, leaving out the nodes of the world objects
+// attached to them.
+TEST(CanvasInterfacesTest, WorldObjectFindNode)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XWorld> pWorld;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "FindWorld")));
+
+    // Windmill > Frame > Shaft > { Blade, Blade > Arrow > Tip }, with a Blade under Frame too
+    auto make = [&](const char *name, Canvas::XSceneNode *pParent)
+    {
+        Gem::TGemPtr<Canvas::XSceneNode> pNode;
+        EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pNode, name)));
+        if (pParent)
+            EXPECT_TRUE(Succeeded(pParent->AddChild(pNode)));
+        return pNode;
+    };
+    auto pWindmillNode = make("Windmill", nullptr);
+    auto pFrame        = make("Frame", pWindmillNode);
+    auto pShaft        = make("Shaft", pFrame);
+    auto pBlade1       = make("Blade", pShaft);
+    auto pBlade2       = make("Blade", pShaft);
+    auto pSpareBlade   = make("Blade", pFrame);
+    auto pArrowNode    = make("Arrow", nullptr);
+    auto pTip          = make("Tip", pArrowNode);
+
+    Gem::TGemPtr<Canvas::XWorldObject> pWindmill, pArrow;
+    ASSERT_TRUE(Succeeded(MakeWorldObject(pWorld, pWindmillNode, &pWindmill, "Windmill")));
+    ASSERT_TRUE(Succeeded(MakeWorldObject(pWorld, pArrowNode, &pArrow, "Arrow")));
+    ASSERT_TRUE(Succeeded(pWorld->PlaceObject(pWindmill, pWorld->GetRootNode(), false)));
+    ASSERT_TRUE(Succeeded(pWorld->PlaceObject(pArrow, pBlade2, false)));
+
+    // Direct children only, first by name
+    EXPECT_EQ(pShaft.Get(), pFrame->FindChild("Shaft"));
+    EXPECT_EQ(pBlade1.Get(), pShaft->FindChild("Blade"));
+    EXPECT_EQ(pSpareBlade.Get(), pFrame->FindChild("Blade"));
+    EXPECT_EQ(nullptr, pWindmillNode->FindChild("Shaft"));
+    EXPECT_EQ(nullptr, pFrame->FindChild(nullptr));
+    EXPECT_EQ(pWindmillNode.Get(), pWorld->GetRootNode()->FindChild("Windmill"));
+
+    // The world object's own nodes, root node included, in pre-order
+    EXPECT_EQ(pWindmillNode.Get(), pWindmill->FindNode("Windmill"));
+    EXPECT_EQ(pShaft.Get(), pWindmill->FindNode("Shaft"));
+    EXPECT_EQ(pBlade1.Get(), pWindmill->FindNode("Blade"));
+    EXPECT_EQ(nullptr, pWindmill->FindNode("Tip"));
+    EXPECT_EQ(nullptr, pWindmill->FindNode("Arrow"));
+    EXPECT_EQ(pTip.Get(), pArrow->FindNode("Tip"));
+    EXPECT_EQ(nullptr, pWindmill->FindNode(nullptr));
+
+    Gem::TGemPtr<Canvas::XWorldObject> pRules;
+    ASSERT_TRUE(Succeeded(MakeWorldObject(pWorld, nullptr, &pRules, "Rules")));
+    EXPECT_EQ(nullptr, pRules->FindNode("Windmill"));
+}
+
 TEST(CanvasInterfacesTest, WorldObjectPlacementStates)
 {
     Gem::TGemPtr<XCanvas> pCanvas;

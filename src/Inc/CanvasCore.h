@@ -529,6 +529,7 @@ XSceneNode : public XCanvasElement
     GEMMETHOD_(XSceneNode *, GetFirstChild)() = 0;
     GEMMETHOD_(XSceneNode *, GetNextChild)(_In_ XSceneNode *pCurrent) = 0;
     GEMMETHOD_(XSceneNode *, GetPrevChild)(_In_ XSceneNode *pCurrent) = 0;
+    GEMMETHOD_(XSceneNode *, FindChild)(_In_opt_z_ const char *name) = 0;
 
     GEMMETHOD_(const Transform &, GetLocalTransform)() const = 0;
     GEMMETHOD_(void, SetLocalTransform)(const Transform &transform) = 0;
@@ -841,6 +842,7 @@ XWorldObject : public XCanvasElement
     // Returns a weak pointer to the world object's root node, or nullptr when it has none.
     GEMMETHOD_(XSceneNode *, GetRootNode)() = 0;
     GEMMETHOD(SetRootNode)(_In_opt_ XSceneNode *pNode) = 0;
+    GEMMETHOD_(XSceneNode *, FindNode)(_In_opt_z_ const char *name) = 0;
 
     GEMMETHOD_(const char *, GetUniqueName)() = 0;
 };

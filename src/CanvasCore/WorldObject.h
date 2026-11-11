@@ -63,6 +63,7 @@ public: // XWorldObject methods
     GEMMETHOD_(XWorld *, GetWorld)() final;
     GEMMETHOD_(XSceneNode *, GetRootNode)() final { return m_pRootNode.Get(); }
     GEMMETHOD(SetRootNode)(_In_opt_ XSceneNode *pNode) final;
+    GEMMETHOD_(XSceneNode *, FindNode)(_In_opt_z_ const char *name) final;
     GEMMETHOD_(const char *, GetUniqueName)() final { return m_pUniqueName ? m_pUniqueName->c_str() : nullptr; }
 
     // The root node as its implementation type, or nullptr when there is none.
