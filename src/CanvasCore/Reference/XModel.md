@@ -51,14 +51,13 @@ Gem::Result GetNodeTransform(uint32_t index, Transform *pTransform);
 
 ## Cameras
 
-### GetCameraCount, GetActiveCameraIndex
+### GetCameraCount
 
 ```cpp
 uint32_t GetCameraCount();
-uint32_t GetActiveCameraIndex();
 ```
 
-`GetCameraCount` returns the number of the model's cameras. `GetActiveCameraIndex` returns the index of the camera the model designates as its active camera, or `InvalidIndex` when it designates none. Instantiating the model leaves the world's active camera unchanged.
+Returns the number of the model's cameras. Each instance has a camera of the same name on its scene node for the camera's model node, which [`XWorldObject::FindNode`](XWorldObject.md#findnode) finds by the node's name. Instantiating the model leaves the world's active camera unchanged; which camera is active is the app's choice.
 
 ## Skeletons and Animation
 

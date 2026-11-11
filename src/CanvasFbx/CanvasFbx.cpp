@@ -2154,7 +2154,6 @@ Gem::Result BuildModel(
         }
 
         // Meshes, lights, and cameras.  Content on a bone goes on the bone's socket.
-        std::vector<uint32_t> cameraOfNode(nodeCount, Canvas::InvalidIndex);
         for (int32_t n : order)
         {
             const size_t ni = static_cast<size_t>(n);
@@ -2230,30 +2229,7 @@ Gem::Result BuildModel(
                 desc.Params.FarClip     = srcCamera.FarClip;
                 desc.Params.FovAngle    = srcCamera.FovAngle;
                 desc.Params.AspectRatio = srcCamera.AspectRatio;
-                Gem::ThrowGemError(pBuilder->AddCamera(&desc, &cameraOfNode[ni]));
-            }
-        }
-
-        // -----------------------------------------------------------------
-        // Active camera designation
-        // -----------------------------------------------------------------
-        if (scene.ActiveCameraNodeIndex >= 0 &&
-            static_cast<size_t>(scene.ActiveCameraNodeIndex) < nodeCount &&
-            cameraOfNode[static_cast<size_t>(scene.ActiveCameraNodeIndex)] != Canvas::InvalidIndex)
-        {
-            Gem::ThrowGemError(pBuilder->SetActiveCamera(cameraOfNode[static_cast<size_t>(scene.ActiveCameraNodeIndex)]));
-        }
-        else
-        {
-            // Fall back: use the first node that carries a camera
-            for (size_t ni = 0; ni < nodeCount; ++ni)
-            {
-                if (cameraOfNode[ni] != Canvas::InvalidIndex)
-                {
-                    Gem::ThrowGemError(pBuilder->SetActiveCamera(cameraOfNode[ni]));
-                    Canvas::LogWarn(pLogger, "BuildModel: no explicit active camera; using first camera node");
-                    break;
-                }
+                Gem::ThrowGemError(pBuilder->AddCamera(&desc, nullptr));
             }
         }
 

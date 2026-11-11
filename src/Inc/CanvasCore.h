@@ -959,7 +959,6 @@ XModel : public XCanvasElement
 
     GEMMETHOD_(uint32_t, GetSkeletonCount)() = 0;
     GEMMETHOD_(uint32_t, GetCameraCount)() = 0;
-    GEMMETHOD_(uint32_t, GetActiveCameraIndex)() = 0;   // InvalidIndex when none
 
     GEMMETHOD_(uint32_t, GetAnimationClipCount)() = 0;
     GEMMETHOD_(const char *, GetAnimationClipName)(uint32_t index) = 0;
@@ -1082,8 +1081,8 @@ struct ModelSocketDesc
 // XModelBuilder - builds immutable XModel templates.
 //
 // A builder is Uninitialized when created, after a successful Build, and after Reset.  Begin
-// starts a model and puts the builder in the Building state, where the Add methods,
-// SetActiveCamera, and Build are available.  In the Uninitialized state they return
+// starts a model and puts the builder in the Building state, where the Add methods and Build
+// are available.  In the Uninitialized state they return
 // Gem::Result::Uninitialized, and Begin while Building returns Gem::Result::AlreadyExists.
 //
 // A successful Build moves the builder's content into a new XModel and returns the builder to
@@ -1133,8 +1132,6 @@ XModelBuilder : public XCanvasElement
     GEMMETHOD(AddAnimationTarget)(_In_ const AnimationTargetDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
     GEMMETHOD(AddAnimationClip)(_In_ const AnimationClipDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
 
-    // Designates the model's active camera, which XModel::GetActiveCameraIndex returns.
-    GEMMETHOD(SetActiveCamera)(uint32_t cameraIndex) = 0;
 
     GEMMETHOD(Build)(_Out_ XModel **ppModel) = 0;
 };

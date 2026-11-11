@@ -87,7 +87,6 @@ struct ModelContent
     std::vector<AnimTarget>             AnimTargets;
     std::vector<CAnimationClip>         AnimClips;
 
-    uint32_t                            ActiveCameraIndex = InvalidIndex;
     Math::AABB                          Bounds;     // meshes at rest, relative to the instance root
 };
 
@@ -189,11 +188,6 @@ public: // XModel methods
         return static_cast<uint32_t>(m_Content.Cameras.size());
     }
 
-    GEMMETHOD_(uint32_t, GetActiveCameraIndex)() final
-    {
-        return m_Content.ActiveCameraIndex;
-    }
-
     GEMMETHOD_(uint32_t, GetAnimationClipCount)() final
     {
         return static_cast<uint32_t>(m_Content.AnimClips.size());
@@ -260,7 +254,6 @@ public: // XModelBuilder methods
     GEMMETHOD(AddSocket)(_In_ const ModelSocketDesc *pDesc, _Out_opt_ uint32_t *pNodeIndex) final;
     GEMMETHOD(AddAnimationTarget)(_In_ const AnimationTargetDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
     GEMMETHOD(AddAnimationClip)(_In_ const AnimationClipDesc *pDesc, _Out_opt_ uint32_t *pIndex) final;
-    GEMMETHOD(SetActiveCamera)(uint32_t cameraIndex) final;
     GEMMETHOD(Build)(_Out_ XModel **ppModel) final;
 };
 
