@@ -100,17 +100,26 @@ const char *NonContributingLightReason(const Canvas::Fbx::ImportedLight &light)
 }
 
 //------------------------------------------------------------------------------------------------
-// The first camera bound to pNode or a node in its subtree, in pre-order, or nullptr.
-Canvas::XCamera *FindCamera(Canvas::XSceneNode *pNode)
+// The first camera bound to pNode, or nullptr.
+Canvas::XCamera *FindBoundCamera(Canvas::XSceneNode *pNode)
 {
-    if (!pNode)
-        return nullptr;
-    for (uint32_t i = 0; i < pNode->GetBoundElementCount(); ++i)
+    for (uint32_t i = 0; pNode && i < pNode->GetBoundElementCount(); ++i)
     {
         Gem::TGemPtr<Canvas::XCamera> pCamera;
         if (Gem::Succeeded(pNode->GetBoundElement(i)->QueryInterface(&pCamera)))
             return pCamera.Get();
     }
+    return nullptr;
+}
+
+//------------------------------------------------------------------------------------------------
+// The first camera bound to pNode or a node in its subtree, in pre-order, or nullptr.
+Canvas::XCamera *FindCamera(Canvas::XSceneNode *pNode)
+{
+    if (!pNode)
+        return nullptr;
+    if (Canvas::XCamera *pCamera = FindBoundCamera(pNode))
+        return pCamera;
     for (Canvas::XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
     {
         if (Canvas::XCamera *pCamera = FindCamera(pChild))
@@ -586,9 +595,20 @@ class CApp
         }
 
         // -----------------------------------------------------------------
-        // Camera selection: the instance's first camera
+        // Camera selection: the camera on the instance's node for the
+        // imported scene's camera node, found by name, or else the
+        // instance's first camera
         // -----------------------------------------------------------------
-        Canvas::XCamera *pSelectedCamera = FindCamera(pInstance->GetRootNode());
+        Canvas::XCamera *pSelectedCamera = nullptr;
+        if (imported.ActiveCameraNodeIndex >= 0)
+        {
+            const std::string &cameraNodeName =
+                imported.Nodes[static_cast<size_t>(imported.ActiveCameraNodeIndex)].Name;
+            if (!cameraNodeName.empty())
+                pSelectedCamera = FindBoundCamera(pInstance->FindNode(cameraNodeName.c_str()));
+        }
+        if (!pSelectedCamera)
+            pSelectedCamera = FindCamera(pInstance->GetRootNode());
 
         if (pSelectedCamera)
         {

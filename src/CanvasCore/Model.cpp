@@ -572,17 +572,6 @@ GEMMETHODIMP CModelBuilder::AddAnimationClip(_In_ const AnimationClipDesc *pDesc
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CModelBuilder::SetActiveCamera(uint32_t cameraIndex)
-{
-    CANVAS_REQUIRE_BUILDING();
-    if (cameraIndex != InvalidIndex && cameraIndex >= m_Content.Cameras.size())
-        return Gem::Result::OutOfRange;
-
-    m_Content.ActiveCameraIndex = cameraIndex;
-    return Gem::Result::Success;
-}
-
-//------------------------------------------------------------------------------------------------
 Gem::Result CModelBuilder::ValidateAnimationTargets() const
 {
     for (size_t i = 0; i < m_Content.AnimTargets.size(); ++i)

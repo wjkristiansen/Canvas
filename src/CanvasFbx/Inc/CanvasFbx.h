@@ -271,7 +271,7 @@ struct ImportedScene
     std::vector<ImportedAnimationClip>  AnimationClips;     // one per action; stacks named "Object|Action" merge by Action
     std::vector<ImportDiag>             Diagnostics;
     Math::AABB                          SceneBounds;    // world-space bounds of all mesh instances at rest
-    int32_t                             ActiveCameraNodeIndex = -1;
+    int32_t                             ActiveCameraNodeIndex = -1;   // node of the first camera imported; -1 when there is none
 
     bool HasMeshes()     const { return !Meshes.empty(); }
     bool HasLights()     const { return !Lights.empty(); }

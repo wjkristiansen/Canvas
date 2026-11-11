@@ -1589,7 +1589,6 @@ TEST(CanvasInterfacesTest, ModelResourceLibrary)
     EXPECT_TRUE(pModel->GetMaterial(0) == pMaterial.Get());
     EXPECT_EQ(0u, pModel->GetTextureCount());
     EXPECT_EQ(0u, pModel->GetCameraCount());
-    EXPECT_EQ(InvalidIndex, pModel->GetActiveCameraIndex());
     EXPECT_EQ(0u, pModel->GetSkeletonCount());
     EXPECT_EQ(0u, pModel->GetAnimationClipCount());
 
@@ -1624,7 +1623,6 @@ TEST(CanvasInterfacesTest, ModelBuilderValidatesIndices)
     Canvas::ModelLightDesc light{};
     light.NodeIndex = 5;
     EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->AddLight(&light, nullptr));
-    EXPECT_EQ(Gem::Result::OutOfRange, pBuilder->SetActiveCamera(0));
 
     // Bones are listed parents first.
     Canvas::ModelBoneDesc bones[2] = {};
@@ -1842,7 +1840,7 @@ TEST(CanvasInterfacesTest, ModelInstantiateCopiesTransforms)
     EXPECT_TRUE(AlmostEqual(pNode->GetLocalScale(), transform.Scale));
 }
 
-TEST(CanvasInterfacesTest, ModelActiveCameraInstantiation)
+TEST(CanvasInterfacesTest, ModelCameraInstantiation)
 {
     using namespace Canvas::Math;
 
@@ -1862,12 +1860,10 @@ TEST(CanvasInterfacesTest, ModelActiveCameraInstantiation)
     camera.Params.FarClip   = 500.0f;
     uint32_t cameraIndex = InvalidIndex;
     EXPECT_TRUE(Succeeded(pBuilder->AddCamera(&camera, &cameraIndex)));
-    EXPECT_TRUE(Succeeded(pBuilder->SetActiveCamera(cameraIndex)));
 
     auto pModel = BuildModel(pBuilder);
     ASSERT_NE(pModel.Get(), nullptr);
     EXPECT_EQ(1u, pModel->GetCameraCount());
-    EXPECT_EQ(cameraIndex, pModel->GetActiveCameraIndex());
 
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "TestWorld")));
