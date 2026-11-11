@@ -67,6 +67,14 @@ XSceneNode *GetPrevChild(XSceneNode *pCurrent);
 
 Each returns a weak pointer to one of this node's children, in order: the first child, or the child after or before `pCurrent`. Each returns `nullptr` when there is no such child, or when `pCurrent` is not one of this node's children.
 
+### FindChild
+
+```cpp
+XSceneNode *FindChild(const char *name);
+```
+
+Returns a weak pointer to the first of this node's children whose [name](../README.md#worlds-and-world-objects) is `name`, compared exactly, or `nullptr` when there is none or `name` is `nullptr`. Only direct children are searched.
+
 ## Bound Elements
 
 ### BindElement

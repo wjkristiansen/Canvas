@@ -117,6 +117,7 @@ public: // XSceneNode methods
     GEMMETHOD_(XSceneNode *, GetFirstChild)() final;
     GEMMETHOD_(XSceneNode *, GetNextChild)(_In_ XSceneNode* pCurrent) final;
     GEMMETHOD_(XSceneNode *, GetPrevChild)(_In_ XSceneNode* pCurrent) final;
+    GEMMETHOD_(XSceneNode *, FindChild)(_In_opt_z_ const char *name) final;
 
     GEMMETHOD_(uint32_t, GetBoundElementCount)() final { return static_cast<uint32_t>(m_Elements.size()); }
     GEMMETHOD_(XSceneElement *, GetBoundElement)(uint32_t index) final { return m_Elements[index].Get(); }

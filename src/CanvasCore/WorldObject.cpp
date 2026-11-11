@@ -99,6 +99,35 @@ GEMMETHODIMP CWorldObject::SetRootNode(XSceneNode *pNode)
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(XSceneNode *) CWorldObject::FindNode(const char *name)
+{
+    if (!name || !m_pRootNode)
+        return nullptr;
+
+    // Pre-order over the object's own nodes: a node whose world object is another one is the
+    // root node of that world object, and its subtree is left out
+    std::vector<XSceneNode *> stack{ m_pRootNode.Get() };
+    while (!stack.empty())
+    {
+        XSceneNode *pNode = stack.back();
+        stack.pop_back();
+        const char *nodeName = pNode->GetName();
+        if (nodeName && std::strcmp(nodeName, name) == 0)
+            return pNode;
+
+        // Children are pushed last to first, so they are visited first to last
+        const size_t first = stack.size();
+        for (XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+        {
+            if (!static_cast<CSceneNode *>(pChild)->GetRootedObject())
+                stack.push_back(pChild);
+        }
+        std::reverse(stack.begin() + first, stack.end());
+    }
+    return nullptr;
+}
+
+//------------------------------------------------------------------------------------------------
 Gem::Result CWorldObject::Update(float dtime)
 {
     return m_pRootNode ? m_pRootNode->UpdateObjectNodes(dtime) : Gem::Result::Success;
