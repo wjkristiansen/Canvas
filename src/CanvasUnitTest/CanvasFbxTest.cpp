@@ -384,8 +384,10 @@ struct ImportedFixture
         ASSERT_TRUE(Succeeded(Fbx::BuildModel(pCanvas, pDevice, Scene, Fbx::BuildModelOptions{}, &pModel)));
         Gem::TGemPtr<XWorld> pWorld;
         ASSERT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld, "BuiltModelWorld")));
-        ModelInstantiateResult result{};
-        ASSERT_TRUE(Succeeded(pModel->Instantiate(pWorld->GetRootNode(), &result)));
+        Gem::TGemPtr<XWorldObject> pInstance;
+        ASSERT_TRUE(Succeeded(pCanvas->CreateWorldObject(pModel, &pInstance)));
+        ASSERT_TRUE(Succeeded(pWorld->AddWorldObject(pInstance)));
+        ASSERT_TRUE(Succeeded(pWorld->PlaceObject(pInstance, pWorld->GetRootNode(), false)));
 
         std::unique_ptr<ufbx_scene, decltype(&ufbx_free_scene)> posed(nullptr, &ufbx_free_scene);
         if (!clipName.empty())
@@ -397,17 +399,17 @@ struct ImportedFixture
             ASSERT_NE(nullptr, pStack) << "missing stack for clip " << clipName;
             const float time = ClipKeyTime(*itClip, true);
 
-            ASSERT_NE(nullptr, result.pAnimationController);
+            ASSERT_NE(nullptr, pInstance->GetRootNode()->GetAnimationController());
             if (!priorClipName.empty())
             {
                 const auto itPrior = std::find_if(Scene.AnimationClips.begin(), Scene.AnimationClips.end(),
                     [priorClipName](const Fbx::ImportedAnimationClip &c) { return c.Name == priorClipName; });
                 ASSERT_NE(Scene.AnimationClips.end(), itPrior) << "missing clip " << priorClipName;
-                ASSERT_TRUE(Succeeded(result.pAnimationController->PlayByName(std::string(priorClipName).c_str(), 0.0f)));
-                ASSERT_TRUE(Succeeded(result.pInstanceRoot->Update(ClipKeyTime(*itPrior, true))));
+                ASSERT_TRUE(Succeeded(pInstance->GetRootNode()->GetAnimationController()->PlayByName(std::string(priorClipName).c_str(), 0.0f)));
+                ASSERT_TRUE(Succeeded(pWorld->Update(ClipKeyTime(*itPrior, true))));
             }
-            ASSERT_TRUE(Succeeded(result.pAnimationController->PlayByName(std::string(clipName).c_str(), 0.0f)));
-            ASSERT_TRUE(Succeeded(result.pInstanceRoot->Update(time)));
+            ASSERT_TRUE(Succeeded(pInstance->GetRootNode()->GetAnimationController()->PlayByName(std::string(clipName).c_str(), 0.0f)));
+            ASSERT_TRUE(Succeeded(pWorld->Update(time)));
 
             posed.reset(ufbx_evaluate_scene(pRef, pStack->anim, pStack->time_begin + time, nullptr, nullptr));
             ASSERT_NE(nullptr, posed);
@@ -418,7 +420,7 @@ struct ImportedFixture
         // The instance's scene nodes by name, and its skeleton instances.
         std::unordered_map<std::string, XSceneNode *> sceneNodes;
         std::vector<XSkeletonInstance *> skeletons;
-        std::vector<XSceneNode *> stack{ result.pInstanceRoot };
+        std::vector<XSceneNode *> stack{ pInstance->GetRootNode() };
         while (!stack.empty())
         {
             XSceneNode *pNode = stack.back();

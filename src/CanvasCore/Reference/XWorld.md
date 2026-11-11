@@ -24,19 +24,20 @@ Returns a weak pointer to the graphics device the world was created with.
 
 ## World Objects
 
-### CreateWorldObject
+### AddWorldObject
 
 ```cpp
-Gem::Result CreateWorldObject(XSceneNode *pAnchorNode, XWorldObject **ppObject, const char *name = nullptr);
+Gem::Result AddWorldObject(XWorldObject *pObject);
 ```
 
-Creates a world object anchored at `pAnchorNode`, and holds it. A node in this world's scene graph gives a world object in the scene graph, any other node gives a [detached](../README.md#worlds-and-world-objects) world object, and `nullptr` gives a world object with no anchor node. The world object starts active. `name` is its [name](../README.md#worlds-and-world-objects), for logs and debugging. `*ppObject` receives the world object.
+Adds `pObject`, which [`XCanvas::CreateWorldObject`](XCanvas.md#createworldobject) created or a world released, to this world, and holds it. The world object starts active. Its place in the scene graph is unchanged: a world object that has no root node, or whose root node is not in this world's scene graph, is not [placed](../README.md#worlds-and-world-objects).
 
-| Result        | When                                                                  |
-|---------------|-----------------------------------------------------------------------|
-| `BadPointer`  | `ppObject` is `nullptr`                                               |
-| `InvalidArg`  | `pAnchorNode` is already an anchor node, or is this world's root node |
-| `OutOfMemory` | The world object cannot be created                                    |
+| Result          | When                                                                                                   |
+|-----------------|--------------------------------------------------------------------------------------------------------|
+| `BadPointer`    | `pObject` is `nullptr`                                                                                 |
+| `AlreadyExists` | `pObject` is in a world, this one or another                                                           |
+| `InvalidArg`    | `pObject` was created by another canvas, is an instance of a model whose GPU resources are on another device than this world's, or has this world's root node as its root node |
+| `OutOfMemory`   | The world object cannot be added                                                                       |
 
 ### ActivateObject, DeactivateObject
 
@@ -45,24 +46,24 @@ Gem::Result ActivateObject(XWorldObject *pObject);
 Gem::Result DeactivateObject(XWorldObject *pObject);
 ```
 
-Make `pObject` active or inactive. `Update` updates the active world objects and leaves the inactive ones as they are. Activating an active world object, or deactivating an inactive one, changes nothing. A change made during `Update` takes effect after it.
+Make `pObject` active or inactive. `Update` updates the active world objects and leaves the inactive ones as they are. Activating an active world object, or deactivating an inactive one, changes nothing. A change made from a [callback](WorldListener.md) applies to the `Update` that delivers the callback, which updates its world objects after it delivers its callbacks.
 
-| Result     | When                                             |
-|------------|--------------------------------------------------|
+| Result     | When                                               |
+|------------|----------------------------------------------------|
 | `NotFound` | `pObject` is not one of this world's world objects |
 
-### AttachObject
+### PlaceObject
 
 ```cpp
-Gem::Result AttachObject(XWorldObject *pObject, XSceneNode *pParent, bool keepWorldTransform);
+Gem::Result PlaceObject(XWorldObject *pObject, XSceneNode *pParent, bool keepWorldTransform);
 ```
 
-Attaches `pObject` by moving its anchor node, with the anchor node's subtree, to be the last child of `pParent`, in one step. When `keepWorldTransform` is true, the anchor node's local transform changes so that its global matrix stays the same, except for any shear, which a `Transform` cannot hold; otherwise its local transform stays the same. The world objects attached to `pObject` move with it. Activation is unchanged.
+Places `pObject` by [attaching](../README.md#worlds-and-world-objects) it to `pParent`: its root node, with the root node's subtree, becomes the last child of `pParent`, in one step. When `keepWorldTransform` is true, the root node's local transform changes so that its global matrix stays the same, except for any shear, which a `Transform` cannot hold; otherwise its local transform stays the same. The world objects attached to `pObject`'s nodes move with it. Activation is unchanged.
 
-| Result       | When                                                                                         |
-|--------------|----------------------------------------------------------------------------------------------|
-| `NotFound`   | `pObject` is not one of this world's world objects                                           |
-| `InvalidArg` | `pObject` has no anchor node, `pParent` is `nullptr`, or `pParent` is in the anchor node's subtree |
+| Result       | When                                                                                             |
+|--------------|--------------------------------------------------------------------------------------------------|
+| `NotFound`   | `pObject` is not one of this world's world objects                                               |
+| `InvalidArg` | `pObject` has no root node, `pParent` is `nullptr`, or `pParent` is in the root node's subtree   |
 
 ### DetachObject
 
@@ -70,22 +71,22 @@ Attaches `pObject` by moving its anchor node, with the anchor node's subtree, to
 Gem::Result DetachObject(XWorldObject *pObject);
 ```
 
-Detaches `pObject` by taking its anchor node, with the anchor node's subtree, out of its parent, keeping its local transform. The world objects attached to `pObject` are detached with it. `pObject` stays in this world, and its activation is unchanged. Detaching a detached world object changes nothing.
+Detaches `pObject` by taking its root node, with the root node's subtree, out of its parent, keeping its local transform. The world objects attached to `pObject`'s nodes are detached with it. `pObject` stays in this world, and its activation is unchanged. Detaching a world object that is not placed changes nothing.
 
-| Result     | When                                             |
-|------------|--------------------------------------------------|
+| Result     | When                                               |
+|------------|----------------------------------------------------|
 | `NotFound` | `pObject` is not one of this world's world objects |
 
-### RemoveObject
+### ReleaseWorldObject
 
 ```cpp
-Gem::Result RemoveObject(XWorldObject *pObject);
+Gem::Result ReleaseWorldObject(XWorldObject *pObject);
 ```
 
-Removes `pObject` from this world, taking its anchor node's subtree out of the graph. Each world object attached to `pObject` is [orphaned](../README.md#worlds-and-world-objects): its anchor node is attached to the node the removal detached from, keeping its world transform, and its listeners receive `OnObjectOrphaned` at the next `Update`. The world releases `pObject` and its unique name. A world object that the app still holds keeps its anchor node, and its `GetWorld` returns `nullptr`.
+Takes `pObject` out of this world. Its root node's subtree leaves the graph, and each world object attached to one of `pObject`'s nodes is [orphaned](../README.md#worlds-and-world-objects): it is attached to the node the release detached from, keeping its world transform, and its listeners receive `OnObjectOrphaned` at the next `Update`. The world releases `pObject`'s unique name, then `pObject` itself, which ends it unless the app holds it. A world object the app still holds keeps its root node, its `GetWorld` returns `nullptr`, and it can be added to a world again.
 
-| Result     | When                                             |
-|------------|--------------------------------------------------|
+| Result     | When                                               |
+|------------|----------------------------------------------------|
 | `NotFound` | `pObject` is not one of this world's world objects |
 
 ### SetUniqueName
@@ -177,7 +178,7 @@ Gem::Result Update(float dtime);
 Advances the world by `dtime` seconds:
 
 1. Delivers the callbacks for the events since the previous `Update` to the world's [listeners](WorldListener.md), checking the active camera before the callbacks and after each event's callbacks.
-2. Updates the active world objects, in the scene graph or detached: the scene graph from the root node, then the nodes of each active detached world object.
+2. Updates each active world object, placed or not, by updating each of its nodes: the node's [animation controller](XAnimationController.md), if it holds one, then the elements bound to the node, such as its skeleton instances, which move their sockets. The elements bound to nodes that belong to no world object are not updated.
 3. Updates the world's UI graphs.
 
 Returns the first failure, and updates nothing after it.

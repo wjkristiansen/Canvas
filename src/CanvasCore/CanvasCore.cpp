@@ -161,6 +161,43 @@ GEMMETHODIMP CCanvas::CreateSceneNode(XSceneNode **ppNode, const char * name)
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP CCanvas::CreateWorldObject(XModel *pModel, XWorldObject **ppObject, const char * name)
+{
+    CFunctionSentinel sentinel("XCanvas::CreateWorldObject", m_pLogger);
+
+    if (!ppObject)
+        return Gem::Result::BadPointer;
+    *ppObject = nullptr;
+
+    if (pModel && pModel->GetCanvas() != this)
+    {
+        Canvas::LogError(m_pLogger, "XCanvas::CreateWorldObject: the model was created by another canvas");
+        return Gem::Result::InvalidArg;
+    }
+
+    // A world object is named after the model it instantiates unless a name is given
+    if (!name && pModel)
+        name = pModel->GetName();
+
+    Gem::TGemPtr<CWorldObject> pObject;
+    Gem::Result result = TCanvasElement<XWorldObject>::CreateAndRegister(&pObject, this, name);
+    if (Gem::Failed(result))
+        return result;
+
+    if (pModel)
+    {
+        Gem::TGemPtr<XSceneNode> pInstanceRoot;
+        result = static_cast<CModel *>(pModel)->CreateInstance(&pInstanceRoot);
+        if (Gem::Failed(result))
+            return result;
+        pObject->SetInstance(static_cast<CSceneNode *>(pInstanceRoot.Get()), pModel->GetDevice());
+    }
+
+    *ppObject = pObject.Detach();
+    return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CCanvas::CreateCamera(XCamera **ppCamera, const char * name)
 {
     CFunctionSentinel sentinel("XCanvas::CreateCamera", m_pLogger);

@@ -187,7 +187,7 @@ public:
     void        Uninitialize() {}
 
     //--------------------------------------------------------------------------------------------
-    // Called once after construction, before the controller is attached to the instance root.
+    // Called once after construction, before the instance root holds the controller.
     //
     // pModel     : model that owns the clip data; held by a strong reference so the controller
     //              can keep the shared clips alive for its own lifetime
@@ -219,8 +219,6 @@ public:
         if (!m_pClipDefs || index >= m_pClipDefs->size()) return nullptr;
         return (*m_pClipDefs)[index].Name.c_str();
     }
-
-    GEMMETHOD_(bool, ValidateForNode)(_In_ XSceneNode *pRoot) final;
 
     GEMMETHOD_(uint32_t, FindClip)(const char * name) final;
 

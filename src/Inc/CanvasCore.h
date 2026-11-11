@@ -223,6 +223,7 @@ XCanvas : public Gem::XGeneric
 
     GEMMETHOD(CreateWorld)(XGfxDevice *pDevice, XWorld **ppWorld, const char * name = nullptr) = 0;
     GEMMETHOD(CreateSceneNode)(XSceneNode **ppNode, const char * name = nullptr) = 0;
+    GEMMETHOD(CreateWorldObject)(_In_opt_ XModel *pModel, XWorldObject **ppObject, const char * name = nullptr) = 0;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, const char * name = nullptr) = 0;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, const char * name = nullptr) = 0;
     GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, const char * name = nullptr) = 0;
@@ -343,8 +344,8 @@ constexpr uint32_t AnimationValueComponents(AnimationValueType type) noexcept
 }
 
 // What an animation target is, and the value type of every type but Value.  A scene node
-// target is the scene node that Instantiate creates for model node Index; a bone target is
-// bone Index of the skeleton instance for skeleton SkeletonIndex.
+// target is the scene node that XCanvas::CreateWorldObject creates for model node Index; a
+// bone target is bone Index of the skeleton instance for skeleton SkeletonIndex.
 enum class AnimationTargetType : uint32_t
 {
     SceneNodeTranslation = 0,   // Float3: the local translation, a point (W = 1)
@@ -410,20 +411,20 @@ struct AnimationClipDesc
 static constexpr uint32_t InvalidClipIndex = UINT32_MAX;
 
 //------------------------------------------------------------------------------------------------
-// XAnimationController - a behavior that animates the content of a scene-graph subtree from
-// baked animation clips.  It is NOT a spatial element: it does not describe a node's presence
-// in space (no bounds, no attachment).  Instead a scene node holds a typed reference to
-// one via XSceneNode::SetAnimationController, and the node's Update(dtime) ticks the
-// controller before its spatial elements and children, so animated values are in place before
-// they propagate down the hierarchy.
+// XAnimationController - a behavior that animates the nodes and skeleton instances of a model
+// instance from baked animation clips.  It is not a spatial element: it has no bounds and is
+// bound to no node.  The instance root node holds it, and XWorld::Update ticks it, while
+// updating the world object the node belongs to, before the elements bound to that node, so
+// animated values are in place before they are observed.
 //
-// One controller is created per XModel::Instantiate call and holds its own playback state
+// One controller is created per instance of a model and holds its own playback state
 // (time, active clip, blend), while the heavy keyframe data is shared on the XModel.  This
 // makes it cheap to have many instances of one model animating independently - e.g. a
 // hillside of windmills or a hallway of zombies each at a different point in the same clip.
 //
-// Supports immediate clip switching and cross-fade blending.  ResetToBindPose restores the
-// subtree to its instantiation-time pose (useful for editing tools and debugging).
+// Supports immediate clip switching and cross-fade blending.  ResetToBindPose restores
+// everything it animates to its value at instantiation (useful for editing tools and
+// debugging).
 //------------------------------------------------------------------------------------------------
 struct
 XAnimationController : public XCanvasElement
@@ -431,13 +432,8 @@ XAnimationController : public XCanvasElement
     GEM_INTERFACE_DECLARE(XAnimationController, 0xA7C3F2B841DE9506);
 
     // Advance playback by dtime seconds and write the resulting values onto their targets.
-    // Normally called for you by the owning node's Update(); call directly only if you are
-    // ticking a controller outside the scene-graph cascade.
+    // XWorld::Update calls it for each node of an active world object that holds a controller.
     GEMMETHOD(Update)(float dtime) = 0;
-
-    // Returns true if everything this controller drives is in pRoot's subtree (pRoot included).
-    // Called by XSceneNode::SetAnimationController before accepting the assignment.
-    GEMMETHOD_(bool, ValidateForNode)(_In_ XSceneNode *pRoot) = 0;
 
     // Query clips available from the model template (indices 0..GetClipCount()-1).
     // FindClip returns InvalidClipIndex when no clip matches the name.
@@ -551,19 +547,10 @@ XSceneNode : public XCanvasElement
     // Element iteration (bound elements on this node)
     GEMMETHOD_(uint32_t, GetBoundElementCount)() = 0;
     GEMMETHOD_(XSceneElement *, GetBoundElement)(uint32_t index) = 0;
-
-    // Assign or clear (nullptr) the animation controller for this subtree.
-    // Everything the controller drives must be in this node's subtree; SetAnimationController
-    // calls XAnimationController::ValidateForNode and returns InvalidArg if it is not.
-    GEMMETHOD(SetAnimationController)(_In_opt_ XAnimationController *pController) = 0;
-
-    // Returns the animation controller currently driving this node's subtree, or null if none.
     GEMMETHOD_(XAnimationController *, GetAnimationController)() = 0;
 
-    GEMMETHOD(Update)(float dtime) = 0;
-
     // Returns a weak pointer to the world object this node belongs to, or nullptr if it belongs
-    // to none.  An anchor node belongs to the world object anchored at it, and every other node
+    // to none.  A world object's root node belongs to that world object, and every other node
     // inherits the world object of its parent.
     GEMMETHOD_(XWorldObject *, GetWorldObject)() = 0;
 };
@@ -728,8 +715,8 @@ XLight : public XSceneElement
 // does nothing by default.
 struct WorldListener
 {
-    // pObject was orphaned: the world object it was attached to was removed, and its anchor
-    // node was attached to the node the removal detached from, keeping its world transform.
+    // pObject was orphaned: the world object whose node it was attached to was released, and it
+    // was attached to the node the release detached from, keeping its world transform.
     // pObject is still in pWorld.
     virtual void OnObjectOrphaned(XWorld * /*pWorld*/, XWorldObject * /*pObject*/) {}
 
@@ -749,12 +736,7 @@ XWorld : public XCanvasElement
     GEMMETHOD_(XGfxDevice *, GetDevice)() = 0;
     GEMMETHOD_(XSceneNode *, GetRootNode)() = 0;
 
-    // Creates a world object anchored at pAnchorNode, and holds it.  An anchor node in this
-    // world's scene graph gives a world object in the scene graph; any other gives a detached
-    // world object; nullptr gives a world object with no anchor node.  name is an
-    // optional label for logs and debugging.  Returns Gem::Result::InvalidArg when pAnchorNode
-    // is already an anchor node or is this world's root node.
-    GEMMETHOD(CreateWorldObject)(_In_opt_ XSceneNode *pAnchorNode, XWorldObject **ppObject, const char *name = nullptr) = 0;
+    GEMMETHOD(AddWorldObject)(_In_ XWorldObject *pObject) = 0;
 
     // A world object is active or inactive, and starts active.  Update updates the active world
     // objects and leaves the inactive ones as they are.  Activating an active world object, or
@@ -763,24 +745,25 @@ XWorld : public XCanvasElement
     GEMMETHOD(ActivateObject)(_In_ XWorldObject *pObject) = 0;
     GEMMETHOD(DeactivateObject)(_In_ XWorldObject *pObject) = 0;
 
-    // Attaches pObject by moving its anchor node, with the anchor node's subtree, to be the last
-    // child of pParent, keeping either its local transform or its world transform.  A world
-    // object in the scene graph moves in one step.  Returns Gem::Result::InvalidArg when pObject
-    // has no anchor node, pParent is nullptr, or pParent is in the anchor node's subtree, and
-    // Gem::Result::NotFound when pObject is not one of this world's world objects.
-    GEMMETHOD(AttachObject)(_In_ XWorldObject *pObject, _In_ XSceneNode *pParent, bool keepWorldTransform) = 0;
+    // Places pObject by attaching it to pParent: its root node, with the root node's subtree,
+    // becomes the last child of pParent, keeping either its local transform or its world
+    // transform.  A world object in the scene graph moves in one step.  Returns
+    // Gem::Result::InvalidArg when pObject has no root node, pParent is nullptr, pParent was
+    // created by another canvas, or pParent is in the root node's subtree, and Gem::Result::NotFound when pObject is not one of this world's
+    // world objects.
+    GEMMETHOD(PlaceObject)(_In_ XWorldObject *pObject, _In_ XSceneNode *pParent, bool keepWorldTransform) = 0;
 
-    // Detaches pObject by taking its anchor node, with the anchor node's subtree, out of its
-    // parent, keeping its local transform.  The world objects attached to it are detached with
-    // it, and its activation is unchanged.  Returns Gem::Result::NotFound when pObject is not
-    // one of this world's world objects.
+    // Detaches pObject from the node it is attached to by taking its root node, with the root
+    // node's subtree, out of its parent, keeping its local transform.  The world objects attached
+    // to its nodes are detached with it, and its activation is unchanged.  Returns
+    // Gem::Result::NotFound when pObject is not one of this world's world objects.
     GEMMETHOD(DetachObject)(_In_ XWorldObject *pObject) = 0;
 
-    // Removes pObject from this world, orphaning the world objects attached to it (see
-    // WorldListener::OnObjectOrphaned).  The world releases each world object it removes;
-    // one the app still holds keeps its anchor node and returns nullptr from GetWorld.  Returns
-    // Gem::Result::NotFound when pObject is not one of this world's world objects.
-    GEMMETHOD(RemoveObject)(_In_ XWorldObject *pObject) = 0;
+    // Takes pObject out of this world: detaches it, orphans the world objects attached to its
+    // nodes (see WorldListener::OnObjectOrphaned), and releases it.  A world object the app still
+    // holds keeps its root node, returns nullptr from GetWorld, and can be added to a world again.
+    // Returns Gem::Result::NotFound when pObject is not one of this world's world objects.
+    GEMMETHOD(ReleaseWorldObject)(_In_ XWorldObject *pObject) = 0;
 
     GEMMETHOD(SetUniqueName)(_In_ XWorldObject *pObject, _In_opt_z_ const char *uniqueName) = 0;
     GEMMETHOD_(XWorldObject *, FindObject)(_In_opt_z_ const char *uniqueName) = 0;
@@ -820,9 +803,8 @@ XWorld : public XCanvasElement
     GEMMETHOD(RemoveUIGraph)(XUIGraph *pGraph) = 0;
 
     // Delivers the callbacks for the events since the previous Update, then updates the active
-    // world objects, in the scene graph or detached, by updating the scene graph and the nodes of
-    // each active detached world object, then updates the world's UI graphs.  Returns
-    // Gem::Result::Unavailable when called from a callback.
+    // world objects, placed or not, then updates the world's UI graphs.
+    // Returns Gem::Result::Unavailable when called from a callback.
     GEMMETHOD(Update)(float dtime) = 0;
     // Submits the world's scene content, then its UI graphs.
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
@@ -839,25 +821,26 @@ XWorld : public XCanvasElement
 };
 
 //------------------------------------------------------------------------------------------------
-// XWorldObject - the identity and state of what a set of scene nodes represents, such as
-// an instance of a model.  A world object is anchored at a scene node, its anchor node,
-// or has none, and its nodes are the nodes that belong to it (see
-// XSceneNode::GetWorldObject).  A world object whose anchor node is not in its world's
-// scene graph, or that has no anchor node, is detached: it stays in its world and is updated,
-// and its world does not draw its nodes.  The world holds each of its world objects strongly, and a
-// world object holds its anchor node strongly; the anchor node refers back to its world object
-// weakly.  Created by XWorld::CreateWorldObject.
+// XWorldObject - the identity and state of something in a world, such as an instance of a
+// model.  A world object has a root node, the top of the scene nodes that belong to it (see
+// XSceneNode::GetWorldObject), or has none.  A world object in a world is placed when its root
+// node is in the world's scene graph, and is not placed otherwise.  The world updates each of
+// its world objects while it is active, placed or not, and draws no nodes of one that is not
+// placed.  A world holds each of its world objects strongly, and a
+// world object holds its root node strongly; the root node refers back to its world object
+// weakly.  Created by XCanvas::CreateWorldObject in no world, and added to one by
+// XWorld::AddWorldObject.
 struct
 XWorldObject : public XCanvasElement
 {
     GEM_INTERFACE_DECLARE(XWorldObject, 0xD0695B47395323A7);
 
-    // Returns a weak pointer to the world the world object is in, or nullptr once that world
-    // is released.
+    // Returns a weak pointer to the world the world object is in, or nullptr when it is in none.
     GEMMETHOD_(XWorld *, GetWorld)() = 0;
 
-    // Returns a weak pointer to the world object's anchor node, or nullptr when it has none.
-    GEMMETHOD_(XSceneNode *, GetAnchorNode)() = 0;
+    // Returns a weak pointer to the world object's root node, or nullptr when it has none.
+    GEMMETHOD_(XSceneNode *, GetRootNode)() = 0;
+    GEMMETHOD(SetRootNode)(_In_opt_ XSceneNode *pNode) = 0;
 
     GEMMETHOD_(const char *, GetUniqueName)() = 0;
 };
@@ -873,8 +856,9 @@ XWorldObject : public XCanvasElement
 //
 // Each socket is a scene node, a child of the skeleton instance's node, with a local
 // transform relative to a bone; the skeleton instance composes it with the bone's matrix to
-// set the socket node's transform.  Content under a socket follows the bone.  Update(dtime), called by the node's own Update before its
-// children update, recomputes the bone matrices and socket transforms when the pose changed.
+// set the socket node's transform.  Content under a socket follows the bone.  Update(dtime),
+// which XWorld::Update calls while updating the world object the skeleton instance's node
+// belongs to, recomputes the bone matrices and socket transforms when the pose changed.
 // A socket node follows its bone while it is a child of the skeleton instance's node; a
 // socket node removed from that node keeps its last transform.
 //------------------------------------------------------------------------------------------------
@@ -938,23 +922,14 @@ XMeshInstance : public XSceneElement
 };
 
 //------------------------------------------------------------------------------------------------
-// Result of model instantiation - returned by XModel::Instantiate()
-struct ModelInstantiateResult
-{
-    XSceneNode      *pInstanceRoot        = nullptr;   // Synthetic root of the instance's scene nodes
-    XCamera              *pActiveCamera        = nullptr;   // The instance's active camera (null if model has none)
-    XAnimationController *pAnimationController = nullptr;   // Null if model has no animation clips
-};
-
-//------------------------------------------------------------------------------------------------
 // XModel - an immutable, instantiable template, produced by XModelBuilder::Build.
 //
 // A model holds tables, indexed from 0: model nodes, the meshes, cameras, and lights
 // attached to them, skeletons, sockets, animation targets, and animation clips.  Model nodes
-// are listed parents first.  Instantiate creates one scene node per model node, under a
-// synthetic instance root, with its elements; one skeleton instance per skeleton; and, when the
-// model has clips, one animation controller.  GPU resources (mesh data, materials, textures)
-// are shared by every instance.
+// are listed parents first.  XCanvas::CreateWorldObject instantiates a model: it creates one
+// scene node per model node, under an instance root, with its elements; one skeleton instance
+// per skeleton; and, when the model has clips, one animation controller.  GPU resources (mesh
+// data, materials, textures) are shared by every instance.
 //------------------------------------------------------------------------------------------------
 struct
 XModel : public XCanvasElement
@@ -986,11 +961,6 @@ XModel : public XCanvasElement
 
     GEMMETHOD_(uint32_t, GetAnimationClipCount)() = 0;
     GEMMETHOD_(const char *, GetAnimationClipName)(uint32_t index) = 0;
-
-    // Creates an instance of the model under pTargetParent.  If pResult is non-null, it
-    // receives the instance root, the instance's active camera, and the XAnimationController
-    // bound to the instance root, which is null when the model has no clips.
-    GEMMETHOD(Instantiate)(XSceneNode *pTargetParent, ModelInstantiateResult *pResult = nullptr) = 0;
 
     // Axis-aligned bounding box of the model's meshes at rest, relative to the instance root.
     GEMMETHOD_(Math::AABB, GetBounds)() = 0;
@@ -1161,7 +1131,7 @@ XModelBuilder : public XCanvasElement
     GEMMETHOD(AddAnimationTarget)(_In_ const AnimationTargetDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
     GEMMETHOD(AddAnimationClip)(_In_ const AnimationClipDesc *pDesc, _Out_opt_ uint32_t *pIndex) = 0;
 
-    // Designates the camera that Instantiate reports as the instance's active camera.
+    // Designates the model's active camera, which XModel::GetActiveCameraIndex returns.
     GEMMETHOD(SetActiveCamera)(uint32_t cameraIndex) = 0;
 
     GEMMETHOD(Build)(_Out_ XModel **ppModel) = 0;
