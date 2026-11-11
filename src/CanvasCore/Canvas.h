@@ -125,7 +125,7 @@ public:
 
     GEMMETHOD(LoadPlugin)(const char * path, XCanvasPlugin **ppPlugin) final;
     GEMMETHOD(CreateWorld)(XGfxDevice *pDevice, XWorld **ppWorld, const char * name = nullptr) final;
-    GEMMETHOD(CreateSceneGraphNode)(XSceneGraphNode **ppNode, const char * name = nullptr) final;
+    GEMMETHOD(CreateSceneNode)(XSceneNode **ppNode, const char * name = nullptr) final;
     GEMMETHOD(CreateCamera)(XCamera **ppCamera, const char * name = nullptr) final;
     GEMMETHOD(CreateLight)(LightType type, XLight **ppLight, const char * name = nullptr) final;
     GEMMETHOD(CreateMeshInstance)(XMeshInstance **ppMeshInstance, const char * name = nullptr) final;

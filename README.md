@@ -31,11 +31,11 @@ Key concepts:
 | Concept                             | Description                                                                                                                                                        |
 |-------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **XCanvas**                         | Root object and factory.  Creates worlds, cameras, lights, meshes, fonts, and UI graphs.                                                                           |
-| **XWorld / XSceneGraphNode**        | A world and its scene graph, a hierarchical transform graph.  Nodes carry local rotation (quaternion), translation, and scale; global transforms are lazily computed with dirty-flag propagation. |
-| **XWorldObject**                    | The identity and state of what a set of scene graph nodes represents, such as a model instance.  Anchored at a scene graph node.                                   |
-| **XCamera**                         | Perspective camera (FOV, near/far clip, aspect ratio, exposure compensation).  Attaches to a scene-graph node for positioning.                                     |
+| **XWorld / XSceneNode**             | A world and its scene graph, a hierarchical transform graph.  Nodes carry local rotation (quaternion), translation, and scale; global transforms are lazily computed with dirty-flag propagation. |
+| **XWorldObject**                    | The identity and state of what a set of scene nodes represents, such as a model instance.  Anchored at a scene node.                                               |
+| **XCamera**                         | Perspective camera (FOV, near/far clip, aspect ratio, exposure compensation).  Attaches to a scene node for positioning.                                           |
 | **XLight**                          | Point, directional, spot, ambient, and area light types with attenuation and spot-angle parameters.                                                                |
-| **XMeshInstance**                   | Binds GPU mesh data to a scene-graph node for rendering.                                                                                                           |
+| **XMeshInstance**                   | Binds GPU mesh data to a scene node for rendering.                                                                                                                 |
 | **XUIGraph / XUIGraphNode**         | 2-D UI overlay graph with position inheritance and dirty-tracked update.                                                                                           |
 | **XUITextElement / XUIRectElement** | Text (SDF-rendered) and filled-rectangle HUD primitives. Created via `XGfxDevice`.                                                                                 |
 | **XFont**                           | TrueType font resource providing metric access (ascender, descender, units-per-em).                                                                                |
@@ -125,8 +125,8 @@ pCamera->SetFovAngle(static_cast<float>(Canvas::Math::Pi / 4));
 pCamera->SetNearClip(0.1f);
 pCamera->SetFarClip(1000.f);
 
-Gem::TGemPtr<Canvas::XSceneGraphNode> pCameraNode;
-pCanvas->CreateSceneGraphNode(&pCameraNode, "CameraNode");
+Gem::TGemPtr<Canvas::XSceneNode> pCameraNode;
+pCanvas->CreateSceneNode(&pCameraNode, "CameraNode");
 pCameraNode->BindElement(pCamera);
 pCameraNode->SetLocalTranslation({0.f, -5.f, 2.f, 0.f});
 pWorld->GetRootNode()->AddChild(pCameraNode);
@@ -140,8 +140,8 @@ Gem::TGemPtr<Canvas::XMeshInstance> pMeshInstance;
 pCanvas->CreateMeshInstance(&pMeshInstance, "CubeInstance");
 pMeshInstance->SetMeshData(pMeshData);
 
-Gem::TGemPtr<Canvas::XSceneGraphNode> pMeshNode;
-pCanvas->CreateSceneGraphNode(&pMeshNode, "CubeNode");
+Gem::TGemPtr<Canvas::XSceneNode> pMeshNode;
+pCanvas->CreateSceneNode(&pMeshNode, "CubeNode");
 pMeshNode->BindElement(pMeshInstance);
 pWorld->GetRootNode()->AddChild(pMeshNode);
 

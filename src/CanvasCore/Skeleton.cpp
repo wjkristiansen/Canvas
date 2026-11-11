@@ -68,7 +68,7 @@ void CSkeletonInstance::Bind(XModel *pModel, const ModelSkeletonData *pData)
     m_SocketsDirty = true;
 }
 
-void CSkeletonInstance::AddSocket(XSceneGraphNode *pNode, uint32_t boneIndex, const Transform &localTransform)
+void CSkeletonInstance::AddSocket(XSceneNode *pNode, uint32_t boneIndex, const Transform &localTransform)
 {
     Socket socket;
     socket.pNode          = pNode;
@@ -90,12 +90,12 @@ void CSkeletonInstance::RefreshPose()
 GEMMETHODIMP CSkeletonInstance::Update(float /*dtime*/)
 {
     RefreshPose();
-    XSceneGraphNode *pNode = GetAttachedNode();
+    XSceneNode *pNode = GetAttachedNode();
     if (m_SocketsDirty && pNode)
     {
         // Socket pointers are weak: write only the sockets that are still children of this
         // element's node, which keeps them alive.
-        for (XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+        for (XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
         {
             for (const Socket &socket : m_Sockets)
             {

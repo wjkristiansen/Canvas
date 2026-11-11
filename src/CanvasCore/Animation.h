@@ -8,7 +8,7 @@
 //                    share the same clip data.  Each track drives one target, by index.
 //
 // CAnimationController : mutable per-instance evaluator, held by the instance root node so
-//                        CSceneGraphNode::Update(dtime) drives it automatically each frame.
+//                        CSceneNode::Update(dtime) drives it automatically each frame.
 //                        It writes every target's value in the instance: the active clip's
 //                        track for the target, or the target's value at instantiation.
 //
@@ -104,7 +104,7 @@ class CAnimationController :
     //--------------------------------------------------------------------------------------------
     struct BoundTransform
     {
-        XSceneGraphNode*        pNode     = nullptr;
+        XSceneNode*        pNode     = nullptr;
         CSkeletonInstance*      pSkeleton = nullptr;
         uint32_t                Bone      = 0;
 
@@ -202,7 +202,7 @@ public:
         XModel* pModel,
         const std::vector<AnimTarget>& targets,
         const std::vector<CAnimationClip>& clipDefs,
-        const std::vector<XSceneGraphNode*>& nodes,
+        const std::vector<XSceneNode*>& nodes,
         const std::vector<CSkeletonInstance*>& skeletons);
 
     // XAnimationController
@@ -220,7 +220,7 @@ public:
         return (*m_pClipDefs)[index].Name.c_str();
     }
 
-    GEMMETHOD_(bool, ValidateForNode)(_In_ XSceneGraphNode *pRoot) final;
+    GEMMETHOD_(bool, ValidateForNode)(_In_ XSceneNode *pRoot) final;
 
     GEMMETHOD_(uint32_t, FindClip)(const char * name) final;
 

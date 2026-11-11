@@ -17,7 +17,7 @@ class CWorldObject :
     public TCanvasElement<XWorldObject>
 {
     CWorld *m_pWorld = nullptr;                    // Weak pointer; cleared by the world when it is released
-    Gem::TGemPtr<CSceneGraphNode> m_pAnchorNode;   // The anchor node refers back to this object weakly
+    Gem::TGemPtr<CSceneNode> m_pAnchorNode;   // The anchor node refers back to this object weakly
     size_t m_WorldIndex = 0;
     const std::string *m_pUniqueName = nullptr;   // Points at its world's copy, in the world's unique-name map
 
@@ -28,7 +28,7 @@ public:
         GEM_INTERFACE_ENTRY(XWorldObject)
     END_GEM_INTERFACE_MAP()
 
-    CWorldObject(XCanvas *pCanvas, CWorld *pWorld, CSceneGraphNode *pAnchorNode);
+    CWorldObject(XCanvas *pCanvas, CWorld *pWorld, CSceneNode *pAnchorNode);
 
     void Initialize();
     void Uninitialize();
@@ -46,11 +46,11 @@ public:
 
 public: // XWorldObject methods
     GEMMETHOD_(XWorld *, GetWorld)() final;
-    GEMMETHOD_(XSceneGraphNode *, GetAnchorNode)() final { return m_pAnchorNode.Get(); }
+    GEMMETHOD_(XSceneNode *, GetAnchorNode)() final { return m_pAnchorNode.Get(); }
     GEMMETHOD_(const char *, GetUniqueName)() final { return m_pUniqueName ? m_pUniqueName->c_str() : nullptr; }
 
     // The anchor node as its implementation type, or nullptr when there is none.
-    CSceneGraphNode *GetAnchor() const { return m_pAnchorNode.Get(); }
+    CSceneNode *GetAnchor() const { return m_pAnchorNode.Get(); }
 };
 
 }

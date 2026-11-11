@@ -13,7 +13,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CCamera :
-    public TSceneGraphElement<XCamera>
+    public TSceneElement<XCamera>
 {
     float m_NearClip = 0.1f;
     float m_FarClip = 1000.f;
@@ -38,24 +38,24 @@ public:
 
     // Ctor
     CCamera(XCanvas *pCanvas) :
-        TSceneGraphElement<XCamera>(pCanvas)
+        TSceneElement<XCamera>(pCanvas)
     {
     }
 
     Gem::Result Initialize() { return Gem::Result::Success; }
     void Uninitialize() {}
     
-    // XSceneGraphElement methods
+    // XSceneElement methods
     GEMMETHOD(Update)(float /*dtime*/) final 
     { 
         // Frame update logic can go here if needed in the future
         return Gem::Result::Success; 
     }
 
-    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode) final
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneNode *pNode) final
     {
         // Call base class to actually set m_pNode
-        auto hr = TSceneGraphElement<XCamera>::NotifyNodeContextChanged(pNode);
+        auto hr = TSceneElement<XCamera>::NotifyNodeContextChanged(pNode);
         if (Gem::Failed(hr))
             return hr;
         

@@ -214,7 +214,7 @@ void CAnimationController::BuildFromModel(
     XModel* pModel,
     const std::vector<AnimTarget>& targets,
     const std::vector<CAnimationClip>& clipDefs,
-    const std::vector<XSceneGraphNode*>& nodes,
+    const std::vector<XSceneNode*>& nodes,
     const std::vector<CSkeletonInstance*>& skeletons)
 {
     m_pModel    = pModel;       // keep the shared clip data alive for the controller's lifetime
@@ -282,22 +282,22 @@ void CAnimationController::BuildFromModel(
 // XAnimationController interface methods
 //================================================================================================
 
-GEMMETHODIMP_(bool) CAnimationController::ValidateForNode(_In_ XSceneGraphNode *pRoot)
+GEMMETHODIMP_(bool) CAnimationController::ValidateForNode(_In_ XSceneNode *pRoot)
 {
     if (!pRoot) return false;
 
     // Every target must be in pRoot's subtree (pRoot included): a transform's node, or for a
     // bone, its skeleton instance's node.
-    auto IsDescendant = [](XSceneGraphNode* pCandidate, XSceneGraphNode* pAncestor) -> bool
+    auto IsDescendant = [](XSceneNode* pCandidate, XSceneNode* pAncestor) -> bool
     {
-        for (XSceneGraphNode* p = pCandidate; p; p = p->GetParent())
+        for (XSceneNode* p = pCandidate; p; p = p->GetParent())
             if (p == pAncestor) return true;
         return false;
     };
 
     for (const BoundTransform& transform : m_Transforms)
     {
-        XSceneGraphNode* pNode = transform.pSkeleton ? transform.pSkeleton->GetAttachedNode() : transform.pNode;
+        XSceneNode* pNode = transform.pSkeleton ? transform.pSkeleton->GetAttachedNode() : transform.pNode;
         if (!pNode || !IsDescendant(pNode, pRoot))
             return false;
     }
@@ -380,7 +380,7 @@ GEMMETHODIMP CAnimationController::GetTargetValue(uint32_t targetIndex, _Out_ fl
 }
 
 //================================================================================================
-// Update - called each frame by CSceneGraphNode::Update
+// Update - called each frame by CSceneNode::Update
 //================================================================================================
 
 GEMMETHODIMP CAnimationController::Update(float dtime)

@@ -8,7 +8,7 @@
 //      element reports a non-empty GetLocalBounds().
 //   2. Hand that primitive list to BVH for SAH-binned construction.
 //   3. Service per-frame frustum queries, deduplicating primitives back
-//      to their owning XSceneGraphNode* so the caller can filter
+//      to their owning XSceneNode* so the caller can filter
 //      SubmitForRender at node granularity.
 //
 // Today this class does NOT:
@@ -27,7 +27,7 @@ namespace Canvas
 {
 
 struct XCamera;
-struct XSceneGraphNode;
+struct XSceneNode;
 
 class WorldBVH
 {
@@ -42,9 +42,9 @@ public:
     // Primitive criterion: an element contributes a primitive iff
     // element->GetLocalBounds() is non-empty.  Lights, cameras, and
     // other non-renderable elements honor this contract by returning
-    // the empty sentinel (see XSceneGraphElement::GetLocalBounds), so
+    // the empty sentinel (see XSceneElement::GetLocalBounds), so
     // they are skipped automatically with no per-type branching here.
-    void Build(XSceneGraphNode* root);
+    void Build(XSceneNode* root);
 
     // Reset to the pre-Build state.  Frees BVH/primitive memory.
     void Clear();
@@ -58,7 +58,7 @@ public:
     // false -- they will (correctly) bypass the visibility filter until
     // the next Build.  This is the right behavior for a static BVH:
     // a stale BVH never *hides* geometry, it only fails to cull it.
-    bool IsRenderableNode(XSceneGraphNode* node) const;
+    bool IsRenderableNode(XSceneNode* node) const;
 
     // Compute the visible-node set for the given camera's view frustum.
     // The output set is cleared first.  Multiple primitives belonging
@@ -66,16 +66,16 @@ public:
     // granularity at which RenderQueue::SubmitForRender consumes.
     // Empty / unbuilt BVH produces an empty set without error.
     void QueryFrustum(XCamera* camera,
-                      std::unordered_set<XSceneGraphNode*>& outVisibleNodes) const;
+                      std::unordered_set<XSceneNode*>& outVisibleNodes) const;
 
     // Direct frustum query (no camera dereference) for callers that
     // already have a Frustum in hand (tests, future shadow passes).
     void QueryFrustum(const Math::Frustum& frustum,
-                      std::unordered_set<XSceneGraphNode*>& outVisibleNodes) const;
+                      std::unordered_set<XSceneNode*>& outVisibleNodes) const;
 
 private:
     std::vector<BVHPrimitive> m_Primitives;
-    std::unordered_set<XSceneGraphNode*> m_RenderableNodes;
+    std::unordered_set<XSceneNode*> m_RenderableNodes;
     BVH m_BVH;
 
     // Scratch space reused across QueryFrustum calls to avoid per-frame

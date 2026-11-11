@@ -22,7 +22,7 @@
 namespace Canvas
 {
 
-struct XSceneGraphNode;
+struct XSceneNode;
 
 // Reserved for future use.  The current build produces and consumes
 // only None / Static.
@@ -41,7 +41,7 @@ using BVHPrimitiveId = uint32_t;
 constexpr BVHPrimitiveId kInvalidBVHPrimitiveId = UINT32_MAX;
 
 // A BVHPrimitive is the BVH's user-level payload: pairs a world-space
-// AABB with a back-pointer to the XSceneGraphNode that produced it.
+// AABB with a back-pointer to the XSceneNode that produced it.
 // Primitives live in a flat array owned by WorldBVH.
 struct BVHPrimitive
 {
@@ -52,7 +52,7 @@ struct BVHPrimitive
 
     // Weak back-pointer to the producing node.  Lifetime is guaranteed
     // by the scene graph holding a Gem reference to the node.
-    XSceneGraphNode* Node = nullptr;
+    XSceneNode* Node = nullptr;
 
     BVHPrimitiveId Id = kInvalidBVHPrimitiveId;
     BVHPrimitiveFlags Flags = BVHPrimitiveFlags::None;

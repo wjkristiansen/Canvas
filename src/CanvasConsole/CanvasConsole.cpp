@@ -9,7 +9,7 @@ float DoVectorThing(float v[2])
     return v[0] + v[1];
 }
 
-void DumpNode(Canvas::XSceneGraphNode *pNode, const std::string &indent)
+void DumpNode(Canvas::XSceneNode *pNode, const std::string &indent)
 {
     const char * szName = pNode->GetName();
     if (szName)
@@ -22,7 +22,7 @@ void DumpNode(Canvas::XSceneGraphNode *pNode, const std::string &indent)
     }
 
     // Dump children
-    for (Canvas::XSceneGraphNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
+    for (Canvas::XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
     {
         DumpNode(pChild, indent + "  ");
     }
@@ -44,9 +44,9 @@ int main()
     Gem::TGemPtr<Canvas::XWorld> pWorld;
     result = pCanvas->CreateWorld(pDevice, &pWorld);
 
-    Gem::TGemPtr<Canvas::XSceneGraphNode> pRootSceneGraphNode;
-    result = pWorld->QueryInterface(&pRootSceneGraphNode);
+    Gem::TGemPtr<Canvas::XSceneNode> pRootSceneNode;
+    result = pWorld->QueryInterface(&pRootSceneNode);
 
-    DumpNode(pRootSceneGraphNode, "");
+    DumpNode(pRootSceneNode, "");
 }
 

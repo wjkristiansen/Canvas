@@ -11,7 +11,7 @@ namespace Canvas
 
 //------------------------------------------------------------------------------------------------
 class CMeshInstance :
-    public TSceneGraphElement<XMeshInstance>
+    public TSceneElement<XMeshInstance>
 {
     Gem::TGemPtr<XGfxMeshData>                  m_pMeshData;
     // The skeleton instance holds no reference back to the mesh, so a strong reference
@@ -24,26 +24,26 @@ public:
     BEGIN_GEM_INTERFACE_MAP()
         GEM_INTERFACE_ENTRY(XNamedElement)
         GEM_INTERFACE_ENTRY(XCanvasElement)
-        GEM_INTERFACE_ENTRY(XSceneGraphElement)
+        GEM_INTERFACE_ENTRY(XSceneElement)
         GEM_INTERFACE_ENTRY(XMeshInstance)
     END_GEM_INTERFACE_MAP()
 
     CMeshInstance(XCanvas *pCanvas) :
-        TSceneGraphElement<XMeshInstance>(pCanvas)
+        TSceneElement<XMeshInstance>(pCanvas)
     {}
 
     Gem::Result Initialize() { return Gem::Result::Success; }
     void Uninitialize() {}
     
-    // XSceneGraphElement methods
+    // XSceneElement methods
     GEMMETHOD(Update)(float /*dtime*/) final 
     { 
         return Gem::Result::Success; 
     }
 
-    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneGraphNode *pNode) final
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ XSceneNode *pNode) final
     {
-        return TSceneGraphElement<XMeshInstance>::NotifyNodeContextChanged(pNode);
+        return TSceneElement<XMeshInstance>::NotifyNodeContextChanged(pNode);
     }
 
     // Returns the mesh data's local bounds, or an empty AABB when no
@@ -124,7 +124,7 @@ public:
             return Gem::Result::BadPointer;
 
         // Row vectors: geometry -> bone space at bind -> skeleton space -> world.
-        XSceneGraphNode *pSkeletonNode = m_pSkinSkeleton->GetAttachedNode();
+        XSceneNode *pSkeletonNode = m_pSkinSkeleton->GetAttachedNode();
         const Math::FloatMatrix4x4 skeletonToWorld = pSkeletonNode
             ? pSkeletonNode->GetGlobalMatrix()
             : Math::FloatMatrix4x4::Identity();

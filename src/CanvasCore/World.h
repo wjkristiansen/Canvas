@@ -19,9 +19,9 @@ class CWorld :
 {
 private:
     Gem::TGemPtr<XGfxDevice> m_pDevice;
-    Gem::TGemPtr<XSceneGraphNode> m_pRoot;
+    Gem::TGemPtr<XSceneNode> m_pRoot;
     Gem::TGemPtr<XCamera> m_pActiveCamera;
-    std::vector<XSceneGraphNode*> m_TraversalStack;  // Reused across frames to avoid allocation
+    std::vector<XSceneNode*> m_TraversalStack;  // Reused across frames to avoid allocation
 
     // BVH over the world-space AABB of every renderable scene element
     // bound to a node in the scene graph (one primitive per
@@ -33,7 +33,7 @@ private:
     // SubmitRenderables when not yet built.  See WorldBVH for the
     // current scope and capabilities.
     WorldBVH m_WorldBVH;
-    mutable std::unordered_set<XSceneGraphNode*> m_VisibleNodeScratch; // reused per frame
+    mutable std::unordered_set<XSceneNode*> m_VisibleNodeScratch; // reused per frame
 
     // BVH over per-light influence volumes.  Built alongside the
     // WorldBVH (same lifecycle rules); consumed by SubmitRenderables
@@ -120,12 +120,12 @@ public: // XWorld methods
         return m_pDevice.Get();
     }
 
-    GEMMETHOD_(XSceneGraphNode *, GetRootNode)();
+    GEMMETHOD_(XSceneNode *, GetRootNode)();
 
-    GEMMETHOD(CreateWorldObject)(_In_opt_ XSceneGraphNode *pAnchorNode, XWorldObject **ppObject, const char *name) final;
+    GEMMETHOD(CreateWorldObject)(_In_opt_ XSceneNode *pAnchorNode, XWorldObject **ppObject, const char *name) final;
     GEMMETHOD(ActivateObject)(_In_ XWorldObject *pObject) final;
     GEMMETHOD(DeactivateObject)(_In_ XWorldObject *pObject) final;
-    GEMMETHOD(AttachObject)(_In_ XWorldObject *pObject, _In_ XSceneGraphNode *pParent, bool keepWorldTransform) final;
+    GEMMETHOD(AttachObject)(_In_ XWorldObject *pObject, _In_ XSceneNode *pParent, bool keepWorldTransform) final;
     GEMMETHOD(DetachObject)(_In_ XWorldObject *pObject) final;
     GEMMETHOD(RemoveObject)(_In_ XWorldObject *pObject) final;
     GEMMETHOD(SetUniqueName)(_In_ XWorldObject *pObject, _In_opt_z_ const char *uniqueName) final;

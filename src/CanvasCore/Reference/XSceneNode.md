@@ -1,8 +1,8 @@
-# XSceneGraphNode
+# XSceneNode
 
-A node in a scene graph. A node has a local transform, an ordered list of children, and the scene graph elements bound to it, such as meshes, lights, and cameras. A node holds its children and its bound elements, and refers to its parent weakly. A node that a [world object](../README.md#worlds-and-world-objects) is anchored at is that world object's anchor node.
+A node in a scene graph. A node has a local transform, an ordered list of children, and the scene elements bound to it, such as meshes, lights, and cameras. A node holds its children and its bound elements, and refers to its parent weakly. A node that a [world object](../README.md#worlds-and-world-objects) is anchored at is that world object's anchor node.
 
-Inherits `XCanvasElement`. Created by `XCanvas::CreateSceneGraphNode`.
+Inherits `XCanvasElement`. Created by `XCanvas::CreateSceneNode`.
 
 ## Transforms
 
@@ -13,7 +13,7 @@ A node's local transform is a `Transform`: a scale, a rotation, and a translatio
 ### AddChild
 
 ```cpp
-Gem::Result AddChild(XSceneGraphNode *pChild);
+Gem::Result AddChild(XSceneNode *pChild);
 ```
 
 Makes `pChild` this node's last child. A child that has a parent, this node or another, moves in one step, with its subtree. Moving an anchor node attaches its world object, as [attaching](../README.md#worlds-and-world-objects) the world object does.
@@ -26,8 +26,8 @@ Makes `pChild` this node's last child. A child that has a parent, this node or a
 ### InsertChildBefore, InsertChildAfter
 
 ```cpp
-Gem::Result InsertChildBefore(XSceneGraphNode *pChild, XSceneGraphNode *pSibling);
-Gem::Result InsertChildAfter(XSceneGraphNode *pChild, XSceneGraphNode *pSibling);
+Gem::Result InsertChildBefore(XSceneNode *pChild, XSceneNode *pSibling);
+Gem::Result InsertChildAfter(XSceneNode *pChild, XSceneNode *pSibling);
 ```
 
 Makes `pChild` a child of this node, placed just before or just after `pSibling`, one of this node's children. A child that has a parent moves as for `AddChild`, including among this node's children.
@@ -40,7 +40,7 @@ Makes `pChild` a child of this node, placed just before or just after `pSibling`
 ### RemoveChild
 
 ```cpp
-Gem::Result RemoveChild(XSceneGraphNode *pChild);
+Gem::Result RemoveChild(XSceneNode *pChild);
 ```
 
 Takes `pChild`, with its subtree, out of this node's children. `pChild` then has no parent, and its global matrix is its local matrix. This node releases `pChild`, which is destroyed when nothing else holds it. The world objects anchored in the subtree are [detached](../README.md#worlds-and-world-objects) and stay in their worlds.
@@ -52,7 +52,7 @@ Takes `pChild`, with its subtree, out of this node's children. `pChild` then has
 ### GetParent
 
 ```cpp
-XSceneGraphNode *GetParent();
+XSceneNode *GetParent();
 ```
 
 Returns a weak pointer to this node's parent, or `nullptr` when it has none.
@@ -60,9 +60,9 @@ Returns a weak pointer to this node's parent, or `nullptr` when it has none.
 ### GetFirstChild, GetNextChild, GetPrevChild
 
 ```cpp
-XSceneGraphNode *GetFirstChild();
-XSceneGraphNode *GetNextChild(XSceneGraphNode *pCurrent);
-XSceneGraphNode *GetPrevChild(XSceneGraphNode *pCurrent);
+XSceneNode *GetFirstChild();
+XSceneNode *GetNextChild(XSceneNode *pCurrent);
+XSceneNode *GetPrevChild(XSceneNode *pCurrent);
 ```
 
 Each returns a weak pointer to one of this node's children, in order: the first child, or the child after or before `pCurrent`. Each returns `nullptr` when there is no such child, or when `pCurrent` is not one of this node's children.
@@ -72,7 +72,7 @@ Each returns a weak pointer to one of this node's children, in order: the first 
 ### BindElement
 
 ```cpp
-Gem::Result BindElement(XSceneGraphElement *pElement);
+Gem::Result BindElement(XSceneElement *pElement);
 ```
 
 Binds `pElement` to this node, after the elements already bound to it, and holds it. The element's attached node is then this node. Binding an element that is already bound to this node, or `nullptr`, changes nothing.
@@ -81,7 +81,7 @@ Binds `pElement` to this node, after the elements already bound to it, and holds
 
 ```cpp
 uint32_t GetBoundElementCount();
-XSceneGraphElement *GetBoundElement(uint32_t index);
+XSceneElement *GetBoundElement(uint32_t index);
 ```
 
 `GetBoundElementCount` returns the number of elements bound to this node. `GetBoundElement` returns a weak pointer to the element at `index`, in binding order, where `index` is less than `GetBoundElementCount()`.

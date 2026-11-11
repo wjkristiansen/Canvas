@@ -21,7 +21,7 @@ GEMMETHODIMP_(Math::FloatMatrix4x4) CCamera::GetViewMatrix()
         // winding once across the whole pipeline; see CanvasMath.hpp
         // PerspectiveReverseZ for the full winding contract and the
         // matching rasterizer setting.
-        // Get the camera's world transform from the attached scene graph node
+        // Get the camera's world transform from the attached scene node
         auto pNode = GetAttachedNode();
         if (pNode)
         {

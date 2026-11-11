@@ -17,7 +17,7 @@ void WorldBVH::Clear()
     m_Built = false;
 }
 
-void WorldBVH::Build(XSceneGraphNode* root)
+void WorldBVH::Build(XSceneNode* root)
 {
     Clear();
 
@@ -27,14 +27,14 @@ void WorldBVH::Build(XSceneGraphNode* root)
     // Iterative DFS rather than recursion: scene graphs can be very deep
     // (instanced model subtrees, hierarchical rigs) and Canvas already
     // uses this pattern in CWorld::SubmitRenderables for the same reason.
-    std::vector<XSceneGraphNode*> stack;
+    std::vector<XSceneNode*> stack;
     stack.reserve(64);
     stack.push_back(root);
 
     BVHPrimitiveId nextId = 0;
     while (!stack.empty())
     {
-        XSceneGraphNode* node = stack.back();
+        XSceneNode* node = stack.back();
         stack.pop_back();
         if (!node)
             continue;
@@ -49,7 +49,7 @@ void WorldBVH::Build(XSceneGraphNode* root)
         bool nodeContributed = false;
         for (uint32_t i = 0; i < elementCount; ++i)
         {
-            XSceneGraphElement* element = node->GetBoundElement(i);
+            XSceneElement* element = node->GetBoundElement(i);
             if (!element)
                 continue;
 
@@ -73,7 +73,7 @@ void WorldBVH::Build(XSceneGraphNode* root)
         if (nodeContributed)
             m_RenderableNodes.insert(node);
 
-        for (XSceneGraphNode* child = node->GetFirstChild();
+        for (XSceneNode* child = node->GetFirstChild();
              child;
              child = node->GetNextChild(child))
         {
@@ -89,7 +89,7 @@ void WorldBVH::Build(XSceneGraphNode* root)
     m_Built = true;
 }
 
-bool WorldBVH::IsRenderableNode(XSceneGraphNode* node) const
+bool WorldBVH::IsRenderableNode(XSceneNode* node) const
 {
     if (!node)
         return false;
@@ -97,7 +97,7 @@ bool WorldBVH::IsRenderableNode(XSceneGraphNode* node) const
 }
 
 void WorldBVH::QueryFrustum(XCamera* camera,
-                            std::unordered_set<XSceneGraphNode*>& outVisibleNodes) const
+                            std::unordered_set<XSceneNode*>& outVisibleNodes) const
 {
     outVisibleNodes.clear();
     if (!camera || !m_Built || m_Primitives.empty())
@@ -109,7 +109,7 @@ void WorldBVH::QueryFrustum(XCamera* camera,
 }
 
 void WorldBVH::QueryFrustum(const Math::Frustum& frustum,
-                            std::unordered_set<XSceneGraphNode*>& outVisibleNodes) const
+                            std::unordered_set<XSceneNode*>& outVisibleNodes) const
 {
     outVisibleNodes.clear();
     if (!m_Built || m_Primitives.empty())

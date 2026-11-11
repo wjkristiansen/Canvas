@@ -2,7 +2,7 @@
 // LightBVHTest -- correctness tests for per-light influence culling.
 //
 // Tests run against the real CanvasCore factory (XCanvas, XLight,
-// XSceneGraphNode) and the engine-loaded CanvasGfx12 plugin (only
+// XSceneNode) and the engine-loaded CanvasGfx12 plugin (only
 // because XWorld construction needs an XGfxDevice).  No GPU work is
 // dispatched; we just exercise the LightBVH classification and
 // frustum-query logic against a hand-built scene graph.
@@ -26,16 +26,16 @@ namespace
 // the given parent, and return both the light and its node.  Light
 // is left in the default-enabled state.
 void MakePointLight(XCanvas* canvas,
-                    XSceneGraphNode* parent,
+                    XSceneNode* parent,
                     const FloatVector4& position,
                     float range,
                     Gem::TGemPtr<XLight>& outLight,
-                    Gem::TGemPtr<XSceneGraphNode>& outNode)
+                    Gem::TGemPtr<XSceneNode>& outNode)
 {
     EXPECT_TRUE(Succeeded(canvas->CreateLight(LightType::Point, &outLight)));
     outLight->SetRange(range);
 
-    EXPECT_TRUE(Succeeded(canvas->CreateSceneGraphNode(&outNode)));
+    EXPECT_TRUE(Succeeded(canvas->CreateSceneNode(&outNode)));
     outNode->SetLocalTranslation(position);
     EXPECT_TRUE(Succeeded(outNode->BindElement(outLight)));
     EXPECT_TRUE(Succeeded(parent->AddChild(outNode)));
@@ -44,19 +44,19 @@ void MakePointLight(XCanvas* canvas,
 // Forward = +X by convention (Canvas row-vector basis: row 0).  Spot
 // light starts aimed along world +X from its position.
 void MakeSpotLight(XCanvas* canvas,
-                   XSceneGraphNode* parent,
+                   XSceneNode* parent,
                    const FloatVector4& position,
                    float range,
                    float outerAngleDeg,
                    Gem::TGemPtr<XLight>& outLight,
-                   Gem::TGemPtr<XSceneGraphNode>& outNode)
+                   Gem::TGemPtr<XSceneNode>& outNode)
 {
     EXPECT_TRUE(Succeeded(canvas->CreateLight(LightType::Spot, &outLight)));
     outLight->SetRange(range);
     const float kDegToRad = 3.14159265f / 180.0f;
     outLight->SetSpotAngles(outerAngleDeg * 0.5f * kDegToRad, outerAngleDeg * kDegToRad);
 
-    EXPECT_TRUE(Succeeded(canvas->CreateSceneGraphNode(&outNode)));
+    EXPECT_TRUE(Succeeded(canvas->CreateSceneNode(&outNode)));
     outNode->SetLocalTranslation(position);
     // Identity rotation -- spot aims along the node's +X basis row.
     EXPECT_TRUE(Succeeded(outNode->BindElement(outLight)));
@@ -64,23 +64,23 @@ void MakeSpotLight(XCanvas* canvas,
 }
 
 void MakeDirectionalLight(XCanvas* canvas,
-                          XSceneGraphNode* parent,
+                          XSceneNode* parent,
                           Gem::TGemPtr<XLight>& outLight,
-                          Gem::TGemPtr<XSceneGraphNode>& outNode)
+                          Gem::TGemPtr<XSceneNode>& outNode)
 {
     EXPECT_TRUE(Succeeded(canvas->CreateLight(LightType::Directional, &outLight)));
-    EXPECT_TRUE(Succeeded(canvas->CreateSceneGraphNode(&outNode)));
+    EXPECT_TRUE(Succeeded(canvas->CreateSceneNode(&outNode)));
     EXPECT_TRUE(Succeeded(outNode->BindElement(outLight)));
     EXPECT_TRUE(Succeeded(parent->AddChild(outNode)));
 }
 
 void MakeAmbientLight(XCanvas* canvas,
-                      XSceneGraphNode* parent,
+                      XSceneNode* parent,
                       Gem::TGemPtr<XLight>& outLight,
-                      Gem::TGemPtr<XSceneGraphNode>& outNode)
+                      Gem::TGemPtr<XSceneNode>& outNode)
 {
     EXPECT_TRUE(Succeeded(canvas->CreateLight(LightType::Ambient, &outLight)));
-    EXPECT_TRUE(Succeeded(canvas->CreateSceneGraphNode(&outNode)));
+    EXPECT_TRUE(Succeeded(canvas->CreateSceneNode(&outNode)));
     EXPECT_TRUE(Succeeded(outNode->BindElement(outLight)));
     EXPECT_TRUE(Succeeded(parent->AddChild(outNode)));
 }
@@ -148,7 +148,7 @@ TEST(LightBVHTest, NonSpatialLightsAreUntracked)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     Gem::TGemPtr<XLight> pDir, pAmb;
-    Gem::TGemPtr<XSceneGraphNode> pDirNode, pAmbNode;
+    Gem::TGemPtr<XSceneNode> pDirNode, pAmbNode;
     MakeDirectionalLight(pCanvas, pWorld->GetRootNode(), pDir, pDirNode);
     MakeAmbientLight   (pCanvas, pWorld->GetRootNode(), pAmb, pAmbNode);
 
@@ -185,7 +185,7 @@ TEST(LightBVHTest, PointLightsAreTrackedAndCulled)
     //   pSide    -- well outside the FOV
     //   pBehind  -- behind the camera
     Gem::TGemPtr<XLight> pInFront, pSide, pBehind;
-    Gem::TGemPtr<XSceneGraphNode> pInFrontNode, pSideNode, pBehindNode;
+    Gem::TGemPtr<XSceneNode> pInFrontNode, pSideNode, pBehindNode;
     MakePointLight(pCanvas, pWorld->GetRootNode(),
                    FloatVector4(10.0f, 0.0f, 0.0f, 1.0f), 1.0f, pInFront, pInFrontNode);
     MakePointLight(pCanvas, pWorld->GetRootNode(),
@@ -226,7 +226,7 @@ TEST(LightBVHTest, SpotLightsAreTracked)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     Gem::TGemPtr<XLight> pSpot;
-    Gem::TGemPtr<XSceneGraphNode> pSpotNode;
+    Gem::TGemPtr<XSceneNode> pSpotNode;
     MakeSpotLight(pCanvas, pWorld->GetRootNode(),
                   FloatVector4(5.0f, 0.0f, 0.0f, 1.0f),
                   10.0f, /*outerDeg*/ 30.0f,
@@ -262,7 +262,7 @@ TEST(LightBVHTest, RebuildClearsPriorState)
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
     Gem::TGemPtr<XLight> pPt;
-    Gem::TGemPtr<XSceneGraphNode> pPtNode;
+    Gem::TGemPtr<XSceneNode> pPtNode;
     MakePointLight(pCanvas, pWorld->GetRootNode(),
                    FloatVector4(1.0f, 0.0f, 0.0f, 1.0f), 1.0f, pPt, pPtNode);
 
@@ -275,8 +275,8 @@ TEST(LightBVHTest, RebuildClearsPriorState)
     EXPECT_TRUE(bvh.IsTrackedLight(pPtRaw));
 
     // Rebuild against an empty root.
-    Gem::TGemPtr<XSceneGraphNode> pEmpty;
-    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneGraphNode(&pEmpty)));
+    Gem::TGemPtr<XSceneNode> pEmpty;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateSceneNode(&pEmpty)));
     bvh.Build(pEmpty);
     EXPECT_EQ(size_t(0), bvh.TrackedLightCount());
     EXPECT_EQ(size_t(0), bvh.UntrackedLightCount());

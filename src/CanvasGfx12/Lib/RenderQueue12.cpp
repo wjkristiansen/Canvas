@@ -2305,7 +2305,7 @@ Gem::Result CRenderQueue12::DrawUIRect(
 }
 
 //------------------------------------------------------------------------------------------------
-GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphNode *pNode)
+GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneNode *pNode)
 {
     if (!pNode)
         return Gem::Result::InvalidArg;
@@ -2319,7 +2319,7 @@ GEMMETHODIMP CRenderQueue12::SubmitForRender(Canvas::XSceneGraphNode *pNode)
         const Canvas::Math::FloatMatrix4x4 nodeWorld = pNode->GetGlobalMatrix();
         for (uint32_t i = 0; i < elementCount; ++i)
         {
-            Canvas::XSceneGraphElement* pElement = pNode->GetBoundElement(i);
+            Canvas::XSceneElement* pElement = pNode->GetBoundElement(i);
 
             Gem::TGemPtr<Canvas::XLight> pLight;
             if (SUCCEEDED(pElement->QueryInterface(&pLight)))
@@ -2542,7 +2542,7 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
     float intensity = pLight->GetIntensity();
     gpu.Color = { color[0] * intensity, color[1] * intensity, color[2] * intensity, 0.0f };
 
-    // Extract direction/position from the attached scene graph node
+    // Extract direction/position from the attached scene node
     auto *pNode = pLight->GetAttachedNode();
     if (pNode)
     {

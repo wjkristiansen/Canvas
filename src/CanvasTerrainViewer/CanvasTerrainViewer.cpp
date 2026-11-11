@@ -116,15 +116,15 @@ public:
             pDirLight->SetShadowDepthBias(1e-4f, 2.0f, 0.5f);
         }
 
-        Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&m_pSunNode,  "SunNode"));
-        Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&m_pMoonNode, "MoonNode"));
-        Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&m_pAmbientNode, "AmbientNode"));
+        Gem::ThrowGemError(pCanvas->CreateSceneNode(&m_pSunNode,  "SunNode"));
+        Gem::ThrowGemError(pCanvas->CreateSceneNode(&m_pMoonNode, "MoonNode"));
+        Gem::ThrowGemError(pCanvas->CreateSceneNode(&m_pAmbientNode, "AmbientNode"));
 
         m_pSunNode->BindElement(m_pSun);
         m_pMoonNode->BindElement(m_pMoon);
         m_pAmbientNode->BindElement(m_pAmbient);
 
-        Canvas::XSceneGraphNode* pRoot = pWorld->GetRootNode();
+        Canvas::XSceneNode* pRoot = pWorld->GetRootNode();
         pRoot->AddChild(m_pSunNode);
         pRoot->AddChild(m_pMoonNode);
         pRoot->AddChild(m_pAmbientNode);
@@ -296,7 +296,7 @@ private:
     }
 
     static void OrientLightNode(
-        Canvas::XSceneGraphNode*         pNode,
+        Canvas::XSceneNode*         pNode,
         const Canvas::Math::FloatVector4& forward,
         const Canvas::Math::FloatVector4& worldUp)
     {
@@ -313,9 +313,9 @@ private:
     Gem::TGemPtr<Canvas::XLight>          m_pSun;
     Gem::TGemPtr<Canvas::XLight>          m_pMoon;
     Gem::TGemPtr<Canvas::XLight>          m_pAmbient;
-    Gem::TGemPtr<Canvas::XSceneGraphNode> m_pSunNode;
-    Gem::TGemPtr<Canvas::XSceneGraphNode> m_pMoonNode;
-    Gem::TGemPtr<Canvas::XSceneGraphNode> m_pAmbientNode;
+    Gem::TGemPtr<Canvas::XSceneNode> m_pSunNode;
+    Gem::TGemPtr<Canvas::XSceneNode> m_pMoonNode;
+    Gem::TGemPtr<Canvas::XSceneNode> m_pAmbientNode;
 
     // Cached display-side state produced by Update for the composite
     // background to consume each frame.  Sun/moon positions are the
@@ -358,10 +358,10 @@ class CTerrainApp
     Gem::TGemPtr<Canvas::XGfxSurface>       m_pSkyCubeStars;
     Gem::TGemPtr<Canvas::XGfxSurface>       m_pMoonTexture;
     Gem::TGemPtr<Canvas::XGfxMaterial>      m_pTerrainMaterial;
-    Gem::TGemPtr<Canvas::XSceneGraphNode>   m_pTerrainRootNode;
+    Gem::TGemPtr<Canvas::XSceneNode>   m_pTerrainRootNode;
     std::vector<Gem::TGemPtr<Canvas::XGfxMeshData>>    m_SubtileMeshes;
     std::vector<Gem::TGemPtr<Canvas::XMeshInstance>>   m_SubtileInstances;
-    std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> m_SubtileNodes;
+    std::vector<Gem::TGemPtr<Canvas::XSceneNode>> m_SubtileNodes;
     Gem::TGemPtr<Canvas::XFont>             m_pFont;
     Gem::TGemPtr<Canvas::XFont>             m_pFontMono;
     Gem::TGemPtr<Canvas::XUIGraph>          m_pUIGraph;
@@ -557,7 +557,7 @@ class CTerrainApp
             { 0.0f, 1.0f },
         };
 
-        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&m_pTerrainRootNode, "TerrainRoot"));
+        Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&m_pTerrainRootNode, "TerrainRoot"));
         m_pTerrainRootNode->SetLocalTranslation(
             Canvas::Math::FloatVector4{ matOpts.OriginX, matOpts.OriginY, 0.0f, 1.0f });
         m_pWorld->GetRootNode()->AddChild(m_pTerrainRootNode);
@@ -634,8 +634,8 @@ class CTerrainApp
                 Gem::ThrowGemError(m_pCanvas->CreateMeshInstance(&pInstance, meshName));
                 pInstance->SetMeshData(pMesh);
 
-                Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
-                Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pNode, meshName));
+                Gem::TGemPtr<Canvas::XSceneNode> pNode;
+                Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&pNode, meshName));
                 // Subtile placement is relative to the terrain root, which
                 // carries the heightfield's world origin.
                 pNode->SetLocalTranslation(Canvas::Math::FloatVector4{
@@ -930,8 +930,8 @@ public:
             pCamera->SetFarClip(4000.0f);
             pCamera->SetFovAngle(static_cast<float>(Canvas::Math::Pi / 3.0));
 
-            Gem::TGemPtr<Canvas::XSceneGraphNode> pCameraNode;
-            Gem::ThrowGemError(pCanvas->CreateSceneGraphNode(&pCameraNode, "MainCameraNode"));
+            Gem::TGemPtr<Canvas::XSceneNode> pCameraNode;
+            Gem::ThrowGemError(pCanvas->CreateSceneNode(&pCameraNode, "MainCameraNode"));
             pCameraNode->BindElement(pCamera);
             pWorld->GetRootNode()->AddChild(pCameraNode);
             pWorld->SetActiveCamera(pCamera);

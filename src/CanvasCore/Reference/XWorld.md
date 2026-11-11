@@ -9,7 +9,7 @@ Inherits `XCanvasElement`. Created by `XCanvas::CreateWorld`, which binds the wo
 ### GetRootNode
 
 ```cpp
-XSceneGraphNode *GetRootNode();
+XSceneNode *GetRootNode();
 ```
 
 Returns a weak pointer to the world's root node. The world's scene graph is the root node and its subtree, and the root node belongs to no world object.
@@ -27,7 +27,7 @@ Returns a weak pointer to the graphics device the world was created with.
 ### CreateWorldObject
 
 ```cpp
-Gem::Result CreateWorldObject(XSceneGraphNode *pAnchorNode, XWorldObject **ppObject, const char *name = nullptr);
+Gem::Result CreateWorldObject(XSceneNode *pAnchorNode, XWorldObject **ppObject, const char *name = nullptr);
 ```
 
 Creates a world object anchored at `pAnchorNode`, and holds it. A node in this world's scene graph gives a world object in the scene graph, any other node gives a [detached](../README.md#worlds-and-world-objects) world object, and `nullptr` gives a world object with no anchor node. The world object starts active. `name` is its [name](../README.md#worlds-and-world-objects), for logs and debugging. `*ppObject` receives the world object.
@@ -54,7 +54,7 @@ Make `pObject` active or inactive. `Update` updates the active world objects and
 ### AttachObject
 
 ```cpp
-Gem::Result AttachObject(XWorldObject *pObject, XSceneGraphNode *pParent, bool keepWorldTransform);
+Gem::Result AttachObject(XWorldObject *pObject, XSceneNode *pParent, bool keepWorldTransform);
 ```
 
 Attaches `pObject` by moving its anchor node, with the anchor node's subtree, to be the last child of `pParent`, in one step. When `keepWorldTransform` is true, the anchor node's local transform changes so that its global matrix stays the same, except for any shear, which a `Transform` cannot hold; otherwise its local transform stays the same. The world objects attached to `pObject` move with it. Activation is unchanged.

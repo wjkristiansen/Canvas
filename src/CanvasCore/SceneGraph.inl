@@ -10,7 +10,7 @@ namespace Canvas
 {
 
 //------------------------------------------------------------------------------------------------
-inline CSceneGraphNode::CSceneGraphNode(XCanvas *pCanvas) : TCanvasElement<XSceneGraphNode>(pCanvas)
+inline CSceneNode::CSceneNode(XCanvas *pCanvas) : TCanvasElement<XSceneNode>(pCanvas)
 {
 }
 

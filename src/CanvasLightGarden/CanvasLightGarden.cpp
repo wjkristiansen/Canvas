@@ -236,7 +236,7 @@ class GardenBuilder
 
     // Keep all instances alive for the lifetime of the world.
     std::vector<Gem::TGemPtr<Canvas::XMeshInstance>> m_Instances;
-    std::vector<Gem::TGemPtr<Canvas::XSceneGraphNode>> m_Nodes;
+    std::vector<Gem::TGemPtr<Canvas::XSceneNode>> m_Nodes;
     std::vector<Gem::TGemPtr<Canvas::XLight>> m_Lights;
 
 public:
@@ -397,8 +397,8 @@ private:
         Gem::ThrowGemError(m_pCanvas->CreateMeshInstance(&pInst, nameHint));
         pInst->SetMeshData(pMesh);
 
-        Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
-        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pNode, nameHint));
+        Gem::TGemPtr<Canvas::XSceneNode> pNode;
+        Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&pNode, nameHint));
         pNode->SetLocalTranslation(translation);
         pNode->SetLocalScale(scale);
         pNode->SetLocalRotation(rotation);
@@ -482,8 +482,8 @@ private:
                      const FloatQuaternion& rotation,
                      const char* nodeName)
     {
-        Gem::TGemPtr<Canvas::XSceneGraphNode> pNode;
-        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&pNode, nodeName));
+        Gem::TGemPtr<Canvas::XSceneNode> pNode;
+        Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&pNode, nodeName));
         pNode->SetLocalTranslation(position);
         pNode->SetLocalRotation(rotation);
         pNode->BindElement(pLight);
@@ -512,7 +512,7 @@ class CApp
     Gem::TGemPtr<Canvas::XGfxSwapChain>     m_pSwapChain;
     Gem::TGemPtr<Canvas::XWorld>            m_pWorld;
     Gem::TGemPtr<Canvas::XCamera>           m_pCamera;
-    Gem::TGemPtr<Canvas::XSceneGraphNode>   m_pCameraNode;
+    Gem::TGemPtr<Canvas::XSceneNode>   m_pCameraNode;
 
     Gem::TGemPtr<Canvas::XFont> m_pFont;
     Gem::TGemPtr<Canvas::XFont> m_pFontMono;
@@ -687,7 +687,7 @@ private:
         m_pCamera->SetFarClip(500.0f);
         m_pCamera->SetFovAngle(static_cast<float>(Canvas::Math::Pi / 4.0));
 
-        Gem::ThrowGemError(m_pCanvas->CreateSceneGraphNode(&m_pCameraNode, "MainCameraNode"));
+        Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&m_pCameraNode, "MainCameraNode"));
         m_pCameraNode->BindElement(m_pCamera);
 
         // Spawn well outside the grid for a wide opening view.
