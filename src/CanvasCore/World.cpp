@@ -310,6 +310,9 @@ GEMMETHODIMP CWorld::DetachObject(XWorldObject *pObject)
             return result;
     }
 
+    // A world object due for release stays in the world, as does one that is not placed
+    pImpl->SetReleasePending(false);
+
     return Gem::Result::Success;
 }
 
@@ -322,11 +325,11 @@ GEMMETHODIMP CWorld::ReleaseWorldObject(XWorldObject *pObject)
 
     try
     {
-        // Find the world objects the release orphans: those attached to the released world object's
-        // nodes, which are its root node and the nodes below it down to other root nodes.  Their world matrices
-        // are taken before any node moves.
-        struct Orphan { Gem::TGemPtr<CWorldObject> pObject; Math::FloatMatrix4x4 world; };
-        std::vector<Orphan> orphans;
+        // Find the world objects attached to the released world object's nodes, which are its root
+        // node and the nodes below it down to other root nodes.  Their world matrices are taken
+        // before any node moves.
+        struct Attached { Gem::TGemPtr<CWorldObject> pObject; Math::FloatMatrix4x4 world; bool wasPending; };
+        std::vector<Attached> attached;
         std::vector<XSceneNode *> stack;
 
         if (pImpl->GetRoot())
@@ -337,25 +340,29 @@ GEMMETHODIMP CWorld::ReleaseWorldObject(XWorldObject *pObject)
             stack.pop_back();
             for (XSceneNode *pChild = pNode->GetFirstChild(); pChild; pChild = pNode->GetNextChild(pChild))
             {
-                CWorldObject *pOrphan = static_cast<CSceneNode *>(pChild)->GetRootedObject();
-                if (pOrphan && pOrphan->GetWorld() == this)
-                    orphans.push_back({ pOrphan, pChild->GetGlobalMatrix() });
+                CWorldObject *pAttached = static_cast<CSceneNode *>(pChild)->GetRootedObject();
+                if (pAttached && pAttached->GetWorld() == this)
+                    attached.push_back({ pAttached, pChild->GetGlobalMatrix(), pAttached->IsReleasePending() });
                 else
                     stack.push_back(pChild);
             }
         }
 
-        // Take the released world object's root node out of the graph, then attach each orphan
-        // to the node the release detached from
+        // Take the released world object's root node out of the graph, then attach each attached
+        // world object to the node the release detached from, due for release.  Moving its root
+        // node clears the flag, so it is set after the move.  A world object already due for
+        // release has its event queued already.
         CSceneNode *pObjectRoot = pImpl->GetRoot();
         XSceneNode *pDetachedFrom = pObjectRoot ? pObjectRoot->GetParent() : nullptr;
         if (pDetachedFrom)
             Gem::ThrowGemError(pDetachedFrom->RemoveChild(pObjectRoot));
 
-        for (Orphan &orphan : orphans)
+        for (Attached &entry : attached)
         {
-            Gem::ThrowGemError(ReparentKeepingWorld(orphan.pObject->GetRoot(), pDetachedFrom, orphan.world));
-            m_Events.push_back({ EventType::ObjectOrphaned, orphan.pObject });
+            Gem::ThrowGemError(ReparentKeepingWorld(entry.pObject->GetRoot(), pDetachedFrom, entry.world));
+            entry.pObject->SetReleasePending(true);
+            if (!entry.wasPending)
+                m_Events.push_back({ EventType::ParentReleased, entry.pObject });
         }
 
         EraseObject(pImpl->GetWorldIndex());
@@ -525,8 +532,9 @@ GEMMETHODIMP CWorld::UnregisterListener(WorldListener *pListener)
 
 //------------------------------------------------------------------------------------------------
 // Delivers each queued event to each listener, in order.  Events that callbacks cause are
-// queued behind the rest and delivered in the same pass.  An orphan no longer in this world
-// gets no callback.  The active camera is checked first and after each event's callbacks.
+// queued behind the rest and delivered in the same pass.  A world object due for release that is
+// no longer in this world gets no callback, and one still due for release after its callbacks is
+// released.  The active camera is checked first and after each event's callbacks.
 Gem::Result CWorld::DeliverEvents()
 {
     m_Delivering = true;
@@ -534,7 +542,7 @@ Gem::Result CWorld::DeliverEvents()
     for (size_t e = 0; Gem::Succeeded(result) && e < m_Events.size(); ++e)
     {
         Event event = m_Events[e];  // A copy, since callbacks may queue events
-        if (event.type == EventType::ObjectOrphaned && !FindObject(event.pObject.Get()))
+        if (event.type == EventType::ParentReleased && !FindObject(event.pObject.Get()))
             continue;
 
         for (size_t l = 0; l < m_Listeners.size(); ++l)
@@ -544,13 +552,23 @@ Gem::Result CWorld::DeliverEvents()
                 continue;
             switch (event.type)
             {
-            case EventType::ObjectOrphaned:
-                pListener->OnObjectOrphaned(this, event.pObject.Get());
+            case EventType::ParentReleased:
+                pListener->OnParentReleased(this, event.pObject.Get());
                 break;
             case EventType::ActiveCameraLost:
                 pListener->OnActiveCameraLost(this);
                 break;
             }
+        }
+
+        // A world object the callbacks did not move or detach, and that is still in this world,
+        // is released, and the world objects attached to it are due for release in turn
+        if (event.type == EventType::ParentReleased && event.pObject->IsReleasePending() &&
+            FindObject(event.pObject.Get()))
+        {
+            result = ReleaseWorldObject(event.pObject.Get());
+            if (Gem::Failed(result))
+                break;
         }
 
         // A callback may have moved the active camera

@@ -716,10 +716,11 @@ XLight : public XSceneElement
 // does nothing by default.
 struct WorldListener
 {
-    // pObject was orphaned: the world object whose node it was attached to was released, and it
-    // was attached to the node the release detached from, keeping its world transform.
-    // pObject is still in pWorld.
-    virtual void OnObjectOrphaned(XWorld * /*pWorld*/, XWorldObject * /*pObject*/) {}
+    // The world object whose node pObject was attached to was released.  pObject is attached to
+    // the node the release detached from, keeping its world transform, and is due for release:
+    // after this callback, pWorld releases it unless it was moved or detached, such as with
+    // XWorld::PlaceObject or XWorld::DetachObject.
+    virtual void OnParentReleased(XWorld * /*pWorld*/, XWorldObject * /*pObject*/) {}
 
     // pWorld's active camera was not in its scene graph, and pWorld cleared it.
     virtual void OnActiveCameraLost(XWorld * /*pWorld*/) {}
@@ -760,9 +761,10 @@ XWorld : public XCanvasElement
     // Gem::Result::NotFound when pObject is not one of this world's world objects.
     GEMMETHOD(DetachObject)(_In_ XWorldObject *pObject) = 0;
 
-    // Takes pObject out of this world: detaches it, orphans the world objects attached to its
-    // nodes (see WorldListener::OnObjectOrphaned), and releases it.  A world object the app still
-    // holds keeps its root node, returns nullptr from GetWorld, and can be added to a world again.
+    // Takes pObject out of this world: detaches it and releases it.  The world objects attached to
+    // its nodes are due for release, and the next Update releases each one that is not moved or
+    // detached first (see WorldListener::OnParentReleased).  A world object the app still holds
+    // keeps its root node, returns nullptr from GetWorld, and can be added to a world again.
     // Returns Gem::Result::NotFound when pObject is not one of this world's world objects.
     GEMMETHOD(ReleaseWorldObject)(_In_ XWorldObject *pObject) = 0;
 

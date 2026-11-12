@@ -71,7 +71,7 @@ Places `pObject` by [attaching](../README.md#worlds-and-world-objects) it to `pP
 Gem::Result DetachObject(XWorldObject *pObject);
 ```
 
-Detaches `pObject` by taking its root node, with the root node's subtree, out of its parent, keeping its local transform. The world objects attached to `pObject`'s nodes are detached with it. `pObject` stays in this world, and its activation is unchanged. Detaching a world object that is not placed changes nothing.
+Detaches `pObject` by taking its root node, with the root node's subtree, out of its parent, keeping its local transform. The world objects attached to `pObject`'s nodes are detached with it. `pObject` stays in this world, and its activation is unchanged. Detaching a world object that is not placed changes nothing, except that a world object due for release stays in this world.
 
 | Result     | When                                               |
 |------------|----------------------------------------------------|
@@ -83,7 +83,7 @@ Detaches `pObject` by taking its root node, with the root node's subtree, out of
 Gem::Result ReleaseWorldObject(XWorldObject *pObject);
 ```
 
-Takes `pObject` out of this world. Its root node's subtree leaves the graph, and each world object attached to one of `pObject`'s nodes is [orphaned](../README.md#worlds-and-world-objects): it is attached to the node the release detached from, keeping its world transform, and its listeners receive `OnObjectOrphaned` at the next `Update`. The world releases `pObject`'s unique name, then `pObject` itself, which ends it unless the app holds it. A world object the app still holds keeps its root node, its `GetWorld` returns `nullptr`, and it can be added to a world again.
+Takes `pObject` out of this world. Its root node's subtree leaves the graph, and each world object attached to one of `pObject`'s nodes is [due for release](../README.md#worlds-and-world-objects): it is attached to the node the release detached from, keeping its world transform, its listeners receive [`OnParentReleased`](WorldListener.md#onparentreleased) at the next `Update`, and that `Update` then releases it unless it was moved or detached first. The world releases `pObject`'s unique name, then `pObject` itself, which ends it unless the app holds it. A world object the app still holds keeps its root node, its `GetWorld` returns `nullptr`, and it can be added to a world again.
 
 | Result     | When                                               |
 |------------|----------------------------------------------------|

@@ -86,7 +86,7 @@ private:
     // matches a WorldListener callback, and its payload holds that callback's arguments.
     enum class EventType
     {
-        ObjectOrphaned,     // pObject is the orphan
+        ParentReleased,     // pObject is the world object due for release
         ActiveCameraLost,   // no payload
     };
     struct Event

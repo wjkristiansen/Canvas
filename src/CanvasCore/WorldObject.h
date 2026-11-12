@@ -21,6 +21,7 @@ class CWorldObject :
     size_t m_WorldIndex = 0;
     const std::string *m_pUniqueName = nullptr;     // Points at its world's copy, in the world's unique-name map
     Gem::TGemPtr<XGfxDevice> m_pDevice;             // The device of the model it instantiates, if any
+    bool m_ReleasePending = false;
 
 public:
     BEGIN_GEM_INTERFACE_MAP()
@@ -37,7 +38,13 @@ public:
     // Set by the world when the object joins it, and cleared when it leaves it, by
     // ReleaseWorldObject or the world's release.
     void SetWorld(CWorld *pWorld) { m_pWorld = pWorld; }
-    void ClearWorld() { m_pWorld = nullptr; m_pUniqueName = nullptr; }
+    void ClearWorld() { m_pWorld = nullptr; m_pUniqueName = nullptr; m_ReleasePending = false; }
+
+    // Whether the object is due for release: the world object it was attached to was released,
+    // and its world releases it at its next Update unless the object is moved or detached first.
+    // Set by the world, and cleared by any move of the object's root node.
+    bool IsReleasePending() const { return m_ReleasePending; }
+    void SetReleasePending(bool pending) { m_ReleasePending = pending; }
 
     // The unique name, which its world stores and sets; nullptr when the object has none.
     const std::string *GetUniqueNamePtr() const { return m_pUniqueName; }
