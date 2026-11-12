@@ -137,6 +137,10 @@ Gem::Result CSceneNode::MoveChild(XSceneNode *pChild, ChildNode *pBefore)
         }
     }
 
+    // A world object whose root node moves is no longer due for release
+    if (pChildNode->m_pRootedObject)
+        pChildNode->m_pRootedObject->SetReleasePending(false);
+
     ChildNode *pWrapper = nullptr;
     if (pChildNode->m_pParent == this)
     {
@@ -193,6 +197,8 @@ void CSceneNode::ReleaseChild(CSceneNode *pChild)
 
     pChild->m_pParent = nullptr;
     pChild->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation);
+    if (pChild->m_pRootedObject)
+        pChild->m_pRootedObject->SetReleasePending(false);
     delete pWrapper;
 }
 

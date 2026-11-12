@@ -2566,16 +2566,16 @@ TEST(CanvasInterfacesTest, WorldObjectDetach)
 
 namespace
 {
-// A WorldListener that records each callback as "orphaned <name>" or "camera lost", and runs
-// onEvent after recording it.
+// A WorldListener that records each callback as "parent released <name>" or "camera lost", and
+// runs onEvent after recording it.
 struct RecordingListener : Canvas::WorldListener
 {
     std::vector<std::string> events;
     std::function<void()> onEvent;
 
-    void OnObjectOrphaned(Canvas::XWorld *, Canvas::XWorldObject *pObject) override
+    void OnParentReleased(Canvas::XWorld *, Canvas::XWorldObject *pObject) override
     {
-        events.push_back(std::string("orphaned ") + pObject->GetName());
+        events.push_back(std::string("parent released ") + pObject->GetName());
         if (onEvent)
             onEvent();
     }
@@ -2588,7 +2588,7 @@ struct RecordingListener : Canvas::WorldListener
 };
 } // anonymous namespace
 
-TEST(CanvasInterfacesTest, WorldObjectReleaseKeepsOrphans)
+TEST(CanvasInterfacesTest, WorldObjectReleaseReleasesAttached)
 {
     using namespace Canvas::Math;
 
@@ -2599,13 +2599,13 @@ TEST(CanvasInterfacesTest, WorldObjectReleaseKeepsOrphans)
     RecordingListener listener;
     ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
 
-    // The camera is on the driver, who is kept
+    // The camera is on the driver, who goes with the car
     Gem::TGemPtr<Canvas::XCamera> pCamera;
     ASSERT_TRUE(Succeeded(pCanvas->CreateCamera(&pCamera, "DriverCamera")));
     ASSERT_TRUE(Succeeded(w.pDriverNode->BindElement(pCamera)));
     w.pWorld->SetActiveCamera(pCamera);
 
-    // Removing the car leaves its driver on the platform, where it was
+    // Releasing the car leaves its driver on the platform, where it was, due for release
     ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pCar)));
     EXPECT_EQ(nullptr, w.pCar->GetWorld());
     EXPECT_EQ(nullptr, w.pCarNode->GetParent());
@@ -2618,12 +2618,17 @@ TEST(CanvasInterfacesTest, WorldObjectReleaseKeepsOrphans)
     // The released world object is no longer one of the world's
     EXPECT_EQ(Gem::Result::NotFound, w.pWorld->ReleaseWorldObject(w.pCar));
 
-    // The removal delivers no callback; the next Update does, once
+    // The release delivers no callback.  The next Update reports the driver once, then releases
+    // it, and reports the loss of the camera that went with it.
     EXPECT_TRUE(listener.events.empty());
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
-    EXPECT_EQ(std::vector<std::string>({ "orphaned Driver" }), listener.events);
+    EXPECT_EQ(std::vector<std::string>({ "parent released Driver", "camera lost" }), listener.events);
+    EXPECT_EQ(nullptr, w.pDriver->GetWorld());
+    EXPECT_EQ(nullptr, w.pDriverNode->GetParent());
+    EXPECT_EQ(w.pDriver.Get(), w.pDriverNode->GetWorldObject());
+    EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
-    EXPECT_EQ(1u, listener.events.size());
+    EXPECT_EQ(2u, listener.events.size());
 }
 
 TEST(CanvasInterfacesTest, WorldObjectReleaseTopLevel)
@@ -2643,8 +2648,8 @@ TEST(CanvasInterfacesTest, WorldObjectReleaseTopLevel)
     ASSERT_TRUE(Succeeded(w.pPlatform->BindElement(pCamera)));
     w.pWorld->SetActiveCamera(pCamera);
 
-    // Removing the elevator orphans the car, which lands where the elevator was attached: the
-    // root node, keeping its world transform.  The driver stays in the car.
+    // Releasing the elevator leaves the car where the elevator was attached: the root node,
+    // keeping its world transform.  The driver stays in the car, which is due for release.
     ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pElevator)));
     EXPECT_EQ(nullptr, w.pElevator->GetWorld());
     EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
@@ -2652,13 +2657,91 @@ TEST(CanvasInterfacesTest, WorldObjectReleaseTopLevel)
     EXPECT_EQ(w.pSeat.Get(), w.pDriverNode->GetParent());
     EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
 
-    // An orphan released before the next Update gets no callback.  The next Update clears the
-    // active camera and reports its loss.
+    // A world object released before the next Update gets no callback, and the driver is due for
+    // release with it.  The next Update releases the driver and reports the loss of the camera.
     ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pCar)));
     EXPECT_EQ(pCamera.Get(), w.pWorld->GetActiveCamera());
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
     EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
-    EXPECT_EQ(std::vector<std::string>({ "orphaned Driver", "camera lost" }), listener.events);
+    EXPECT_EQ(nullptr, w.pDriver->GetWorld());
+    EXPECT_EQ(std::vector<std::string>({ "parent released Driver", "camera lost" }), listener.events);
+}
+
+TEST(CanvasInterfacesTest, WorldObjectReleaseCascades)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+    RecordingListener listener;
+    ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
+
+    // Releasing the elevator releases the car at the next Update, and the car's release
+    // releases its driver in the same Update.  The driver rides in the car until then.
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pElevator)));
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(std::vector<std::string>({ "parent released Car", "parent released Driver" }), listener.events);
+    EXPECT_EQ(nullptr, w.pCar->GetWorld());
+    EXPECT_EQ(nullptr, w.pDriver->GetWorld());
+    EXPECT_EQ(nullptr, w.pCarNode->GetParent());
+    EXPECT_EQ(nullptr, w.pDriverNode->GetParent());
+
+    // The released world objects keep their nodes and can join a world again
+    EXPECT_EQ(w.pCarNode.Get(), w.pCar->GetRootNode());
+    ASSERT_TRUE(Succeeded(w.pWorld->AddWorldObject(w.pCar)));
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
+    EXPECT_EQ(2u, listener.events.size());
+}
+
+TEST(CanvasInterfacesTest, WorldObjectReleaseKeepsMovedObjects)
+{
+    using namespace Canvas::Math;
+
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    ElevatorWorld w(pCanvas, pDevice);
+    RecordingListener listener;
+    ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&listener)));
+    auto pGround = MakeNode(pCanvas, w.pWorld->GetRootNode(), "Ground", 0.0f, -1.0f, 0.0f);
+
+    // A callback that places the car keeps it, and the driver in it gets no callback
+    listener.onEvent = [&]
+    {
+        if (listener.events.back() == "parent released Car")
+            EXPECT_TRUE(Succeeded(w.pWorld->PlaceObject(w.pCar, pGround, true)));
+    };
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pElevator)));
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(std::vector<std::string>({ "parent released Car" }), listener.events);
+    EXPECT_EQ(w.pWorld.Get(), w.pCar->GetWorld());
+    EXPECT_EQ(pGround.Get(), w.pCarNode->GetParent());
+    EXPECT_EQ(w.pWorld.Get(), w.pDriver->GetWorld());
+    EXPECT_EQ(w.pSeat.Get(), w.pDriverNode->GetParent());
+    EXPECT_TRUE(AlmostEqual(w.pDriverNode->GetGlobalTranslation(), FloatVector4(11.0f, 6.0f, 0.5f, 1.0f)));
+
+    // Detaching the driver before the next Update keeps it, not placed
+    listener.onEvent = nullptr;
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pCar)));
+    EXPECT_EQ(pGround.Get(), w.pDriverNode->GetParent());
+    ASSERT_TRUE(Succeeded(w.pWorld->DetachObject(w.pDriver)));
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(std::vector<std::string>({ "parent released Car", "parent released Driver" }), listener.events);
+    EXPECT_EQ(w.pWorld.Get(), w.pDriver->GetWorld());
+    EXPECT_EQ(nullptr, w.pDriverNode->GetParent());
+
+    // Moving the driver's root node with the node methods keeps it too
+    Gem::TGemPtr<Canvas::XWorldObject> pBus;
+    auto pBusNode = MakeNode(pCanvas, w.pWorld->GetRootNode(), "Bus", 0.0f, 0.0f, 0.0f);
+    ASSERT_TRUE(Succeeded(MakeWorldObject(w.pWorld, pBusNode, &pBus, "Bus")));
+    ASSERT_TRUE(Succeeded(w.pWorld->PlaceObject(w.pDriver, pBusNode, false)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(pBus)));
+    ASSERT_TRUE(Succeeded(pGround->AddChild(w.pDriverNode)));
+    ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(3u, listener.events.size());
+    EXPECT_EQ(w.pWorld.Get(), w.pDriver->GetWorld());
+    EXPECT_EQ(pGround.Get(), w.pDriverNode->GetParent());
 }
 
 TEST(CanvasInterfacesTest, WorldListenerCallbacks)
@@ -2676,7 +2759,7 @@ TEST(CanvasInterfacesTest, WorldListenerCallbacks)
     ASSERT_TRUE(Succeeded(w.pWorld->RegisterListener(&second)));
     EXPECT_EQ(Gem::Result::NotFound, w.pWorld->UnregisterListener(nullptr));
 
-    // A callback may remove a world object, and the callbacks that causes are delivered by the
+    // A callback may release a world object, and the callbacks that causes are delivered by the
     // same Update.  The first listener unregisters the second, which receives nothing after it.
     first.onEvent = [&]
     {
@@ -2689,19 +2772,23 @@ TEST(CanvasInterfacesTest, WorldListenerCallbacks)
     };
     ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pElevator)));
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
-    EXPECT_EQ(std::vector<std::string>({ "orphaned Car", "orphaned Driver" }), first.events);
+    EXPECT_EQ(std::vector<std::string>({ "parent released Car", "parent released Driver" }), first.events);
     EXPECT_TRUE(second.events.empty());
-    EXPECT_EQ(w.pWorld->GetRootNode(), w.pDriverNode->GetParent());
+    EXPECT_EQ(nullptr, w.pCar->GetWorld());
+    EXPECT_EQ(nullptr, w.pDriver->GetWorld());
     EXPECT_EQ(Gem::Result::NotFound, w.pWorld->UnregisterListener(&second));
 
     // Releasing a world delivers no callback
     first.onEvent = nullptr;
-    Gem::TGemPtr<Canvas::XWorldObject> pRider;
-    auto pRiderNode = MakeNode(pCanvas, w.pDriverNode, "Rider", 0.0f, 0.0f, 0.0f);
+    Gem::TGemPtr<Canvas::XWorldObject> pBus, pRider;
+    auto pBusNode = MakeNode(pCanvas, w.pWorld->GetRootNode(), "Bus", 0.0f, 0.0f, 0.0f);
+    auto pRiderNode = MakeNode(pCanvas, pBusNode, "Rider", 0.0f, 0.0f, 0.0f);
+    ASSERT_TRUE(Succeeded(MakeWorldObject(w.pWorld, pBusNode, &pBus, "Bus")));
     ASSERT_TRUE(Succeeded(MakeWorldObject(w.pWorld, pRiderNode, &pRider, "Rider")));
-    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pDriver)));
+    ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(pBus)));
     w.pWorld = nullptr;
     EXPECT_EQ(2u, first.events.size());
+    EXPECT_EQ(nullptr, pRider->GetWorld());
 }
 
 TEST(CanvasInterfacesTest, WorldActiveCameraLeavesSceneGraph)
@@ -2742,13 +2829,13 @@ TEST(CanvasInterfacesTest, WorldActiveCameraLeavesSceneGraph)
     w.pWorld->SetActiveCamera(pCamera);
     listener.onEvent = [&]
     {
-        if (listener.events.back() == "orphaned Car")
+        if (listener.events.back() == "parent released Car")
             EXPECT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
     };
     ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pElevator)));
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
     EXPECT_EQ(nullptr, w.pWorld->GetActiveCamera());
-    EXPECT_EQ(std::vector<std::string>({ "camera lost", "camera lost", "orphaned Car", "camera lost" }),
+    EXPECT_EQ(std::vector<std::string>({ "camera lost", "camera lost", "parent released Car", "camera lost" }),
               listener.events);
 }
 
@@ -2901,7 +2988,7 @@ TEST(CanvasInterfacesTest, SceneNodeOperationsOnWorldObjects)
     ASSERT_TRUE(Succeeded(w.pWorld->PlaceObject(w.pCar, w.pPlatform, false)));
     EXPECT_EQ(w.pPlatform.Get(), w.pCarNode->GetParent());
 
-    // No world object was orphaned
+    // No world object was due for release
     ASSERT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
     EXPECT_TRUE(listener.events.empty());
 }
@@ -2915,12 +3002,14 @@ TEST(CanvasInterfacesTest, WorldObjectReleaseNotPlaced)
     CreateTestCanvasAndDevice(pCanvas, pDevice);
     ElevatorWorld w(pCanvas, pDevice);
 
-    // Releasing a car that is not placed leaves its orphaned driver not placed, with no parent
+    // Releasing a car that is not placed leaves its driver not placed, with no parent, due
+    // for release; detaching it keeps it
     ASSERT_TRUE(Succeeded(w.pWorld->DetachObject(w.pCar)));
     ASSERT_TRUE(Succeeded(w.pWorld->ReleaseWorldObject(w.pCar)));
     EXPECT_EQ(nullptr, w.pDriverNode->GetParent());
     EXPECT_EQ(w.pWorld.Get(), w.pDriver->GetWorld());
     EXPECT_EQ(w.pDriver.Get(), w.pDriverNode->GetWorldObject());
+    ASSERT_TRUE(Succeeded(w.pWorld->DetachObject(w.pDriver)));
 
     // A world object with no root node is released like any other
     Gem::TGemPtr<Canvas::XWorldObject> pRules;
@@ -2934,6 +3023,7 @@ TEST(CanvasInterfacesTest, WorldObjectReleaseNotPlaced)
     EXPECT_TRUE(Succeeded(w.pWorld->DeactivateObject(w.pDriver)));
     EXPECT_TRUE(Succeeded(w.pWorld->ActivateObject(w.pDriver)));
     EXPECT_TRUE(Succeeded(w.pWorld->Update(0.0f)));
+    EXPECT_EQ(w.pWorld.Get(), w.pDriver->GetWorld());
 }
 
 TEST(CanvasInterfacesTest, WorldObjectUniqueNames)

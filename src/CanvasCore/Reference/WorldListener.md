@@ -5,7 +5,7 @@ The callbacks a world delivers to the app. `WorldListener` is a plain struct, no
 ```cpp
 struct WorldListener
 {
-    virtual void OnObjectOrphaned(XWorld *pWorld, XWorldObject *pObject) {}
+    virtual void OnParentReleased(XWorld *pWorld, XWorldObject *pObject) {}
     virtual void OnActiveCameraLost(XWorld *pWorld) {}
 protected:
     ~WorldListener() = default;
@@ -16,13 +16,13 @@ The world queues its events and delivers their callbacks from inside [`XWorld::U
 
 ## Callbacks
 
-### OnObjectOrphaned
+### OnParentReleased
 
 ```cpp
-void OnObjectOrphaned(XWorld *pWorld, XWorldObject *pObject);
+void OnParentReleased(XWorld *pWorld, XWorldObject *pObject);
 ```
 
-`pObject` was orphaned: the world object whose node it was attached to was released, and `pObject` was attached to the node the release detached from, keeping its world transform. `pObject` is still in `pWorld`. An orphan released before its callback is due receives none.
+The world object whose node `pObject` was attached to was released, and `pObject` is [due for release](../README.md#worlds-and-world-objects): it is attached to the node the release detached from, keeping its world transform, and is still in `pWorld`. After the callbacks for this event, `pWorld` releases `pObject` unless it was moved or detached, with [`XWorld::PlaceObject`](XWorld.md#placeobject), [`XWorld::DetachObject`](XWorld.md#detachobject), or a node operation that moves its root node. A callback that places `pObject` elsewhere keeps it, and the world objects attached to its nodes stay with it and receive no callback. A world object released before its callback is due receives none.
 
 ### OnActiveCameraLost
 
