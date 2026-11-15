@@ -250,6 +250,69 @@ TEST(LightBVHTest, SpotLightsAreTracked)
     EXPECT_TRUE(ListContains(visible, pSpot.Get()));
 }
 
+// A spot aimed along -(1,1,1)/sqrt(3) from the origin with range 10
+// and a 40 degree half-angle aims downward, yet its rim rises above
+// the apex to y = 10 * (sin40 * sqrt(2/3) - cos40 * sqrt(1/3)) ~= 0.83.
+// The influence AABB must reach that far (sampling the rim at only a
+// few points around a tilted axis misses that extreme) and should not
+// reach much past it.
+TEST(LightBVHTest, TiltedSpotBoundCoversLitRegion)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
+
+    Gem::TGemPtr<XLight> pSpot;
+    Gem::TGemPtr<XSceneNode> pSpotNode;
+    MakeSpotLight(pCanvas, pWorld->GetRootNode(),
+                  FloatVector4(0.0f, 0.0f, 0.0f, 1.0f),
+                  10.0f, /*outerDeg*/ 80.0f,
+                  pSpot, pSpotNode);
+
+    // Orthonormal basis with row 0 (the spot axis) = -(1,1,1)/sqrt(3).
+    const float s3 = 1.0f / std::sqrt(3.0f);
+    const float s2 = 1.0f / std::sqrt(2.0f);
+    const float s6 = 1.0f / std::sqrt(6.0f);
+    FloatMatrix4x4 basis = {};
+    basis.M[0][0] = -s3;      basis.M[0][1] = -s3;      basis.M[0][2] = -s3;
+    basis.M[1][0] = -s2;      basis.M[1][1] =  s2;      basis.M[1][2] = 0.0f;
+    basis.M[2][0] =  s6;      basis.M[2][1] =  s6;      basis.M[2][2] = -2.0f * s6;
+    basis.M[3][3] = 1.0f;
+    pSpotNode->SetLocalRotation(QuaternionFromRotationMatrix(basis));
+
+    EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
+
+    const FloatMatrix4x4 world = pSpotNode->GetGlobalMatrix();
+    ASSERT_NEAR(-s3, world[0][0], 1e-4f);
+    ASSERT_NEAR(-s3, world[0][1], 1e-4f);
+    ASSERT_NEAR(-s3, world[0][2], 1e-4f);
+
+    LightBVH bvh;
+    bvh.Build(pWorld->GetRootNode());
+    ASSERT_TRUE(bvh.IsTrackedLight(pSpot.Get()));
+
+    // Frustum reduced to the single half-space y >= yMin; the other
+    // planes accept everything.
+    auto halfSpaceAboveY = [](float yMin) {
+        Frustum f;
+        for (auto& p : f.Planes)
+            p = FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
+        f.Planes[Frustum::Bottom] = FloatVector4(0.0f, 1.0f, 0.0f, -yMin);
+        return f;
+    };
+
+    std::vector<XLight*> visible;
+    bvh.QueryFrustum(halfSpaceAboveY(0.5f), visible);
+    EXPECT_TRUE(ListContains(visible, pSpot.Get()))
+        << "Lit region reaches y ~= 0.83; bound must not be culled at y >= 0.5";
+
+    bvh.QueryFrustum(halfSpaceAboveY(1.2f), visible);
+    EXPECT_FALSE(ListContains(visible, pSpot.Get()))
+        << "Lit region ends at y ~= 0.83; bound should be tight enough to cull at y >= 1.2";
+}
+
 // Rebuild must drop every primitive / tracking record from a prior
 // build before consuming the new scene.  Defends against state
 // accumulation when scene topology changes between Build calls.

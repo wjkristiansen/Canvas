@@ -11,10 +11,10 @@
 //
 // Per-light influence AABB derivation:
 //   - LightType::Point         bbox of Sphere(worldPos, Range)
-//   - LightType::Spot          bbox of bounded Cone(apex, axisDir,
-//                              Range, outerHalfAngle).  Computed from
-//                              the cone's apex + four rim samples,
-//                              which is loose but correct.
+//   - LightType::Spot          exact bbox of the spherical sector
+//                              (apex, axisDir, Range, outerHalfAngle):
+//                              apex, rim circle, and any sphere
+//                              extremes that fall inside the cone.
 //   - LightType::Directional   not tracked (infinite extent).  Always
 //                              passes the visibility filter.
 //   - LightType::Ambient       not tracked (scene-global).  Always
