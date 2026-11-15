@@ -12,12 +12,22 @@ namespace Canvas
 namespace
 {
 
-// Conservative AABB enclosing the cone defined by apex / unit axis /
-// range / outer half-angle.  We don't need a tight oriented bound for
-// BVH-tier culling, so we sample the cone's apex and four rim points
-// (axial endpoint and four cardinal directions around the rim) and
-// take their AABB.  Looser than the analytical extremes but cheap and
-// always conservative.
+// Exact AABB of the spot light's influence region: the spherical
+// sector of radius `range` around `apex`, containing every direction
+// within `outerHalfAngleRadians` of the unit `axis`.  This matches the
+// shader, which lights a point when its distance is within the cutoff
+// (never more than `range`) and its angle from the axis is inside the
+// outer cone.
+//
+// The extreme of the sector along each world direction +/-e is one of:
+//   - the apex;
+//   - the sphere point apex + range * e, if e lies inside the cone;
+//   - the extreme of the rim circle (center apex + axis * range*cos,
+//     radius range*sin, normal axis).  Along world axis i a circle of
+//     radius r with unit normal n extends r * sqrt(1 - n_i^2) from its
+//     center.
+// Valid for any half-angle in [0, pi], including cones wider than a
+// hemisphere.
 Math::AABB ComputeSpotInfluenceAABB(const Math::FloatVector4& apex,
                                     const Math::FloatVector4& axis,
                                     float range,
@@ -29,57 +39,29 @@ Math::AABB ComputeSpotInfluenceAABB(const Math::FloatVector4& apex,
     if (range <= 0.0f)
         return box;
 
-    // Pick any vector not parallel to the axis to derive an
-    // orthonormal basis (axis, right, up) for the rim sampling.
-    const float ax = axis.V[0], ay = axis.V[1], az = axis.V[2];
-    Math::FloatVector4 helper = (std::abs(ax) < 0.9f)
-        ? Math::FloatVector4(1.0f, 0.0f, 0.0f, 0.0f)
-        : Math::FloatVector4(0.0f, 1.0f, 0.0f, 0.0f);
+    const float halfAngle = std::clamp(outerHalfAngleRadians, 0.0f, 3.14159265f);
+    const float cosHalf = std::cos(halfAngle);
+    const float rimRadius = range * std::sin(halfAngle);
+    const float rimOffset = range * cosHalf;
 
-    // right = normalize(axis x helper)
-    Math::FloatVector4 right(
-        ay * helper.V[2] - az * helper.V[1],
-        az * helper.V[0] - ax * helper.V[2],
-        ax * helper.V[1] - ay * helper.V[0],
-        0.0f);
+    Math::FloatVector4 lo(apex.V[0], apex.V[1], apex.V[2], 0.0f);
+    Math::FloatVector4 hi = lo;
+    for (int i = 0; i < 3; ++i)
     {
-        const float rlen = std::sqrt(right.V[0] * right.V[0]
-                                   + right.V[1] * right.V[1]
-                                   + right.V[2] * right.V[2]);
-        if (rlen > 1e-6f)
-        {
-            right.V[0] /= rlen; right.V[1] /= rlen; right.V[2] /= rlen;
-        }
-    }
-    // up = axis x right
-    const Math::FloatVector4 up(
-        ay * right.V[2] - az * right.V[1],
-        az * right.V[0] - ax * right.V[2],
-        ax * right.V[1] - ay * right.V[0],
-        0.0f);
+        const float a = axis.V[i];
+        const float rimCenter = apex.V[i] + a * rimOffset;
+        const float rimExtent = rimRadius * std::sqrt((std::max)(0.0f, 1.0f - a * a));
+        lo.V[i] = (std::min)(lo.V[i], rimCenter - rimExtent);
+        hi.V[i] = (std::max)(hi.V[i], rimCenter + rimExtent);
 
-    const float rimDist = range * std::tan(outerHalfAngleRadians);
-    const Math::FloatVector4 axialEnd(
-        apex.V[0] + ax * range,
-        apex.V[1] + ay * range,
-        apex.V[2] + az * range,
-        0.0f);
-
-    box.ExpandToInclude(axialEnd);
-    for (int sign : { -1, +1 })
-    {
-        const float s = static_cast<float>(sign);
-        box.ExpandToInclude(Math::FloatVector4(
-            axialEnd.V[0] + s * rimDist * right.V[0],
-            axialEnd.V[1] + s * rimDist * right.V[1],
-            axialEnd.V[2] + s * rimDist * right.V[2],
-            0.0f));
-        box.ExpandToInclude(Math::FloatVector4(
-            axialEnd.V[0] + s * rimDist * up.V[0],
-            axialEnd.V[1] + s * rimDist * up.V[1],
-            axialEnd.V[2] + s * rimDist * up.V[2],
-            0.0f));
+        // dot(+e_i, axis) = a; dot(-e_i, axis) = -a.
+        if (a >= cosHalf)
+            hi.V[i] = apex.V[i] + range;
+        if (-a >= cosHalf)
+            lo.V[i] = apex.V[i] - range;
     }
+    box.ExpandToInclude(lo);
+    box.ExpandToInclude(hi);
     return box;
 }
 
