@@ -9,6 +9,8 @@
 #include "pch.h"
 #include "Canvas.h"
 #include "CanvasElement.h"
+#include "SceneChangeTracker.h"
+
 namespace Canvas
 {
 
@@ -34,6 +36,18 @@ public:
         return Gem::Result::Success;
     }
 
+protected:
+    // Reports to the attached node's change tracker that this element's bounds changed.
+    // Elements call this from every setter that changes GetLocalBounds or what a consumer
+    // derives a world-space extent from (e.g. a light's range).
+    void NotifyBoundsChanged();
+
+    // Reports a structure change to the tracker watching the root of the attached node's
+    // graph.  Elements call this when their bounds change between empty and non-empty, which
+    // changes whether their node is renderable.
+    void NotifyStructureChanged();
+
+public:
     // Default returns an empty AABB.  Renderable elements (CMeshInstance, ...)
     // override with their node-local vertex envelope.
     // Non-renderable elements -- lights, cameras, ambient -- inherit
@@ -255,9 +269,36 @@ public: // XSceneNode methods
     bool IsWorldRoot() const { return m_IsWorldRoot; }
     void SetWorldRoot() { m_IsWorldRoot = true; }
 
+    // Reports this node to its change tracker, if it has one.  Called when its global matrix
+    // goes stale, when an element is bound to it, and by its elements when their bounds change.
+    void NotifyChangeTracker()
+    {
+        if (m_pChangeTracker)
+            m_pChangeTracker->NotifyChanged(this);
+    }
+
+    // Reports a structure change -- a child added or removed, an element bound, or an element's
+    // bounds changing between empty and non-empty -- to the tracker watching the root of this
+    // node's graph, if any.
+    void NotifyStructureChanged();
+
 private:
+    friend class SceneChangeTracker;
+    static constexpr uint32_t kNotChanged = UINT32_MAX;
+
     CWorldObject *m_pRootedObject = nullptr; // Weak pointer
     bool m_IsWorldRoot = false;
+
+    // Change tracking, maintained by SceneChangeTracker: the tracker this node reports to, how
+    // many of its consumers track this node, and this node's index in its changed list, or
+    // kNotChanged when it is not listed.
+    SceneChangeTracker *m_pChangeTracker = nullptr; // Weak pointer
+    uint32_t m_ChangeTrackCount = 0;
+    uint32_t m_ChangedIndex = kNotChanged;
+
+    // The tracker watching this node's structure changes and its subtree's, when this node is a
+    // watched root (see SceneChangeTracker::WatchStructure).
+    SceneChangeTracker *m_pStructureTracker = nullptr; // Weak pointer
 
     // Helper to invalidate transforms on this node and propagate to children
     void InvalidateTransforms(TransformDirtyFlags flags);
@@ -281,6 +322,20 @@ template<class _Base>
 GEMMETHODIMP_(XSceneNode *) TSceneElement<_Base>::GetAttachedNode()
 {
     return m_pNode;
+}
+
+template<class _Base>
+void TSceneElement<_Base>::NotifyBoundsChanged()
+{
+    if (m_pNode)
+        static_cast<CSceneNode *>(m_pNode)->NotifyChangeTracker();
+}
+
+template<class _Base>
+void TSceneElement<_Base>::NotifyStructureChanged()
+{
+    if (m_pNode)
+        static_cast<CSceneNode *>(m_pNode)->NotifyStructureChanged();
 }
 
 }

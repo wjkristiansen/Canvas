@@ -87,6 +87,30 @@ bool CMaterial12::MapRole(Canvas::MaterialLayerRole role, SupportedRole &out)
 }
 
 //------------------------------------------------------------------------------------------------
+GEMMETHODIMP_(void) CMaterial12::SetDisplacement(const Canvas::GfxDisplacementDesc *pDesc)
+{
+    if (pDesc)
+    {
+        m_HasDisplacement = true;
+        m_Displacement    = *pDesc;
+        // Hold a strong ref on the displacement-map surface so the
+        // material keeps it alive for as long as displacement is
+        // configured.
+        m_pDisplacementMap = pDesc->pDisplacementMap;
+    }
+    else
+    {
+        m_HasDisplacement = false;
+        m_Displacement    = {};
+        m_pDisplacementMap = nullptr;
+    }
+
+    // Displacement inflates the local bounds of every mesh group using
+    // this material (see CMeshData12::GetLocalBounds).
+    m_pDevice->NotifyMeshBoundsChanged();
+}
+
+//------------------------------------------------------------------------------------------------
 GEMMETHODIMP CMaterial12::SetTexture(Canvas::MaterialLayerRole role, Canvas::XGfxSurface *pSurface)
 {
     SupportedRole mapped;

@@ -26,6 +26,7 @@ GEMMETHODIMP CWorld::Initialize()
         Gem::ThrowGemError(m_pCanvas->CreateSceneNode(&pRoot, "SceneRoot"));
         m_pRoot = pRoot;
         static_cast<CSceneNode *>(pRoot.Get())->SetWorldRoot();
+        m_ChangeTracker.WatchStructure(pRoot);
     }
     catch(const Gem::GemError &e)
     {
@@ -620,12 +621,27 @@ GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
 
         pRenderQueue->SetBackground(&m_Background);
 
-        // Auto-build if the caller didn't invoke BuildBVH() at load
-        // time.  Eats the first-frame cost rather than failing.
-        if (!m_WorldBVH.IsBuilt())
+        // Build on the first frame, or if nodes were added or removed
+        // or elements bound or unbound since the last frame.
+        // Otherwise refit, so nodes and lights that changed since the
+        // last frame are culled where they are now.  Both BVHs read
+        // the same changes, so they are cleared after both.
+        const uint64_t meshBoundsGeneration = m_pDevice->GetMeshBoundsGeneration();
+        if (meshBoundsGeneration != m_MeshBoundsGeneration)
+        {
+            m_WorldBVH.InvalidateAllBounds();
+            m_MeshBoundsGeneration = meshBoundsGeneration;
+        }
+        const bool structureChanged = m_ChangeTracker.HasStructureChanged();
+        if (m_WorldBVH.IsBuilt() && !structureChanged)
+            m_WorldBVH.Refit();
+        else
             m_WorldBVH.Build(m_pRoot.Get());
-        if (!m_LightBVH.IsBuilt())
+        if (m_LightBVH.IsBuilt() && !structureChanged)
+            m_LightBVH.Refit();
+        else
             m_LightBVH.Build(m_pRoot.Get());
+        m_ChangeTracker.ClearChanges();
 
         // Visibility filter: renderable nodes are gated by frustum
         // visibility; non-renderable nodes (lights, cameras) always
@@ -672,9 +688,7 @@ GEMMETHODIMP CWorld::SubmitRenderables(XGfxRenderQueue *pRenderQueue)
             m_TraversalStack.pop_back();
 
             // Skip only when the node is renderable AND not in the
-            // visible set.  Non-renderable nodes pass through; so do
-            // renderable nodes the BVH has never seen (e.g. added
-            // after Build), so a stale BVH never hides geometry.
+            // visible set.  Non-renderable nodes pass through.
             if (pNode->GetBoundElementCount() > 0)
             {
                 const bool renderable = m_WorldBVH.IsRenderableNode(pNode);

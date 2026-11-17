@@ -5,6 +5,7 @@
 #include "pch.h"
 #include "LightBVH.h"
 #include "Canvas.h"
+#include "SceneGraph.h"
 
 namespace Canvas
 {
@@ -39,7 +40,7 @@ Math::AABB ComputeSpotInfluenceAABB(const Math::FloatVector4& apex,
     if (range <= 0.0f)
         return box;
 
-    const float halfAngle = std::clamp(outerHalfAngleRadians, 0.0f, 3.14159265f);
+    const float halfAngle = std::clamp(outerHalfAngleRadians, 0.0f, Math::PiF);
     const float cosHalf = std::cos(halfAngle);
     const float rimRadius = range * std::sin(halfAngle);
     const float rimOffset = range * cosHalf;
@@ -76,26 +77,49 @@ Math::AABB ComputePointInfluenceAABB(const Math::FloatVector4& position, float r
         Math::FloatVector4(position.V[0] + range, position.V[1] + range, position.V[2] + range, 0.0f));
 }
 
-// Derive (worldPosition, axisForward) from a light's attached node's
-// global matrix.  Position is row 3; the spot/directional "forward"
-// is row 0, the local forward axis.  Returns false when no node is attached.
-bool GetLightWorldPose(XLight* light,
-                       Math::FloatVector4& outPosition,
-                       Math::FloatVector4& outForward)
+// The light's influence AABB with `world` as its node's global matrix,
+// or the empty AABB when the light has no spatial bound: directional,
+// ambient and area lights, and point lights with zero range.
+Math::AABB ComputeInfluence(XLight* light, const Math::FloatMatrix4x4& world)
 {
-    XSceneNode* node = light->GetAttachedNode();
-    if (!node)
-        return false;
-    const Math::FloatMatrix4x4 world = node->GetGlobalMatrix();
-    outPosition = Math::FloatVector4(world[3][0], world[3][1], world[3][2], 1.0f);
-    outForward  = Math::FloatVector4(world[0][0], world[0][1], world[0][2], 0.0f);
-    return true;
+    const LightType type = light->GetType();
+    if (type != LightType::Point && type != LightType::Spot)
+        return Math::AABB{};
+
+    // Position is row 3; the spot "forward" is row 0, the local
+    // forward axis.
+    const Math::FloatVector4 worldPos = world[3];
+    const Math::FloatVector4 forward = world[0];
+    const float range = light->GetRange();
+
+    if (type == LightType::Point)
+        return ComputePointInfluenceAABB(worldPos, range);
+
+    // Full cone angles.  The renderer lights out to the larger of the
+    // two, swapping them when inner exceeds outer, and its cone
+    // half-angle is half of that.  GetSpotAngles always writes both.
+    float innerAngle = 0.0f;
+    float outerAngle = 0.0f;
+    light->GetSpotAngles(&innerAngle, &outerAngle);
+    const float outerHalfAngle = 0.5f * (std::max)(innerAngle, outerAngle);
+
+    // Scale anywhere above the light's node leaves the basis row off
+    // unit length.  Normalize as the renderer does, so a degenerate
+    // axis falls back to the same direction it lights.
+    return ComputeSpotInfluenceAABB(worldPos, forward.Normalize(), range, outerHalfAngle);
 }
 
 } // anonymous namespace
 
 void LightBVH::Clear()
 {
+    for (const LitNode& lit : m_LitNodeList)
+        m_Tracker.Untrack(lit.Node);
+
+    m_pRoot = nullptr;
+    m_LitNodeList.clear();
+    m_Lights.clear();
+    m_LitNodes.clear();
     m_Primitives.clear();
     m_LightForPrimitive.clear();
     m_UntrackedLights.clear();
@@ -112,6 +136,8 @@ void LightBVH::Build(XSceneNode* root)
     if (!root)
         return;
 
+    m_pRoot = root;
+
     // Iterative DFS to match WorldBVH (and to defend against the
     // deep instanced subtrees that can occur in imported scenes).
     std::vector<XSceneNode*> stack;
@@ -126,80 +152,28 @@ void LightBVH::Build(XSceneNode* root)
         if (!node)
             continue;
 
+        const uint32_t firstLight = static_cast<uint32_t>(m_Lights.size());
         const uint32_t elementCount = node->GetBoundElementCount();
+        Math::FloatMatrix4x4 world;
         for (uint32_t i = 0; i < elementCount; ++i)
         {
-            XSceneElement* element = node->GetBoundElement(i);
-            if (!element)
-                continue;
-
             Gem::TGemPtr<XLight> pLight;
-            if (FAILED(element->QueryInterface(&pLight)))
+            if (FAILED(node->GetBoundElement(i)->QueryInterface(&pLight)))
                 continue;
 
-            XLight* lightRaw = pLight.Get();
-            const LightType type = lightRaw->GetType();
+            if (m_Lights.size() == firstLight)
+                world = node->GetGlobalMatrix();
 
-            // Directional / Ambient / Area / disabled-attached light:
-            // no spatial bound, route to the untracked list so the
-            // consumer can include it unconditionally.
-            if (type != LightType::Point && type != LightType::Spot)
-            {
-                m_UntrackedLights.push_back(lightRaw);
-                continue;
-            }
-
-            Math::FloatVector4 worldPos, forward;
-            if (!GetLightWorldPose(lightRaw, worldPos, forward))
-            {
-                // A point/spot light with no attached node has no
-                // meaningful world position; treat as untracked so it
-                // still reaches the renderer (which will handle the
-                // missing-node fallback) rather than silently
-                // dropping it.
-                m_UntrackedLights.push_back(lightRaw);
-                continue;
-            }
-
-            const float range = lightRaw->GetRange();
-            Math::AABB influence;
-
-            if (type == LightType::Point)
-            {
-                influence = ComputePointInfluenceAABB(worldPos, range);
-            }
-            else // LightType::Spot
-            {
-                float innerHalf = 0.785398f;
-                float outerHalf = 1.047198f;
-                lightRaw->GetSpotAngles(&innerHalf, &outerHalf);
-                // SetSpotAngles takes the full angle pair; the cone
-                // half-angle for influence bounding is outer / 2.
-                // (Mirrors the cosine used by the renderer's spot
-                // attenuation.)
-                const float outerHalfAngle = 0.5f * outerHalf;
-
-                // Defensive normalize: imported / animated transforms
-                // can drift basis rows slightly off unit length.
-                const float flen = std::sqrt(forward.V[0] * forward.V[0]
-                                           + forward.V[1] * forward.V[1]
-                                           + forward.V[2] * forward.V[2]);
-                if (flen > 1e-6f)
-                {
-                    forward.V[0] /= flen;
-                    forward.V[1] /= flen;
-                    forward.V[2] /= flen;
-                }
-                influence = ComputeSpotInfluenceAABB(worldPos, forward, range, outerHalfAngle);
-            }
-
+            // Directional / Ambient / Area lights, and zero-range point
+            // lights, have no spatial bound: route them to the
+            // untracked list so the consumer includes them
+            // unconditionally rather than silently dropping authored
+            // lights.
+            const Math::AABB influence = ComputeInfluence(pLight, world);
             if (influence.IsEmpty())
             {
-                // Zero-range or otherwise degenerate; classify as
-                // untracked so the renderer still sees it (it will
-                // produce zero contribution at runtime anyway, but
-                // we shouldn't silently drop authored lights).
-                m_UntrackedLights.push_back(lightRaw);
+                m_UntrackedLights.push_back(pLight.Get());
+                m_Lights.push_back({ pLight, kInvalidBVHPrimitiveId });
                 continue;
             }
 
@@ -209,8 +183,17 @@ void LightBVH::Build(XSceneNode* root)
             prim.Id          = nextId++;
             prim.Flags       = BVHPrimitiveFlags::Static;
             m_Primitives.push_back(prim);
-            m_LightForPrimitive.push_back(lightRaw);
-            m_TrackedLightSet.insert(lightRaw);
+            m_LightForPrimitive.push_back(pLight.Get());
+            m_TrackedLightSet.insert(pLight.Get());
+            m_Lights.push_back({ pLight, prim.Id });
+        }
+
+        const uint32_t lightCount = static_cast<uint32_t>(m_Lights.size()) - firstLight;
+        if (lightCount > 0)
+        {
+            m_LitNodes.emplace(node, static_cast<uint32_t>(m_LitNodeList.size()));
+            m_LitNodeList.push_back({ node, firstLight, lightCount });
+            m_Tracker.Track(node);
         }
 
         for (XSceneNode* child = node->GetFirstChild();
@@ -225,6 +208,57 @@ void LightBVH::Build(XSceneNode* root)
         m_BVH.Build(m_Primitives.data(), m_Primitives.size());
 
     m_Built = true;
+}
+
+void LightBVH::Refit()
+{
+    if (!m_Built)
+        return;
+
+    bool changed = false;
+    bool rebuild = false;
+    for (XSceneNode* node : m_Tracker.GetChangedNodes())
+    {
+        auto it = m_LitNodes.find(node);
+        if (it == m_LitNodes.end())
+            continue; // had no lights at Build; reported for the WorldBVH
+
+        const LitNode& lit = m_LitNodeList[it->second];
+        const Math::FloatMatrix4x4 world = node->GetGlobalMatrix();
+        for (uint32_t i = 0; i < lit.LightCount; ++i)
+        {
+            const LightEntry& entry = m_Lights[lit.FirstLight + i];
+            const Math::AABB influence = ComputeInfluence(entry.Light, world);
+
+            // An untracked light that gained a spatial bound, or a
+            // tracked one that lost it, belongs in the other list;
+            // only a Build re-sorts them.
+            const bool tracked = entry.PrimitiveIndex != kInvalidBVHPrimitiveId;
+            if (tracked == influence.IsEmpty())
+            {
+                rebuild = true;
+                break;
+            }
+            if (tracked)
+            {
+                m_Primitives[entry.PrimitiveIndex].WorldBounds = influence;
+                changed = true;
+            }
+        }
+        if (rebuild)
+            break;
+    }
+
+    if (rebuild)
+    {
+        // Build releases the held root; keep it alive across the call.
+        Gem::TGemPtr<XSceneNode> pRoot = m_pRoot;
+        Build(pRoot);
+    }
+    else if (changed)
+    {
+        m_BVH.Refit(m_Primitives.data(), m_Primitives.size());
+    }
 }
 
 bool LightBVH::IsTrackedLight(XLight* light) const

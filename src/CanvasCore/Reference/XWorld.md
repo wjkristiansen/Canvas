@@ -195,10 +195,4 @@ Gem::Result SubmitRenderables(XGfxRenderQueue *pRenderQueue);
 
 Submits the world to `pRenderQueue`: its active camera and background, the lights and renderable nodes of its scene graph that the active camera can see, then its UI graphs. Returns the first failure from `pRenderQueue`.
 
-### BuildBVH
-
-```cpp
-void BuildBVH();
-```
-
-Builds the world's bounding volume hierarchies over the renderable elements and lights in its scene graph, which `SubmitRenderables` uses to find what the active camera can see, discarding the previous ones. `SubmitRenderables` builds them when they have not been built, so calling `BuildBVH` moves that cost to a time the app chooses. A call after the scene graph changes rebuilds them for its new contents.
+The first call builds the bounding volume hierarchies that find what the active camera can see, over the renderable elements and lights in the scene graph, so it takes longer than later calls. Later calls keep them current: they rebuild them after nodes have been added to or removed from the scene graph, elements bound or unbound, or meshes given their first mesh data or left with none, since the previous call, and otherwise update the bounds of the nodes that moved and the elements whose bounds changed, such as a light given a new range.

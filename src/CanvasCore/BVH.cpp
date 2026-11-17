@@ -1,5 +1,5 @@
 //================================================================================================
-// BVH implementation -- SAH binned top-down build + iterative frustum cull.
+// BVH implementation -- SAH binned top-down build, refit, and iterative queries.
 //================================================================================================
 
 #include "pch.h"
@@ -45,6 +45,7 @@ void BVH::Build(const BVHPrimitive* primitives, size_t count)
 {
     m_Nodes.clear();
     m_PrimitiveIndices.clear();
+    m_BuildSurfaceArea = 0.0f;
 
     // Skip empty-sentinel primitives.  Defending here means an upstream
     // caller that passes empties produces a smaller BVH rather than a
@@ -67,6 +68,42 @@ void BVH::Build(const BVHPrimitive* primitives, size_t count)
     m_Nodes.emplace_back();
     BuildRecursive(primitives, /*nodeIndex*/ 0, /*first*/ 0,
                    /*count*/ static_cast<uint32_t>(m_PrimitiveIndices.size()));
+
+    m_BuildSurfaceArea = TotalNodeSurfaceArea();
+}
+
+void BVH::Refit(const BVHPrimitive* primitives, size_t count)
+{
+    // A node's children are always appended after it, so walking the
+    // nodes from last to first visits every child before its parent.
+    for (size_t i = m_Nodes.size(); i-- > 0;)
+    {
+        BVHNode& node = m_Nodes[i];
+        Math::AABB bounds;
+        if (node.IsLeaf())
+        {
+            const uint32_t end = node.LeftOrFirst + node.PrimitiveCount;
+            for (uint32_t j = node.LeftOrFirst; j < end; ++j)
+                bounds.ExpandToInclude(primitives[m_PrimitiveIndices[j]].WorldBounds);
+        }
+        else
+        {
+            bounds = m_Nodes[node.LeftOrFirst].Bounds;
+            bounds.ExpandToInclude(m_Nodes[node.LeftOrFirst + 1].Bounds);
+        }
+        node.Bounds = bounds;
+    }
+
+    if (TotalNodeSurfaceArea() > kRefitRebuildRatio * m_BuildSurfaceArea)
+        Build(primitives, count);
+}
+
+float BVH::TotalNodeSurfaceArea() const
+{
+    float total = 0.0f;
+    for (const BVHNode& node : m_Nodes)
+        total += SurfaceArea(node.Bounds);
+    return total;
 }
 
 void BVH::BuildRecursive(const BVHPrimitive* primitives,

@@ -15,14 +15,23 @@
 //                              (apex, axisDir, Range, outerHalfAngle):
 //                              apex, rim circle, and any sphere
 //                              extremes that fall inside the cone.
+//   - LightType::Point, Range 0  not tracked.  Always passes.
 //   - LightType::Directional   not tracked (infinite extent).  Always
 //                              passes the visibility filter.
 //   - LightType::Ambient       not tracked (scene-global).  Always
 //                              passes.
 //   - LightType::Area          not tracked.  Always passes.
 //
+// Refit keeps each influence AABB current by updating only the nodes
+// the world's SceneChangeTracker reports as moved or as having a light
+// change its range or spot angles.  It cannot follow structure changes
+// -- nodes added or removed, or elements bound -- so the caller
+// rebuilds after one (CWorld does, from
+// SceneChangeTracker::HasStructureChanged); until then, a light added
+// since Build is in neither list, and a consumer filtering by
+// visibility drops it.
+//
 // This class does NOT:
-//   - track dirty light transforms (no refit, no per-frame update)
 //   - cull shadow casters (the shadow pass consumes the full caster
 //     list)
 //================================================================================================
@@ -31,6 +40,7 @@
 
 #include "pch.h"
 #include "BVH.h"
+#include "SceneChangeTracker.h"
 
 namespace Canvas
 {
@@ -42,7 +52,12 @@ struct XSceneNode;
 class LightBVH
 {
 public:
-    LightBVH() = default;
+    // `tracker` reports the changes Refit applies, and must outlive
+    // this LightBVH.
+    explicit LightBVH(SceneChangeTracker& tracker) : m_Tracker(tracker) {}
+    LightBVH(const LightBVH&) = delete;
+    LightBVH& operator=(const LightBVH&) = delete;
+    ~LightBVH() { Clear(); }
 
     // Walks the subtree rooted at `root`, discovers every XLight bound
     // to any node via QueryInterface, computes a per-light influence
@@ -52,9 +67,24 @@ public:
     // (see IsTrackedLight).  Discards prior state first; safe to call
     // repeatedly when scene topology changes.  Null root is a no-op
     // (leaves IsBuilt() == false).
+    //
+    // Tracks every node with a light bound with the tracker, and holds
+    // a reference on it, on its lights and on `root`, so Refit can read
+    // them even after they leave the graph.
     CANVAS_API void Build(XSceneNode* root);
 
-    // Reset to the pre-Build state.  Frees BVH / primitive memory.
+    // Bring the influence AABBs up to date with the lit nodes the
+    // tracker reports as changed: recompute their tracked lights'
+    // bounds, then refit the BVH over them.  Rebuilds from the root
+    // when one of their lights moves between tracked and untracked
+    // (e.g. a point light whose range becomes zero).  Requires that the
+    // scene's structure has not changed since Build (see the class
+    // comment).  Call once per frame before querying, and before the
+    // tracker's owner clears its changes.  No-op when not built.
+    CANVAS_API void Refit();
+
+    // Reset to the pre-Build state.  Frees BVH / primitive memory,
+    // untracks the lit nodes, and releases the held nodes and lights.
     CANVAS_API void Clear();
 
     bool IsBuilt() const { return m_Built; }
@@ -88,14 +118,44 @@ public:
                                  std::vector<XLight*>& outVisibleLights) const;
 
 private:
+    // A node with lights bound.  Its lights are
+    // m_Lights[FirstLight, FirstLight + LightCount), in binding order.
+    struct LitNode
+    {
+        Gem::TGemPtr<XSceneNode> Node;
+        uint32_t FirstLight = 0;
+        uint32_t LightCount = 0;
+    };
+
+    // A light, with the index of its primitive in m_Primitives, or
+    // kInvalidBVHPrimitiveId when it is untracked.
+    struct LightEntry
+    {
+        Gem::TGemPtr<XLight> Light;
+        uint32_t PrimitiveIndex = kInvalidBVHPrimitiveId;
+    };
+
+    SceneChangeTracker& m_Tracker;
+    Gem::TGemPtr<XSceneNode> m_pRoot;
+
+    // The references that keep every lit node and every light alive.
+    // The raw XSceneNode* and XLight* below all point into these, and
+    // are filled and emptied with them.
+    std::vector<LitNode>    m_LitNodeList;
+    std::vector<LightEntry> m_Lights;
+
+    // Index into m_LitNodeList of each lit node.
+    std::unordered_map<XSceneNode*, uint32_t> m_LitNodes;
+
     // Per-tracked-light primitive table.  Index parallel to
     // m_LightForPrimitive: m_Primitives[i].Id == i, and that primitive
     // corresponds to m_LightForPrimitive[i].
     std::vector<BVHPrimitive> m_Primitives;
     std::vector<XLight*>      m_LightForPrimitive;
 
-    // Untracked lights (directional / ambient / area / disabled),
-    // captured so the caller can fold them back into the visible set.
+    // Untracked lights (directional / ambient / area / zero-range
+    // point), captured so the caller can fold them back into the
+    // visible set.
     std::vector<XLight*>      m_UntrackedLights;
 
     // Lookup for IsTrackedLight.  Populated alongside m_Primitives so

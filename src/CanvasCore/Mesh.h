@@ -62,7 +62,11 @@ public:
 
     GEMMETHOD_(void, SetMeshData)(XGfxMeshData *pMesh) final
     {
+        const bool wasEmpty = GetLocalBounds().IsEmpty();
         m_pMeshData = pMesh;
+        NotifyBoundsChanged();
+        if (GetLocalBounds().IsEmpty() != wasEmpty)
+            NotifyStructureChanged();
     }
 
     GEMMETHOD(SetSkinBinding)(const SkinBindingDesc *pDesc) final

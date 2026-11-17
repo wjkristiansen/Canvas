@@ -18,6 +18,7 @@ namespace Canvas
     namespace Math
     {
         inline constexpr double Pi = 3.14159265358979323846;
+        inline constexpr float PiF = static_cast<float>(Pi);
 
         //------------------------------------------------------------------------------------------------
         template<class _Type, int _Dim>

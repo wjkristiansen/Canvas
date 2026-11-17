@@ -245,8 +245,10 @@ The `CanvasUnitTest` target uses GoogleTest and covers:
 - **CanvasTextTest**: font loading and text layout
 - **D3D12ResourceUtilsTest**: graphics-layer resource helpers
 - **GpuTaskGraphTest**: barrier resolution and task-graph correctness
-- **BVHTest**: world BVH build and frustum/sphere/cone/AABB query equivalence vs. brute force
-- **LightBVHTest**: per-light influence culling and tracked/untracked classification
+- **BVHTest**: world BVH build, refit, and frustum/sphere/cone/AABB query equivalence vs. brute force
+- **LightBVHTest**: per-light influence culling, tracked/untracked classification, and refit as lights move or change
+- **WorldBVHTest**: world BVH refit as nodes move and mesh bounds change
+- **SceneChangeTrackerTest**: reporting of moved nodes, element changes, and scene graph structure changes
 
 Tests are discovered automatically via `gtest_discover_tests`, so each `TEST(...)` case shows up as an individual CTest entry:
 

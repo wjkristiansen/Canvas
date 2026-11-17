@@ -71,24 +71,7 @@ public:
         return m_RoughMetalAOFactor;
     }
 
-    GEMMETHOD_(void, SetDisplacement)(const Canvas::GfxDisplacementDesc *pDesc) final
-    {
-        if (pDesc)
-        {
-            m_HasDisplacement = true;
-            m_Displacement    = *pDesc;
-            // Hold a strong ref on the displacement-map surface so the
-            // material keeps it alive for as long as displacement is
-            // configured.
-            m_pDisplacementMap = pDesc->pDisplacementMap;
-        }
-        else
-        {
-            m_HasDisplacement = false;
-            m_Displacement    = {};
-            m_pDisplacementMap = nullptr;
-        }
-    }
+    GEMMETHOD_(void, SetDisplacement)(const Canvas::GfxDisplacementDesc *pDesc) final;
     GEMMETHOD_(const Canvas::GfxDisplacementDesc *, GetDisplacement)() const final
     {
         return m_HasDisplacement ? &m_Displacement : nullptr;
