@@ -43,14 +43,7 @@ Gem::Result CUIGraph::RemoveElement(XUIElement* pElement)
         return Gem::Result::BadPointer;
 
     // Unbind from node - vertex allocation stays with the element
-    XUIGraphNode* pNode = pElement->GetAttachedNode();
-    if (pNode)
-    {
-        CUIGraphNodeImpl* pImpl = static_cast<CUIGraphNodeImpl*>(pNode);
-        pImpl->UnbindElement(pElement);
-    }
-
-    return Gem::Result::Success;
+    return pElement->Detach();
 }
 
 //------------------------------------------------------------------------------------------------

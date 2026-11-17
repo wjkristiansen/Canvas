@@ -46,8 +46,11 @@ void CUITextElement12::SetLayoutConfig(const Canvas::TextLayoutConfig& config)
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CUITextElement12::Detach()
 {
-    m_pAttachedNode = nullptr;
-    return Gem::Result::Success;
+    if (!m_pAttachedNode)
+        return Gem::Result::Success;
+    // The node may hold the last reference to this element.
+    Gem::TGemPtr<Canvas::XUIElement> pKeepAlive(this);
+    return m_pAttachedNode->UnbindElement(this);
 }
 
 //------------------------------------------------------------------------------------------------

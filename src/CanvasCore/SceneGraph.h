@@ -277,10 +277,15 @@ public: // XSceneNode methods
             m_pChangeTracker->NotifyChanged(this);
     }
 
-    // Reports a structure change -- a child added or removed, an element bound, or an element's
-    // bounds changing between empty and non-empty -- to the tracker watching the root of this
-    // node's graph, if any.
+    // Reports a structure change -- a child added or removed, an element bound or unbound, or an
+    // element's bounds changing between empty and non-empty -- to the tracker watching the root
+    // of this node's graph, if any.
     void NotifyStructureChanged();
+
+    // Removes pElement from this node's bound elements, releasing this node's reference to it,
+    // which may destroy it.  Leaves the element's own node pointer to the caller.  Does nothing
+    // when pElement is not bound to this node.
+    void UnbindElement(XSceneElement *pElement);
 
 private:
     friend class SceneChangeTracker;
@@ -314,8 +319,18 @@ private:
 template<class _Base>
 GEMMETHODIMP TSceneElement<_Base>::Detach()
 {
-    // TODO: Implement detachment logic
-    return Gem::Result::Success;
+    if (!m_pNode)
+        return Gem::Result::Success;
+
+    // The node may hold the last reference to this element.
+    Gem::TGemPtr<XSceneElement> pKeepAlive(this);
+    CSceneNode *pNode = static_cast<CSceneNode *>(m_pNode);
+
+    // Through the virtual, so elements that cache node-derived state (e.g. a camera's view
+    // matrix) see the change, as they do when their node is destroyed.
+    const Gem::Result result = NotifyNodeContextChanged(nullptr);
+    pNode->UnbindElement(this);
+    return result;
 }
 
 template<class _Base>

@@ -34,6 +34,13 @@ CUIGraphNodeImpl::~CUIGraphNodeImpl()
     }
     m_pFirstChild = nullptr;
     m_pLastChild = nullptr;
+
+    // An element held elsewhere outlives this node, so its pointer to this node is cleared
+    for (auto &pElement : m_Elements)
+    {
+        if (pElement->GetAttachedNode() == this)
+            pElement->NotifyNodeContextChanged(nullptr);
+    }
 }
 
 CUIGraphNodeImpl::ChildNode* CUIGraphNodeImpl::FindChildNode(XUIGraphNode* pChild)
@@ -147,35 +154,39 @@ GEMMETHODIMP CUIGraphNodeImpl::BindElement(_In_ XUIElement* pElement)
 
     XUIGraphNode* pCurrentNode = pElement->GetAttachedNode();
     if (pCurrentNode == this)
-    {
-        // Already bound to this node; nothing to do.
         return Gem::Result::Success;
-    }
 
-    if (pCurrentNode != nullptr)
+    // This node takes its reference before the previous node releases its own, which may be
+    // the last.
+    try
     {
-        // Detach from the previous owner so a single element is never present
-        // in two nodes' bound-element lists at once.
-        static_cast<CUIGraphNodeImpl*>(pCurrentNode)->UnbindElement(pElement);
+        m_Elements.emplace_back(pElement);
+    }
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
     }
 
-    pElement->NotifyNodeContextChanged(this);
+    if (pCurrentNode)
+        pCurrentNode->UnbindElement(pElement);
 
-    m_Elements.emplace_back(pElement);
-    return Gem::Result::Success;
+    return pElement->NotifyNodeContextChanged(this);
 }
 
-void CUIGraphNodeImpl::UnbindElement(XUIElement* pElement)
+GEMMETHODIMP CUIGraphNodeImpl::UnbindElement(_In_ XUIElement* pElement)
 {
-    for (auto it = m_Elements.begin(); it != m_Elements.end(); ++it)
-    {
-        if (it->Get() == pElement)
-        {
-            pElement->Detach();
-            m_Elements.erase(it);
-            return;
-        }
-    }
+    if (!pElement)
+        return Gem::Result::BadPointer;
+
+    auto it = std::find_if(m_Elements.begin(), m_Elements.end(),
+        [pElement](const Gem::TGemPtr<XUIElement> &pBound) { return pBound.Get() == pElement; });
+    if (it == m_Elements.end())
+        return Gem::Result::InvalidArg;
+
+    // Releasing this node's reference may destroy the element, so it is told first.
+    pElement->NotifyNodeContextChanged(nullptr);
+    m_Elements.erase(it);
+    return Gem::Result::Success;
 }
 
 } // namespace Canvas

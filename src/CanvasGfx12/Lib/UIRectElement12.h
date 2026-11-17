@@ -44,8 +44,15 @@ public:
     GEMMETHOD_(bool, IsVisible)() const override { return m_Visible; }
     GEMMETHOD_(void, SetVisible)(bool visible) override { m_Visible = visible; }
     GEMMETHOD_(Canvas::XUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
-    GEMMETHOD(Detach)() override { m_pAttachedNode = nullptr; return Gem::Result::Success; }
-    GEMMETHOD(NotifyNodeContextChanged)(_In_ Canvas::XUIGraphNode* pNode) override { (void)pNode; return Gem::Result::Success; }
+    GEMMETHOD(Detach)() override
+    {
+        if (!m_pAttachedNode)
+            return Gem::Result::Success;
+        // The node may hold the last reference to this element.
+        Gem::TGemPtr<Canvas::XUIElement> pKeepAlive(this);
+        return m_pAttachedNode->UnbindElement(this);
+    }
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ Canvas::XUIGraphNode* pNode) override { m_pAttachedNode = pNode; return Gem::Result::Success; }
     GEMMETHOD(Update)() override { return Gem::Result::Success; }
     GEMMETHOD_(bool, HasContent)() const override { return m_Size.X > 0.0f && m_Size.Y > 0.0f; }
     GEMMETHOD_(const Canvas::Math::FloatVector2&, GetLocalOffset)() const override { return m_LocalOffset; }
@@ -56,9 +63,6 @@ public:
     GEMMETHOD_(const Canvas::Math::FloatVector2&, GetSize)() const override { return m_Size; }
     GEMMETHOD_(void, SetFillColor)(const Canvas::Math::FloatVector4& color) override { m_FillColor = color; }
     GEMMETHOD_(const Canvas::Math::FloatVector4&, GetFillColor)() const override { return m_FillColor; }
-
-    // Internal
-    void SetAttachedNode(Canvas::XUIGraphNode* pNode) { m_pAttachedNode = pNode; }
 };
 
 #ifdef _MSC_VER

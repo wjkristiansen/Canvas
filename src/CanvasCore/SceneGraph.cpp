@@ -319,22 +319,43 @@ GEMMETHODIMP_(XSceneNode *) CSceneNode::FindChild(const char *name)
 //------------------------------------------------------------------------------------------------
 GEMMETHODIMP CSceneNode::BindElement(_In_ XSceneElement *pElement)
 {
-    if (pElement)
+    if (!pElement)
+        return Gem::Result::Success;
+
+    XSceneNode *pCurrentNode = pElement->GetAttachedNode();
+    if (pCurrentNode == this)
+        return Gem::Result::Success;
+
+    // This node takes its reference before the previous node releases its own, which may be
+    // the last.
+    try
     {
-        // Avoid duplicate bindings
-        for (auto& e : m_Elements)
-        {
-            if (e.Get() == pElement)
-                return Gem::Result::Success;
-        }
         m_Elements.push_back(pElement);
-        
-        // Notify element of attachment via the public interface
-        Gem::ThrowGemError(pElement->NotifyNodeContextChanged(this));
-        NotifyChangeTracker();
-        NotifyStructureChanged();
     }
-    return Gem::Result::Success;
+    catch (const std::bad_alloc &)
+    {
+        return Gem::Result::OutOfMemory;
+    }
+
+    if (pCurrentNode)
+        static_cast<CSceneNode *>(pCurrentNode)->UnbindElement(pElement);
+
+    const Gem::Result result = pElement->NotifyNodeContextChanged(this);
+    NotifyChangeTracker();
+    NotifyStructureChanged();
+    return result;
+}
+
+//------------------------------------------------------------------------------------------------
+void CSceneNode::UnbindElement(XSceneElement *pElement)
+{
+    auto it = std::find_if(m_Elements.begin(), m_Elements.end(),
+        [pElement](const Gem::TGemPtr<XSceneElement> &pBound) { return pBound.Get() == pElement; });
+    if (it == m_Elements.end())
+        return;
+
+    m_Elements.erase(it);
+    NotifyStructureChanged();
 }
 
 //------------------------------------------------------------------------------------------------

@@ -1236,6 +1236,7 @@ struct XUIGraphNode : public XCanvasElement
     GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() = 0;
 
     GEMMETHOD(BindElement)(_In_ XUIElement* pElement) = 0;
+    GEMMETHOD(UnbindElement)(_In_ XUIElement* pElement) = 0;
     GEMMETHOD_(uint32_t, GetBoundElementCount)() = 0;
     GEMMETHOD_(XUIElement*, GetBoundElement)(uint32_t index) = 0;
 };

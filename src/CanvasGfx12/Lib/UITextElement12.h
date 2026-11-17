@@ -69,7 +69,7 @@ public:
     GEMMETHOD_(void, SetVisible)(bool visible) override { m_Visible = visible; }
     GEMMETHOD_(Canvas::XUIGraphNode*, GetAttachedNode)() override { return m_pAttachedNode; }
     GEMMETHOD(Detach)() override;
-    GEMMETHOD(NotifyNodeContextChanged)(_In_ Canvas::XUIGraphNode* pNode) override { (void)pNode; return Gem::Result::Success; }
+    GEMMETHOD(NotifyNodeContextChanged)(_In_ Canvas::XUIGraphNode* pNode) override { m_pAttachedNode = pNode; return Gem::Result::Success; }
     GEMMETHOD(Update)() override;
     GEMMETHOD_(bool, HasContent)() const override { return !m_Text.empty() && !m_CachedGlyphs.empty(); }
     GEMMETHOD_(const Canvas::Math::FloatVector2&, GetLocalOffset)() const override { return m_LocalOffset; }
@@ -83,7 +83,6 @@ public:
     GEMMETHOD_(const Canvas::TextLayoutConfig&, GetLayoutConfig)() const override { return m_Config; }
 
     // Internal
-    void SetAttachedNode(Canvas::XUIGraphNode* pNode) { m_pAttachedNode = pNode; }
     uint32_t GetGlyphCount() const { return static_cast<uint32_t>(m_CachedGlyphs.size()); }
     const void* GetGlyphData() const { return m_CachedGlyphs.data(); }
     const Canvas::GfxResourceAllocation& GetGlyphBuffer() const { return m_GlyphSRV; }
