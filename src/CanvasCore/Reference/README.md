@@ -18,6 +18,7 @@ The reference for the CanvasCore public API, declared in [`CanvasCore.h`](../../
 | [`XCanvas`](XCanvas.md)                           | The object that creates every other object    |
 | [`XModel`](XModel.md)                             | A template for world objects                  |
 | [`XSceneNode`](XSceneNode.md)                     | A node in a scene graph                       |
+| [`XUIGraphNode`](XUIGraphNode.md)                 | A node in a UI graph                          |
 | [`XWorld`](XWorld.md)                             | A world and its world objects                 |
 | [`XWorldObject`](XWorldObject.md)                 | A world object                                |
 

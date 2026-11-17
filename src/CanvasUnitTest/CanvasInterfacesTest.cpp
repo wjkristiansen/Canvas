@@ -2949,6 +2949,111 @@ TEST(CanvasInterfacesTest, SceneNodeMoves)
     EXPECT_EQ(Gem::Result::InvalidArg, pB->RemoveChild(pHeld));
 }
 
+TEST(CanvasInterfacesTest, SceneElementBindAndDetach)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    auto pA = MakeNode(pCanvas, nullptr, "A", 0.0f, 0.0f, 0.0f);
+    auto pB = MakeNode(pCanvas, nullptr, "B", 0.0f, 0.0f, 0.0f);
+
+    Gem::TGemPtr<Canvas::XLight> pLight;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateLight(Canvas::LightType::Point, &pLight)));
+
+    // Binding to a second node moves the element; binding it again where it is changes nothing
+    ASSERT_TRUE(Succeeded(pA->BindElement(pLight)));
+    EXPECT_EQ(pA.Get(), pLight->GetAttachedNode());
+    ASSERT_TRUE(Succeeded(pB->BindElement(pLight)));
+    ASSERT_TRUE(Succeeded(pB->BindElement(pLight)));
+    EXPECT_EQ(0u, pA->GetBoundElementCount());
+    ASSERT_EQ(1u, pB->GetBoundElementCount());
+    EXPECT_EQ(pLight.Get(), pB->GetBoundElement(0));
+    EXPECT_EQ(pB.Get(), pLight->GetAttachedNode());
+
+    // Detach unbinds the element from its node; detaching an unbound element does nothing
+    ASSERT_TRUE(Succeeded(pLight->Detach()));
+    EXPECT_EQ(0u, pB->GetBoundElementCount());
+    EXPECT_EQ(nullptr, pLight->GetAttachedNode());
+    EXPECT_TRUE(Succeeded(pLight->Detach()));
+
+    // An element that only its node holds survives moving to another node, and detaching it
+    // releases it
+    {
+        Gem::TGemPtr<Canvas::XMeshInstance> pMesh;
+        ASSERT_TRUE(Succeeded(pCanvas->CreateMeshInstance(&pMesh)));
+        ASSERT_TRUE(Succeeded(pA->BindElement(pMesh)));
+    }
+    ASSERT_TRUE(Succeeded(pB->BindElement(pA->GetBoundElement(0))));
+    EXPECT_EQ(0u, pA->GetBoundElementCount());
+    ASSERT_EQ(1u, pB->GetBoundElementCount());
+    EXPECT_EQ(pB.Get(), pB->GetBoundElement(0)->GetAttachedNode());
+    ASSERT_TRUE(Succeeded(pB->GetBoundElement(0)->Detach()));
+    EXPECT_EQ(0u, pB->GetBoundElementCount());
+}
+
+TEST(CanvasInterfacesTest, UIElementBindAndDetach)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<Canvas::XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+
+    Gem::TGemPtr<Canvas::XUIGraph> pGraph;
+    ASSERT_TRUE(Succeeded(pCanvas->CreateUIGraph(pDevice, &pGraph)));
+    Gem::TGemPtr<Canvas::XUIGraphNode> pA;
+    Gem::TGemPtr<Canvas::XUIGraphNode> pB;
+    ASSERT_TRUE(Succeeded(pGraph->CreateNode(nullptr, &pA)));
+    ASSERT_TRUE(Succeeded(pGraph->CreateNode(nullptr, &pB)));
+
+    Gem::TGemPtr<Canvas::XUIRectElement> pRect;
+    Gem::TGemPtr<Canvas::XUITextElement> pText;
+    ASSERT_TRUE(Succeeded(pDevice->CreateRectElement(&pRect)));
+    ASSERT_TRUE(Succeeded(pDevice->CreateTextElement(&pText)));
+
+    // Binding to a second node moves the element; binding it again where it is changes nothing
+    ASSERT_TRUE(Succeeded(pA->BindElement(pRect)));
+    EXPECT_EQ(pA.Get(), pRect->GetAttachedNode());
+    ASSERT_TRUE(Succeeded(pB->BindElement(pRect)));
+    ASSERT_TRUE(Succeeded(pB->BindElement(pRect)));
+    EXPECT_EQ(0u, pA->GetBoundElementCount());
+    ASSERT_EQ(1u, pB->GetBoundElementCount());
+    EXPECT_EQ(pB.Get(), pRect->GetAttachedNode());
+
+    // Detach unbinds the element from its node; detaching an unbound element does nothing
+    ASSERT_TRUE(Succeeded(pRect->Detach()));
+    EXPECT_EQ(0u, pB->GetBoundElementCount());
+    EXPECT_EQ(nullptr, pRect->GetAttachedNode());
+    EXPECT_TRUE(Succeeded(pRect->Detach()));
+
+    // UnbindElement unbinds only an element bound to the node
+    ASSERT_TRUE(Succeeded(pA->BindElement(pText)));
+    EXPECT_EQ(Gem::Result::InvalidArg, pB->UnbindElement(pText));
+    ASSERT_TRUE(Succeeded(pA->UnbindElement(pText)));
+    EXPECT_EQ(0u, pA->GetBoundElementCount());
+    EXPECT_EQ(nullptr, pText->GetAttachedNode());
+
+    // XUIGraph::RemoveElement unbinds the element
+    ASSERT_TRUE(Succeeded(pA->BindElement(pText)));
+    ASSERT_TRUE(Succeeded(pGraph->RemoveElement(pText)));
+    EXPECT_EQ(0u, pA->GetBoundElementCount());
+    EXPECT_EQ(nullptr, pText->GetAttachedNode());
+
+    // An element outlives a destroyed node
+    ASSERT_TRUE(Succeeded(pB->BindElement(pText)));
+    ASSERT_TRUE(Succeeded(pGraph->GetRootNode()->RemoveChild(pB)));
+    pB = nullptr;
+    EXPECT_EQ(nullptr, pText->GetAttachedNode());
+
+    // An element that only its node holds can detach itself
+    {
+        Gem::TGemPtr<Canvas::XUIRectElement> pHeldByNode;
+        ASSERT_TRUE(Succeeded(pDevice->CreateRectElement(&pHeldByNode)));
+        ASSERT_TRUE(Succeeded(pA->BindElement(pHeldByNode)));
+    }
+    ASSERT_TRUE(Succeeded(pA->GetBoundElement(0)->Detach()));
+    EXPECT_EQ(0u, pA->GetBoundElementCount());
+}
+
 TEST(CanvasInterfacesTest, SceneNodeOperationsOnWorldObjects)
 {
     using namespace Canvas::Math;

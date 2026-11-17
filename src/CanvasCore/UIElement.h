@@ -61,11 +61,9 @@ public:
     GEMMETHOD_(Math::FloatVector2, GetGlobalPosition)() final;
 
     GEMMETHOD(BindElement)(_In_ XUIElement* pElement) final;
+    GEMMETHOD(UnbindElement)(_In_ XUIElement* pElement) final;
     GEMMETHOD_(uint32_t, GetBoundElementCount)() final { return static_cast<uint32_t>(m_Elements.size()); }
     GEMMETHOD_(XUIElement*, GetBoundElement)(uint32_t index) final { return m_Elements[index].Get(); }
-
-    // Internal
-    void UnbindElement(XUIElement* pElement);
 
 private:
     static CUIGraphNodeImpl* GetImpl(XUIGraphNode* pNode);

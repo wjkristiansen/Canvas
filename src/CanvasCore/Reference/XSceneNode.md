@@ -83,7 +83,9 @@ Returns a weak pointer to the first of this node's children whose [name](../READ
 Gem::Result BindElement(XSceneElement *pElement);
 ```
 
-Binds `pElement` to this node, after the elements already bound to it, and holds it. The element's attached node is then this node. Binding an element that is already bound to this node, or `nullptr`, changes nothing.
+Binds `pElement` to this node, after the elements already bound to it, and holds it. The element's attached node is then this node. An element is bound to at most one node: binding an element that is bound to another node first unbinds it from that node, which releases its reference. Binding an element that is already bound to this node, or `nullptr`, changes nothing.
+
+`XSceneElement::Detach` unbinds an element from its node, which releases its reference; detaching an element bound to no node changes nothing.
 
 ### GetBoundElementCount, GetBoundElement
 

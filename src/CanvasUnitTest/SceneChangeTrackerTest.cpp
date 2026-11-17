@@ -203,6 +203,10 @@ TEST(SceneChangeTrackerTest, ReportsStructureChanges)
     EXPECT_TRUE(tracker.HasStructureChanged()) << "BindElement deep under the root";
     tracker.ClearChanges();
 
+    EXPECT_TRUE(Succeeded(pMesh->Detach()));
+    EXPECT_TRUE(tracker.HasStructureChanged()) << "Detach";
+    tracker.ClearChanges();
+
     EXPECT_TRUE(Succeeded(pLeafB->AddChild(pSubtreeChild)));
     EXPECT_TRUE(tracker.HasStructureChanged()) << "Reparenting within the graph";
     tracker.ClearChanges();
