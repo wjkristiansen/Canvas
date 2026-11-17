@@ -4,17 +4,23 @@
 
 #include "pch.h"
 #include "WorldBVH.h"
+#include "SceneGraph.h"
 
 namespace Canvas
 {
 
 void WorldBVH::Clear()
 {
+    for (const RenderableNode& renderable : m_RenderableNodeList)
+        m_Tracker.Untrack(renderable.Node);
+
     m_Primitives.clear();
+    m_RenderableNodeList.clear();
     m_RenderableNodes.clear();
     m_BVH = BVH{};
     m_VisiblePrimitiveScratch.clear();
     m_Built = false;
+    m_AllBoundsStale = false;
 }
 
 void WorldBVH::Build(XSceneNode* root)
@@ -39,39 +45,36 @@ void WorldBVH::Build(XSceneNode* root)
         if (!node)
             continue;
 
-        // Compute the global matrix ONCE per node and reuse across all of
-        // its elements.  GetGlobalMatrix may cascade through dirty-flag
-        // propagation; not paying that cost per element matters for nodes
-        // carrying multiple bound elements.
-        const Math::FloatMatrix4x4 worldMtx = node->GetGlobalMatrix();
-
+        // A node is renderable when any of its elements has non-empty
+        // local bounds (lights, cameras and other non-renderable
+        // elements report empty).  Every element of a renderable node
+        // gets a primitive, empty ones included, so an element whose
+        // bounds become non-empty later (e.g. a mesh given its data)
+        // is culled by its own bounds rather than hidden behind its
+        // neighbors'.  BVH::Build leaves the empty ones out of the tree.
         const uint32_t elementCount = node->GetBoundElementCount();
-        bool nodeContributed = false;
-        for (uint32_t i = 0; i < elementCount; ++i)
+        bool nodeRenderable = false;
+        for (uint32_t i = 0; i < elementCount && !nodeRenderable; ++i)
+            nodeRenderable = !node->GetBoundElement(i)->GetLocalBounds().IsEmpty();
+
+        if (nodeRenderable)
         {
-            XSceneElement* element = node->GetBoundElement(i);
-            if (!element)
-                continue;
+            const Math::FloatMatrix4x4 worldMtx = node->GetGlobalMatrix();
+            const uint32_t firstPrimitive = static_cast<uint32_t>(m_Primitives.size());
+            for (uint32_t i = 0; i < elementCount; ++i)
+            {
+                BVHPrimitive prim;
+                prim.WorldBounds = node->GetBoundElement(i)->GetLocalBounds().Transform(worldMtx);
+                prim.Node        = node;
+                prim.Id          = nextId++;
+                prim.Flags       = BVHPrimitiveFlags::Static;
+                m_Primitives.push_back(prim);
+            }
 
-            const Math::AABB localBounds = element->GetLocalBounds();
-            if (localBounds.IsEmpty())
-                continue; // non-renderable (lights, cameras) or genuinely empty
-
-            const Math::AABB worldBounds = localBounds.Transform(worldMtx);
-            if (worldBounds.IsEmpty())
-                continue; // transform of empty stays empty; defensive double-check
-
-            BVHPrimitive prim;
-            prim.WorldBounds = worldBounds;
-            prim.Node        = node;
-            prim.Id          = nextId++;
-            prim.Flags       = BVHPrimitiveFlags::Static;
-            m_Primitives.push_back(prim);
-            nodeContributed = true;
+            m_RenderableNodes.emplace(node, static_cast<uint32_t>(m_RenderableNodeList.size()));
+            m_RenderableNodeList.push_back({ node, firstPrimitive, elementCount });
+            m_Tracker.Track(node);
         }
-
-        if (nodeContributed)
-            m_RenderableNodes.insert(node);
 
         for (XSceneNode* child = node->GetFirstChild();
              child;
@@ -87,6 +90,55 @@ void WorldBVH::Build(XSceneNode* root)
     // Mark built even when the world has no renderable elements;
     // otherwise we'd re-walk the graph every frame.
     m_Built = true;
+}
+
+void WorldBVH::Refit()
+{
+    if (!m_Built)
+        return;
+
+    bool changed = false;
+    bool emptinessChanged = false;
+
+    // Recomputes the node's primitives' world bounds.
+    auto refitNode = [&](const RenderableNode& renderable)
+    {
+        XSceneNode* node = renderable.Node;
+        const Math::FloatMatrix4x4 worldMtx = node->GetGlobalMatrix();
+        for (uint32_t i = 0; i < renderable.PrimitiveCount; ++i)
+        {
+            BVHPrimitive& prim = m_Primitives[renderable.FirstPrimitive + i];
+            const Math::AABB worldBounds = node->GetBoundElement(i)->GetLocalBounds().Transform(worldMtx);
+            if (worldBounds.IsEmpty() != prim.WorldBounds.IsEmpty())
+                emptinessChanged = true;
+            prim.WorldBounds = worldBounds;
+        }
+        changed = true;
+    };
+
+    if (m_AllBoundsStale)
+    {
+        m_AllBoundsStale = false;
+        for (const RenderableNode& renderable : m_RenderableNodeList)
+            refitNode(renderable);
+    }
+    else
+    {
+        for (XSceneNode* node : m_Tracker.GetChangedNodes())
+        {
+            auto it = m_RenderableNodes.find(node);
+            if (it == m_RenderableNodes.end())
+                continue; // not renderable at Build; reported for the LightBVH
+            refitNode(m_RenderableNodeList[it->second]);
+        }
+    }
+
+    // BVH::Build leaves empty primitives out of the tree, so a
+    // primitive that became non-empty is only reachable after a Build.
+    if (emptinessChanged)
+        m_BVH.Build(m_Primitives.data(), m_Primitives.size());
+    else if (changed)
+        m_BVH.Refit(m_Primitives.data(), m_Primitives.size());
 }
 
 bool WorldBVH::IsRenderableNode(XSceneNode* node) const

@@ -127,6 +127,12 @@ public:
 
     GEMMETHOD_(void, SetDebugMessageSeverity)(Canvas::GfxDebugSeverity maxSeverity) final;
 
+    GEMMETHOD_(uint64_t, GetMeshBoundsGeneration)() const final { return m_MeshBoundsGeneration; }
+
+    // Advances GetMeshBoundsGeneration.  Called by this device's materials when
+    // they change something that mesh bounds depend on.
+    void NotifyMeshBoundsChanged() { ++m_MeshBoundsGeneration; }
+
     Canvas::XGfxSurface* GetGlyphAtlasSurface();
     Canvas::CGlyphCache& GetGlyphCache() { return m_GlyphCache; }
 
@@ -196,6 +202,8 @@ public:
 private:
     // Create the shared shader-visible heap and initialize the persistent allocator.
     void InitializeDescriptorHeap();
+
+    uint64_t m_MeshBoundsGeneration = 0;
 
     CComPtr<ID3D12DescriptorHeap> m_pShaderResourceDescriptorHeap;
     UINT m_CbvSrvUavIncrement = 0;

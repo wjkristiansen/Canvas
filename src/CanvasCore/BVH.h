@@ -1,8 +1,8 @@
 //================================================================================================
 // BVH
 //
-// CPU-side, single-threaded, static-only, SAH-binned top-down build over
-// an array of BVHPrimitive entries.  Produces a binary tree of AABB
+// CPU-side, single-threaded, SAH-binned top-down build over an array of
+// BVHPrimitive entries, refit in place when primitive bounds change.  Produces a binary tree of AABB
 // nodes whose leaf nodes reference contiguous ranges of a reordered
 // primitive-index array.  The BVHPrimitive array itself is owned
 // externally (WorldBVH) and is NOT reordered by the BVH; only the
@@ -45,9 +45,8 @@ constexpr BVHPrimitiveId kInvalidBVHPrimitiveId = UINT32_MAX;
 // Primitives live in a flat array owned by WorldBVH.
 struct BVHPrimitive
 {
-    // World-space AABB.  Currently set once at Build() time as
-    // localBounds.Transform(node->GetGlobalMatrix())
-    // and never updated.
+    // World-space AABB.  The owner keeps it current and refits the BVH
+    // after changing it (see BVH::Refit).
     Math::AABB WorldBounds;
 
     // Weak back-pointer to the producing node.  Lifetime is guaranteed
@@ -88,6 +87,18 @@ public:
     // Primitives whose WorldBounds.IsEmpty() are silently skipped to
     // honor the AABB sentinel contract documented on AABB::IsEmpty().
     CANVAS_API void Build(const BVHPrimitive* primitives, size_t count);
+
+    // Recompute every node's bounds from the current WorldBounds of the
+    // primitives passed to Build, keeping the tree's shape, so queries
+    // see primitives where they are now.  `primitives` and `count` must
+    // describe the same array as the last Build, and a primitive's
+    // WorldBounds must not have changed between empty and non-empty
+    // since then (Build skips empty primitives, so such a change needs
+    // a Build).  Rebuilds instead when the refit tree's total node
+    // surface area has grown past kRefitRebuildRatio times its value at
+    // the last Build: primitives that moved apart from their subtree
+    // neighbors leave the shape a poor fit, and queries slow down.
+    CANVAS_API void Refit(const BVHPrimitive* primitives, size_t count);
 
     // Iterative frustum cull.  Appends to outVisiblePrimitiveIndices
     // the index (into the primitive array passed to Build) of every
@@ -147,6 +158,13 @@ private:
     // by a wide margin.
     static constexpr uint32_t kMaxTraversalStack = 64;
 
+    // Growth in total node surface area, relative to the last Build, at
+    // which Refit rebuilds.
+    static constexpr float kRefitRebuildRatio = 2.0f;
+
+    // Sum of the surface areas of every node's bounds.
+    float TotalNodeSurfaceArea() const;
+
     // Shared iterative traversal.  `test(aabb) -> bool` is invoked both
     // for node bounds (to prune subtrees) and for per-primitive bounds
     // (to filter false positives within accepted leaves).  Inline so
@@ -201,6 +219,7 @@ private:
 
     std::vector<BVHNode> m_Nodes;             // node 0 is root when non-empty
     std::vector<uint32_t> m_PrimitiveIndices; // permutation of [0, primitiveCount)
+    float m_BuildSurfaceArea = 0.0f;          // TotalNodeSurfaceArea() after the last Build
 };
 
 } // namespace Canvas

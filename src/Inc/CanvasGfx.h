@@ -633,6 +633,8 @@ namespace Canvas
         // layer or in builds where one is not active.  May be called any time
         // after device creation.
         GEMMETHOD_(void, SetDebugMessageSeverity)(GfxDebugSeverity maxSeverity) = 0;
+
+        GEMMETHOD_(uint64_t, GetMeshBoundsGeneration)() const = 0;
     };
 }
 

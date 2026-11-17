@@ -13,6 +13,7 @@ add_library(CanvasCore SHARED
     WorldObject.cpp
     Timer.cpp
     SceneGraph.cpp
+    SceneChangeTracker.cpp
     Skeleton.cpp
     UIElement.cpp
     FontImpl.cpp
@@ -40,6 +41,7 @@ add_library(CanvasCore SHARED
     World.h
     WorldObject.h
     SceneGraph.h
+    SceneChangeTracker.h
     Skeleton.h
     ScopedUtils.h
     Timeline.h

@@ -122,7 +122,8 @@ TEST(LightBVHTest, EmptyWorldBuildsCleanly)
     Gem::TGemPtr<XWorld> pWorld;
     EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
 
-    LightBVH bvh;
+    SceneChangeTracker tracker;
+    LightBVH bvh(tracker);
     bvh.Build(pWorld->GetRootNode());
     EXPECT_TRUE(bvh.IsBuilt());
     EXPECT_EQ(size_t(0), bvh.TrackedLightCount());
@@ -154,7 +155,8 @@ TEST(LightBVHTest, NonSpatialLightsAreUntracked)
 
     EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
-    LightBVH bvh;
+    SceneChangeTracker tracker;
+    LightBVH bvh(tracker);
     bvh.Build(pWorld->GetRootNode());
     EXPECT_EQ(size_t(0), bvh.TrackedLightCount());
     EXPECT_EQ(size_t(2), bvh.UntrackedLightCount());
@@ -195,7 +197,8 @@ TEST(LightBVHTest, PointLightsAreTrackedAndCulled)
 
     EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
-    LightBVH bvh;
+    SceneChangeTracker tracker;
+    LightBVH bvh(tracker);
     bvh.Build(pWorld->GetRootNode());
     EXPECT_EQ(size_t(3), bvh.TrackedLightCount());
     EXPECT_EQ(size_t(0), bvh.UntrackedLightCount());
@@ -234,7 +237,8 @@ TEST(LightBVHTest, SpotLightsAreTracked)
 
     EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
-    LightBVH bvh;
+    SceneChangeTracker tracker;
+    LightBVH bvh(tracker);
     bvh.Build(pWorld->GetRootNode());
     EXPECT_EQ(size_t(1), bvh.TrackedLightCount());
     EXPECT_TRUE(bvh.IsTrackedLight(pSpot.Get()));
@@ -289,7 +293,8 @@ TEST(LightBVHTest, TiltedSpotBoundCoversLitRegion)
     ASSERT_NEAR(-s3, world[0][1], 1e-4f);
     ASSERT_NEAR(-s3, world[0][2], 1e-4f);
 
-    LightBVH bvh;
+    SceneChangeTracker tracker;
+    LightBVH bvh(tracker);
     bvh.Build(pWorld->GetRootNode());
     ASSERT_TRUE(bvh.IsTrackedLight(pSpot.Get()));
 
@@ -313,6 +318,45 @@ TEST(LightBVHTest, TiltedSpotBoundCoversLitRegion)
         << "Lit region ends at y ~= 0.83; bound should be tight enough to cull at y >= 1.2";
 }
 
+// The renderer lights a spot's wider cone when its inner angle exceeds
+// its outer angle, so the influence bound must cover the wider cone too.
+// A spot at the origin aimed along +X with range 10 and a 170 degree
+// cone reaches y = 10 * sin(85) ~= 9.96; the 20 degree cone reaches
+// only y = 10 * sin(10) ~= 1.74.
+TEST(LightBVHTest, SwappedSpotAnglesBoundTheWiderCone)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
+
+    Gem::TGemPtr<XLight> pSpot;
+    Gem::TGemPtr<XSceneNode> pSpotNode;
+    MakeSpotLight(pCanvas, pWorld->GetRootNode(),
+                  FloatVector4(0.0f, 0.0f, 0.0f, 1.0f),
+                  10.0f, /*outerDeg*/ 20.0f,
+                  pSpot, pSpotNode);
+    const float kDegToRad = PiF / 180.0f;
+    pSpot->SetSpotAngles(170.0f * kDegToRad, 20.0f * kDegToRad);
+
+    SceneChangeTracker tracker;
+    LightBVH bvh(tracker);
+    bvh.Build(pWorld->GetRootNode());
+    ASSERT_TRUE(bvh.IsTrackedLight(pSpot.Get()));
+
+    // Frustum reduced to the single half-space y >= 5.
+    Frustum f;
+    for (auto& p : f.Planes)
+        p = FloatVector4(0.0f, 0.0f, 0.0f, 1.0f);
+    f.Planes[Frustum::Bottom] = FloatVector4(0.0f, 1.0f, 0.0f, -5.0f);
+
+    std::vector<XLight*> visible;
+    bvh.QueryFrustum(f, visible);
+    EXPECT_TRUE(ListContains(visible, pSpot.Get()))
+        << "The wider cone reaches y ~= 9.96; the bound must not be culled at y >= 5";
+}
+
 // Rebuild must drop every primitive / tracking record from a prior
 // build before consuming the new scene.  Defends against state
 // accumulation when scene topology changes between Build calls.
@@ -331,7 +375,8 @@ TEST(LightBVHTest, RebuildClearsPriorState)
 
     EXPECT_TRUE(Succeeded(pWorld->Update(0.0f)));
 
-    LightBVH bvh;
+    SceneChangeTracker tracker;
+    LightBVH bvh(tracker);
     bvh.Build(pWorld->GetRootNode());
     EXPECT_EQ(size_t(1), bvh.TrackedLightCount());
     XLight* pPtRaw = pPt.Get();
@@ -344,6 +389,92 @@ TEST(LightBVHTest, RebuildClearsPriorState)
     EXPECT_EQ(size_t(0), bvh.TrackedLightCount());
     EXPECT_EQ(size_t(0), bvh.UntrackedLightCount());
     EXPECT_FALSE(bvh.IsTrackedLight(pPtRaw));
+}
+
+// A light that moves after Build must be culled where it is now:
+// Refit carries a point light out of the frustum and a spot light into
+// it.
+TEST(LightBVHTest, RefitFollowsMovedLights)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
+
+    Gem::TGemPtr<XLight> pPoint, pSpot;
+    Gem::TGemPtr<XSceneNode> pPointNode, pSpotNode;
+    MakePointLight(pCanvas, pWorld->GetRootNode(),
+                   FloatVector4(10.0f, 0.0f, 0.0f, 1.0f), 1.0f, pPoint, pPointNode);
+    MakeSpotLight(pCanvas, pWorld->GetRootNode(),
+                  FloatVector4(-20.0f, 0.0f, 0.0f, 1.0f), 5.0f, /*outerDeg*/ 30.0f,
+                  pSpot, pSpotNode);
+
+    SceneChangeTracker tracker;
+    LightBVH bvh(tracker);
+    bvh.Build(pWorld->GetRootNode());
+
+    FloatMatrix4x4 vp = BuildViewProjLookingAlongX(
+        FloatVector4(0.0f, 0.0f, 0.0f, 1.0f),
+        PiF / 3.0f, 1.0f, 0.5f, 100.0f);
+    Frustum f = Frustum::FromViewProjection(vp, true);
+
+    std::vector<XLight*> visible;
+    bvh.QueryFrustum(f, visible);
+    EXPECT_TRUE(ListContains(visible, pPoint.Get()));
+    EXPECT_FALSE(ListContains(visible, pSpot.Get()));
+
+    pPointNode->SetLocalTranslation(FloatVector4(-10.0f, 0.0f, 0.0f, 1.0f));
+    pSpotNode->SetLocalTranslation(FloatVector4(20.0f, 0.0f, 0.0f, 1.0f));
+    bvh.Refit();
+    tracker.ClearChanges();
+
+    bvh.QueryFrustum(f, visible);
+    EXPECT_FALSE(ListContains(visible, pPoint.Get())) << "Point light moved behind the camera";
+    EXPECT_TRUE(ListContains(visible, pSpot.Get())) << "Spot light moved in front of the camera";
+
+    // Growing the range brings the moved point light's influence back
+    // into view.
+    pPoint->SetRange(15.0f);
+    bvh.Refit();
+    tracker.ClearChanges();
+    bvh.QueryFrustum(f, visible);
+    EXPECT_TRUE(ListContains(visible, pPoint.Get()));
+}
+
+// A point light's range moving to or from zero changes whether it has
+// a spatial bound; Refit must move it between the tracked and
+// untracked lists.
+TEST(LightBVHTest, RefitReclassifiesZeroRangeLights)
+{
+    Gem::TGemPtr<XCanvas> pCanvas;
+    Gem::TGemPtr<XGfxDevice> pDevice;
+    CreateTestCanvasAndDevice(pCanvas, pDevice);
+    Gem::TGemPtr<XWorld> pWorld;
+    EXPECT_TRUE(Succeeded(pCanvas->CreateWorld(pDevice, &pWorld)));
+
+    Gem::TGemPtr<XLight> pPoint;
+    Gem::TGemPtr<XSceneNode> pPointNode;
+    MakePointLight(pCanvas, pWorld->GetRootNode(),
+                   FloatVector4(10.0f, 0.0f, 0.0f, 1.0f), 0.0f, pPoint, pPointNode);
+
+    SceneChangeTracker tracker;
+    LightBVH bvh(tracker);
+    bvh.Build(pWorld->GetRootNode());
+    EXPECT_FALSE(bvh.IsTrackedLight(pPoint.Get()));
+    EXPECT_TRUE(ListContains(bvh.GetUntrackedLights(), pPoint.Get()));
+
+    pPoint->SetRange(2.0f);
+    bvh.Refit();
+    tracker.ClearChanges();
+    EXPECT_TRUE(bvh.IsTrackedLight(pPoint.Get()));
+    EXPECT_FALSE(ListContains(bvh.GetUntrackedLights(), pPoint.Get()));
+
+    pPoint->SetRange(0.0f);
+    bvh.Refit();
+    tracker.ClearChanges();
+    EXPECT_FALSE(bvh.IsTrackedLight(pPoint.Get()));
+    EXPECT_TRUE(ListContains(bvh.GetUntrackedLights(), pPoint.Get()));
 }
 
 } // namespace CanvasUnitTest

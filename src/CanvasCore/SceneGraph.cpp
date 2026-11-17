@@ -180,8 +180,11 @@ Gem::Result CSceneNode::MoveChild(XSceneNode *pChild, ChildNode *pBefore)
     else
         m_pLastChild = pWrapper;
 
+    const bool parentChanged = pChildNode->m_pParent != this;
     pChildNode->m_pParent = this;
     pChildNode->InvalidateTransforms(TransformDirtyFlags::GlobalMatrix | TransformDirtyFlags::GlobalRotation);
+    if (parentChanged)
+        NotifyStructureChanged();
     return Gem::Result::Success;
 }
 
@@ -190,6 +193,8 @@ Gem::Result CSceneNode::MoveChild(XSceneNode *pChild, ChildNode *pBefore)
 // then its local transform.  Releasing the wrapper may destroy pChild.
 void CSceneNode::ReleaseChild(CSceneNode *pChild)
 {
+    NotifyStructureChanged();
+
     auto it = m_ChildMap.find(pChild);
     ChildNode *pWrapper = it->second;
     m_ChildMap.erase(it);
@@ -326,8 +331,20 @@ GEMMETHODIMP CSceneNode::BindElement(_In_ XSceneElement *pElement)
         
         // Notify element of attachment via the public interface
         Gem::ThrowGemError(pElement->NotifyNodeContextChanged(this));
+        NotifyChangeTracker();
+        NotifyStructureChanged();
     }
     return Gem::Result::Success;
+}
+
+//------------------------------------------------------------------------------------------------
+void CSceneNode::NotifyStructureChanged()
+{
+    CSceneNode *pRoot = this;
+    while (pRoot->m_pParent)
+        pRoot = pRoot->m_pParent;
+    if (pRoot->m_pStructureTracker)
+        pRoot->m_pStructureTracker->NotifyStructureChanged();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -348,6 +365,7 @@ void CSceneNode::InvalidateTransforms(TransformDirtyFlags flags)
             {
                 element->NotifyNodeContextChanged(this);
             }
+            NotifyChangeTracker();
         }
         return;
     }
@@ -359,6 +377,7 @@ void CSceneNode::InvalidateTransforms(TransformDirtyFlags flags)
         {
             element->NotifyNodeContextChanged(this);
         }
+        NotifyChangeTracker();
     }
 
     // Mark this node's transforms dirty

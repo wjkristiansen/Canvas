@@ -23,16 +23,27 @@ private:
     Gem::TGemPtr<XCamera> m_pActiveCamera;
     std::vector<XSceneNode*> m_TraversalStack;  // Reused across frames to avoid allocation
 
+    // Reports the scene nodes the BVHs track that moved or had an
+    // element change its bounds, so SubmitRenderables refits only those,
+    // and watches m_pRoot for nodes added or removed or elements bound,
+    // after which SubmitRenderables rebuilds.  Declared before the BVHs,
+    // which untrack their nodes as they are destroyed.
+    SceneChangeTracker m_ChangeTracker;
+
     // BVH over the world-space AABB of every renderable scene element
-    // bound to a node in the scene graph (one primitive per
-    // [node, element] pair whose element returns a non-empty
-    // GetLocalBounds()).  Non-renderable elements (lights, cameras)
-    // honor the empty-AABB contract and contribute no primitives; they
-    // continue to flow through SubmitRenderables unfiltered.  Built
-    // explicitly via BuildBVH(), or lazily on the first
-    // SubmitRenderables when not yet built.  See WorldBVH for the
-    // current scope and capabilities.
-    WorldBVH m_WorldBVH;
+    // bound to a node in the scene graph.  Non-renderable elements
+    // (lights, cameras) honor the empty-AABB contract and contribute
+    // no primitives; they continue to flow through SubmitRenderables
+    // unfiltered.  Built by the first SubmitRenderables.  Every later
+    // SubmitRenderables rebuilds it after a structure change, and
+    // otherwise refits it to the nodes m_ChangeTracker reports.  See
+    // WorldBVH for the current scope and capabilities.
+    WorldBVH m_WorldBVH{ m_ChangeTracker };
+
+    // m_pDevice->GetMeshBoundsGeneration() when m_WorldBVH last brought its
+    // bounds up to date; a different value means mesh bounds changed in a
+    // way no node reports.
+    uint64_t m_MeshBoundsGeneration = 0;
     mutable std::unordered_set<XSceneNode*> m_VisibleNodeScratch; // reused per frame
 
     // BVH over per-light influence volumes.  Built alongside the
@@ -41,7 +52,7 @@ private:
     // to the render queue via SetVisibleLights.  See LightBVH for
     // tracked vs untracked light handling and the per-light
     // influence-AABB derivation.
-    LightBVH m_LightBVH;
+    LightBVH m_LightBVH{ m_ChangeTracker };
     mutable std::vector<XLight*> m_VisibleTrackedLightsScratch;
     mutable std::vector<XLight*> m_VisibleLightsScratch;
 
@@ -170,12 +181,6 @@ public: // XWorld methods
     GEMMETHOD(Update)(float dtime) final;
 
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) final;
-
-    GEMMETHOD_(void, BuildBVH)() final
-    {
-        m_WorldBVH.Build(m_pRoot.Get());
-        m_LightBVH.Build(m_pRoot.Get());
-    }
 };
 
 }

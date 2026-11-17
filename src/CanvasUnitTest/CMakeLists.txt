@@ -24,6 +24,8 @@ add_executable(CanvasUnitTest
     GpuTaskGraphTest.cpp
     BVHTest.cpp
     LightBVHTest.cpp
+    WorldBVHTest.cpp
+    SceneChangeTrackerTest.cpp
     pch.h
     targetver.h
 )

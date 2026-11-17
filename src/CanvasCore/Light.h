@@ -92,7 +92,11 @@ public:
     GEMMETHOD_(LightFlags, GetFlags)() const final { return m_Flags; }
 
     // Attenuation
-    GEMMETHOD_(void, SetRange)(float range) final { m_Range = range; }
+    GEMMETHOD_(void, SetRange)(float range) final
+    {
+        m_Range = range;
+        NotifyBoundsChanged();
+    }
     GEMMETHOD_(float, GetRange)() const final { return m_Range; }
 
     GEMMETHOD_(void, SetAttenuation)(float constant, float linear, float quadratic) final
@@ -114,6 +118,7 @@ public:
     {
         m_SpotInnerAngle = innerAngle;
         m_SpotOuterAngle = outerAngle;
+        NotifyBoundsChanged();
     }
 
     GEMMETHOD_(void, GetSpotAngles)(float* pInnerAngle, float* pOuterAngle) const final

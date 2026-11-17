@@ -598,10 +598,6 @@ public:
                 m_pCanvas.Get(), m_pDevice.Get(), m_pWorld.Get(), m_pLogger.Get());
             m_pGarden->Build(m_GardenConfig);
 
-            // Pre-build the BVH so we can log its size up front (and
-            // shift the cost off of frame 1).
-            m_pWorld->BuildBVH();
-
             step = "load_fonts";
             LoadFontsAndUi();
             return true;

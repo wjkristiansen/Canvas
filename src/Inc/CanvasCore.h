@@ -811,16 +811,6 @@ XWorld : public XCanvasElement
     GEMMETHOD(Update)(float dtime) = 0;
     // Submits the world's scene content, then its UI graphs.
     GEMMETHOD(SubmitRenderables)(XGfxRenderQueue *pRenderQueue) = 0;
-
-    // Rebuild the world's BVH over renderable scene elements.  Today:
-    // static-only, called explicitly after world construction / load
-    // (e.g. asset bake step or end of viewer world setup).  The first
-    // SubmitRenderables call also auto-builds the BVH lazily if it has
-    // not been built yet, so omitting this call is correctness-safe --
-    // it just shifts the build cost to frame 1.  Calling BuildBVH
-    // again after scene graph topology changes is also safe; it discards any
-    // prior state.
-    GEMMETHOD_(void, BuildBVH)() = 0;
 };
 
 //------------------------------------------------------------------------------------------------

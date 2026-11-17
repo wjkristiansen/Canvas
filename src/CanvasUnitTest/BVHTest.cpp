@@ -565,4 +565,62 @@ TEST(BVHTest, QueryConeBruteForceEquivalence)
     }
 }
 
+// After primitives move, Refit must leave the BVH producing exactly the
+// brute-force visible set at the new bounds.  Small moves refit in
+// place; large ones grow the tree past the rebuild threshold, so both
+// paths are covered.
+TEST(BVHTest, RefitBruteForceEquivalenceFuzz)
+{
+    std::mt19937 rng(0xB0B);
+    std::uniform_real_distribution<float> posDist(-50.0f, 50.0f);
+    std::uniform_real_distribution<float> halfDist(0.25f, 2.5f);
+    std::uniform_real_distribution<float> camDist(-30.0f, 30.0f);
+    std::uniform_real_distribution<float> fovDist(0.5f, 2.0f);
+    std::uniform_int_distribution<int> coin(0, 1);
+
+    const int kPrimitiveCount = 300;
+    const float kMoveScale[] = { 0.5f, 5.0f, 100.0f };
+
+    std::vector<BVHPrimitive> primitives;
+    for (int i = 0; i < kPrimitiveCount; ++i)
+    {
+        const float cx = posDist(rng), cy = posDist(rng), cz = posDist(rng);
+        const float h = halfDist(rng);
+        primitives.push_back(MakeBoxPrimitive(
+            FloatVector4(cx - h, cy - h, cz - h, 0.0f),
+            FloatVector4(cx + h, cy + h, cz + h, 0.0f),
+            uint32_t(i)));
+    }
+
+    BVH bvh;
+    bvh.Build(primitives.data(), primitives.size());
+
+    for (float scale : kMoveScale)
+    {
+        std::uniform_real_distribution<float> moveDist(-scale, scale);
+        for (BVHPrimitive& prim : primitives)
+        {
+            if (!coin(rng))
+                continue;
+            const FloatVector4 d(moveDist(rng), moveDist(rng), moveDist(rng), 0.0f);
+            prim.WorldBounds = AABB(prim.WorldBounds.Min + d, prim.WorldBounds.Max + d);
+        }
+        bvh.Refit(primitives.data(), primitives.size());
+        EXPECT_EQ(size_t(kPrimitiveCount), bvh.PrimitiveCount());
+
+        for (int t = 0; t < 20; ++t)
+        {
+            FloatVector4 eye(camDist(rng), camDist(rng), camDist(rng), 1.0f);
+            FloatVector4 tgt(camDist(rng), camDist(rng), camDist(rng) + 0.5f, 1.0f);
+            FloatMatrix4x4 vp = BuildViewProj(eye, tgt, fovDist(rng), 1.0f, 0.5f, 300.0f);
+            Frustum f = Frustum::FromViewProjection(vp, true);
+
+            std::vector<uint32_t> bvhVisible;
+            bvh.QueryFrustum(primitives.data(), f, bvhVisible);
+            if (SortedCopy(bvhVisible) != SortedCopy(BruteForceCull(primitives, f)))
+                FAIL() << "Mismatch after refit with move scale " << scale << " on frustum #" << t;
+        }
+    }
+}
+
 } // namespace CanvasUnitTest
