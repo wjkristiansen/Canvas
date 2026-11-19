@@ -21,6 +21,7 @@ add_executable(CanvasUnitTest
     CanvasMathTest.cpp
     CanvasPkgTest.cpp
     CanvasTextTest.cpp
+    CanvasUtf8Test.cpp
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
     BVHTest.cpp
@@ -82,6 +83,7 @@ endif()
 
 # Link with Canvas libraries
 target_link_libraries(CanvasUnitTest PRIVATE
+    CanvasUtf8Manifest
     CanvasCore
     CanvasText
     RectanglePacker
