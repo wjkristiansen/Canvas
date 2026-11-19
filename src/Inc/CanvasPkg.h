@@ -769,6 +769,18 @@ Gem::Result CpkgResolveSpan(std::span<const std::byte> payload, const CpkgSpan<T
 }
 
 //------------------------------------------------------------------------------------------------
+// Names
+
+// True when name follows the name rules other than valid UTF-8, emptiness, and uniqueness: no
+// NUL byte, no '/', and at most UINT32_MAX bytes.
+constexpr bool CpkgIsValidName(std::string_view name)
+{
+    return name.size() <= UINT32_MAX
+        && name.find('\0') == std::string_view::npos
+        && name.find('/') == std::string_view::npos;
+}
+
+//------------------------------------------------------------------------------------------------
 // Package files
 
 class CCpkgFile;
