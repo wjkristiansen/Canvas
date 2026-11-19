@@ -19,6 +19,7 @@ FetchContent_MakeAvailable(googletest)
 add_executable(CanvasUnitTest
     CanvasInterfacesTest.cpp
     CanvasMathTest.cpp
+    CanvasPkgTest.cpp
     CanvasTextTest.cpp
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
