@@ -41,7 +41,7 @@ Name blobs hold only the names of bundles and assets themselves. A name stored i
 
 Packages, bundles, and assets are identified by name. Every name follows these rules:
 
-- **Encoding.** A name is valid UTF-8, holds no NUL byte, and is at most `UINT32_MAX` bytes, the width of `NameLength`.
+- **Encoding.** A name is valid UTF-8, holds no NUL byte, and is at most `UINT32_MAX` bytes, the width of `NameLength`. Valid UTF-8 is the responsibility of whoever supplies the name: neither `CCpkgWriter` nor `CCpkgReader` decodes names to check it.
 - **Separator.** A name never contains `/`, which separates names in a [path](#paths).
 - **Comparison.** Names compare byte-for-byte: case-sensitive UTF-8, with no normalization. This applies to every name match in CanvasPkg, including path resolution.
 
@@ -1069,7 +1069,7 @@ A CCpkgWriter class writes bundles and assets to a package. CanvasPkg bundle and
 The writer rejects any argument that would break a format rule or produce a file `CCpkgReader::Open` rejects, so every package `CCpkgWriter` produces is one its reader accepts. Each rule is checked before anything is written, and a violation returns `Gem::Result::InvalidArg` and leaves the writer unchanged (see [Writer failure closes the writer](#writer-failure-closes-the-writer)):
 
 - **Call order**: `Open` while the writer is already open; `BeginBundle` while a bundle is open; `AppendAsset` or `EndBundle` with no bundle open; `Close` while a bundle is open.
-- **Names** (`packageName`, `bundleName`, and `name`): must follow the [name rules](#names), including when each kind may be empty and where each must be unique. An asset is shared when `CpkgIsSharedAssetType(assetType)` is true.
+- **Names** (`packageName`, `bundleName`, and `name`): must follow the [name rules](#names) other than valid UTF-8, including when each kind may be empty and where each must be unique. An asset is shared when `CpkgIsSharedAssetType(assetType)` is true.
 - **`assetType`**: must be a named `AssetType` enumerator other than `AssetType::Unknown`.
 - **`codec`**: must be a named `CpkgCodec` enumerator.
 - **`data`**: must be non-empty. Every payload begins with its header struct (see [Package Data Types](#package-data-types)), so no asset type has an empty payload.
@@ -1132,16 +1132,6 @@ public:
     // directory came from BuildBundleDirectory, an asset index if it came
     // from BuildAssetDirectory), or UINT32_MAX if name is not present.
     uint32_t Find(std::string_view name) const;
-
-private:
-    struct NameHash
-    {
-        using is_transparent = void;
-        size_t operator()(std::string_view name) const noexcept { return std::hash<std::string_view>{}(name); }
-    };
-
-    std::unordered_map<std::string, uint32_t, NameHash, std::equal_to<>> m_Entries;
-    friend class CCpkgReader;
 };
 ```
 

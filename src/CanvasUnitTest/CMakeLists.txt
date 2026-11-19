@@ -20,6 +20,7 @@ add_executable(CanvasUnitTest
     CanvasInterfacesTest.cpp
     CanvasMathTest.cpp
     CanvasPkgTest.cpp
+    CanvasPkgFileTest.cpp
     CanvasTextTest.cpp
     CanvasUtf8Test.cpp
     D3D12ResourceUtilsTest.cpp
@@ -85,6 +86,7 @@ endif()
 target_link_libraries(CanvasUnitTest PRIVATE
     CanvasUtf8Manifest
     CanvasCore
+    CanvasPkg
     CanvasText
     RectanglePacker
     D3D12ResourceUtils

@@ -22,11 +22,17 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <limits>
+#include <memory>
 #include <new>
 #include <span>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 static_assert(std::endian::native == std::endian::little, "CanvasPkg supports only little-endian hosts");
@@ -761,5 +767,135 @@ Gem::Result CpkgResolveSpan(std::span<const std::byte> payload, const CpkgSpan<T
     *pElements = { reinterpret_cast<const T *>(payload.data() + span.Offset), static_cast<size_t>(span.Count) };
     return Gem::Result::Success;
 }
+
+//------------------------------------------------------------------------------------------------
+// Package files
+
+class CCpkgFile;
+
+namespace CpkgDetail
+{
+    // Hashes names for maps and sets that look up std::string keys by std::string_view.
+    struct NameHash
+    {
+        using is_transparent = void;
+        size_t operator()(std::string_view name) const noexcept { return std::hash<std::string_view>{}(name); }
+    };
+
+    using NameSet = std::unordered_set<std::string, NameHash, std::equal_to<>>;
+}
+
+// Writes a package file. Bundle and asset writes are append-only, with a single fixup of the
+// file header in Close. A single-threaded, call-in-order API.
+class CCpkgWriter
+{
+public:
+    CCpkgWriter();
+    ~CCpkgWriter();
+    CCpkgWriter(const CCpkgWriter &) = delete;
+    CCpkgWriter &operator=(const CCpkgWriter &) = delete;
+
+    // Creates fileName, which must not exist, and writes the file header and packageName.
+    Gem::Result Open(const char *fileName, std::string_view packageName);
+
+    // Writes the bundle table and bundle name blob, fixes up the file header, and closes the file.
+    Gem::Result Close();
+
+    // Begins a new bundle; every BeginBundle is matched by an EndBundle.
+    Gem::Result BeginBundle(std::string_view bundleName, uint32_t *pBundleIndex = nullptr);
+
+    // Seals the open bundle: appends its asset table and asset name blob.
+    Gem::Result EndBundle();
+
+    // Appends one asset to the open bundle. data is the raw payload, stored with codec.
+    Gem::Result AppendAsset(AssetType assetType, std::string_view name, CpkgCodec codec, std::span<const std::byte> data, uint32_t *pAssetIndex = nullptr);
+
+private:
+    bool IsOpen() const { return m_pFile != nullptr; }
+    Gem::Result Write(const void *pData, size_t size);
+    Gem::Result Fail(Gem::Result result);
+    void Reset();
+
+    std::unique_ptr<CCpkgFile> m_pFile;
+    std::string m_FileName;
+    uint32_t m_PackageNameLength = 0;
+    uint64_t m_EndOffset = 0;
+
+    std::vector<CpkgBundleTableEntry> m_BundleTable;
+    std::string m_BundleNameBlob;
+    CpkgDetail::NameSet m_BundleNames;
+
+    bool m_BundleOpen = false;
+    std::vector<CpkgAssetTableEntry> m_AssetTable;
+    std::string m_AssetNameBlob;
+    CpkgDetail::NameSet m_AssetNames;
+};
+
+// Built by BuildBundleDirectory/BuildAssetDirectory. Owns its own copies of the names it
+// indexes, so it stays valid even after the CCpkgReader that built it is closed.
+class CCpkgNameDirectory
+{
+public:
+    // Returns the index associated with name (a bundle index if this directory came from
+    // BuildBundleDirectory, an asset index if it came from BuildAssetDirectory), or UINT32_MAX
+    // if name is not present.
+    uint32_t Find(std::string_view name) const
+    {
+        auto it = m_Entries.find(name);
+        return it == m_Entries.end() ? UINT32_MAX : it->second;
+    }
+
+private:
+    std::unordered_map<std::string, uint32_t, CpkgDetail::NameHash, std::equal_to<>> m_Entries;
+    friend class CCpkgReader;
+};
+
+// Reads a package file. The reader's state does not change between Open and Close, so every
+// const method is safe to call concurrently on one instance.
+class CCpkgReader
+{
+public:
+    CCpkgReader();
+    ~CCpkgReader();
+    CCpkgReader(const CCpkgReader &) = delete;
+    CCpkgReader &operator=(const CCpkgReader &) = delete;
+
+    // Opens a package and loads and validates its structure: the package name, the bundle
+    // table and bundle name blob, and every bundle's asset table and asset name blob.
+    Gem::Result Open(const char *fileName);
+    Gem::Result Close();
+
+    std::string_view GetPackageName() const;
+    uint32_t GetBundleCount() const;
+    std::string_view GetBundleName(uint32_t bundleIndex) const;
+    uint32_t GetAssetCount(uint32_t bundleIndex) const;
+    AssetType GetAssetType(uint32_t bundleIndex, uint32_t assetIndex) const;
+    CpkgCompressionScheme GetAssetCompression(uint32_t bundleIndex, uint32_t assetIndex) const;
+    std::string_view GetAssetName(uint32_t bundleIndex, uint32_t assetIndex) const;
+
+    // Reads one asset's raw payload into data, which holds at least its RawSize bytes.
+    Gem::Result ReadAsset(uint32_t bundleIndex, uint32_t assetIndex, std::span<std::byte> data) const;
+
+    Gem::Result BuildBundleDirectory(CCpkgNameDirectory *pDirectory) const;
+    Gem::Result BuildAssetDirectory(uint32_t bundleIndex, CCpkgNameDirectory *pDirectory, AssetType typeFilter = AssetType::Unknown) const;
+
+private:
+    struct Bundle
+    {
+        CpkgBundleTableEntry Entry;
+        std::vector<CpkgAssetTableEntry> Assets;
+        std::string AssetNameBlob;
+    };
+
+    bool IsOpen() const { return m_pFile != nullptr; }
+    const CpkgAssetTableEntry *FindAsset(uint32_t bundleIndex, uint32_t assetIndex) const;
+    Gem::Result Load(uint64_t fileSize);
+    void Reset();
+
+    std::unique_ptr<CCpkgFile> m_pFile;
+    std::string m_PackageName;
+    std::string m_BundleNameBlob;
+    std::vector<Bundle> m_Bundles;
+};
 
 } // namespace Canvas
