@@ -277,7 +277,7 @@ struct CpkgWorldSettingsData
     CpkgSpan<CpkgSpan<char>>      Skyboxes;                    // asset paths to Skybox assets; each required
     int32_t                       DefaultSkybox         = -1;  // position in Skyboxes (not an asset index); -1 = none
     int32_t                       ActiveCameraIndex     = -1;  // asset index of a Camera in this bundle; -1 = none
-    float                         BackgroundColor[4];          // linear RGBA; the background while no skybox is in effect
+    float                         BackgroundColor[4]    = { 0.0f, 0.0f, 0.0f, 1.0f };  // linear RGBA; the background while no skybox is in effect
 };
 ```
 
@@ -488,7 +488,9 @@ Parallel arrays must have equal counts: each per-vertex stream with its group's 
 
 ```cpp
 // Builds one payload in memory. The header slot at offset 0 is reserved on
-// the first call; arrays are appended to the data area in call order.
+// the first call; arrays are appended to the data area in call order. The
+// payload's buffer is aligned to kCpkgPayloadAlignment, so the decoding
+// helpers below accept it in place.
 template <class THeader>
     requires std::is_trivially_copyable_v<THeader>
 class CCpkgPayloadBuilder
@@ -506,7 +508,9 @@ public:
     // every span the header holds is known.
     Gem::Result SetHeader(const THeader &header);
 
-    std::span<const std::byte> GetPayload() const;   // pass to CCpkgWriter::AppendAsset as data
+    // Pass to CCpkgWriter::AppendAsset as data. Empty until the first call
+    // reserves the header slot.
+    std::span<const std::byte> GetPayload() const;
 };
 
 // Returns the payload's header in place. Fails with InvalidArg if payload is
@@ -714,7 +718,7 @@ struct CpkgMeshDataGroup
 
 struct CpkgMeshData
 {
-    GfxPrimitiveTopology            Topology;            // CanvasGfx.h
+    GfxPrimitiveTopology            Topology = GfxPrimitiveTopology::TriangleList;  // CanvasGfx.h
     CpkgAABB                        LocalBounds;         // empty sentinel = no bounds declared; see below
     uint32_t                        Padding = 0;
     CpkgSpan<CpkgMeshDataGroup>     Groups;
@@ -751,9 +755,9 @@ struct CpkgDisplacementData
 
 struct CpkgMaterialData
 {
-    float  BaseColorFactor[4];      // linear RGBA
-    float  EmissiveFactor[4];       // linear RGB, A unused
-    float  RoughMetalAOFactor[4];   // R=Roughness, G=Metallic, B=AmbientOcclusion, A=spare
+    float  BaseColorFactor[4]    = { 1.0f, 1.0f, 1.0f, 1.0f };  // linear RGBA
+    float  EmissiveFactor[4]     = { 0.0f, 0.0f, 0.0f, 0.0f };  // linear RGB, A unused
+    float  RoughMetalAOFactor[4] = { 1.0f, 0.0f, 1.0f, 0.0f };  // R=Roughness, G=Metallic, B=AmbientOcclusion, A=spare
 
     CpkgSpan<char> AlbedoTexture;            // asset path to an Image; empty = none, one per MaterialLayerRole
     CpkgSpan<char> NormalTexture;
@@ -835,7 +839,7 @@ The payload is a `CpkgSkyboxData` header followed by a data area holding the `Im
 struct CpkgSkyboxData
 {
     CpkgSpan<char>  Image;               // asset path to a Cube Image; required
-    float           Orientation[4];      // unit quaternion, XYZW: rotates cube-texture space into Canvas space
+    float           Orientation[4] = { 0.0f, 0.0f, 0.0f, 1.0f };  // unit quaternion, XYZW: rotates cube-texture space into Canvas space
     float           Intensity  = 1.0f;   // linear multiplier on the sample
     uint32_t        Padding    = 0;
 };
@@ -903,7 +907,7 @@ struct CpkgSkeletalAnimationBinding
 
 struct CpkgAnimationClipData
 {
-    float                                   Duration;     // seconds
+    float                                   Duration = 0.0f;  // seconds
     uint32_t                                Padding = 0;
     CpkgSpan<CpkgNodeTrack>                 Tracks;
     CpkgSpan<CpkgSkeletalAnimationBinding>  SkeletalAnimations;
