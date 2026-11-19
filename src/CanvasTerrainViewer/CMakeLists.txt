@@ -51,6 +51,7 @@ if(WIN32)
 endif()
 
 target_link_libraries(CanvasTerrainViewer PRIVATE
+    CanvasUtf8Manifest
     CanvasCore
     CanvasPlatformWin32
     InCommandLib

@@ -130,6 +130,10 @@ target_include_directories(NlohmannJson INTERFACE
 add_subdirectory(deps/QLog)
 add_subdirectory(deps/ThinWin)
 add_subdirectory(deps/InCommand)
+
+# Canvas source is UTF-8, and so are its narrow string literals.
+add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+
 add_subdirectory(src/CanvasPlatformWin32)
 # Allocators is header-only, no CMakeLists.txt needed
 # Create interface library for header-only Allocators submodule

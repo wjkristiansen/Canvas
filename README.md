@@ -181,6 +181,18 @@ Canvas uses a right-handed, Z-up world coordinate system. Each object's local ba
 
 The helper `ComposePointToBasisVectors(worldUp, forward, side, up)` derives an orthonormal side and up pair from a forward direction and a reference up vector. Camera, light, and mesh transforms all follow this layout.
 
+### Text Encoding
+
+Canvas strings are UTF-8 under any process code page:
+
+1. Canvas APIs take and return text, including names and file paths, as UTF-8 `char` strings.
+2. Canvas libraries call the operating system with explicit conversions: on Windows they convert with `CP_UTF8` and call the `-W` function. They call no `-A` function and convert nothing with `CP_ACP`.
+3. Canvas libraries build a `std::filesystem::path` from a `std::u8string`, never from a `char` string.
+
+Canvas source files are UTF-8, and the build compiles them with `/utf-8` so narrow string literals are UTF-8 too.
+
+The Canvas executables also link the `CanvasUtf8Manifest` CMake target, which merges `src/Common/Utf8.manifest` into their manifests so they run with the UTF-8 active code page (Windows 10 version 1903 or later). Windows then reads `char` strings that third-party code passes it as UTF-8. Canvas libraries work under any code page, so an application that uses them chooses its own.
+
 ## Dependencies
 
 Canvas pulls in the following libraries as Git submodules or via CMake `FetchContent`:

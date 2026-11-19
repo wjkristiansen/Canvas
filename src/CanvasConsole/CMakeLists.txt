@@ -59,6 +59,7 @@ endif()
 
 # Link with CanvasCore library
 target_link_libraries(CanvasConsole PRIVATE
+    CanvasUtf8Manifest
     CanvasCore
 )
 
