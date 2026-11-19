@@ -21,10 +21,12 @@ add_executable(CanvasUnitTest
     CanvasMathTest.cpp
     CanvasPkgTest.cpp
     CanvasPkgFileTest.cpp
+    CanvasProjectTest.cpp
     CanvasTextTest.cpp
     CanvasUtf8Test.cpp
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
+    JsonTextTest.cpp
     BVHTest.cpp
     LightBVHTest.cpp
     WorldBVHTest.cpp
@@ -87,6 +89,8 @@ target_link_libraries(CanvasUnitTest PRIVATE
     CanvasUtf8Manifest
     CanvasCore
     CanvasPkg
+    CanvasProject
+    CanvasJsonText
     CanvasText
     RectanglePacker
     D3D12ResourceUtils

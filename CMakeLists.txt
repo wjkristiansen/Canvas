@@ -125,6 +125,9 @@ add_library(NlohmannJson INTERFACE)
 target_include_directories(NlohmannJson INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/deps/json/single_include>
 )
+# Every parsed value records its byte offset, for error locations. It changes the layout of
+# nlohmann's types, so it is set here for every user.
+target_compile_definitions(NlohmannJson INTERFACE JSON_DIAGNOSTIC_POSITIONS=1)
 
 # Add subdirectories for submodules first (they may be dependencies)
 add_subdirectory(deps/QLog)
@@ -151,6 +154,7 @@ add_subdirectory(src/CanvasText)
 add_subdirectory(src/CanvasGfx12)
 add_subdirectory(src/CanvasFbx)
 add_subdirectory(src/CanvasPkg)
+add_subdirectory(src/CanvasProject)
 if(CANVAS_BUILD_SAMPLES)
     add_subdirectory(src/CanvasConsole)
     add_subdirectory(src/CanvasModelViewer)

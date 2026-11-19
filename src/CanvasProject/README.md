@@ -72,14 +72,17 @@ For the example above, the built project is `build/game.cproj.json`:
   "formatVersion": 1,
   "name": "Game",
   "packages": [
-    { "name": "Levels",         "package": "levels.cpkg" },
-    { "name": "Characters",     "package": "characters.cpkg" },
-    { "name": "Textures",       "package": "library.cpkg" },
+    { "name": "Levels", "package": "levels.cpkg" },
+    { "name": "Characters", "package": "characters.cpkg" },
+    { "name": "Textures", "package": "library.cpkg" },
     { "name": "VendorTextures", "package": "textures.cpkg" },
-    { "name": "VendorProps",    "package": "props.cpkg",
-      "references": { "Textures": "VendorTextures" } }
+    {
+      "name": "VendorProps",
+      "package": "props.cpkg",
+      "references": { "Textures": "VendorTextures" }
+    }
   ],
-  "worlds": [ "Levels/MainMenu", "Levels/Level1", "Levels/Level2" ],
+  "worlds": ["Levels/MainMenu", "Levels/Level1", "Levels/Level2"],
   "defaultWorld": "Levels/MainMenu"
 }
 ```
@@ -109,17 +112,139 @@ A project lists the [worlds](../CanvasPkg/README.md#worlds) it offers in `worlds
 - **Each `worlds` entry names a world bundle** of a listed package, by its project name, and appears once.
 - **`defaultWorld` is one of the `worlds` entries.** It declares the world the project offers for startup.
 
+## Library API
+
+CanvasProject's public header is `src/Inc/CanvasProject.h`, and its declarations are in namespace `Canvas`. Calls that can fail return `Gem::Result`, and no call throws. It links CanvasPkg, for the [name rules](../CanvasPkg/README.md#names), and reads JSON with [nlohmann/json](https://github.com/nlohmann/json).
+
+A `CProjectManifest` holds one manifest. Its `const` methods may be called from any number of threads at once.
+
+### Loading a Manifest
+
+```cpp
+struct ProjectError
+{
+    std::string Message;
+    std::string Pointer;    // JSON Pointer to the value the error concerns
+    uint32_t Line = 0;
+    uint32_t Column = 0;
+};
+
+class CProjectManifest
+{
+public:
+    Gem::Result Load(const char *path, std::vector<ProjectError> *pErrors);
+    Gem::Result Parse(std::string_view text, const char *path, std::vector<ProjectError> *pErrors);
+    // ...
+};
+```
+
+`Load` reads the manifest file at `path`, a UTF-8 file path. `Parse` reads manifest text already in memory, and takes `path` as the manifest's file path. Each replaces the manifest the object held, and on failure leaves it holding none.
+
+| Result | Meaning |
+|---|---|
+| `Gem::Result::Success` | The manifest is valid. |
+| `Gem::Result::NotFound` | `Load` found no file at `path`. |
+| `Gem::Result::IoError` | `Load` could not read the file. |
+| `Gem::Result::CorruptedData` | The text is not JSON, or the manifest breaks a rule that loading checks. |
+| `Gem::Result::OutOfMemory` | An allocation failed. |
+
+For `CorruptedData`, each error found is appended to `*pErrors`, in document order, when `pErrors` is non-null. Loading checks:
+
+- **JSON.** The text is JSON as [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259) defines it, encoded in UTF-8, optionally beginning with a byte order mark. The members of an object have distinct keys. A syntax error ends reading, so it is the only error reported.
+- **Shape.** Every field has the type and form [Project Manifest](#project-manifest) and [project.schema.json](project.schema.json) give it, every required field is present, and each object holds only the keys defined for it.
+- **Names.** Every project name, every `references` key and value, and both parts of each `worlds` entry follow CanvasPkg's name rules.
+- **Manifest rules.** The [rules](#rules) and [world rules](#worlds) that the manifest decides alone: project names are unique, each `references` value is a project name, each `worlds` entry names a project name and appears once, and `defaultWorld` is a `worlds` entry.
+
+The rules that depend on the packages' content, such as every path resolving and each `worlds` entry naming a world bundle, are checked by reading the packages.
+
+An error's `Line` and `Column` locate the value the error concerns, at its first character, or, for an error about a key, the key's opening quote. A syntax error is located where reading stopped, and has an empty `Pointer`. Both count from 1. A line ends at a line feed, and a carriage return before a line feed is part of the line ending. A column counts code points, so a tab counts as one column, and a byte order mark takes none.
+
+### Reading a Manifest
+
+```cpp
+struct ProjectReference
+{
+    std::string Name;           // the package name used in the package's paths
+    std::string ProjectName;    // the project name it maps to
+};
+
+struct ProjectPackage
+{
+    std::string Name;           // project name
+    std::string Source;         // as written; empty for a prebuilt package
+    std::string Package;        // as written; empty for a package listed by source
+    std::string FilePath;       // Source or Package, resolved
+    std::vector<ProjectReference> References;
+};
+
+struct ProjectWorld
+{
+    size_t Package;             // index into GetPackages()
+    std::string Bundle;
+};
+
+constexpr size_t kNoWorld = SIZE_MAX;
+
+class CProjectManifest
+{
+public:
+    const std::string &GetPath() const;
+    const std::string &GetName() const;
+    const std::string &GetOutput() const;
+    std::span<const ProjectPackage> GetPackages() const;
+    std::span<const ProjectWorld> GetWorlds() const;
+    size_t GetDefaultWorld() const;
+    Gem::Result FindPackage(std::string_view name, size_t *pIndex) const;
+    // ...
+};
+```
+
+Packages, references, and worlds are in manifest order. `GetPath` returns the path given to `Load` or `Parse`. `GetDefaultWorld` returns the index of the `defaultWorld` entry in `GetWorlds()`, or `kNoWorld` for a manifest without one. `FindPackage` writes the index of the package with that project name, or returns `Gem::Result::NotFound`.
+
+`FilePath` and `GetOutput` are file paths resolved against the manifest: an absolute path is kept, and a relative path is joined to the directory of the manifest's path. The result uses `/` as its separator, with `.` segments removed and each `..` segment removed with the segment before it, without reading the file system. `GetOutput` resolves `output`, or `build` for a manifest without it.
+
+### Resolving Package Names
+
+```cpp
+Gem::Result ResolvePackageName(size_t package, std::string_view declaredName,
+                               std::string_view name, size_t *pIndex) const;
+```
+
+Resolves `name`, a package name used in the paths of the package at index `package`, by the rules of [Package Names](#package-names), and writes the index of the package it names. `declaredName` is that package's declared name, which rule 1 uses, so resolving reads no package. It returns `Gem::Result::NotFound` when `name` names no package of the project, and `Gem::Result::InvalidArg` when `package` is not an index of `GetPackages()`.
+
+### Writing a Built Project
+
+```cpp
+std::string_view GetBuiltFileName(size_t package) const;
+Gem::Result FormatBuiltProject(std::string *pText, std::vector<ProjectError> *pErrors) const;
+```
+
+`GetBuiltFileName` returns the file name the package at index `package` has in `output`, as [Building a Project](#building-a-project) defines: its package file's name without the `.json` ending, or its `.cpkg` file's name.
+
+`FormatBuiltProject` writes the built project's text to `*pText`, as [Building a Project](#building-a-project) defines its content. The text is UTF-8 with line feeds and no byte order mark, laid out by the rules of `src/Common/JsonText.h`, so the same manifest always produces the same bytes.
+
+| Result | Meaning |
+|---|---|
+| `Gem::Result::Success` | `*pText` holds the built project. |
+| `Gem::Result::CorruptedData` | Two packages have the same built file name. Each package whose built file name an earlier package has is reported in `*pErrors`, at its `source` or `package` value. |
+| `Gem::Result::NotOpen` | The object holds no manifest. |
+| `Gem::Result::OutOfMemory` | An allocation failed. |
+
+Built file names are compared without regard to the case of ASCII letters, so names that differ only in that case are a build error on every file system.
+
 ## Source Layout
 
 | Path | Description |
 |---|---|
 | `src/CanvasProject/README.md` | This spec |
 | `src/CanvasProject/project.schema.json` | JSON Schema for the [project manifest](#project-manifest) |
+| `src/Inc/CanvasProject.h` | Public header |
+| `src/CanvasProject/ProjectManifest.cpp` | `CProjectManifest` |
+| `src/Common/JsonText.h`, `src/Common/JsonText.cpp` | JSON helpers shared with `cpkg`: positions, duplicate and unknown keys, and the JSON layout |
 
 ## Future Directions
 
 Directions the current design leaves room for. None are committed plans:
 
-- **Library API**: the reader, validator, and package-name resolver described above, with the engine and authoring tools as consumers.
 - **Package content hashes**: a built project's entry could record a hash of its package's content, so a package file that is damaged, or was rebuilt without the packages that depend on it, is detectable before its paths are resolved. The same hash supports verifying shipped content.
 - **Project editor data**: editor-only organization of a project's bundles, such as display folders that span packages, kept in a separate file beside the manifest.

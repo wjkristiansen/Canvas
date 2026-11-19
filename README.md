@@ -66,8 +66,8 @@ A header-only math library (`CanvasMath.hpp`) providing templated vectors, matri
 | **CanvasText**      | TrueType font parsing and signed-distance-field (SDF) glyph rasterisation.                                                       |
 | **CanvasFbx**       | FBX scene import (meshes, node hierarchies, materials, UVs, tangents) via the [ufbx](https://github.com/bqqbarbhg/ufbx) library. |
 | **RectanglePacker** | Bin-packing algorithm used for texture atlas layout.                                                                             |
-| **CanvasPkg**       | The `.cpkg` package file format, with its reader and writer. Design spec; not yet implemented.                                   |
-| **CanvasProject**   | Project manifests: the packages used together, their package names, and their worlds. Design spec; not yet implemented.         |
+| **CanvasPkg**       | The `.cpkg` package file format, with its reader and writer.                                                                     |
+| **CanvasProject**   | Project manifests: the packages used together, their package names, and their worlds.                                           |
 
 ### Applications
 
@@ -286,7 +286,7 @@ To run a single test or filter by name, invoke the executable directly (it lives
 | `src/CanvasText/`        | Font and SDF glyph generation                                  |
 | `src/CanvasFbx/`         | FBX import                                                     |
 | `src/CanvasPkg/`         | Package file format spec                                       |
-| `src/CanvasProject/`     | Project manifest spec and schema                               |
+| `src/CanvasProject/`     | Project manifest spec, schema, and library                     |
 | `src/cpkg/`              | Package build tool spec, and package source spec and schema    |
 | `src/RectanglePacker/`   | Rectangle bin-packing                                          |
 | `src/HLSL/`              | Shader source and compiled header output                       |

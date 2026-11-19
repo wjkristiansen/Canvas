@@ -7,7 +7,6 @@
 #include "CanvasPkg.h"
 
 #include <cstdint>
-#include <string_view>
 
 namespace Canvas
 {
@@ -24,15 +23,6 @@ constexpr bool CpkgIsKnownAssetType(AssetType type)
 constexpr bool CpkgIsKnownCodec(CpkgCodec codec)
 {
     return codec == CpkgCodec::None;
-}
-
-// True when name follows the name rules other than valid UTF-8, emptiness, and uniqueness: no
-// NUL byte, no '/', and at most UINT32_MAX bytes.
-constexpr bool CpkgIsValidName(std::string_view name)
-{
-    return name.size() <= UINT32_MAX
-        && name.find('\0') == std::string_view::npos
-        && name.find('/') == std::string_view::npos;
 }
 
 // True when [offset, offset + count * elementSize) lies after the file header and within a
