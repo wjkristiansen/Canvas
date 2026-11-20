@@ -4,6 +4,7 @@
 
 #include "pch.h"
 #include "CanvasProject.h"
+#include "SchemaCheck.h"
 
 #include <filesystem>
 #include <fstream>
@@ -92,6 +93,13 @@ namespace
         return errors[0];
     }
 
+    // As OneError, for a rule of the manifest's shape, which the schema also rejects.
+    ProjectError OneShapeError(std::string_view text, std::string_view pointer)
+    {
+        EXPECT_TRUE(TextBreaksSchema(CanvasSchema::Project, text));
+        return OneError(text, pointer);
+    }
+
     class CanvasProjectFiles : public ::testing::Test
     {
     protected:
@@ -123,6 +131,7 @@ TEST(CanvasProject, ReadsExample)
 {
     CProjectManifest manifest;
     std::vector<ProjectError> errors;
+    EXPECT_TRUE(TextMatchesSchema(CanvasSchema::Project, kExample));
     ASSERT_EQ(manifest.Parse(kExample, kExamplePath, &errors), Result::Success);
     EXPECT_TRUE(errors.empty());
 
@@ -172,7 +181,10 @@ TEST(CanvasProject, OptionalMembers)
     EXPECT_EQ(manifest.GetPackages()[0].FilePath, "D:/Proj/a.cpkg");
     EXPECT_EQ(manifest.GetPath(), "D:\\Proj\\Sub\\p.cproj.json");
 
+    EXPECT_TRUE(TextMatchesSchema(CanvasSchema::Project, Manifest(R"({ "name": "A", "package": "a.cpkg" })")));
+
     // An empty package list and a "$schema" are fine.
+    EXPECT_TRUE(TextMatchesSchema(CanvasSchema::Project, R"({ "$schema": "project.schema.json", "formatVersion": 1, "name": "E", "packages": [] })"));
     ASSERT_EQ(manifest.Parse(R"({ "$schema": "project.schema.json", "formatVersion": 1, "name": "E", "packages": [] })", "p.cproj.json", nullptr), Result::Success);
     EXPECT_TRUE(manifest.GetPackages().empty());
 }
@@ -217,6 +229,7 @@ TEST(CanvasProject, BuiltProject)
     std::string text;
     ASSERT_EQ(manifest.FormatBuiltProject(&text, nullptr), Result::Success);
     EXPECT_EQ(text, kExampleBuilt);
+    EXPECT_TRUE(TextMatchesSchema(CanvasSchema::Project, text));
 
     // The built project reads back as a project whose every entry is a package.
     CProjectManifest built;
@@ -274,42 +287,42 @@ TEST(CanvasProject, SyntaxErrors)
 
 TEST(CanvasProject, ShapeErrors)
 {
-    ProjectError error = OneError("[]", "");
+    ProjectError error = OneShapeError("[]", "");
     EXPECT_EQ(error.Column, 1u);
 
-    error = OneError(R"({ "formatVersion": 1, "packages": [] })", "");
+    error = OneShapeError(R"({ "formatVersion": 1, "packages": [] })", "");
     EXPECT_NE(error.Message.find("name"), std::string::npos);
 
     // An unknown key is reported at the key.
-    error = OneError("{ \"formatVersion\": 1, \"name\": \"P\", \"packages\": [],\n  \"extra\": true }", "/extra");
+    error = OneShapeError("{ \"formatVersion\": 1, \"name\": \"P\", \"packages\": [],\n  \"extra\": true }", "/extra");
     EXPECT_EQ(error.Line, 2u);
     EXPECT_EQ(error.Column, 3u);
 
-    OneError(R"({ "formatVersion": 2, "name": "P", "packages": [] })", "/formatVersion");
-    OneError(R"({ "formatVersion": "1", "name": "P", "packages": [] })", "/formatVersion");
-    OneError(R"({ "formatVersion": 1, "name": "", "packages": [] })", "/name");
-    OneError(R"({ "formatVersion": 1, "name": 5, "packages": [] })", "/name");
-    OneError(R"({ "formatVersion": 1, "name": "P", "packages": {} })", "/packages");
-    OneError(Manifest("", R"("output": "a\\b")"), "/output");
-    OneError(Manifest("", R"("worlds": "Levels/Main")"), "/worlds");
-    OneError(Manifest("7"), "/packages/0");
+    OneShapeError(R"({ "formatVersion": 2, "name": "P", "packages": [] })", "/formatVersion");
+    OneShapeError(R"({ "formatVersion": "1", "name": "P", "packages": [] })", "/formatVersion");
+    OneShapeError(R"({ "formatVersion": 1, "name": "", "packages": [] })", "/name");
+    OneShapeError(R"({ "formatVersion": 1, "name": 5, "packages": [] })", "/name");
+    OneShapeError(R"({ "formatVersion": 1, "name": "P", "packages": {} })", "/packages");
+    OneShapeError(Manifest("", R"("output": "a\\b")"), "/output");
+    OneShapeError(Manifest("", R"("worlds": "Levels/Main")"), "/worlds");
+    OneShapeError(Manifest("7"), "/packages/0");
 }
 
 TEST(CanvasProject, PackageEntryErrors)
 {
-    OneError(Manifest(R"({ "source": "a.cpkg.json" })"), "/packages/0");
-    OneError(Manifest(R"({ "name": "A" })"), "/packages/0");
-    OneError(Manifest(R"({ "name": "A", "source": "a.cpkg.json", "package": "a.cpkg" })"), "/packages/0/package");
-    OneError(Manifest(R"({ "name": "A", "source": "a.cpkg" })"), "/packages/0/source");
-    OneError(Manifest(R"({ "name": "A", "package": "a.cpkg.json" })"), "/packages/0/package");
-    OneError(Manifest(R"({ "name": "A", "package": "" })"), "/packages/0/package");
-    OneError(Manifest(R"({ "name": "A", "package": "dir\\a.cpkg" })"), "/packages/0/package");
-    OneError(Manifest(R"({ "name": "A/B", "package": "a.cpkg" })"), "/packages/0/name");
-    OneError(Manifest(R"({ "name": "", "package": "a.cpkg" })"), "/packages/0/name");
-    OneError(Manifest(R"({ "name": "A", "package": "a.cpkg", "kind": 1 })"), "/packages/0/kind");
-    OneError(Manifest(R"({ "name": "A", "package": "a.cpkg", "references": [] })"), "/packages/0/references");
-    OneError(Manifest(R"({ "name": "A", "package": "a.cpkg", "references": { "T/x": "A" } })"), "/packages/0/references/T~1x");
-    OneError(Manifest(R"({ "name": "A", "package": "a.cpkg", "references": { "T": 1 } })"), "/packages/0/references/T");
+    OneShapeError(Manifest(R"({ "source": "a.cpkg.json" })"), "/packages/0");
+    OneShapeError(Manifest(R"({ "name": "A" })"), "/packages/0");
+    OneShapeError(Manifest(R"({ "name": "A", "source": "a.cpkg.json", "package": "a.cpkg" })"), "/packages/0/package");
+    OneShapeError(Manifest(R"({ "name": "A", "source": "a.cpkg" })"), "/packages/0/source");
+    OneShapeError(Manifest(R"({ "name": "A", "package": "a.cpkg.json" })"), "/packages/0/package");
+    OneShapeError(Manifest(R"({ "name": "A", "package": "" })"), "/packages/0/package");
+    OneShapeError(Manifest(R"({ "name": "A", "package": "dir\\a.cpkg" })"), "/packages/0/package");
+    OneShapeError(Manifest(R"({ "name": "A/B", "package": "a.cpkg" })"), "/packages/0/name");
+    OneShapeError(Manifest(R"({ "name": "", "package": "a.cpkg" })"), "/packages/0/name");
+    OneShapeError(Manifest(R"({ "name": "A", "package": "a.cpkg", "kind": 1 })"), "/packages/0/kind");
+    OneShapeError(Manifest(R"({ "name": "A", "package": "a.cpkg", "references": [] })"), "/packages/0/references");
+    OneShapeError(Manifest(R"({ "name": "A", "package": "a.cpkg", "references": { "T/x": "A" } })"), "/packages/0/references/T~1x");
+    OneShapeError(Manifest(R"({ "name": "A", "package": "a.cpkg", "references": { "T": 1 } })"), "/packages/0/references/T");
 }
 
 TEST(CanvasProject, ManifestRuleErrors)

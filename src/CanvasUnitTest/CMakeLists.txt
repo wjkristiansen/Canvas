@@ -29,6 +29,8 @@ add_executable(CanvasUnitTest
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
     JsonTextTest.cpp
+    SchemaCheck.cpp
+    SchemaCheck.h
     BVHTest.cpp
     LightBVHTest.cpp
     WorldBVHTest.cpp
@@ -111,6 +113,14 @@ if(TARGET CanvasFbx AND TARGET ufbx)
         CANVAS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Data"
     )
 endif()
+
+# Schema checks run jsonschema-cli on the JSON files the tests write, against these schemas.
+include(${Canvas_SOURCE_DIR}/cmake/FetchJsonSchemaCli.cmake)
+target_compile_definitions(CanvasUnitTest PRIVATE
+    CANVAS_JSONSCHEMA_CLI_EXE="${CANVAS_JSONSCHEMA_CLI_EXE}"
+    CANVAS_PACKAGE_SOURCE_SCHEMA="${Canvas_SOURCE_DIR}/src/cpkg/package-source.schema.json"
+    CANVAS_PROJECT_SCHEMA="${Canvas_SOURCE_DIR}/src/CanvasProject/project.schema.json"
+)
 
 # Use precompiled headers
 target_precompile_headers(CanvasUnitTest PRIVATE pch.h)

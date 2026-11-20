@@ -271,6 +271,8 @@ ctest --build-config Release --output-on-failure
 
 To run a single test or filter by name, invoke the executable directly (it lives under the shared runtime directory, e.g. `build/runtime/Release/CanvasUnitTest.exe`) and use the standard GoogleTest flags, for example `--gtest_filter=BVHTest.*` or `--gtest_list_tests`.
 
+The tests check the JSON files they write, such as package sources and project manifests, against the Canvas JSON schemas, using [jsonschema-cli](https://github.com/Stranger6667/jsonschema). On Windows, configure downloads a pinned release into `build/tools/` and checks its SHA-256 hash. To use another copy, set `CANVAS_JSONSCHEMA_CLI` to its path, for example `cmake -S . -B build -DCANVAS_JSONSCHEMA_CLI=C:/Tools/jsonschema-cli.exe`. On other hosts, configure looks for `jsonschema-cli` on `PATH`. When none is available, the tests skip their schema checks and print a note.
+
 ## Repository Structure
 
 | Path                     | Description                                                    |
