@@ -5,6 +5,7 @@
 #include "pch.h"
 #include "CpkgTool.h"
 #include "Source.h"
+#include "SchemaCheck.h"
 
 #include <filesystem>
 #include <fstream>
@@ -32,6 +33,7 @@ namespace
         std::string Diagnostics;
     };
 
+    // Loads the package source at path. Each file of a source that loads must match the schema.
     LoadResult Load(const std::string &path, SourcePackage *pPackage)
     {
         std::ostringstream stream;
@@ -39,6 +41,14 @@ namespace
         LoadResult result;
         result.Loaded = LoadPackageSource(path, pPackage, diagnostics);
         result.Diagnostics = stream.str();
+        if (result.Loaded)
+        {
+            for (const std::unique_ptr<SourceFile> &pFile : pPackage->Files)
+            {
+                const std::u8string path8(pFile->Path.begin(), pFile->Path.end());
+                EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, std::filesystem::path(path8)));
+            }
+        }
         return result;
     }
 
@@ -512,4 +522,49 @@ TEST_F(CpkgSource, ValidateCommand)
 
     EXPECT_EQ(RunValidate({ "good.cpkg" }, &output), kExitUsage);
     EXPECT_EQ(output, "cpkg: error: validate: expected a .cpkg.json file: good.cpkg\nRun 'cpkg --help' for usage.\n");
+}
+
+//------------------------------------------------------------------------------------------------
+// Each source breaks one rule of the source's shape, which the loader and the schema both reject.
+TEST_F(CpkgSource, RejectsWhatTheSchemaRejects)
+{
+    struct Case
+    {
+        const char *Rule;
+        std::string Text;
+    };
+    auto inBundle = [](std::string_view bundle)
+    {
+        return R"({ "formatVersion": 1, "packageName": "P", "bundles": [ )" + std::string(bundle) + " ] }";
+    };
+    const Case cases[] = {
+        { "format version", R"({ "formatVersion": 2, "packageName": "P", "bundles": [] })" },
+        { "reserved key", R"({ "formatVersion": 1, "packageName": "P", "$note": 1, "bundles": [] })" },
+        { "bundles as an object", R"({ "formatVersion": 1, "packageName": "P", "bundles": {} })" },
+        { "comment that is not a string", inBundle(R"({ "name": "B", "$comment": 7 })") },
+        { "name beginning with $", inBundle(R"({ "name": "$B" })") },
+        { "name holding /", inBundle(R"({ "name": "a/b" })") },
+        { "empty name", inBundle(R"({ "name": "" })") },
+        { "map key beginning with $", inBundle(R"({ "name": "B", "materials": { "$M": {} } })") },
+        { "unknown key", inBundle(R"({ "name": "B", "materials": { "M": { "roughnes": 1 } } })") },
+        { "number as a string", inBundle(R"({ "name": "B", "materials": { "M": { "roughness": "high" } } })") },
+        { "vector of the wrong length", inBundle(R"({ "name": "B", "materials": { "M": { "baseColor": [1, 1, 1] } } })") },
+        { "missing required key", inBundle(R"({ "name": "B", "meshes": { "T": {} } })") },
+        { "value outside an enum", inBundle(R"({ "name": "B", "nodes": [ { "name": "N", "mobility": "moving" } ] })") },
+        { "degrees of the wrong length", inBundle(R"({ "name": "B", "nodes": [ { "name": "N", "rotation": { "degrees": [1, 2] } } ] })") },
+        { "repeated export", inBundle(R"({ "name": "B", "nodes": [ { "name": "N" } ], "exports": ["N", "N"] })") },
+        { "include without .cbundle.json", inBundle(R"({ "include": "village.json" })") },
+        { "binary offset not a multiple of 4", inBundle(R"({ "name": "B", "meshes": { "T": { "groups": [ { "positions": { "file": "p.bin", "offset": 2 } } ] } } })") },
+        { "negative binary count", inBundle(R"({ "name": "B", "meshes": { "T": { "groups": [ { "positions": { "file": "p.bin", "count": -1 } } ] } } })") },
+    };
+
+    WriteBinary<float>("p.bin", { 0, 0, 0 });
+    for (const Case &c : cases)
+    {
+        SCOPED_TRACE(c.Rule);
+        WriteText("p.cpkg.json", c.Text);
+        SourcePackage package;
+        EXPECT_FALSE(Load("p.cpkg.json", &package).Loaded);
+        EXPECT_TRUE(TextBreaksSchema(CanvasSchema::PackageSource, c.Text));
+    }
 }

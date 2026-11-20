@@ -8,7 +8,7 @@ CanvasProject is a static library that reads and validates project manifests and
 
 ## Project Manifest
 
-The manifest's shape is defined by [project.schema.json](project.schema.json). A manifest's file name ends in `.cproj.json`, such as `game.cproj.json`: the `.json` ending lets text editors treat it as JSON, and the part before it lets tools recognize it as a project manifest.
+The manifest's shape, meaning the keys of each object and the types and forms of their values, is defined by [project.schema.json](project.schema.json), and any validator that supports JSON Schema 2020-12 can check a manifest or a built project against it. This document defines what each field means, and the rules a schema cannot express, such as unique project names and the package names that references resolve. A manifest's file name ends in `.cproj.json`, such as `game.cproj.json`: the `.json` ending lets text editors treat it as JSON, and the part before it lets tools recognize it as a project manifest.
 
 ```json
 {

@@ -26,7 +26,7 @@
                 "required": ["include"],
                 "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
                 "additionalProperties": false,
-                "properties": { "include": { "$ref": "#/$defs/file" } }
+                "properties": { "include": { "$ref": "#/$defs/file", "pattern": "\\.cbundle\\.json$" } }
               }
             ]
           }
