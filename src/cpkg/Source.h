@@ -218,7 +218,8 @@ struct SourceSkin
 {
     SourceString Skeleton;
     std::vector<SourceString> Bones;
-    std::optional<SourceArray<float>> InvBindPoses;     // 16 per bone
+    std::vector<SourceTransform> BindPoses;             // one per bone, in the mesh's space
+    SourceLocation BindPosesWhere;
     SourceLocation Where;
 };
 

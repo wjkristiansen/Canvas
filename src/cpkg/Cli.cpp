@@ -48,6 +48,13 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         parser.AddGlobalOption(InCommand::OptionType::Switch, "version")
             .SetDescription("Prints the version of cpkg");
 
+        InCommand::CommandDecl &build = root.AddSubCommand("build");
+        build.SetDescription("Builds a package source into a .cpkg file");
+        build.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
+            .SetDescription("The package file");
+        build.AddOption(InCommand::OptionType::Variable, "output", 'o')
+            .SetDescription("The .cpkg file to write; by default the package file's name without .json, beside it");
+
         InCommand::CommandDecl &validate = root.AddSubCommand("validate");
         validate.SetDescription("Reports the diagnostics a build would report, without writing anything");
         validate.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
@@ -86,7 +93,19 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         const InCommand::CommandBlock &block = parser.GetCommandBlock(blockCount - 1);
         const std::string &command = block.GetDecl().GetName();
 
-        if (command == "validate")
+        if (command == "build")
+        {
+            if (!block.IsOptionSet("package.cpkg.json"))
+                return UsageError(err, "build: missing argument <package.cpkg.json>");
+            BuildOptions options;
+            options.Package = block.GetOptionValue("package.cpkg.json");
+            if (!HasExtension(options.Package, ".cpkg.json"))
+                return UsageError(err, "build: expected a .cpkg.json file: " + options.Package);
+            if (block.IsOptionSet("output"))
+                options.Output = block.GetOptionValue("output");
+            Build(options, diagnostics);
+        }
+        else if (command == "validate")
         {
             if (!block.IsOptionSet("package.cpkg.json"))
                 return UsageError(err, "validate: missing argument <package.cpkg.json>");

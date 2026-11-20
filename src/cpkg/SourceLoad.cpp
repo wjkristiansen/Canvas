@@ -1221,7 +1221,7 @@ private:
     void ReadSkin(const Json &value, const std::string &pointer, SourceSkin *pSkin)
     {
         pSkin->Where = At(value, pointer);
-        if (!ExpectObject(value, pointer, { "skeleton", "bones", "invBindPoses" }, { "skeleton", "bones" }))
+        if (!ExpectObject(value, pointer, { "skeleton", "bones", "bindPoses" }, { "skeleton", "bones", "bindPoses" }))
             return;
 
         ReadRequiredString(value, "skeleton", pointer, &CSourceLoader::ReadAssetPath, &pSkin->Skeleton);
@@ -1231,7 +1231,12 @@ private:
             if (ReadName(entry, entryPointer, &bone))
                 pSkin->Bones.push_back(std::move(bone));
         });
-        ReadOptionalArray(value, "invBindPoses", pointer, 16, &pSkin->InvBindPoses);
+        if (const Json *pPoses = Member(value, "bindPoses"))
+            pSkin->BindPosesWhere = At(*pPoses, Child(pointer, "bindPoses"));
+        ReadRequiredList(value, "bindPoses", pointer, "bind pose", [&](const Json &entry, const std::string &entryPointer)
+        {
+            ReadTransform(entry, entryPointer, &pSkin->BindPoses.emplace_back());
+        });
     }
 
     // A track of a skeletal animation, whose target key is "bone", or of a clip, "node".

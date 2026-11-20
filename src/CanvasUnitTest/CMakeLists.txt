@@ -24,6 +24,7 @@ add_executable(CanvasUnitTest
     CanvasProjectTest.cpp
     CanvasTextTest.cpp
     CanvasUtf8Test.cpp
+    CpkgBuildTest.cpp
     CpkgSourceTest.cpp
     CpkgToolTest.cpp
     D3D12ResourceUtilsTest.cpp

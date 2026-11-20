@@ -9,8 +9,11 @@ add_library(CpkgTool STATIC
     Diagnostics.cpp
     Diagnostics.h
     Dump.cpp
+    PackageWrite.cpp
     Source.h
     SourceLoad.cpp
+    SourceValidate.cpp
+    Stages.h
 )
 
 set_target_properties(CpkgTool PROPERTIES

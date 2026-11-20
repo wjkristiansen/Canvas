@@ -277,13 +277,13 @@
 
     "skin": {
       "type": "object",
-      "required": ["skeleton", "bones"],
+      "required": ["skeleton", "bones", "bindPoses"],
       "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "skeleton": { "$ref": "#/$defs/assetPath" },
         "bones": { "type": "array", "items": { "$ref": "#/$defs/boneRef" }, "minItems": 1 },
-        "invBindPoses": { "$ref": "#/$defs/numberArray" }
+        "bindPoses": { "type": "array", "items": { "$ref": "#/$defs/transform" }, "minItems": 1 }
       }
     },
 
