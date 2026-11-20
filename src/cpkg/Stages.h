@@ -150,8 +150,9 @@ private:
 bool ValidatePackageSource(const SourcePackage &package, CDiagnostics &diagnostics);
 
 // The Write stage: encodes each asset's payload and writes the package to path, a UTF-8 file
-// path, replacing any file there. Expects a package that passed Validate. Returns true when the
-// package was written.
+// path. It writes a temporary file beside path and replaces path with it only once the whole
+// package is written, and leaves path untouched when it already holds the same bytes. Expects a
+// package that passed Validate. Returns true when path holds the package.
 bool WritePackage(const SourcePackage &package, const std::string &path, CDiagnostics &diagnostics);
 
 } // namespace CpkgTool

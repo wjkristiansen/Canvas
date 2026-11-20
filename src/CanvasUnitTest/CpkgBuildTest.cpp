@@ -7,6 +7,7 @@
 #include "CpkgTool.h"
 #include "SchemaCheck.h"
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -18,6 +19,13 @@ namespace
     {
         std::ofstream file(std::filesystem::path(path), std::ios::binary);
         file.write(text.data(), std::streamsize(text.size()));
+    }
+
+    // The bytes of the file at path; empty when it cannot be read.
+    std::string ReadBytes(const char *path)
+    {
+        std::ifstream file(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
 
     // What a cpkg run returned and printed.
@@ -313,13 +321,61 @@ TEST_F(CpkgBuild, WritesSharedAssets)
     EXPECT_EQ(RunCpkg({ "build", "levels.cpkg.json", "--output", "out.cpkg" }).Status, CpkgTool::kExitSuccess);
     // Builds of the same source are byte for byte the same.
     reader.Close();
-    auto bytes = [](const char *path)
+    EXPECT_FALSE(ReadBytes("out.cpkg").empty());
+    EXPECT_EQ(ReadBytes("out.cpkg"), ReadBytes("levels.cpkg"));
+}
+
+//------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ReplacesOutputOnlyWithNewCompletePackage)
+{
+    auto source = [](std::string_view brass)
     {
-        std::ifstream file(path, std::ios::binary);
-        return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+        const std::string text = R"({ "formatVersion": 1, "packageName": "Levels", "bundles": [ { "name": "Looks", "materials": { "Brass": )"
+            + std::string(brass) + " } } ] }";
+        EXPECT_TRUE(TextMatchesSchema(CanvasSchema::PackageSource, text));
+        return text;
     };
-    EXPECT_FALSE(bytes("out.cpkg").empty());
-    EXPECT_EQ(bytes("out.cpkg"), bytes("levels.cpkg"));
+    WriteText("levels.cpkg.json", source("{}"));
+    ASSERT_EQ(RunCpkg({ "build", "levels.cpkg.json" }).Status, CpkgTool::kExitSuccess);
+    const std::string first = ReadBytes("levels.cpkg");
+    ASSERT_FALSE(first.empty());
+
+    // A build of the same bytes leaves the output untouched.
+    const std::filesystem::file_time_type old = std::filesystem::last_write_time("levels.cpkg") - std::chrono::hours(24);
+    std::filesystem::last_write_time("levels.cpkg", old);
+    ASSERT_EQ(RunCpkg({ "build", "levels.cpkg.json" }).Status, CpkgTool::kExitSuccess);
+    EXPECT_EQ(std::filesystem::last_write_time("levels.cpkg"), old);
+
+    // A build of different bytes replaces it.
+    WriteText("levels.cpkg.json", source(R"({ "roughness": 0.5 })"));
+    ASSERT_EQ(RunCpkg({ "build", "levels.cpkg.json" }).Status, CpkgTool::kExitSuccess);
+    EXPECT_NE(std::filesystem::last_write_time("levels.cpkg"), old);
+    const std::string second = ReadBytes("levels.cpkg");
+    EXPECT_NE(second, first);
+
+    // A failed build leaves it as it was.
+    WriteText("levels.cpkg.json", source(R"({ "textures": { "albedo": "Missing" } })"));
+    EXPECT_EQ(RunCpkg({ "build", "levels.cpkg.json" }).Status, CpkgTool::kExitError);
+    EXPECT_EQ(ReadBytes("levels.cpkg"), second);
+
+    // An output the build cannot replace is reported, and left as it was.
+    WriteText("levels.cpkg.json", source("{}"));
+    std::filesystem::create_directory("taken.cpkg");
+    const RunResult result = RunCpkg({ "build", "levels.cpkg.json", "-o", "taken.cpkg" });
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+    EXPECT_EQ(result.Err, "taken.cpkg: error: cannot replace the file\n");
+    EXPECT_TRUE(std::filesystem::is_directory("taken.cpkg"));
+
+    // Where the source lives does not enter the output.
+    ASSERT_EQ(RunCpkg({ "build", "levels.cpkg.json" }).Status, CpkgTool::kExitSuccess);
+    std::filesystem::create_directory("elsewhere");
+    std::filesystem::copy_file("levels.cpkg.json", "elsewhere/levels.cpkg.json");
+    ASSERT_EQ(RunCpkg({ "build", "elsewhere/levels.cpkg.json" }).Status, CpkgTool::kExitSuccess);
+    EXPECT_EQ(ReadBytes("elsewhere/levels.cpkg"), ReadBytes("levels.cpkg"));
+
+    // No build leaves a temporary file.
+    for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator("."))
+        EXPECT_NE(entry.path().extension(), ".tmp") << entry.path();
 }
 
 //------------------------------------------------------------------------------------------------
