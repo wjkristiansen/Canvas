@@ -347,7 +347,7 @@ Every payload stores values in the Canvas engine's own conventions, so they need
 - `CpkgVertexTangent::XYZW[3]` is +1 or -1, and the bitangent is `XYZW[3] * cross(N, T)`.
 - Angles are radians and times are seconds.
 
-**Transforms.** Every local transform a payload stores is a `CpkgTransform`. `CpkgTransformNodeData`, `CpkgImportNodeData`, `CpkgPlacementData`, `CpkgMeshFieldData`, and `CpkgSkeletonBone` all use it, and an [animation track](#animation-tracks) animates one of its properties.
+**Transforms.** Every transform a payload stores is a `CpkgTransform`. `CpkgTransformNodeData`, `CpkgImportNodeData`, `CpkgPlacementData`, `CpkgMeshFieldData`, and `CpkgSkeletonBone` use it for local transforms, `CpkgMeshSkinData` for bind poses, and an [animation track](#animation-tracks) animates one of a local transform's properties.
 
 ```cpp
 struct CpkgTransform
@@ -480,7 +480,7 @@ constexpr size_t kCpkgPayloadAlignment = 16;
 
 Payloads are not aligned within the file. Alignment applies to the buffer that `ReadAsset` fills.
 
-Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and a skin's `InvBindPoses` with its `Bones`. An animation track's `Values`, `Interpolations`, and `Tangents` are sized by its `Times` (see [Animation Tracks](#animation-tracks)).
+Parallel arrays must have equal counts: each per-vertex stream with its group's `Positions`, and a skin's `BindPoses` with its `Bones`. An animation track's `Values`, `Interpolations`, and `Tangents` are sized by its `Times` (see [Animation Tracks](#animation-tracks)).
 
 ### Payload Encoding Helpers
 
@@ -731,7 +731,7 @@ struct CpkgMeshData
 
 **Which streams are required depends on `Topology`**, matching what the backend enforces in `CreateMeshData`: `TriangleList` requires `Positions` and `Normals`; `PatchList4CP` requires `Positions`, `Normals`, and `UV0` (per-control-point map UVs, and the base direction along which displacement extends each control point). `Tangents`, `BoneIndices`, and `BoneWeights` are optional under either topology.
 
-A skinned mesh holds no asset index, so like any shared asset it may live in any bundle. `BoneIndices` references bones without naming an asset: each entry is a bone of the [`MeshSkin`](#cpkgmeshskindata-assettypemeshskin) that deforms the mesh, an index into its `Bones` and `InvBindPoses`. This matches the runtime skinning convention. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
+A skinned mesh holds no asset index, so like any shared asset it may live in any bundle. `BoneIndices` references bones without naming an asset: each entry is a bone of the [`MeshSkin`](#cpkgmeshskindata-assettypemeshskin) that deforms the mesh, an index into its `Bones` and `BindPoses`. This matches the runtime skinning convention. An unused influence is encoded as weight 0 in `BoneWeights`, with its `BoneIndices` slot ignored; there is no reserved "none" bone-index sentinel.
 
 **A mesh drawn with a `MeshSkin` carries bone streams in every group.** The mesh of a mesh instance whose `Skin` is not null must be a skinned mesh in the sense above, and each `BoneIndices` entry of an influence with a nonzero weight must be less than the skin's bone count. A rigid part of a skinned model is weighted 1.0 to a single bone; a separate rigid object is its own unskinned mesh, drawn by a mesh instance attached to a socket on the bone. A mesh instance whose skin deforms a mesh that lacks bone streams is malformed.
 
@@ -951,23 +951,22 @@ Each track's `Bone` names a bone of the skeleton, and no two tracks have the sam
 
 Corresponds to the skin of a `ModelMeshDesc`. A skin deforms a skinned mesh by the bones of a [skeleton](#cpkgskeletondata-assettypeskeleton). It references the skeleton by asset path and its bones by name, so it holds no asset index and may live in any bundle, typically beside the mesh it deforms. A [mesh instance](#cpkgmeshinstancedata-assettypemeshinstance) selects the skin and binds it to a skeleton instance. Several meshes of one character may share one skin.
 
-A skin's **bones** are the skeleton bones it binds, in the skin's own order: the entries of its parallel `Bones` and `InvBindPoses` arrays. Skin bone `i` follows the skeleton bone named `Bones[i]`, and `InvBindPoses[i]` maps the mesh's space to that bone's space at bind time. A skinned mesh's `BoneIndices` stream references the skin's bones.
+A skin's **bones** are the skeleton bones it binds, in the skin's own order: the entries of its parallel `Bones` and `BindPoses` arrays. Skin bone `i` follows the skeleton bone named `Bones[i]`. A skinned mesh's `BoneIndices` stream references the skin's bones.
+
+**A bind pose records where a bone was when the mesh was bound to it.** `BindPoses[i]` is skin bone `i`'s transform at bind time in the mesh's space, so its inverse maps a vertex of the mesh into that bone's space as it was at bind time. 
 
 Variable size. The payload's header is one `CpkgMeshSkinData`, whose spans refer to the skeleton path and the two per-bone arrays in the data area, and each `Bones` entry to a bone name:
 
 ```cpp
-// Row-major, Canvas row-vector convention: v' = v * M, translation in row 3.
-struct CpkgInvBindPose { float M[16]; };
-
 struct CpkgMeshSkinData
 {
-    CpkgSpan<char>              Skeleton;      // asset path to the Skeleton this skin is built for; required
-    CpkgSpan<CpkgSpan<char>>    Bones;         // per skin bone, the name of the skeleton bone it follows; at least one
-    CpkgSpan<CpkgInvBindPose>   InvBindPoses;  // one per skin bone, same order as Bones
+    CpkgSpan<char>              Skeleton;   // asset path to the Skeleton this skin is built for; required
+    CpkgSpan<CpkgSpan<char>>    Bones;      // per skin bone, the name of the skeleton bone it follows; at least one
+    CpkgSpan<CpkgTransform>     BindPoses;  // per skin bone, same order as Bones: the bone's transform at bind time, in the mesh's space
 };
 ```
 
-The skin's bone count is `Bones.Count`; `InvBindPoses.Count` must equal it. Every `Bones` entry names a bone of the skeleton.
+The skin's bone count is `Bones.Count`; `BindPoses.Count` must equal it. Every `Bones` entry names a bone of the skeleton.
 
 ### CpkgCameraData (AssetType::Camera)
 
@@ -1260,7 +1259,7 @@ Directions the current design leaves room for. None are committed plans:
 - **Equirectangular skies**: many HDR skies ship as latitude-longitude images. A skybox could accept one through a mapping field, or a writer could convert it to a `Cube` image at build time.
 - **Streaming / zero-copy reads**: `ReadAsset` always copies into a caller buffer. Large texture payloads may eventually want a memory-mapped access path alongside the copying one.
 - **Decoded, GPU-ready texture data**: a schema for pre-decoded pixel data in a GPU tile-region layout, including any mip packing, for direct-to-GPU-tile streaming. `CpkgImageData` already carries the texture shape and mip chain; this would add a decoded alternative to its encoded images.
-- **Proportional skeleton variants**: characters of different proportions sharing one skeleton and its skeletal animations, each mesh with its own rest pose, with per-bone translation retargeting.
+- **Proportional skeleton variants**: characters of different proportions sharing one skeleton and its skeletal animations, each skin with its own bind poses, with per-bone translation retargeting.
 - **Root motion**: clips that move a character through the world from its animation, such as a walk cycle whose root bone travels so that each planted foot stays fixed on the ground. A clip's skeletal animation binding would declare the bone that carries the motion and the parts of it, such as horizontal translation and rotation about +Z, that move the instance's transform, with the rest of the motion staying in the pose.
 - **Compatible skeletons**: a skeletal animation that plays on any skeleton whose bones share the names its tracks reference, such as one walk cycle shared by several humanoid skeletons, in place of the rule that a binding's skeletal animation and skeleton instance name the same skeleton.
 - **Animated attributes**: tracks for properties other than local transforms, such as a light's color and intensity, a camera's field of view, or a material parameter. `CpkgAnimationProperty` and the packed track values leave room for them.

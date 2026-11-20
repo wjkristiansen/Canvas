@@ -283,8 +283,9 @@ TEST_F(CpkgCli, DumpPayloadArrays)
         AppendString(skin, "Root", &boneNames[0]);
         AppendString(skin, "Arm \"left\"", &boneNames[1]);
         ASSERT_EQ(skin.Append(std::span(boneNames), &skinData.Bones), Result::Success);
-        const CpkgInvBindPose poses[2] = {};
-        ASSERT_EQ(skin.Append(std::span(poses), &skinData.InvBindPoses), Result::Success);
+        CpkgTransform poses[2];
+        poses[1].Translation[2] = 1.5f;
+        ASSERT_EQ(skin.Append(std::span(poses), &skinData.BindPoses), Result::Success);
         ASSERT_EQ(skin.SetHeader(skinData), Result::Success);
         ASSERT_EQ(writer.AppendAsset(AssetType::MeshSkin, "BodySkin", CpkgCodec::None, skin.GetPayload()), Result::Success);
 
@@ -358,7 +359,15 @@ TEST_F(CpkgCli, DumpPayloadArrays)
         "    Bones: 2\n"
         "      [0]: \"Root\"\n"
         "      [1]: \"Arm \\\"left\\\"\"\n"
-        "    InvBindPoses: 2\n"
+        "    BindPoses: 2\n"
+        "      [0]:\n"
+        "        Scale: 1, 1, 1\n"
+        "        Rotation: 0, 0, 0, 1\n"
+        "        Translation: 0, 0, 0\n"
+        "      [1]:\n"
+        "        Scale: 1, 1, 1\n"
+        "        Rotation: 0, 0, 0, 1\n"
+        "        Translation: 0, 0, 1.5\n"
         "--\n"
         "    Encoding: Png\n"
         "    Dimension: Texture2D\n"

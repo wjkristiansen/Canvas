@@ -456,7 +456,12 @@ namespace
             const auto &h = p.Header("CpkgMeshSkinData");
             p.String("Skeleton", h.Skeleton);
             p.Strings("Bones", h.Bones);
-            p.Count("InvBindPoses", h.InvBindPoses);
+            p.Elements("BindPoses", h.BindPoses, [&p](const CpkgTransform &pose)
+            {
+                p.Field("Scale", pose.Scale);
+                p.Field("Rotation", pose.Rotation);
+                p.Field("Translation", pose.Translation);
+            });
             break;
         }
         case AssetType::Camera:
