@@ -66,8 +66,12 @@ CBundleLayout::CBundleLayout(const SourceBundle &bundle) :
             Add(AssetType::Light, &*owner.pAttachments->Light, std::nullopt, owner.Node);
     }
 
+    for (const SourceNamed<SourceClip> &clip : bundle.Clips)
+        Add(AssetType::AnimationClip, &clip.Value, &clip.Name, -1);
     if (bundle.Exports)
         Add(AssetType::ExportList, &*bundle.Exports, std::nullopt, -1);
+    if (bundle.World)
+        Add(AssetType::WorldSettings, &*bundle.World, std::nullopt, -1);
 }
 
 const LocalAsset *CBundleLayout::FindNamed(std::string_view name) const
@@ -76,25 +80,40 @@ const LocalAsset *CBundleLayout::FindNamed(std::string_view name) const
     return found == m_Names.end() ? nullptr : &GetAsset(found->second);
 }
 
+int32_t CBundleLayout::CameraOf(int32_t node) const
+{
+    for (const LocalAsset &asset : m_Assets)
+    {
+        if (asset.Type == AssetType::Camera && asset.Reference == node)
+            return asset.Index;
+    }
+    return -1;
+}
+
 bool CBundleLayout::IsNode(AssetType type)
 {
     return type == AssetType::TransformNode || type == AssetType::ImportNode;
 }
 
 //------------------------------------------------------------------------------------------------
-LocalAsset &CBundleLayout::Add(AssetType type, LocalAsset::Source pSource, const std::optional<SourceString> &name, int32_t reference)
+LocalAsset &CBundleLayout::Add(AssetType type, LocalAsset::Source pSource, const SourceString *pName, int32_t reference)
 {
     LocalAsset &asset = m_Assets.emplace_back();
     asset.Type = type;
     asset.pSource = pSource;
     asset.Index = m_FirstIndex + int32_t(m_Assets.size() - 1);
     asset.Reference = reference;
-    if (name)
+    if (pName)
     {
-        asset.pName = &*name;
-        m_Names.emplace(name->Text, asset.Index);
+        asset.pName = pName;
+        m_Names.emplace(pName->Text, asset.Index);
     }
     return asset;
+}
+
+LocalAsset &CBundleLayout::Add(AssetType type, LocalAsset::Source pSource, const std::optional<SourceString> &name, int32_t reference)
+{
+    return Add(type, pSource, name ? &*name : nullptr, reference);
 }
 
 // Adds a node, then what it holds: its skeleton instance, its placements, and its children.

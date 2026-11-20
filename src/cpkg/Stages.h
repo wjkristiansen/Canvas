@@ -67,7 +67,7 @@ struct LocalAsset
 {
     using Source = std::variant<const SourceNode *, const SourceImportNode *, const SourcePlacement *,
         const SourceSkeletonInstance *, const SourceMeshInstance *, const SourceMeshField *, const SourceCamera *,
-        const SourceLight *, const std::vector<SourceString> *>;
+        const SourceLight *, const SourceClip *, const std::vector<SourceString> *, const SourceWorld *>;
 
     Canvas::AssetType Type = Canvas::AssetType::Unknown;
     Source pSource;                         // the source it builds from; for an ExportList, the bundle's exports
@@ -103,6 +103,8 @@ class CBundleLayout
 public:
     explicit CBundleLayout(const SourceBundle &bundle);
 
+    const SourceBundle &GetBundle() const { return m_Bundle; }
+
     // The bundle's local assets, in append order, after its shared assets.
     const std::vector<LocalAsset> &GetLocalAssets() const { return m_Assets; }
 
@@ -111,6 +113,9 @@ public:
 
     // The first local asset named name, or null.
     const LocalAsset *FindNamed(std::string_view name) const;
+
+    // The asset index of the Camera attached to the node at asset index node, or -1.
+    int32_t CameraOf(int32_t node) const;
 
     // True for TransformNode and ImportNode.
     static bool IsNode(Canvas::AssetType type);
@@ -123,6 +128,7 @@ private:
     };
 
     LocalAsset &At(int32_t index) { return m_Assets[size_t(index - m_FirstIndex)]; }
+    LocalAsset &Add(Canvas::AssetType type, LocalAsset::Source pSource, const SourceString *pName, int32_t reference);
     LocalAsset &Add(Canvas::AssetType type, LocalAsset::Source pSource, const std::optional<SourceString> &name, int32_t reference);
     void AddNode(const SourceNode &node, int32_t treeParent);
     void AddAttachments(int32_t node, const SourceAttachments &attachments);

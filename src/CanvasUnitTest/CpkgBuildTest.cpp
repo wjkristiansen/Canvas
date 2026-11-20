@@ -524,6 +524,218 @@ TEST_F(CpkgBuild, WritesBundleStructure)
 }
 
 //------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, WritesClipsAndWorlds)
+{
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Door",
+      "skeletons": { "Rig": { "bones": [ { "name": "Root" } ] } },
+      "skeletalAnimations": { "Open": { "skeleton": "Rig", "tracks": [ { "bone": "Root", "property": "translation", "times": [0, 2.5], "values": [0, 0, 0, 0, 0, 1] } ] } },
+      "nodes": [
+        { "name": "Frame", "children": [ { "name": "Hinge", "mobility": "movable", "children": [ { "name": "Panel" } ] } ] },
+        { "name": "Latch", "skeletonInstance": { "skeleton": "Rig" } }
+      ],
+      "clips": {
+        "Swing": {
+          "tracks": [
+            { "node": "Hinge", "property": "rotation", "times": [0, 1.5], "values": [0, 0, 0, 1, 0, 0, 0, 2] },
+            { "node": "Panel", "property": "scale", "times": [0.5], "values": [1, 1, 1] }
+          ],
+          "skeletalAnimations": [ { "skeletonInstance": "Latch", "animation": "Open" } ]
+        },
+        "Fixed": { "duration": 4, "tracks": [ { "node": "Hinge", "property": "translation", "times": [0, 1], "values": [0, 0, 0, 1, 0, 0] } ] },
+        "Remote": { "duration": 3, "skeletalAnimations": [ { "skeletonInstance": "Latch", "animation": "Others/Rigs/Wave" } ] }
+      }
+    },
+    {
+      "name": "Arena",
+      "skyboxes": { "Day": { "image": "Others/Skies/DayCube" } },
+      "nodes": [ { "name": "Overview", "translation": [0, -10, 5], "camera": {} } ],
+      "world": {
+        "regions": [
+          { "region": "Door", "bounds": { "min": [0, 0, -10], "max": [64, 64, 50] } },
+          { "region": "Others/Hills", "bounds": { "min": [64, 0, -10], "max": [128, 64, 50] } }
+        ],
+        "skyboxes": ["Day", "Others/Skies/Night"],
+        "defaultSkybox": "Others/Skies/Night",
+        "activeCamera": "Overview",
+        "backgroundColor": [0.1, 0.2, 0.3, 1]
+      }
+    },
+    { "name": "Empty", "world": {} }
+  ]
+}
+)");
+
+    const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, "levels.cpkg.json"));
+    EXPECT_EQ(result.Err, "");
+    ASSERT_EQ(result.Status, CpkgTool::kExitSuccess);
+
+    CCpkgReader reader;
+    ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+    ASSERT_EQ(reader.GetBundleCount(), 3u);
+
+    // Clips follow the attachments, in source order.
+    const std::pair<AssetType, std::string_view> door[] = {
+        { AssetType::Skeleton, "Rig" }, { AssetType::SkeletalAnimation, "Open" }, { AssetType::TransformNode, "Frame" },
+        { AssetType::TransformNode, "Hinge" }, { AssetType::TransformNode, "Panel" }, { AssetType::TransformNode, "Latch" },
+        { AssetType::SkeletonInstance, "" }, { AssetType::AnimationClip, "Swing" }, { AssetType::AnimationClip, "Fixed" },
+        { AssetType::AnimationClip, "Remote" },
+    };
+    ASSERT_EQ(reader.GetAssetCount(0), std::size(door));
+    for (uint32_t i = 0; i < std::size(door); ++i)
+    {
+        EXPECT_EQ(reader.GetAssetType(0, i), door[i].first) << i;
+        EXPECT_EQ(reader.GetAssetName(0, i), door[i].second) << i;
+    }
+    {
+        // The default duration is the latest key time of the clip's tracks and the skeletal
+        // animations it binds.
+        const CPayload payload(reader, 0, 7);
+        const CpkgAnimationClipData &swing = payload.Header<CpkgAnimationClipData>();
+        EXPECT_EQ(swing.Duration, 2.5f);
+        const std::span<const CpkgNodeTrack> tracks = payload.Elements<CpkgAnimationClipData>(swing.Tracks);
+        ASSERT_EQ(tracks.size(), 2u);
+        EXPECT_EQ(tracks[0].NodeIndex, 3);
+        EXPECT_EQ(tracks[0].Property, CpkgAnimationProperty::Rotation);
+        EXPECT_EQ(payload.Elements<CpkgAnimationClipData>(tracks[0].Values)[7], 1.0f);
+        EXPECT_EQ(tracks[1].NodeIndex, 4);
+        EXPECT_EQ(payload.Elements<CpkgAnimationClipData>(tracks[1].Times)[0], 0.5f);
+        const std::span<const CpkgSkeletalAnimationBinding> bindings = payload.Elements<CpkgAnimationClipData>(swing.SkeletalAnimations);
+        ASSERT_EQ(bindings.size(), 1u);
+        EXPECT_EQ(bindings[0].SkeletonInstanceIndex, 6);
+        EXPECT_EQ(payload.Text<CpkgAnimationClipData>(bindings[0].Animation), "Open");
+    }
+    {
+        const CPayload fixed(reader, 0, 8);
+        EXPECT_EQ(fixed.Header<CpkgAnimationClipData>().Duration, 4.0f);
+        EXPECT_EQ(fixed.Header<CpkgAnimationClipData>().SkeletalAnimations.Count, 0u);
+        const CPayload remote(reader, 0, 9);
+        EXPECT_EQ(remote.Header<CpkgAnimationClipData>().Duration, 3.0f);
+        EXPECT_EQ(remote.Header<CpkgAnimationClipData>().Tracks.Count, 0u);
+    }
+
+    // The world settings come last.
+    ASSERT_EQ(reader.GetAssetCount(1), 4u);
+    EXPECT_EQ(reader.GetAssetType(1, 2), AssetType::Camera);
+    EXPECT_EQ(reader.GetAssetType(1, 3), AssetType::WorldSettings);
+    {
+        const CPayload payload(reader, 1, 3);
+        const CpkgWorldSettingsData &world = payload.Header<CpkgWorldSettingsData>();
+        const std::span<const CpkgWorldRegionRef> regions = payload.Elements<CpkgWorldSettingsData>(world.Regions);
+        ASSERT_EQ(regions.size(), 2u);
+        EXPECT_EQ(payload.Text<CpkgWorldSettingsData>(regions[0].Region), "Door");
+        EXPECT_EQ(regions[0].StreamingBounds.Min[2], -10.0f);
+        EXPECT_EQ(regions[1].StreamingBounds.Max[0], 128.0f);
+        const std::span<const CpkgSpan<char>> skyboxes = payload.Elements<CpkgWorldSettingsData>(world.Skyboxes);
+        ASSERT_EQ(skyboxes.size(), 2u);
+        EXPECT_EQ(payload.Text<CpkgWorldSettingsData>(skyboxes[1]), "Others/Skies/Night");
+        EXPECT_EQ(world.DefaultSkybox, 1);
+        EXPECT_EQ(world.ActiveCameraIndex, 2);
+        EXPECT_EQ(world.BackgroundColor[2], 0.3f);
+    }
+    {
+        const CPayload payload(reader, 2, 0);
+        const CpkgWorldSettingsData &world = payload.Header<CpkgWorldSettingsData>();
+        EXPECT_EQ(world.Regions.Count, 0u);
+        EXPECT_EQ(world.DefaultSkybox, -1);
+        EXPECT_EQ(world.ActiveCameraIndex, -1);
+        EXPECT_EQ(world.BackgroundColor[3], 1.0f);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ReportsClipAndWorldErrors)
+{
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Door",
+      "skeletons": { "Rig": { "bones": [ { "name": "Root" } ] }, "Other": { "bones": [ { "name": "Root" } ] } },
+      "skeletalAnimations": { "Open": { "skeleton": "Other", "tracks": [ { "bone": "Root", "property": "scale", "times": [0], "values": [1, 1, 1] } ] } },
+      "placements": [ { "name": "Pin1", "bundle": "Pin", "mobility": "movable" }, { "name": "Pin2", "bundle": "Pin" }, { "name": "Peg1", "bundle": "Peg" } ],
+      "importNodes": [
+        { "name": "Handle", "placement": "Pin1", "export": "Tip", "children": [ { "name": "Knob1" } ] },
+        { "placement": "Pin2", "export": "Tip", "children": [ { "name": "Knob2" } ] },
+        { "placement": "Peg1", "export": "Tip", "children": [ { "name": "Knob3" } ] }
+      ],
+      "nodes": [
+        { "name": "Frame", "skeletonInstance": { "skeleton": "Rig" }, "children": [ { "name": "Sock", "bone": "Root", "mobility": "movable" } ] },
+        { "name": "Still" }
+      ],
+      "clips": {
+        "Swing": {
+          "tracks": [
+            { "node": "Still", "property": "rotation", "times": [0], "values": [0, 0, 0, 1] },
+            { "node": "Sock", "property": "rotation", "times": [0], "values": [0, 0, 0, 1] },
+            { "node": "Handle", "property": "rotation", "times": [0], "values": [0, 0, 0, 1] },
+            { "node": "Pin1", "property": "rotation", "times": [0], "values": [0, 0, 0, 1] },
+            { "node": "Gone", "property": "scale", "times": [1, 0], "values": [1, 1, 1, 1, 1, 1] },
+            { "node": "Knob1", "property": "scale", "times": [0], "values": [1, 1, 1] },
+            { "node": "Knob2", "property": "scale", "times": [0], "values": [1, 1, 1] },
+            { "node": "Knob3", "property": "scale", "times": [0], "values": [1, 1, 1] },
+            { "node": "Knob1", "property": "scale", "times": [0], "values": [1, 1, 1] }
+          ],
+          "skeletalAnimations": [
+            { "skeletonInstance": "Frame", "animation": "Open" },
+            { "skeletonInstance": "Frame", "animation": "Open" },
+            { "skeletonInstance": "Still", "animation": "Rig" }
+          ]
+        },
+        "Remote": { "skeletalAnimations": [ { "skeletonInstance": "Frame", "animation": "Others/Rigs/Wave" } ] }
+      }
+    },
+    { "name": "Pin", "nodes": [ { "name": "Tip", "mobility": "movable" } ], "exports": ["Tip"] },
+    { "name": "Peg", "nodes": [ { "name": "Tip" } ], "exports": ["Tip"] },
+    {
+      "name": "Arena",
+      "nodes": [ { "name": "Plain" } ],
+      "world": {
+        "regions": [ { "region": "Arena", "bounds": { "min": [1, 0, 0], "max": [0, 1, 1] } }, { "region": "Nowhere", "bounds": { "min": [0, 0, 0], "max": [1, 1, 1] } } ],
+        "skyboxes": ["Door/Open"],
+        "defaultSkybox": "Night",
+        "activeCamera": "Plain"
+      }
+    }
+  ]
+}
+)");
+
+    const RunResult result = RunCpkg({ "validate", "levels.cpkg.json" });
+    EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, "levels.cpkg.json"));
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+
+    // Knob1 moves with its placement and Knob2 with the node it is under, which its placed
+    // bundle exports; Knob3 moves with neither.
+    EXPECT_EQ(result.Err,
+        "levels.cpkg.json:22:23: error: the clip animates \"Still\", whose effective mobility is not \"movable\" [/bundles/0/clips/Swing/tracks/0/node]\n"
+        "levels.cpkg.json:23:23: error: \"Sock\" is a socket, which a clip track cannot animate [/bundles/0/clips/Swing/tracks/1/node]\n"
+        "levels.cpkg.json:24:23: error: \"Handle\" is an import node, which a clip track cannot animate [/bundles/0/clips/Swing/tracks/2/node]\n"
+        "levels.cpkg.json:25:23: error: \"Pin1\" is a placement, not a node [/bundles/0/clips/Swing/tracks/3/node]\n"
+        "levels.cpkg.json:26:23: error: the bundle has no node \"Gone\" [/bundles/0/clips/Swing/tracks/4/node]\n"
+        "levels.cpkg.json:26:61: error: expected nondecreasing times; key 1 is earlier than key 0 [/bundles/0/clips/Swing/tracks/4/times]\n"
+        "levels.cpkg.json:29:23: error: the clip animates \"Knob3\", whose effective mobility is not \"movable\" [/bundles/0/clips/Swing/tracks/7/node]\n"
+        "levels.cpkg.json:30:23: error: the clip already has a \"scale\" track for \"Knob1\" [/bundles/0/clips/Swing/tracks/8/node]\n"
+        "levels.cpkg.json:33:57: error: the animation's skeleton \"Other\" is not the skeleton instance's \"Rig\" [/bundles/0/clips/Swing/skeletalAnimations/0/animation]\n"
+        "levels.cpkg.json:34:35: error: the clip already binds the skeleton instance of \"Frame\" [/bundles/0/clips/Swing/skeletalAnimations/1/skeletonInstance]\n"
+        "levels.cpkg.json:35:35: error: the node \"Still\" has no \"skeletonInstance\" [/bundles/0/clips/Swing/skeletalAnimations/2/skeletonInstance]\n"
+        "levels.cpkg.json:35:57: error: \"Rig\" is a skeleton, not a skeletal animation [/bundles/0/clips/Swing/skeletalAnimations/2/animation]\n"
+        "levels.cpkg.json:38:19: error: a clip that binds a skeletal animation in another package needs \"duration\" [/bundles/0/clips/Remote]\n"
+        "levels.cpkg.json:47:34: error: \"Arena\" is a world bundle, which a bundle path cannot name [/bundles/3/world/regions/0/region]\n"
+        "levels.cpkg.json:47:53: error: expected \"min\" <= \"max\" on every axis [/bundles/3/world/regions/0/bounds]\n"
+        "levels.cpkg.json:47:107: error: the package has no bundle \"Nowhere\" [/bundles/3/world/regions/1/region]\n"
+        "levels.cpkg.json:48:22: error: \"Door/Open\" is a skeletal animation, not a skybox [/bundles/3/world/skyboxes/0]\n"
+        "levels.cpkg.json:49:26: error: \"Night\" is not one of the world's \"skyboxes\" [/bundles/3/world/defaultSkybox]\n"
+        "levels.cpkg.json:50:25: error: the node \"Plain\" has no \"camera\" [/bundles/3/world/activeCamera]\n");
+}
+
+//------------------------------------------------------------------------------------------------
 TEST_F(CpkgBuild, ReportsBundleStructureErrors)
 {
     WriteText("levels.cpkg.json", R"({
@@ -677,7 +889,7 @@ TEST_F(CpkgBuild, ReportsMembersItCannotBuildYet)
     WriteText("levels.cpkg.json", R"({
   "formatVersion": 1,
   "packageName": "Levels",
-  "bundles": [ { "name": "Village", "clips": { "Swing": {} }, "world": {} } ]
+  "bundles": [ { "name": "Village", "images": { "Sky": "sky.png" }, "imports": [ { "file": "goblin.fbx" } ] } ]
 }
 )");
 
@@ -688,8 +900,8 @@ TEST_F(CpkgBuild, ReportsMembersItCannotBuildYet)
     result = RunCpkg({ "build", "levels.cpkg.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitError);
     EXPECT_EQ(result.Err,
-        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"clips\" yet [/bundles/0]\n"
-        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"world\" yet [/bundles/0]\n");
+        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"images\" yet [/bundles/0]\n"
+        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"imports\" yet [/bundles/0]\n");
     EXPECT_FALSE(std::filesystem::exists("levels.cpkg"));
 }
 
