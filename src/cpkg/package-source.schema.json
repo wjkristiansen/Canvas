@@ -385,7 +385,8 @@
         "mesh": { "$ref": "#/$defs/assetPath" },
         "skin": { "$ref": "#/$defs/assetPath" },
         "skeletonInstance": { "$ref": "#/$defs/name" }
-      }
+      },
+      "dependentRequired": { "skeletonInstance": ["skin"] }
     },
 
     "camera": {
@@ -505,7 +506,7 @@
       "properties": {
         "name": { "$ref": "#/$defs/name" },
         "mesh": { "$ref": "#/$defs/assetPath" },
-        "cullDistance": { "type": "number" },
+        "cullDistance": { "type": "number", "minimum": 0 },
         "transforms": { "type": "array", "items": { "$ref": "#/$defs/transform" }, "minItems": 1 }
       }
     },

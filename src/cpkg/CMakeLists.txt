@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.24)
 # Everything but main, so the unit tests can run cpkg's commands in-process.
 add_library(CpkgTool STATIC
     Build.cpp
+    BundleLayout.cpp
     Cli.cpp
     CpkgTool.h
     Diagnostics.cpp

@@ -5,6 +5,7 @@
 #include "pch.h"
 #include "CanvasPkg.h"
 #include "CpkgTool.h"
+#include "SchemaCheck.h"
 
 #include <filesystem>
 #include <fstream>
@@ -159,6 +160,7 @@ TEST_F(CpkgBuild, WritesSharedAssets)
 )");
 
     const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, "levels.cpkg.json"));
     EXPECT_EQ(result.Err, "");
     ASSERT_EQ(result.Status, CpkgTool::kExitSuccess);
 
@@ -321,6 +323,277 @@ TEST_F(CpkgBuild, WritesSharedAssets)
 }
 
 //------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, WritesBundleStructure)
+{
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Goblin",
+      "meshes": { "Body": { "groups": [ { "positions": [0, 0, 0], "normals": [0, 0, 1], "boneIndices": [0, 0, 0, 0], "boneWeights": [1, 0, 0, 0] } ] } },
+      "skeletons": { "Skeleton": { "bones": [ { "name": "Hips" }, { "name": "Hand_R", "parent": "Hips" } ] } },
+      "skins": { "Skin": { "skeleton": "Skeleton", "bones": ["Hips"], "bindPoses": [ {} ] } },
+      "nodes": [
+        {
+          "name": "Goblin", "mobility": "movable",
+          "skeletonInstance": { "skeleton": "Skeleton" },
+          "meshInstances": [ { "mesh": "Body", "skin": "Skin", "skeletonInstance": "Goblin" } ],
+          "children": [
+            { "name": "Hand_R", "bone": "Hand_R", "rotation": [0, 0, 0, 2] },
+            { "name": "Eyes", "translation": [0.1, 0, 1.6],
+              "meshInstances": [ { "mesh": "Body", "skin": "Skin" }, { "mesh": "Body" } ],
+              "camera": { "fovAngle": 1.2 },
+              "light": { "type": "spot", "color": [1, 0.5, 0.25], "castsShadows": true } }
+          ]
+        }
+      ],
+      "exports": ["Hand_R"]
+    },
+    { "name": "Sword", "meshes": { "Blade": { "groups": [ { "positions": [0, 0, 0], "normals": [0, 0, 1] } ] } } },
+    {
+      "name": "Camp",
+      "importNodes": [
+        { "name": "Armed", "placement": "Goblin1", "export": "Hand_R", "rotation": { "degrees": [0, 0, 90] },
+          "placements": [ { "name": "Sword1", "bundle": "Sword" } ] }
+      ],
+      "nodes": [
+        { "name": "Fire", "meshFields": [ { "mesh": "Sword/Blade", "transforms": [ {}, { "translation": [1, 0, 0] } ] } ],
+          "placements": [ { "name": "Lamp", "bundle": "Levels/Sword", "translation": [0, 0, 2] } ] }
+      ],
+      "placements": [
+        { "name": "Goblin1", "bundle": "Goblin", "mobility": "movable", "translation": [12, 4, 0] },
+        { "bundle": "Others/Trees" }
+      ],
+      "meshFields": [ { "name": "Grass", "mesh": "Sword/Blade", "cullDistance": 60, "transforms": [ { "translation": [1, 2, 0] } ] } ]
+    }
+  ]
+}
+)");
+
+    const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, "levels.cpkg.json"));
+    EXPECT_EQ(result.Err, "");
+    ASSERT_EQ(result.Status, CpkgTool::kExitSuccess);
+
+    CCpkgReader reader;
+    ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+    ASSERT_EQ(reader.GetBundleCount(), 3u);
+    auto expectAssets = [&](uint32_t bundle, std::initializer_list<std::pair<AssetType, std::string_view>> assets)
+    {
+        ASSERT_EQ(reader.GetAssetCount(bundle), assets.size());
+        uint32_t i = 0;
+        for (const auto &[type, name] : assets)
+        {
+            EXPECT_EQ(reader.GetAssetType(bundle, i), type) << bundle << ": " << i;
+            EXPECT_EQ(reader.GetAssetName(bundle, i), name) << bundle << ": " << i;
+            ++i;
+        }
+    };
+
+    // The shared assets, then the hierarchy in pre-order: a node, its skeleton instance, then its
+    // children. Then each kind of attachment in the order of its nodes, then the exports.
+    expectAssets(0, {
+        { AssetType::MeshData, "Body" }, { AssetType::Skeleton, "Skeleton" }, { AssetType::MeshSkin, "Skin" },
+        { AssetType::TransformNode, "Goblin" }, { AssetType::SkeletonInstance, "" }, { AssetType::TransformNode, "Hand_R" },
+        { AssetType::TransformNode, "Eyes" }, { AssetType::MeshInstance, "" }, { AssetType::MeshInstance, "" },
+        { AssetType::MeshInstance, "" }, { AssetType::Camera, "" }, { AssetType::Light, "" }, { AssetType::ExportList, "" },
+    });
+    {
+        const CPayload payload(reader, 0, 3);
+        const CpkgTransformNodeData &goblin = payload.Header<CpkgTransformNodeData>();
+        EXPECT_EQ(goblin.ParentIndex, -1);
+        EXPECT_EQ(goblin.Mobility, CpkgMobility::Movable);
+        EXPECT_EQ(goblin.ParentBone.Count, 0u);
+    }
+    {
+        const CPayload payload(reader, 0, 4);
+        const CpkgSkeletonInstanceData &instance = payload.Header<CpkgSkeletonInstanceData>();
+        EXPECT_EQ(instance.NodeIndex, 3);
+        EXPECT_EQ(payload.Text<CpkgSkeletonInstanceData>(instance.Skeleton), "Skeleton");
+    }
+    {
+        // A socket's parent is its parent node's skeleton instance.
+        const CPayload payload(reader, 0, 5);
+        const CpkgTransformNodeData &hand = payload.Header<CpkgTransformNodeData>();
+        EXPECT_EQ(hand.ParentIndex, 4);
+        EXPECT_EQ(hand.Mobility, CpkgMobility::Static);
+        EXPECT_EQ(payload.Text<CpkgTransformNodeData>(hand.ParentBone), "Hand_R");
+        EXPECT_EQ(hand.LocalTransform.Rotation[3], 1.0f);
+    }
+    {
+        const CPayload payload(reader, 0, 6);
+        const CpkgTransformNodeData &eyes = payload.Header<CpkgTransformNodeData>();
+        EXPECT_EQ(eyes.ParentIndex, 3);
+        EXPECT_EQ(eyes.LocalTransform.Translation[2], 1.6f);
+    }
+    {
+        // A skinned mesh instance binds the skeleton instance it names, or the nearest one toward
+        // its root.
+        const std::pair<int32_t, int32_t> instances[] = { { 3, 4 }, { 6, 4 }, { 6, -1 } };
+        for (uint32_t i = 0; i < 3; ++i)
+        {
+            const CPayload payload(reader, 0, 7 + i);
+            const CpkgMeshInstanceData &instance = payload.Header<CpkgMeshInstanceData>();
+            EXPECT_EQ(instance.NodeIndex, instances[i].first) << i;
+            EXPECT_EQ(instance.SkeletonInstanceIndex, instances[i].second) << i;
+            EXPECT_EQ(payload.Text<CpkgMeshInstanceData>(instance.MeshData), "Body") << i;
+            EXPECT_EQ(payload.Text<CpkgMeshInstanceData>(instance.Skin), i < 2 ? "Skin" : "") << i;
+        }
+    }
+    {
+        const CPayload payload(reader, 0, 10);
+        const CpkgCameraData &camera = payload.Header<CpkgCameraData>();
+        EXPECT_EQ(camera.NodeIndex, 6);
+        EXPECT_EQ(camera.FovAngle, 1.2f);
+        EXPECT_EQ(camera.NearClip, 0.1f);
+    }
+    {
+        const CPayload payload(reader, 0, 11);
+        const CpkgLightData &light = payload.Header<CpkgLightData>();
+        EXPECT_EQ(light.NodeIndex, 6);
+        EXPECT_EQ(light.Type, LightType::Spot);
+        EXPECT_EQ(light.Color[2], 0.25f);
+        EXPECT_EQ(light.Color[3], 1.0f);
+        EXPECT_EQ(light.Flags, LightFlags::Enabled | LightFlags::CastsShadows);
+        EXPECT_EQ(light.Range, 100.0f);
+    }
+    {
+        const CPayload payload(reader, 0, 12);
+        const std::span<const int32_t> nodes = payload.Elements<CpkgExportListData>(payload.Header<CpkgExportListData>().NodeIndices);
+        ASSERT_EQ(nodes.size(), 1u);
+        EXPECT_EQ(nodes[0], 5);
+    }
+
+    expectAssets(1, { { AssetType::MeshData, "Blade" } });
+
+    // The bundle's nodes, then its placements, each placement followed by the import nodes that
+    // name it; then the mesh fields attached to nodes, then the bundle's own.
+    expectAssets(2, {
+        { AssetType::TransformNode, "Fire" }, { AssetType::Placement, "Lamp" }, { AssetType::Placement, "Goblin1" },
+        { AssetType::ImportNode, "Armed" }, { AssetType::Placement, "Sword1" }, { AssetType::Placement, "" },
+        { AssetType::MeshField, "" }, { AssetType::MeshField, "Grass" },
+    });
+    {
+        const CPayload payload(reader, 2, 1);
+        const CpkgPlacementData &lamp = payload.Header<CpkgPlacementData>();
+        EXPECT_EQ(lamp.NodeIndex, 0);
+        EXPECT_EQ(lamp.Mobility, CpkgMobility::Static);
+        EXPECT_EQ(payload.Text<CpkgPlacementData>(lamp.Bundle), "Levels/Sword");
+        EXPECT_EQ(lamp.Transform.Translation[2], 2.0f);
+    }
+    {
+        const CPayload payload(reader, 2, 2);
+        const CpkgPlacementData &goblin = payload.Header<CpkgPlacementData>();
+        EXPECT_EQ(goblin.NodeIndex, -1);
+        EXPECT_EQ(goblin.Mobility, CpkgMobility::Movable);
+        EXPECT_EQ(goblin.Transform.Translation[0], 12.0f);
+    }
+    {
+        const CPayload payload(reader, 2, 3);
+        const CpkgImportNodeData &armed = payload.Header<CpkgImportNodeData>();
+        EXPECT_EQ(armed.PlacementIndex, 2);
+        EXPECT_EQ(payload.Text<CpkgImportNodeData>(armed.ExportName), "Hand_R");
+        EXPECT_NEAR(armed.LocalTransform.Rotation[2], 0.70710678f, 1e-6f);
+        EXPECT_NEAR(armed.LocalTransform.Rotation[3], 0.70710678f, 1e-6f);
+    }
+    {
+        const CPayload payload(reader, 2, 4);
+        EXPECT_EQ(payload.Header<CpkgPlacementData>().NodeIndex, 3);
+        const CPayload trees(reader, 2, 5);
+        EXPECT_EQ(trees.Header<CpkgPlacementData>().NodeIndex, -1);
+        EXPECT_EQ(trees.Text<CpkgPlacementData>(trees.Header<CpkgPlacementData>().Bundle), "Others/Trees");
+    }
+    {
+        const CPayload payload(reader, 2, 6);
+        const CpkgMeshFieldData &fire = payload.Header<CpkgMeshFieldData>();
+        EXPECT_EQ(fire.NodeIndex, 0);
+        EXPECT_EQ(fire.CullDistance, 0.0f);
+        EXPECT_EQ(payload.Text<CpkgMeshFieldData>(fire.MeshData), "Sword/Blade");
+        const std::span<const CpkgTransform> transforms = payload.Elements<CpkgMeshFieldData>(fire.Transforms);
+        ASSERT_EQ(transforms.size(), 2u);
+        EXPECT_EQ(transforms[1].Translation[0], 1.0f);
+        EXPECT_EQ(transforms[1].Scale[0], 1.0f);
+    }
+    {
+        const CPayload payload(reader, 2, 7);
+        const CpkgMeshFieldData &grass = payload.Header<CpkgMeshFieldData>();
+        EXPECT_EQ(grass.NodeIndex, -1);
+        EXPECT_EQ(grass.CullDistance, 60.0f);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ReportsBundleStructureErrors)
+{
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Goblin",
+      "skeletons": { "Skeleton": { "bones": [ { "name": "Hips" } ] }, "Other": { "bones": [ { "name": "Root" } ] } },
+      "skins": { "Skin": { "skeleton": "Other", "bones": ["Root"], "bindPoses": [ {} ] } },
+      "meshes": { "Body": { "groups": [ { "positions": [0, 0, 0], "normals": [0, 0, 1] } ] } },
+      "nodes": [
+        { "name": "Root", "bone": "Hips" },
+        { "name": "Body", "children": [ { "bone": "Hips" } ] },
+        { "name": "Rig", "skeletonInstance": { "skeleton": "Skeleton" }, "meshInstances": [ { "mesh": "Body", "skin": "Skin" } ],
+          "children": [ { "bone": "Tail", "rotation": [0, 0, 0, 0] } ] },
+        { "name": "Plain", "meshInstances": [ { "mesh": "Skin", "skin": "Skin" }, { "mesh": "Body", "skin": "Skin", "skeletonInstance": "Plain" },
+                                              { "mesh": "Body", "skin": "Skin", "skeletonInstance": "Spot" } ] }
+      ],
+      "placements": [ { "name": "Spot", "bundle": "Goblin" }, { "bundle": "Arena" }, { "bundle": "Nowhere" }, { "bundle": "Levels/Camp" } ],
+      "meshFields": [ { "mesh": "Skeleton", "transforms": [ { "rotation": [0, 0, 0, 0] } ] } ],
+      "exports": ["Rig", "Spot", "Missing"]
+    },
+    {
+      "name": "Camp",
+      "placements": [ { "name": "G", "bundle": "Goblin" } ],
+      "importNodes": [
+        { "placement": "G", "export": "Hand" },
+        { "placement": "Fire", "export": "Rig" },
+        { "placement": "Nope", "export": "Rig" },
+        { "name": "Loop", "placement": "Inner", "export": "Rig", "placements": [ { "name": "Inner", "bundle": "Sword" } ] }
+      ],
+      "nodes": [ { "name": "Fire" } ]
+    },
+    { "name": "Sword" },
+    { "name": "Arena", "world": {} }
+  ]
+}
+)");
+
+    const RunResult result = RunCpkg({ "validate", "levels.cpkg.json" });
+    EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, "levels.cpkg.json"));
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+    EXPECT_EQ(result.Err,
+        "levels.cpkg.json:11:35: error: a node with \"bone\" needs a parent node with a \"skeletonInstance\" [/bundles/0/nodes/0/bone]\n"
+        "levels.cpkg.json:12:19: error: the bundle already uses the name \"Body\" [/bundles/0/nodes/1/name]\n"
+        "levels.cpkg.json:12:51: error: a node with \"bone\" needs a parent node with a \"skeletonInstance\" [/bundles/0/nodes/1/children/0/bone]\n"
+        "levels.cpkg.json:13:119: error: the skin's skeleton \"Other\" is not the skeleton instance's \"Skeleton\" [/bundles/0/nodes/2/meshInstances/0/skin]\n"
+        "levels.cpkg.json:14:35: error: the skeleton \"Skeleton\" has no bone \"Tail\" [/bundles/0/nodes/2/children/0/bone]\n"
+        "levels.cpkg.json:14:55: error: expected a non-zero quaternion [/bundles/0/nodes/2/children/0/rotation]\n"
+        "levels.cpkg.json:15:47: error: no node from this mesh instance's node to its root has a \"skeletonInstance\" for the skin to bind to [/bundles/0/nodes/3/meshInstances/0]\n"
+        "levels.cpkg.json:15:57: error: \"Skin\" is a skin, not a mesh [/bundles/0/nodes/3/meshInstances/0/mesh]\n"
+        "levels.cpkg.json:15:137: error: the node \"Plain\" has no \"skeletonInstance\" [/bundles/0/nodes/3/meshInstances/1/skeletonInstance]\n"
+        "levels.cpkg.json:16:101: error: \"Spot\" is a placement, not a node [/bundles/0/nodes/3/meshInstances/2/skeletonInstance]\n"
+        "levels.cpkg.json:18:51: error: the bundle places itself [/bundles/0/placements/0/bundle]\n"
+        "levels.cpkg.json:18:75: error: \"Arena\" is a world bundle, which a bundle path cannot name [/bundles/0/placements/1/bundle]\n"
+        "levels.cpkg.json:18:98: error: the package has no bundle \"Nowhere\" [/bundles/0/placements/2/bundle]\n"
+        "levels.cpkg.json:18:123: error: \"Levels/Camp\" places this bundle, directly or through the bundles it places [/bundles/0/placements/3/bundle]\n"
+        "levels.cpkg.json:19:33: error: \"Skeleton\" is a skeleton, not a mesh [/bundles/0/meshFields/0/mesh]\n"
+        "levels.cpkg.json:19:75: error: expected a non-zero quaternion [/bundles/0/meshFields/0/transforms/0/rotation]\n"
+        "levels.cpkg.json:20:26: error: \"Spot\" is a placement, not a node [/bundles/0/exports/1]\n"
+        "levels.cpkg.json:20:34: error: the bundle has no node \"Missing\" [/bundles/0/exports/2]\n"
+        "levels.cpkg.json:24:48: error: \"Goblin\" places this bundle, directly or through the bundles it places [/bundles/1/placements/0/bundle]\n"
+        "levels.cpkg.json:26:39: error: the bundle \"Goblin\" exports no node \"Hand\" [/bundles/1/importNodes/0/export]\n"
+        "levels.cpkg.json:27:24: error: \"Fire\" is a node, not a placement [/bundles/1/importNodes/1/placement]\n"
+        "levels.cpkg.json:28:24: error: the bundle has no placement \"Nope\" [/bundles/1/importNodes/2/placement]\n"
+        "levels.cpkg.json:29:40: error: the placement \"Inner\" attaches within this import node [/bundles/1/importNodes/3/placement]\n");
+}
+
+//------------------------------------------------------------------------------------------------
 TEST_F(CpkgBuild, ReportsValidationErrorsInDocumentOrder)
 {
     WriteText("parts.cbundle.json", R"({
@@ -360,6 +633,8 @@ TEST_F(CpkgBuild, ReportsValidationErrorsInDocumentOrder)
 )");
 
     const RunResult result = RunCpkg({ "validate", "levels.cpkg.json" });
+    EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, "levels.cpkg.json"));
+    EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, "parts.cbundle.json"));
     EXPECT_EQ(result.Status, CpkgTool::kExitError);
     EXPECT_EQ(result.Err,
         "levels.cpkg.json:8:57: error: \"Sky\" is not a 2D image with one array slice [/bundles/0/materials/Brass/textures/albedo]\n"
@@ -402,7 +677,7 @@ TEST_F(CpkgBuild, ReportsMembersItCannotBuildYet)
     WriteText("levels.cpkg.json", R"({
   "formatVersion": 1,
   "packageName": "Levels",
-  "bundles": [ { "name": "Village", "nodes": [ { "name": "Well" } ], "exports": [] } ]
+  "bundles": [ { "name": "Village", "clips": { "Swing": {} }, "world": {} } ]
 }
 )");
 
@@ -413,8 +688,8 @@ TEST_F(CpkgBuild, ReportsMembersItCannotBuildYet)
     result = RunCpkg({ "build", "levels.cpkg.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitError);
     EXPECT_EQ(result.Err,
-        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"nodes\" yet [/bundles/0]\n"
-        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"exports\" yet [/bundles/0]\n");
+        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"clips\" yet [/bundles/0]\n"
+        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"world\" yet [/bundles/0]\n");
     EXPECT_FALSE(std::filesystem::exists("levels.cpkg"));
 }
 

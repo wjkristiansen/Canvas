@@ -1331,6 +1331,8 @@ private:
             ReadRequiredString(entry, "mesh", entryPointer, &CSourceLoader::ReadAssetPath, &instance.Mesh);
             ReadOptionalString(entry, "skin", entryPointer, &CSourceLoader::ReadAssetPath, &instance.Skin);
             ReadOptionalString(entry, "skeletonInstance", entryPointer, &CSourceLoader::ReadName, &instance.SkeletonInstance);
+            if (instance.SkeletonInstance && !instance.Skin)
+                Error(entry, entryPointer, "a mesh instance with \"skeletonInstance\" needs \"skin\"");
         });
 
         ReadOptionalList(object, "meshFields", pointer, [&](const Json &entry, const std::string &entryPointer)
@@ -1410,7 +1412,8 @@ private:
 
         ReadOptionalString(value, "name", pointer, &CSourceLoader::ReadName, &pField->Name);
         ReadRequiredString(value, "mesh", pointer, &CSourceLoader::ReadAssetPath, &pField->Mesh);
-        ReadDefaultedNumber(value, "cullDistance", pointer, &pField->CullDistance);
+        if (const Json *pCull = Member(value, "cullDistance"))
+            ReadNumberAtLeast(*pCull, Child(pointer, "cullDistance"), 0.0f, true, &pField->CullDistance);
         ReadRequiredList(value, "transforms", pointer, "transform", [&](const Json &entry, const std::string &entryPointer)
         {
             ReadTransform(entry, entryPointer, &pField->Transforms.emplace_back());

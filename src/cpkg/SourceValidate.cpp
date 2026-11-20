@@ -35,6 +35,10 @@ const char *AssetTypeNoun(AssetType type)
     case AssetType::Skeleton: return "a skeleton";
     case AssetType::MeshSkin: return "a skin";
     case AssetType::SkeletalAnimation: return "a skeletal animation";
+    case AssetType::TransformNode: return "a node";
+    case AssetType::ImportNode: return "an import node";
+    case AssetType::Placement: return "a placement";
+    case AssetType::MeshField: return "a mesh field";
     default: return "an asset";
     }
 }
@@ -96,7 +100,11 @@ public:
     {
         CheckBundleNames();
         for (const SourceBundle &bundle : m_Package.Bundles)
-            CheckBundle(bundle);
+            m_Layouts.emplace_back(bundle);
+        for (const CBundleLayout &layout : m_Layouts)
+            m_Placed.push_back(PlacedBundles(layout));
+        for (size_t i = 0; i < m_Package.Bundles.size(); ++i)
+            CheckBundle(i);
 
         std::stable_sort(m_Findings.begin(), m_Findings.end(), [](const Finding &a, const Finding &b)
         {
@@ -137,7 +145,7 @@ private:
     }
 
     // Every named asset of a bundle shares one namespace; a later use of a name is reported.
-    void CheckAssetNames(const SourceBundle &bundle)
+    void CheckAssetNames(const SourceBundle &bundle, const CBundleLayout &layout)
     {
         std::vector<const SourceString *> names;
         auto add = [&](const auto &assets)
@@ -153,6 +161,11 @@ private:
         add(bundle.SkeletalAnimations);
         add(bundle.Skyboxes);
         add(bundle.Clips);
+        for (const LocalAsset &asset : layout.GetLocalAssets())
+        {
+            if (asset.pName)
+                names.push_back(asset.pName);
+        }
 
         std::stable_sort(names.begin(), names.end(), [](const SourceString *pA, const SourceString *pB)
         {
@@ -236,6 +249,15 @@ private:
         return &target.pBundle->Skeletons[target.Index].Value;
     }
 
+    // The skeleton path resolves to within the package, or null. Reports nothing.
+    const SourceSkeleton *FindSkeleton(const SourceBundle &bundle, const SourceString &path) const
+    {
+        const AssetTarget target = m_Lookup.ResolveAssetPath(bundle, path.Text);
+        if (target.State != AssetTarget::Kind::Asset || target.Type != AssetType::Skeleton)
+            return nullptr;
+        return &target.pBundle->Skeletons[target.Index].Value;
+    }
+
     // Reports a bone name the skeleton lacks. A null pSkeleton, from a path that did not resolve
     // within the package, is not checked.
     void CheckBone(const SourceSkeleton *pSkeleton, const SourceString &skeletonPath, const SourceString &bone)
@@ -258,12 +280,39 @@ private:
             Error(rotation.Where, "expected a non-zero quaternion");
     }
 
+    void CheckTransform(const SourceTransform &transform)
+    {
+        if (transform.Rotation)
+            CheckRotation(*transform.Rotation);
+    }
+
+    // Reports a name that does not name a node of the bundle. A name the bundle lacks is not
+    // reported for a bundle with imports, which may build it. Returns the node, or null.
+    const LocalAsset *CheckNodeName(const SourceBundle &bundle, const CBundleLayout &layout, const SourceString &name)
+    {
+        const LocalAsset *pNamed = layout.FindNamed(name.Text);
+        if (!pNamed)
+        {
+            if (bundle.Imports.empty())
+                Error(name.Where, "the bundle has no node " + Quoted(name.Text));
+            return nullptr;
+        }
+        if (!CBundleLayout::IsNode(pNamed->Type))
+        {
+            Error(name.Where, Quoted(name.Text) + " is " + AssetTypeNoun(pNamed->Type) + ", not a node");
+            return nullptr;
+        }
+        return pNamed;
+    }
+
     //--------------------------------------------------------------------------------------------
     // Assets
 
-    void CheckBundle(const SourceBundle &bundle)
+    void CheckBundle(size_t bundleIndex)
     {
-        CheckAssetNames(bundle);
+        const SourceBundle &bundle = m_Package.Bundles[bundleIndex];
+        const CBundleLayout &layout = m_Layouts[bundleIndex];
+        CheckAssetNames(bundle, layout);
         for (const auto &material : bundle.Materials)
             CheckMaterial(bundle, material.Value);
         for (const auto &mesh : bundle.Meshes)
@@ -276,6 +325,7 @@ private:
             CheckSkeletalAnimation(bundle, animation.Value);
         for (const auto &skybox : bundle.Skyboxes)
             CheckSkybox(bundle, skybox.Value);
+        CheckLocalAssets(bundleIndex, layout);
     }
 
     void CheckMaterial(const SourceBundle &bundle, const SourceMaterial &material)
@@ -477,8 +527,206 @@ private:
             CheckRotation(*skybox.Orientation);
     }
 
+    //--------------------------------------------------------------------------------------------
+    // Bundle structure
+
+    void CheckLocalAssets(size_t bundleIndex, const CBundleLayout &layout)
+    {
+        const SourceBundle &bundle = m_Package.Bundles[bundleIndex];
+        for (const LocalAsset &asset : layout.GetLocalAssets())
+        {
+            switch (asset.Type)
+            {
+            case AssetType::TransformNode:
+                CheckNode(bundle, layout, asset);
+                break;
+            case AssetType::ImportNode:
+                CheckImportNode(layout, asset);
+                break;
+            case AssetType::Placement:
+                CheckPlacement(bundleIndex, *std::get<const SourcePlacement *>(asset.pSource));
+                break;
+            case AssetType::SkeletonInstance:
+                CheckSkeletonPath(bundle, std::get<const SourceSkeletonInstance *>(asset.pSource)->Skeleton);
+                break;
+            case AssetType::MeshInstance:
+                CheckMeshInstance(bundle, layout, asset);
+                break;
+            case AssetType::MeshField:
+            {
+                const SourceMeshField &field = *std::get<const SourceMeshField *>(asset.pSource);
+                CheckAssetPath(bundle, field.Mesh, AssetType::MeshData);
+                for (const SourceTransform &transform : field.Transforms)
+                    CheckTransform(transform);
+                break;
+            }
+            case AssetType::ExportList:
+                CheckExports(bundle, layout, *std::get<const std::vector<SourceString> *>(asset.pSource));
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    void CheckNode(const SourceBundle &bundle, const CBundleLayout &layout, const LocalAsset &asset)
+    {
+        const SourceNode &node = *std::get<const SourceNode *>(asset.pSource);
+        CheckTransform(node.Transform);
+        if (!node.Bone)
+            return;
+        if (asset.Reference == -1)
+        {
+            Error(node.Bone->Where, "a node with \"bone\" needs a parent node with a \"skeletonInstance\"");
+            return;
+        }
+        const SourceSkeletonInstance &instance = *std::get<const SourceSkeletonInstance *>(layout.GetAsset(asset.Reference).pSource);
+        CheckBone(FindSkeleton(bundle, instance.Skeleton), instance.Skeleton, *node.Bone);
+    }
+
+    void CheckImportNode(const CBundleLayout &layout, const LocalAsset &asset)
+    {
+        const SourceImportNode &node = *std::get<const SourceImportNode *>(asset.pSource);
+        CheckTransform(node.Transform);
+        if (asset.Reference == -1)
+        {
+            if (const LocalAsset *pNamed = layout.FindNamed(node.Placement.Text))
+                Error(node.Placement.Where, Quoted(node.Placement.Text) + " is " + AssetTypeNoun(pNamed->Type) + ", not a placement");
+            else
+                Error(node.Placement.Where, "the bundle has no placement " + Quoted(node.Placement.Text));
+            return;
+        }
+        if (asset.Reference > asset.Index)
+        {
+            Error(node.Placement.Where, "the placement " + Quoted(node.Placement.Text) + " attaches within this import node");
+            return;
+        }
+
+        // The export is checked when the placed bundle is in this package.
+        const SourcePlacement &placement = *std::get<const SourcePlacement *>(layout.GetAsset(asset.Reference).pSource);
+        bool otherPackage = false;
+        const SourceBundle *pPlaced = m_Lookup.ResolveBundlePath(placement.Bundle.Text, &otherPackage);
+        if (!pPlaced)
+            return;
+        const auto &exports = pPlaced->Exports;
+        if (!exports || std::none_of(exports->begin(), exports->end(), [&](const SourceString &name) { return name.Text == node.Export.Text; }))
+            Error(node.Export.Where, "the bundle " + Quoted(pPlaced->Name.Text) + " exports no node " + Quoted(node.Export.Text));
+    }
+
+    void CheckPlacement(size_t bundleIndex, const SourcePlacement &placement)
+    {
+        CheckTransform(placement.Transform);
+        bool otherPackage = false;
+        const SourceBundle *pPlaced = m_Lookup.ResolveBundlePath(placement.Bundle.Text, &otherPackage);
+        if (otherPackage)
+            return;
+        if (!pPlaced)
+        {
+            Error(placement.Bundle.Where, "the package has no bundle " + Quoted(PathNames(placement.Bundle.Text).back()));
+            return;
+        }
+        if (pPlaced->World)
+        {
+            Error(placement.Bundle.Where, Quoted(placement.Bundle.Text) + " is a world bundle, which a bundle path cannot name");
+            return;
+        }
+        const size_t placedIndex = size_t(pPlaced - m_Package.Bundles.data());
+        if (placedIndex == bundleIndex)
+            Error(placement.Bundle.Where, "the bundle places itself");
+        else if (Places(placedIndex, bundleIndex))
+            Error(placement.Bundle.Where, Quoted(placement.Bundle.Text) + " places this bundle, directly or through the bundles it places");
+    }
+
+    void CheckMeshInstance(const SourceBundle &bundle, const CBundleLayout &layout, const LocalAsset &asset)
+    {
+        const SourceMeshInstance &instance = *std::get<const SourceMeshInstance *>(asset.pSource);
+        CheckAssetPath(bundle, instance.Mesh, AssetType::MeshData);
+        if (!instance.Skin)
+            return;
+        const AssetTarget skin = CheckAssetPath(bundle, *instance.Skin, AssetType::MeshSkin);
+
+        if (asset.SkeletonInstance == -1)
+        {
+            if (!instance.SkeletonInstance)
+                Error(instance.Where, "no node from this mesh instance's node to its root has a \"skeletonInstance\" for the skin to bind to");
+            else if (CheckNodeName(bundle, layout, *instance.SkeletonInstance))
+                Error(instance.SkeletonInstance->Where, "the node " + Quoted(instance.SkeletonInstance->Text) + " has no \"skeletonInstance\"");
+            return;
+        }
+
+        // The skin and the skeleton instance it binds are for the same skeleton, when both
+        // skeletons are in this package.
+        if (skin.State != AssetTarget::Kind::Asset)
+            return;
+        const SourceSkin &source = skin.pBundle->Skins[skin.Index].Value;
+        const SourceSkeletonInstance &bound = *std::get<const SourceSkeletonInstance *>(layout.GetAsset(asset.SkeletonInstance).pSource);
+        const AssetTarget skinSkeleton = m_Lookup.ResolveAssetPath(*skin.pBundle, source.Skeleton.Text);
+        const AssetTarget boundSkeleton = m_Lookup.ResolveAssetPath(bundle, bound.Skeleton.Text);
+        if (skinSkeleton.State == AssetTarget::Kind::Asset && boundSkeleton.State == AssetTarget::Kind::Asset
+            && (skinSkeleton.pBundle != boundSkeleton.pBundle || skinSkeleton.Type != boundSkeleton.Type || skinSkeleton.Index != boundSkeleton.Index))
+        {
+            Error(instance.Skin->Where, "the skin's skeleton " + Quoted(source.Skeleton.Text) + " is not the skeleton instance's "
+                + Quoted(bound.Skeleton.Text));
+        }
+    }
+
+    // Each export names a node. Load reports a repeated export.
+    void CheckExports(const SourceBundle &bundle, const CBundleLayout &layout, const std::vector<SourceString> &exports)
+    {
+        for (const SourceString &name : exports)
+            CheckNodeName(bundle, layout, name);
+    }
+
+    //--------------------------------------------------------------------------------------------
+    // Placement graph
+
+    // The indices of the package's bundles that the bundle places, each once.
+    std::vector<size_t> PlacedBundles(const CBundleLayout &layout) const
+    {
+        std::vector<size_t> placed;
+        for (const LocalAsset &asset : layout.GetLocalAssets())
+        {
+            if (asset.Type != AssetType::Placement)
+                continue;
+            bool otherPackage = false;
+            const SourceBundle *pPlaced = m_Lookup.ResolveBundlePath(std::get<const SourcePlacement *>(asset.pSource)->Bundle.Text, &otherPackage);
+            if (!pPlaced)
+                continue;
+            const size_t index = size_t(pPlaced - m_Package.Bundles.data());
+            if (std::find(placed.begin(), placed.end(), index) == placed.end())
+                placed.push_back(index);
+        }
+        return placed;
+    }
+
+    // Whether bundle from places bundle to, directly or through the bundles it places.
+    bool Places(size_t from, size_t to) const
+    {
+        std::vector<bool> visited(m_Package.Bundles.size(), false);
+        std::vector<size_t> pending = { from };
+        visited[from] = true;
+        while (!pending.empty())
+        {
+            const size_t at = pending.back();
+            pending.pop_back();
+            for (size_t placed : m_Placed[at])
+            {
+                if (placed == to)
+                    return true;
+                if (!visited[placed])
+                {
+                    visited[placed] = true;
+                    pending.push_back(placed);
+                }
+            }
+        }
+        return false;
+    }
+
     const SourcePackage &m_Package;
     CPackageLookup m_Lookup;
+    std::vector<CBundleLayout> m_Layouts;       // per bundle
+    std::vector<std::vector<size_t>> m_Placed;  // per bundle, what PlacedBundles returns
     std::vector<Finding> m_Findings;
 };
 
@@ -510,16 +758,7 @@ AssetTarget CPackageLookup::ResolveAssetPath(const SourceBundle &from, std::stri
             target.State = AssetTarget::Kind::OtherPackage;
             return target;
         }
-        const std::string_view bundleName = names[names.size() - 2];
-        pBundle = nullptr;
-        for (const SourceBundle &bundle : m_Package.Bundles)
-        {
-            if (bundle.Name.Text == bundleName)
-            {
-                pBundle = &bundle;
-                break;
-            }
-        }
+        pBundle = FindBundle(names[names.size() - 2]);
         if (!pBundle)
             return target;
     }
@@ -544,6 +783,23 @@ AssetTarget CPackageLookup::ResolveAssetPath(const SourceBundle &from, std::stri
     else
         target.State = pBundle->Imports.empty() ? AssetTarget::Kind::NotFound : AssetTarget::Kind::ByImport;
     return target;
+}
+
+const SourceBundle *CPackageLookup::ResolveBundlePath(std::string_view path, bool *pOtherPackage) const
+{
+    const std::vector<std::string_view> names = PathNames(path);
+    *pOtherPackage = names.size() == 2 && names[0] != m_Package.PackageName.Text;
+    return *pOtherPackage ? nullptr : FindBundle(names.back());
+}
+
+const SourceBundle *CPackageLookup::FindBundle(std::string_view name) const
+{
+    for (const SourceBundle &bundle : m_Package.Bundles)
+    {
+        if (bundle.Name.Text == name)
+            return &bundle;
+    }
+    return nullptr;
 }
 
 bool ValidatePackageSource(const SourcePackage &package, CDiagnostics &diagnostics)

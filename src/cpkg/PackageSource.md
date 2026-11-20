@@ -110,7 +110,7 @@ A bundle is an object with a `name` and any of these members:
 
 Each map key is the name of the asset it builds. A bundle with a `world` member is a world bundle.
 
-The build appends a bundle's assets in CanvasPkg's [canonical order](../CanvasPkg/README.md#append-order), so source order affects only the order of entries within an array whose order is meaningful, such as a skeleton's bones.
+The build appends a bundle's assets in CanvasPkg's [canonical order](../CanvasPkg/README.md#append-order), type by type, and the assets of one type in source order. It appends the hierarchy assets in pre-order: the trees of `nodes` and then the bundle's `placements`, where each node is followed by its skeleton instance, its placements, and its children, and each placement by the import nodes that name it, in `importNodes` order. Each kind of attachment follows the order of the nodes it attaches to, and the bundle's own `meshFields` follow those attached to nodes.
 
 ## Shared Assets
 
@@ -280,7 +280,7 @@ A track in a skeletal animation or an [animation clip](#animation-clips) builds 
 
 A node with `bone` is a child of a node that has a `skeletonInstance`. A node holds at most one `skeletonInstance`, `camera`, and `light`; more of one kind attach to child nodes.
 
-**Mesh instances.** Each entry has `mesh` (asset path, required) and `skin` (asset path, optional). A skinned entry binds to a skeleton instance: by default the one on the nearest node, starting with the entry's own node and moving toward the root, that has a `skeletonInstance`, or the one named by `skeletonInstance`, the name of a node of this bundle that has one.
+**Mesh instances.** Each entry has `mesh` (asset path, required) and `skin` (asset path, optional). A skinned entry binds to a skeleton instance: by default the one on the nearest node, starting with the entry's own node and moving toward the root, that has a `skeletonInstance`, or the one named by `skeletonInstance`, the name of a node of this bundle that has one. An entry with `skeletonInstance` also has `skin`.
 
 **Cameras** have the optional fields `nearClip`, `farClip`, `fovAngle` (vertical), and `exposureStops`.
 
@@ -322,7 +322,7 @@ A mesh field in a node's `meshFields` attaches to that node; one in the bundle's
 |---|---|---|
 | `name` | Unnamed | The mesh field's asset name |
 | `mesh` | Required | `MeshData`, an asset path |
-| `cullDistance` | `0` (no limit) | `CullDistance` |
+| `cullDistance` | `0` (no limit) | `CullDistance`; at least `0` |
 | `transforms` | Required | `Transforms`: each entry has `translation`, `rotation`, and `scale`, each defaulting to identity; at least one entry |
 
 ### Import Nodes
@@ -538,11 +538,11 @@ The schema checks each file's shape. A package source is also valid only when it
 
 - **Files.** Every named file exists and is readable. Each bundle file is included once.
 - **Names.** Bundle names are unique within the package. Asset and node names are unique within their bundle (see [Names and References](#names-and-references)).
-- **References by name.** Each refers to an existing node or placement of the same bundle, of the kind the field requires: an `activeCamera` node has a `camera`, a mesh instance's or clip binding's `skeletonInstance` node has a `skeletonInstance`, a node with `bone` has a parent with a `skeletonInstance`, and an import's `parent` is a node that import does not build.
+- **References by name.** Each refers to an existing node or placement of the same bundle, of the kind the field requires: an `activeCamera` node has a `camera`, a mesh instance's or clip binding's `skeletonInstance` node has a `skeletonInstance`, a node with `bone` has a parent with a `skeletonInstance`, an import node's `placement` is a placement, each `exports` entry is a node, and an import's `parent` is a node that import does not build. An import node's `export` is an export of its placement's placed bundle, and a skinned mesh instance's skin is for the skeleton of the skeleton instance it binds; each is checked when the build has a project if that bundle or skeleton is in another package.
 - **Bone references.** Each names a bone of the relevant skeleton. A bone reference into a skeleton in another package is checked when the build has a project. A skeleton's bone names are unique, and its `parent` references refer to earlier bones.
 - **Tracks.** `times` is nondecreasing, and `values`, an `interpolation` array, and `tangents` hold the number of entries its keys and `property` call for (see [Animation Tracks](../CanvasPkg/README.md#animation-tracks)). A clip track's `node` has no `bone`, and its effective mobility is `"movable"`. A clip animates each node property, and binds each skeleton instance, at most once, and a skeletal animation animates each bone property at most once.
-- **Paths.** Each path is well formed for its kind. A path within the same package resolves to an existing asset of the declared type or to an existing bundle; a path into another package is checked when the build has a project.
+- **Paths.** Each path is well formed for its kind. A path within the same package resolves to an existing asset of the declared type or to an existing bundle; a path into another package is checked when the build has a project. A placement's bundle is not a world bundle.
 - **Arrays.** Each inline array's length is a multiple of its element size, and each binary array's range lies within its file. Parallel streams have equal counts, and a skin has one bind pose per bone.
 - **Values.** Quaternions are non-zero; the build normalizes them. Bounds have `min <= max` on every axis.
 - **Imports.** Each `file` is an FBX file the build can read. Each clip's `stack` exists, and its range lies within the stack, with its start no later than its end. Each key of `rename` and `replace` names content of its kind in the file, and each key of `edits` names a node the import builds, so a misspelled key is reported. Each built name follows the rules of [Names and References](#names-and-references) and is unique within the bundle. Each image the import builds has an encoding CanvasPkg stores. With `skeleton`, every bone a skin deforms with is a bone of that skeleton; a skeletal animation's tracks on bones the skeleton lacks are left out, and the build reports each one.
-- **Hierarchy.** An import node's placement attaches outside that import node's own subtree. Every other rule of the [package format](../CanvasPkg/README.md) holds for the built package.
+- **Hierarchy.** An import node's placement attaches outside that import node's own subtree. No bundle places itself, directly or through the bundles it places; a cycle through another package is checked when the build has a project. Every other rule of the [package format](../CanvasPkg/README.md) holds for the built package.

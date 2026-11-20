@@ -148,12 +148,7 @@ private:
                 buildable = false;
             };
             unsupported(!bundle.Images.empty(), "images");
-            unsupported(!bundle.Nodes.empty(), "nodes");
-            unsupported(!bundle.Placements.empty(), "placements");
-            unsupported(!bundle.MeshFields.empty(), "meshFields");
-            unsupported(!bundle.ImportNodes.empty(), "importNodes");
             unsupported(!bundle.Clips.empty(), "clips");
-            unsupported(bundle.Exports.has_value(), "exports");
             unsupported(bundle.World.has_value(), "world");
             unsupported(!bundle.Imports.empty(), "imports");
         }
@@ -162,12 +157,18 @@ private:
 
     // Finishes encoder's payload with header and appends it to the package as the asset name.
     template <class THeader>
-    Gem::Result Append(AssetType type, const SourceString &name, CEncoder<THeader> &encoder, const THeader &header)
+    Gem::Result Append(AssetType type, std::string_view name, CEncoder<THeader> &encoder, const THeader &header)
     {
         const Gem::Result result = encoder.Finish(header);
         if (Gem::Failed(result))
             return result;
-        return m_Writer.AppendAsset(type, name.Text, CpkgCodec::None, encoder.GetPayload());
+        return m_Writer.AppendAsset(type, name, CpkgCodec::None, encoder.GetPayload());
+    }
+
+    template <class THeader>
+    Gem::Result Append(AssetType type, const SourceString &name, CEncoder<THeader> &encoder, const THeader &header)
+    {
+        return Append(type, std::string_view(name.Text), encoder, header);
     }
 
     // Appends the bundle's assets in CanvasPkg's canonical order.
@@ -189,6 +190,15 @@ private:
         each(bundle.Skeletons, &CPackageWriter::WriteSkeleton);
         each(bundle.Skins, &CPackageWriter::WriteSkin);
         each(bundle.SkeletalAnimations, &CPackageWriter::WriteSkeletalAnimation);
+
+        const CBundleLayout layout(bundle);
+        for (const LocalAsset &asset : layout.GetLocalAssets())
+        {
+            if (Gem::Failed(result))
+                break;
+            result = WriteLocalAsset(layout, asset);
+        }
+
         if (Gem::Succeeded(result))
             result = m_Writer.EndBundle();
         return result;
@@ -397,6 +407,153 @@ private:
         }
         header.Tracks = encoder.Append(tracks);
         return Append(AssetType::SkeletalAnimation, asset.Name, encoder, header);
+    }
+
+    //--------------------------------------------------------------------------------------------
+    // Bundle structure
+
+    template <class TSource>
+    static const TSource &SourceOf(const LocalAsset &asset)
+    {
+        return *std::get<const TSource *>(asset.pSource);
+    }
+
+    Gem::Result WriteLocalAsset(const CBundleLayout &layout, const LocalAsset &asset)
+    {
+        const std::string_view name = asset.pName ? std::string_view(asset.pName->Text) : std::string_view();
+        switch (asset.Type)
+        {
+        case AssetType::TransformNode:
+        {
+            const SourceNode &node = SourceOf<SourceNode>(asset);
+            CEncoder<CpkgTransformNodeData> encoder;
+            CpkgTransformNodeData header;
+            header.ParentIndex = asset.Reference;
+            header.Mobility = node.Mobility.value_or(CpkgMobility::Static);
+            if (node.Bone)
+                header.ParentBone = encoder.AppendText(node.Bone->Text);
+            header.LocalTransform = ToCpkgTransform(node.Transform);
+            return Append(asset.Type, name, encoder, header);
+        }
+
+        case AssetType::ImportNode:
+        {
+            const SourceImportNode &node = SourceOf<SourceImportNode>(asset);
+            CEncoder<CpkgImportNodeData> encoder;
+            CpkgImportNodeData header;
+            header.PlacementIndex = asset.Reference;
+            header.ExportName = encoder.AppendText(node.Export.Text);
+            header.LocalTransform = ToCpkgTransform(node.Transform);
+            return Append(asset.Type, name, encoder, header);
+        }
+
+        case AssetType::Placement:
+        {
+            const SourcePlacement &placement = SourceOf<SourcePlacement>(asset);
+            CEncoder<CpkgPlacementData> encoder;
+            CpkgPlacementData header;
+            header.NodeIndex = asset.Reference;
+            header.Mobility = placement.Mobility.value_or(CpkgMobility::Static);
+            header.Bundle = encoder.AppendText(placement.Bundle.Text);
+            header.Transform = ToCpkgTransform(placement.Transform);
+            return Append(asset.Type, name, encoder, header);
+        }
+
+        case AssetType::SkeletonInstance:
+        {
+            CEncoder<CpkgSkeletonInstanceData> encoder;
+            CpkgSkeletonInstanceData header;
+            header.NodeIndex = asset.Reference;
+            header.Skeleton = encoder.AppendText(SourceOf<SourceSkeletonInstance>(asset).Skeleton.Text);
+            return Append(asset.Type, name, encoder, header);
+        }
+
+        case AssetType::MeshInstance:
+        {
+            const SourceMeshInstance &instance = SourceOf<SourceMeshInstance>(asset);
+            CEncoder<CpkgMeshInstanceData> encoder;
+            CpkgMeshInstanceData header;
+            header.NodeIndex = asset.Reference;
+            header.SkeletonInstanceIndex = asset.SkeletonInstance;
+            header.MeshData = encoder.AppendText(instance.Mesh.Text);
+            if (instance.Skin)
+                header.Skin = encoder.AppendText(instance.Skin->Text);
+            return Append(asset.Type, name, encoder, header);
+        }
+
+        case AssetType::MeshField:
+        {
+            const SourceMeshField &field = SourceOf<SourceMeshField>(asset);
+            CEncoder<CpkgMeshFieldData> encoder;
+            CpkgMeshFieldData header;
+            header.NodeIndex = asset.Reference;
+            header.CullDistance = field.CullDistance;
+            header.MeshData = encoder.AppendText(field.Mesh.Text);
+            std::vector<CpkgTransform> transforms;
+            for (const SourceTransform &transform : field.Transforms)
+                transforms.push_back(ToCpkgTransform(transform));
+            header.Transforms = encoder.Append(transforms);
+            return Append(asset.Type, name, encoder, header);
+        }
+
+        case AssetType::Camera:
+        {
+            const SourceCamera &camera = SourceOf<SourceCamera>(asset);
+            CEncoder<CpkgCameraData> encoder;
+            CpkgCameraData header;
+            header.NodeIndex = asset.Reference;
+            header.NearClip = camera.NearClip.value_or(header.NearClip);
+            header.FarClip = camera.FarClip.value_or(header.FarClip);
+            header.FovAngle = camera.FovAngle.value_or(header.FovAngle);
+            header.ExposureStops = camera.ExposureStops.value_or(header.ExposureStops);
+            return Append(asset.Type, name, encoder, header);
+        }
+
+        case AssetType::Light:
+            return WriteLight(asset, name);
+
+        case AssetType::ExportList:
+        {
+            CEncoder<CpkgExportListData> encoder;
+            std::vector<int32_t> nodes;
+            for (const SourceString &exported : SourceOf<std::vector<SourceString>>(asset))
+                nodes.push_back(layout.FindNamed(exported.Text)->Index);
+            CpkgExportListData header;
+            header.NodeIndices = encoder.Append(nodes);
+            return Append(asset.Type, name, encoder, header);
+        }
+
+        default:
+            return Gem::Result::Fail;
+        }
+    }
+
+    Gem::Result WriteLight(const LocalAsset &asset, std::string_view name)
+    {
+        const SourceLight &light = SourceOf<SourceLight>(asset);
+        CEncoder<CpkgLightData> encoder;
+        CpkgLightData header;
+        header.NodeIndex = asset.Reference;
+        header.Type = light.Type.value_or(header.Type);
+        if (light.Color)
+            std::memcpy(header.Color, light.Color->data(), 3 * sizeof(float));
+        header.Intensity = light.Intensity.value_or(header.Intensity);
+        header.Flags = LightFlags::None;
+        if (light.Enabled.value_or(true))
+            header.Flags |= LightFlags::Enabled;
+        if (light.CastsShadows.value_or(false))
+            header.Flags |= LightFlags::CastsShadows;
+        header.AttenuationConstant = light.AttenuationConstant.value_or(header.AttenuationConstant);
+        header.AttenuationLinear = light.AttenuationLinear.value_or(header.AttenuationLinear);
+        header.AttenuationQuadratic = light.AttenuationQuadratic.value_or(header.AttenuationQuadratic);
+        header.Range = light.Range.value_or(header.Range);
+        header.SpotInnerAngle = light.SpotInnerAngle.value_or(header.SpotInnerAngle);
+        header.SpotOuterAngle = light.SpotOuterAngle.value_or(header.SpotOuterAngle);
+        header.ShadowResolution = light.ShadowResolution.value_or(header.ShadowResolution);
+        header.ShadowConstantBias = light.ShadowConstantBias.value_or(header.ShadowConstantBias);
+        header.ShadowSlopeScaleBias = light.ShadowSlopeScaleBias.value_or(header.ShadowSlopeScaleBias);
+        header.ShadowNormalOffset = light.ShadowNormalOffset.value_or(header.ShadowNormalOffset);
+        return Append(asset.Type, name, encoder, header);
     }
 
     const SourcePackage &m_Package;
