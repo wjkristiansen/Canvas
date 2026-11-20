@@ -557,6 +557,8 @@ TEST_F(CpkgSource, RejectsWhatTheSchemaRejects)
         { "value outside an enum", inBundle(R"({ "name": "B", "nodes": [ { "name": "N", "mobility": "moving" } ] })") },
         { "degrees of the wrong length", inBundle(R"({ "name": "B", "nodes": [ { "name": "N", "rotation": { "degrees": [1, 2] } } ] })") },
         { "repeated export", inBundle(R"({ "name": "B", "nodes": [ { "name": "N" } ], "exports": ["N", "N"] })") },
+        { "negative cull distance", inBundle(R"({ "name": "B", "meshFields": [ { "mesh": "M", "cullDistance": -1, "transforms": [ {} ] } ] })") },
+        { "skeleton instance without a skin", inBundle(R"({ "name": "B", "nodes": [ { "name": "N", "meshInstances": [ { "mesh": "M", "skeletonInstance": "N" } ] } ] })") },
         { "include without .cbundle.json", inBundle(R"({ "include": "village.json" })") },
         { "binary offset not a multiple of 4", inBundle(R"({ "name": "B", "meshes": { "T": { "groups": [ { "positions": { "file": "p.bin", "offset": 2 } } ] } } })") },
         { "negative binary count", inBundle(R"({ "name": "B", "meshes": { "T": { "groups": [ { "positions": { "file": "p.bin", "count": -1 } } ] } } })") },
