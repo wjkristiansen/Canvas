@@ -39,6 +39,7 @@ const char *AssetTypeNoun(AssetType type)
     case AssetType::ImportNode: return "an import node";
     case AssetType::Placement: return "a placement";
     case AssetType::MeshField: return "a mesh field";
+    case AssetType::AnimationClip: return "a clip";
     default: return "an asset";
     }
 }
@@ -160,7 +161,6 @@ private:
         add(bundle.Skins);
         add(bundle.SkeletalAnimations);
         add(bundle.Skyboxes);
-        add(bundle.Clips);
         for (const LocalAsset &asset : layout.GetLocalAssets())
         {
             if (asset.pName)
@@ -379,14 +379,17 @@ private:
         }
 
         if (mesh.BoundsForm == SourceBoundsForm::Declared)
+            CheckBounds(mesh.Bounds);
+    }
+
+    void CheckBounds(const SourceBounds &bounds)
+    {
+        for (size_t axis = 0; axis < 3; ++axis)
         {
-            for (size_t axis = 0; axis < 3; ++axis)
+            if (!(bounds.Min[axis] <= bounds.Max[axis]))
             {
-                if (!(mesh.Bounds.Min[axis] <= mesh.Bounds.Max[axis]))
-                {
-                    Error(mesh.Bounds.Where, "expected \"min\" <= \"max\" on every axis");
-                    break;
-                }
+                Error(bounds.Where, "expected \"min\" <= \"max\" on every axis");
+                return;
             }
         }
     }
@@ -560,8 +563,14 @@ private:
                     CheckTransform(transform);
                 break;
             }
+            case AssetType::AnimationClip:
+                CheckClip(bundleIndex, layout, *std::get<const SourceClip *>(asset.pSource));
+                break;
             case AssetType::ExportList:
                 CheckExports(bundle, layout, *std::get<const std::vector<SourceString> *>(asset.pSource));
+                break;
+            case AssetType::WorldSettings:
+                CheckWorld(bundle, layout, *std::get<const SourceWorld *>(asset.pSource));
                 break;
             default:
                 break;
@@ -613,23 +622,33 @@ private:
             Error(node.Export.Where, "the bundle " + Quoted(pPlaced->Name.Text) + " exports no node " + Quoted(node.Export.Text));
     }
 
+    // Checks that a bundle path names a bundle other than a world bundle. Returns the bundle when
+    // it is in this package and passes, or null.
+    const SourceBundle *CheckBundlePath(const SourceString &path)
+    {
+        bool otherPackage = false;
+        const SourceBundle *pBundle = m_Lookup.ResolveBundlePath(path.Text, &otherPackage);
+        if (otherPackage)
+            return nullptr;
+        if (!pBundle)
+        {
+            Error(path.Where, "the package has no bundle " + Quoted(PathNames(path.Text).back()));
+            return nullptr;
+        }
+        if (pBundle->World)
+        {
+            Error(path.Where, Quoted(path.Text) + " is a world bundle, which a bundle path cannot name");
+            return nullptr;
+        }
+        return pBundle;
+    }
+
     void CheckPlacement(size_t bundleIndex, const SourcePlacement &placement)
     {
         CheckTransform(placement.Transform);
-        bool otherPackage = false;
-        const SourceBundle *pPlaced = m_Lookup.ResolveBundlePath(placement.Bundle.Text, &otherPackage);
-        if (otherPackage)
-            return;
+        const SourceBundle *pPlaced = CheckBundlePath(placement.Bundle);
         if (!pPlaced)
-        {
-            Error(placement.Bundle.Where, "the package has no bundle " + Quoted(PathNames(placement.Bundle.Text).back()));
             return;
-        }
-        if (pPlaced->World)
-        {
-            Error(placement.Bundle.Where, Quoted(placement.Bundle.Text) + " is a world bundle, which a bundle path cannot name");
-            return;
-        }
         const size_t placedIndex = size_t(pPlaced - m_Package.Bundles.data());
         if (placedIndex == bundleIndex)
             Error(placement.Bundle.Where, "the bundle places itself");
@@ -649,25 +668,48 @@ private:
         {
             if (!instance.SkeletonInstance)
                 Error(instance.Where, "no node from this mesh instance's node to its root has a \"skeletonInstance\" for the skin to bind to");
-            else if (CheckNodeName(bundle, layout, *instance.SkeletonInstance))
-                Error(instance.SkeletonInstance->Where, "the node " + Quoted(instance.SkeletonInstance->Text) + " has no \"skeletonInstance\"");
+            else
+                CheckSkeletonInstanceName(bundle, layout, *instance.SkeletonInstance);
             return;
         }
 
-        // The skin and the skeleton instance it binds are for the same skeleton, when both
-        // skeletons are in this package.
-        if (skin.State != AssetTarget::Kind::Asset)
-            return;
-        const SourceSkin &source = skin.pBundle->Skins[skin.Index].Value;
-        const SourceSkeletonInstance &bound = *std::get<const SourceSkeletonInstance *>(layout.GetAsset(asset.SkeletonInstance).pSource);
-        const AssetTarget skinSkeleton = m_Lookup.ResolveAssetPath(*skin.pBundle, source.Skeleton.Text);
-        const AssetTarget boundSkeleton = m_Lookup.ResolveAssetPath(bundle, bound.Skeleton.Text);
-        if (skinSkeleton.State == AssetTarget::Kind::Asset && boundSkeleton.State == AssetTarget::Kind::Asset
-            && (skinSkeleton.pBundle != boundSkeleton.pBundle || skinSkeleton.Type != boundSkeleton.Type || skinSkeleton.Index != boundSkeleton.Index))
+        if (skin.State == AssetTarget::Kind::Asset)
         {
-            Error(instance.Skin->Where, "the skin's skeleton " + Quoted(source.Skeleton.Text) + " is not the skeleton instance's "
-                + Quoted(bound.Skeleton.Text));
+            CheckSameSkeleton(*skin.pBundle, skin.pBundle->Skins[skin.Index].Value.Skeleton, bundle, layout.GetAsset(asset.SkeletonInstance),
+                instance.Skin->Where, "skin");
         }
+    }
+
+    // Reports at where when the skeleton path, written in pathBundle, and the skeleton of the
+    // skeleton instance both resolve within the package, to different skeletons. what names what
+    // the skeleton path belongs to, such as "skin".
+    void CheckSameSkeleton(const SourceBundle &pathBundle, const SourceString &path, const SourceBundle &bundle, const LocalAsset &skeletonInstance,
+        const SourceLocation &where, const char *what)
+    {
+        const SourceSkeletonInstance &instance = *std::get<const SourceSkeletonInstance *>(skeletonInstance.pSource);
+        const AssetTarget a = m_Lookup.ResolveAssetPath(pathBundle, path.Text);
+        const AssetTarget b = m_Lookup.ResolveAssetPath(bundle, instance.Skeleton.Text);
+        if (a.State == AssetTarget::Kind::Asset && b.State == AssetTarget::Kind::Asset
+            && (a.pBundle != b.pBundle || a.Type != b.Type || a.Index != b.Index))
+        {
+            Error(where, std::string("the ") + what + "'s skeleton " + Quoted(path.Text) + " is not the skeleton instance's "
+                + Quoted(instance.Skeleton.Text));
+        }
+    }
+
+    // Reports a name that does not name a node of the bundle with a skeleton instance. Returns
+    // that skeleton instance, or null.
+    const LocalAsset *CheckSkeletonInstanceName(const SourceBundle &bundle, const CBundleLayout &layout, const SourceString &name)
+    {
+        const LocalAsset *pNode = CheckNodeName(bundle, layout, name);
+        if (!pNode)
+            return nullptr;
+        if (pNode->SkeletonInstance == -1)
+        {
+            Error(name.Where, "the node " + Quoted(name.Text) + " has no \"skeletonInstance\"");
+            return nullptr;
+        }
+        return &layout.GetAsset(pNode->SkeletonInstance);
     }
 
     // Each export names a node. Load reports a repeated export.
@@ -675,6 +717,137 @@ private:
     {
         for (const SourceString &name : exports)
             CheckNodeName(bundle, layout, name);
+    }
+
+    void CheckClip(size_t bundleIndex, const CBundleLayout &layout, const SourceClip &clip)
+    {
+        const SourceBundle &bundle = m_Package.Bundles[bundleIndex];
+        for (size_t i = 0; i < clip.Tracks.size(); ++i)
+        {
+            const SourceTrack &track = clip.Tracks[i];
+            CheckTrack(track);
+            if (const LocalAsset *pNode = CheckNodeName(bundle, layout, track.Target))
+            {
+                if (pNode->Type == AssetType::ImportNode)
+                    Error(track.Target.Where, Quoted(track.Target.Text) + " is an import node, which a clip track cannot animate");
+                else if (std::get<const SourceNode *>(pNode->pSource)->Bone)
+                    Error(track.Target.Where, Quoted(track.Target.Text) + " is a socket, which a clip track cannot animate");
+                else if (!MayMove(bundleIndex, pNode->Index))
+                    Error(track.Target.Where, "the clip animates " + Quoted(track.Target.Text) + ", whose effective mobility is not \"movable\"");
+            }
+            for (size_t j = 0; j < i; ++j)
+            {
+                if (clip.Tracks[j].Target.Text == track.Target.Text && clip.Tracks[j].Property == track.Property)
+                {
+                    Error(track.Target.Where, std::string("the clip already has a \"") + PropertyName(track.Property)
+                        + "\" track for " + Quoted(track.Target.Text));
+                    break;
+                }
+            }
+        }
+
+        bool reportedDuration = false;
+        for (size_t i = 0; i < clip.SkeletalAnimations.size(); ++i)
+        {
+            const SourceClipBinding &binding = clip.SkeletalAnimations[i];
+            const AssetTarget animation = CheckAssetPath(bundle, binding.Animation, AssetType::SkeletalAnimation);
+            if (animation.State == AssetTarget::Kind::OtherPackage && !clip.Duration && !reportedDuration)
+            {
+                Error(clip.Where, "a clip that binds a skeletal animation in another package needs \"duration\"");
+                reportedDuration = true;
+            }
+
+            const auto earlier = [&](const SourceClipBinding &other) { return other.SkeletonInstance.Text == binding.SkeletonInstance.Text; };
+            if (std::any_of(clip.SkeletalAnimations.begin(), clip.SkeletalAnimations.begin() + i, earlier))
+            {
+                Error(binding.SkeletonInstance.Where, "the clip already binds the skeleton instance of " + Quoted(binding.SkeletonInstance.Text));
+                continue;
+            }
+            const LocalAsset *pInstance = CheckSkeletonInstanceName(bundle, layout, binding.SkeletonInstance);
+            if (pInstance && animation.State == AssetTarget::Kind::Asset)
+            {
+                CheckSameSkeleton(*animation.pBundle, animation.pBundle->SkeletalAnimations[animation.Index].Value.Skeleton, bundle, *pInstance,
+                    binding.Animation.Where, "animation");
+            }
+        }
+    }
+
+    // Whether the node at asset index node of the bundle has an effective mobility of Movable, or
+    // may: an import node may be under content in another package, or in a placement cycle that
+    // Validate reports. A root node's instance counts as Static.
+    bool MayMove(size_t bundleIndex, int32_t node)
+    {
+        std::vector<std::pair<size_t, int32_t>> visited;
+        return MayMove(bundleIndex, node, visited);
+    }
+
+    // visited holds the nodes being checked, to end a cycle.
+    bool MayMove(size_t bundleIndex, int32_t node, std::vector<std::pair<size_t, int32_t>> &visited)
+    {
+        if (std::find(visited.begin(), visited.end(), std::make_pair(bundleIndex, node)) != visited.end())
+            return true;
+        visited.emplace_back(bundleIndex, node);
+        struct CPop
+        {
+            std::vector<std::pair<size_t, int32_t>> &Stack;
+            ~CPop() { Stack.pop_back(); }
+        } pop{ visited };
+
+        const CBundleLayout &layout = m_Layouts[bundleIndex];
+        for (int32_t at = node; at != -1;)
+        {
+            const LocalAsset &asset = layout.GetAsset(at);
+            if (asset.Type == AssetType::TransformNode)
+            {
+                if (std::get<const SourceNode *>(asset.pSource)->Mobility == Canvas::CpkgMobility::Movable)
+                    return true;
+                at = asset.TreeParent;
+                continue;
+            }
+
+            // An import node moves with its placement and with the node it represents.
+            if (asset.Reference == -1 || asset.Reference > asset.Index)
+                return true;
+            const LocalAsset &placementAsset = layout.GetAsset(asset.Reference);
+            const SourcePlacement &placement = *std::get<const SourcePlacement *>(placementAsset.pSource);
+            if (placement.Mobility == Canvas::CpkgMobility::Movable)
+                return true;
+            bool otherPackage = false;
+            const SourceBundle *pPlaced = m_Lookup.ResolveBundlePath(placement.Bundle.Text, &otherPackage);
+            if (!pPlaced)
+                return true;
+            const size_t placedIndex = size_t(pPlaced - m_Package.Bundles.data());
+            const LocalAsset *pExported = m_Layouts[placedIndex].FindNamed(std::get<const SourceImportNode *>(asset.pSource)->Export.Text);
+            if (!pExported || !CBundleLayout::IsNode(pExported->Type) || MayMove(placedIndex, pExported->Index, visited))
+                return true;
+            if (placementAsset.Reference != -1 && MayMove(bundleIndex, placementAsset.Reference, visited))
+                return true;
+            return false;
+        }
+        return false;
+    }
+
+    void CheckWorld(const SourceBundle &bundle, const CBundleLayout &layout, const SourceWorld &world)
+    {
+        for (const SourceRegion &region : world.Regions)
+        {
+            CheckBundlePath(region.Region);
+            CheckBounds(region.Bounds);
+        }
+        for (const SourceString &skybox : world.Skyboxes)
+            CheckAssetPath(bundle, skybox, AssetType::Skybox);
+        if (world.DefaultSkybox)
+        {
+            const std::string &name = world.DefaultSkybox->Text;
+            if (std::none_of(world.Skyboxes.begin(), world.Skyboxes.end(), [&](const SourceString &skybox) { return skybox.Text == name; }))
+                Error(world.DefaultSkybox->Where, Quoted(name) + " is not one of the world's \"skyboxes\"");
+        }
+        if (world.ActiveCamera)
+        {
+            const LocalAsset *pNode = CheckNodeName(bundle, layout, *world.ActiveCamera);
+            if (pNode && layout.CameraOf(pNode->Index) == -1)
+                Error(world.ActiveCamera->Where, "the node " + Quoted(world.ActiveCamera->Text) + " has no \"camera\"");
+        }
     }
 
     //--------------------------------------------------------------------------------------------

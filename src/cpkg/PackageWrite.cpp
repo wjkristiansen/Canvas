@@ -101,7 +101,8 @@ class CPackageWriter
 public:
     CPackageWriter(const SourcePackage &package, CDiagnostics &diagnostics) :
         m_Package(package),
-        m_Diagnostics(diagnostics)
+        m_Diagnostics(diagnostics),
+        m_Lookup(package)
     {
     }
 
@@ -148,8 +149,6 @@ private:
                 buildable = false;
             };
             unsupported(!bundle.Images.empty(), "images");
-            unsupported(!bundle.Clips.empty(), "clips");
-            unsupported(bundle.World.has_value(), "world");
             unsupported(!bundle.Imports.empty(), "imports");
         }
         return buildable;
@@ -512,6 +511,12 @@ private:
         case AssetType::Light:
             return WriteLight(asset, name);
 
+        case AssetType::AnimationClip:
+            return WriteClip(layout, asset, name);
+
+        case AssetType::WorldSettings:
+            return WriteWorld(layout, asset, name);
+
         case AssetType::ExportList:
         {
             CEncoder<CpkgExportListData> encoder;
@@ -556,8 +561,79 @@ private:
         return Append(asset.Type, name, encoder, header);
     }
 
+    Gem::Result WriteClip(const CBundleLayout &layout, const LocalAsset &asset, std::string_view name)
+    {
+        const SourceClip &clip = SourceOf<SourceClip>(asset);
+        CEncoder<CpkgAnimationClipData> encoder;
+        CpkgAnimationClipData header;
+
+        // The default duration is the latest key time: a track's last, since its times are
+        // nondecreasing. Validate requires a duration of a clip that binds an animation in
+        // another package.
+        float duration = 0.0f;
+        std::vector<CpkgNodeTrack> tracks;
+        for (const SourceTrack &source : clip.Tracks)
+        {
+            CpkgNodeTrack &track = tracks.emplace_back();
+            track.NodeIndex = layout.FindNamed(source.Target.Text)->Index;
+            EncodeKeys(encoder, source, &track);
+            duration = std::max(duration, source.Times.Values.back());
+        }
+        header.Tracks = encoder.Append(tracks);
+
+        std::vector<CpkgSkeletalAnimationBinding> bindings;
+        for (const SourceClipBinding &source : clip.SkeletalAnimations)
+        {
+            CpkgSkeletalAnimationBinding &binding = bindings.emplace_back();
+            binding.SkeletonInstanceIndex = layout.FindNamed(source.SkeletonInstance.Text)->SkeletonInstance;
+            binding.Animation = encoder.AppendText(source.Animation.Text);
+            const AssetTarget target = m_Lookup.ResolveAssetPath(layout.GetBundle(), source.Animation.Text);
+            if (target.State == AssetTarget::Kind::Asset)
+            {
+                for (const SourceTrack &track : target.pBundle->SkeletalAnimations[target.Index].Value.Tracks)
+                    duration = std::max(duration, track.Times.Values.back());
+            }
+        }
+        header.SkeletalAnimations = encoder.Append(bindings);
+
+        header.Duration = clip.Duration.value_or(duration);
+        return Append(asset.Type, name, encoder, header);
+    }
+
+    Gem::Result WriteWorld(const CBundleLayout &layout, const LocalAsset &asset, std::string_view name)
+    {
+        const SourceWorld &world = SourceOf<SourceWorld>(asset);
+        CEncoder<CpkgWorldSettingsData> encoder;
+        CpkgWorldSettingsData header;
+
+        std::vector<CpkgWorldRegionRef> regions;
+        for (const SourceRegion &source : world.Regions)
+        {
+            CpkgWorldRegionRef &region = regions.emplace_back();
+            region.Region = encoder.AppendText(source.Region.Text);
+            std::memcpy(region.StreamingBounds.Min, source.Bounds.Min.data(), sizeof(region.StreamingBounds.Min));
+            std::memcpy(region.StreamingBounds.Max, source.Bounds.Max.data(), sizeof(region.StreamingBounds.Max));
+        }
+        header.Regions = encoder.Append(regions);
+
+        std::vector<CpkgSpan<char>> skyboxes;
+        for (size_t i = 0; i < world.Skyboxes.size(); ++i)
+        {
+            skyboxes.push_back(encoder.AppendText(world.Skyboxes[i].Text));
+            if (world.DefaultSkybox && header.DefaultSkybox == -1 && world.Skyboxes[i].Text == world.DefaultSkybox->Text)
+                header.DefaultSkybox = int32_t(i);
+        }
+        header.Skyboxes = encoder.Append(skyboxes);
+
+        if (world.ActiveCamera)
+            header.ActiveCameraIndex = layout.CameraOf(layout.FindNamed(world.ActiveCamera->Text)->Index);
+        std::memcpy(header.BackgroundColor, world.BackgroundColor.data(), sizeof(header.BackgroundColor));
+        return Append(asset.Type, name, encoder, header);
+    }
+
     const SourcePackage &m_Package;
     CDiagnostics &m_Diagnostics;
+    CPackageLookup m_Lookup;
     CCpkgWriter m_Writer;
 };
 
