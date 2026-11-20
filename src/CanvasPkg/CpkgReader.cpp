@@ -61,6 +61,7 @@ Gem::Result CCpkgReader::Load(uint64_t fileSize)
             return Gem::Result::DataNotRecognized;
         if (header.Version < kMinSupportedVersion || header.Version > kMaxSupportedVersion)
             return Gem::Result::OutOfRange;
+        m_Version = header.Version;
 
         // Package name, bundle table, and bundle name blob
         if (header.PackageNameLength == 0
@@ -154,12 +155,18 @@ Gem::Result CCpkgReader::Close()
 void CCpkgReader::Reset()
 {
     m_pFile.reset();
+    m_Version = 0;
     m_PackageName.clear();
     m_BundleNameBlob.clear();
     m_Bundles.clear();
 }
 
 //------------------------------------------------------------------------------------------------
+uint32_t CCpkgReader::GetVersion() const
+{
+    return m_Version;
+}
+
 std::string_view CCpkgReader::GetPackageName() const
 {
     return m_PackageName;

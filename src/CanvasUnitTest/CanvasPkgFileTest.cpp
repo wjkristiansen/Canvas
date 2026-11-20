@@ -371,6 +371,7 @@ TEST_F(CanvasPkgFile, ReaderCallsAndSentinels)
     EXPECT_EQ(reader.BuildBundleDirectory(&directory), Result::NotOpen);
     EXPECT_EQ(reader.BuildAssetDirectory(0, &directory), Result::NotOpen);
     EXPECT_EQ(reader.GetPackageName(), "");
+    EXPECT_EQ(reader.GetVersion(), 0u);
     EXPECT_EQ(reader.GetBundleCount(), 0u);
     EXPECT_EQ(reader.Open(nullptr), Result::InvalidArg);
     EXPECT_EQ(reader.Open(FileName("missing.cpkg").c_str()), Result::NotFound);
@@ -379,6 +380,7 @@ TEST_F(CanvasPkgFile, ReaderCallsAndSentinels)
     ASSERT_EQ(reader.Open(FileName("sample.cpkg").c_str()), Result::Success);
     EXPECT_EQ(reader.Open(FileName("sample.cpkg").c_str()), Result::InvalidArg);
     EXPECT_EQ(reader.GetPackageName(), "Sample");
+    EXPECT_EQ(reader.GetVersion(), kMaxSupportedVersion);
 
     // Out-of-range indices.
     EXPECT_EQ(reader.GetBundleName(3), "");
@@ -397,6 +399,7 @@ TEST_F(CanvasPkgFile, ReaderCallsAndSentinels)
 
     EXPECT_EQ(reader.Close(), Result::Success);
     EXPECT_EQ(reader.GetBundleCount(), 0u);
+    EXPECT_EQ(reader.GetVersion(), 0u);
 }
 
 //------------------------------------------------------------------------------------------------

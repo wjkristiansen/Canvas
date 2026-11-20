@@ -877,6 +877,7 @@ public:
     Gem::Result Open(const char *fileName);
     Gem::Result Close();
 
+    uint32_t GetVersion() const;
     std::string_view GetPackageName() const;
     uint32_t GetBundleCount() const;
     std::string_view GetBundleName(uint32_t bundleIndex) const;
@@ -905,6 +906,7 @@ private:
     void Reset();
 
     std::unique_ptr<CCpkgFile> m_pFile;
+    uint32_t m_Version = 0;
     std::string m_PackageName;
     std::string m_BundleNameBlob;
     std::vector<Bundle> m_Bundles;

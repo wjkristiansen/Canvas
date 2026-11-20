@@ -1186,6 +1186,12 @@ Closes a CCpkgReader instance. Returns `Gem::Result::NotOpen` if the reader is n
 
 `Gem::Result CCpkgReader::Close()`
 
+**CCpkgReader::GetVersion**
+
+Returns the package's format version, the `Version` of its file header, or `0` if the reader is not open. `Open` accepts only versions in `[kMinSupportedVersion, kMaxSupportedVersion]`, and versions begin at `1`, so `0` always means the reader is not open. This reads no file data.
+
+`uint32_t CCpkgReader::GetVersion() const`
+
 **CCpkgReader::GetPackageName**
 
 Returns the package name declared at `CCpkgWriter::Open`, or an empty view if the reader is not open. Package names are never empty, so an empty view always means the reader is not open. The package name is loaded by `Open`, so this reads no file data. The view refers to storage owned by the reader and is valid until `Close()`.
