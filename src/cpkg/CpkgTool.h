@@ -34,4 +34,12 @@ struct DumpOptions
 // Prints the package's contents to out, and reports what it cannot read to diagnostics.
 void Dump(const DumpOptions &options, std::ostream &out, CDiagnostics &diagnostics);
 
+struct ValidateOptions
+{
+    std::string Package;                // UTF-8 path of the .cpkg.json file
+};
+
+// Runs the build's stages short of Write on the package source, reporting what they find.
+void Validate(const ValidateOptions &options, CDiagnostics &diagnostics);
+
 } // namespace CpkgTool

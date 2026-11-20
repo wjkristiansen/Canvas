@@ -228,7 +228,7 @@ Because `cpkg` leaves unchanged output files untouched, steps that depend on the
 
 The commands that change files, `import`, `rename`, `move`, and `project`, load the files they change, apply the change, validate the result, and save only the files whose content changed. A command that reports an error saves no file.
 
-**Round trip.** A save reproduces each file's JSON values, and a change rewrites only what it changes. It keeps each file's structure (which bundles are inline and which are included), the order of keys and array entries, `x-` keys, and the form in which each value was written: a rotation in degrees stays in degrees, a binary array file stays a file, and an omitted field stays omitted rather than being written with its default. `cpkg` writes JSON in one fixed formatting, so a file already in that formatting saves byte for byte unchanged, and a change appears in a text diff as just that change.
+**Round trip.** A save reproduces each file's JSON values, and a change rewrites only what it changes. It keeps each file's structure (which bundles are inline and which are included), the order of keys and array entries, `$comment` and `$extras` keys, and the form in which each value was written: a rotation in degrees stays in degrees, a binary array file stays a file, and an omitted field stays omitted rather than being written with its default. `cpkg` writes JSON in one fixed formatting, so a file already in that formatting saves byte for byte unchanged, and a change appears in a text diff as just that change.
 
 ### Refactors
 
@@ -280,6 +280,12 @@ A diagnostic about a file as a whole, such as a `.cpkg` file that `dump` cannot 
 
 ```
 <file>: <severity>: <message>
+```
+
+A diagnostic about a place in a JSON file that holds no value, such as a syntax error, has no location:
+
+```
+<file>:<line>:<column>: <severity>: <message>
 ```
 
 An invalid command line is reported as `cpkg: error: <message>`, with exit status `2`.

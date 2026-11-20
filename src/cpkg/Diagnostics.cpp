@@ -70,6 +70,14 @@ void CDiagnostics::Report(Severity severity, std::string_view file, uint32_t lin
 }
 
 //------------------------------------------------------------------------------------------------
+void CDiagnostics::Report(Severity severity, std::string_view file, uint32_t line, uint32_t column, std::string_view message)
+{
+    severity = Apply(severity);
+    if (IsWritten(severity))
+        m_Stream << DisplayPath(file) << ':' << line << ':' << column << ": " << SeverityName(severity) << ": " << message << '\n';
+}
+
+//------------------------------------------------------------------------------------------------
 std::string DisplayPath(std::string_view path)
 {
     namespace fs = std::filesystem;

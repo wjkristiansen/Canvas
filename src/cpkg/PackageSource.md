@@ -43,11 +43,11 @@ A bundle file belongs to the package file that includes it, and is included once
 
 **File references.** A field that names a file on disk, such as an image, a bundle file, an FBX file, or a binary array, holds a file path using `/` as its separator: absolute, or relative to the directory of the JSON file that contains the field.
 
-**Extension keys.** Every object may hold keys beginning with `x-`, such as `"x-note"` or `"x-editor"`. They carry editor data and comments, and the build ignores them.
+**Format keys.** A key beginning with `$` belongs to this format, in every object, including a map whose keys are names. Two such keys hold content the build ignores, for the people and tools that edit a source: `$comment` holds a string, and `$extras` holds any JSON value. The package file and the bundle file also hold `$schema`. Every other key beginning with `$` is reserved.
 
 ## Names and References
 
-Every bundle, asset, and node name follows CanvasPkg's [name rules](../CanvasPkg/README.md#names). Within a bundle, every named asset shares one namespace, whatever its type: the keys of the bundle's asset maps, the names of its nodes and placements, and the names of the assets its imports build, are all unique within the bundle. Authored content refers to imported content by its built name, as it refers to authored content.
+Every bundle, asset, and node name follows CanvasPkg's [name rules](../CanvasPkg/README.md#names) and begins with a character other than `$`, which begins the [format keys](#files). Within a bundle, every named asset shares one namespace, whatever its type: the keys of the bundle's asset maps, the names of its nodes and placements, and the names of the assets its imports build, are all unique within the bundle. Authored content refers to imported content by its built name, as it refers to authored content.
 
 A source refers to other content in one of two ways, matching the class of what it refers to:
 
@@ -75,7 +75,14 @@ Values follow CanvasPkg's [conventions](../CanvasPkg/README.md#conventions): Can
 
 **Rotation in degrees.** `{ "degrees": [x, y, z] }` rotates about the X axis by `x` degrees, then about the Y axis by `y`, then about the Z axis by `z`, each axis fixed in the parent space. The build converts it to a unit quaternion.
 
-**Binary arrays.** `{ "file": file }` names a file holding the array's elements tightly packed, little-endian, in the element layout of the CanvasPkg struct the array becomes (see [Payload Layout](../CanvasPkg/README.md#payload-layout)). The element count is the file size divided by the element size. An inline array holds the same elements flattened, so `positions` holds three numbers per vertex.
+**Binary arrays.** A large array, such as a vertex stream or an animation's keys, may be written as a range of a binary file, which keeps the JSON readable and loads without parsing text. `{ "file": file }` names a file holding the array's elements tightly packed, little-endian, in the element layout of the CanvasPkg struct the array becomes (see [Payload Layout](../CanvasPkg/README.md#payload-layout)). Two optional fields select the range, so one file may hold several arrays, such as every stream of a mesh:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `offset` | `0` | The byte offset of the array's first element, a multiple of 4 |
+| `count` | The rest of the file | The number of elements |
+
+Without `count`, the bytes from `offset` to the end of the file hold a whole number of elements. An inline array holds the same elements flattened, so `positions` holds three numbers per vertex.
 
 **Defaults.** An omitted field takes the default of the CanvasPkg struct field it fills, unless this spec gives another.
 
@@ -527,7 +534,7 @@ The schema checks each file's shape. A package source is also valid only when it
 - **Bone references.** Each names a bone of the relevant skeleton. A skeleton's bone names are unique, and its `parent` references refer to earlier bones.
 - **Tracks.** `times` is nondecreasing, and `values`, an `interpolation` array, and `tangents` hold the number of entries its keys and `property` call for (see [Animation Tracks](../CanvasPkg/README.md#animation-tracks)). A clip track's `node` has no `bone`, and its effective mobility is `"movable"`. A clip animates each node property, and binds each skeleton instance, at most once, and a skeletal animation animates each bone property at most once.
 - **Paths.** Each path is well formed for its kind. A path within the same package resolves to an existing asset of the declared type or to an existing bundle; a path into another package is checked when the build has a project.
-- **Arrays.** Each inline array's length is a multiple of its element size, and each binary array file's size is a multiple of its element size. Parallel streams have equal counts.
+- **Arrays.** Each inline array's length is a multiple of its element size, and each binary array's range lies within its file. Parallel streams have equal counts.
 - **Values.** Quaternions are non-zero; the build normalizes them. Bounds have `min <= max` on every axis.
-- **Imports.** Each `file` is an FBX file the build can read. Each clip's `stack` exists, and its range lies within the stack, with its start no later than its end. Each key of `rename` and `replace` names content of its kind in the file, and each key of `edits` names a node the import builds, so a misspelled key is reported. Each built name follows the name rules and is unique within the bundle. Each image the import builds has an encoding CanvasPkg stores. With `skeleton`, every bone a skin deforms with is a bone of that skeleton; a skeletal animation's tracks on bones the skeleton lacks are left out, and the build reports each one.
+- **Imports.** Each `file` is an FBX file the build can read. Each clip's `stack` exists, and its range lies within the stack, with its start no later than its end. Each key of `rename` and `replace` names content of its kind in the file, and each key of `edits` names a node the import builds, so a misspelled key is reported. Each built name follows the rules of [Names and References](#names-and-references) and is unique within the bundle. Each image the import builds has an encoding CanvasPkg stores. With `skeleton`, every bone a skin deforms with is a bone of that skeleton; a skeletal animation's tracks on bones the skeleton lacks are left out, and the build reports each one.
 - **Hierarchy.** An import node's placement attaches outside that import node's own subtree. Every other rule of the [package format](../CanvasPkg/README.md) holds for the built package.

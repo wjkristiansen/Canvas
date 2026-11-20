@@ -76,7 +76,7 @@ A header-only math library (`CanvasMath.hpp`) providing templated vectors, matri
 | **CanvasModelViewer**    | Windowed viewer application.  Loads FBX models, renders with PBR deferred shading, SDF text HUD, and FPS-style camera controls.                               |
 | **CanvasTerrainViewer**  | Windowed terrain viewer.  Loads a heightfield bitmap, renders GPU-tessellated displaced terrain with a 5-minute day/night cycle, skybox, and FPS-style camera. |
 | **CanvasConsole**        | Lightweight console harness for API smoke-testing without a window.                                                                                           |
-| **cpkg**                 | Command-line tool that builds package sources and projects into `.cpkg` files, and edits and inspects them. Partly implemented: `dump`.                      |
+| **cpkg**                 | Command-line tool that builds package sources and projects into `.cpkg` files, and edits and inspects them. Partly implemented: `dump`, `validate`.          |
 
 ## Getting Started
 

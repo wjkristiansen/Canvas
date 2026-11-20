@@ -35,6 +35,9 @@ public:
     // Reports a finding at a value of a JSON file. pointer is the JSON Pointer to the value.
     void Report(Severity severity, std::string_view file, uint32_t line, uint32_t column, std::string_view message, std::string_view pointer);
 
+    // Reports a finding at a place in a JSON file that is not a value, such as a syntax error.
+    void Report(Severity severity, std::string_view file, uint32_t line, uint32_t column, std::string_view message);
+
     size_t GetErrorCount() const { return m_ErrorCount; }
 
 private:

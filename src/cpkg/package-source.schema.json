@@ -10,7 +10,7 @@
     "packageFile": {
       "type": "object",
       "required": ["formatVersion", "packageName", "bundles"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "$schema": { "type": "string" },
@@ -24,7 +24,7 @@
               {
                 "type": "object",
                 "required": ["include"],
-                "patternProperties": { "^x-": true },
+                "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
                 "additionalProperties": false,
                 "properties": { "include": { "$ref": "#/$defs/file" } }
               }
@@ -37,7 +37,7 @@
     "bundleFile": {
       "type": "object",
       "required": ["formatVersion", "bundle"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "$schema": { "type": "string" },
@@ -46,10 +46,12 @@
       }
     },
 
-    "name": { "type": "string", "minLength": 1, "pattern": "^[^/]+$" },
+    "name": { "type": "string", "pattern": "^[^/$][^/]*$" },
+    "nameKey": { "anyOf": [{ "$ref": "#/$defs/name" }, { "enum": ["$comment", "$extras"] }] },
+    "fileNameKey": { "anyOf": [{ "pattern": "^([^$]|$)" }, { "enum": ["$comment", "$extras"] }] },
     "file": { "type": "string", "minLength": 1, "pattern": "^[^\\\\]+$" },
-    "assetPath": { "type": "string", "pattern": "^[^/]+(/[^/]+){0,2}$" },
-    "bundlePath": { "type": "string", "pattern": "^[^/]+(/[^/]+)?$" },
+    "assetPath": { "type": "string", "pattern": "^[^/$][^/]*(/[^/$][^/]*){0,2}$" },
+    "bundlePath": { "type": "string", "pattern": "^[^/$][^/]*(/[^/$][^/]*)?$" },
 
     "vec3": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
     "quat": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
@@ -61,6 +63,7 @@
         {
           "type": "object",
           "required": ["degrees"],
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": false,
           "properties": { "degrees": { "$ref": "#/$defs/vec3" } }
         }
@@ -71,8 +74,13 @@
     "fileArray": {
       "type": "object",
       "required": ["file"],
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
-      "properties": { "file": { "$ref": "#/$defs/file" } }
+      "properties": {
+        "file": { "$ref": "#/$defs/file" },
+        "offset": { "type": "integer", "minimum": 0, "multipleOf": 4 },
+        "count": { "type": "integer", "minimum": 0, "maximum": 4294967295 }
+      }
     },
     "numberArray": {
       "oneOf": [
@@ -89,6 +97,7 @@
     "bounds": {
       "type": "object",
       "required": ["min", "max"],
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "min": { "$ref": "#/$defs/vec3" },
@@ -97,7 +106,7 @@
     },
     "transform": {
       "type": "object",
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "translation": { "$ref": "#/$defs/vec3" },
@@ -109,21 +118,22 @@
     "bundle": {
       "type": "object",
       "required": ["name"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "name": { "$ref": "#/$defs/name" },
-        "images": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/image" } },
-        "materials": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/material" } },
-        "meshes": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/mesh" } },
-        "skeletons": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skeleton" } },
-        "skins": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skin" } },
-        "skeletalAnimations": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skeletalAnimation" } },
-        "skyboxes": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/skybox" } },
+        "images": { "type": "object", "propertyNames": { "$ref": "#/$defs/nameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/image" } },
+        "materials": { "type": "object", "propertyNames": { "$ref": "#/$defs/nameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/material" } },
+        "meshes": { "type": "object", "propertyNames": { "$ref": "#/$defs/nameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/mesh" } },
+        "skeletons": { "type": "object", "propertyNames": { "$ref": "#/$defs/nameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/skeleton" } },
+        "skins": { "type": "object", "propertyNames": { "$ref": "#/$defs/nameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/skin" } },
+        "skeletalAnimations": { "type": "object", "propertyNames": { "$ref": "#/$defs/nameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/skeletalAnimation" } },
+        "skyboxes": { "type": "object", "propertyNames": { "$ref": "#/$defs/nameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/skybox" } },
         "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
         "placements": { "type": "array", "items": { "$ref": "#/$defs/placement" } },
+        "meshFields": { "type": "array", "items": { "$ref": "#/$defs/meshField" } },
         "importNodes": { "type": "array", "items": { "$ref": "#/$defs/importNode" } },
-        "clips": { "type": "object", "propertyNames": { "$ref": "#/$defs/name" }, "additionalProperties": { "$ref": "#/$defs/clip" } },
+        "clips": { "type": "object", "propertyNames": { "$ref": "#/$defs/nameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/clip" } },
         "exports": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true },
         "world": { "$ref": "#/$defs/world" },
         "imports": { "type": "array", "items": { "$ref": "#/$defs/import" } }
@@ -136,12 +146,13 @@
         {
           "type": "object",
           "required": ["cubemap"],
-          "patternProperties": { "^x-": true },
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": false,
           "properties": {
             "cubemap": {
               "type": "object",
               "required": ["+X", "-X", "+Y", "-Y", "+Z", "-Z"],
+              "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
               "additionalProperties": false,
               "properties": {
                 "+X": { "$ref": "#/$defs/file" },
@@ -157,7 +168,7 @@
         {
           "type": "object",
           "required": ["dimension", "files"],
-          "patternProperties": { "^x-": true },
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": false,
           "properties": {
             "dimension": { "enum": ["texture1D", "texture2D", "texture3D", "cube"] },
@@ -171,7 +182,7 @@
 
     "material": {
       "type": "object",
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "baseColor": { "$ref": "#/$defs/rgba" },
@@ -181,6 +192,7 @@
         "ambientOcclusion": { "type": "number" },
         "textures": {
           "type": "object",
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": false,
           "properties": {
             "albedo": { "$ref": "#/$defs/assetPath" },
@@ -194,6 +206,7 @@
         "displacement": {
           "type": "object",
           "required": ["map"],
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": false,
           "properties": {
             "map": { "$ref": "#/$defs/assetPath" },
@@ -211,7 +224,7 @@
     "mesh": {
       "type": "object",
       "required": ["groups"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "topology": { "enum": ["triangleList", "patchList4CP"] },
@@ -222,7 +235,7 @@
           "items": {
             "type": "object",
             "required": ["positions"],
-            "patternProperties": { "^x-": true },
+            "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
             "additionalProperties": false,
             "properties": {
               "material": { "$ref": "#/$defs/assetPath" },
@@ -241,7 +254,7 @@
     "skeleton": {
       "type": "object",
       "required": ["bones"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "bones": {
@@ -250,7 +263,7 @@
           "items": {
             "type": "object",
             "required": ["name"],
-            "patternProperties": { "^x-": true },
+            "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
             "additionalProperties": false,
             "properties": {
               "name": { "$ref": "#/$defs/name" },
@@ -265,7 +278,7 @@
     "skin": {
       "type": "object",
       "required": ["skeleton", "bones"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "skeleton": { "$ref": "#/$defs/assetPath" },
@@ -296,7 +309,7 @@
     "skeletalAnimation": {
       "type": "object",
       "required": ["skeleton", "tracks"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "skeleton": { "$ref": "#/$defs/assetPath" },
@@ -306,7 +319,7 @@
             "type": "object",
             "required": ["bone"],
             "$ref": "#/$defs/trackKeys",
-            "patternProperties": { "^x-": true },
+            "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
             "unevaluatedProperties": false,
             "properties": {
               "bone": { "$ref": "#/$defs/boneRef" }
@@ -318,7 +331,7 @@
 
     "clip": {
       "type": "object",
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "duration": { "type": "number", "minimum": 0 },
@@ -328,7 +341,7 @@
             "type": "object",
             "required": ["node"],
             "$ref": "#/$defs/trackKeys",
-            "patternProperties": { "^x-": true },
+            "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
             "unevaluatedProperties": false,
             "properties": {
               "node": { "$ref": "#/$defs/name" }
@@ -340,7 +353,7 @@
           "items": {
             "type": "object",
             "required": ["skeletonInstance", "animation"],
-            "patternProperties": { "^x-": true },
+            "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
             "additionalProperties": false,
             "properties": {
               "skeletonInstance": { "$ref": "#/$defs/name" },
@@ -354,7 +367,7 @@
     "skybox": {
       "type": "object",
       "required": ["image"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "image": { "$ref": "#/$defs/assetPath" },
@@ -366,7 +379,7 @@
     "meshInstance": {
       "type": "object",
       "required": ["mesh"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "mesh": { "$ref": "#/$defs/assetPath" },
@@ -377,7 +390,7 @@
 
     "camera": {
       "type": "object",
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "nearClip": { "type": "number" },
@@ -400,7 +413,7 @@
 
     "lightFields": {
       "type": "object",
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "properties": {
         "type": { "enum": ["ambient", "point", "directional", "spot", "area"] },
         "color": { "$ref": "#/$defs/rgb" },
@@ -425,10 +438,12 @@
         "skeletonInstance": {
           "type": "object",
           "required": ["skeleton"],
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": false,
           "properties": { "skeleton": { "$ref": "#/$defs/assetPath" } }
         },
         "meshInstances": { "type": "array", "items": { "$ref": "#/$defs/meshInstance" } },
+        "meshFields": { "type": "array", "items": { "$ref": "#/$defs/meshField" } },
         "camera": { "$ref": "#/$defs/camera" },
         "light": { "$ref": "#/$defs/light" },
         "placements": { "type": "array", "items": { "$ref": "#/$defs/placement" } },
@@ -439,7 +454,7 @@
     "node": {
       "type": "object",
       "$ref": "#/$defs/attachments",
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "unevaluatedProperties": false,
       "properties": {
         "name": { "$ref": "#/$defs/name" },
@@ -455,7 +470,7 @@
       "type": "object",
       "required": ["placement", "export"],
       "$ref": "#/$defs/attachments",
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "unevaluatedProperties": false,
       "properties": {
         "name": { "$ref": "#/$defs/name" },
@@ -470,30 +485,34 @@
     "placement": {
       "type": "object",
       "required": ["bundle"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "name": { "$ref": "#/$defs/name" },
         "bundle": { "$ref": "#/$defs/bundlePath" },
         "mobility": { "$ref": "#/$defs/mobility" },
-        "transforms": { "type": "array", "items": { "$ref": "#/$defs/transform" }, "minItems": 1 },
         "translation": { "$ref": "#/$defs/vec3" },
         "rotation": { "$ref": "#/$defs/rotation" },
         "scale": { "$ref": "#/$defs/vec3" }
-      },
-      "not": {
-        "required": ["transforms"],
-        "anyOf": [
-          { "required": ["translation"] },
-          { "required": ["rotation"] },
-          { "required": ["scale"] }
-        ]
+      }
+    },
+
+    "meshField": {
+      "type": "object",
+      "required": ["mesh", "transforms"],
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "mesh": { "$ref": "#/$defs/assetPath" },
+        "cullDistance": { "type": "number" },
+        "transforms": { "type": "array", "items": { "$ref": "#/$defs/transform" }, "minItems": 1 }
       }
     },
 
     "world": {
       "type": "object",
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "regions": {
@@ -501,6 +520,7 @@
           "items": {
             "type": "object",
             "required": ["region", "bounds"],
+            "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
             "additionalProperties": false,
             "properties": {
               "region": { "$ref": "#/$defs/bundlePath" },
@@ -516,13 +536,13 @@
     },
 
     "nameTemplate": { "type": "string", "minLength": 1, "pattern": "^[^/]+$" },
-    "renameMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/name" } },
-    "replaceMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/assetPath" } },
+    "renameMap": { "type": "object", "propertyNames": { "$ref": "#/$defs/fileNameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/name" } },
+    "replaceMap": { "type": "object", "propertyNames": { "$ref": "#/$defs/fileNameKey" }, "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true }, "additionalProperties": { "$ref": "#/$defs/assetPath" } },
 
     "import": {
       "type": "object",
       "required": ["file"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "file": { "$ref": "#/$defs/file" },
@@ -533,6 +553,7 @@
         "skeleton": { "$ref": "#/$defs/assetPath" },
         "names": {
           "type": "object",
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": false,
           "properties": {
             "images": { "$ref": "#/$defs/nameTemplate" },
@@ -547,6 +568,7 @@
         },
         "rename": {
           "type": "object",
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": false,
           "properties": {
             "images": { "$ref": "#/$defs/renameMap" },
@@ -561,6 +583,7 @@
         },
         "replace": {
           "type": "object",
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": false,
           "properties": {
             "images": { "$ref": "#/$defs/replaceMap" },
@@ -570,7 +593,8 @@
         "clips": { "type": "array", "items": { "$ref": "#/$defs/importClip" } },
         "edits": {
           "type": "object",
-          "propertyNames": { "$ref": "#/$defs/name" },
+          "propertyNames": { "$ref": "#/$defs/nameKey" },
+          "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": { "$ref": "#/$defs/nodeEdit" }
         }
       }
@@ -579,7 +603,7 @@
     "importClip": {
       "type": "object",
       "required": ["name"],
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "name": { "$ref": "#/$defs/name" },
@@ -604,7 +628,7 @@
 
     "nodeEdit": {
       "type": "object",
-      "patternProperties": { "^x-": true },
+      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
       "additionalProperties": false,
       "properties": {
         "translation": { "$ref": "#/$defs/vec3" },
@@ -614,6 +638,7 @@
         "camera": { "$ref": "#/$defs/camera" },
         "light": { "$ref": "#/$defs/lightEdit" },
         "meshInstances": { "type": "array", "items": { "$ref": "#/$defs/meshInstance" } },
+        "meshFields": { "type": "array", "items": { "$ref": "#/$defs/meshField" } },
         "placements": { "type": "array", "items": { "$ref": "#/$defs/placement" } },
         "children": { "type": "array", "items": { "$ref": "#/$defs/node" } }
       }
