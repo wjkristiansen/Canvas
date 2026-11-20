@@ -4,10 +4,17 @@
 
 #include "Stages.h"
 
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <span>
 #include <string>
 #include <vector>
@@ -41,6 +48,39 @@ CpkgTransform ToCpkgTransform(const SourceTransform &source)
     if (source.Translation)
         std::memcpy(transform.Translation, source.Translation->data(), sizeof(transform.Translation));
     return transform;
+}
+
+// Whether the files at a and b both exist and hold the same bytes.
+bool SameBytes(const std::filesystem::path &a, const std::filesystem::path &b)
+{
+    std::error_code error;
+    const uintmax_t size = std::filesystem::file_size(a, error);
+    if (error || std::filesystem::file_size(b, error) != size || error)
+        return false;
+
+    std::ifstream fileA(a, std::ios::binary);
+    std::ifstream fileB(b, std::ios::binary);
+    char bufferA[64 * 1024];
+    char bufferB[64 * 1024];
+    while (fileA && fileB)
+    {
+        fileA.read(bufferA, sizeof(bufferA));
+        fileB.read(bufferB, sizeof(bufferB));
+        if (fileA.gcount() != fileB.gcount() || std::memcmp(bufferA, bufferB, size_t(fileA.gcount())) != 0)
+            return false;
+    }
+    return fileA.eof() && fileB.eof();
+}
+
+// A temporary file name beside path, unique to this process.
+std::string TemporaryPath(const std::string &path)
+{
+#if defined(_WIN32)
+    const int process = _getpid();
+#else
+    const int process = int(getpid());
+#endif
+    return path + "." + std::to_string(process) + ".tmp";
 }
 
 // Copies values, whose size is a multiple of an element's, into elements of TElement.
@@ -106,16 +146,21 @@ public:
     {
     }
 
+    // Writes the package to a temporary file beside path, then replaces path with it, unless
+    // path already holds the same bytes, which leaves path untouched. A failure leaves path as
+    // it was.
     bool Write(const std::string &path)
     {
         if (!CheckBuildable())
             return false;
 
-        const std::filesystem::path filePath(std::u8string(path.begin(), path.end()));
+        const std::string temporary = TemporaryPath(path);
+        const std::filesystem::path outputPath(std::u8string(path.begin(), path.end()));
+        const std::filesystem::path temporaryPath(std::u8string(temporary.begin(), temporary.end()));
         std::error_code error;
-        std::filesystem::remove(filePath, error);
+        std::filesystem::remove(temporaryPath, error);
 
-        Gem::Result result = m_Writer.Open(path.c_str(), m_Package.PackageName.Text);
+        Gem::Result result = m_Writer.Open(temporary.c_str(), m_Package.PackageName.Text);
         for (const SourceBundle &bundle : m_Package.Bundles)
         {
             if (Gem::Failed(result))
@@ -128,7 +173,20 @@ public:
         if (Gem::Failed(result))
         {
             m_Diagnostics.Report(Severity::Error, path, "cannot write the file");
-            std::filesystem::remove(filePath, error);
+            std::filesystem::remove(temporaryPath, error);
+            return false;
+        }
+
+        if (SameBytes(temporaryPath, outputPath))
+        {
+            std::filesystem::remove(temporaryPath, error);
+            return true;
+        }
+        std::filesystem::rename(temporaryPath, outputPath, error);
+        if (error)
+        {
+            m_Diagnostics.Report(Severity::Error, path, "cannot replace the file");
+            std::filesystem::remove(temporaryPath, error);
             return false;
         }
         return true;
