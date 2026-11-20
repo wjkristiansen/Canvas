@@ -85,6 +85,8 @@ cpkg dump <package.cpkg> [--bundle <name>] [--payloads]
 
 Prints a `.cpkg` file's header, including its declared package name, and each bundle with its assets: index, type, name, and payload size. `--bundle` limits the listing to one bundle, and `--payloads` adds each payload's fields as CanvasPkg's payload helpers decode them. `dump` reads `.cpkg` files built by any tool, so it serves to inspect prebuilt packages.
 
+Names are written as JSON string literals, so each name reads unambiguously, whatever characters it holds. With `--payloads`, each field of a payload other than padding follows its asset, one per line under the name `CanvasPkg.h` gives it, with nested structures and array elements indented beneath it. An array of strings or structures lists its elements, an array of asset indices lists its values, and an array of vertex, key, transform, or image data shows its element count. A payload that breaks the [Payload Layout](../CanvasPkg/README.md#payload-layout) rules is reported as an error, and the listing goes on with the next asset.
+
 ### import
 
 ```
@@ -273,6 +275,14 @@ A build reports every finding it can before it stops: Load and Validate check th
 ```
 
 `<file>` is the JSON file the diagnostic concerns, as a path relative to the current directory, and `<line>` and `<column>` count from 1. `<location>` is the JSON Pointer to the value. A diagnostic about an FBX file is reported at the import that names the file, so its `<file>`, `<line>`, and `<column>` locate the import, and its message names the FBX file and the object in it. A diagnostic about an image file names the image file and the field that names it. Editors and build tools that recognize `file:line:column:` locations link each diagnostic to its source.
+
+A diagnostic about a file as a whole, such as a `.cpkg` file that `dump` cannot read, has no line, column, or location:
+
+```
+<file>: <severity>: <message>
+```
+
+An invalid command line is reported as `cpkg: error: <message>`, with exit status `2`.
 
 ## Source Layout
 

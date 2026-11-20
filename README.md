@@ -76,7 +76,7 @@ A header-only math library (`CanvasMath.hpp`) providing templated vectors, matri
 | **CanvasModelViewer**    | Windowed viewer application.  Loads FBX models, renders with PBR deferred shading, SDF text HUD, and FPS-style camera controls.                               |
 | **CanvasTerrainViewer**  | Windowed terrain viewer.  Loads a heightfield bitmap, renders GPU-tessellated displaced terrain with a 5-minute day/night cycle, skybox, and FPS-style camera. |
 | **CanvasConsole**        | Lightweight console harness for API smoke-testing without a window.                                                                                           |
-| **cpkg**                 | Command-line tool that builds package sources and projects into `.cpkg` files, and edits and inspects them. Design spec; not yet implemented.                |
+| **cpkg**                 | Command-line tool that builds package sources and projects into `.cpkg` files, and edits and inspects them. Partly implemented: `dump`.                      |
 
 ## Getting Started
 
@@ -287,7 +287,7 @@ To run a single test or filter by name, invoke the executable directly (it lives
 | `src/CanvasFbx/`         | FBX import                                                     |
 | `src/CanvasPkg/`         | Package file format spec                                       |
 | `src/CanvasProject/`     | Project manifest spec, schema, and library                     |
-| `src/cpkg/`              | Package build tool spec, and package source spec and schema    |
+| `src/cpkg/`              | Package build tool and spec; package source spec and schema    |
 | `src/RectanglePacker/`   | Rectangle bin-packing                                          |
 | `src/HLSL/`              | Shader source and compiled header output                       |
 | `src/Common/`            | Shared utilities                                               |

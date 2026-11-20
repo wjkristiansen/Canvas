@@ -24,6 +24,7 @@ add_executable(CanvasUnitTest
     CanvasProjectTest.cpp
     CanvasTextTest.cpp
     CanvasUtf8Test.cpp
+    CpkgToolTest.cpp
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
     JsonTextTest.cpp
@@ -91,6 +92,7 @@ target_link_libraries(CanvasUnitTest PRIVATE
     CanvasPkg
     CanvasProject
     CanvasJsonText
+    CpkgTool
     CanvasText
     RectanglePacker
     D3D12ResourceUtils
