@@ -426,14 +426,11 @@ struct CpkgSkeletalAnimationData
 //------------------------------------------------------------------------------------------------
 // Skins
 
-// Row-major, row vectors: v' = v * M, translation in row 3.
-struct CpkgInvBindPose { float M[16]; };
-
 struct CpkgMeshSkinData
 {
-    CpkgSpan<char>              Skeleton;      // asset path to the Skeleton this skin is built for; required
-    CpkgSpan<CpkgSpan<char>>    Bones;         // per skin bone, the name of the skeleton bone it follows; at least one
-    CpkgSpan<CpkgInvBindPose>   InvBindPoses;  // one per skin bone, same order as Bones
+    CpkgSpan<char>              Skeleton;   // asset path to the Skeleton this skin is built for; required
+    CpkgSpan<CpkgSpan<char>>    Bones;      // per skin bone, the name of the skeleton bone it follows; at least one
+    CpkgSpan<CpkgTransform>     BindPoses;  // per skin bone, same order as Bones: the bone's transform at bind time, in the mesh's space
 };
 
 //------------------------------------------------------------------------------------------------
@@ -590,9 +587,8 @@ CPKG_ASSERT_ON_DISK(CpkgBoneTrack,
     &CpkgBoneTrack::Tangents);
 CPKG_ASSERT_ON_DISK(CpkgSkeletalAnimationData,
     &CpkgSkeletalAnimationData::Skeleton, &CpkgSkeletalAnimationData::Tracks);
-CPKG_ASSERT_ON_DISK(CpkgInvBindPose, &CpkgInvBindPose::M);
 CPKG_ASSERT_ON_DISK(CpkgMeshSkinData,
-    &CpkgMeshSkinData::Skeleton, &CpkgMeshSkinData::Bones, &CpkgMeshSkinData::InvBindPoses);
+    &CpkgMeshSkinData::Skeleton, &CpkgMeshSkinData::Bones, &CpkgMeshSkinData::BindPoses);
 CPKG_ASSERT_ON_DISK(CpkgCameraData,
     &CpkgCameraData::NodeIndex, &CpkgCameraData::NearClip, &CpkgCameraData::FarClip,
     &CpkgCameraData::FovAngle, &CpkgCameraData::ExposureStops);
