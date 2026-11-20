@@ -123,7 +123,7 @@ TEST_F(CpkgSource, LoadsEveryMember)
         "Empty": { "bounds": "none", "groups": [ { "positions": [] } ] }
       },
       "skeletons": { "Rig": { "bones": [ { "name": "Hips" }, { "name": "Spine", "parent": "Hips", "rest": { "translation": [0, 0, 0.12] } } ] } },
-      "skins": { "Skin": { "skeleton": "Rig", "bones": ["Hips", "Spine"] } },
+      "skins": { "Skin": { "skeleton": "Rig", "bones": ["Hips", "Spine"], "bindPoses": [ {}, { "translation": [0, 0, 0.12] } ] } },
       "skeletalAnimations": {
         "Walk": { "skeleton": "Rig", "tracks": [ { "bone": "Hips", "property": "rotation", "times": [0, 1], "values": [0, 0, 0, 1, 0, 0, 0, 1],
                                                    "interpolation": ["step", "cubic"], "tangents": [] } ] }
@@ -217,7 +217,9 @@ TEST_F(CpkgSource, LoadsEveryMember)
     ASSERT_EQ(props.Skeletons[0].Value.Bones.size(), 2u);
     EXPECT_EQ(props.Skeletons[0].Value.Bones[1].Parent->Text, "Hips");
     EXPECT_EQ((*props.Skeletons[0].Value.Bones[1].Rest.Translation)[2], 0.12f);
-    EXPECT_FALSE(props.Skins[0].Value.InvBindPoses);
+    ASSERT_EQ(props.Skins[0].Value.BindPoses.size(), 2u);
+    EXPECT_FALSE(props.Skins[0].Value.BindPoses[0].Translation);
+    EXPECT_EQ((*props.Skins[0].Value.BindPoses[1].Translation)[2], 0.12f);
 
     const SourceTrack &walk = props.SkeletalAnimations[0].Value.Tracks[0];
     EXPECT_EQ(walk.Target.Text, "Hips");
@@ -550,6 +552,8 @@ TEST_F(CpkgSource, RejectsWhatTheSchemaRejects)
         { "number as a string", inBundle(R"({ "name": "B", "materials": { "M": { "roughness": "high" } } })") },
         { "vector of the wrong length", inBundle(R"({ "name": "B", "materials": { "M": { "baseColor": [1, 1, 1] } } })") },
         { "missing required key", inBundle(R"({ "name": "B", "meshes": { "T": {} } })") },
+        { "skin without bind poses", inBundle(R"({ "name": "B", "skins": { "S": { "skeleton": "K", "bones": ["A"] } } })") },
+        { "bind pose with an unknown key", inBundle(R"({ "name": "B", "skins": { "S": { "skeleton": "K", "bones": ["A"], "bindPoses": [ { "matrix": [] } ] } } })") },
         { "value outside an enum", inBundle(R"({ "name": "B", "nodes": [ { "name": "N", "mobility": "moving" } ] })") },
         { "degrees of the wrong length", inBundle(R"({ "name": "B", "nodes": [ { "name": "N", "rotation": { "degrees": [1, 2] } } ] })") },
         { "repeated export", inBundle(R"({ "name": "B", "nodes": [ { "name": "N" } ], "exports": ["N", "N"] })") },

@@ -184,13 +184,21 @@ Each group has an optional `material` (asset path) and the vertex streams `posit
 
 ### Skins
 
+```json
+"GoblinSkin": {
+  "skeleton": "GoblinSkeleton",
+  "bones": ["Hips", "Spine"],
+  "bindPoses": [ {}, { "translation": [0, 0, 0.12] } ]
+}
+```
+
 | Field | Default | Builds |
 |---|---|---|
 | `skeleton` | Required | `Skeleton`, an asset path |
 | `bones` | Required; at least one | `Bones`: one bone reference into `skeleton` per bone of the skin, in the skin's order |
-| `invBindPoses` | Computed from the skeleton's rest pose | `InvBindPoses`: one row-major matrix of 16 numbers per bone, as a large numeric array |
+| `bindPoses` | Required; one per bone | `BindPoses`: per bone of the skin, a transform, as `rest` is written |
 
-When `invBindPoses` is omitted, each skin bone's inverse bind pose is the inverse of its skeleton bone's rest pose relative to the skeleton instance's node: that bone's rest transform composed with those of its ancestor bones.
+A bind pose is where a bone was when the mesh was bound to it, in the mesh's space (see [CpkgMeshSkinData](../CanvasPkg/README.md#cpkgmeshskindata-assettypemeshskin)). A mesh bound in its skeleton's rest pose has bind poses equal to that rest pose, each bone's rest transform composed with those of its ancestor bones.
 
 ### Skeletal Animations
 
@@ -531,10 +539,10 @@ The schema checks each file's shape. A package source is also valid only when it
 - **Files.** Every named file exists and is readable. Each bundle file is included once.
 - **Names.** Bundle names are unique within the package. Asset and node names are unique within their bundle (see [Names and References](#names-and-references)).
 - **References by name.** Each refers to an existing node or placement of the same bundle, of the kind the field requires: an `activeCamera` node has a `camera`, a mesh instance's or clip binding's `skeletonInstance` node has a `skeletonInstance`, a node with `bone` has a parent with a `skeletonInstance`, and an import's `parent` is a node that import does not build.
-- **Bone references.** Each names a bone of the relevant skeleton. A skeleton's bone names are unique, and its `parent` references refer to earlier bones.
+- **Bone references.** Each names a bone of the relevant skeleton. A bone reference into a skeleton in another package is checked when the build has a project. A skeleton's bone names are unique, and its `parent` references refer to earlier bones.
 - **Tracks.** `times` is nondecreasing, and `values`, an `interpolation` array, and `tangents` hold the number of entries its keys and `property` call for (see [Animation Tracks](../CanvasPkg/README.md#animation-tracks)). A clip track's `node` has no `bone`, and its effective mobility is `"movable"`. A clip animates each node property, and binds each skeleton instance, at most once, and a skeletal animation animates each bone property at most once.
 - **Paths.** Each path is well formed for its kind. A path within the same package resolves to an existing asset of the declared type or to an existing bundle; a path into another package is checked when the build has a project.
-- **Arrays.** Each inline array's length is a multiple of its element size, and each binary array's range lies within its file. Parallel streams have equal counts.
+- **Arrays.** Each inline array's length is a multiple of its element size, and each binary array's range lies within its file. Parallel streams have equal counts, and a skin has one bind pose per bone.
 - **Values.** Quaternions are non-zero; the build normalizes them. Bounds have `min <= max` on every axis.
 - **Imports.** Each `file` is an FBX file the build can read. Each clip's `stack` exists, and its range lies within the stack, with its start no later than its end. Each key of `rename` and `replace` names content of its kind in the file, and each key of `edits` names a node the import builds, so a misspelled key is reported. Each built name follows the rules of [Names and References](#names-and-references) and is unique within the bundle. Each image the import builds has an encoding CanvasPkg stores. With `skeleton`, every bone a skin deforms with is a bone of that skeleton; a skeletal animation's tracks on bones the skeleton lacks are left out, and the build reports each one.
 - **Hierarchy.** An import node's placement attaches outside that import node's own subtree. Every other rule of the [package format](../CanvasPkg/README.md) holds for the built package.
