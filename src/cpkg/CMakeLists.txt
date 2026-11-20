@@ -3,11 +3,14 @@ cmake_minimum_required(VERSION 3.24)
 
 # Everything but main, so the unit tests can run cpkg's commands in-process.
 add_library(CpkgTool STATIC
+    Build.cpp
     Cli.cpp
     CpkgTool.h
     Diagnostics.cpp
     Diagnostics.h
     Dump.cpp
+    Source.h
+    SourceLoad.cpp
 )
 
 set_target_properties(CpkgTool PROPERTIES
@@ -28,6 +31,7 @@ target_compile_definitions(CpkgTool PRIVATE
 
 target_link_libraries(CpkgTool
     PUBLIC
+        CanvasJsonText
         CanvasPkg
     PRIVATE
         InCommandLib

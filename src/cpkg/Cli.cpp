@@ -48,6 +48,11 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         parser.AddGlobalOption(InCommand::OptionType::Switch, "version")
             .SetDescription("Prints the version of cpkg");
 
+        InCommand::CommandDecl &validate = root.AddSubCommand("validate");
+        validate.SetDescription("Reports the diagnostics a build would report, without writing anything");
+        validate.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
+            .SetDescription("The package file");
+
         InCommand::CommandDecl &dump = root.AddSubCommand("dump");
         dump.SetDescription("Prints the contents of a .cpkg file");
         dump.AddOption(InCommand::OptionType::Parameter, "package.cpkg")
@@ -81,7 +86,18 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         const InCommand::CommandBlock &block = parser.GetCommandBlock(blockCount - 1);
         const std::string &command = block.GetDecl().GetName();
 
-        if (command == "dump")
+        if (command == "validate")
+        {
+            if (!block.IsOptionSet("package.cpkg.json"))
+                return UsageError(err, "validate: missing argument <package.cpkg.json>");
+
+            ValidateOptions options;
+            options.Package = block.GetOptionValue("package.cpkg.json");
+            if (!HasExtension(options.Package, ".cpkg.json"))
+                return UsageError(err, "validate: expected a .cpkg.json file: " + options.Package);
+            Validate(options, diagnostics);
+        }
+        else if (command == "dump")
         {
             if (!block.IsOptionSet("package.cpkg"))
                 return UsageError(err, "dump: missing argument <package.cpkg>");
