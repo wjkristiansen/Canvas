@@ -27,6 +27,7 @@ add_executable(CanvasUnitTest
     CpkgBuildTest.cpp
     CpkgSourceTest.cpp
     CpkgToolTest.cpp
+    CpkgUnpackTest.cpp
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
     JsonTextTest.cpp

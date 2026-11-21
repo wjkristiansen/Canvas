@@ -93,61 +93,9 @@ const Json *Member(const Json &object, const char *key)
     return it == object.end() ? nullptr : &*it;
 }
 
-template <class T>
-struct EnumName
-{
-    std::string_view Name;
-    T Value;
-};
-
-constexpr EnumName<CpkgMobility> kMobilities[] = {
-    { "static", CpkgMobility::Static },
-    { "stationary", CpkgMobility::Stationary },
-    { "movable", CpkgMobility::Movable },
-};
-
-constexpr EnumName<GfxPrimitiveTopology> kTopologies[] = {
-    { "triangleList", GfxPrimitiveTopology::TriangleList },
-    { "patchList4CP", GfxPrimitiveTopology::PatchList4CP },
-};
-
-constexpr EnumName<CpkgImageDimension> kDimensions[] = {
-    { "texture1D", CpkgImageDimension::Texture1D },
-    { "texture2D", CpkgImageDimension::Texture2D },
-    { "texture3D", CpkgImageDimension::Texture3D },
-    { "cube", CpkgImageDimension::Cube },
-};
-
-constexpr EnumName<CpkgAnimationProperty> kProperties[] = {
-    { "translation", CpkgAnimationProperty::Translation },
-    { "rotation", CpkgAnimationProperty::Rotation },
-    { "scale", CpkgAnimationProperty::Scale },
-};
-
-constexpr EnumName<AnimationInterpolation> kInterpolations[] = {
-    { "linear", AnimationInterpolation::Linear },
-    { "step", AnimationInterpolation::Step },
-    { "cubic", AnimationInterpolation::Cubic },
-};
-
-constexpr EnumName<LightType> kLightTypes[] = {
-    { "ambient", LightType::Ambient },
-    { "point", LightType::Point },
-    { "directional", LightType::Directional },
-    { "spot", LightType::Spot },
-    { "area", LightType::Area },
-};
-
-// Keys of a material's "textures", in SourceTextureRole order.
-constexpr const char *kTextureRoles[] = { "albedo", "normal", "roughness", "metallic", "ambientOcclusion", "emissive" };
-static_assert(std::size(kTextureRoles) == size_t(SourceTextureRole::Count));
-
 // Keys of an import's "names" and "rename", in SourceImportKind order.
 constexpr const char *kImportKinds[] = { "images", "materials", "meshes", "skeletons", "skins", "skeletalAnimations", "clips", "nodes" };
 static_assert(std::size(kImportKinds) == size_t(SourceImportKind::Count));
-
-// Keys of a cubemap, in SourceImage::Files order.
-constexpr const char *kCubeFaces[] = { "+X", "-X", "+Y", "-Y", "+Z", "-Z" };
 
 // The rotation { "degrees": [x, y, z] } describes: about X by x, then Y by y, then Z by z, each
 // axis fixed in the parent space, so the quaternion is qz * qy * qx.

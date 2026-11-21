@@ -3,8 +3,7 @@
 //================================================================================================
 
 #include "CpkgTool.h"
-
-#include "CanvasPkg.h"
+#include "Stages.h"
 
 #include <algorithm>
 #include <charconv>
@@ -22,34 +21,19 @@ using namespace Canvas;
 
 namespace
 {
+    // Reads the format version from the file header of a package the reader rejects for it.
+    bool ReadVersion(const std::string &package, uint32_t *pVersion)
+    {
+        std::ifstream file(std::filesystem::path(std::u8string_view(reinterpret_cast<const char8_t *>(package.data()), package.size())), std::ios::binary);
+        CpkgFileHeader header;
+        if (!file.read(reinterpret_cast<char *>(&header), sizeof(header)))
+            return false;
+        *pVersion = header.Version;
+        return true;
+    }
+
     //--------------------------------------------------------------------------------------------
     // Names
-
-    const char *AssetTypeName(AssetType type)
-    {
-        switch (type)
-        {
-        case AssetType::TransformNode:      return "TransformNode";
-        case AssetType::MeshData:           return "MeshData";
-        case AssetType::Material:           return "Material";
-        case AssetType::Image:              return "Image";
-        case AssetType::AnimationClip:      return "AnimationClip";
-        case AssetType::MeshSkin:           return "MeshSkin";
-        case AssetType::Camera:             return "Camera";
-        case AssetType::Light:              return "Light";
-        case AssetType::Placement:          return "Placement";
-        case AssetType::Skybox:             return "Skybox";
-        case AssetType::WorldSettings:      return "WorldSettings";
-        case AssetType::MeshInstance:       return "MeshInstance";
-        case AssetType::ImportNode:         return "ImportNode";
-        case AssetType::ExportList:         return "ExportList";
-        case AssetType::Skeleton:           return "Skeleton";
-        case AssetType::SkeletonInstance:   return "SkeletonInstance";
-        case AssetType::SkeletalAnimation:  return "SkeletalAnimation";
-        case AssetType::MeshField:          return "MeshField";
-        default:                            return nullptr;
-        }
-    }
 
     const char *MobilityName(CpkgMobility value)
     {
@@ -617,42 +601,6 @@ namespace
     //--------------------------------------------------------------------------------------------
     // Files
 
-    // Reads the format version from the file header of a package the reader rejects for it.
-    bool ReadVersion(const std::string &package, uint32_t *pVersion)
-    {
-        std::ifstream file(std::filesystem::path(std::u8string_view(reinterpret_cast<const char8_t *>(package.data()), package.size())), std::ios::binary);
-        CpkgFileHeader header;
-        if (!file.read(reinterpret_cast<char *>(&header), sizeof(header)))
-            return false;
-        *pVersion = header.Version;
-        return true;
-    }
-
-    std::string OpenFailure(Gem::Result result, const std::string &package)
-    {
-        switch (result)
-        {
-        case Gem::Result::NotFound:
-            return "file not found";
-        case Gem::Result::DataNotRecognized:
-            return "not a package file";
-        case Gem::Result::CorruptedData:
-            return "the package file is damaged";
-        case Gem::Result::OutOfRange:
-        {
-            uint32_t version = 0;
-            const std::string text = ReadVersion(package, &version)
-                ? "the package's format version " + std::to_string(version) + " is not supported"
-                : std::string("the package's format version is not supported");
-            return text + "; this cpkg reads versions " + std::to_string(kMinSupportedVersion) + " to " + std::to_string(kMaxSupportedVersion);
-        }
-        case Gem::Result::OutOfMemory:
-            return "out of memory";
-        default:
-            return "the file could not be read";
-        }
-    }
-
     // A payload buffer aligned for the payload helpers.
     struct alignas(kCpkgPayloadAlignment) PayloadBlock
     {
@@ -739,6 +687,57 @@ namespace
 }
 
 //------------------------------------------------------------------------------------------------
+const char *AssetTypeName(AssetType type)
+{
+    switch (type)
+    {
+    case AssetType::TransformNode:      return "TransformNode";
+    case AssetType::MeshData:           return "MeshData";
+    case AssetType::Material:           return "Material";
+    case AssetType::Image:              return "Image";
+    case AssetType::AnimationClip:      return "AnimationClip";
+    case AssetType::MeshSkin:           return "MeshSkin";
+    case AssetType::Camera:             return "Camera";
+    case AssetType::Light:              return "Light";
+    case AssetType::Placement:          return "Placement";
+    case AssetType::Skybox:             return "Skybox";
+    case AssetType::WorldSettings:      return "WorldSettings";
+    case AssetType::MeshInstance:       return "MeshInstance";
+    case AssetType::ImportNode:         return "ImportNode";
+    case AssetType::ExportList:         return "ExportList";
+    case AssetType::Skeleton:           return "Skeleton";
+    case AssetType::SkeletonInstance:   return "SkeletonInstance";
+    case AssetType::SkeletalAnimation:  return "SkeletalAnimation";
+    case AssetType::MeshField:          return "MeshField";
+    default:                            return nullptr;
+    }
+}
+
+std::string OpenFailure(Gem::Result result, const std::string &package)
+{
+    switch (result)
+    {
+    case Gem::Result::NotFound:
+        return "file not found";
+    case Gem::Result::DataNotRecognized:
+        return "not a package file";
+    case Gem::Result::CorruptedData:
+        return "the package file is damaged";
+    case Gem::Result::OutOfRange:
+    {
+        uint32_t version = 0;
+        const std::string text = ReadVersion(package, &version)
+            ? "the package's format version " + std::to_string(version) + " is not supported"
+            : std::string("the package's format version is not supported");
+        return text + "; this cpkg reads versions " + std::to_string(kMinSupportedVersion) + " to " + std::to_string(kMaxSupportedVersion);
+    }
+    case Gem::Result::OutOfMemory:
+        return "out of memory";
+    default:
+        return "the file could not be read";
+    }
+}
+
 void Dump(const DumpOptions &options, std::ostream &out, CDiagnostics &diagnostics)
 {
     CCpkgReader reader;

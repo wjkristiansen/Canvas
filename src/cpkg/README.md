@@ -8,7 +8,7 @@
 
 A package's **source** is what people and editors change, and its `.cpkg` file is **build output**, rebuilt from the source whenever the source changes. The package source format is defined by [PackageSource.md](PackageSource.md) and [package-source.schema.json](package-source.schema.json). An [authored project](../CanvasProject/README.md) lists a project's package sources, and building it produces the built project the engine opens.
 
-A [prebuilt package](../CanvasProject/README.md#project-manifest), a `.cpkg` file a project uses without its source, such as a package from a vendor or from another project, is read-only input. A project lists it by its `.cpkg` file, other packages refer to its bundles and shared assets by path, and `cpkg` reads its contents with `CCpkgReader`, but its content changes only where its source is kept.
+A [prebuilt package](../CanvasProject/README.md#project-manifest), a `.cpkg` file a project uses without its source, such as a package from a vendor or from another project, is read-only input. A project lists it by its `.cpkg` file, other packages refer to its bundles and shared assets by path, and `cpkg` reads its contents with `CCpkgReader`, but its content changes only where its source is kept. [`unpack`](#unpack) writes a package source that builds a given `.cpkg` file, so a package received without its source can be brought under editing.
 
 ## Command Line
 
@@ -24,6 +24,7 @@ cpkg <command> [<subcommand>] [<arguments>] [<options>]
 | [`validate`](#validate) | Reports the diagnostics a build would report, without writing anything |
 | [`inputs`](#inputs) | Writes the [input list](#input-lists) of a package or a project, without building |
 | [`dump`](#dump) | Prints the contents of a `.cpkg` file |
+| [`unpack`](#unpack) | Writes a package source that builds a `.cpkg` file |
 | [`import`](#import) | Adds an FBX import to a bundle of a package source |
 | [`rename`](#rename-move-and-refs) | Renames an asset, node, placement, or bundle, and updates everything that refers to it |
 | [`move`](#rename-move-and-refs) | Moves a shared asset to another bundle, and updates everything that refers to it |
@@ -86,6 +87,42 @@ cpkg dump <package.cpkg> [--bundle <name>] [--payloads]
 Prints a `.cpkg` file's header, including its declared package name, and each bundle with its assets: index, type, name, and payload size. `--bundle` limits the listing to one bundle, and `--payloads` adds each payload's fields as CanvasPkg's payload helpers decode them. `dump` reads `.cpkg` files built by any tool, so it serves to inspect prebuilt packages.
 
 Names are written as JSON string literals, so each name reads unambiguously, whatever characters it holds. With `--payloads`, each field of a payload other than padding follows its asset, one per line under the name `CanvasPkg.h` gives it, with nested structures and array elements indented beneath it. An array of strings or structures lists its elements, an array of asset indices lists its values, and an array of vertex, key, transform, or image data shows its element count. A payload that breaks the [Payload Layout](../CanvasPkg/README.md#payload-layout) rules is reported as an error, and the listing goes on with the next asset.
+
+### unpack
+
+```
+cpkg unpack <package.cpkg> [-o <package.cpkg.json>] [--force]
+```
+
+Writes a package source that builds the package: building the source `unpack` writes produces a `.cpkg` file byte for byte identical to the one it read. `unpack` reads the package with `CCpkgReader` and needs no project, since the source keeps paths into other packages as the package holds them.
+
+| Option | Meaning |
+|---|---|
+| `-o`, `--output` | The package file to write; by default the `.cpkg` file's name with `.json` added, beside it |
+| `--force` | Replaces files that already exist. Without it, `unpack` writes nothing when any file it would write exists, and reports each one. |
+
+**Layout.** `unpack` writes the package file and, beside it, one folder per bundle, named for the bundle, holding the bundle's bundle file, `<bundle>.cbundle.json`, and the bundle's binary array and image files. The package file includes each bundle file, in the package's bundle order.
+
+```
+levels.cpkg.json
+Looks/
+  Looks.cbundle.json
+  Tri.mesh.bin
+  Sky.png
+Rig/
+  Rig.cbundle.json
+  Walk.anim.bin
+```
+
+**Arrays.** A mesh, a skeletal animation, or a clip whose large numeric arrays hold more than 256 numbers in all writes them to one [binary array](PackageSource.md#values) file, `<asset>.mesh.bin`, `<asset>.anim.bin`, or `<asset>.clip.bin`, each array a range of the file, in the order the source lists them. The others are written inline.
+
+**Images.** Each encoded image is written verbatim to a file with its encoding's extension, `.png`, `.jpg`, or `.tif`. An image of one encoded image is written in the file form, as `<asset>.png`; a cube image of 6 slices and one mip level in the cubemap form, its faces `<asset>.+X.png` through `<asset>.-Z.png`; and any other image in the general form, its files `<asset>.0.png`, `<asset>.1.png`, and so on, in the image's order.
+
+**Values.** The source omits each field that equals its default, writes rotations as quaternions, and writes each number in the shortest form that reads back as the same stored value. Each file is written in `cpkg`'s fixed [formatting](#editing-sources).
+
+**File names.** A bundle's folder and an asset's files are named for the bundle or asset. Each character a file name cannot hold on common file systems, a folder name's final `.` or space, and each `%`, is written as `%` and the character's two hexadecimal digits; a name a file system reserves, such as `CON`, has its first character written that way. A file name already used in its folder, as the output's file system compares names, takes the smallest suffix `~2`, `~3`, and so on, before its extension, that makes it unique.
+
+**Packages it cannot unpack.** Some packages have no source that builds them, such as one whose assets are not in the order a build appends them, one with an import node whose placement is unnamed, or one with a light whose color has an alpha other than 1. `unpack` writes its files to a temporary folder beside the output, builds them, and moves them into place only when the build reproduces the package. Otherwise it writes nothing and reports each asset the source cannot reproduce, naming what it holds that no source expresses. Every package `cpkg` builds unpacks.
 
 ### import
 
@@ -314,4 +351,3 @@ Directions the current design leaves room for. None are committed plans:
 - **Import filters**: leaving content of an FBX file out of an import by kind or by name, such as the default camera and light some exporters add to every file.
 - **Naming policy**: project-configurable naming conventions that validation reports as warnings, kept separate from the [name rules](../CanvasPkg/README.md#names) every package follows.
 - **Project editor data**: editor-only organization of a project's bundles, such as display folders (see CanvasProject's [Future Directions](../CanvasProject/README.md#future-directions)).
-- **Sources from packages**: producing a package source from a `.cpkg` file, so a package received without its source can be brought under editing.

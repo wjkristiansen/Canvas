@@ -9,6 +9,7 @@
 #include "Source.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -154,5 +155,20 @@ bool ValidatePackageSource(const SourcePackage &package, CDiagnostics &diagnosti
 // package is written, and leaves path untouched when it already holds the same bytes. Expects a
 // package that passed Validate. Returns true when path holds the package.
 bool WritePackage(const SourcePackage &package, const std::string &path, CDiagnostics &diagnostics);
+
+//------------------------------------------------------------------------------------------------
+// Files and packages
+
+// Whether the files at a and b both exist and hold the same bytes.
+bool SameBytes(const std::filesystem::path &a, const std::filesystem::path &b);
+
+// A temporary file or folder name beside path, a UTF-8 path, unique to this process.
+std::string TemporaryPath(const std::string &path);
+
+// The enumerator's name, such as "TransformNode", or null for a value with no name.
+const char *AssetTypeName(Canvas::AssetType type);
+
+// Why CCpkgReader::Open failed with result for the .cpkg file at package, a UTF-8 path.
+std::string OpenFailure(Gem::Result result, const std::string &package);
 
 } // namespace CpkgTool

@@ -15,6 +15,7 @@ add_library(CpkgTool STATIC
     SourceLoad.cpp
     SourceValidate.cpp
     Stages.h
+    Unpack.cpp
 )
 
 set_target_properties(CpkgTool PROPERTIES
