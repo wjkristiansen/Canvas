@@ -5,6 +5,8 @@
 #include "Stages.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -272,12 +274,24 @@ private:
         Error(bone.Where, "the skeleton " + Quoted(skeletonPath.Text) + " has no bone " + Quoted(bone.Text));
     }
 
-    // A rotation quaternion is normalized when written, so it must be non-zero.
+    // The quaternion whose x, y, z and w are at pValues.
+    static Canvas::Math::FloatQuaternion Quaternion(const float *pValues)
+    {
+        return Canvas::Math::FloatQuaternion(pValues[0], pValues[1], pValues[2], pValues[3]);
+    }
+
+    static std::string Number(float value)
+    {
+        char text[32];
+        std::snprintf(text, sizeof(text), "%g", double(value));
+        return text;
+    }
+
     void CheckRotation(const SourceRotation &rotation)
     {
-        const Vec4 &q = rotation.Quaternion;
-        if (q[0] == 0.0f && q[1] == 0.0f && q[2] == 0.0f && q[3] == 0.0f)
-            Error(rotation.Where, "expected a non-zero quaternion");
+        const Canvas::Math::FloatQuaternion q = Quaternion(rotation.Quaternion.data());
+        if (!q.IsNormalized())
+            Error(rotation.Where, "expected a unit quaternion; its squared length is " + Number(Canvas::Math::DotProduct(q, q)));
     }
 
     void CheckTransform(const SourceTransform &transform)
@@ -470,9 +484,11 @@ private:
         {
             for (size_t i = 0; i < keys; ++i)
             {
-                if (values[i * 4] == 0.0f && values[i * 4 + 1] == 0.0f && values[i * 4 + 2] == 0.0f && values[i * 4 + 3] == 0.0f)
+                const Canvas::Math::FloatQuaternion q = Quaternion(&values[i * 4]);
+                if (!q.IsNormalized())
                 {
-                    Error(track.Values.Where, "expected non-zero quaternions; key " + std::to_string(i) + " is zero");
+                    Error(track.Values.Where, "expected unit quaternions; key " + std::to_string(i) + " has squared length "
+                        + Number(Canvas::Math::DotProduct(q, q)));
                     break;
                 }
             }

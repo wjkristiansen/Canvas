@@ -138,7 +138,7 @@ TEST_F(CpkgBuild, WritesSharedAssets)
                    "displacement": { "map": "Textures/Metals/BrassHeight", "scale": 0.02 } },
         "Plain": {}
       },
-      "skyboxes": { "Day": { "image": "Textures/Skies/Day", "orientation": [0, 0, 0, 2], "intensity": 1.5 } },
+      "skyboxes": { "Day": { "image": "Textures/Skies/Day", "orientation": [0, 0, 0.38268343, 0.92387953], "intensity": 1.5 } },
       "meshes": {
         "Tri": { "groups": [
           { "material": "Brass", "positions": [0, 0, 0, 1, 0, 0, 1, 1, 0], "normals": [0, 0, 1, 0, 0, 1, 0, 0, 1] },
@@ -151,13 +151,13 @@ TEST_F(CpkgBuild, WritesSharedAssets)
       "name": "Rig",
       "skeletons": { "Goblin": { "bones": [
         { "name": "Hips", "rest": { "translation": [0, 0, 1] } },
-        { "name": "Spine", "parent": "Hips", "rest": { "translation": [0, 0, 0.5], "rotation": [0, 0, 0, 3] } } ] } },
+        { "name": "Spine", "parent": "Hips", "rest": { "translation": [0, 0, 0.5], "rotation": [0, 0, 0, 1] } } ] } },
       "skins": {
         "GoblinSkin": { "skeleton": "Goblin", "bones": ["Spine", "Hips"], "bindPoses": [ { "translation": [0, 0, 1.5] }, { "translation": [0, 0, 1] } ] },
-        "BorrowedSkin": { "skeleton": "Others/Rigs/Troll", "bones": ["Root"], "bindPoses": [ { "rotation": [0, 0, 0, 2], "scale": [2, 2, 2] } ] }
+        "BorrowedSkin": { "skeleton": "Others/Rigs/Troll", "bones": ["Root"], "bindPoses": [ { "rotation": [1, 0, 0, 0], "scale": [2, 2, 2] } ] }
       },
       "skeletalAnimations": { "Walk": { "skeleton": "Goblin", "tracks": [
-        { "bone": "Hips", "property": "rotation", "times": [0, 1], "values": [0, 0, 0, 2, 0, 0, 0, 4] },
+        { "bone": "Hips", "property": "rotation", "times": [0, 1], "values": [0, 0, 0, 1, 0, 0, 1, 0] },
         { "bone": "Spine", "property": "translation", "times": [0, 1], "values": [0, 0, 0, 0, 0, 1], "interpolation": "step" },
         { "bone": "Spine", "property": "scale", "times": [0, 1], "values": [1, 1, 1, 2, 2, 2],
           "interpolation": ["cubic", "linear"], "tangents": [0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0] } ] } }
@@ -197,7 +197,8 @@ TEST_F(CpkgBuild, WritesSharedAssets)
         const CPayload payload(reader, 0, 0);
         const CpkgSkyboxData &skybox = payload.Header<CpkgSkyboxData>();
         EXPECT_EQ(payload.Text<CpkgSkyboxData>(skybox.Image), "Textures/Skies/Day");
-        EXPECT_EQ(skybox.Orientation[3], 1.0f);
+        EXPECT_EQ(skybox.Orientation[2], 0.38268343f);
+        EXPECT_EQ(skybox.Orientation[3], 0.92387953f);
         EXPECT_EQ(skybox.Intensity, 1.5f);
     }
     {
@@ -282,11 +283,11 @@ TEST_F(CpkgBuild, WritesSharedAssets)
         EXPECT_EQ(poses[1].Translation[2], 1.0f);
     }
     {
-        // Bind pose rotations are normalized.
         const CPayload payload(reader, 1, 2);
         const std::span<const CpkgTransform> poses = payload.Elements<CpkgMeshSkinData>(payload.Header<CpkgMeshSkinData>().BindPoses);
         ASSERT_EQ(poses.size(), 1u);
-        EXPECT_EQ(poses[0].Rotation[3], 1.0f);
+        EXPECT_EQ(poses[0].Rotation[0], 1.0f);
+        EXPECT_EQ(poses[0].Rotation[3], 0.0f);
         EXPECT_EQ(poses[0].Scale[1], 2.0f);
     }
     {
@@ -296,13 +297,13 @@ TEST_F(CpkgBuild, WritesSharedAssets)
         const std::span<const CpkgBoneTrack> tracks = payload.Elements<CpkgSkeletalAnimationData>(walk.Tracks);
         ASSERT_EQ(tracks.size(), 3u);
 
-        // Rotation keys are normalized; every key is linear, so no interpolations are stored.
+        // Rotation keys are stored as written; every key is linear, so no interpolations are stored.
         EXPECT_EQ(payload.Text<CpkgSkeletalAnimationData>(tracks[0].Bone), "Hips");
         EXPECT_EQ(tracks[0].Property, CpkgAnimationProperty::Rotation);
         const std::span<const float> rotations = payload.Elements<CpkgSkeletalAnimationData>(tracks[0].Values);
         ASSERT_EQ(rotations.size(), 8u);
         EXPECT_EQ(rotations[3], 1.0f);
-        EXPECT_EQ(rotations[7], 1.0f);
+        EXPECT_EQ(rotations[6], 1.0f);
         EXPECT_EQ(tracks[0].Interpolations.Count, 0u);
         EXPECT_EQ(tracks[0].Tangents.Count, 0u);
 
@@ -396,7 +397,7 @@ TEST_F(CpkgBuild, WritesBundleStructure)
           "skeletonInstance": { "skeleton": "Skeleton" },
           "meshInstances": [ { "mesh": "Body", "skin": "Skin", "skeletonInstance": "Goblin" } ],
           "children": [
-            { "name": "Hand_R", "bone": "Hand_R", "rotation": [0, 0, 0, 2] },
+            { "name": "Hand_R", "bone": "Hand_R", "rotation": [0, 0, 0, 1] },
             { "name": "Eyes", "translation": [0.1, 0, 1.6],
               "meshInstances": [ { "mesh": "Body", "skin": "Skin" }, { "mesh": "Body" } ],
               "camera": { "fovAngle": 1.2 },
@@ -597,7 +598,7 @@ TEST_F(CpkgBuild, WritesClipsAndWorlds)
       "clips": {
         "Swing": {
           "tracks": [
-            { "node": "Hinge", "property": "rotation", "times": [0, 1.5], "values": [0, 0, 0, 1, 0, 0, 0, 2] },
+            { "node": "Hinge", "property": "rotation", "times": [0, 1.5], "values": [0, 0, 0, 1, 0, 0, 1, 0] },
             { "node": "Panel", "property": "scale", "times": [0.5], "values": [1, 1, 1] }
           ],
           "skeletalAnimations": [ { "skeletonInstance": "Latch", "animation": "Open" } ]
@@ -658,7 +659,7 @@ TEST_F(CpkgBuild, WritesClipsAndWorlds)
         ASSERT_EQ(tracks.size(), 2u);
         EXPECT_EQ(tracks[0].NodeIndex, 3);
         EXPECT_EQ(tracks[0].Property, CpkgAnimationProperty::Rotation);
-        EXPECT_EQ(payload.Elements<CpkgAnimationClipData>(tracks[0].Values)[7], 1.0f);
+        EXPECT_EQ(payload.Elements<CpkgAnimationClipData>(tracks[0].Values)[6], 1.0f);
         EXPECT_EQ(tracks[1].NodeIndex, 4);
         EXPECT_EQ(payload.Elements<CpkgAnimationClipData>(tracks[1].Times)[0], 0.5f);
         const std::span<const CpkgSkeletalAnimationBinding> bindings = payload.Elements<CpkgAnimationClipData>(swing.SkeletalAnimations);
@@ -812,7 +813,7 @@ TEST_F(CpkgBuild, ReportsBundleStructureErrors)
                                               { "mesh": "Body", "skin": "Skin", "skeletonInstance": "Spot" } ] }
       ],
       "placements": [ { "name": "Spot", "bundle": "Goblin" }, { "bundle": "Arena" }, { "bundle": "Nowhere" }, { "bundle": "Levels/Camp" } ],
-      "meshFields": [ { "mesh": "Skeleton", "transforms": [ { "rotation": [0, 0, 0, 0] } ] } ],
+      "meshFields": [ { "mesh": "Skeleton", "transforms": [ { "rotation": [0, 0, 0.7071, 0.7071] } ] } ],
       "exports": ["Rig", "Spot", "Missing"]
     },
     {
@@ -841,7 +842,7 @@ TEST_F(CpkgBuild, ReportsBundleStructureErrors)
         "levels.cpkg.json:12:51: error: a node with \"bone\" needs a parent node with a \"skeletonInstance\" [/bundles/0/nodes/1/children/0/bone]\n"
         "levels.cpkg.json:13:119: error: the skin's skeleton \"Other\" is not the skeleton instance's \"Skeleton\" [/bundles/0/nodes/2/meshInstances/0/skin]\n"
         "levels.cpkg.json:14:35: error: the skeleton \"Skeleton\" has no bone \"Tail\" [/bundles/0/nodes/2/children/0/bone]\n"
-        "levels.cpkg.json:14:55: error: expected a non-zero quaternion [/bundles/0/nodes/2/children/0/rotation]\n"
+        "levels.cpkg.json:14:55: error: expected a unit quaternion; its squared length is 0 [/bundles/0/nodes/2/children/0/rotation]\n"
         "levels.cpkg.json:15:47: error: no node from this mesh instance's node to its root has a \"skeletonInstance\" for the skin to bind to [/bundles/0/nodes/3/meshInstances/0]\n"
         "levels.cpkg.json:15:57: error: \"Skin\" is a skin, not a mesh [/bundles/0/nodes/3/meshInstances/0/mesh]\n"
         "levels.cpkg.json:15:137: error: the node \"Plain\" has no \"skeletonInstance\" [/bundles/0/nodes/3/meshInstances/1/skeletonInstance]\n"
@@ -851,7 +852,7 @@ TEST_F(CpkgBuild, ReportsBundleStructureErrors)
         "levels.cpkg.json:18:98: error: the package has no bundle \"Nowhere\" [/bundles/0/placements/2/bundle]\n"
         "levels.cpkg.json:18:123: error: \"Levels/Camp\" places this bundle, directly or through the bundles it places [/bundles/0/placements/3/bundle]\n"
         "levels.cpkg.json:19:33: error: \"Skeleton\" is a skeleton, not a mesh [/bundles/0/meshFields/0/mesh]\n"
-        "levels.cpkg.json:19:75: error: expected a non-zero quaternion [/bundles/0/meshFields/0/transforms/0/rotation]\n"
+        "levels.cpkg.json:19:75: error: expected a unit quaternion; its squared length is 0.999981 [/bundles/0/meshFields/0/transforms/0/rotation]\n"
         "levels.cpkg.json:20:26: error: \"Spot\" is a placement, not a node [/bundles/0/exports/1]\n"
         "levels.cpkg.json:20:34: error: the bundle has no node \"Missing\" [/bundles/0/exports/2]\n"
         "levels.cpkg.json:24:48: error: \"Goblin\" places this bundle, directly or through the bundles it places [/bundles/1/placements/0/bundle]\n"
@@ -907,7 +908,7 @@ TEST_F(CpkgBuild, ReportsValidationErrorsInDocumentOrder)
     EXPECT_EQ(result.Err,
         "levels.cpkg.json:8:57: error: \"Sky\" is not a 2D image with one array slice [/bundles/0/materials/Brass/textures/albedo]\n"
         "levels.cpkg.json:9:39: error: \"Brass\" is a material, not an image [/bundles/0/skyboxes/Day/image]\n"
-        "levels.cpkg.json:9:63: error: expected a non-zero quaternion [/bundles/0/skyboxes/Day/orientation]\n"
+        "levels.cpkg.json:9:63: error: expected a unit quaternion; its squared length is 0 [/bundles/0/skyboxes/Day/orientation]\n"
         "levels.cpkg.json:9:99: error: the package has no bundle \"Missing\" [/bundles/0/skyboxes/Night/image]\n"
         "levels.cpkg.json:11:56: error: expected \"min\" <= \"max\" on every axis [/bundles/0/meshes/Tri/bounds]\n"
         "levels.cpkg.json:12:30: error: a group of a \"patchList4CP\" mesh needs \"uv0\" [/bundles/0/meshes/Tri/groups/0]\n"
@@ -922,9 +923,9 @@ TEST_F(CpkgBuild, ReportsValidationErrorsInDocumentOrder)
         "levels.cpkg.json:18:134: error: the skeleton has no bone \"Tail\" [/bundles/1/skeletons/Goblin/bones/2/parent]\n"
         "levels.cpkg.json:20:59: error: the skeleton \"Goblin\" has no bone \"Head\" [/bundles/1/skins/Skin/bones/1]\n"
         "levels.cpkg.json:20:81: error: expected 2 bind poses, one per bone; found 1 [/bundles/1/skins/Skin/bindPoses]\n"
-        "levels.cpkg.json:21:104: error: expected a non-zero quaternion [/bundles/1/skins/Borrowed/bindPoses/0/rotation]\n"
+        "levels.cpkg.json:21:104: error: expected a unit quaternion; its squared length is 0 [/bundles/1/skins/Borrowed/bindPoses/0/rotation]\n"
         "levels.cpkg.json:24:60: error: expected nondecreasing times; key 1 is earlier than key 0 [/bundles/1/skeletalAnimations/Walk/tracks/0/times]\n"
-        "levels.cpkg.json:24:78: error: expected non-zero quaternions; key 1 is zero [/bundles/1/skeletalAnimations/Walk/tracks/0/values]\n"
+        "levels.cpkg.json:24:78: error: expected unit quaternions; key 1 has squared length 0 [/bundles/1/skeletalAnimations/Walk/tracks/0/values]\n"
         "levels.cpkg.json:25:9: error: a track with a \"cubic\" key needs \"tangents\" [/bundles/1/skeletalAnimations/Walk/tracks/1]\n"
         "levels.cpkg.json:25:19: error: the animation already has a \"rotation\" track for \"Hips\" [/bundles/1/skeletalAnimations/Walk/tracks/1/bone]\n"
         "levels.cpkg.json:25:75: error: expected 4 numbers, 4 for each of 1 key; found 5 [/bundles/1/skeletalAnimations/Walk/tracks/1/values]\n"

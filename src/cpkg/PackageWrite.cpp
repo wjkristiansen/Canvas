@@ -11,7 +11,6 @@
 #endif
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -27,24 +26,14 @@ using namespace Canvas;
 namespace
 {
 
-// q scaled to unit length. q is non-zero; Validate checks it.
-Vec4 Normalized(const Vec4 &q)
-{
-    const double length = std::sqrt(double(q[0]) * q[0] + double(q[1]) * q[1] + double(q[2]) * q[2] + double(q[3]) * q[3]);
-    return { float(q[0] / length), float(q[1] / length), float(q[2] / length), float(q[3] / length) };
-}
-
-// The transform with its rotation normalized; an omitted part keeps CpkgTransform's identity value.
+// The transform; an omitted part keeps CpkgTransform's identity value.
 CpkgTransform ToCpkgTransform(const SourceTransform &source)
 {
     CpkgTransform transform;
     if (source.Scale)
         std::memcpy(transform.Scale, source.Scale->data(), sizeof(transform.Scale));
     if (source.Rotation)
-    {
-        const Vec4 rotation = Normalized(source.Rotation->Quaternion);
-        std::memcpy(transform.Rotation, rotation.data(), sizeof(transform.Rotation));
-    }
+        std::memcpy(transform.Rotation, source.Rotation->Quaternion.data(), sizeof(transform.Rotation));
     if (source.Translation)
         std::memcpy(transform.Translation, source.Translation->data(), sizeof(transform.Translation));
     return transform;
@@ -271,10 +260,7 @@ private:
         CpkgSkyboxData header;
         header.Image = encoder.AppendText(skybox.Image.Text);
         if (skybox.Orientation)
-        {
-            const Vec4 orientation = Normalized(skybox.Orientation->Quaternion);
-            std::memcpy(header.Orientation, orientation.data(), sizeof(header.Orientation));
-        }
+            std::memcpy(header.Orientation, skybox.Orientation->Quaternion.data(), sizeof(header.Orientation));
         header.Intensity = skybox.Intensity;
         return Append(AssetType::Skybox, asset.Name, encoder, header);
     }
@@ -418,20 +404,7 @@ private:
         const size_t keys = source.Times.Values.size();
         pTrack->Property = source.Property;
         pTrack->Times = encoder.Append(source.Times.Values);
-
-        if (source.Property == CpkgAnimationProperty::Rotation)
-        {
-            std::vector<float> values;
-            for (size_t i = 0; i < keys; ++i)
-            {
-                const Vec4 q = Normalized({ source.Values.Values[i * 4], source.Values.Values[i * 4 + 1],
-                    source.Values.Values[i * 4 + 2], source.Values.Values[i * 4 + 3] });
-                values.insert(values.end(), q.begin(), q.end());
-            }
-            pTrack->Values = encoder.Append(values);
-        }
-        else
-            pTrack->Values = encoder.Append(source.Values.Values);
+        pTrack->Values = encoder.Append(source.Values.Values);
 
         // Interpolations are stored per key unless every key's is Linear; tangents only for a
         // track with a Cubic key.
