@@ -176,6 +176,77 @@ TEST(CanvasMathTest, Normalize)
     }
 }
 
+// Normalize gives the zero vector, not an arbitrary axis, for a zero-length vector, so a caller
+// can detect it.
+TEST(CanvasMathTest, NormalizeZero)
+{
+    EXPECT_TRUE(FloatVector2(0.0f, 0.0f).Normalize().IsZero());
+    EXPECT_TRUE(FloatVector3(0.0f, 0.0f, 0.0f).Normalize().IsZero());
+    EXPECT_TRUE(FloatVector4(0.0f, 0.0f, 0.0f, 0.0f).Normalize().IsZero());
+    EXPECT_TRUE(DoubleVector4(0.0, 0.0, 0.0, 0.0).Normalize().IsZero());
+
+    // The zero quaternion, not the identity a TQuaternion default-constructs to.
+    const FloatQuaternion zero = FloatQuaternion(0.0f, 0.0f, 0.0f, 0.0f).Normalize();
+    EXPECT_TRUE(zero.IsZero());
+}
+
+// Bitwise equality, since Normalize returns a unit value unchanged.
+template <class TVec>
+bool SameBits(const TVec &a, const TVec &b)
+{
+    return std::memcmp(a.V, b.V, sizeof(a.V)) == 0;
+}
+
+template <class TVec>
+void ExpectNormalizeIsStable()
+{
+    using Type = typename TVec::Type;
+    for (int i = 1; i <= 1000; ++i)
+    {
+        TVec v;
+        for (int axis = 0; axis < TVec::Dim; ++axis)
+            v.V[axis] = Type(std::sin(i * (axis + 1) * 0.7) * (i % 17 + 1));
+        const TVec unit = v.Normalize();
+        EXPECT_TRUE(unit.IsNormalized()) << i;
+        EXPECT_TRUE(SameBits(unit.Normalize(), unit)) << i;
+        EXPECT_TRUE(SameBits(unit.Normalize().Normalize(), unit)) << i;
+    }
+}
+
+TEST(CanvasMathTest, NormalizeTolerances)
+{
+    // A value normalized once is unit within the default tolerance, so Normalize returns it
+    // unchanged.
+    ExpectNormalizeIsStable<FloatVector3>();
+    ExpectNormalizeIsStable<FloatVector4>();
+    ExpectNormalizeIsStable<DoubleVector3>();
+    ExpectNormalizeIsStable<FloatQuaternion>();
+    ExpectNormalizeIsStable<TQuaternion<double>>();
+
+    // Other values are scaled.
+    EXPECT_TRUE(AlmostEqual(FloatVector3(3.0f, 4.0f, 0.0f).Normalize(), FloatVector3(0.6f, 0.8f, 0.0f)));
+    const FloatQuaternion q = FloatQuaternion(0.0f, 0.0f, 0.0f, 2.0f).Normalize();
+    EXPECT_TRUE(SameBits(q, FloatQuaternion(0.0f, 0.0f, 0.0f, 1.0f)));
+
+    // A vector at or below MinLengthSquared has no direction: the zero vector.
+    EXPECT_TRUE(FloatVector3(1e-6f, 0.0f, 0.0f).Normalize().IsZero());
+    EXPECT_FALSE(FloatVector3(1e-5f, 0.0f, 0.0f).Normalize().IsZero());
+    EXPECT_TRUE(FloatVector3(1e-6f, 0.0f, 0.0f).Normalize(0.0f).IsNormalized());
+
+    // Normalize leaves unchanged exactly what IsNormalized accepts.
+    const FloatQuaternion nearUnit(0.0f, 0.0f, 0.7071f, 0.7071f);
+    EXPECT_FALSE(SameBits(nearUnit.Normalize(), nearUnit));
+    EXPECT_TRUE(SameBits(nearUnit.Normalize(0.0f, 1e-4f), nearUnit));
+    EXPECT_TRUE(nearUnit.Normalize().IsNormalized());
+
+    // The tolerances apply to the squared length.
+    EXPECT_FALSE(FloatQuaternion(0.0f, 0.0f, 0.7071f, 0.7071f).IsNormalized());
+    EXPECT_TRUE(FloatQuaternion(0.0f, 0.0f, 0.70710678f, 0.70710678f).IsNormalized());
+    EXPECT_TRUE(FloatQuaternion(0.0f, 0.0f, 0.7071f, 0.7071f).IsNormalized(1e-4f));
+    EXPECT_EQ(UnitLengthSquaredTolerance<float>, 8 * FLT_EPSILON);
+    EXPECT_EQ(UnitLengthSquaredTolerance<double>, 8 * DBL_EPSILON);
+}
+
 TEST(CanvasMathTest, MatrixRotation)
 {
     using MatrixType = FloatMatrix4x4;
@@ -294,14 +365,15 @@ TEST(CanvasMathTest, NormalMatrix)
     // No translation.
     EXPECT_TRUE(AlmostEqual(nm[3], FloatVector4(0.0f, 0.0f, 0.0f, 1.0f)));
 
-    // A tiny uniform scale (determinant ~1e-15) still rotates the normal.
+    // A tiny uniform scale (determinant ~1e-15) still rotates the normal. The normal it gives is
+    // about 1e-10 long, below the default MinLengthSquared, so it normalizes with no minimum.
     const float tiny = 1e-5f;
     const FloatMatrix4x4 r = ZRotationMatrix<float>(0.7f);
     FloatMatrix4x4 scaled = r;
     for (int row = 0; row < 3; ++row)
         for (int c = 0; c < 3; ++c)
             scaled[row][c] *= tiny;
-    const FloatVector4 nSmall = (n * Canvas::Math::NormalMatrix(scaled)).Normalize();
+    const FloatVector4 nSmall = (n * Canvas::Math::NormalMatrix(scaled)).Normalize(0.0f);
     const FloatVector4 nRotated = (n * r).Normalize();
     EXPECT_TRUE(AlmostEqual(nSmall, nRotated));
 

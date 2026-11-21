@@ -75,6 +75,14 @@ namespace
 
         return cutoff;
     }
+
+    // A light's unit forward axis: row 0 of its node's world matrix, which scale above the node
+    // leaves off unit length. A degenerate axis falls back to +X, as LightBVH's bounds do.
+    Canvas::Math::FloatVector4 LightAxis(const Canvas::Math::FloatMatrix4x4 &world)
+    {
+        const Canvas::Math::FloatVector4 axis = Canvas::Math::FloatVector4(world[0][0], world[0][1], world[0][2], 0.0f).Normalize();
+        return axis.IsZero() ? Canvas::Math::FloatVector4(1.0f, 0.0f, 0.0f, 0.0f) : axis;
+    }
 }
 
 // Verify Canvas::LightType enum values match the HLSL LIGHT_* defines (HlslTypes.h).
@@ -2549,8 +2557,7 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
         auto world = pNode->GetGlobalMatrix();
         if (pLight->GetType() == Canvas::LightType::Directional)
         {
-            Canvas::Math::FloatVector4 dir(world[0][0], world[0][1], world[0][2], 0.0f);
-            dir = dir.Normalize();
+            const Canvas::Math::FloatVector4 dir = LightAxis(world);
             gpu.DirectionOrPosition = { dir[0], dir[1], dir[2], 0.0f };
         }
         else if (pLight->GetType() == Canvas::LightType::Spot)
@@ -2562,8 +2569,7 @@ Gem::Result CRenderQueue12::SubmitLight(Canvas::XLight *pLight)
             // belongs here.
             gpu.DirectionOrPosition = { world[3][0], world[3][1], world[3][2], 1.0f };
 
-            Canvas::Math::FloatVector4 dir(world[0][0], world[0][1], world[0][2], 0.0f);
-            dir = dir.Normalize();
+            const Canvas::Math::FloatVector4 dir = LightAxis(world);
 
             float innerAngle = 0.785398f;
             float outerAngle = 1.047198f;
