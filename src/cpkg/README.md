@@ -25,6 +25,7 @@ cpkg <command> [<subcommand>] [<arguments>] [<options>]
 | [`inputs`](#inputs) | Writes the [input list](#input-lists) of a package or a project, without building |
 | [`dump`](#dump) | Prints the contents of a `.cpkg` file |
 | [`unpack`](#unpack) | Writes a package source that builds a `.cpkg` file |
+| [`format`](#format) | Rewrites a package source in the standard form |
 | [`import`](#import) | Adds an FBX import to a bundle of a package source |
 | [`rename`](#rename-move-and-refs) | Renames an asset, node, placement, or bundle, and updates everything that refers to it |
 | [`move`](#rename-move-and-refs) | Moves a shared asset to another bundle, and updates everything that refers to it |
@@ -118,11 +119,23 @@ Rig/
 
 **Images.** Each encoded image is written verbatim to a file with its encoding's extension, `.png`, `.jpg`, or `.tif`. An image of one encoded image is written in the file form, as `<asset>.png`; a cube image of 6 slices and one mip level in the cubemap form, its faces `<asset>.+X.png` through `<asset>.-Z.png`; and any other image in the general form, its files `<asset>.0.png`, `<asset>.1.png`, and so on, in the image's order.
 
-**Values.** The source omits each field that equals its default, writes rotations as quaternions, and writes each number in the shortest form that reads back as the same stored value. Each file is written in `cpkg`'s fixed [formatting](#editing-sources).
+**Values.** The source writes rotations as quaternions and each file in the [standard form](#editing-sources), so `cpkg format` leaves it unchanged.
 
 **File names.** A bundle's folder and an asset's files are named for the bundle or asset. Each character a file name cannot hold on common file systems, a folder name's final `.` or space, and each `%`, is written as `%` and the character's two hexadecimal digits; a name a file system reserves, such as `CON`, has its first character written that way. A file name already used in its folder, as the output's file system compares names, takes the smallest suffix `~2`, `~3`, and so on, before its extension, that makes it unique.
 
 **Packages it cannot unpack.** Some packages have no source that builds them, such as one whose assets are not in the order a build appends them, one with an import node whose placement is unnamed, or one with a light whose color has an alpha other than 1. `unpack` writes its files to a temporary folder beside the output, builds them, and moves them into place only when the build reproduces the package. Otherwise it writes nothing and reports each asset the source cannot reproduce, naming what it holds that no source expresses. Every package `cpkg` builds unpacks.
+
+### format
+
+```
+cpkg format <package.cpkg.json> [--check]
+```
+
+Rewrites the package file and each bundle file it includes in the [standard form](#editing-sources), and saves only the files whose text changes. `format` loads the source as `build` does, and saves nothing when loading reports an error.
+
+| Option | Meaning |
+|---|---|
+| `--check` | Saves nothing, and reports each file that is not in the standard form as an error |
 
 ### import
 
@@ -265,7 +278,9 @@ Because `cpkg` leaves unchanged output files untouched, steps that depend on the
 
 The commands that change files, `import`, `rename`, `move`, and `project`, load the files they change, apply the change, validate the result, and save only the files whose content changed. A command that reports an error saves no file.
 
-**Round trip.** A save reproduces each file's JSON values, and a change rewrites only what it changes. It keeps each file's structure (which bundles are inline and which are included), the order of keys and array entries, `$comment` and `$extras` keys, and the form in which each value was written: a rotation in degrees stays in degrees, a binary array file stays a file, and an omitted field stays omitted rather than being written with its default. `cpkg` writes JSON in one fixed formatting, so a file already in that formatting saves byte for byte unchanged, and a change appears in a text diff as just that change.
+**Round trip.** A save keeps each file's structure (which bundles are inline and which are included), the order of keys and array entries, `$comment` and `$extras` keys and their values as written, and the form in which each value was written: a rotation in degrees stays in degrees, and a binary array file stays a file. A change rewrites only what it changes, and each file is saved in the standard form.
+
+**Standard form.** A file in the standard form is written in `cpkg`'s one fixed formatting. Each number written with a fraction or an exponent is written as an integer when its value is one, and otherwise in the shortest form that reads back as the same float. Each field whose default is a fixed value is omitted when it equals that default after conversion to the stored type, such as a transform's `[1, 1, 1]` scale or a rotation that is the identity in either form; a field whose default is computed, such as a mesh's `bounds`, and a field of an [edit](PackageSource.md#editing-imported-nodes), which replaces what it lists, are kept. A file already in the standard form saves byte for byte unchanged, so a change appears in a text diff as just that change.
 
 ### Refactors
 
