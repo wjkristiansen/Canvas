@@ -26,7 +26,9 @@ namespace fs = std::filesystem;
 
 using Canvas::AnimationInterpolation;
 using Canvas::CpkgAnimationProperty;
+using Canvas::CpkgCameraData;
 using Canvas::CpkgImageDimension;
+using Canvas::CpkgLightData;
 using Canvas::CpkgMobility;
 using Canvas::GfxPrimitiveTopology;
 using Canvas::LightType;
@@ -169,6 +171,46 @@ private:
         size_t Bundle = 0;
         uint32_t File = 0;
     };
+
+    //--------------------------------------------------------------------------------------------
+    // Defaults
+
+    // Records that the member at pointer equals its default, so a save omits it. Inside an edit's
+    // own fields, where an omitted field leaves the imported value unchanged, nothing is recorded.
+    void Defaulted(const std::string &pointer)
+    {
+        if (!m_InEdit)
+            m_Package.Files[m_File]->Defaults.push_back(pointer);
+    }
+
+    // Records the member at pointer when value has the bits of its default.
+    template <class T>
+    void DefaultedIf(const T &value, const T &defaultValue, const std::string &pointer)
+    {
+        if (std::memcmp(&value, &defaultValue, sizeof(T)) == 0)
+            Defaulted(pointer);
+    }
+
+    // Sets m_InEdit while it lives.
+    class CEditScope
+    {
+    public:
+        explicit CEditScope(CSourceLoader &loader) :
+            m_Loader(loader),
+            m_WasInEdit(loader.m_InEdit)
+        {
+            loader.m_InEdit = true;
+        }
+        ~CEditScope() { m_Loader.m_InEdit = m_WasInEdit; }
+
+    private:
+        CSourceLoader &m_Loader;
+        bool m_WasInEdit;
+    };
+
+    static constexpr Vec3 kZero3 = { 0.0f, 0.0f, 0.0f };
+    static constexpr Vec3 kOne3 = { 1.0f, 1.0f, 1.0f };
+    static constexpr Vec4 kIdentityRotation = { 0.0f, 0.0f, 0.0f, 1.0f };
 
     //--------------------------------------------------------------------------------------------
     // Files
@@ -456,47 +498,75 @@ private:
         return read;
     }
 
+    // Reads an optional member whose omission means defaultValue.
     template <size_t N>
-    void ReadOptionalVector(const Json &object, const char *key, const std::string &pointer, std::optional<std::array<float, N>> *pVector)
+    void ReadOptionalVector(const Json &object, const char *key, const std::string &pointer, const std::array<float, N> &defaultValue,
+        std::optional<std::array<float, N>> *pVector)
     {
         if (const Json *pValue = Member(object, key))
         {
             std::array<float, N> vector = {};
             if (ReadVector(*pValue, Child(pointer, key), &vector))
+            {
                 *pVector = vector;
+                DefaultedIf(vector, defaultValue, Child(pointer, key));
+            }
+        }
+    }
+
+    // Reads an optional member into *pVector, which holds its default.
+    template <size_t N>
+    void ReadDefaultedVector(const Json &object, const char *key, const std::string &pointer, std::array<float, N> *pVector)
+    {
+        const std::array<float, N> defaultValue = *pVector;
+        if (const Json *pValue = Member(object, key))
+        {
+            if (ReadVector(*pValue, Child(pointer, key), pVector))
+                DefaultedIf(*pVector, defaultValue, Child(pointer, key));
         }
     }
 
     template <size_t N>
-    void ReadDefaultedVector(const Json &object, const char *key, const std::string &pointer, std::array<float, N> *pVector)
+    void ReadRequiredVector(const Json &object, const char *key, const std::string &pointer, std::array<float, N> *pVector)
     {
         if (const Json *pValue = Member(object, key))
             ReadVector(*pValue, Child(pointer, key), pVector);
     }
 
-    void ReadOptionalNumber(const Json &object, const char *key, const std::string &pointer, std::optional<float> *pNumber)
+    void ReadOptionalNumber(const Json &object, const char *key, const std::string &pointer, float defaultValue, std::optional<float> *pNumber)
     {
         if (const Json *pValue = Member(object, key))
         {
             float number = 0.0f;
             if (ReadNumber(*pValue, Child(pointer, key), &number))
+            {
                 *pNumber = number;
+                DefaultedIf(number, defaultValue, Child(pointer, key));
+            }
         }
     }
 
     void ReadDefaultedNumber(const Json &object, const char *key, const std::string &pointer, float *pNumber)
     {
+        const float defaultValue = *pNumber;
         if (const Json *pValue = Member(object, key))
-            ReadNumber(*pValue, Child(pointer, key), pNumber);
+        {
+            if (ReadNumber(*pValue, Child(pointer, key), pNumber))
+                DefaultedIf(*pNumber, defaultValue, Child(pointer, key));
+        }
     }
 
-    void ReadOptionalBool(const Json &object, const char *key, const std::string &pointer, std::optional<bool> *pBool)
+    void ReadOptionalBool(const Json &object, const char *key, const std::string &pointer, bool defaultValue, std::optional<bool> *pBool)
     {
         if (const Json *pValue = Member(object, key))
         {
             bool flag = false;
             if (ReadBool(*pValue, Child(pointer, key), &flag))
+            {
                 *pBool = flag;
+                if (flag == defaultValue)
+                    Defaulted(Child(pointer, key));
+            }
         }
     }
 
@@ -526,14 +596,33 @@ private:
         return false;
     }
 
+    // Reads an optional member whose omission means defaultValue, or that has no default when
+    // defaultValue is empty.
     template <class T, size_t N>
-    void ReadOptionalEnum(const Json &object, const char *key, const std::string &pointer, const EnumName<T> (&names)[N], std::optional<T> *pValue)
+    void ReadOptionalEnum(const Json &object, const char *key, const std::string &pointer, const EnumName<T> (&names)[N],
+        std::optional<T> defaultValue, std::optional<T> *pValue)
     {
         if (const Json *pMember = Member(object, key))
         {
             T value = {};
             if (ReadEnum(*pMember, Child(pointer, key), names, &value))
+            {
                 *pValue = value;
+                if (value == defaultValue)
+                    Defaulted(Child(pointer, key));
+            }
+        }
+    }
+
+    // Reads an optional member into *pValue, which holds its default.
+    template <class T, size_t N>
+    void ReadDefaultedEnum(const Json &object, const char *key, const std::string &pointer, const EnumName<T> (&names)[N], T *pValue)
+    {
+        const T defaultValue = *pValue;
+        if (const Json *pMember = Member(object, key))
+        {
+            if (ReadEnum(*pMember, Child(pointer, key), names, pValue) && *pValue == defaultValue)
+                Defaulted(Child(pointer, key));
         }
     }
 
@@ -647,22 +736,27 @@ private:
         return false;
     }
 
+    // Reads an optional rotation whose omission means the identity.
     void ReadOptionalRotation(const Json &object, const char *key, const std::string &pointer, std::optional<SourceRotation> *pRotation)
     {
         if (const Json *pValue = Member(object, key))
         {
             SourceRotation rotation;
             if (ReadRotation(*pValue, Child(pointer, key), &rotation))
+            {
+                DefaultedIf(rotation.Quaternion, kIdentityRotation, Child(pointer, key));
                 *pRotation = std::move(rotation);
+            }
         }
     }
 
-    // Reads the translation, rotation, and scale members of object.
+    // Reads the translation, rotation, and scale members of object, each the identity's when
+    // omitted.
     void ReadTransformMembers(const Json &object, const std::string &pointer, SourceTransform *pTransform)
     {
-        ReadOptionalVector(object, "translation", pointer, &pTransform->Translation);
+        ReadOptionalVector(object, "translation", pointer, kZero3, &pTransform->Translation);
         ReadOptionalRotation(object, "rotation", pointer, &pTransform->Rotation);
-        ReadOptionalVector(object, "scale", pointer, &pTransform->Scale);
+        ReadOptionalVector(object, "scale", pointer, kOne3, &pTransform->Scale);
     }
 
     void ReadTransform(const Json &value, const std::string &pointer, SourceTransform *pTransform)
@@ -676,8 +770,8 @@ private:
         pBounds->Where = At(value, pointer);
         if (!ExpectObject(value, pointer, { "min", "max" }, { "min", "max" }))
             return;
-        ReadDefaultedVector(value, "min", pointer, &pBounds->Min);
-        ReadDefaultedVector(value, "max", pointer, &pBounds->Max);
+        ReadRequiredVector(value, "min", pointer, &pBounds->Min);
+        ReadRequiredVector(value, "max", pointer, &pBounds->Max);
     }
 
     // Calls read(element, pointer) for each element of an array.
@@ -793,7 +887,11 @@ private:
             bool valid = ReadFile(value["file"], Child(pointer, "file"), &arrayFile.Ref);
             const Json *pOffset = Member(value, "offset");
             if (pOffset)
+            {
                 valid = ReadByteOffset(*pOffset, Child(pointer, "offset"), &arrayFile.Offset.emplace()) && valid;
+                if (valid && *arrayFile.Offset == 0)
+                    Defaulted(Child(pointer, "offset"));
+            }
             const Json *pCount = Member(value, "count");
             if (pCount)
                 valid = ReadInteger(*pCount, Child(pointer, "count"), 0, &arrayFile.Count.emplace()) && valid;
@@ -1048,9 +1146,15 @@ private:
             if (const Json *pDimension = Member(value, "dimension"))
                 ReadEnum(*pDimension, Child(pointer, "dimension"), kDimensions, &pImage->Dimension);
             if (const Json *pArraySize = Member(value, "arraySize"))
-                ReadInteger(*pArraySize, Child(pointer, "arraySize"), 1, &pImage->ArraySize);
+            {
+                if (ReadInteger(*pArraySize, Child(pointer, "arraySize"), 1, &pImage->ArraySize) && pImage->ArraySize == 1)
+                    Defaulted(Child(pointer, "arraySize"));
+            }
             if (const Json *pMipLevels = Member(value, "mipLevels"))
-                ReadInteger(*pMipLevels, Child(pointer, "mipLevels"), 1, &pImage->MipLevels);
+            {
+                if (ReadInteger(*pMipLevels, Child(pointer, "mipLevels"), 1, &pImage->MipLevels) && pImage->MipLevels == 1)
+                    Defaulted(Child(pointer, "mipLevels"));
+            }
             ReadRequiredList(value, "files", pointer, "file", [&](const Json &entry, const std::string &entryPointer)
             {
                 SourceFileRef file;
@@ -1110,8 +1214,7 @@ private:
         if (!ExpectObject(value, pointer, { "topology", "bounds", "groups" }, { "groups" }))
             return;
 
-        if (const Json *pTopology = Member(value, "topology"))
-            ReadEnum(*pTopology, Child(pointer, "topology"), kTopologies, &pMesh->Topology);
+        ReadDefaultedEnum(value, "topology", pointer, kTopologies, &pMesh->Topology);
 
         if (const Json *pBounds = Member(value, "bounds"))
         {
@@ -1225,9 +1328,15 @@ private:
             {
                 ReadEnum(*pInterpolation, interpolationPointer, kInterpolations, &pTrack->Interpolations[0]);
             }
+            const bool linear = std::all_of(pTrack->Interpolations.begin(), pTrack->Interpolations.end(),
+                [](AnimationInterpolation interpolation) { return interpolation == AnimationInterpolation::Linear; });
+            if (linear && !pTrack->Interpolations.empty())
+                Defaulted(interpolationPointer);
         }
 
         ReadOptionalArray(value, "tangents", pointer, 1, &pTrack->Tangents);
+        if (pTrack->Tangents && !pTrack->Tangents->File && pTrack->Tangents->Values.empty())
+            Defaulted(Child(pointer, "tangents"));
     }
 
     void ReadSkeletalAnimation(const Json &value, const std::string &pointer, SourceSkeletalAnimation *pAnimation)
@@ -1288,11 +1397,22 @@ private:
             ReadMeshField(entry, entryPointer, &pAttachments->MeshFields.emplace_back());
         });
 
+        // An edit's camera and light set the fields they list, so none of them is a default.
         if (const Json *pCamera = Member(object, "camera"))
+        {
+            std::optional<CEditScope> scope;
+            if (edit)
+                scope.emplace(*this);
             ReadCamera(*pCamera, Child(pointer, "camera"), &pAttachments->Camera.emplace());
+        }
 
         if (const Json *pLight = Member(object, "light"))
+        {
+            std::optional<CEditScope> scope;
+            if (edit)
+                scope.emplace(*this);
             ReadLight(*pLight, Child(pointer, "light"), !edit, &pAttachments->Light.emplace());
+        }
 
         ReadOptionalList(object, "placements", pointer, [&](const Json &entry, const std::string &entryPointer)
         {
@@ -1317,7 +1437,7 @@ private:
 
         ReadOptionalString(value, "name", pointer, &CSourceLoader::ReadName, &pNode->Name);
         ReadTransformMembers(value, pointer, &pNode->Transform);
-        ReadOptionalEnum(value, "mobility", pointer, kMobilities, &pNode->Mobility);
+        ReadOptionalEnum(value, "mobility", pointer, kMobilities, std::optional(CpkgMobility::Static), &pNode->Mobility);
         ReadOptionalString(value, "bone", pointer, &CSourceLoader::ReadName, &pNode->Bone);
         ReadAttachments(value, pointer, false, &pNode->Attachments);
     }
@@ -1348,7 +1468,7 @@ private:
 
         ReadOptionalString(value, "name", pointer, &CSourceLoader::ReadName, &pPlacement->Name);
         ReadRequiredString(value, "bundle", pointer, &CSourceLoader::ReadBundlePath, &pPlacement->Bundle);
-        ReadOptionalEnum(value, "mobility", pointer, kMobilities, &pPlacement->Mobility);
+        ReadOptionalEnum(value, "mobility", pointer, kMobilities, std::optional(CpkgMobility::Static), &pPlacement->Mobility);
         ReadTransformMembers(value, pointer, &pPlacement->Transform);
     }
 
@@ -1361,7 +1481,11 @@ private:
         ReadOptionalString(value, "name", pointer, &CSourceLoader::ReadName, &pField->Name);
         ReadRequiredString(value, "mesh", pointer, &CSourceLoader::ReadAssetPath, &pField->Mesh);
         if (const Json *pCull = Member(value, "cullDistance"))
-            ReadNumberAtLeast(*pCull, Child(pointer, "cullDistance"), 0.0f, true, &pField->CullDistance);
+        {
+            const float defaultValue = pField->CullDistance;
+            if (ReadNumberAtLeast(*pCull, Child(pointer, "cullDistance"), 0.0f, true, &pField->CullDistance))
+                DefaultedIf(pField->CullDistance, defaultValue, Child(pointer, "cullDistance"));
+        }
         ReadRequiredList(value, "transforms", pointer, "transform", [&](const Json &entry, const std::string &entryPointer)
         {
             ReadTransform(entry, entryPointer, &pField->Transforms.emplace_back());
@@ -1374,10 +1498,11 @@ private:
         if (!ExpectObject(value, pointer, { "nearClip", "farClip", "fovAngle", "exposureStops" }))
             return;
 
-        ReadOptionalNumber(value, "nearClip", pointer, &pCamera->NearClip);
-        ReadOptionalNumber(value, "farClip", pointer, &pCamera->FarClip);
-        ReadOptionalNumber(value, "fovAngle", pointer, &pCamera->FovAngle);
-        ReadOptionalNumber(value, "exposureStops", pointer, &pCamera->ExposureStops);
+        const CpkgCameraData defaults;
+        ReadOptionalNumber(value, "nearClip", pointer, defaults.NearClip, &pCamera->NearClip);
+        ReadOptionalNumber(value, "farClip", pointer, defaults.FarClip, &pCamera->FarClip);
+        ReadOptionalNumber(value, "fovAngle", pointer, defaults.FovAngle, &pCamera->FovAngle);
+        ReadOptionalNumber(value, "exposureStops", pointer, defaults.ExposureStops, &pCamera->ExposureStops);
     }
 
     void ReadLight(const Json &value, const std::string &pointer, bool typeRequired, SourceLight *pLight)
@@ -1393,26 +1518,31 @@ private:
             return;
         }
 
-        ReadOptionalEnum(value, "type", pointer, kLightTypes, &pLight->Type);
-        ReadOptionalVector(value, "color", pointer, &pLight->Color);
-        ReadOptionalNumber(value, "intensity", pointer, &pLight->Intensity);
-        ReadOptionalBool(value, "enabled", pointer, &pLight->Enabled);
-        ReadOptionalBool(value, "castsShadows", pointer, &pLight->CastsShadows);
-        ReadOptionalNumber(value, "range", pointer, &pLight->Range);
-        ReadOptionalNumber(value, "attenuationConstant", pointer, &pLight->AttenuationConstant);
-        ReadOptionalNumber(value, "attenuationLinear", pointer, &pLight->AttenuationLinear);
-        ReadOptionalNumber(value, "attenuationQuadratic", pointer, &pLight->AttenuationQuadratic);
-        ReadOptionalNumber(value, "spotInnerAngle", pointer, &pLight->SpotInnerAngle);
-        ReadOptionalNumber(value, "spotOuterAngle", pointer, &pLight->SpotOuterAngle);
+        const CpkgLightData defaults;
+        ReadOptionalEnum(value, "type", pointer, kLightTypes, std::optional<LightType>(), &pLight->Type);
+        ReadOptionalVector(value, "color", pointer, Vec3{ defaults.Color[0], defaults.Color[1], defaults.Color[2] }, &pLight->Color);
+        ReadOptionalNumber(value, "intensity", pointer, defaults.Intensity, &pLight->Intensity);
+        ReadOptionalBool(value, "enabled", pointer, true, &pLight->Enabled);
+        ReadOptionalBool(value, "castsShadows", pointer, false, &pLight->CastsShadows);
+        ReadOptionalNumber(value, "range", pointer, defaults.Range, &pLight->Range);
+        ReadOptionalNumber(value, "attenuationConstant", pointer, defaults.AttenuationConstant, &pLight->AttenuationConstant);
+        ReadOptionalNumber(value, "attenuationLinear", pointer, defaults.AttenuationLinear, &pLight->AttenuationLinear);
+        ReadOptionalNumber(value, "attenuationQuadratic", pointer, defaults.AttenuationQuadratic, &pLight->AttenuationQuadratic);
+        ReadOptionalNumber(value, "spotInnerAngle", pointer, defaults.SpotInnerAngle, &pLight->SpotInnerAngle);
+        ReadOptionalNumber(value, "spotOuterAngle", pointer, defaults.SpotOuterAngle, &pLight->SpotOuterAngle);
         if (const Json *pResolution = Member(value, "shadowResolution"))
         {
             uint32_t resolution = 0;
             if (ReadInteger(*pResolution, Child(pointer, "shadowResolution"), 0, &resolution))
+            {
                 pLight->ShadowResolution = resolution;
+                if (resolution == defaults.ShadowResolution)
+                    Defaulted(Child(pointer, "shadowResolution"));
+            }
         }
-        ReadOptionalNumber(value, "shadowConstantBias", pointer, &pLight->ShadowConstantBias);
-        ReadOptionalNumber(value, "shadowSlopeScaleBias", pointer, &pLight->ShadowSlopeScaleBias);
-        ReadOptionalNumber(value, "shadowNormalOffset", pointer, &pLight->ShadowNormalOffset);
+        ReadOptionalNumber(value, "shadowConstantBias", pointer, defaults.ShadowConstantBias, &pLight->ShadowConstantBias);
+        ReadOptionalNumber(value, "shadowSlopeScaleBias", pointer, defaults.ShadowSlopeScaleBias, &pLight->ShadowSlopeScaleBias);
+        ReadOptionalNumber(value, "shadowNormalOffset", pointer, defaults.ShadowNormalOffset, &pLight->ShadowNormalOffset);
     }
 
     void ReadClip(const Json &value, const std::string &pointer, SourceClip *pClip)
@@ -1513,10 +1643,17 @@ private:
         if (const Json *pFile = Member(value, "file"))
             ReadFile(*pFile, Child(pointer, "file"), &pImport->File);
         if (const Json *pScale = Member(value, "scale"))
-            ReadNumberAtLeast(*pScale, Child(pointer, "scale"), 0.0f, false, &pImport->Scale);
+        {
+            const float defaultValue = pImport->Scale;
+            if (ReadNumberAtLeast(*pScale, Child(pointer, "scale"), 0.0f, false, &pImport->Scale))
+                DefaultedIf(pImport->Scale, defaultValue, Child(pointer, "scale"));
+        }
         ReadOptionalRotation(value, "rotation", pointer, &pImport->Rotation);
         if (const Json *pNodes = Member(value, "nodes"))
-            ReadBool(*pNodes, Child(pointer, "nodes"), &pImport->Nodes);
+        {
+            if (ReadBool(*pNodes, Child(pointer, "nodes"), &pImport->Nodes) && pImport->Nodes)
+                Defaulted(Child(pointer, "nodes"));
+        }
         ReadOptionalString(value, "parent", pointer, &CSourceLoader::ReadName, &pImport->Parent);
         ReadOptionalString(value, "skeleton", pointer, &CSourceLoader::ReadAssetPath, &pImport->Skeleton);
 
@@ -1617,8 +1754,12 @@ private:
             return;
         }
 
-        ReadTransformMembers(value, pointer, &pEdit->Transform);
-        ReadOptionalEnum(value, "mobility", pointer, kMobilities, &pEdit->Mobility);
+        // An edit replaces the fields it lists, so none of them is a default.
+        {
+            CEditScope scope(*this);
+            ReadTransformMembers(value, pointer, &pEdit->Transform);
+            ReadOptionalEnum(value, "mobility", pointer, kMobilities, std::optional<CpkgMobility>(), &pEdit->Mobility);
+        }
         ReadAttachments(value, pointer, true, &pEdit->Attachments);
     }
 
@@ -1626,6 +1767,7 @@ private:
     CDiagnostics &m_Diagnostics;
     uint32_t m_File = 0;
     fs::path m_Directory;
+    bool m_InEdit = false;          // reading an edit's own fields
     std::vector<Finding> m_Findings;
 };
 

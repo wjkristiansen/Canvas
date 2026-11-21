@@ -78,6 +78,13 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         unpack.AddOption(InCommand::OptionType::Switch, "force")
             .SetDescription("Replaces files that exist");
 
+        InCommand::CommandDecl &format = root.AddSubCommand("format");
+        format.SetDescription("Rewrites a package source in the standard form");
+        format.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
+            .SetDescription("The package file");
+        format.AddOption(InCommand::OptionType::Switch, "check")
+            .SetDescription("Saves nothing, and reports each file that is not in the standard form as an error");
+
         size_t blockCount = 0;
         try
         {
@@ -156,6 +163,18 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
             }
             options.Force = block.IsOptionSet("force");
             Unpack(options, diagnostics);
+        }
+        else if (command == "format")
+        {
+            if (!block.IsOptionSet("package.cpkg.json"))
+                return UsageError(err, "format: missing argument <package.cpkg.json>");
+
+            FormatOptions options;
+            options.Package = block.GetOptionValue("package.cpkg.json");
+            if (!HasExtension(options.Package, ".cpkg.json"))
+                return UsageError(err, "format: expected a .cpkg.json file: " + options.Package);
+            options.Check = block.IsOptionSet("check");
+            Format(options, diagnostics);
         }
 
         return diagnostics.GetErrorCount() == 0 ? kExitSuccess : kExitError;

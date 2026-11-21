@@ -39,6 +39,7 @@ struct SourceFile
     std::string Text;
     Json Document;
     std::unique_ptr<Canvas::CJsonLineIndex> Lines;  // over Text
+    std::vector<std::string> Defaults;              // JSON Pointers of members equal to their defaults
 };
 
 // Where a value is: its file, its byte offset, and its JSON Pointer. A map key's location is
@@ -86,8 +87,8 @@ struct SourceArray
 using Vec3 = std::array<float, 3>;
 using Vec4 = std::array<float, 4>;
 
-// A rotation as a quaternion, XYZW, converted from the degrees form when written that way. Not
-// yet normalized; Validate checks that it is non-zero.
+// A rotation as a quaternion, XYZW, converted from the degrees form when written that way.
+// Validate checks that it is a unit quaternion.
 struct SourceRotation
 {
     Vec4 Quaternion = { 0.0f, 0.0f, 0.0f, 1.0f };

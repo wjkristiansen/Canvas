@@ -20,7 +20,6 @@
 
 #include <algorithm>
 #include <bit>
-#include <charconv>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -630,21 +629,7 @@ private:
             return 0;
         }
 
-        // The shortest text that reads back as value; an integer when it is one.
-        char text[32];
-        const char *pEnd = std::to_chars(text, text + sizeof(text), value).ptr;
-        const std::string_view written(text, size_t(pEnd - text));
-        if (written.find_first_of(".e") == std::string_view::npos && written != "-0")
-        {
-            int64_t integer = 0;
-            if (std::from_chars(text, pEnd, integer).ec == std::errc())
-                return integer;
-        }
-        double number = 0.0;
-        std::from_chars(text, pEnd, number);
-        if (float(number) != value)
-            number = double(value);
-        return number;
+        return FloatJson(value);
     }
 
     Json Number(uint32_t value) { return uint64_t(value); }

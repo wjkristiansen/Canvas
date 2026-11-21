@@ -113,8 +113,8 @@ protected:
         std::filesystem::remove_all(m_Dir, ignored);
     }
 
-    // Unpacks package into folder, checks the files against the schema, and rebuilds them,
-    // expecting the rebuilt package to hold the same bytes.
+    // Unpacks package into folder, checks the files against the schema and the standard form, and
+    // rebuilds them, expecting the rebuilt package to hold the same bytes.
     void ExpectRoundTrip(const std::string &package, const std::string &folder)
     {
         const RunResult unpacked = RunCpkg({ "unpack", package, "-o", folder + "/levels.cpkg.json" });
@@ -125,6 +125,9 @@ protected:
             if (file.ends_with(".json"))
                 EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, folder + "/" + file)) << file;
         }
+        const RunResult checked = RunCpkg({ "format", folder + "/levels.cpkg.json", "--check" });
+        EXPECT_EQ(checked.Err, "");
+        EXPECT_EQ(checked.Status, CpkgTool::kExitSuccess);
 
         const RunResult rebuilt = RunCpkg({ "build", folder + "/levels.cpkg.json", "-o", folder + ".cpkg" });
         EXPECT_EQ(rebuilt.Err, "");

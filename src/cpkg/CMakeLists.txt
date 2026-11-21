@@ -10,6 +10,7 @@ add_library(CpkgTool STATIC
     Diagnostics.cpp
     Diagnostics.h
     Dump.cpp
+    Format.cpp
     PackageWrite.cpp
     Source.h
     SourceLoad.cpp

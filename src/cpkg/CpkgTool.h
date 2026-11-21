@@ -45,6 +45,15 @@ struct UnpackOptions
 // source expresses.
 void Unpack(const UnpackOptions &options, CDiagnostics &diagnostics);
 
+struct FormatOptions
+{
+    std::string Package;                // UTF-8 path of the .cpkg.json file
+    bool Check = false;                 // reports files not in the standard form instead of saving them
+};
+
+// Rewrites the package source's files in the standard form, saving only those whose text changes.
+void Format(const FormatOptions &options, CDiagnostics &diagnostics);
+
 struct BuildOptions
 {
     std::string Package;                // UTF-8 path of the .cpkg.json file

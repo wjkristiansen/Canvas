@@ -171,4 +171,14 @@ const char *AssetTypeName(Canvas::AssetType type);
 // Why CCpkgReader::Open failed with result for the .cpkg file at package, a UTF-8 path.
 std::string OpenFailure(Gem::Result result, const std::string &package);
 
+//------------------------------------------------------------------------------------------------
+// The standard form
+
+// The shortest JSON number that reads back as value, an integer when it is one. value is finite.
+Json FloatJson(float value);
+
+// The text of file in the standard form: its members equal to their defaults removed, its
+// numbers respelled, and laid out by JsonFormat.
+std::string StandardText(const SourceFile &file);
+
 } // namespace CpkgTool
