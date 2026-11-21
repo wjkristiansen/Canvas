@@ -55,19 +55,18 @@ GEMMETHODIMP_(Math::FloatMatrix4x4) CCamera::GetViewMatrix()
             // Camera view should be rigid even if imported hierarchy contains
             // scale. Orthonormalize the basis rows to remove scale/shear
             // before constructing the view matrix.
-            auto SafeNormalize = [](Math::FloatVector4 v, const Math::FloatVector4& fallback)
+            // A degenerate row, such as one a zero scale collapses, takes the fallback axis.
+            auto NormalizeOr = [](const Math::FloatVector4 &v, const Math::FloatVector4 &fallback)
             {
-                const float lenSq = Math::DotProduct(v, v);
-                if (lenSq <= 1e-12f)
-                    return fallback;
-                return v * (1.0f / std::sqrt(lenSq));
+                const Math::FloatVector4 normalized = v.Normalize();
+                return normalized.IsZero() ? fallback : normalized;
             };
 
-            basisFwd  = SafeNormalize(basisFwd,  Math::FloatVector4(1.0f, 0.0f, 0.0f, 0.0f));
+            basisFwd  = NormalizeOr(basisFwd,  Math::FloatVector4(1.0f, 0.0f, 0.0f, 0.0f));
             basisLeft = basisLeft - basisFwd * Math::DotProduct(basisLeft, basisFwd);
-            basisLeft = SafeNormalize(basisLeft, Math::FloatVector4(0.0f, 1.0f, 0.0f, 0.0f));
+            basisLeft = NormalizeOr(basisLeft, Math::FloatVector4(0.0f, 1.0f, 0.0f, 0.0f));
             basisUp   = Math::CrossProduct(basisFwd, basisLeft);
-            basisUp   = SafeNormalize(basisUp,   Math::FloatVector4(0.0f, 0.0f, 1.0f, 0.0f));
+            basisUp   = NormalizeOr(basisUp,   Math::FloatVector4(0.0f, 0.0f, 1.0f, 0.0f));
 
             // Right is the world-space negation of the camera's local left.
             Math::FloatVector4 basisRight(-basisLeft[0], -basisLeft[1], -basisLeft[2], 0.0f);

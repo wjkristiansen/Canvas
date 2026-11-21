@@ -105,8 +105,11 @@ Math::AABB ComputeInfluence(XLight* light, const Math::FloatMatrix4x4& world)
 
     // Scale anywhere above the light's node leaves the basis row off
     // unit length.  Normalize as the renderer does, so a degenerate
-    // axis falls back to the same direction it lights.
-    return ComputeSpotInfluenceAABB(worldPos, forward.Normalize(), range, outerHalfAngle);
+    // axis falls back to the same direction it lights: +X.
+    Math::FloatVector4 axis = forward.Normalize();
+    if (axis.IsZero())
+        axis = Math::FloatVector4(1.0f, 0.0f, 0.0f, 0.0f);
+    return ComputeSpotInfluenceAABB(worldPos, axis, range, outerHalfAngle);
 }
 
 } // anonymous namespace

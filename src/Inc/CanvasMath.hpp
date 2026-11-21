@@ -7,6 +7,7 @@
 #include <cmath>
 #include <float.h>
 #include <algorithm>
+#include <limits>
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -40,6 +41,36 @@ namespace Canvas
         _Type DotProduct(const TVector<_Type, _Dim> &a, const TVector<_Type, _Dim> &b);
 
         //------------------------------------------------------------------------------------------------
+        // Normalization tolerances, each applied to a squared length.
+        //
+        // UnitLengthSquaredTolerance: how far from 1 the squared length of a unit vector or
+        // quaternion may be. Scaling a value to unit length and rounding each component leaves
+        // its squared length within a few epsilon of 1, so a value normalized once stays
+        // unchanged when normalized again with this tolerance.
+        //
+        // MinLengthSquared: the squared length at or below which a vector has no meaningful
+        // direction: 1e-12, a length of 1e-6, for every type.
+        template<class _Type>
+        inline constexpr _Type UnitLengthSquaredTolerance = _Type(8) * std::numeric_limits<_Type>::epsilon();
+
+        template<class _Type>
+        inline constexpr _Type MinLengthSquared = _Type(1e-12);
+
+        // The implementations of the normalization members every vector and quaternion type
+        // shares; defined after DotProduct.
+        namespace Detail
+        {
+            template<class _Vector>
+            _Vector Normalize(const _Vector &v, typename _Vector::Type minLengthSquared, typename _Vector::Type unitLengthSquaredTolerance);
+
+            template<class _Vector>
+            bool IsNormalized(const _Vector &v, typename _Vector::Type unitLengthSquaredTolerance);
+
+            template<class _Vector>
+            bool IsZero(const _Vector &v);
+        }
+
+        //------------------------------------------------------------------------------------------------
         template<class _Type>
         struct TVector<_Type, 2>
         {
@@ -63,16 +94,22 @@ namespace Canvas
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
 
-            TVector Normalize() const
+            // This vector scaled to unit length: unchanged when IsNormalized(unitLengthSquaredTolerance),
+            // and the zero vector when its squared length is at most minLengthSquared.
+            TVector Normalize(Type minLengthSquared = MinLengthSquared<Type>,
+                Type unitLengthSquaredTolerance = UnitLengthSquaredTolerance<Type>) const
             {
-                Type lenSq = DotProduct(*this, *this);
-                if (lenSq > Type(0))
-                {
-                    Type invLen = Type(1) / std::sqrt(lenSq);
-                    return TVector<_Type, 2>(X * invLen, Y * invLen);
-                }
-                return TVector<_Type, 2>(Type(1), Type(0));
+                return Detail::Normalize(*this, minLengthSquared, unitLengthSquaredTolerance);
             }
+
+            // Whether its squared length is within unitLengthSquaredTolerance of 1.
+            bool IsNormalized(Type unitLengthSquaredTolerance = UnitLengthSquaredTolerance<Type>) const
+            {
+                return Detail::IsNormalized(*this, unitLengthSquaredTolerance);
+            }
+
+            // Whether every component is 0.
+            bool IsZero() const { return Detail::IsZero(*this); }
 
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -102,16 +139,22 @@ namespace Canvas
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
 
-            TVector Normalize() const
+            // This vector scaled to unit length: unchanged when IsNormalized(unitLengthSquaredTolerance),
+            // and the zero vector when its squared length is at most minLengthSquared.
+            TVector Normalize(Type minLengthSquared = MinLengthSquared<Type>,
+                Type unitLengthSquaredTolerance = UnitLengthSquaredTolerance<Type>) const
             {
-                Type lenSq = DotProduct(*this, *this);
-                if (lenSq > Type(0))
-                {
-                    Type invLen = Type(1) / std::sqrt(lenSq);
-                    return TVector<Type, 3>(X * invLen, Y * invLen, Z * invLen);
-                }
-                return TVector<Type, 3>(Type(1), Type(0), Type(0));
+                return Detail::Normalize(*this, minLengthSquared, unitLengthSquaredTolerance);
             }
+
+            // Whether its squared length is within unitLengthSquaredTolerance of 1.
+            bool IsNormalized(Type unitLengthSquaredTolerance = UnitLengthSquaredTolerance<Type>) const
+            {
+                return Detail::IsNormalized(*this, unitLengthSquaredTolerance);
+            }
+
+            // Whether every component is 0.
+            bool IsZero() const { return Detail::IsZero(*this); }
 
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -142,16 +185,22 @@ namespace Canvas
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
 
-            TVector Normalize() const
+            // This vector scaled to unit length: unchanged when IsNormalized(unitLengthSquaredTolerance),
+            // and the zero vector when its squared length is at most minLengthSquared.
+            TVector Normalize(Type minLengthSquared = MinLengthSquared<Type>,
+                Type unitLengthSquaredTolerance = UnitLengthSquaredTolerance<Type>) const
             {
-                Type lenSq = DotProduct(*this, *this);
-                if (lenSq > Type(0))
-                {
-                    Type invLen = Type(1) / std::sqrt(lenSq);
-                    return TVector<Type, 4>(X * invLen, Y * invLen, Z * invLen, W * invLen);
-                }
-                return TVector<Type, 4>(Type(1), Type(0), Type(0), Type(0));
+                return Detail::Normalize(*this, minLengthSquared, unitLengthSquaredTolerance);
             }
+
+            // Whether its squared length is within unitLengthSquaredTolerance of 1.
+            bool IsNormalized(Type unitLengthSquaredTolerance = UnitLengthSquaredTolerance<Type>) const
+            {
+                return Detail::IsNormalized(*this, unitLengthSquaredTolerance);
+            }
+
+            // Whether every component is 0.
+            bool IsZero() const { return Detail::IsZero(*this); }
 
             const _Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -183,16 +232,22 @@ namespace Canvas
             TVector(const TVector &o) = default;
             TVector &operator=(const TVector &o) = default;
 
-            TVector Normalize() const
+            // This vector scaled to unit length: unchanged when IsNormalized(unitLengthSquaredTolerance),
+            // and the zero vector when its squared length is at most minLengthSquared.
+            TVector Normalize(Type minLengthSquared = MinLengthSquared<Type>,
+                Type unitLengthSquaredTolerance = UnitLengthSquaredTolerance<Type>) const
             {
-                float lenSq = DotProduct(*this, *this);
-                if (lenSq > 0.0f)
-                {
-                    float invLen = 1.0f / std::sqrt(lenSq);
-                    return TVector<float, 4>(X * invLen, Y * invLen, Z * invLen, W * invLen);
-                }
-                return TVector<float, 4>(1.0f, 0.0f, 0.0f, 0.0f);
+                return Detail::Normalize(*this, minLengthSquared, unitLengthSquaredTolerance);
             }
+
+            // Whether its squared length is within unitLengthSquaredTolerance of 1.
+            bool IsNormalized(Type unitLengthSquaredTolerance = UnitLengthSquaredTolerance<Type>) const
+            {
+                return Detail::IsNormalized(*this, unitLengthSquaredTolerance);
+            }
+
+            // Whether every component is 0.
+            bool IsZero() const { return Detail::IsZero(*this); }
 
             const Type &operator[](int index) const { return V[index]; }
             Type &operator[](int index) { return V[index]; }
@@ -347,6 +402,61 @@ namespace Canvas
         {
             TVector<_Type, _Dim> temp = a * b;
             return VectorSum(temp);
+        }
+
+        //------------------------------------------------------------------------------------------------
+        namespace Detail
+        {
+            // v with every component set to 0. A TQuaternion default-constructs to the identity,
+            // so the zero value is made from v rather than constructed.
+            template<class _Vector>
+            _Vector Zero(const _Vector &v)
+            {
+                _Vector zero = v;
+                for (int i = 0; i < _Vector::Dim; ++i)
+                    zero.V[i] = typename _Vector::Type(0);
+                return zero;
+            }
+
+            // The unit-length test IsNormalized and Normalize share.
+            template<class _Type>
+            bool IsUnitLengthSquared(_Type lengthSquared, _Type unitLengthSquaredTolerance)
+            {
+                return std::abs(lengthSquared - _Type(1)) <= unitLengthSquaredTolerance;
+            }
+
+            template<class _Vector>
+            bool IsNormalized(const _Vector &v, typename _Vector::Type unitLengthSquaredTolerance)
+            {
+                return IsUnitLengthSquared(DotProduct(v, v), unitLengthSquaredTolerance);
+            }
+
+            template<class _Vector>
+            _Vector Normalize(const _Vector &v, typename _Vector::Type minLengthSquared, typename _Vector::Type unitLengthSquaredTolerance)
+            {
+                using Type = typename _Vector::Type;
+                const Type lengthSquared = DotProduct(v, v);
+                if (IsUnitLengthSquared(lengthSquared, unitLengthSquaredTolerance))
+                    return v;
+                if (lengthSquared <= minLengthSquared)
+                    return Zero(v);
+                const Type inverseLength = Type(1) / std::sqrt(lengthSquared);
+                _Vector normalized = v;
+                for (int i = 0; i < _Vector::Dim; ++i)
+                    normalized.V[i] *= inverseLength;
+                return normalized;
+            }
+
+            template<class _Vector>
+            bool IsZero(const _Vector &v)
+            {
+                for (int i = 0; i < _Vector::Dim; ++i)
+                {
+                    if (v.V[i] != typename _Vector::Type(0))
+                        return false;
+                }
+                return true;
+            }
         }
 
         //------------------------------------------------------------------------------------------------
@@ -845,7 +955,15 @@ namespace Canvas
 
             TQuaternion &operator=(const TQuaternion &o) = default;
 
-            TQuaternion<Type> Normalize() const;
+            // This quaternion scaled to unit length: unchanged when
+            // IsNormalized(unitLengthSquaredTolerance), and the zero quaternion when its squared
+            // length is at most minLengthSquared. The zero quaternion is no rotation, so a caller
+            // can detect degenerate input.
+            TQuaternion<Type> Normalize(Type minLengthSquared = MinLengthSquared<Type>,
+                Type unitLengthSquaredTolerance = UnitLengthSquaredTolerance<Type>) const
+            {
+                return Detail::Normalize(*this, minLengthSquared, unitLengthSquaredTolerance);
+            }
 
 
             // Returns a vector whose direction is the axis and whose magnitude is the angle
@@ -969,23 +1087,6 @@ namespace Canvas
         TQuaternion<_Type> IdentityQuaternion()
         {
             return TQuaternion<_Type>(0, 0, 0, 1);
-        }
-
-        //------------------------------------------------------------------------------------------------
-        // Should be a unit quaternion but may need to be Normalized to correct
-        // for accumulated floating point errors
-        template<class _Type>
-        TQuaternion<_Type> TQuaternion<_Type>::Normalize() const
-        {
-            TQuaternion<_Type> qn = *this;
-            const _Type  dot = DotProduct(qn, qn);
-            constexpr _Type epsilon = _Type(1e-6);
-            if(std::abs(dot - static_cast<_Type>(1)) > epsilon)
-            {
-                const _Type  rsq = 1 / std::sqrt(dot);
-                qn = qn * rsq;
-            }
-            return qn;
         }
 
         //------------------------------------------------------------------------------------------------
