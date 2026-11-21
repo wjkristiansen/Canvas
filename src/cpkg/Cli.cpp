@@ -7,7 +7,9 @@
 #include "InCommand.h"
 
 #include <new>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #ifndef CPKG_VERSION
 #error CPKG_VERSION must name the cpkg version
@@ -22,6 +24,17 @@ namespace
     {
         err << "cpkg: error: " << message << "\nRun 'cpkg --help' for usage.\n";
         return kExitUsage;
+    }
+
+    // The message for a command line InCommand rejects, in cpkg's form: lowercase, after the
+    // command it concerns, such as "build: missing argument <package.cpkg.json>".
+    std::string SyntaxMessage(const InCommand::SyntaxException &e)
+    {
+        std::string message = e.GetMessage();
+        if (!message.empty() && message[0] >= 'A' && message[0] <= 'Z')
+            message[0] = char(message[0] - 'A' + 'a');
+        const std::vector<std::string> &path = e.GetCommandPath();
+        return path.size() > 1 ? path.back() + ": " + message : message;
     }
 
     bool HasExtension(std::string_view path, std::string_view extension)
@@ -51,6 +64,7 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         InCommand::CommandDecl &build = root.AddSubCommand("build");
         build.SetDescription("Builds a package source into a .cpkg file");
         build.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
+            .SetRequired()
             .SetDescription("The package file");
         build.AddOption(InCommand::OptionType::Variable, "output", 'o')
             .SetDescription("The .cpkg file to write; by default the package file's name without .json, beside it");
@@ -58,11 +72,13 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         InCommand::CommandDecl &validate = root.AddSubCommand("validate");
         validate.SetDescription("Reports the diagnostics a build would report, without writing anything");
         validate.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
+            .SetRequired()
             .SetDescription("The package file");
 
         InCommand::CommandDecl &dump = root.AddSubCommand("dump");
         dump.SetDescription("Prints the contents of a .cpkg file");
         dump.AddOption(InCommand::OptionType::Parameter, "package.cpkg")
+            .SetRequired()
             .SetDescription("The package file");
         dump.AddOption(InCommand::OptionType::Variable, "bundle")
             .SetDescription("Lists only the bundle of this name");
@@ -72,6 +88,7 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         InCommand::CommandDecl &unpack = root.AddSubCommand("unpack");
         unpack.SetDescription("Writes a package source that builds a .cpkg file");
         unpack.AddOption(InCommand::OptionType::Parameter, "package.cpkg")
+            .SetRequired()
             .SetDescription("The package file");
         unpack.AddOption(InCommand::OptionType::Variable, "output", 'o')
             .SetDescription("The package file to write; by default the .cpkg file's name with .json added, beside it");
@@ -81,6 +98,7 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         InCommand::CommandDecl &format = root.AddSubCommand("format");
         format.SetDescription("Rewrites a package source in the standard form");
         format.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
+            .SetRequired()
             .SetDescription("The package file");
         format.AddOption(InCommand::OptionType::Switch, "check")
             .SetDescription("Saves nothing, and reports each file that is not in the standard form as an error");
@@ -88,11 +106,11 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         size_t blockCount = 0;
         try
         {
-            blockCount = parser.ParseArgs(argc, const_cast<const char **>(argv));
+            blockCount = parser.ParseArgs(argc, argv);
         }
         catch (const InCommand::SyntaxException &e)
         {
-            return UsageError(err, e.GetMessage());
+            return UsageError(err, SyntaxMessage(e));
         }
 
         if (parser.WasAutoHelpRequested())
@@ -102,6 +120,7 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
             out << "cpkg " CPKG_VERSION "\n";
             return kExitSuccess;
         }
+        // Not InCommand's SetSubCommandRequired: --version alone is a complete command line.
         if (blockCount < 2)
             return UsageError(err, "missing command");
 
@@ -111,8 +130,6 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
 
         if (command == "build")
         {
-            if (!block.IsOptionSet("package.cpkg.json"))
-                return UsageError(err, "build: missing argument <package.cpkg.json>");
             BuildOptions options;
             options.Package = block.GetOptionValue("package.cpkg.json");
             if (!HasExtension(options.Package, ".cpkg.json"))
@@ -123,9 +140,6 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         }
         else if (command == "validate")
         {
-            if (!block.IsOptionSet("package.cpkg.json"))
-                return UsageError(err, "validate: missing argument <package.cpkg.json>");
-
             ValidateOptions options;
             options.Package = block.GetOptionValue("package.cpkg.json");
             if (!HasExtension(options.Package, ".cpkg.json"))
@@ -134,9 +148,6 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         }
         else if (command == "dump")
         {
-            if (!block.IsOptionSet("package.cpkg"))
-                return UsageError(err, "dump: missing argument <package.cpkg>");
-
             DumpOptions options;
             options.Package = block.GetOptionValue("package.cpkg");
             if (!HasExtension(options.Package, ".cpkg"))
@@ -148,9 +159,6 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         }
         else if (command == "unpack")
         {
-            if (!block.IsOptionSet("package.cpkg"))
-                return UsageError(err, "unpack: missing argument <package.cpkg>");
-
             UnpackOptions options;
             options.Package = block.GetOptionValue("package.cpkg");
             if (!HasExtension(options.Package, ".cpkg"))
@@ -166,9 +174,6 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         }
         else if (command == "format")
         {
-            if (!block.IsOptionSet("package.cpkg.json"))
-                return UsageError(err, "format: missing argument <package.cpkg.json>");
-
             FormatOptions options;
             options.Package = block.GetOptionValue("package.cpkg.json");
             if (!HasExtension(options.Package, ".cpkg.json"))
