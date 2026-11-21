@@ -471,6 +471,74 @@ struct SourcePackage
     std::vector<SourceBundle> Bundles;                  // in the package file's order
 };
 
+//------------------------------------------------------------------------------------------------
+// Names a source writes for values
+
+// The name a source writes for an enumerator.
+template <class T>
+struct EnumName
+{
+    std::string_view Name;
+    T Value;
+};
+
+inline constexpr EnumName<Canvas::CpkgMobility> kMobilities[] = {
+    { "static", Canvas::CpkgMobility::Static },
+    { "stationary", Canvas::CpkgMobility::Stationary },
+    { "movable", Canvas::CpkgMobility::Movable },
+};
+
+inline constexpr EnumName<Canvas::GfxPrimitiveTopology> kTopologies[] = {
+    { "triangleList", Canvas::GfxPrimitiveTopology::TriangleList },
+    { "patchList4CP", Canvas::GfxPrimitiveTopology::PatchList4CP },
+};
+
+inline constexpr EnumName<Canvas::CpkgImageDimension> kDimensions[] = {
+    { "texture1D", Canvas::CpkgImageDimension::Texture1D },
+    { "texture2D", Canvas::CpkgImageDimension::Texture2D },
+    { "texture3D", Canvas::CpkgImageDimension::Texture3D },
+    { "cube", Canvas::CpkgImageDimension::Cube },
+};
+
+inline constexpr EnumName<Canvas::CpkgAnimationProperty> kProperties[] = {
+    { "translation", Canvas::CpkgAnimationProperty::Translation },
+    { "rotation", Canvas::CpkgAnimationProperty::Rotation },
+    { "scale", Canvas::CpkgAnimationProperty::Scale },
+};
+
+inline constexpr EnumName<Canvas::AnimationInterpolation> kInterpolations[] = {
+    { "linear", Canvas::AnimationInterpolation::Linear },
+    { "step", Canvas::AnimationInterpolation::Step },
+    { "cubic", Canvas::AnimationInterpolation::Cubic },
+};
+
+inline constexpr EnumName<Canvas::LightType> kLightTypes[] = {
+    { "ambient", Canvas::LightType::Ambient },
+    { "point", Canvas::LightType::Point },
+    { "directional", Canvas::LightType::Directional },
+    { "spot", Canvas::LightType::Spot },
+    { "area", Canvas::LightType::Area },
+};
+
+// Keys of a material's "textures", in SourceTextureRole order.
+inline constexpr const char *kTextureRoles[] = { "albedo", "normal", "roughness", "metallic", "ambientOcclusion", "emissive" };
+static_assert(std::size(kTextureRoles) == size_t(SourceTextureRole::Count));
+
+// Keys of a cubemap, in SourceImage::Files order.
+inline constexpr const char *kCubeFaces[] = { "+X", "-X", "+Y", "-Y", "+Z", "-Z" };
+
+// The name names gives value, or an empty name when it gives none.
+template <class T, size_t N>
+std::string_view EnumNameOf(const EnumName<T> (&names)[N], T value)
+{
+    for (const EnumName<T> &name : names)
+    {
+        if (name.Value == value)
+            return name.Name;
+    }
+    return {};
+}
+
 // Reads the package file at packageFile, a UTF-8 path, and the bundle files it includes into
 // *pPackage, and reports what does not follow the package source format, in document order
 // within each file. Returns true when it reported no error; *pPackage then holds the whole

@@ -69,6 +69,15 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         dump.AddOption(InCommand::OptionType::Switch, "payloads")
             .SetDescription("Adds each payload's fields");
 
+        InCommand::CommandDecl &unpack = root.AddSubCommand("unpack");
+        unpack.SetDescription("Writes a package source that builds a .cpkg file");
+        unpack.AddOption(InCommand::OptionType::Parameter, "package.cpkg")
+            .SetDescription("The package file");
+        unpack.AddOption(InCommand::OptionType::Variable, "output", 'o')
+            .SetDescription("The package file to write; by default the .cpkg file's name with .json added, beside it");
+        unpack.AddOption(InCommand::OptionType::Switch, "force")
+            .SetDescription("Replaces files that exist");
+
         size_t blockCount = 0;
         try
         {
@@ -129,6 +138,24 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
                 options.Bundle = block.GetOptionValue("bundle");
             options.Payloads = block.IsOptionSet("payloads");
             Dump(options, out, diagnostics);
+        }
+        else if (command == "unpack")
+        {
+            if (!block.IsOptionSet("package.cpkg"))
+                return UsageError(err, "unpack: missing argument <package.cpkg>");
+
+            UnpackOptions options;
+            options.Package = block.GetOptionValue("package.cpkg");
+            if (!HasExtension(options.Package, ".cpkg"))
+                return UsageError(err, "unpack: expected a .cpkg file: " + options.Package);
+            if (block.IsOptionSet("output"))
+            {
+                options.Output = block.GetOptionValue("output");
+                if (!HasExtension(*options.Output, ".cpkg.json"))
+                    return UsageError(err, "unpack: expected a .cpkg.json output file: " + *options.Output);
+            }
+            options.Force = block.IsOptionSet("force");
+            Unpack(options, diagnostics);
         }
 
         return diagnostics.GetErrorCount() == 0 ? kExitSuccess : kExitError;

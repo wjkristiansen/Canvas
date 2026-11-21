@@ -39,39 +39,6 @@ CpkgTransform ToCpkgTransform(const SourceTransform &source)
     return transform;
 }
 
-// Whether the files at a and b both exist and hold the same bytes.
-bool SameBytes(const std::filesystem::path &a, const std::filesystem::path &b)
-{
-    std::error_code error;
-    const uintmax_t size = std::filesystem::file_size(a, error);
-    if (error || std::filesystem::file_size(b, error) != size || error)
-        return false;
-
-    std::ifstream fileA(a, std::ios::binary);
-    std::ifstream fileB(b, std::ios::binary);
-    char bufferA[64 * 1024];
-    char bufferB[64 * 1024];
-    while (fileA && fileB)
-    {
-        fileA.read(bufferA, sizeof(bufferA));
-        fileB.read(bufferB, sizeof(bufferB));
-        if (fileA.gcount() != fileB.gcount() || std::memcmp(bufferA, bufferB, size_t(fileA.gcount())) != 0)
-            return false;
-    }
-    return fileA.eof() && fileB.eof();
-}
-
-// A temporary file name beside path, unique to this process.
-std::string TemporaryPath(const std::string &path)
-{
-#if defined(_WIN32)
-    const int process = _getpid();
-#else
-    const int process = int(getpid());
-#endif
-    return path + "." + std::to_string(process) + ".tmp";
-}
-
 // Copies values, whose size is a multiple of an element's, into elements of TElement.
 template <class TElement, class T>
 std::vector<TElement> Elements(const std::vector<T> &values)
@@ -669,6 +636,38 @@ private:
 };
 
 } // namespace
+
+// Whether the files at a and b both exist and hold the same bytes.
+bool SameBytes(const std::filesystem::path &a, const std::filesystem::path &b)
+{
+    std::error_code error;
+    const uintmax_t size = std::filesystem::file_size(a, error);
+    if (error || std::filesystem::file_size(b, error) != size || error)
+        return false;
+
+    std::ifstream fileA(a, std::ios::binary);
+    std::ifstream fileB(b, std::ios::binary);
+    char bufferA[64 * 1024];
+    char bufferB[64 * 1024];
+    while (fileA && fileB)
+    {
+        fileA.read(bufferA, sizeof(bufferA));
+        fileB.read(bufferB, sizeof(bufferB));
+        if (fileA.gcount() != fileB.gcount() || std::memcmp(bufferA, bufferB, size_t(fileA.gcount())) != 0)
+            return false;
+    }
+    return fileA.eof() && fileB.eof();
+}
+
+std::string TemporaryPath(const std::string &path)
+{
+#if defined(_WIN32)
+    const int process = _getpid();
+#else
+    const int process = int(getpid());
+#endif
+    return path + "." + std::to_string(process) + ".tmp";
+}
 
 bool WritePackage(const SourcePackage &package, const std::string &path, CDiagnostics &diagnostics)
 {
