@@ -135,6 +135,16 @@ TEST_F(CpkgCli, PrintsHelp)
     EXPECT_NE(result.Out.find("--werror"), std::string::npos) << result.Out;
     EXPECT_EQ(result.Err, "");
 
+    // Global options and commands are listed in the order cpkg declares them.
+    const size_t help = result.Out.find("  --help, -h");
+    const size_t werror = result.Out.find("  --werror");
+    const size_t build = result.Out.find("  build ");
+    const size_t format = result.Out.find("  format ");
+    EXPECT_LT(help, werror) << result.Out;
+    EXPECT_LT(werror, build) << result.Out;
+    EXPECT_LT(build, format) << result.Out;
+    EXPECT_EQ(result.Out.find(" \n"), std::string::npos) << result.Out;
+
     result = RunCpkg({ "dump", "-h" });
     EXPECT_EQ(result.Status, 0);
     EXPECT_NE(result.Out.find("--payloads"), std::string::npos) << result.Out;
@@ -162,6 +172,9 @@ TEST_F(CpkgCli, InvalidCommandLines)
     }
 
     EXPECT_EQ(RunCpkg({}).Err, "cpkg: error: missing command\nRun 'cpkg --help' for usage.\n");
+    EXPECT_EQ(RunCpkg({ "biuld" }).Err, "cpkg: error: unknown command 'biuld'\nRun 'cpkg --help' for usage.\n");
+    EXPECT_EQ(RunCpkg({ "dump", "sample.cpkg", "--bundle" }).Err,
+        "cpkg: error: dump: missing value for option --bundle\nRun 'cpkg --help' for usage.\n");
     EXPECT_EQ(RunCpkg({ "dump" }).Err, "cpkg: error: dump: missing argument <package.cpkg>\nRun 'cpkg --help' for usage.\n");
     EXPECT_EQ(RunCpkg({ "dump", "a.txt" }).Err, "cpkg: error: dump: expected a .cpkg file: a.txt\nRun 'cpkg --help' for usage.\n");
 }
