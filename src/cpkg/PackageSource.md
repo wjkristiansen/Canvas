@@ -347,7 +347,7 @@ Each entry of `importNodes` is a node representing a node exported by a placed b
 ```json
 "clips": {
   "DoorSwing": {
-    "tracks": [ { "node": "Hinge", "property": "rotation", "times": [0, 1.5], "values": [0, 0, 0, 1, 0, 0, 0.766, 0.6428] } ]
+    "tracks": [ { "node": "Hinge", "property": "rotation", "times": [0, 1.5], "values": [0, 0, 0, 1, 0, 0, 0.76604444, 0.64278761] } ]
   },
   "Walk": {
     "skeletalAnimations": [ { "skeletonInstance": "Goblin", "animation": "Walk.anim" } ]
@@ -543,6 +543,6 @@ The schema checks each file's shape. A package source is also valid only when it
 - **Tracks.** `times` is nondecreasing, and `values`, an `interpolation` array, and `tangents` hold the number of entries its keys and `property` call for (see [Animation Tracks](../CanvasPkg/README.md#animation-tracks)). A clip track's `node` is not an import node and has no `bone`, and its effective mobility is `"movable"`, with the bundle's instance counting as `"static"`. A clip animates each node property, and binds each skeleton instance, at most once, and a skeletal animation animates each bone property at most once.
 - **Paths.** Each path is well formed for its kind. A path within the same package resolves to an existing asset of the declared type or to an existing bundle; a path into another package is checked when the build has a project. A placement's or region's bundle is not a world bundle.
 - **Arrays.** Each inline array's length is a multiple of its element size, and each binary array's range lies within its file. Parallel streams have equal counts, and a skin has one bind pose per bone.
-- **Values.** Quaternions are non-zero; the build normalizes them. Bounds have `min <= max` on every axis. A world's `defaultSkybox` is one of its `skyboxes`.
+- **Values.** Each quaternion is a unit quaternion: its squared length is within `8 * FLT_EPSILON`, about `9.5e-7`, of 1, which takes about 7 significant digits in each component. The build stores it as written. Bounds have `min <= max` on every axis. A world's `defaultSkybox` is one of its `skyboxes`.
 - **Imports.** Each `file` is an FBX file the build can read. Each clip's `stack` exists, and its range lies within the stack, with its start no later than its end. Each key of `rename` and `replace` names content of its kind in the file, and each key of `edits` names a node the import builds, so a misspelled key is reported. Each built name follows the rules of [Names and References](#names-and-references) and is unique within the bundle. Each image the import builds has an encoding CanvasPkg stores. With `skeleton`, every bone a skin deforms with is a bone of that skeleton; a skeletal animation's tracks on bones the skeleton lacks are left out, and the build reports each one.
 - **Hierarchy.** An import node's placement attaches outside that import node's own subtree. No bundle places itself, directly or through the bundles it places; a cycle through another package is checked when the build has a project. Every other rule of the [package format](../CanvasPkg/README.md) holds for the built package.
