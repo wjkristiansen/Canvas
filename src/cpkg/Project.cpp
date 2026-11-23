@@ -6,18 +6,6 @@
 #include "Project.h"
 #include "Stages.h"
 
-#include <algorithm>
-#include <atomic>
-#include <charconv>
-#include <filesystem>
-#include <iterator>
-#include <new>
-#include <span>
-#include <sstream>
-#include <string>
-#include <thread>
-#include <vector>
-
 #ifndef CPKG_VERSION
 #error CPKG_VERSION must name the cpkg version
 #endif

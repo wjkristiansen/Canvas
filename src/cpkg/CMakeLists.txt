@@ -22,6 +22,7 @@ add_library(CpkgTool STATIC
     Stages.h
     Translate.cpp
     Unpack.cpp
+    pch.h
 )
 
 set_target_properties(CpkgTool PROPERTIES
@@ -49,6 +50,8 @@ target_link_libraries(CpkgTool
         InCommandLib
         InCommandHeaders
 )
+
+target_precompile_headers(CpkgTool PRIVATE pch.h)
 
 add_executable(cpkg Main.cpp)
 

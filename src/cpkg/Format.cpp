@@ -9,14 +9,6 @@
 #include "CpkgTool.h"
 #include "Stages.h"
 
-#include <charconv>
-#include <cmath>
-#include <cstdint>
-#include <filesystem>
-#include <string>
-#include <string_view>
-#include <system_error>
-
 namespace CpkgTool
 {
 
