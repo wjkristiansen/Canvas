@@ -85,6 +85,8 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
             .SetDescription("For a package, the project manifest to validate it against");
         build.AddOption(InCommand::OptionType::Variable, "jobs", 'j')
             .SetDescription("For a project, the most packages built at once; by default the number of hardware threads");
+        build.AddOption(InCommand::OptionType::Variable, "depfile")
+            .SetDescription("The dependency file to write, naming the built .cpkg file or built project and every file the build read");
 
         InCommand::CommandDecl &validate = root.AddSubCommand("validate");
         validate.SetDescription("Reports the diagnostics a build would report, without writing anything");
@@ -166,6 +168,8 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
                     return UsageError(err, "build: --jobs takes a count of at least 1: " + jobs);
                 options.Jobs = count;
             }
+            if (block.IsOptionSet("depfile"))
+                options.Depfile = block.GetOptionValue("depfile");
             Build(options, diagnostics);
         }
         else if (command == "validate")

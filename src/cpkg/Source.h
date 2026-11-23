@@ -483,7 +483,7 @@ struct SourcePackage
 
     // The UTF-8 paths of the files the build reads, or tried to read, in the order it first
     // read them, each once.
-    std::vector<std::string> Inputs;
+    std::vector<std::string> Inputs;    // every file the build read, UTF-8 paths, in the order first read
 };
 
 // Records that the build reads the file at path. Inputs lists each file once, in the order of

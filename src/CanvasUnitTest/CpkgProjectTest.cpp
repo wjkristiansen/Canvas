@@ -72,6 +72,21 @@ namespace
         std::filesystem::last_write_time(std::filesystem::path(path), TimeOf(path) - std::chrono::hours(1));
     }
 
+    // The current directory, absolute, with '/' separators.
+    std::string Here()
+    {
+        return std::filesystem::current_path().generic_string();
+    }
+
+    // The dependency file naming target and inputs, paths relative to the current directory.
+    std::string DependencyRule(const std::string &target, const std::vector<std::string> &inputs)
+    {
+        std::string text = Here() + "/" + target + ":";
+        for (const std::string &input : inputs)
+            text += " \\\n  " + Here() + "/" + input;
+        return text + "\n";
+    }
+
     // A project of three packages: Levels and Textures listed by source, and Vendor prebuilt.
     void WriteProject()
     {
@@ -397,6 +412,123 @@ TEST_F(CpkgProject, ReportsBuiltFileNamesTheFileSystemTakesAsOne)
     EXPECT_EQ(FilesUnder("build"), std::vector<std::string>{});
 }
 #endif
+
+TEST_F(CpkgProject, WritesAPackagesDependencyFile)
+{
+    WriteProject();
+    const RunResult result = RunCpkg({ "build", "levels/levels.cpkg.json", "--project", "game.cproj.json", "--depfile", "levels.d" });
+    EXPECT_EQ(result.Err, "");
+    ASSERT_EQ(result.Status, CpkgTool::kExitSuccess);
+
+    // The package file, then the manifest and the packages its paths name.
+    EXPECT_EQ(ReadBytes("levels.d"), DependencyRule("levels/levels.cpkg",
+        { "levels/levels.cpkg.json", "game.cproj.json", "textures/textures.cpkg.json", "vendor/vendor.cpkg" }));
+
+    // Without a project, the package's own files.
+    ASSERT_EQ(RunCpkg({ "build", "textures/textures.cpkg.json", "--depfile", "textures.d" }).Err, "");
+    EXPECT_EQ(ReadBytes("textures.d"), DependencyRule("textures/textures.cpkg", { "textures/textures.cpkg.json", "textures/brass.png" }));
+
+    // A dependency file that cannot be written leaves the package as it was.
+    std::filesystem::remove("textures/textures.cpkg");
+    const RunResult unwritable = RunCpkg({ "build", "textures/textures.cpkg.json", "--depfile", "missing/textures.d" });
+    EXPECT_EQ(unwritable.Status, CpkgTool::kExitError);
+    EXPECT_EQ(unwritable.Err, "missing/textures.d: error: cannot write the file\n");
+    EXPECT_FALSE(std::filesystem::exists("textures/textures.cpkg"));
+}
+
+TEST_F(CpkgProject, WritesAProjectsDependencyFile)
+{
+    WriteProject();
+    const RunResult result = RunCpkg({ "build", "game.cproj.json", "--depfile", "game.d" });
+    EXPECT_EQ(result.Err, "");
+    ASSERT_EQ(result.Status, CpkgTool::kExitSuccess);
+
+    // The manifest, each package's inputs in manifest order, and the prebuilt package.
+    const std::string expected = DependencyRule("build/game.cproj.json",
+        { "game.cproj.json", "levels/levels.cpkg.json", "textures/textures.cpkg.json", "vendor/vendor.cpkg", "textures/brass.png" });
+    EXPECT_EQ(ReadBytes("game.d"), expected);
+
+    // Packages that are up to date name the inputs their records hold.
+    Age("game.d");
+    const auto written = TimeOf("game.d");
+    ASSERT_EQ(RunCpkg({ "build", "game.cproj.json", "--depfile", "game.d" }).Err, "");
+    EXPECT_EQ(ReadBytes("game.d"), expected);
+    EXPECT_EQ(TimeOf("game.d"), written);
+}
+
+TEST_F(CpkgProject, AFailedBuildLeavesTheDependencyFile)
+{
+    WriteProject();
+    ASSERT_EQ(RunCpkg({ "build", "game.cproj.json", "--depfile", "game.d" }).Err, "");
+    ASSERT_EQ(RunCpkg({ "build", "textures/textures.cpkg.json", "--depfile", "textures.d" }).Err, "");
+    const std::string game = ReadBytes("game.d");
+    const std::string textures = ReadBytes("textures.d");
+
+    WriteBytes("textures/textures.cpkg.json", R"({ "formatVersion": 1, "packageName": "Textures", "bundles": [ { "name": "Metals", "bogus": 1 } ] })");
+    EXPECT_EQ(RunCpkg({ "build", "game.cproj.json", "--depfile", "game.d" }).Status, CpkgTool::kExitError);
+    EXPECT_EQ(ReadBytes("game.d"), game);
+    EXPECT_EQ(RunCpkg({ "build", "textures/textures.cpkg.json", "--depfile", "textures.d" }).Status, CpkgTool::kExitError);
+    EXPECT_EQ(ReadBytes("textures.d"), textures);
+
+    // A source named as the dependency file is left as it was when its build fails.
+    EXPECT_EQ(RunCpkg({ "build", "textures/textures.cpkg.json", "--depfile", "game.cproj.json" }).Status, CpkgTool::kExitError);
+    EXPECT_FALSE(ReadBytes("game.cproj.json").empty());
+}
+
+TEST_F(CpkgProject, ReportsWritingAFileTheBuildReads)
+{
+    WriteProject();
+    const std::string source = ReadBytes("textures/textures.cpkg.json");
+    auto errors = [](std::vector<std::string> arguments)
+    {
+        const RunResult result = RunCpkg(std::move(arguments));
+        EXPECT_EQ(result.Status, CpkgTool::kExitError);
+        return result.Err;
+    };
+
+    EXPECT_EQ(errors({ "build", "textures/textures.cpkg.json", "-o", "textures/textures.cpkg.json" }),
+        "textures/textures.cpkg.json: error: the build reads this file, and cannot also write it\n");
+    EXPECT_EQ(errors({ "build", "textures/textures.cpkg.json", "--depfile", "textures/brass.png" }),
+        "textures/brass.png: error: the build reads this file, and cannot also write it\n");
+    EXPECT_EQ(errors({ "build", "textures/textures.cpkg.json", "--depfile", "textures/textures.cpkg" }),
+        "textures/textures.cpkg: error: the build writes two files to this path\n");
+    EXPECT_EQ(errors({ "build", "game.cproj.json", "--depfile", "game.cproj.json" }),
+        "game.cproj.json: error: the build reads this file, and cannot also write it\n");
+    EXPECT_EQ(ReadBytes("textures/textures.cpkg.json"), source);
+    EXPECT_FALSE(ReadBytes("textures/brass.png").empty());
+    EXPECT_FALSE(std::filesystem::exists("textures/textures.cpkg"));
+}
+
+TEST_F(CpkgProject, EscapesPathsInTheDependencyFile)
+{
+    WriteBytes("a b/$pack.cpkg.json", R"({ "formatVersion": 1, "packageName": "Pack", "bundles": [
+  { "name": "Looks", "images": { "Stone": "stone$1 2.png" } }
+] }
+)");
+    WriteBytes("a b/stone$1 2.png", ImageFiles::Png(2, 2));
+    const RunResult result = RunCpkg({ "build", "a b/$pack.cpkg.json", "--depfile", "pack.d" });
+    EXPECT_EQ(result.Err, "");
+    ASSERT_EQ(result.Status, CpkgTool::kExitSuccess);
+    EXPECT_EQ(ReadBytes("pack.d"), Here() + "/a\\ b/$$pack.cpkg: \\\n  " + Here() + "/a\\ b/$$pack.cpkg.json \\\n  " + Here()
+        + "/a\\ b/stone$$1\\ 2.png\n");
+}
+
+TEST_F(CpkgProject, ReportsPathsADependencyFileCannotName)
+{
+    WriteBytes("pack.cpkg.json", R"({ "formatVersion": 1, "packageName": "Pack", "bundles": [
+  { "name": "Looks", "images": { "Stone": "stone#1.png" } }
+] }
+)");
+    WriteBytes("stone#1.png", ImageFiles::Png(2, 2));
+    const RunResult result = RunCpkg({ "build", "pack.cpkg.json", "--depfile", "pack.d" });
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+    EXPECT_EQ(result.Err, "stone#1.png: error: a dependency file cannot name a path that holds '#'\n");
+    EXPECT_FALSE(std::filesystem::exists("pack.cpkg"));
+    EXPECT_FALSE(std::filesystem::exists("pack.d"));
+
+    // Without --depfile, the package builds.
+    EXPECT_EQ(RunCpkg({ "build", "pack.cpkg.json" }).Err, "");
+}
 
 TEST_F(CpkgProject, UsageErrors)
 {
