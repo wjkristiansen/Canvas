@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <atomic>
 #include <charconv>
-#include <chrono>
 #include <filesystem>
 #include <iterator>
 #include <new>
@@ -72,17 +71,8 @@ namespace
 
     bool Stamp(const std::string &path, InputStamp *pStamp)
     {
-        const fs::path filePath = PathOf(path);
-        std::error_code error;
-        pStamp->Size = fs::file_size(filePath, error);
-        if (error)
-            return false;
-        const fs::file_time_type time = fs::last_write_time(filePath, error);
-        if (error)
-            return false;
-        pStamp->Time = std::chrono::duration_cast<std::chrono::nanoseconds>(time.time_since_epoch()).count();
         pStamp->Path = path;
-        return true;
+        return FileStamp(PathOf(path), &pStamp->Size, &pStamp->Time) == FileResult::Success;
     }
 
     constexpr std::string_view kRecordVersion = "cpkg " CPKG_VERSION;
@@ -431,8 +421,7 @@ size_t CProject::FindSource(const std::string &path) const
     {
         if (packages[i].Source.empty())
             continue;
-        std::error_code error;
-        if (AbsolutePath(packages[i].FilePath) == absolute || fs::equivalent(PathOf(packages[i].FilePath), PathOf(path), error))
+        if (AbsolutePath(packages[i].FilePath) == absolute || SameFile(PathOf(packages[i].FilePath), PathOf(path)))
             return i;
     }
     return kNoPackage;
@@ -648,9 +637,7 @@ void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics)
     std::string builtText;
     if (!CheckBuiltNames(project, &builtText, diagnostics))
         return fail();
-    std::error_code error;
-    fs::create_directories(PathOf(output), error);
-    if (error)
+    if (MakeDirectories(PathOf(output)) != FileResult::Success)
     {
         diagnostics.Report(Severity::Error, output, "cannot create the folder");
         return;

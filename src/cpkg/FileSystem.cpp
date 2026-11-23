@@ -14,6 +14,7 @@
 #include <unistd.h>
 #endif
 
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -32,7 +33,7 @@ namespace
         if (created)
             return FileResult::Success;
         std::error_code error;
-        return fs::exists(fs::symlink_status(path, error)) ? FileResult::Exists : FileResult::Failed;
+        return Exists(path) ? FileResult::Exists : FileResult::Failed;
     }
 
     // NotFound when path names nothing or something other than a file, or else Success.
@@ -108,6 +109,30 @@ FileResult WriteWholeFile(const fs::path &path, std::string_view bytes)
     return stream ? FileResult::Success : FileResult::Failed;
 }
 
+FileResult FileStamp(const fs::path &path, uint64_t *pSize, int64_t *pTime)
+{
+    if (const FileResult size = FileSize(path, pSize); size != FileResult::Success)
+        return size;
+    std::error_code error;
+    const fs::file_time_type time = fs::last_write_time(path, error);
+    if (error)
+        return FileResult::Failed;
+    *pTime = std::chrono::duration_cast<std::chrono::nanoseconds>(time.time_since_epoch()).count();
+    return FileResult::Success;
+}
+
+bool Exists(const fs::path &path)
+{
+    std::error_code error;
+    return fs::exists(fs::symlink_status(path, error));
+}
+
+bool SameFile(const fs::path &a, const fs::path &b)
+{
+    std::error_code error;
+    return fs::equivalent(a, b, error);
+}
+
 bool SameBytes(const fs::path &a, const fs::path &b)
 {
     std::error_code error;
@@ -145,6 +170,28 @@ FileResult MakeDirectory(const fs::path &path)
 {
     std::error_code error;
     return MadeOrWhyNot(path, fs::create_directory(path, error) && !error);
+}
+
+FileResult MakeDirectories(const fs::path &path, fs::path *pOutermost)
+{
+    std::error_code error;
+    if (pOutermost)
+    {
+        pOutermost->clear();
+        for (fs::path at = fs::absolute(path, error); !error && !Exists(at) && at != at.parent_path(); at = at.parent_path())
+            *pOutermost = at;
+    }
+    fs::create_directories(path, error);
+    if (error)
+        return FileResult::Failed;
+    return fs::is_directory(path, error) ? FileResult::Success : FileResult::Exists;
+}
+
+FileResult Rename(const fs::path &from, const fs::path &to)
+{
+    std::error_code error;
+    fs::rename(from, to, error);
+    return error ? FileResult::Failed : FileResult::Success;
 }
 
 FileResult Remove(const fs::path &path)
@@ -189,8 +236,7 @@ FileResult CStagedFile::Commit()
     if (SameBytes(m_Staged, m_Path))
         return FileResult::Success;
     std::error_code error;
-    fs::rename(m_Staged, m_Path, error);
-    return error ? FileResult::Failed : FileResult::Success;
+    return Rename(m_Staged, m_Path);
 }
 
 FileResult SaveFile(const fs::path &path, std::string_view bytes)
@@ -204,10 +250,7 @@ FileResult SaveFile(const fs::path &path, std::string_view bytes)
 CScopedDirectory::CScopedDirectory(const fs::path &beside) :
     m_Path(TemporaryPath(beside))
 {
-    std::error_code error;
-    fs::remove_all(m_Path, error);
-    if (m_Path.has_parent_path())
-        fs::create_directories(m_Path.parent_path(), error);
+    Remove(m_Path);
     m_Created = MakeDirectory(m_Path) == FileResult::Success;
 }
 

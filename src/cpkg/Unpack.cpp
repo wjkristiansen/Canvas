@@ -1533,9 +1533,11 @@ public:
 
         // A failure leaves no folder the output's folder did not have.
         fs::path created;
-        std::error_code error;
-        for (fs::path at = fs::absolute(m_Folder, error); !error && !fs::exists(at, error) && at != at.parent_path(); at = at.parent_path())
-            created = at;
+        if (MakeDirectories(m_Folder, &created) != FileResult::Success)
+        {
+            m_Diagnostics.Report(Severity::Error, Utf8Of(m_Folder), "cannot create the folder");
+            return;
+        }
 
         // The files are named in the temporary folder, beside the output and so on its file
         // system, which decides which names collide.
@@ -1655,8 +1657,7 @@ private:
         bool clear = true;
         for (const OutputFile &file : files)
         {
-            std::error_code error;
-            if (fs::exists(m_Folder / PathOf(file.Path), error))
+            if (Exists(m_Folder / PathOf(file.Path)))
             {
                 m_Diagnostics.Report(Severity::Error, Destination(file), "the file exists; --force replaces it");
                 clear = false;
@@ -1670,9 +1671,7 @@ private:
         for (const OutputFile &file : files)
         {
             const fs::path path = folder / PathOf(file.Path);
-            std::error_code error;
-            fs::create_directories(path.parent_path(), error);
-            if (WriteWholeFile(path, file.Bytes) != FileResult::Success)
+            if (MakeDirectories(path.parent_path()) != FileResult::Success || WriteWholeFile(path, file.Bytes) != FileResult::Success)
             {
                 m_Diagnostics.Report(Severity::Error, Utf8Of(path), "cannot write the file");
                 return false;
@@ -1765,10 +1764,8 @@ private:
         for (const OutputFile &file : files)
         {
             const fs::path destination = m_Folder / PathOf(file.Path);
-            std::error_code error;
-            fs::create_directories(destination.parent_path(), error);
-            fs::rename(folder / PathOf(file.Path), destination, error);
-            if (error)
+            if (MakeDirectories(destination.parent_path()) != FileResult::Success
+                || Rename(folder / PathOf(file.Path), destination) != FileResult::Success)
             {
                 m_Diagnostics.Report(Severity::Error, Destination(file), "cannot replace the file");
                 return false;

@@ -40,6 +40,16 @@ FileResult ReadFileRange(const std::filesystem::path &path, uint64_t offset, uin
 // Finds the size of the file at path.
 FileResult FileSize(const std::filesystem::path &path, uint64_t *pSize);
 
+// Finds the size of the file at path and its last modification time, in nanoseconds since the
+// file clock's epoch.
+FileResult FileStamp(const std::filesystem::path &path, uint64_t *pSize, int64_t *pTime);
+
+// Whether path names a file, a directory, or anything else.
+bool Exists(const std::filesystem::path &path);
+
+// Whether a and b name the same file, as the file system decides it, though their paths differ.
+bool SameFile(const std::filesystem::path &a, const std::filesystem::path &b);
+
 // Writes bytes as the file at path, replacing any file there. A failure may leave part of the
 // bytes written; CStagedFile writes a file that is either replaced whole or untouched.
 FileResult WriteWholeFile(const std::filesystem::path &path, std::string_view bytes);
@@ -54,6 +64,14 @@ FileResult MakeFile(const std::filesystem::path &path);
 // Creates path as an empty directory, unless the file system already holds a file or directory
 // of that name.
 FileResult MakeDirectory(const std::filesystem::path &path);
+
+// Creates the directory at path and the directories that hold it, as many as do not exist. An
+// existing directory at path succeeds. With pOutermost, sets it to the outermost directory
+// created, or to an empty path when none was.
+FileResult MakeDirectories(const std::filesystem::path &path, std::filesystem::path *pOutermost = nullptr);
+
+// Moves the file at from to to, replacing any file there.
+FileResult Rename(const std::filesystem::path &from, const std::filesystem::path &to);
 
 // Removes the file at path, or the directory at path and everything in it. Removing what does
 // not exist succeeds.
@@ -94,8 +112,8 @@ private:
 FileResult SaveFile(const std::filesystem::path &path, std::string_view bytes);
 
 // A new directory beside a path, named for it and unique to this process, removed with
-// everything in it when the CScopedDirectory is destroyed. The directories that hold it are
-// created as needed, and stay.
+// everything in it when the CScopedDirectory is destroyed. The directory that holds it must
+// exist.
 class CScopedDirectory
 {
 public:
