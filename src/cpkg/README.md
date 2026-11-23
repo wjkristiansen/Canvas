@@ -56,7 +56,7 @@ Builds a package, as [Building a Package](#building-a-package) defines, or a pro
 |---|---|
 | `-o`, `--output` | For a package, the `.cpkg` file to write; by default the package file's name without `.json`, beside it. For a project, the directory to write in place of the manifest's `output`. |
 | `--project` | For a package, the authored project to [validate it against](#project-context). Without it, the package's paths into other packages are written unchecked. |
-| `-j`, `--jobs` | For a project, the most packages built at once; by default the number of hardware threads. |
+| `-j`, `--jobs` | For a project, the most packages built at once, at least 1; by default the number of hardware threads. |
 | `--depfile` | Writes a [dependency file](#dependency-files) to this path, its target the built `.cpkg` file or built project. |
 
 A project build rebuilds only the packages whose inputs changed, so running `cpkg build` on a project after a change rebuilds what the change affects, and running it again with nothing changed writes nothing.
@@ -68,7 +68,7 @@ cpkg validate <package.cpkg.json> [--project <project.cproj.json>]
 cpkg validate <project.cproj.json>
 ```
 
-Loads and validates a package, or every package a project lists by source together with the manifest, and reports the diagnostics a build would report. It runs every stage of the [pipeline](#pipeline) except Write, so it reads every file a build reads, including FBX files, because rules such as the keys of an import's `rename` depend on the file's content. It writes no file.
+Loads and validates a package, or every package a project lists by source together with the manifest, and reports the diagnostics a build would report. For a project, it also opens each prebuilt package, and checks that each `worlds` entry names a world bundle and that the built file names are unique. It runs every stage of the [pipeline](#pipeline) except Write, so it reads every file a build reads, including FBX files, because rules such as the keys of an import's `rename` depend on the file's content. It writes no file.
 
 ### inputs
 
@@ -186,7 +186,15 @@ A build runs these stages in order:
 
 A package builds without a project. Paths are written unchanged, so a path into another package needs nothing from that package to build, and the packages of a project build independently, in any order.
 
-With an authored project, validation also checks the paths into other packages. The package's own entry is the one whose `source` is its package file. Each path's package name resolves through the project's [package-name rules](../CanvasProject/README.md#package-names), and the path is checked against the package it names: against its source for a package listed by source, and against its `.cpkg` file, read through `CCpkgReader`'s name directories without reading any payload, for a package listed by `.cpkg` file. Validation therefore needs no package of the project to be built, and checks content against changes that are not yet built.
+With an authored project, validation also checks the paths into other packages. The package's own entry is the one whose `source` is its package file, and a project with no such entry is reported as an error at the package file. Each path's package name resolves through the project's [package-name rules](../CanvasProject/README.md#package-names), and the path is checked against the package it names: against its source for a package listed by source, and against its `.cpkg` file, read through `CCpkgReader`'s name directories without reading any payload, for a package listed by `.cpkg` file. Validation therefore needs no package of the project to be built, and checks content against changes that are not yet built.
+
+A path into another package is checked for what the package's names and asset types decide:
+
+- **The package.** The path's package name names a package the project lists.
+- **The bundle.** The package has the bundle the path names. A bundle path in a placement or a world's `regions` names a bundle other than a world bundle, one that holds no `WorldSettings` asset.
+- **The asset.** An asset path names an asset of the type its field requires. An asset that an import of the named bundle builds is found once the build reads imports (see [Imports](#imports)); until then, a path into a bundle with imports that names no declared asset is accepted.
+
+The rules that depend on an asset's content, such as an image's shape, a skeleton's bones, a bundle's exports, and mobility, are checked within the package. A package listed by source is read through its Load stage alone. When that package's source has an error, the paths into it are not checked, and the first such path is reported as an error that names the package, so the package's own build or validation reports the cause.
 
 ### Imports
 
@@ -232,6 +240,14 @@ An input list holds one absolute path per line, with `/` as its separator, encod
 A **project build** builds an authored project as CanvasProject's [Building a Project](../CanvasProject/README.md#building-a-project) defines: each package listed by source to its `.cpkg` file in the project's `output` directory, each prebuilt package copied there, and the built project beside them. The packages build independently, so a project build builds them concurrently, as many at once as `-j` allows, and validates each against the authored project. `-o` names a directory that takes the place of `output`, such as one inside a build system's build tree.
 
 A project build keeps a record of each package's inputs in `output` beside its `.cpkg` file, and rebuilds only the packages whose recorded inputs changed since the package's last build. A package whose inputs are unchanged keeps its `.cpkg` file. Likewise, a prebuilt package is copied only when its copy in `output` differs from the file the authored project lists. Because output is [deterministic](#output), rebuilding it would produce the same bytes.
+
+**Input records.** A package's record is the file `<name>.inputs` beside its `.cpkg` file in `output`, such as `build/levels.cpkg.inputs`. It is UTF-8 text with one entry per line. Its first line is `cpkg <version>`, the version of `cpkg` that built the package. Each following line is `<size> <time> <path>`: the size in bytes and the modification time, as a decimal count of nanoseconds, of an input, followed by its absolute path with `/` as its separator. The inputs are those a [dependency file](#dependency-files) of the package's build names, including the authored project's manifest, then the `.cpkg` file itself, last. The record ends with the package's warnings, each on a line `warning <diagnostic>` in the [diagnostic](#diagnostics) form, with its file path absolute.
+
+A package is **up to date** when its record exists, names the version of `cpkg` running, and every file it lists has the size and modification time the record gives. A package that is up to date does not build: the project build reports the warnings its record holds, as its build reported them, so a build with nothing changed reports the same diagnostics as the one before it. A package that is not up to date builds, and the build replaces its record. A package with an error has its record removed, so it builds again next time.
+
+**Concurrent builds.** Each package's diagnostics are reported together, the packages in manifest order, so a project build reports the same diagnostics in the same order for every `-j`.
+
+**Output names.** The file names a project build writes in `output` are unique, as CanvasProject's [Building a Project](../CanvasProject/README.md#building-a-project) requires. Beyond the comparison CanvasProject makes, the build claims each name by creating a file of that name in a new temporary folder in `output`, failing when the file already exists, so two names that the file system holding `output` treats as one, such as names that differ only in the case of non-ASCII letters, are reported as an error at the second package's entry. The folder is removed before the build ends.
 
 A project build runs in stages, and each stage runs only when the stage before it succeeds:
 

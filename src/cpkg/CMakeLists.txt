@@ -12,6 +12,8 @@ add_library(CpkgTool STATIC
     Dump.cpp
     Format.cpp
     PackageWrite.cpp
+    Project.cpp
+    Project.h
     Source.h
     SourceLoad.cpp
     SourceValidate.cpp
@@ -40,6 +42,7 @@ target_link_libraries(CpkgTool
     PUBLIC
         CanvasJsonText
         CanvasPkg
+        CanvasProject
     PRIVATE
         InCommandLib
         InCommandHeaders

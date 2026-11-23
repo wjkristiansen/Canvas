@@ -968,11 +968,11 @@ TEST_F(CpkgBuild, UsageErrors)
 {
     RunResult result = RunCpkg({ "build" });
     EXPECT_EQ(result.Status, CpkgTool::kExitUsage);
-    EXPECT_EQ(result.Err, "cpkg: error: build: missing argument <package.cpkg.json>\nRun 'cpkg --help' for usage.\n");
+    EXPECT_EQ(result.Err, "cpkg: error: build: missing argument <file>\nRun 'cpkg --help' for usage.\n");
 
     result = RunCpkg({ "build", "levels.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitUsage);
-    EXPECT_EQ(result.Err, "cpkg: error: build: expected a .cpkg.json file: levels.json\nRun 'cpkg --help' for usage.\n");
+    EXPECT_EQ(result.Err, "cpkg: error: build: expected a .cpkg.json or .cproj.json file: levels.json\nRun 'cpkg --help' for usage.\n");
 
     result = RunCpkg({ "build", "missing.cpkg.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitError);

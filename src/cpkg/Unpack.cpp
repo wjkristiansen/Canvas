@@ -9,15 +9,6 @@
 #include "CpkgTool.h"
 #include "Stages.h"
 
-#if defined(_WIN32)
-#include <fcntl.h>
-#include <io.h>
-#include <sys/stat.h>
-#else
-#include <fcntl.h>
-#include <unistd.h>
-#endif
-
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -99,25 +90,15 @@ struct FolderError
 // system already holds a file or folder of that name, as its own rules for names compare them.
 bool CreateNew(const fs::path &path, bool folder)
 {
-    bool created = false;
-    std::error_code error;
-    if (folder)
-        created = fs::create_directory(path, error) && !error;
-    else
+    switch (folder ? MakeDirectory(path) : MakeFile(path))
     {
-#if defined(_WIN32)
-        const int file = _wopen(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
-        created = file != -1 && _close(file) == 0;
-#else
-        const int file = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0666);
-        created = file != -1 && close(file) == 0;
-#endif
-    }
-    if (created)
+    case MakeResult::Created:
         return true;
-    if (fs::exists(fs::symlink_status(path, error)))
+    case MakeResult::Exists:
         return false;
-    throw FolderError{ path };
+    default:
+        throw FolderError{ path };
+    }
 }
 
 // Names the files and folders of one folder, as "File names" in the README describes, creating

@@ -56,19 +56,24 @@ void Format(const FormatOptions &options, CDiagnostics &diagnostics);
 
 struct BuildOptions
 {
-    std::string Package;                // UTF-8 path of the .cpkg.json file
-    std::optional<std::string> Output;  // the .cpkg file to write; by default beside the package file
+    std::string Package;                // UTF-8 path of the .cpkg.json file, or of the .cproj.json file
+    std::optional<std::string> Output;  // the .cpkg file to write, or for a project, the output folder
+    std::optional<std::string> Project; // for a package, the .cproj.json file to validate it against
+    std::optional<unsigned> Jobs;       // for a project, the most packages built at once
 };
 
-// Builds the package source into a .cpkg file, reporting what the build finds.
+// Builds the package source into a .cpkg file, or builds the project, reporting what the build
+// finds.
 void Build(const BuildOptions &options, CDiagnostics &diagnostics);
 
 struct ValidateOptions
 {
-    std::string Package;                // UTF-8 path of the .cpkg.json file
+    std::string Package;                // UTF-8 path of the .cpkg.json file, or of the .cproj.json file
+    std::optional<std::string> Project; // for a package, the .cproj.json file to validate it against
 };
 
-// Runs the build's stages short of Write on the package source, reporting what they find.
+// Runs the build's stages short of Write on the package source, or on the project's packages,
+// reporting what they find.
 void Validate(const ValidateOptions &options, CDiagnostics &diagnostics);
 
 } // namespace CpkgTool

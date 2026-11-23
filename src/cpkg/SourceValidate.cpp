@@ -2,6 +2,7 @@
 // SourceValidate - the build's Validate stage, and asset path resolution
 //================================================================================================
 
+#include "Project.h"
 #include "Stages.h"
 
 #include <algorithm>
@@ -93,9 +94,10 @@ std::string Plural(size_t count, std::string_view singular, std::string_view plu
 class CValidator
 {
 public:
-    explicit CValidator(const SourcePackage &package) :
+    CValidator(const SourcePackage &package, CProjectLookup *pProject) :
         m_Package(package),
-        m_Lookup(package)
+        m_Lookup(package),
+        m_pProject(pProject)
     {
     }
 
@@ -208,6 +210,11 @@ private:
             break;
         }
 
+        case AssetTarget::Kind::OtherPackage:
+            if (m_pProject)
+                CheckOtherAssetPath(path, type);
+            break;
+
         case AssetTarget::Kind::Asset:
             if (target.Type != type)
             {
@@ -225,6 +232,51 @@ private:
             break;
         }
         return target;
+    }
+
+    // Checks an asset path into another package against the project.
+    void CheckOtherAssetPath(const SourceString &path, AssetType type)
+    {
+        const std::vector<std::string_view> names = PathNames(path.Text);
+        const ProjectTarget target = m_pProject->FindAsset(names[0], names[1], names[2], type);
+        switch (target.State)
+        {
+        case ProjectTarget::Kind::NoAsset:
+            Error(path.Where, "the bundle " + Quoted(std::string(names[0]) + "/" + std::string(names[1])) + " has no asset " + Quoted(names[2]));
+            break;
+        case ProjectTarget::Kind::OtherType:
+            Error(path.Where, Quoted(path.Text) + " is " + AssetTypeNoun(target.Type) + ", not " + AssetTypeNoun(type));
+            break;
+        default:
+            CheckOtherPackage(path, names, target);
+            break;
+        }
+    }
+
+    // Reports what the package and bundle of a path into another package decide.
+    void CheckOtherPackage(const SourceString &path, const std::vector<std::string_view> &names, const ProjectTarget &target)
+    {
+        switch (target.State)
+        {
+        case ProjectTarget::Kind::NoPackage:
+            Error(path.Where, "the project has no package " + Quoted(names[0]));
+            break;
+        case ProjectTarget::Kind::Unreadable:
+            if (std::find(m_Unreadable.begin(), m_Unreadable.end(), target.Package) == m_Unreadable.end())
+            {
+                m_Unreadable.push_back(target.Package);
+                Error(path.Where, "the package " + Quoted(target.Package) + " cannot be read, so paths into it are not checked");
+            }
+            break;
+        case ProjectTarget::Kind::NoBundle:
+            Error(path.Where, "the package " + Quoted(names[0]) + " has no bundle " + Quoted(names[1]));
+            break;
+        case ProjectTarget::Kind::WorldBundle:
+            Error(path.Where, Quoted(path.Text) + " is a world bundle, which a bundle path cannot name");
+            break;
+        default:
+            break;
+        }
     }
 
     // Whether image has the shape the reference requires.
@@ -743,7 +795,14 @@ private:
         bool otherPackage = false;
         const SourceBundle *pBundle = m_Lookup.ResolveBundlePath(path.Text, &otherPackage);
         if (otherPackage)
+        {
+            if (m_pProject)
+            {
+                const std::vector<std::string_view> names = PathNames(path.Text);
+                CheckOtherPackage(path, names, m_pProject->FindBundle(names[0], names[1]));
+            }
             return nullptr;
+        }
         if (!pBundle)
         {
             Error(path.Where, "the package has no bundle " + Quoted(PathNames(path.Text).back()));
@@ -1012,6 +1071,8 @@ private:
 
     const SourcePackage &m_Package;
     CPackageLookup m_Lookup;
+    CProjectLookup *m_pProject;                 // null without a project
+    std::vector<std::string> m_Unreadable;      // the project names of packages reported unreadable
     std::vector<CBundleLayout> m_Layouts;       // per bundle
     std::vector<std::vector<size_t>> m_Placed;  // per bundle, what PlacedBundles returns
     std::vector<Finding> m_Findings;
@@ -1089,9 +1150,9 @@ const SourceBundle *CPackageLookup::FindBundle(std::string_view name) const
     return nullptr;
 }
 
-bool ValidatePackageSource(const SourcePackage &package, CDiagnostics &diagnostics)
+bool ValidatePackageSource(const SourcePackage &package, CDiagnostics &diagnostics, CProjectLookup *pProject)
 {
-    return CValidator(package).Run(diagnostics);
+    return CValidator(package, pProject).Run(diagnostics);
 }
 
 } // namespace CpkgTool

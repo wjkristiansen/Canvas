@@ -3,6 +3,7 @@
 //================================================================================================
 
 #include "CpkgTool.h"
+#include "Project.h"
 #include "Stages.h"
 
 namespace CpkgTool
@@ -10,20 +11,20 @@ namespace CpkgTool
 
 namespace
 {
-    // Runs the stages before Write. Returns true when they reported no error.
-    bool LoadAndValidate(const std::string &packageFile, SourcePackage *pPackage, CDiagnostics &diagnostics)
+    bool IsProject(const std::string &path)
     {
-        if (!LoadPackageSource(packageFile, pPackage, diagnostics) || !TranslatePackageSource(*pPackage, diagnostics))
-            return false;
-        return ValidatePackageSource(*pPackage, diagnostics) && diagnostics.GetErrorCount() == 0;
+        return path.ends_with(".cproj.json");
     }
 }
 
 //------------------------------------------------------------------------------------------------
 void Build(const BuildOptions &options, CDiagnostics &diagnostics)
 {
+    if (IsProject(options.Package))
+        return BuildProject(options, diagnostics);
+
     SourcePackage package;
-    if (!LoadAndValidate(options.Package, &package, diagnostics))
+    if (!LoadAndValidate(options.Package, options.Project, &package, diagnostics))
         return;
 
     // The default output is the package file without its ".json" ending.
@@ -33,8 +34,11 @@ void Build(const BuildOptions &options, CDiagnostics &diagnostics)
 
 void Validate(const ValidateOptions &options, CDiagnostics &diagnostics)
 {
+    if (IsProject(options.Package))
+        return ValidateProject(options, diagnostics);
+
     SourcePackage package;
-    LoadAndValidate(options.Package, &package, diagnostics);
+    LoadAndValidate(options.Package, options.Project, &package, diagnostics);
 }
 
 } // namespace CpkgTool

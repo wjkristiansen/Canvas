@@ -307,6 +307,7 @@ bool TranslatePackageSource(SourcePackage &package, CDiagnostics &diagnostics)
                     ReportAt(diagnostics, package, severity, file.Where, message + ": " + Quoted(file.Written));
                 };
 
+                RecordInput(package, file.Path);
                 const fs::path path = PathOf(file.Path);
                 std::error_code error;
                 if (!fs::is_regular_file(path, error))
