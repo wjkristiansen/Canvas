@@ -3,6 +3,7 @@
 //================================================================================================
 
 #include "CpkgTool.h"
+#include "DependencyFile.h"
 #include "Project.h"
 #include "Stages.h"
 
@@ -163,25 +164,34 @@ namespace
     //--------------------------------------------------------------------------------------------
     // The packages of a project
 
+    // Runs Validate on the package, against the project's package at index, and adds the files
+    // the project lookup read to the package's inputs. Returns true when it reported no error.
+    bool ValidateInProject(const CProject &project, size_t index, SourcePackage &package, CDiagnostics &diagnostics)
+    {
+        CProjectLookup lookup(project, index, package.PackageName.Text);
+        const bool valid = ValidatePackageSource(package, diagnostics, &lookup);
+        for (const std::string &input : lookup.GetInputs())
+            RecordInput(package, input);
+        return valid && diagnostics.GetErrorCount() == 0;
+    }
+
     // Runs the stages before Write on the package at index, validating it against the project.
     // Returns true when they reported no error.
-    bool CheckPackage(const CProject &project, size_t index, SourcePackage *pPackage, std::vector<std::string> *pProjectInputs,
-        CDiagnostics &diagnostics)
+    bool CheckPackage(const CProject &project, size_t index, SourcePackage *pPackage, CDiagnostics &diagnostics)
     {
         const Canvas::ProjectPackage &entry = project.GetManifest().GetPackages()[index];
         if (!LoadPackageSource(entry.FilePath, pPackage, diagnostics) || !TranslatePackageSource(*pPackage, diagnostics))
             return false;
-        CProjectLookup lookup(project, index, pPackage->PackageName.Text);
-        const bool valid = ValidatePackageSource(*pPackage, diagnostics, &lookup);
-        *pProjectInputs = lookup.GetInputs();
-        return valid && diagnostics.GetErrorCount() == 0;
+        return ValidateInProject(project, index, *pPackage, diagnostics);
     }
 
-    // What building or validating one package reported.
+    // What building or validating one package reported, and for a package built or up to date,
+    // its inputs, absolute paths.
     struct PackageRun
     {
         std::string Text;
         size_t Errors = 0;
+        std::vector<std::string> Inputs;
     };
 
     // Builds the package at index into the directory output, unless its record says it is up to
@@ -200,40 +210,35 @@ namespace
         {
             ReportRecordedWarnings(recorded, warnings, diagnostics);
             if (diagnostics.GetErrorCount() != 0)
+            {
                 Remove(PathOf(record));
-            return { text.str(), diagnostics.GetErrorCount() };
+                return { text.str(), diagnostics.GetErrorCount() };
+            }
+            // The record's last entry is the .cpkg file itself.
+            std::vector<std::string> inputs;
+            for (size_t i = 0; i + 1 < recorded.size(); ++i)
+                inputs.push_back(recorded[i].Path);
+            return { text.str(), 0, std::move(inputs) };
         }
         warnings.clear();
 
         diagnostics.LogWarnings(&warnings);
         SourcePackage source;
-        std::vector<std::string> projectInputs;
-        const bool built = CheckPackage(project, index, &source, &projectInputs, diagnostics) && WritePackage(source, package, diagnostics);
+        const bool built = CheckPackage(project, index, &source, diagnostics) && WritePackage(source, package, diagnostics);
         diagnostics.LogWarnings(nullptr);
 
-        bool recordWritten = false;
+        std::vector<std::string> inputs;
         if (built)
-        {
-            std::vector<std::string> inputs;
-            for (const std::string &input : source.Inputs)
-                inputs.push_back(AbsolutePath(input));
-            for (const std::string &input : projectInputs)
-            {
-                const std::string absolute = AbsolutePath(input);
-                if (std::find(inputs.begin(), inputs.end(), absolute) == inputs.end())
-                    inputs.push_back(absolute);
-            }
-            recordWritten = WriteRecord(record, inputs, AbsolutePath(package), warnings);
-        }
-        if (!recordWritten)
+            inputs = UniqueAbsolutePaths(source.Inputs);
+        if (!built || !WriteRecord(record, inputs, AbsolutePath(package), warnings))
             Remove(PathOf(record));
-        return { text.str(), diagnostics.GetErrorCount() };
+        return { text.str(), diagnostics.GetErrorCount(), std::move(inputs) };
     }
 
     // Runs work(i) for each package listed by source, as many at once as jobs allows, and reports
-    // each package's diagnostics in manifest order.
+    // each package's diagnostics in manifest order. Returns the runs, in manifest order.
     template <class TWork>
-    void ForEachSource(const CProject &project, unsigned jobs, TWork &&work, CDiagnostics &diagnostics)
+    std::vector<PackageRun> ForEachSource(const CProject &project, unsigned jobs, TWork &&work, CDiagnostics &diagnostics)
     {
         const std::span<const Canvas::ProjectPackage> packages = project.GetManifest().GetPackages();
         std::vector<size_t> sources;
@@ -273,6 +278,7 @@ namespace
 
         for (const PackageRun &run : runs)
             diagnostics.Append(run.Text, run.Errors);
+        return runs;
     }
 
     // Reports a prebuilt package that does not open, and a worlds entry that names no world
@@ -588,6 +594,24 @@ ProjectTarget CProjectLookup::FindAsset(std::string_view packageName, std::strin
 //------------------------------------------------------------------------------------------------
 // Commands
 
+bool CheckWrittenPaths(const std::vector<std::string> &written, const std::vector<std::string> &inputs, CDiagnostics &diagnostics)
+{
+    auto same = [](const std::string &a, const std::string &b) { return a == b || SameFile(PathOf(a), PathOf(b)); };
+    bool separate = true;
+    for (size_t i = 0; i < written.size(); ++i)
+    {
+        const bool read = std::any_of(inputs.begin(), inputs.end(), [&](const std::string &input) { return same(written[i], input); });
+        if (read)
+            diagnostics.Report(Severity::Error, written[i], "the build reads this file, and cannot also write it");
+        else if (std::any_of(written.begin(), written.begin() + i, [&](const std::string &other) { return same(written[i], other); }))
+            diagnostics.Report(Severity::Error, written[i], "the build writes two files to this path");
+        else
+            continue;
+        separate = false;
+    }
+    return separate;
+}
+
 bool LoadAndValidate(const std::string &packageFile, const std::optional<std::string> &projectFile, SourcePackage *pPackage,
     CDiagnostics &diagnostics)
 {
@@ -606,8 +630,7 @@ bool LoadAndValidate(const std::string &packageFile, const std::optional<std::st
         return false;
     if (index == CProject::kNoPackage)
         return ValidatePackageSource(*pPackage, diagnostics) && diagnostics.GetErrorCount() == 0;
-    CProjectLookup lookup(project, index, pPackage->PackageName.Text);
-    return ValidatePackageSource(*pPackage, diagnostics, &lookup) && diagnostics.GetErrorCount() == 0;
+    return ValidateInProject(project, index, *pPackage, diagnostics);
 }
 
 void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics)
@@ -618,10 +641,7 @@ void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics)
     const Canvas::CProjectManifest &manifest = project.GetManifest();
     const std::string output = options.Output ? *options.Output : manifest.GetOutput();
     const std::string builtProject = output + "/" + FileName(manifest.GetPath());
-    auto fail = [&]()
-    {
-        Remove(PathOf(builtProject));
-    };
+    auto fail = [&]() { Remove(PathOf(builtProject)); };
 
     std::string builtText;
     if (!CheckBuiltNames(project, &builtText, diagnostics))
@@ -629,7 +649,7 @@ void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics)
     if (MakeDirectories(PathOf(output)) != FileResult::Success)
     {
         diagnostics.Report(Severity::Error, output, "cannot create the directory");
-        return;
+        return fail();
     }
     if (!ClaimBuiltNames(project, output, diagnostics))
         return fail();
@@ -638,13 +658,42 @@ void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics)
     const unsigned jobs = options.Jobs ? *options.Jobs : std::max(std::thread::hardware_concurrency(), 1u);
     const bool werror = diagnostics.IsWerror();
     const bool quiet = diagnostics.IsQuiet();
-    ForEachSource(project, jobs, [&](size_t index) { return BuildPackage(project, index, output, werror, quiet); }, diagnostics);
+    const std::vector<PackageRun> runs =
+        ForEachSource(project, jobs, [&](size_t index) { return BuildPackage(project, index, output, werror, quiet); }, diagnostics);
     CheckProjectContent(project, diagnostics);
     if (diagnostics.GetErrorCount() != 0)
         return fail();
 
-    // Built project
+    // The dependency file names the manifest, each package's inputs, and each prebuilt package.
     const std::span<const Canvas::ProjectPackage> packages = manifest.GetPackages();
+    const std::string target = AbsolutePath(builtProject);
+    std::vector<std::string> inputs;
+    if (options.Depfile)
+    {
+        std::vector<std::string> read{ manifest.GetPath() };
+        for (const PackageRun &run : runs)
+            read.insert(read.end(), run.Inputs.begin(), run.Inputs.end());
+        for (const Canvas::ProjectPackage &package : packages)
+        {
+            if (!package.Package.empty())
+                read.push_back(package.FilePath);
+        }
+        inputs = UniqueAbsolutePaths(read);
+
+        // The dependency file is a file other than those the build reads and those it writes in output.
+        std::vector<std::string> notWritten = inputs;
+        notWritten.push_back(target);
+        for (size_t i = 0; i < packages.size(); ++i)
+        {
+            const std::string built = AbsolutePath(output + "/" + std::string(manifest.GetBuiltFileName(i)));
+            notWritten.push_back(built + ".inputs");
+            notWritten.push_back(built);
+        }
+        if (!CheckWrittenPaths({ *options.Depfile }, notWritten, diagnostics) || !CheckDependencyPaths(target, inputs, diagnostics))
+            return fail();
+    }
+
+    // Built project
     for (size_t i = 0; i < packages.size(); ++i)
     {
         if (packages[i].Package.empty())
@@ -658,6 +707,11 @@ void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics)
     if (!SaveUtf8(builtProject, builtText))
     {
         diagnostics.Report(Severity::Error, builtProject, "cannot write the file");
+        return fail();
+    }
+    if (options.Depfile && SaveFile(PathOf(*options.Depfile), DependencyRule(target, inputs)) != FileResult::Success)
+    {
+        diagnostics.Report(Severity::Error, *options.Depfile, "cannot write the file");
         fail();
     }
 }
@@ -677,8 +731,7 @@ void ValidateProject(const ValidateOptions &options, CDiagnostics &diagnostics)
         std::ostringstream text;
         CDiagnostics packageDiagnostics(text, werror, quiet);
         SourcePackage source;
-        std::vector<std::string> projectInputs;
-        CheckPackage(project, index, &source, &projectInputs, packageDiagnostics);
+        CheckPackage(project, index, &source, packageDiagnostics);
         return PackageRun{ text.str(), packageDiagnostics.GetErrorCount() };
     };
     ForEachSource(project, std::max(std::thread::hardware_concurrency(), 1u), validate, diagnostics);

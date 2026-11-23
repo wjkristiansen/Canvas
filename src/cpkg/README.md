@@ -1,6 +1,6 @@
 # cpkg
 
-`cpkg` is the command-line tool that builds [package sources](PackageSource.md) into [CanvasPkg](../CanvasPkg/README.md) `.cpkg` files, and builds [projects](../CanvasProject/README.md). It also validates sources, lists a build's inputs, inspects `.cpkg` files, imports FBX files into package sources, applies refactors, and edits project manifests. Editors, scripts, and build systems all build content by running `cpkg`, so content builds identically from each.
+`cpkg` is the command-line tool that builds [package sources](PackageSource.md) into [CanvasPkg](../CanvasPkg/README.md) `.cpkg` files, and builds [projects](../CanvasProject/README.md). It also validates sources, inspects `.cpkg` files, imports FBX files into package sources, applies refactors, and edits project manifests. Editors, scripts, and build systems all build content by running `cpkg`, so content builds identically from each.
 
 `cpkg` depends on CanvasPkg for writing and reading packages, on CanvasProject for resolving package names, on [ufbx](https://github.com/bqqbarbhg/ufbx) for reading FBX files, and on [InCommand](../../deps/InCommand/readme.md) for its command line. It links no engine library. Its strings and file paths are UTF-8, converted to the platform's form only where they reach the operating system.
 
@@ -22,7 +22,6 @@ cpkg <command> [<subcommand>] [<arguments>] [<options>]
 |---|---|
 | [`build`](#build) | Builds a package or a project |
 | [`validate`](#validate) | Reports the diagnostics a build would report, without writing anything |
-| [`inputs`](#inputs) | Writes the [input list](#input-lists) of a package or a project, without building |
 | [`dump`](#dump) | Prints the contents of a `.cpkg` file |
 | [`unpack`](#unpack) | Writes a package source that builds a `.cpkg` file |
 | [`format`](#format) | Rewrites a package source in the standard form |
@@ -59,6 +58,8 @@ Builds a package, as [Building a Package](#building-a-package) defines, or a pro
 | `-j`, `--jobs` | For a project, the most packages built at once, at least 1; by default the number of hardware threads. |
 | `--depfile` | Writes a [dependency file](#dependency-files) to this path, its target the built `.cpkg` file or built project. |
 
+A build reports an error when `-o` or `--depfile` names a file the build reads or another file it writes, and leaves that file as it was.
+
 A project build rebuilds only the packages whose inputs changed, so running `cpkg build` on a project after a change rebuilds what the change affects, and running it again with nothing changed writes nothing.
 
 ### validate
@@ -69,15 +70,6 @@ cpkg validate <project.cproj.json>
 ```
 
 Loads and validates a package, or every package a project lists by source together with the manifest, and reports the diagnostics a build would report. For a project, it also opens each prebuilt package, and checks that each `worlds` entry names a world bundle and that the built file names are unique. It runs every stage of the [pipeline](#pipeline) except Write, so it reads every file a build reads, including FBX files, because rules such as the keys of an import's `rename` depend on the file's content. It writes no file.
-
-### inputs
-
-```
-cpkg inputs <package.cpkg.json> [--project <project.cproj.json>] [-o <file>]
-cpkg inputs <project.cproj.json> [-o <file>]
-```
-
-Writes the [input list](#input-lists) of a package or a project to standard output, or to the file `-o` names.
 
 ### dump
 
@@ -229,11 +221,7 @@ A dependency file is a Makefile-format rule, written in the subset that build sy
 
 A path that holds a `#`, a `\`, a line break, or a `:` other than a drive letter's has no form in this subset. A build asked for a dependency file reports reading such a file as an error, naming the file.
 
-### Input Lists
-
-An **input list** names the files a build would read, without building. To produce it, `cpkg` loads the sources and reads each FBX file far enough to find the external textures it uses, and writes no output. A build system that declares a step's inputs before running it uses the input list where others use the dependency file.
-
-An input list holds one absolute path per line, with `/` as its separator, encoded in UTF-8. It names the same files a build of the same sources records in its dependency file, so the two agree. An input list is available for a package and for a project; a project's input list names the inputs of every package and the files of its prebuilt packages.
+A build that fails leaves the file at the path `--depfile` names as it was. Its output is then out of date, so a build system runs the build again, and the dependency file still names the inputs of the last build that succeeded.
 
 ## Project Builds
 
@@ -252,7 +240,7 @@ A package is **up to date** when its record exists, names the version of `cpkg` 
 A project build runs in stages, and each stage runs only when the stage before it succeeds:
 
 1. **Packages.** Every package listed by source builds, and the build reports the diagnostics of every package. Each `.cpkg` file is written [atomically](#output): a package with an error builds no `.cpkg` file, and its earlier file stays as it was.
-2. **Built project.** When every package built, the build copies the prebuilt packages into `output`, each atomically, and writes the built project, and, with `--depfile`, its [dependency file](#dependency-files). When any package failed, the build writes neither, and removes any built project an earlier build left in `output` and the dependency file `--depfile` names.
+2. **Built project.** When every package built, the build copies the prebuilt packages into `output`, each atomically, and writes the built project, and, with `--depfile`, its [dependency file](#dependency-files). When any package failed, the build writes neither, and removes any built project an earlier build left in `output`.
 
 A failed build may leave package files from earlier builds in `output`, but no built project lists them, so the engine never opens a mix of packages that no single build produced together.
 
@@ -286,9 +274,11 @@ content = custom_target('GameContent',
   build_by_default: true)
 ```
 
-A step that generates a file a package reads, such as a tool that writes an image, is declared as a dependency of the `cpkg build` step, such as with `DEPENDS` in CMake, so it runs first. A build system that declares a step's inputs before running it, rather than reading a dependency file, takes them from `cpkg inputs`.
+A step that generates a file a package reads, such as a tool that writes an image, is declared as a dependency of the `cpkg build` step, such as with `DEPENDS` in CMake, so it runs first.
 
 Because `cpkg` leaves unchanged output files untouched, steps that depend on the built project run only when the build changed it.
+
+A build system can also run `cpkg build` on every build, without a dependency file, such as through a CMake custom target, which always runs. The project build then decides from its input records what to rebuild, and with nothing changed it writes nothing.
 
 ## Editing Sources
 
@@ -336,7 +326,7 @@ Every stage reports its findings as **diagnostics**, each with:
 
 A build reports every finding it can before it stops: Load and Validate check the whole source, not only up to its first error. A source with any error builds no package. Warnings and info do not change what is built, and `--werror` treats warnings as errors.
 
-`cpkg` writes diagnostics to standard error, one per line, and everything else, such as `dump` and `refs` output and an input list without `-o`, to standard output:
+`cpkg` writes diagnostics to standard error, one per line, and everything else, such as `dump` and `refs` output, to standard output:
 
 ```
 <file>:<line>:<column>: <severity>: <message> [<location>]
@@ -375,6 +365,7 @@ Directions the current design leaves room for. None are committed plans:
 - **Authoring library**: `cpkg`'s loading, validation, and refactors offered as a library, for an editor that needs them in-process, such as to validate as content changes.
 - **Machine-readable diagnostics**: a JSON form of the diagnostics, for editors and other tools that present them.
 - **CMake module**: a `canvas_add_project()` function that declares the [build step](#build-systems) for a project manifest.
+- **Input lists**: a command that names the files a build would read without building, for build systems that declare a step's inputs before running it. It would name the files that list further inputs, such as bundle and FBX files, apart from the others, and name files that a generating step has yet to write.
 - **Watch mode**: rebuilding a project as its source files change.
 - **New files**: commands that create an empty package source or project manifest.
 - **Incremental builds**: reusing the payloads of assets whose inputs are unchanged since the last build, keyed by hashes of those inputs.

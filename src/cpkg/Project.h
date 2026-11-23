@@ -145,6 +145,10 @@ struct SourcePackage;
 bool LoadAndValidate(const std::string &packageFile, const std::optional<std::string> &projectFile, SourcePackage *pPackage,
     CDiagnostics &diagnostics);
 
+// Reports each of written, UTF-8 paths of files a build writes, that names one of inputs, the
+// absolute paths of files it reads, or an earlier one of written. Returns true when none does.
+bool CheckWrittenPaths(const std::vector<std::string> &written, const std::vector<std::string> &inputs, CDiagnostics &diagnostics);
+
 // Builds an authored project, as "Project Builds" in src/cpkg/README.md defines.
 void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics);
 

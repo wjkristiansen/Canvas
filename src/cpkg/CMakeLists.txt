@@ -7,6 +7,8 @@ add_library(CpkgTool STATIC
     BundleLayout.cpp
     Cli.cpp
     CpkgTool.h
+    DependencyFile.cpp
+    DependencyFile.h
     Diagnostics.cpp
     Diagnostics.h
     Dump.cpp

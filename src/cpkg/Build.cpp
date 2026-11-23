@@ -3,6 +3,8 @@
 //================================================================================================
 
 #include "CpkgTool.h"
+#include "DependencyFile.h"
+#include "FileSystem.h"
 #include "Project.h"
 #include "Stages.h"
 
@@ -29,7 +31,32 @@ void Build(const BuildOptions &options, CDiagnostics &diagnostics)
 
     // The default output is the package file without its ".json" ending.
     const std::string output = options.Output ? *options.Output : options.Package.substr(0, options.Package.size() - 5);
-    WritePackage(package, output, diagnostics);
+    const std::string target = AbsolutePath(output);
+    const std::vector<std::string> inputs = UniqueAbsolutePaths(package.Inputs);
+    std::vector<std::string> written{ output };
+    if (options.Depfile)
+        written.push_back(*options.Depfile);
+    if (!CheckWrittenPaths(written, inputs, diagnostics))
+        return;
+
+    // The dependency file is staged first, so that a file it cannot be written to leaves the
+    // output as it was.
+    std::optional<CStagedFile> depfile;
+    if (options.Depfile)
+    {
+        if (!CheckDependencyPaths(target, inputs, diagnostics))
+            return;
+        depfile.emplace(PathOf(*options.Depfile));
+        if (depfile->Write(DependencyRule(target, inputs)) != FileResult::Success)
+        {
+            diagnostics.Report(Severity::Error, *options.Depfile, "cannot write the file");
+            return;
+        }
+    }
+    if (!WritePackage(package, output, diagnostics))
+        return;
+    if (depfile && depfile->Commit() != FileResult::Success)
+        diagnostics.Report(Severity::Error, *options.Depfile, "cannot write the file");
 }
 
 void Validate(const ValidateOptions &options, CDiagnostics &diagnostics)

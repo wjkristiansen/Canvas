@@ -60,6 +60,7 @@ struct BuildOptions
     std::optional<std::string> Output;  // the .cpkg file to write, or a project's output directory
     std::optional<std::string> Project; // for a package, the .cproj.json file to validate it against
     std::optional<unsigned> Jobs;       // for a project, the most packages built at once
+    std::optional<std::string> Depfile; // the dependency file to write
 };
 
 // Builds the package source into a .cpkg file, or builds the project, reporting what the build
