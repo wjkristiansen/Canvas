@@ -327,6 +327,8 @@ private:
         const SourceBundle &bundle = m_Package.Bundles[bundleIndex];
         const CBundleLayout &layout = m_Layouts[bundleIndex];
         CheckAssetNames(bundle, layout);
+        for (const auto &image : bundle.Images)
+            CheckImage(image.Value);
         for (const auto &material : bundle.Materials)
             CheckMaterial(bundle, material.Value);
         for (const auto &mesh : bundle.Meshes)
@@ -340,6 +342,102 @@ private:
         for (const auto &skybox : bundle.Skyboxes)
             CheckSkybox(bundle, skybox.Value);
         CheckLocalAssets(bundleIndex, layout);
+    }
+
+    static std::string Size(uint32_t width, uint32_t height)
+    {
+        return std::to_string(width) + "x" + std::to_string(height);
+    }
+
+    // Checks an image's number of files, its shape, and each file's encoding and size, from the
+    // headers Translate read.
+    void CheckImage(const SourceImage &image)
+    {
+        using Canvas::CpkgImageDimension;
+        if (image.Files.empty() || image.Headers.size() != image.Files.size())
+            return;
+
+        const bool volume = image.Dimension == CpkgImageDimension::Texture3D;
+        const uint64_t count = image.Files.size();
+        uint32_t depth = 1;
+        if (volume)
+        {
+            const std::optional<uint32_t> found = Texture3DDepth(count, image.MipLevels);
+            if (!found)
+            {
+                Error(image.Where, std::to_string(count) + " files fit no depth of a 3D image of " + Plural(image.MipLevels, "mip level")
+                    + ", whose mip m holds max(1, depth >> m) files");
+                return;
+            }
+            depth = *found;
+            if (image.ArraySize != 1)
+                Error(image.Where, "expected an arraySize of 1 for a 3D image; found " + std::to_string(image.ArraySize));
+        }
+        else
+        {
+            const uint64_t expected = uint64_t(image.ArraySize) * image.MipLevels;
+            if (count != expected)
+            {
+                Error(image.Where, "expected " + Plural(expected, "file") + ", for " + Plural(image.ArraySize, "array slice") + " of "
+                    + Plural(image.MipLevels, "mip level") + "; found " + std::to_string(count));
+                return;
+            }
+            if (image.Dimension == CpkgImageDimension::Cube && image.ArraySize % 6 != 0)
+                Error(image.Where, "expected an arraySize that is a multiple of 6 for a cube image; found " + std::to_string(image.ArraySize));
+        }
+
+        const ImageHeader &first = image.Headers[0];
+        const uint32_t width = first.Width;
+        const uint32_t height = first.Height;
+        if (image.Dimension == CpkgImageDimension::Texture1D && height != 1)
+            Error(image.Files[0].Where, "expected a file 1 pixel high for a 1D image; the file is " + Size(width, height) + ": " + Quoted(image.Files[0].Written));
+        if (image.Dimension == CpkgImageDimension::Cube && width != height)
+            Error(image.Files[0].Where, "expected a square file for a cube image; the file is " + Size(width, height) + ": " + Quoted(image.Files[0].Written));
+
+        uint32_t largest = std::max({ width, height, depth });
+        uint32_t fullChain = 1;
+        while (largest >>= 1)
+            ++fullChain;
+        if (image.MipLevels > fullChain)
+        {
+            Error(image.Where, "expected at most " + Plural(fullChain, "mip level") + ", the full mip chain of a " + Size(width, height)
+                + (volume ? "x" + std::to_string(depth) : "") + " image; found " + std::to_string(image.MipLevels));
+            return;
+        }
+
+        // A 3D image's files are mip 0's depth slices, then mip 1's; the others' are each array
+        // slice's mips in turn.
+        uint32_t mip = 0;
+        uint32_t remaining = std::max(1u, depth);
+        for (size_t i = 0; i < image.Files.size(); ++i)
+        {
+            if (volume)
+            {
+                if (remaining == 0)
+                    remaining = std::max(1u, depth >> ++mip);
+                --remaining;
+            }
+            else
+            {
+                mip = uint32_t(i % image.MipLevels);
+            }
+
+            const SourceFileRef &file = image.Files[i];
+            const ImageHeader &header = image.Headers[i];
+            if (header.Encoding != first.Encoding)
+            {
+                Error(file.Where, std::string("expected a ") + ImageEncodingName(first.Encoding) + " image, the encoding of the image's first file; the file is a "
+                    + ImageEncodingName(header.Encoding) + " image: " + Quoted(file.Written));
+                continue;
+            }
+            const uint32_t mipWidth = std::max(1u, width >> mip);
+            const uint32_t mipHeight = std::max(1u, height >> mip);
+            if (i > 0 && (header.Width != mipWidth || header.Height != mipHeight))
+            {
+                Error(file.Where, "expected " + Size(mipWidth, mipHeight) + ", the size of mip " + std::to_string(mip) + "; the file is "
+                    + Size(header.Width, header.Height) + ": " + Quoted(file.Written));
+            }
+        }
     }
 
     void CheckMaterial(const SourceBundle &bundle, const SourceMaterial &material)

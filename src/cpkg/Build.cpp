@@ -13,7 +13,7 @@ namespace
     // Runs the stages before Write. Returns true when they reported no error.
     bool LoadAndValidate(const std::string &packageFile, SourcePackage *pPackage, CDiagnostics &diagnostics)
     {
-        if (!LoadPackageSource(packageFile, pPackage, diagnostics))
+        if (!LoadPackageSource(packageFile, pPackage, diagnostics) || !TranslatePackageSource(*pPackage, diagnostics))
             return false;
         return ValidatePackageSource(*pPackage, diagnostics) && diagnostics.GetErrorCount() == 0;
     }

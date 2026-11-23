@@ -5,6 +5,7 @@
 #include "pch.h"
 #include "CanvasPkg.h"
 #include "CpkgTool.h"
+#include "ImageFiles.h"
 #include "SchemaCheck.h"
 
 #include <chrono>
@@ -865,6 +866,7 @@ TEST_F(CpkgBuild, ReportsBundleStructureErrors)
 //------------------------------------------------------------------------------------------------
 TEST_F(CpkgBuild, ReportsValidationErrorsInDocumentOrder)
 {
+    WriteText("a.png", ImageFiles::Png(4, 4));
     WriteText("parts.cbundle.json", R"({
   "formatVersion": 1,
   "bundle": { "name": "Looks", "materials": { "Steel": { "textures": { "normal": "Sky" } } }, "meshes": { "Steel": { "groups": [ { "positions": [0, 0, 0] } ] } } }
@@ -946,7 +948,7 @@ TEST_F(CpkgBuild, ReportsMembersItCannotBuildYet)
     WriteText("levels.cpkg.json", R"({
   "formatVersion": 1,
   "packageName": "Levels",
-  "bundles": [ { "name": "Village", "images": { "Sky": "sky.png" }, "imports": [ { "file": "goblin.fbx" } ] } ]
+  "bundles": [ { "name": "Village", "imports": [ { "file": "goblin.fbx" } ] } ]
 }
 )");
 
@@ -957,7 +959,6 @@ TEST_F(CpkgBuild, ReportsMembersItCannotBuildYet)
     result = RunCpkg({ "build", "levels.cpkg.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitError);
     EXPECT_EQ(result.Err,
-        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"images\" yet [/bundles/0]\n"
         "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"imports\" yet [/bundles/0]\n");
     EXPECT_FALSE(std::filesystem::exists("levels.cpkg"));
 }

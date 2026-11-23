@@ -408,6 +408,8 @@ public:
 
         for (ArrayFile &file : m_ArrayFiles)
             pFiles->push_back({ folder + "/" + file.Name, std::move(file.Bytes) });
+        for (OutputFile &file : m_ImageFiles)
+            pFiles->push_back({ folder + "/" + file.Path, std::move(file.Bytes) });
         return Assemble();
     }
 
@@ -804,7 +806,7 @@ private:
         switch (Asset().Type)
         {
         case AssetType::Image:
-            Problem("cpkg cannot unpack images yet");
+            m_Images[name] = Image();
             break;
         case AssetType::Skybox:
             m_Skyboxes[name] = Skybox();
@@ -863,6 +865,55 @@ private:
         default:
             break;
         }
+    }
+
+    // An image, in the file form when it is one 2D image, the cubemap form when it is one cube of
+    // single-mip faces, and otherwise the general form, each of its encoded images written
+    // verbatim to a file of its own.
+    Json Image()
+    {
+        const CView<CpkgImageData> view(Asset().Payload);
+        const CpkgImageData &image = view.Header();
+        const std::span<const CpkgSpan<uint8_t>> entries = view.Elements(image.Images);
+        const char *pExtension = ImageExtension(image.Encoding);
+        if (!pExtension)
+        {
+            Problem("it holds images in an encoding no source's image files hold");
+            return Json();
+        }
+
+        auto file = [&](const std::string &suffix, const CpkgSpan<uint8_t> &entry)
+        {
+            const std::span<const uint8_t> bytes = view.Elements(entry);
+            const std::string name = m_pFolder->Add(Asset().Name, suffix + pExtension);
+            m_ImageFiles.push_back({ name, std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size()) });
+            return Json(name);
+        };
+
+        const bool single = image.MipLevels == 1;
+        if (image.Dimension == CpkgImageDimension::Texture2D && image.ArraySize == 1 && single && entries.size() == 1)
+            return file("", entries[0]);
+
+        Json json = Json::object();
+        if (image.Dimension == CpkgImageDimension::Cube && image.ArraySize == 6 && single && entries.size() == 6)
+        {
+            Json faces = Json::object();
+            for (size_t face = 0; face < 6; ++face)
+                faces[kCubeFaces[face]] = file(std::string(".") + kCubeFaces[face], entries[face]);
+            json["cubemap"] = std::move(faces);
+            return json;
+        }
+
+        json["dimension"] = Enum(kDimensions, image.Dimension, "dimension");
+        if (image.ArraySize != 1)
+            json["arraySize"] = Number(image.ArraySize);
+        if (image.MipLevels != 1)
+            json["mipLevels"] = Number(image.MipLevels);
+        Json files = Json::array();
+        for (size_t i = 0; i < entries.size(); ++i)
+            files.push_back(file("." + std::to_string(i), entries[i]));
+        json["files"] = std::move(files);
+        return json;
     }
 
     Json Skybox()
@@ -1428,6 +1479,7 @@ private:
             if (!assets.empty())
                 bundle[pKey] = std::move(assets);
         };
+        map("images", m_Images);
         map("materials", m_Materials);
         map("meshes", m_Meshes);
         map("skeletons", m_Skeletons);
@@ -1474,6 +1526,7 @@ private:
     int32_t m_Exports = -1;
     int32_t m_World = -1;
 
+    Json m_Images = Json::object();
     Json m_Materials = Json::object();
     Json m_Meshes = Json::object();
     Json m_Skeletons = Json::object();
@@ -1484,6 +1537,7 @@ private:
     Json m_ExportsJson;
     Json m_WorldJson;
     std::vector<ArrayFile> m_ArrayFiles;
+    std::vector<OutputFile> m_ImageFiles;   // each Path in the bundle's folder
 };
 
 //------------------------------------------------------------------------------------------------
@@ -1671,6 +1725,7 @@ private:
         CDiagnostics buildDiagnostics(findings, false, true);
         SourcePackage source;
         const bool succeeded = LoadPackageSource(packageFile, &source, buildDiagnostics)
+            && TranslatePackageSource(source, buildDiagnostics)
             && ValidatePackageSource(source, buildDiagnostics)
             && buildDiagnostics.GetErrorCount() == 0
             && WritePackage(source, built, buildDiagnostics);
