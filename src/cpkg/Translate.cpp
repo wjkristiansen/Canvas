@@ -7,14 +7,6 @@
 
 #include "Stages.h"
 
-#include <algorithm>
-#include <cstdint>
-#include <filesystem>
-#include <iterator>
-#include <optional>
-#include <string>
-#include <string_view>
-
 namespace CpkgTool
 {
 

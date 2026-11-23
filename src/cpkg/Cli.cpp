@@ -4,15 +4,6 @@
 
 #include "CpkgTool.h"
 
-#include "InCommand.h"
-
-#include <charconv>
-#include <new>
-#include <system_error>
-#include <string>
-#include <string_view>
-#include <vector>
-
 #ifndef CPKG_VERSION
 #error CPKG_VERSION must name the cpkg version
 #endif

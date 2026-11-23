@@ -9,18 +9,6 @@
 #include "CpkgTool.h"
 #include "Stages.h"
 
-#include <algorithm>
-#include <bit>
-#include <cmath>
-#include <cstring>
-#include <filesystem>
-#include <new>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <string_view>
-#include <vector>
-
 namespace CpkgTool
 {
 

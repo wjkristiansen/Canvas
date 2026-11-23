@@ -14,12 +14,6 @@
 #include <unistd.h>
 #endif
 
-#include <chrono>
-#include <cstring>
-#include <fstream>
-#include <iterator>
-#include <system_error>
-
 namespace CpkgTool
 {
 

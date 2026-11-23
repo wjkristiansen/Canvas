@@ -5,13 +5,6 @@
 #include "Project.h"
 #include "Stages.h"
 
-#include <algorithm>
-#include <cstdio>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
-
 namespace CpkgTool
 {
 

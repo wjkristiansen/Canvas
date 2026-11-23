@@ -4,10 +4,6 @@
 
 #include "Diagnostics.h"
 
-#include <filesystem>
-#include <string>
-#include <system_error>
-
 namespace CpkgTool
 {
 

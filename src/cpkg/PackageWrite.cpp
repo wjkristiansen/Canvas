@@ -4,13 +4,6 @@
 
 #include "Stages.h"
 
-#include <algorithm>
-#include <cstring>
-#include <filesystem>
-#include <span>
-#include <string>
-#include <vector>
-
 namespace CpkgTool
 {
 
