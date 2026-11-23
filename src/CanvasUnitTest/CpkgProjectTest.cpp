@@ -48,13 +48,13 @@ namespace
         return result;
     }
 
-    std::vector<std::string> FilesUnder(const std::string &folder)
+    std::vector<std::string> FilesUnder(const std::string &directory)
     {
         std::vector<std::string> files;
-        for (const auto &entry : std::filesystem::recursive_directory_iterator(folder))
+        for (const auto &entry : std::filesystem::recursive_directory_iterator(directory))
         {
             if (entry.is_regular_file())
-                files.push_back(entry.path().lexically_relative(folder).generic_string());
+                files.push_back(entry.path().lexically_relative(directory).generic_string());
         }
         std::sort(files.begin(), files.end());
         return files;
@@ -368,7 +368,7 @@ TEST_F(CpkgProject, ValidatesTheProjectsOwnContent)
     EXPECT_FALSE(std::filesystem::exists("build/game.cproj.json"));
 }
 
-TEST_F(CpkgProject, WritesToTheOutputFolderItIsGiven)
+TEST_F(CpkgProject, WritesToTheOutputDirectoryItIsGiven)
 {
     WriteProject();
     ASSERT_EQ(RunCpkg({ "build", "game.cproj.json", "-o", "out/content" }).Err, "");
@@ -393,7 +393,7 @@ TEST_F(CpkgProject, ReportsBuiltFileNamesTheFileSystemTakesAsOne)
     const RunResult result = RunCpkg({ "build", "game.cproj.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitError);
     EXPECT_EQ(result.Err,
-        "game.cproj.json:6:39: error: the output folder's file system holds the built file name \"\xC3\xA4.cpkg\" of an earlier package [/packages/1/package]\n");
+        "game.cproj.json:6:39: error: the output directory's file system holds the built file name \"\xC3\xA4.cpkg\" of an earlier package [/packages/1/package]\n");
     EXPECT_EQ(FilesUnder("build"), std::vector<std::string>{});
 }
 #endif

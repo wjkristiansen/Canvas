@@ -102,7 +102,7 @@ Writes a package source that builds the package: building the source `unpack` wr
 | `-o`, `--output` | The package file to write; by default the `.cpkg` file's name with `.json` added, beside it |
 | `--force` | Replaces files that already exist. Without it, `unpack` writes nothing when any file it would write exists, and reports each one. |
 
-**Layout.** `unpack` writes the package file and, beside it, one folder per bundle, named for the bundle, holding the bundle's bundle file, `<bundle>.cbundle.json`, and the bundle's binary array and image files. The package file includes each bundle file, in the package's bundle order.
+**Layout.** `unpack` writes the package file and, beside it, one directory per bundle, named for the bundle, holding the bundle's bundle file, `<bundle>.cbundle.json`, and the bundle's binary array and image files. The package file includes each bundle file, in the package's bundle order.
 
 ```
 levels.cpkg.json
@@ -121,9 +121,9 @@ Rig/
 
 **Values.** The source writes rotations as quaternions and each file in the [standard form](#editing-sources), so `cpkg format` leaves it unchanged.
 
-**File names.** A bundle's folder and an asset's files are named for the bundle or asset. Each character a file name cannot hold on common file systems, a folder name's final `.` or space, and each `%`, is written as `%` and the character's two hexadecimal digits; a name a file system reserves, such as `CON`, has its first character written that way. A file name already used in its folder, as the output's file system compares names, takes the smallest suffix `~2`, `~3`, and so on, before its extension, that makes it unique.
+**File names.** A bundle's directory and an asset's files are named for the bundle or asset. Each character a file name cannot hold on common file systems, a directory name's final `.` or space, and each `%`, is written as `%` and the character's two hexadecimal digits; a name a file system reserves, such as `CON`, has its first character written that way. A file name already used in its directory, as the output's file system compares names, takes the smallest suffix `~2`, `~3`, and so on, before its extension, that makes it unique.
 
-**Packages it cannot unpack.** Some packages have no source that builds them, such as one whose assets are not in the order a build appends them, one with an import node whose placement is unnamed, or one with a light whose color has an alpha other than 1. `unpack` writes its files to a temporary folder beside the output, builds them, and moves them into place only when the build reproduces the package. Otherwise it writes nothing and reports each asset the source cannot reproduce, naming what it holds that no source expresses. Every package `cpkg` builds unpacks.
+**Packages it cannot unpack.** Some packages have no source that builds them, such as one whose assets are not in the order a build appends them, one with an import node whose placement is unnamed, or one with a light whose color has an alpha other than 1. `unpack` writes its files to a temporary directory beside the output, builds them, and moves them into place only when the build reproduces the package. Otherwise it writes nothing and reports each asset the source cannot reproduce, naming what it holds that no source expresses. Every package `cpkg` builds unpacks.
 
 ### format
 
@@ -247,7 +247,7 @@ A package is **up to date** when its record exists, names the version of `cpkg` 
 
 **Concurrent builds.** Each package's diagnostics are reported together, the packages in manifest order, so a project build reports the same diagnostics in the same order for every `-j`.
 
-**Output names.** The file names a project build writes in `output` are unique, as CanvasProject's [Building a Project](../CanvasProject/README.md#building-a-project) requires. Beyond the comparison CanvasProject makes, the build claims each name by creating a file of that name in a new temporary folder in `output`, failing when the file already exists, so two names that the file system holding `output` treats as one, such as names that differ only in the case of non-ASCII letters, are reported as an error at the second package's entry. The folder is removed before the build ends.
+**Output names.** The file names a project build writes in `output` are unique, as CanvasProject's [Building a Project](../CanvasProject/README.md#building-a-project) requires. Beyond the comparison CanvasProject makes, the build claims each name by creating a file of that name in a new temporary directory in `output`, failing when the file already exists, so two names that the file system holding `output` treats as one, such as names that differ only in the case of non-ASCII letters, are reported as an error at the second package's entry. The directory is removed before the build ends.
 
 A project build runs in stages, and each stage runs only when the stage before it succeeds:
 

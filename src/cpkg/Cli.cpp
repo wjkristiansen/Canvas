@@ -80,7 +80,7 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
             .SetDescription("The package file (.cpkg.json) or project manifest (.cproj.json)");
         build.AddOption(InCommand::OptionType::Variable, "output", 'o')
             .SetDescription("For a package, the .cpkg file to write; by default the package file's name without .json, beside it. "
-                            "For a project, the folder to write in place of the manifest's output");
+                            "For a project, the directory to write in place of the manifest's output");
         build.AddOption(InCommand::OptionType::Variable, "project")
             .SetDescription("For a package, the project manifest to validate it against");
         build.AddOption(InCommand::OptionType::Variable, "jobs", 'j')
