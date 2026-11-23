@@ -398,7 +398,7 @@ TEST_F(CpkgUnpack, ReportsWhatNoSourceExpresses)
         ASSERT_EQ(writer.BeginBundle("Camp"), Result::Success);
         AppendAsset<CpkgImageData>(writer, AssetType::Image, "Sky", [](auto &, CpkgImageData &image)
         {
-            image.Encoding = CpkgImageEncoding::Png;
+            image.Encoding = CpkgImageEncoding::Unknown;
             image.Dimension = CpkgImageDimension::Texture2D;
             image.Width = image.Height = image.Depth = image.ArraySize = image.MipLevels = 1;
         });
@@ -423,7 +423,7 @@ TEST_F(CpkgUnpack, ReportsWhatNoSourceExpresses)
 
     const RunResult odd = RunCpkg({ "unpack", "odd.cpkg" });
     EXPECT_EQ(odd.Err,
-        "odd.cpkg: error: bundle \"Camp\", asset 0 (Image \"Sky\"): cpkg cannot unpack images yet\n"
+        "odd.cpkg: error: bundle \"Camp\", asset 0 (Image \"Sky\"): it holds images in an encoding no source's image files hold\n"
         "odd.cpkg: error: bundle \"Camp\", asset 3 (ImportNode \"Hand\"): its placement is unnamed, and a source names the placement an import node refers to\n"
         "odd.cpkg: error: bundle \"Camp\", asset 4 (Light): its color has an alpha other than 1, which no source expresses\n");
     EXPECT_EQ(odd.Status, CpkgTool::kExitError);

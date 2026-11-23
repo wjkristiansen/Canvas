@@ -196,7 +196,7 @@ A texture an FBX file uses is either **embedded**, its encoded bytes held in the
 
 ### Images
 
-The build stores image files' bytes unchanged. It identifies each file's encoding from the file's content, by the signature each encoding begins with, and reads the image's width and height from the encoding's header, decoding no pixels. A file whose extension names a different encoding than its content is reported as a warning. A file in an encoding CanvasPkg does not store is reported as an error.
+The build stores image files' bytes unchanged. It identifies each file's encoding from the file's content, by the signature each encoding begins with, and reads the image's width and height from the encoding's header, decoding no pixels: a PNG file's `IHDR` chunk, a JPEG file's start-of-frame segment, and the first image file directory of a TIFF file. A file whose extension names a different encoding than its content, among `.png`, `.jpg`, `.jpeg`, `.tif`, and `.tiff`, is reported as a warning. A file in an encoding CanvasPkg does not store is reported as an error, naming the encoding when the build recognizes it, such as GIF or DDS.
 
 ### Output
 

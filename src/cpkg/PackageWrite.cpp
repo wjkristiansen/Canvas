@@ -128,7 +128,8 @@ public:
 
         if (Gem::Failed(result))
         {
-            m_Diagnostics.Report(Severity::Error, path, "cannot write the file");
+            if (!m_InputFailed)
+                m_Diagnostics.Report(Severity::Error, path, "cannot write the file");
             std::filesystem::remove(temporaryPath, error);
             return false;
         }
@@ -162,7 +163,6 @@ private:
                 ReportAt(m_Diagnostics, m_Package, Severity::Error, bundle.Where, std::string("cpkg cannot build a bundle's \"") + member + "\" yet");
                 buildable = false;
             };
-            unsupported(!bundle.Images.empty(), "images");
             unsupported(!bundle.Imports.empty(), "imports");
         }
         return buildable;
@@ -197,6 +197,7 @@ private:
                 result = (this->*write)(bundle, asset);
             }
         };
+        each(bundle.Images, &CPackageWriter::WriteImage);
         each(bundle.Skyboxes, &CPackageWriter::WriteSkybox);
         each(bundle.Materials, &CPackageWriter::WriteMaterial);
         each(bundle.Meshes, &CPackageWriter::WriteMesh);
@@ -219,6 +220,40 @@ private:
 
     //--------------------------------------------------------------------------------------------
     // Payloads
+
+    // Stores each of the image's files' bytes unchanged, read again here so that the build
+    // holds one image's files at a time.
+    Gem::Result WriteImage(const SourceBundle &, const SourceNamed<SourceImage> &asset)
+    {
+        const SourceImage &image = asset.Value;
+        CEncoder<CpkgImageData> encoder;
+        CpkgImageData header;
+        header.Encoding = image.Headers[0].Encoding;
+        header.Dimension = image.Dimension;
+        header.Width = image.Headers[0].Width;
+        header.Height = image.Headers[0].Height;
+        header.Depth = image.Dimension == CpkgImageDimension::Texture3D ? *Texture3DDepth(image.Files.size(), image.MipLevels) : 1;
+        header.ArraySize = image.ArraySize;
+        header.MipLevels = image.MipLevels;
+
+        std::vector<CpkgSpan<uint8_t>> entries;
+        for (const SourceFileRef &file : image.Files)
+        {
+            std::ifstream stream(std::filesystem::path(std::u8string(file.Path.begin(), file.Path.end())), std::ios::binary);
+            std::vector<uint8_t> bytes;
+            if (stream.is_open())
+                bytes.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+            if (!stream.is_open() || stream.bad())
+            {
+                ReportAt(m_Diagnostics, m_Package, Severity::Error, file.Where, "cannot read the file: \"" + file.Written + "\"");
+                m_InputFailed = true;
+                return Gem::Result::Fail;
+            }
+            entries.push_back(encoder.Append(bytes));
+        }
+        header.Images = encoder.Append(entries);
+        return Append(AssetType::Image, asset.Name, encoder, header);
+    }
 
     Gem::Result WriteSkybox(const SourceBundle &, const SourceNamed<SourceSkybox> &asset)
     {
@@ -633,6 +668,7 @@ private:
     CDiagnostics &m_Diagnostics;
     CPackageLookup m_Lookup;
     CCpkgWriter m_Writer;
+    bool m_InputFailed = false;     // a file the package holds could not be read, and was reported
 };
 
 } // namespace

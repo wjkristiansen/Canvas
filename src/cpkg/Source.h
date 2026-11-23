@@ -127,6 +127,14 @@ enum class SourceImageForm
     General,
 };
 
+// What an image file's header gives: its encoding and size.
+struct ImageHeader
+{
+    Canvas::CpkgImageEncoding Encoding = Canvas::CpkgImageEncoding::Unknown;
+    uint32_t Width = 0;
+    uint32_t Height = 0;
+};
+
 struct SourceImage
 {
     SourceImageForm Form = SourceImageForm::File;
@@ -134,6 +142,7 @@ struct SourceImage
     uint32_t ArraySize = 1;
     uint32_t MipLevels = 1;
     std::vector<SourceFileRef> Files;   // a cubemap's in +X, -X, +Y, -Y, +Z, -Z order
+    std::vector<ImageHeader> Headers;   // per file, read by Translate; Unknown for one it could not read
     SourceLocation Where;
 };
 

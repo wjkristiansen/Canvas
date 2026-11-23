@@ -145,6 +145,11 @@ private:
     std::unordered_map<std::string_view, int32_t> m_Names;
 };
 
+// The Translate stage: reads the header of each image file, filling each SourceImage's Headers,
+// and reports a file it cannot read, one in an encoding CanvasPkg does not store, and, as a
+// warning, one whose extension names another encoding. Returns true when it reported no error.
+bool TranslatePackageSource(SourcePackage &package, CDiagnostics &diagnostics);
+
 // The Validate stage: checks the validation rules of PackageSource.md that Load does not, and
 // reports each finding at the value that breaks the rule, in document order within each file.
 // Returns true when it reported no error.
@@ -170,6 +175,29 @@ const char *AssetTypeName(Canvas::AssetType type);
 
 // Why CCpkgReader::Open failed with result for the .cpkg file at package, a UTF-8 path.
 std::string OpenFailure(Gem::Result result, const std::string &package);
+
+//------------------------------------------------------------------------------------------------
+// Images
+
+enum class ImageRead
+{
+    Read,       // the header gave the encoding and a size
+    Unstored,   // the bytes begin with no signature of an encoding CanvasPkg stores
+    Damaged,    // the bytes begin with a stored encoding's signature, but its header gives no size
+};
+
+// Reads the encoding and size of the encoded image bytes holds. For Unstored, *ppOtherEncoding
+// names the encoding the bytes begin with the signature of, such as "GIF", or is null.
+ImageRead ReadImageHeader(std::string_view bytes, ImageHeader *pHeader, const char **ppOtherEncoding);
+
+// The encoding's name, such as "PNG", and the extension of its files, such as ".png"; null for
+// Unknown.
+const char *ImageEncodingName(Canvas::CpkgImageEncoding encoding);
+const char *ImageExtension(Canvas::CpkgImageEncoding encoding);
+
+// The depth of a Texture3D image of mipLevels mip levels whose Images hold count entries, mip m
+// holding max(1, depth >> m); empty when no depth gives count.
+std::optional<uint32_t> Texture3DDepth(uint64_t count, uint32_t mipLevels);
 
 //------------------------------------------------------------------------------------------------
 // The standard form
