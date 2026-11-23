@@ -48,14 +48,14 @@ namespace
         return result;
     }
 
-    // The paths of the files under folder, relative to it with '/' separators, sorted.
-    std::vector<std::string> FilesUnder(const std::string &folder)
+    // The paths of the files under directory, relative to it with '/' separators, sorted.
+    std::vector<std::string> FilesUnder(const std::string &directory)
     {
         std::vector<std::string> files;
-        for (const auto &entry : std::filesystem::recursive_directory_iterator(folder))
+        for (const auto &entry : std::filesystem::recursive_directory_iterator(directory))
         {
             if (entry.is_regular_file())
-                files.push_back(entry.path().lexically_relative(folder).generic_string());
+                files.push_back(entry.path().lexically_relative(directory).generic_string());
         }
         std::sort(files.begin(), files.end());
         return files;
@@ -113,26 +113,26 @@ protected:
         std::filesystem::remove_all(m_Dir, ignored);
     }
 
-    // Unpacks package into folder, checks the files against the schema and the standard form, and
-    // rebuilds them, expecting the rebuilt package to hold the same bytes.
-    void ExpectRoundTrip(const std::string &package, const std::string &folder)
+    // Unpacks package into directory, checks the files against the schema and the standard form,
+    // and rebuilds them, expecting the rebuilt package to hold the same bytes.
+    void ExpectRoundTrip(const std::string &package, const std::string &directory)
     {
-        const RunResult unpacked = RunCpkg({ "unpack", package, "-o", folder + "/levels.cpkg.json" });
+        const RunResult unpacked = RunCpkg({ "unpack", package, "-o", directory + "/levels.cpkg.json" });
         EXPECT_EQ(unpacked.Err, "");
         ASSERT_EQ(unpacked.Status, CpkgTool::kExitSuccess);
-        for (const std::string &file : FilesUnder(folder))
+        for (const std::string &file : FilesUnder(directory))
         {
             if (file.ends_with(".json"))
-                EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, folder + "/" + file)) << file;
+                EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, directory + "/" + file)) << file;
         }
-        const RunResult checked = RunCpkg({ "format", folder + "/levels.cpkg.json", "--check" });
+        const RunResult checked = RunCpkg({ "format", directory + "/levels.cpkg.json", "--check" });
         EXPECT_EQ(checked.Err, "");
         EXPECT_EQ(checked.Status, CpkgTool::kExitSuccess);
 
-        const RunResult rebuilt = RunCpkg({ "build", folder + "/levels.cpkg.json", "-o", folder + ".cpkg" });
+        const RunResult rebuilt = RunCpkg({ "build", directory + "/levels.cpkg.json", "-o", directory + ".cpkg" });
         EXPECT_EQ(rebuilt.Err, "");
         ASSERT_EQ(rebuilt.Status, CpkgTool::kExitSuccess);
-        EXPECT_EQ(ReadBytes(folder + ".cpkg"), ReadBytes(package));
+        EXPECT_EQ(ReadBytes(directory + ".cpkg"), ReadBytes(package));
     }
 
 private:
@@ -217,7 +217,7 @@ TEST_F(CpkgUnpack, WritesSourceThatBuildsThePackage)
 
     ExpectRoundTrip("levels.cpkg", "out");
 
-    // A folder per bundle, holding its bundle file and its binary array files.
+    // A directory per bundle, holding its bundle file and its binary array files.
     const std::vector<std::string> files = {
         "Arena/Arena.cbundle.json", "Camp/Camp.cbundle.json", "Empty/Empty.cbundle.json", "Looks/Big.mesh.bin",
         "Looks/Looks.cbundle.json", "Rig/Rig.cbundle.json", "Rig/Stride.anim.bin", "levels.cpkg.json",
@@ -453,7 +453,7 @@ TEST_F(CpkgUnpack, ReportsWhatNoSourceExpresses)
     EXPECT_EQ(order.Err, "order.cpkg: error: bundle \"Looks\", asset 0 (MeshData \"Tri\"): it is not in the order a build appends the bundle's assets\n");
     EXPECT_EQ(order.Status, CpkgTool::kExitError);
 
-    // Unpack wrote nothing, not even the output's folder.
+    // Unpack wrote nothing, not even the output's directory.
     EXPECT_EQ(FilesUnder("."), (std::vector<std::string>{ "odd.cpkg", "order.cpkg" }));
     EXPECT_FALSE(std::filesystem::exists("out"));
 }

@@ -48,13 +48,13 @@ namespace
         return result;
     }
 
-    std::vector<std::string> FilesUnder(const std::string &folder)
+    std::vector<std::string> FilesUnder(const std::string &directory)
     {
         std::vector<std::string> files;
-        for (const auto &entry : std::filesystem::recursive_directory_iterator(folder))
+        for (const auto &entry : std::filesystem::recursive_directory_iterator(directory))
         {
             if (entry.is_regular_file())
-                files.push_back(entry.path().lexically_relative(folder).generic_string());
+                files.push_back(entry.path().lexically_relative(directory).generic_string());
         }
         std::sort(files.begin(), files.end());
         return files;

@@ -184,7 +184,7 @@ namespace
         size_t Errors = 0;
     };
 
-    // Builds the package at index into the folder output, unless its record says it is up to
+    // Builds the package at index into the directory output, unless its record says it is up to
     // date.
     PackageRun BuildPackage(const CProject &project, size_t index, const std::string &output, bool werror, bool quiet)
     {
@@ -323,15 +323,16 @@ namespace
         return Gem::Succeeded(result);
     }
 
-    // Claims each built file name in a new temporary folder in output, so the file system holding
-    // output decides which names are one. Reports each package whose name an earlier one took.
+    // Claims each built file name in a new temporary directory in output, so the file system
+    // holding output decides which names are one. Reports each package whose name an earlier one
+    // took.
     bool ClaimBuiltNames(const CProject &project, const std::string &output, CDiagnostics &diagnostics)
     {
         const Canvas::CProjectManifest &manifest = project.GetManifest();
-        const CScopedDirectory folder(PathOf(output + "/" + FileName(manifest.GetPath())));
-        if (!folder.IsCreated())
+        const CScopedDirectory directory(PathOf(output + "/" + FileName(manifest.GetPath())));
+        if (!directory.IsCreated())
         {
-            diagnostics.Report(Severity::Error, output, "cannot create a file in the folder");
+            diagnostics.Report(Severity::Error, output, "cannot create a file in the directory");
             return false;
         }
 
@@ -340,17 +341,17 @@ namespace
         for (size_t i = 0; i < packages.size(); ++i)
         {
             const std::string_view name = manifest.GetBuiltFileName(i);
-            const FileResult made = MakeFile(folder.GetPath() / PathOf(name));
+            const FileResult made = MakeFile(directory.GetPath() / PathOf(name));
             if (made == FileResult::Success)
                 continue;
             unique = false;
             if (made == FileResult::Exists)
             {
                 project.Report(diagnostics, Severity::Error, CProject::FilePointer(packages[i], i),
-                    "the output folder's file system holds the built file name " + Quoted(name) + " of an earlier package");
+                    "the output directory's file system holds the built file name " + Quoted(name) + " of an earlier package");
             }
             else
-                diagnostics.Report(Severity::Error, output, "cannot create a file in the folder");
+                diagnostics.Report(Severity::Error, output, "cannot create a file in the directory");
         }
         return unique;
     }
@@ -627,7 +628,7 @@ void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics)
         return fail();
     if (MakeDirectories(PathOf(output)) != FileResult::Success)
     {
-        diagnostics.Report(Severity::Error, output, "cannot create the folder");
+        diagnostics.Report(Severity::Error, output, "cannot create the directory");
         return;
     }
     if (!ClaimBuiltNames(project, output, diagnostics))

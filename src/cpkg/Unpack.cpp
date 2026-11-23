@@ -2,7 +2,7 @@
 // Unpack - writes a package source that builds a given .cpkg file
 //
 // Decodes each asset's payload into the source that builds it, writes the source to a temporary
-// folder beside the output, builds that source, and moves its files into place only when the
+// directory beside the output, builds that source, and moves its files into place only when the
 // build reproduces the package byte for byte. See "unpack" in src/cpkg/README.md.
 //================================================================================================
 
@@ -56,33 +56,35 @@ void AppendEscaped(std::string *pText, char c)
     *pText += kDigits[byte & 15];
 }
 
-// A file or folder a CFolder cannot create, for a reason other than its name being taken.
-struct FolderError
+// A file or directory a CDirectoryNames cannot create, for a reason other than its name being
+// taken.
+struct DirectoryError
 {
     fs::path Path;
 };
 
-// Creates path as an empty file, or the folder path when folder. Returns false when the file
-// system already holds a file or folder of that name, as its own rules for names compare them.
-bool CreateNew(const fs::path &path, bool folder)
+// Creates path as an empty file, or as a directory when directory. Returns false when the file
+// system already holds a file or directory of that name, as its own rules for names compare them.
+bool CreateNew(const fs::path &path, bool directory)
 {
-    switch (folder ? MakeDirectory(path) : MakeFile(path))
+    switch (directory ? MakeDirectory(path) : MakeFile(path))
     {
     case FileResult::Success:
         return true;
     case FileResult::Exists:
         return false;
     default:
-        throw FolderError{ path };
+        throw DirectoryError{ path };
     }
 }
 
-// Names the files and folders of one folder, as "File names" in the README describes, creating
-// each in the folder at path so that the file system's own rules decide which names are taken.
-class CFolder
+// Names the files and directories of one directory, as "File names" in the README describes,
+// creating each in the directory at path so that the file system's own rules decide which names
+// are taken.
+class CDirectoryNames
 {
 public:
-    explicit CFolder(fs::path path) :
+    explicit CDirectoryNames(fs::path path) :
         m_Path(std::move(path))
     {
     }
@@ -93,11 +95,11 @@ public:
     void Reserve(std::string_view name)
     {
         if (!CreateNew(m_Path / PathOf(name), false))
-            throw FolderError{ m_Path / PathOf(name) };
+            throw DirectoryError{ m_Path / PathOf(name) };
     }
 
     // Creates, reserves and returns the name of a file named for name, with extension; an empty
-    // extension names a folder.
+    // extension names a directory.
     std::string Add(std::string_view name, std::string_view extension)
     {
         std::string base;
@@ -114,7 +116,7 @@ public:
             AppendEscaped(&escaped, base[0]);
             base = escaped + base.substr(1);
         }
-        // A folder name cannot end in '.' or ' '.
+        // A directory name cannot end in '.' or ' '.
         if (extension.empty() && (base.back() == '.' || base.back() == ' '))
         {
             const char last = base.back();
@@ -140,7 +142,7 @@ private:
 // One file of the source unpack writes.
 struct OutputFile
 {
-    std::string Path;   // UTF-8, relative to the package file's folder, with '/' separators
+    std::string Path;   // UTF-8, relative to the package file's directory, with '/' separators
     std::string Bytes;
 };
 
@@ -317,7 +319,7 @@ private:
 // hold more than kInlineNumberLimit numbers.
 struct ArrayFile
 {
-    std::string Name;           // the file's name in the bundle's folder; empty for inline arrays
+    std::string Name;           // its name in the bundle's directory; empty for inline arrays
     uint32_t Remaining = 0;     // non-empty arrays not yet written to the file
     std::string Bytes;
 };
@@ -351,10 +353,10 @@ public:
     {
     }
 
-    // Returns the bundle's source, and adds its binary array files, in folder, to *pFiles.
-    Json Unpack(const std::string &folder, CFolder &files, std::vector<OutputFile> *pFiles)
+    // Returns the bundle's source, and adds its binary array files, in directory, to *pFiles.
+    Json Unpack(const std::string &directory, CDirectoryNames &files, std::vector<OutputFile> *pFiles)
     {
-        m_pFolder = &files;
+        m_pNames = &files;
         if (m_Bundle.Name.starts_with('$'))
             m_Problems.Add(m_BundleIndex, UINT32_MAX, "its name begins with '$', which a source reserves for format keys");
 
@@ -364,9 +366,9 @@ public:
             Each(&CBundleUnpacker::Decode);
 
         for (ArrayFile &file : m_ArrayFiles)
-            pFiles->push_back({ folder + "/" + file.Name, std::move(file.Bytes) });
+            pFiles->push_back({ directory + "/" + file.Name, std::move(file.Bytes) });
         for (OutputFile &file : m_ImageFiles)
-            pFiles->push_back({ folder + "/" + file.Path, std::move(file.Bytes) });
+            pFiles->push_back({ directory + "/" + file.Path, std::move(file.Bytes) });
         return Assemble();
     }
 
@@ -662,7 +664,7 @@ private:
         if (numbers <= kInlineNumberLimit)
             return nullptr;
         ArrayFile &file = m_ArrayFiles.emplace_back();
-        file.Name = m_pFolder->Add(Asset().Name, extension);
+        file.Name = m_pNames->Add(Asset().Name, extension);
         file.Remaining = arrays;
         return &file;
     }
@@ -842,7 +844,7 @@ private:
         auto file = [&](const std::string &suffix, const CpkgSpan<uint8_t> &entry)
         {
             const std::span<const uint8_t> bytes = view.Elements(entry);
-            const std::string name = m_pFolder->Add(Asset().Name, suffix + pExtension);
+            const std::string name = m_pNames->Add(Asset().Name, suffix + pExtension);
             m_ImageFiles.push_back({ name, std::string(reinterpret_cast<const char *>(bytes.data()), bytes.size()) });
             return Json(name);
         };
@@ -1472,7 +1474,7 @@ private:
     const PackageBundle &m_Bundle;
     uint32_t m_BundleIndex;
     CProblems &m_Problems;
-    CFolder *m_pFolder = nullptr;
+    CDirectoryNames *m_pNames = nullptr;
     size_t m_Asset = 0;
 
     std::vector<Local> m_Locals;    // per asset of the bundle
@@ -1494,7 +1496,7 @@ private:
     Json m_ExportsJson;
     Json m_WorldJson;
     std::vector<ArrayFile> m_ArrayFiles;
-    std::vector<OutputFile> m_ImageFiles;   // each Path in the bundle's folder
+    std::vector<OutputFile> m_ImageFiles;   // each Path in the bundle's directory
 };
 
 //------------------------------------------------------------------------------------------------
@@ -1516,24 +1518,24 @@ public:
 
         const std::string output = m_Options.Output.value_or(m_Options.Package + ".json");
         const fs::path outputPath = PathOf(output);
-        m_Folder = outputPath.has_parent_path() ? outputPath.parent_path() : fs::path(".");
+        m_Directory = outputPath.has_parent_path() ? outputPath.parent_path() : fs::path(".");
         m_PackageFile = Utf8Of(outputPath.filename());
 
-        // A failure leaves no folder the output's folder did not have.
+        // A failure leaves no directory the output's directory did not have.
         fs::path created;
-        if (MakeDirectories(m_Folder, &created) != FileResult::Success)
+        if (MakeDirectories(m_Directory, &created) != FileResult::Success)
         {
-            m_Diagnostics.Report(Severity::Error, Utf8Of(m_Folder), "cannot create the folder");
+            m_Diagnostics.Report(Severity::Error, Utf8Of(m_Directory), "cannot create the directory");
             return;
         }
 
-        // The files are named in the temporary folder, beside the output and so on its file
+        // The files are named in the temporary directory, beside the output and so on its file
         // system, which decides which names collide.
         bool moved = false;
         {
             const CScopedDirectory temporary(outputPath);
             if (!temporary.IsCreated())
-                m_Diagnostics.Report(Severity::Error, Utf8Of(temporary.GetPath()), "cannot create the folder");
+                m_Diagnostics.Report(Severity::Error, Utf8Of(temporary.GetPath()), "cannot create the directory");
             else
             {
                 const fs::path &directory = temporary.GetPath();
@@ -1579,38 +1581,38 @@ private:
 
     // Generates the package source's files. Returns false, having reported each problem, when
     // the package holds what no source expresses.
-    // Generates the source's files, naming them in folder.
-    bool Generate(const fs::path &folder, std::vector<OutputFile> *pFiles)
+    // Generates the source's files, naming them in directory.
+    bool Generate(const fs::path &directory, std::vector<OutputFile> *pFiles)
     {
         try
         {
-            return GenerateIn(folder, pFiles);
+            return GenerateIn(directory, pFiles);
         }
-        catch (const FolderError &e)
+        catch (const DirectoryError &e)
         {
             m_Diagnostics.Report(Severity::Error, Utf8Of(e.Path), "cannot create the file");
             return false;
         }
     }
 
-    bool GenerateIn(const fs::path &folder, std::vector<OutputFile> *pFiles)
+    bool GenerateIn(const fs::path &directory, std::vector<OutputFile> *pFiles)
     {
         if (m_PackageName.starts_with('$'))
             m_Diagnostics.Report(Severity::Error, m_Options.Package, "the package's name begins with '$', which a source reserves for format keys");
 
-        CFolder root(folder);
+        CDirectoryNames root(directory);
         root.Reserve(m_PackageFile);
         Json bundles = Json::array();
         std::vector<OutputFile> bundleFiles;
         for (uint32_t b = 0; b < m_Bundles.size(); ++b)
         {
-            const std::string bundleFolder = root.Add(m_Bundles[b].Name, "");
-            CFolder files(folder / PathOf(bundleFolder));
-            const std::string bundleFile = bundleFolder + "/" + files.Add(m_Bundles[b].Name, ".cbundle.json");
+            const std::string bundleDirectory = root.Add(m_Bundles[b].Name, "");
+            CDirectoryNames files(directory / PathOf(bundleDirectory));
+            const std::string bundleFile = bundleDirectory + "/" + files.Add(m_Bundles[b].Name, ".cbundle.json");
 
             Json document = Json::object();
             document["formatVersion"] = 1;
-            document["bundle"] = CBundleUnpacker(m_PackageName, m_Bundles, b, m_Problems).Unpack(bundleFolder, files, &bundleFiles);
+            document["bundle"] = CBundleUnpacker(m_PackageName, m_Bundles, b, m_Problems).Unpack(bundleDirectory, files, &bundleFiles);
             bundleFiles.push_back({ bundleFile, JsonFormat(document) });
 
             Json include = Json::object();
@@ -1634,7 +1636,7 @@ private:
 
     std::string Destination(const OutputFile &file) const
     {
-        return Utf8Of(m_Folder / PathOf(file.Path));
+        return Utf8Of(m_Directory / PathOf(file.Path));
     }
 
     // Without --force, reports each file that exists. Returns true when unpack may write them.
@@ -1645,7 +1647,7 @@ private:
         bool clear = true;
         for (const OutputFile &file : files)
         {
-            if (Exists(m_Folder / PathOf(file.Path)))
+            if (Exists(m_Directory / PathOf(file.Path)))
             {
                 m_Diagnostics.Report(Severity::Error, Destination(file), "the file exists; --force replaces it");
                 clear = false;
@@ -1654,11 +1656,11 @@ private:
         return clear;
     }
 
-    bool WriteFiles(const fs::path &folder, const std::vector<OutputFile> &files)
+    bool WriteFiles(const fs::path &directory, const std::vector<OutputFile> &files)
     {
         for (const OutputFile &file : files)
         {
-            const fs::path path = folder / PathOf(file.Path);
+            const fs::path path = directory / PathOf(file.Path);
             if (MakeDirectories(path.parent_path()) != FileResult::Success || WriteWholeFile(path, file.Bytes) != FileResult::Success)
             {
                 m_Diagnostics.Report(Severity::Error, Utf8Of(path), "cannot write the file");
@@ -1668,10 +1670,10 @@ private:
         return true;
     }
 
-    // Builds the source in folder and checks that it reproduces the package.
-    bool Verify(const fs::path &folder)
+    // Builds the source in directory and checks that it reproduces the package.
+    bool Verify(const fs::path &directory)
     {
-        const std::string packageFile = Utf8Of(folder / PathOf(m_PackageFile));
+        const std::string packageFile = Utf8Of(directory / PathOf(m_PackageFile));
         const std::string built = packageFile.substr(0, packageFile.size() - 5);
 
         std::ostringstream findings;
@@ -1684,11 +1686,11 @@ private:
             && WritePackage(source, built, buildDiagnostics);
         if (!succeeded)
         {
-            // The findings name the temporary folder's files; they are reported at the files'
-            // places in the output's folder.
-            const std::string from = DisplayPath(Utf8Of(folder)) + "/";
-            const std::string folderText = DisplayPath(Utf8Of(m_Folder));
-            const std::string to = folderText == "." || folderText.empty() ? std::string() : folderText + "/";
+            // The findings name the temporary directory's files; they are reported at the files'
+            // places in the output's directory.
+            const std::string from = DisplayPath(Utf8Of(directory)) + "/";
+            const std::string directoryText = DisplayPath(Utf8Of(m_Directory));
+            const std::string to = directoryText == "." || directoryText.empty() ? std::string() : directoryText + "/";
             std::istringstream lines(findings.str());
             for (std::string line; std::getline(lines, line);)
             {
@@ -1747,13 +1749,13 @@ private:
             m_Problems.Report(m_Bundles, m_Options.Package, m_Diagnostics);
     }
 
-    bool MoveFiles(const fs::path &folder, const std::vector<OutputFile> &files)
+    bool MoveFiles(const fs::path &directory, const std::vector<OutputFile> &files)
     {
         for (const OutputFile &file : files)
         {
-            const fs::path destination = m_Folder / PathOf(file.Path);
+            const fs::path destination = m_Directory / PathOf(file.Path);
             if (MakeDirectories(destination.parent_path()) != FileResult::Success
-                || Rename(folder / PathOf(file.Path), destination) != FileResult::Success)
+                || Rename(directory / PathOf(file.Path), destination) != FileResult::Success)
             {
                 m_Diagnostics.Report(Severity::Error, Destination(file), "cannot replace the file");
                 return false;
@@ -1768,7 +1770,7 @@ private:
     std::string m_PackageName;
     std::vector<PackageBundle> m_Bundles;
     CProblems m_Problems;
-    fs::path m_Folder;              // the folder of the package file
+    fs::path m_Directory;           // the directory of the package file
     std::string m_PackageFile;      // the package file's name
 };
 

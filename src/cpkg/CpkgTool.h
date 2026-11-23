@@ -57,7 +57,7 @@ void Format(const FormatOptions &options, CDiagnostics &diagnostics);
 struct BuildOptions
 {
     std::string Package;                // UTF-8 path of the .cpkg.json file, or of the .cproj.json file
-    std::optional<std::string> Output;  // the .cpkg file to write, or for a project, the output folder
+    std::optional<std::string> Output;  // the .cpkg file to write, or a project's output directory
     std::optional<std::string> Project; // for a package, the .cproj.json file to validate it against
     std::optional<unsigned> Jobs;       // for a project, the most packages built at once
 };
