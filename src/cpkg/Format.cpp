@@ -13,7 +13,6 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -55,35 +54,6 @@ void RespellNumbers(Json &value)
         else
             value = FloatJson(float(number));
     }
-}
-
-fs::path PathOf(const std::string &utf8)
-{
-    return fs::path(std::u8string_view(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
-}
-
-// Replaces the file at path with text, through a temporary file beside it.
-bool SaveText(const std::string &path, const std::string &text)
-{
-    const fs::path target = PathOf(path);
-    const fs::path temporary = PathOf(TemporaryPath(path));
-    {
-        std::ofstream stream(temporary, std::ios::binary);
-        stream.write(text.data(), std::streamsize(text.size()));
-        stream.close();
-        if (!stream)
-        {
-            std::error_code error;
-            fs::remove(temporary, error);
-            return false;
-        }
-    }
-    std::error_code error;
-    fs::rename(temporary, target, error);
-    if (!error)
-        return true;
-    fs::remove(temporary, error);
-    return false;
 }
 
 } // namespace
@@ -133,7 +103,7 @@ void Format(const FormatOptions &options, CDiagnostics &diagnostics)
             continue;
         if (options.Check)
             diagnostics.Report(Severity::Error, pFile->Path, "the file is not in the standard form; cpkg format rewrites it");
-        else if (!SaveText(pFile->Path, text))
+        else if (SaveFile(PathOf(pFile->Path), text) != FileResult::Success)
             diagnostics.Report(Severity::Error, pFile->Path, "cannot write the file");
     }
 }

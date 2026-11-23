@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "FileSystem.h"
 #include "Source.h"
 
 #include <cstdint>
@@ -166,27 +167,6 @@ bool WritePackage(const SourcePackage &package, const std::string &path, CDiagno
 
 //------------------------------------------------------------------------------------------------
 // Files and packages
-
-// Whether the files at a and b both exist and hold the same bytes.
-bool SameBytes(const std::filesystem::path &a, const std::filesystem::path &b);
-
-// A temporary file or folder name beside path, a UTF-8 path, unique to this process.
-std::string TemporaryPath(const std::string &path);
-
-enum class MakeResult
-{
-    Created,
-    Exists,     // the file system already holds a file or directory of that name
-    Failed,
-};
-
-// Creates path as an empty file, unless the file system already holds a file or directory of
-// that name, as its own rules for names compare them.
-MakeResult MakeFile(const std::filesystem::path &path);
-
-// Creates path as an empty directory, unless the file system already holds a file or directory
-// of that name, as its own rules for names compare them.
-MakeResult MakeDirectory(const std::filesystem::path &path);
 
 // The enumerator's name, such as "TransformNode", or null for a value with no name.
 const char *AssetTypeName(Canvas::AssetType type);

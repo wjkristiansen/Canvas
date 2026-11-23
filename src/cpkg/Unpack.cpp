@@ -14,7 +14,6 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <new>
 #include <sstream>
 #include <stdexcept>
@@ -37,17 +36,6 @@ constexpr uint64_t kInlineNumberLimit = 256;
 
 //------------------------------------------------------------------------------------------------
 // Files
-
-fs::path PathOf(std::string_view utf8)
-{
-    return fs::path(std::u8string_view(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
-}
-
-std::string Utf8Of(const fs::path &path)
-{
-    const std::u8string text = path.generic_u8string();
-    return std::string(reinterpret_cast<const char *>(text.data()), text.size());
-}
 
 std::string AsciiLower(std::string_view text)
 {
@@ -92,9 +80,9 @@ bool CreateNew(const fs::path &path, bool folder)
 {
     switch (folder ? MakeDirectory(path) : MakeFile(path))
     {
-    case MakeResult::Created:
+    case FileResult::Success:
         return true;
-    case MakeResult::Exists:
+    case FileResult::Exists:
         return false;
     default:
         throw FolderError{ path };
@@ -1551,21 +1539,21 @@ public:
 
         // The files are named in the temporary folder, beside the output and so on its file
         // system, which decides which names collide.
-        const fs::path temporary = PathOf(TemporaryPath(output));
-        fs::remove_all(temporary, error);
-        fs::create_directories(temporary, error);
         bool moved = false;
-        if (error)
-            m_Diagnostics.Report(Severity::Error, Utf8Of(temporary), "cannot create the folder");
-        else
         {
-            std::vector<OutputFile> files;
-            moved = Generate(temporary, &files) && CheckExisting(files) && WriteFiles(temporary, files)
-                && Verify(temporary) && MoveFiles(temporary, files);
+            const CScopedDirectory temporary(outputPath);
+            if (!temporary.IsCreated())
+                m_Diagnostics.Report(Severity::Error, Utf8Of(temporary.GetPath()), "cannot create the folder");
+            else
+            {
+                const fs::path &directory = temporary.GetPath();
+                std::vector<OutputFile> files;
+                moved = Generate(directory, &files) && CheckExisting(files) && WriteFiles(directory, files)
+                    && Verify(directory) && MoveFiles(directory, files);
+            }
         }
-        fs::remove_all(temporary, error);
         if (!moved && !created.empty())
-            fs::remove_all(created, error);
+            Remove(created);
     }
 
 private:
@@ -1684,10 +1672,7 @@ private:
             const fs::path path = folder / PathOf(file.Path);
             std::error_code error;
             fs::create_directories(path.parent_path(), error);
-            std::ofstream stream(path, std::ios::binary);
-            stream.write(file.Bytes.data(), std::streamsize(file.Bytes.size()));
-            stream.close();
-            if (!stream)
+            if (WriteWholeFile(path, file.Bytes) != FileResult::Success)
             {
                 m_Diagnostics.Report(Severity::Error, Utf8Of(path), "cannot write the file");
                 return false;

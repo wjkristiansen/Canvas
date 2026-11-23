@@ -7,8 +7,8 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <new>
 #include <sstream>
 #include <stdexcept>
@@ -24,10 +24,11 @@ namespace
     // Reads the format version from the file header of a package the reader rejects for it.
     bool ReadVersion(const std::string &package, uint32_t *pVersion)
     {
-        std::ifstream file(std::filesystem::path(std::u8string_view(reinterpret_cast<const char8_t *>(package.data()), package.size())), std::ios::binary);
-        CpkgFileHeader header;
-        if (!file.read(reinterpret_cast<char *>(&header), sizeof(header)))
+        std::string bytes;
+        if (ReadFileRange(CpkgTool::PathOf(package), 0, sizeof(CpkgFileHeader), &bytes) != FileResult::Success)
             return false;
+        CpkgFileHeader header;
+        std::memcpy(&header, bytes.data(), sizeof(header));
         *pVersion = header.Version;
         return true;
     }

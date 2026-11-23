@@ -2,6 +2,7 @@
 // SourceLoad - the build's Load stage: reads a package source into a SourcePackage
 //================================================================================================
 
+#include "FileSystem.h"
 #include "Source.h"
 
 #include <algorithm>
@@ -10,7 +11,6 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <initializer_list>
 #include <iterator>
 #include <numbers>
@@ -35,17 +35,6 @@ using Canvas::LightType;
 
 // The least magnitude a double rounds up from to infinity as a float: FLT_MAX plus half its ULP.
 constexpr double kFloatLimit = 0x1.ffffffp+127;
-
-fs::path PathFromUtf8(std::string_view utf8)
-{
-    return fs::path(std::u8string(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
-}
-
-std::string Utf8FromPath(const fs::path &path)
-{
-    const std::u8string text = path.generic_u8string();
-    return std::string(reinterpret_cast<const char *>(text.data()), text.size());
-}
 
 bool IsFormatKey(std::string_view key)
 {
@@ -146,7 +135,7 @@ public:
 
     void Load(std::string_view packageFile)
     {
-        const std::string path = Utf8FromPath(PathFromUtf8(packageFile).lexically_normal());
+        const std::string path = Utf8Of(PathOf(packageFile).lexically_normal());
         std::string text;
         if (!ReadWholeFile(path, &text, nullptr))
             return;
@@ -228,18 +217,15 @@ private:
             return false;
         };
 
-        const fs::path filePath = PathFromUtf8(path);
-        std::error_code error;
-        if (!fs::is_regular_file(filePath, error))
+        switch (CpkgTool::ReadWholeFile(PathOf(path), pBytes))
+        {
+        case FileResult::Success:
+            return true;
+        case FileResult::NotFound:
             return fail("file not found");
-
-        std::ifstream file(filePath, std::ios::binary);
-        if (!file)
+        default:
             return fail("cannot read the file");
-        pBytes->assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-        if (file.bad())
-            return fail("cannot read the file");
-        return true;
+        }
     }
 
     bool FileError(const SourceFileRef &ref, const char *message)
@@ -252,24 +238,21 @@ private:
     bool FileSize(const SourceFileRef &ref, uint64_t *pSize)
     {
         RecordInput(m_Package, ref.Path);
-        const fs::path filePath = PathFromUtf8(ref.Path);
-        std::error_code error;
-        if (!fs::is_regular_file(filePath, error))
+        switch (CpkgTool::FileSize(PathOf(ref.Path), pSize))
+        {
+        case FileResult::Success:
+            return true;
+        case FileResult::NotFound:
             return FileError(ref, "file not found");
-        *pSize = fs::file_size(filePath, error);
-        if (error)
+        default:
             return FileError(ref, "cannot read the file");
-        return true;
+        }
     }
 
     // Reads size bytes at offset of the file ref names. A failure is reported at ref.
     bool ReadFileRange(const SourceFileRef &ref, uint64_t offset, uint64_t size, std::string *pBytes)
     {
-        std::ifstream file(PathFromUtf8(ref.Path), std::ios::binary);
-        if (!file || !file.seekg(std::streamoff(offset)))
-            return FileError(ref, "cannot read the file");
-        pBytes->resize(size_t(size));
-        if (!file.read(pBytes->data(), std::streamsize(size)))
+        if (CpkgTool::ReadFileRange(PathOf(ref.Path), offset, size, pBytes) != FileResult::Success)
             return FileError(ref, "cannot read the file");
         return true;
     }
@@ -289,7 +272,7 @@ private:
     {
         m_File = fileIndex;
         SourceFile &file = *m_Package.Files[fileIndex];
-        m_Directory = PathFromUtf8(file.Path).parent_path();
+        m_Directory = PathOf(file.Path).parent_path();
 
         Canvas::JsonParseError parseError;
         if (Canvas::JsonParse(file.Text, &file.Document, &parseError))
@@ -711,9 +694,9 @@ private:
             return false;
         }
 
-        const fs::path filePath = PathFromUtf8(written);
+        const fs::path filePath = PathOf(written);
         pFile->Written = written;
-        pFile->Path = Utf8FromPath((filePath.is_absolute() ? filePath : m_Directory / filePath).lexically_normal());
+        pFile->Path = Utf8Of((filePath.is_absolute() ? filePath : m_Directory / filePath).lexically_normal());
         pFile->Where = At(value, pointer);
         return true;
     }
@@ -1012,7 +995,7 @@ private:
             for (const SourceFileRef &earlier : included)
             {
                 std::error_code error;
-                if (earlier.Path == file.Path || fs::equivalent(PathFromUtf8(earlier.Path), PathFromUtf8(file.Path), error))
+                if (earlier.Path == file.Path || fs::equivalent(PathOf(earlier.Path), PathOf(file.Path), error))
                 {
                     Error(file.Where, "the bundle file " + Quoted(file.Written) + " is already included");
                     return;
