@@ -14,7 +14,6 @@
 #include <initializer_list>
 #include <iterator>
 #include <numbers>
-#include <system_error>
 
 namespace CpkgTool
 {
@@ -994,8 +993,7 @@ private:
             }
             for (const SourceFileRef &earlier : included)
             {
-                std::error_code error;
-                if (earlier.Path == file.Path || fs::equivalent(PathOf(earlier.Path), PathOf(file.Path), error))
+                if (earlier.Path == file.Path || SameFile(PathOf(earlier.Path), PathOf(file.Path)))
                 {
                     Error(file.Where, "the bundle file " + Quoted(file.Written) + " is already included");
                     return;
