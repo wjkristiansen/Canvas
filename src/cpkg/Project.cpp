@@ -11,7 +11,6 @@
 #include <charconv>
 #include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <iterator>
 #include <new>
 #include <span>
@@ -32,11 +31,6 @@ using Canvas::AssetType;
 
 namespace
 {
-    fs::path PathOf(std::string_view utf8)
-    {
-        return fs::path(std::u8string_view(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
-    }
-
     // A stream buffer that discards what is written to it.
     class CNullBuffer : public std::streambuf
     {
@@ -44,59 +38,25 @@ namespace
         int overflow(int c) override { return c; }
     };
 
-    // Replaces the file at path with bytes through a temporary file beside it, unless it already
-    // holds them. Returns false when the file could not be written.
-    bool SaveFile(const std::string &path, std::string_view bytes)
+    // Writes bytes over the file at path, a UTF-8 path, unless it already holds them. Returns
+    // false when the file could not be written.
+    bool SaveUtf8(const std::string &path, std::string_view bytes)
     {
-        const fs::path target = PathOf(path);
-        const fs::path temporary = PathOf(TemporaryPath(path));
-        std::error_code error;
-        {
-            std::ofstream stream(temporary, std::ios::binary);
-            stream.write(bytes.data(), std::streamsize(bytes.size()));
-            stream.close();
-            if (!stream)
-            {
-                fs::remove(temporary, error);
-                return false;
-            }
-        }
-        if (SameBytes(temporary, target))
-        {
-            fs::remove(temporary, error);
-            return true;
-        }
-        fs::rename(temporary, target, error);
-        if (!error)
-            return true;
-        fs::remove(temporary, error);
-        return false;
+        return SaveFile(PathOf(path), bytes) == FileResult::Success;
     }
 
-    // Copies the file at from over the file at to through a temporary file beside it, unless to
-    // already holds the same bytes. Returns false when to could not be written.
+    // Copies the file at from over the file at to, UTF-8 paths, unless to already holds the same
+    // bytes. Returns false when to could not be written.
     bool CopyFileTo(const std::string &from, const std::string &to)
     {
-        const fs::path source = PathOf(from);
-        const fs::path target = PathOf(to);
-        if (SameBytes(source, target))
-            return true;
-        const fs::path temporary = PathOf(TemporaryPath(to));
-        std::error_code error;
-        fs::copy_file(source, temporary, fs::copy_options::overwrite_existing, error);
-        if (!error)
-            fs::rename(temporary, target, error);
-        if (!error)
-            return true;
-        fs::remove(temporary, error);
-        return false;
+        CStagedFile file(PathOf(to));
+        return file.CopyFrom(PathOf(from)) == FileResult::Success && file.Commit() == FileResult::Success;
     }
 
     // The file name of a UTF-8 path.
     std::string FileName(const std::string &path)
     {
-        const std::u8string name = PathOf(path).filename().u8string();
-        return std::string(reinterpret_cast<const char *>(name.data()), name.size());
+        return Utf8Of(PathOf(path).filename());
     }
 
     //--------------------------------------------------------------------------------------------
@@ -132,7 +92,10 @@ namespace
     // version of cpkg or is not a record.
     bool ReadRecord(const std::string &path, std::vector<InputStamp> *pInputs, std::vector<std::string> *pWarnings)
     {
-        std::ifstream stream(PathOf(path), std::ios::binary);
+        std::string bytes;
+        if (ReadWholeFile(PathOf(path), &bytes) != FileResult::Success)
+            return false;
+        std::istringstream stream(bytes);
         std::string line;
         if (!std::getline(stream, line) || line != kRecordVersion)
             return false;
@@ -196,7 +159,7 @@ namespace
             return false;
         for (const std::string &warning : warnings)
             text += std::string(kRecordWarning) + warning + '\n';
-        return SaveFile(path, text);
+        return SaveUtf8(path, text);
     }
 
     // Reports again the warnings of a package's record, each concerning one of its inputs.
@@ -259,7 +222,7 @@ namespace
         {
             ReportRecordedWarnings(recorded, warnings, diagnostics);
             if (diagnostics.GetErrorCount() != 0)
-                fs::remove(PathOf(record), error);
+                Remove(PathOf(record));
             return { text.str(), diagnostics.GetErrorCount() };
         }
         warnings.clear();
@@ -285,7 +248,7 @@ namespace
             recordWritten = WriteRecord(record, inputs, AbsolutePath(package), warnings);
         }
         if (!recordWritten)
-            fs::remove(PathOf(record), error);
+            Remove(PathOf(record));
         return { text.str(), diagnostics.GetErrorCount() };
     }
 
@@ -387,11 +350,8 @@ namespace
     bool ClaimBuiltNames(const CProject &project, const std::string &output, CDiagnostics &diagnostics)
     {
         const Canvas::CProjectManifest &manifest = project.GetManifest();
-        const std::string folder = TemporaryPath(output + "/" + FileName(manifest.GetPath()));
-        const fs::path folderPath = PathOf(folder);
-        std::error_code error;
-        fs::remove_all(folderPath, error);
-        if (MakeDirectory(folderPath) != MakeResult::Created)
+        const CScopedDirectory folder(PathOf(output + "/" + FileName(manifest.GetPath())));
+        if (!folder.IsCreated())
         {
             diagnostics.Report(Severity::Error, output, "cannot create a file in the folder");
             return false;
@@ -402,11 +362,11 @@ namespace
         for (size_t i = 0; i < packages.size(); ++i)
         {
             const std::string_view name = manifest.GetBuiltFileName(i);
-            const MakeResult made = MakeFile(folderPath / PathOf(name));
-            if (made == MakeResult::Created)
+            const FileResult made = MakeFile(folder.GetPath() / PathOf(name));
+            if (made == FileResult::Success)
                 continue;
             unique = false;
-            if (made == MakeResult::Exists)
+            if (made == FileResult::Exists)
             {
                 project.Report(diagnostics, Severity::Error, CProject::FilePointer(packages[i], i),
                     "the output folder's file system holds the built file name " + Quoted(name) + " of an earlier package");
@@ -414,7 +374,6 @@ namespace
             else
                 diagnostics.Report(Severity::Error, output, "cannot create a file in the folder");
         }
-        fs::remove_all(folderPath, error);
         return unique;
     }
 }
@@ -450,10 +409,8 @@ bool CProject::Load(const std::string &path, CDiagnostics &diagnostics)
     }
 
     // The manifest's text again, to locate the values the build reports at.
-    std::ifstream stream(PathOf(path), std::ios::binary);
-    m_Text.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
     Canvas::JsonParseError parseError;
-    if (stream.bad() || !Canvas::JsonParse(m_Text, &m_Document, &parseError))
+    if (ReadWholeFile(PathOf(path), &m_Text) != FileResult::Success || !Canvas::JsonParse(m_Text, &m_Document, &parseError))
     {
         diagnostics.Report(Severity::Error, path, "cannot read the file");
         return false;
@@ -685,8 +642,7 @@ void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics)
     const std::string builtProject = output + "/" + FileName(manifest.GetPath());
     auto fail = [&]()
     {
-        std::error_code error;
-        fs::remove(PathOf(builtProject), error);
+        Remove(PathOf(builtProject));
     };
 
     std::string builtText;
@@ -723,7 +679,7 @@ void BuildProject(const BuildOptions &options, CDiagnostics &diagnostics)
     }
     if (diagnostics.GetErrorCount() != 0)
         return fail();
-    if (!SaveFile(builtProject, builtText))
+    if (!SaveUtf8(builtProject, builtText))
     {
         diagnostics.Report(Severity::Error, builtProject, "cannot write the file");
         fail();

@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -195,11 +194,6 @@ CpkgImageEncoding EncodingOfExtension(const fs::path &path)
     return CpkgImageEncoding::Unknown;
 }
 
-fs::path PathOf(const std::string &utf8)
-{
-    return fs::path(std::u8string_view(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
-}
-
 std::string Quoted(const std::string &text)
 {
     return "\"" + text + "\"";
@@ -309,19 +303,11 @@ bool TranslatePackageSource(SourcePackage &package, CDiagnostics &diagnostics)
 
                 RecordInput(package, file.Path);
                 const fs::path path = PathOf(file.Path);
-                std::error_code error;
-                if (!fs::is_regular_file(path, error))
-                {
-                    report(Severity::Error, "file not found");
-                    continue;
-                }
-                std::ifstream stream(path, std::ios::binary);
                 std::string bytes;
-                if (stream.is_open())
-                    bytes.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
-                if (!stream.is_open() || stream.bad())
+                const FileResult read = ReadWholeFile(path, &bytes);
+                if (read != FileResult::Success)
                 {
-                    report(Severity::Error, "cannot read the file");
+                    report(Severity::Error, read == FileResult::NotFound ? "file not found" : "cannot read the file");
                     continue;
                 }
 

@@ -10,6 +10,8 @@ add_library(CpkgTool STATIC
     Diagnostics.cpp
     Diagnostics.h
     Dump.cpp
+    FileSystem.cpp
+    FileSystem.h
     Format.cpp
     PackageWrite.cpp
     Project.cpp

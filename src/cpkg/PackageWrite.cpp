@@ -4,20 +4,9 @@
 
 #include "Stages.h"
 
-#if defined(_WIN32)
-#include <fcntl.h>
-#include <io.h>
-#include <process.h>
-#include <sys/stat.h>
-#else
-#include <fcntl.h>
-#include <unistd.h>
-#endif
-
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <span>
 #include <string>
 #include <vector>
@@ -114,13 +103,9 @@ public:
         if (!CheckBuildable())
             return false;
 
-        const std::string temporary = TemporaryPath(path);
-        const std::filesystem::path outputPath(std::u8string(path.begin(), path.end()));
-        const std::filesystem::path temporaryPath(std::u8string(temporary.begin(), temporary.end()));
-        std::error_code error;
-        std::filesystem::remove(temporaryPath, error);
-
-        Gem::Result result = m_Writer.Open(temporary.c_str(), m_Package.PackageName.Text);
+        CStagedFile file(PathOf(path));
+        const std::string staged = Utf8Of(file.GetStagedPath());
+        Gem::Result result = m_Writer.Open(staged.c_str(), m_Package.PackageName.Text);
         for (const SourceBundle &bundle : m_Package.Bundles)
         {
             if (Gem::Failed(result))
@@ -134,20 +119,11 @@ public:
         {
             if (!m_InputFailed)
                 m_Diagnostics.Report(Severity::Error, path, "cannot write the file");
-            std::filesystem::remove(temporaryPath, error);
             return false;
         }
-
-        if (SameBytes(temporaryPath, outputPath))
-        {
-            std::filesystem::remove(temporaryPath, error);
-            return true;
-        }
-        std::filesystem::rename(temporaryPath, outputPath, error);
-        if (error)
+        if (file.Commit() != FileResult::Success)
         {
             m_Diagnostics.Report(Severity::Error, path, "cannot replace the file");
-            std::filesystem::remove(temporaryPath, error);
             return false;
         }
         return true;
@@ -243,17 +219,14 @@ private:
         std::vector<CpkgSpan<uint8_t>> entries;
         for (const SourceFileRef &file : image.Files)
         {
-            std::ifstream stream(std::filesystem::path(std::u8string(file.Path.begin(), file.Path.end())), std::ios::binary);
-            std::vector<uint8_t> bytes;
-            if (stream.is_open())
-                bytes.assign(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
-            if (!stream.is_open() || stream.bad())
+            std::string bytes;
+            if (ReadWholeFile(PathOf(file.Path), &bytes) != FileResult::Success)
             {
                 ReportAt(m_Diagnostics, m_Package, Severity::Error, file.Where, "cannot read the file: \"" + file.Written + "\"");
                 m_InputFailed = true;
                 return Gem::Result::Fail;
             }
-            entries.push_back(encoder.Append(bytes));
+            entries.push_back(encoder.Append(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size())));
         }
         header.Images = encoder.Append(entries);
         return Append(AssetType::Image, asset.Name, encoder, header);
@@ -675,65 +648,7 @@ private:
     bool m_InputFailed = false;     // a file the package holds could not be read, and was reported
 };
 
-// The result of an attempt to create path, which created it when created.
-MakeResult MadeOrWhyNot(const std::filesystem::path &path, bool created)
-{
-    if (created)
-        return MakeResult::Created;
-    std::error_code error;
-    return std::filesystem::exists(std::filesystem::symlink_status(path, error)) ? MakeResult::Exists : MakeResult::Failed;
-}
-
 } // namespace
-
-// Whether the files at a and b both exist and hold the same bytes.
-bool SameBytes(const std::filesystem::path &a, const std::filesystem::path &b)
-{
-    std::error_code error;
-    const uintmax_t size = std::filesystem::file_size(a, error);
-    if (error || std::filesystem::file_size(b, error) != size || error)
-        return false;
-
-    std::ifstream fileA(a, std::ios::binary);
-    std::ifstream fileB(b, std::ios::binary);
-    char bufferA[64 * 1024];
-    char bufferB[64 * 1024];
-    while (fileA && fileB)
-    {
-        fileA.read(bufferA, sizeof(bufferA));
-        fileB.read(bufferB, sizeof(bufferB));
-        if (fileA.gcount() != fileB.gcount() || std::memcmp(bufferA, bufferB, size_t(fileA.gcount())) != 0)
-            return false;
-    }
-    return fileA.eof() && fileB.eof();
-}
-
-MakeResult MakeFile(const std::filesystem::path &path)
-{
-#if defined(_WIN32)
-    const int file = _wopen(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
-    return MadeOrWhyNot(path, file != -1 && _close(file) == 0);
-#else
-    const int file = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0666);
-    return MadeOrWhyNot(path, file != -1 && close(file) == 0);
-#endif
-}
-
-MakeResult MakeDirectory(const std::filesystem::path &path)
-{
-    std::error_code error;
-    return MadeOrWhyNot(path, std::filesystem::create_directory(path, error) && !error);
-}
-
-std::string TemporaryPath(const std::string &path)
-{
-#if defined(_WIN32)
-    const int process = _getpid();
-#else
-    const int process = int(getpid());
-#endif
-    return path + "." + std::to_string(process) + ".tmp";
-}
 
 bool WritePackage(const SourcePackage &package, const std::string &path, CDiagnostics &diagnostics)
 {
