@@ -29,6 +29,7 @@ add_executable(CanvasUnitTest
     CpkgToolTest.cpp
     CpkgFormatTest.cpp
     CpkgImageTest.cpp
+    CpkgProjectTest.cpp
     CpkgUnpackTest.cpp
     D3D12ResourceUtilsTest.cpp
     GpuTaskGraphTest.cpp
@@ -124,6 +125,7 @@ target_compile_definitions(CanvasUnitTest PRIVATE
     CANVAS_JSONSCHEMA_CLI_EXE="${CANVAS_JSONSCHEMA_CLI_EXE}"
     CANVAS_PACKAGE_SOURCE_SCHEMA="${Canvas_SOURCE_DIR}/src/cpkg/package-source.schema.json"
     CANVAS_PROJECT_SCHEMA="${Canvas_SOURCE_DIR}/src/CanvasProject/project.schema.json"
+    CPKG_TEST_VERSION="${Canvas_VERSION}"
 )
 
 # Use precompiled headers

@@ -20,6 +20,8 @@
 namespace CpkgTool
 {
 
+class CProjectLookup;
+
 // What an asset path within a package source resolves to.
 struct AssetTarget
 {
@@ -152,8 +154,9 @@ bool TranslatePackageSource(SourcePackage &package, CDiagnostics &diagnostics);
 
 // The Validate stage: checks the validation rules of PackageSource.md that Load does not, and
 // reports each finding at the value that breaks the rule, in document order within each file.
-// Returns true when it reported no error.
-bool ValidatePackageSource(const SourcePackage &package, CDiagnostics &diagnostics);
+// With pProject, it also checks the paths into other packages of the project. Returns true when
+// it reported no error.
+bool ValidatePackageSource(const SourcePackage &package, CDiagnostics &diagnostics, CProjectLookup *pProject = nullptr);
 
 // The Write stage: encodes each asset's payload and writes the package to path, a UTF-8 file
 // path. It writes a temporary file beside path and replaces path with it only once the whole
@@ -169,6 +172,21 @@ bool SameBytes(const std::filesystem::path &a, const std::filesystem::path &b);
 
 // A temporary file or folder name beside path, a UTF-8 path, unique to this process.
 std::string TemporaryPath(const std::string &path);
+
+enum class MakeResult
+{
+    Created,
+    Exists,     // the file system already holds a file or directory of that name
+    Failed,
+};
+
+// Creates path as an empty file, unless the file system already holds a file or directory of
+// that name, as its own rules for names compare them.
+MakeResult MakeFile(const std::filesystem::path &path);
+
+// Creates path as an empty directory, unless the file system already holds a file or directory
+// of that name, as its own rules for names compare them.
+MakeResult MakeDirectory(const std::filesystem::path &path);
 
 // The enumerator's name, such as "TransformNode", or null for a value with no name.
 const char *AssetTypeName(Canvas::AssetType type);

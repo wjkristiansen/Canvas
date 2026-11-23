@@ -520,10 +520,10 @@ TEST_F(CpkgSource, ValidateCommand)
     EXPECT_EQ(output, "bad.cpkg.json:1:68: error: expected a name: non-empty, not beginning with '$', with no '/' or NUL [/bundles/0/name]\n");
 
     EXPECT_EQ(RunValidate({}, &output), kExitUsage);
-    EXPECT_EQ(output, "cpkg: error: validate: missing argument <package.cpkg.json>\nRun 'cpkg --help' for usage.\n");
+    EXPECT_EQ(output, "cpkg: error: validate: missing argument <file>\nRun 'cpkg --help' for usage.\n");
 
     EXPECT_EQ(RunValidate({ "good.cpkg" }, &output), kExitUsage);
-    EXPECT_EQ(output, "cpkg: error: validate: expected a .cpkg.json file: good.cpkg\nRun 'cpkg --help' for usage.\n");
+    EXPECT_EQ(output, "cpkg: error: validate: expected a .cpkg.json or .cproj.json file: good.cpkg\nRun 'cpkg --help' for usage.\n");
 }
 
 //------------------------------------------------------------------------------------------------

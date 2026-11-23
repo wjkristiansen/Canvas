@@ -5,8 +5,12 @@
 #include "Stages.h"
 
 #if defined(_WIN32)
+#include <fcntl.h>
+#include <io.h>
 #include <process.h>
+#include <sys/stat.h>
 #else
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -671,6 +675,15 @@ private:
     bool m_InputFailed = false;     // a file the package holds could not be read, and was reported
 };
 
+// The result of an attempt to create path, which created it when created.
+MakeResult MadeOrWhyNot(const std::filesystem::path &path, bool created)
+{
+    if (created)
+        return MakeResult::Created;
+    std::error_code error;
+    return std::filesystem::exists(std::filesystem::symlink_status(path, error)) ? MakeResult::Exists : MakeResult::Failed;
+}
+
 } // namespace
 
 // Whether the files at a and b both exist and hold the same bytes.
@@ -693,6 +706,23 @@ bool SameBytes(const std::filesystem::path &a, const std::filesystem::path &b)
             return false;
     }
     return fileA.eof() && fileB.eof();
+}
+
+MakeResult MakeFile(const std::filesystem::path &path)
+{
+#if defined(_WIN32)
+    const int file = _wopen(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
+    return MadeOrWhyNot(path, file != -1 && _close(file) == 0);
+#else
+    const int file = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0666);
+    return MadeOrWhyNot(path, file != -1 && close(file) == 0);
+#endif
+}
+
+MakeResult MakeDirectory(const std::filesystem::path &path)
+{
+    std::error_code error;
+    return MadeOrWhyNot(path, std::filesystem::create_directory(path, error) && !error);
 }
 
 std::string TemporaryPath(const std::string &path)

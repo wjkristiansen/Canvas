@@ -5,6 +5,7 @@
 #include "Diagnostics.h"
 
 #include <filesystem>
+#include <string>
 #include <system_error>
 
 namespace CpkgTool
@@ -35,46 +36,57 @@ CDiagnostics::CDiagnostics(std::ostream &stream, bool werror, bool quiet) :
 }
 
 //------------------------------------------------------------------------------------------------
-Severity CDiagnostics::Apply(Severity severity)
+void CDiagnostics::Emit(Severity severity, std::string_view file, std::string_view location, std::string_view text)
 {
+    if (severity == Severity::Warning && m_pWarningLog)
+        m_pWarningLog->push_back(AbsolutePath(file) + std::string(location) + ": warning: " + std::string(text));
     if (severity == Severity::Warning && m_Werror)
         severity = Severity::Error;
     if (severity == Severity::Error)
         ++m_ErrorCount;
-    return severity;
-}
-
-//------------------------------------------------------------------------------------------------
-bool CDiagnostics::IsWritten(Severity severity) const
-{
-    return severity == Severity::Error || !m_Quiet;
+    if (severity == Severity::Error || !m_Quiet)
+        m_Stream << DisplayPath(file) << location << ": " << SeverityName(severity) << ": " << text << '\n';
 }
 
 //------------------------------------------------------------------------------------------------
 void CDiagnostics::Report(Severity severity, std::string_view file, std::string_view message)
 {
-    severity = Apply(severity);
-    if (IsWritten(severity))
-        m_Stream << DisplayPath(file) << ": " << SeverityName(severity) << ": " << message << '\n';
+    Emit(severity, file, {}, message);
 }
 
 //------------------------------------------------------------------------------------------------
 void CDiagnostics::Report(Severity severity, std::string_view file, uint32_t line, uint32_t column, std::string_view message, std::string_view pointer)
 {
-    severity = Apply(severity);
-    if (IsWritten(severity))
-    {
-        m_Stream << DisplayPath(file) << ':' << line << ':' << column << ": " << SeverityName(severity) << ": " << message
-                 << " [" << pointer << "]\n";
-    }
+    const std::string location = ':' + std::to_string(line) + ':' + std::to_string(column);
+    Emit(severity, file, location, std::string(message) + " [" + std::string(pointer) + "]");
 }
 
 //------------------------------------------------------------------------------------------------
 void CDiagnostics::Report(Severity severity, std::string_view file, uint32_t line, uint32_t column, std::string_view message)
 {
-    severity = Apply(severity);
-    if (IsWritten(severity))
-        m_Stream << DisplayPath(file) << ':' << line << ':' << column << ": " << SeverityName(severity) << ": " << message << '\n';
+    const std::string location = ':' + std::to_string(line) + ':' + std::to_string(column);
+    Emit(severity, file, location, message);
+}
+
+//------------------------------------------------------------------------------------------------
+bool CDiagnostics::ReportLogged(std::string_view file, std::string_view logged)
+{
+    constexpr std::string_view kSeverity = ": warning: ";
+    if (!logged.starts_with(file))
+        return false;
+    const std::string_view rest = logged.substr(file.size());
+    const size_t at = rest.find(kSeverity);
+    if (at == std::string_view::npos || (at != 0 && rest[0] != ':'))
+        return false;
+    Emit(Severity::Warning, file, rest.substr(0, at), rest.substr(at + kSeverity.size()));
+    return true;
+}
+
+//------------------------------------------------------------------------------------------------
+void CDiagnostics::Append(std::string_view text, size_t errorCount)
+{
+    m_Stream << text;
+    m_ErrorCount += errorCount;
 }
 
 //------------------------------------------------------------------------------------------------
@@ -94,6 +106,19 @@ std::string DisplayPath(std::string_view path)
     }
 
     const std::u8string utf8 = shown.generic_u8string();
+    return std::string(reinterpret_cast<const char *>(utf8.data()), utf8.size());
+}
+
+//------------------------------------------------------------------------------------------------
+std::string AbsolutePath(std::string_view path)
+{
+    namespace fs = std::filesystem;
+    const fs::path given(std::u8string_view(reinterpret_cast<const char8_t *>(path.data()), path.size()));
+    std::error_code ec;
+    fs::path absolute = fs::absolute(given, ec);
+    if (ec)
+        absolute = given;
+    const std::u8string utf8 = absolute.lexically_normal().generic_u8string();
     return std::string(reinterpret_cast<const char *>(utf8.data()), utf8.size());
 }
 

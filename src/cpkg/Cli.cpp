@@ -6,7 +6,9 @@
 
 #include "InCommand.h"
 
+#include <charconv>
 #include <new>
+#include <system_error>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -41,6 +43,25 @@ namespace
     {
         return path.size() > extension.size() && path.ends_with(extension);
     }
+
+    // What is wrong with the file build or validate takes and the options that apply to only a
+    // package or only a project, or an empty string.
+    std::string CheckBuildArguments(const InCommand::CommandBlock &block, const std::string &file)
+    {
+        const bool project = HasExtension(file, ".cproj.json");
+        if (!project && !HasExtension(file, ".cpkg.json"))
+            return "expected a .cpkg.json or .cproj.json file: " + file;
+        if (block.IsOptionSet("project"))
+        {
+            if (project)
+                return "--project applies to a package, not a project";
+            if (!HasExtension(block.GetOptionValue("project"), ".cproj.json"))
+                return "expected a .cproj.json file for --project: " + block.GetOptionValue("project");
+        }
+        if (!project && block.GetDecl().GetName() == "build" && block.IsOptionSet("jobs"))
+            return "--jobs applies to a project, not a package";
+        return {};
+    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -62,18 +83,25 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
             .SetDescription("Prints the version of cpkg");
 
         InCommand::CommandDecl &build = root.AddSubCommand("build");
-        build.SetDescription("Builds a package source into a .cpkg file");
-        build.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
+        build.SetDescription("Builds a package source into a .cpkg file, or builds a project");
+        build.AddOption(InCommand::OptionType::Parameter, "file")
             .SetRequired()
-            .SetDescription("The package file");
+            .SetDescription("The package file (.cpkg.json) or project manifest (.cproj.json)");
         build.AddOption(InCommand::OptionType::Variable, "output", 'o')
-            .SetDescription("The .cpkg file to write; by default the package file's name without .json, beside it");
+            .SetDescription("For a package, the .cpkg file to write; by default the package file's name without .json, beside it. "
+                            "For a project, the folder to write in place of the manifest's output");
+        build.AddOption(InCommand::OptionType::Variable, "project")
+            .SetDescription("For a package, the project manifest to validate it against");
+        build.AddOption(InCommand::OptionType::Variable, "jobs", 'j')
+            .SetDescription("For a project, the most packages built at once; by default the number of hardware threads");
 
         InCommand::CommandDecl &validate = root.AddSubCommand("validate");
         validate.SetDescription("Reports the diagnostics a build would report, without writing anything");
-        validate.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
+        validate.AddOption(InCommand::OptionType::Parameter, "file")
             .SetRequired()
-            .SetDescription("The package file");
+            .SetDescription("The package file (.cpkg.json) or project manifest (.cproj.json)");
+        validate.AddOption(InCommand::OptionType::Variable, "project")
+            .SetDescription("For a package, the project manifest to validate it against");
 
         InCommand::CommandDecl &dump = root.AddSubCommand("dump");
         dump.SetDescription("Prints the contents of a .cpkg file");
@@ -131,19 +159,32 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         if (command == "build")
         {
             BuildOptions options;
-            options.Package = block.GetOptionValue("package.cpkg.json");
-            if (!HasExtension(options.Package, ".cpkg.json"))
-                return UsageError(err, "build: expected a .cpkg.json file: " + options.Package);
+            options.Package = block.GetOptionValue("file");
+            if (const std::string message = CheckBuildArguments(block, options.Package); !message.empty())
+                return UsageError(err, "build: " + message);
             if (block.IsOptionSet("output"))
                 options.Output = block.GetOptionValue("output");
+            if (block.IsOptionSet("project"))
+                options.Project = block.GetOptionValue("project");
+            if (block.IsOptionSet("jobs"))
+            {
+                const std::string jobs = block.GetOptionValue("jobs");
+                unsigned count = 0;
+                const auto [pEnd, error] = std::from_chars(jobs.data(), jobs.data() + jobs.size(), count);
+                if (error != std::errc() || pEnd != jobs.data() + jobs.size() || count == 0)
+                    return UsageError(err, "build: --jobs takes a count of at least 1: " + jobs);
+                options.Jobs = count;
+            }
             Build(options, diagnostics);
         }
         else if (command == "validate")
         {
             ValidateOptions options;
-            options.Package = block.GetOptionValue("package.cpkg.json");
-            if (!HasExtension(options.Package, ".cpkg.json"))
-                return UsageError(err, "validate: expected a .cpkg.json file: " + options.Package);
+            options.Package = block.GetOptionValue("file");
+            if (const std::string message = CheckBuildArguments(block, options.Package); !message.empty())
+                return UsageError(err, "validate: " + message);
+            if (block.IsOptionSet("project"))
+                options.Project = block.GetOptionValue("project");
             Validate(options, diagnostics);
         }
         else if (command == "dump")

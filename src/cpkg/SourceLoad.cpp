@@ -218,6 +218,7 @@ private:
     // Reads the file at path. A failure is reported at pRef, or at the file itself without one.
     bool ReadWholeFile(const std::string &path, std::string *pBytes, const SourceFileRef *pRef)
     {
+        RecordInput(m_Package, path);
         auto fail = [&](const std::string &message)
         {
             if (pRef)
@@ -250,6 +251,7 @@ private:
     // Finds the size of the file ref names. A failure is reported at ref.
     bool FileSize(const SourceFileRef &ref, uint64_t *pSize)
     {
+        RecordInput(m_Package, ref.Path);
         const fs::path filePath = PathFromUtf8(ref.Path);
         std::error_code error;
         if (!fs::is_regular_file(filePath, error))

@@ -17,6 +17,7 @@
 #include "Diagnostics.h"
 #include "JsonText.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -479,7 +480,19 @@ struct SourcePackage
     std::vector<std::unique_ptr<SourceFile>> Files;     // the package file first, then each bundle file
     SourceString PackageName;
     std::vector<SourceBundle> Bundles;                  // in the package file's order
+
+    // The UTF-8 paths of the files the build reads, or tried to read, in the order it first
+    // read them, each once.
+    std::vector<std::string> Inputs;
 };
+
+// Records that the build reads the file at path. Inputs lists each file once, in the order of
+// its first read.
+inline void RecordInput(SourcePackage &package, const std::string &path)
+{
+    if (std::find(package.Inputs.begin(), package.Inputs.end(), path) == package.Inputs.end())
+        package.Inputs.push_back(path);
+}
 
 //------------------------------------------------------------------------------------------------
 // Names a source writes for values
