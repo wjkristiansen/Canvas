@@ -1,5 +1,5 @@
 //================================================================================================
-// Format - rewrites a package source in the standard form
+// Format - rewrites a package file or bundle file in the standard form
 //
 // The standard form of a file, as "Editing Sources" in src/cpkg/README.md describes it, is the
 // file's JSON with each member Load found equal to its default removed, each number written with
@@ -85,19 +85,17 @@ std::string StandardText(const SourceFile &file)
 void Format(const FormatOptions &options, CDiagnostics &diagnostics)
 {
     SourcePackage package;
-    if (!LoadPackageSource(options.Package, &package, diagnostics))
+    if (!LoadSourceFile(options.File, &package, diagnostics))
         return;
 
-    for (const std::unique_ptr<SourceFile> &pFile : package.Files)
-    {
-        const std::string text = StandardText(*pFile);
-        if (text == pFile->Text)
-            continue;
-        if (options.Check)
-            diagnostics.Report(Severity::Error, pFile->Path, "the file is not in the standard form; cpkg format rewrites it");
-        else if (SaveFile(PathOf(pFile->Path), text) != FileResult::Success)
-            diagnostics.Report(Severity::Error, pFile->Path, "cannot write the file");
-    }
+    const SourceFile &file = *package.Files.front();
+    const std::string text = StandardText(file);
+    if (text == file.Text)
+        return;
+    if (options.Check)
+        diagnostics.Report(Severity::Error, file.Path, "the file is not in the standard form; cpkg format rewrites it");
+    else if (SaveFile(PathOf(file.Path), text) != FileResult::Success)
+        diagnostics.Report(Severity::Error, file.Path, "cannot write the file");
 }
 
 } // namespace CpkgTool
