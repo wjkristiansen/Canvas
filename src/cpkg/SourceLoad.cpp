@@ -143,6 +143,24 @@ public:
         }
     }
 
+    void LoadFile(std::string_view sourceFile)
+    {
+        const std::string path = Utf8Of(PathOf(sourceFile).lexically_normal());
+        std::string text;
+        if (!ReadWholeFile(path, &text, nullptr))
+            return;
+
+        const uint32_t fileIndex = AddFile(path, std::move(text));
+        if (BeginFile(fileIndex))
+        {
+            if (path.ends_with(".cbundle.json"))
+                ReadBundleFile(&m_Package.Bundles.emplace_back());
+            else
+                ReadPackageFile(nullptr);
+        }
+        EndFile();
+    }
+
 private:
     struct Include
     {
@@ -953,6 +971,8 @@ private:
         }
     }
 
+    // Reads the package file being read. With pIncludes, it also reads the text of each bundle
+    // file the package file includes, and adds it to *pIncludes.
     void ReadPackageFile(std::vector<Include> *pIncludes)
     {
         const Json &document = m_Package.Files[m_File]->Document;
@@ -990,6 +1010,11 @@ private:
                 }
             }
 
+            if (!pIncludes)
+            {
+                included.push_back(file);
+                return;
+            }
             std::string text;
             if (!ReadWholeFile(file.Path, &text, &file))
                 return;
@@ -1752,6 +1777,14 @@ bool LoadPackageSource(std::string_view packageFile, SourcePackage *pPackage, CD
     *pPackage = {};
     const size_t errorCount = diagnostics.GetErrorCount();
     CSourceLoader(*pPackage, diagnostics).Load(packageFile);
+    return diagnostics.GetErrorCount() == errorCount;
+}
+
+bool LoadSourceFile(std::string_view sourceFile, SourcePackage *pPackage, CDiagnostics &diagnostics)
+{
+    *pPackage = {};
+    const size_t errorCount = diagnostics.GetErrorCount();
+    CSourceLoader(*pPackage, diagnostics).LoadFile(sourceFile);
     return diagnostics.GetErrorCount() == errorCount;
 }
 

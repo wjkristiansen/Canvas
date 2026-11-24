@@ -142,38 +142,58 @@ TEST_F(CpkgFormat, RewritesInTheStandardForm)
     WriteText("levels.cpkg.json", kPackage);
     WriteText("Rig.cbundle.json", kBundle);
 
+    // A package file is rewritten, and the bundle files it includes are left as they are.
+    const RunResult package = RunCpkg({ "format", "levels.cpkg.json" });
+    EXPECT_EQ(package.Err, "");
+    ASSERT_EQ(package.Status, CpkgTool::kExitSuccess);
+    EXPECT_EQ(ReadBytes("levels.cpkg.json"), kStandardPackage);
+    EXPECT_EQ(ReadBytes("Rig.cbundle.json"), kBundle);
+
+    // A bundle file is rewritten on its own.
+    const RunResult bundle = RunCpkg({ "format", "Rig.cbundle.json" });
+    EXPECT_EQ(bundle.Err, "");
+    ASSERT_EQ(bundle.Status, CpkgTool::kExitSuccess);
+    EXPECT_EQ(ReadBytes("Rig.cbundle.json"), kStandardBundle);
+}
+
+TEST_F(CpkgFormat, ReadsOnlyTheFileItFormats)
+{
+    // The bundle file the package file includes is absent.
+    WriteText("levels.cpkg.json", kPackage);
     const RunResult formatted = RunCpkg({ "format", "levels.cpkg.json" });
     EXPECT_EQ(formatted.Err, "");
     ASSERT_EQ(formatted.Status, CpkgTool::kExitSuccess);
     EXPECT_EQ(ReadBytes("levels.cpkg.json"), kStandardPackage);
-    EXPECT_EQ(ReadBytes("Rig.cbundle.json"), kStandardBundle);
 }
 
-TEST_F(CpkgFormat, SavesOnlyFilesWhoseTextChanges)
+TEST_F(CpkgFormat, SavesOnlyAFileWhoseTextChanges)
 {
     WriteText("levels.cpkg.json", kStandardPackage);
-    WriteText("Rig.cbundle.json", kBundle);
     const auto written = std::filesystem::last_write_time("levels.cpkg.json");
     std::filesystem::last_write_time("levels.cpkg.json", written - std::chrono::hours(1));
     const auto earlier = std::filesystem::last_write_time("levels.cpkg.json");
 
     ASSERT_EQ(RunCpkg({ "format", "levels.cpkg.json" }).Status, CpkgTool::kExitSuccess);
     EXPECT_EQ(std::filesystem::last_write_time("levels.cpkg.json"), earlier);
-    EXPECT_EQ(ReadBytes("Rig.cbundle.json"), kStandardBundle);
 }
 
-TEST_F(CpkgFormat, CheckReportsFilesNotInTheStandardForm)
+TEST_F(CpkgFormat, CheckReportsAFileNotInTheStandardForm)
 {
     WriteText("levels.cpkg.json", kStandardPackage);
     WriteText("Rig.cbundle.json", kBundle);
 
-    const RunResult checked = RunCpkg({ "format", "levels.cpkg.json", "--check" });
+    const RunResult checked = RunCpkg({ "format", "Rig.cbundle.json", "--check" });
     EXPECT_EQ(checked.Err, "Rig.cbundle.json: error: the file is not in the standard form; cpkg format rewrites it\n");
     EXPECT_EQ(checked.Status, CpkgTool::kExitError);
     EXPECT_EQ(ReadBytes("Rig.cbundle.json"), kBundle);
 
+    // The package file is in the standard form, whatever the files it includes hold.
+    const RunResult package = RunCpkg({ "format", "levels.cpkg.json", "--check" });
+    EXPECT_EQ(package.Err, "");
+    EXPECT_EQ(package.Status, CpkgTool::kExitSuccess);
+
     WriteText("Rig.cbundle.json", kStandardBundle);
-    const RunResult clean = RunCpkg({ "format", "levels.cpkg.json", "--check" });
+    const RunResult clean = RunCpkg({ "format", "Rig.cbundle.json", "--check" });
     EXPECT_EQ(clean.Err, "");
     EXPECT_EQ(clean.Status, CpkgTool::kExitSuccess);
 }
@@ -182,23 +202,21 @@ TEST_F(CpkgFormat, SavesNothingWhenLoadingReportsAnError)
 {
     const std::string package = std::string(kPackage).replace(std::string(kPackage).find("\"static\""), 8, "\"fixed\"");
     WriteText("levels.cpkg.json", package);
-    WriteText("Rig.cbundle.json", kBundle);
 
     const RunResult formatted = RunCpkg({ "format", "levels.cpkg.json" });
     EXPECT_NE(formatted.Err.find("levels.cpkg.json:13:"), std::string::npos) << formatted.Err;
     EXPECT_EQ(formatted.Status, CpkgTool::kExitError);
     EXPECT_EQ(ReadBytes("levels.cpkg.json"), package);
-    EXPECT_EQ(ReadBytes("Rig.cbundle.json"), kBundle);
 }
 
 TEST_F(CpkgFormat, UsageErrors)
 {
     const char *pHelp = "Run 'cpkg --help' for usage.\n";
     const RunResult missing = RunCpkg({ "format" });
-    EXPECT_EQ(missing.Err, std::string("cpkg: error: format: missing argument <package.cpkg.json>\n") + pHelp);
+    EXPECT_EQ(missing.Err, std::string("cpkg: error: format: missing argument <file>\n") + pHelp);
     EXPECT_EQ(missing.Status, CpkgTool::kExitUsage);
 
     const RunResult wrong = RunCpkg({ "format", "levels.cpkg" });
-    EXPECT_EQ(wrong.Err, std::string("cpkg: error: format: expected a .cpkg.json file: levels.cpkg\n") + pHelp);
+    EXPECT_EQ(wrong.Err, std::string("cpkg: error: format: expected a .cpkg.json or .cbundle.json file: levels.cpkg\n") + pHelp);
     EXPECT_EQ(wrong.Status, CpkgTool::kExitUsage);
 }

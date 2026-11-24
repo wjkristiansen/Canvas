@@ -47,11 +47,11 @@ void Unpack(const UnpackOptions &options, CDiagnostics &diagnostics);
 
 struct FormatOptions
 {
-    std::string Package;                // UTF-8 path of the .cpkg.json file
-    bool Check = false;                 // reports files not in the standard form instead of saving them
+    std::string File;                   // UTF-8 path of the .cpkg.json or .cbundle.json file
+    bool Check = false;                 // reports a file not in the standard form instead of saving it
 };
 
-// Rewrites the package source's files in the standard form, saving only those whose text changes.
+// Rewrites a package file or bundle file in the standard form, saving it only when its text changes.
 void Format(const FormatOptions &options, CDiagnostics &diagnostics);
 
 struct BuildOptions

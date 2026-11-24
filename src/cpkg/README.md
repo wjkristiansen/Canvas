@@ -24,7 +24,7 @@ cpkg <command> [<subcommand>] [<arguments>] [<options>]
 | [`validate`](#validate) | Reports the diagnostics a build would report, without writing anything |
 | [`dump`](#dump) | Prints the contents of a `.cpkg` file |
 | [`unpack`](#unpack) | Writes a package source that builds a `.cpkg` file |
-| [`format`](#format) | Rewrites a package source in the standard form |
+| [`format`](#format) | Rewrites a package file or bundle file in the standard form |
 | [`import`](#import) | Adds an FBX import to a bundle of a package source |
 | [`rename`](#rename-move-and-refs) | Renames an asset, node, placement, or bundle, and updates everything that refers to it |
 | [`move`](#rename-move-and-refs) | Moves a shared asset to another bundle, and updates everything that refers to it |
@@ -120,14 +120,14 @@ Rig/
 ### format
 
 ```
-cpkg format <package.cpkg.json> [--check]
+cpkg format <file> [--check]
 ```
 
-Rewrites the package file and each bundle file it includes in the [standard form](#editing-sources), and saves only the files whose text changes. `format` loads the source as `build` does, and saves nothing when loading reports an error.
+Rewrites `file`, a package file (`.cpkg.json`) or a bundle file (`.cbundle.json`), in the [standard form](#editing-sources), and saves it only when its text changes. The files a package file includes are left as they are. `format` loads the file as `build` loads it, and saves nothing when loading reports an error.
 
 | Option | Meaning |
 |---|---|
-| `--check` | Saves nothing, and reports each file that is not in the standard form as an error |
+| `--check` | Saves nothing, and reports the file as an error when it is not in the standard form |
 
 ### import
 

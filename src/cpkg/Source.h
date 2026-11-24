@@ -568,6 +568,12 @@ std::string_view EnumNameOf(const EnumName<T> (&names)[N], T value)
 // source, and otherwise what could be read.
 bool LoadPackageSource(std::string_view packageFile, SourcePackage *pPackage, CDiagnostics &diagnostics);
 
+// Reads one file of a package source, sourceFile, a UTF-8 path, into *pPackage as
+// LoadPackageSource reads it, and reports what it reports in that file: a package file without
+// the bundle files it includes, or a bundle file, whose name ends in ".cbundle.json", as the one
+// bundle of *pPackage. Returns true when it reported no error.
+bool LoadSourceFile(std::string_view sourceFile, SourcePackage *pPackage, CDiagnostics &diagnostics);
+
 // Reports a finding at a value of the package source.
 void ReportAt(CDiagnostics &diagnostics, const SourcePackage &package, Severity severity, const SourceLocation &where, std::string_view message);
 

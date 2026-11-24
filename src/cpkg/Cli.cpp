@@ -117,12 +117,12 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
             .SetDescription("Replaces files that exist");
 
         InCommand::CommandDecl &format = root.AddSubCommand("format");
-        format.SetDescription("Rewrites a package source in the standard form");
-        format.AddOption(InCommand::OptionType::Parameter, "package.cpkg.json")
+        format.SetDescription("Rewrites a package file or bundle file in the standard form");
+        format.AddOption(InCommand::OptionType::Parameter, "file")
             .SetRequired()
-            .SetDescription("The package file");
+            .SetDescription("The package file or bundle file");
         format.AddOption(InCommand::OptionType::Switch, "check")
-            .SetDescription("Saves nothing, and reports each file that is not in the standard form as an error");
+            .SetDescription("Saves nothing, and reports the file as an error when it is not in the standard form");
 
         size_t blockCount = 0;
         try
@@ -211,9 +211,9 @@ int Run(int argc, const char *const argv[], std::ostream &out, std::ostream &err
         else if (command == "format")
         {
             FormatOptions options;
-            options.Package = block.GetOptionValue("package.cpkg.json");
-            if (!HasExtension(options.Package, ".cpkg.json"))
-                return UsageError(err, "format: expected a .cpkg.json file: " + options.Package);
+            options.File = block.GetOptionValue("file");
+            if (!HasExtension(options.File, ".cpkg.json") && !HasExtension(options.File, ".cbundle.json"))
+                return UsageError(err, "format: expected a .cpkg.json or .cbundle.json file: " + options.File);
             options.Check = block.IsOptionSet("check");
             Format(options, diagnostics);
         }

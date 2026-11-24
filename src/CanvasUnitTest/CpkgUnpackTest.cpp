@@ -122,12 +122,13 @@ protected:
         ASSERT_EQ(unpacked.Status, CpkgTool::kExitSuccess);
         for (const std::string &file : FilesUnder(directory))
         {
-            if (file.ends_with(".json"))
-                EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, directory + "/" + file)) << file;
+            if (!file.ends_with(".json"))
+                continue;
+            EXPECT_TRUE(MatchesSchema(CanvasSchema::PackageSource, directory + "/" + file)) << file;
+            const RunResult checked = RunCpkg({ "format", directory + "/" + file, "--check" });
+            EXPECT_EQ(checked.Err, "");
+            EXPECT_EQ(checked.Status, CpkgTool::kExitSuccess);
         }
-        const RunResult checked = RunCpkg({ "format", directory + "/levels.cpkg.json", "--check" });
-        EXPECT_EQ(checked.Err, "");
-        EXPECT_EQ(checked.Status, CpkgTool::kExitSuccess);
 
         const RunResult rebuilt = RunCpkg({ "build", directory + "/levels.cpkg.json", "-o", directory + ".cpkg" });
         EXPECT_EQ(rebuilt.Err, "");
