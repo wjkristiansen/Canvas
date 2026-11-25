@@ -180,7 +180,7 @@ namespace
     bool CheckPackage(const CProject &project, size_t index, SourcePackage *pPackage, CDiagnostics &diagnostics)
     {
         const Canvas::ProjectPackage &entry = project.GetManifest().GetPackages()[index];
-        if (!LoadPackageSource(entry.FilePath, pPackage, diagnostics) || !TranslatePackageSource(*pPackage, diagnostics))
+        if (!LoadPackageSource(entry.FilePath, pPackage, diagnostics) || !ExpandPackageSource(*pPackage, diagnostics))
             return false;
         return ValidateInProject(project, index, *pPackage, diagnostics);
     }
@@ -626,7 +626,7 @@ bool LoadAndValidate(const std::string &packageFile, const std::optional<std::st
             diagnostics.Report(Severity::Error, packageFile, "the project " + Quoted(DisplayPath(*projectFile)) + " lists no package with this source");
     }
 
-    if (!LoadPackageSource(packageFile, pPackage, diagnostics) || !TranslatePackageSource(*pPackage, diagnostics))
+    if (!LoadPackageSource(packageFile, pPackage, diagnostics) || !ExpandPackageSource(*pPackage, diagnostics))
         return false;
     if (index == CProject::kNoPackage)
         return ValidatePackageSource(*pPackage, diagnostics) && diagnostics.GetErrorCount() == 0;

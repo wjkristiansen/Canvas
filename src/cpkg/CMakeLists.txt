@@ -22,7 +22,7 @@ add_library(CpkgTool STATIC
     SourceLoad.cpp
     SourceValidate.cpp
     Stages.h
-    Translate.cpp
+    Expand.cpp
     Unpack.cpp
     pch.h
 )

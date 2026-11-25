@@ -1680,7 +1680,7 @@ private:
         CDiagnostics buildDiagnostics(findings, false, true);
         SourcePackage source;
         const bool succeeded = LoadPackageSource(packageFile, &source, buildDiagnostics)
-            && TranslatePackageSource(source, buildDiagnostics)
+            && ExpandPackageSource(source, buildDiagnostics)
             && ValidatePackageSource(source, buildDiagnostics)
             && buildDiagnostics.GetErrorCount() == 0
             && WritePackage(source, built, buildDiagnostics);

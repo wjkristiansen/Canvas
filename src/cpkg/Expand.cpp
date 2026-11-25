@@ -1,5 +1,5 @@
 //================================================================================================
-// Translate - the build's Translate stage
+// Expand - the build's Expand stage
 //
 // Reads the header of each image file a package source names: the encoding its content begins
 // with, and its width and height, decoding no pixels. See "Images" in src/cpkg/README.md.
@@ -276,7 +276,7 @@ std::optional<uint32_t> Texture3DDepth(uint64_t count, uint32_t mipLevels)
 }
 
 //------------------------------------------------------------------------------------------------
-bool TranslatePackageSource(SourcePackage &package, CDiagnostics &diagnostics)
+bool ExpandPackageSource(SourcePackage &package, CDiagnostics &diagnostics)
 {
     const size_t errorCount = diagnostics.GetErrorCount();
     for (SourceBundle &bundle : package.Bundles)

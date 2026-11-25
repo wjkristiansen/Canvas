@@ -148,10 +148,10 @@ private:
     std::unordered_map<std::string_view, int32_t> m_Names;
 };
 
-// The Translate stage: reads the header of each image file, filling each SourceImage's Headers,
+// The Expand stage: reads the header of each image file, filling each SourceImage's Headers,
 // and reports a file it cannot read, one in an encoding CanvasPkg does not store, and, as a
 // warning, one whose extension names another encoding. Returns true when it reported no error.
-bool TranslatePackageSource(SourcePackage &package, CDiagnostics &diagnostics);
+bool ExpandPackageSource(SourcePackage &package, CDiagnostics &diagnostics);
 
 // The Validate stage: checks the validation rules of PackageSource.md that Load does not, and
 // reports each finding at the value that breaks the rule, in document order within each file.
