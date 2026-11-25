@@ -10,6 +10,8 @@
 
 #include <ufbx.h>
 
+#include <unordered_set>
+
 namespace CpkgTool
 {
 
@@ -152,13 +154,15 @@ public:
         m_Folds = Folds();
         m_PushedScale = m_Folds ? ufbx_real(1) : m_Unit;
 
-        if (m_pScene->bones.count != 0 || m_pScene->skin_deformers.count != 0)
-            m_Builder.Unsupported(m_Import.Where, "the skeletons and skins of an FBX file");
         if (!m_Import.Clips && Animates())
             m_Builder.Unsupported(m_Import.Where, "the animation of an FBX file");
         if (m_Import.Nodes && Mirrors(m_AxisChange))
             m_Builder.Unsupported(m_Import.Where, "the nodes of an FBX file in a left-handed axis system");
+        FindBones();
+        if (!m_Bones.empty() && !m_Import.Nodes && Mirrors(m_AxisChange))
+            m_Builder.Unsupported(m_Import.Where, "the skeletons of an FBX file in a left-handed axis system");
         BuildMaterials();
+        BuildSkeletons();
         BuildMeshes();
         if (m_Import.Nodes)
             BuildNodes();
@@ -356,6 +360,249 @@ private:
     }
 
     //--------------------------------------------------------------------------------------------
+    // Transforms
+
+    // The local transform of a node, bone, or bind pose below the root nodes, from its transform
+    // in the file: in the space of its parent, which the root nodes' transforms place, when the
+    // import builds nodes, and otherwise turned to Canvas's axes and "rotation".
+    SourceTransform BelowRoots(const ufbx_transform &local, const std::string &described)
+    {
+        Math::FloatVector3 translation = ToVector(local.translation) * float(m_PushedScale);
+        Math::FloatQuaternion rotation = ToQuaternion(local.rotation);
+        Math::FloatVector3 scale = ToVector(local.scale);
+        if (m_Import.Nodes)
+            translation = translation * m_Import.Scale;
+        else
+        {
+            translation = m_Builder.Position(translation * m_AxisChange);
+            rotation = m_Builder.Rotation((m_RootRotation * rotation * Math::Conjugate(m_RootRotation)).Normalize());
+
+            // The change of axes permutes the scale's axes. "rotation" turns them arbitrarily, which
+            // a scale holds only when it is uniform.
+            Math::FloatVector3 permuted;
+            for (int from = 0; from < 3; ++from)
+            {
+                for (int to = 0; to < 3; ++to)
+                {
+                    if (m_AxisChange[from][to] != 0.0f)
+                        permuted[to] = scale[from];
+                }
+            }
+            scale = permuted;
+            if (m_Import.Rotation && (scale.X != scale.Y || scale.X != scale.Z))
+                m_Builder.Unsupported(m_Import.Where, "the non-uniform scale of " + described + " under an import's \"rotation\"");
+        }
+
+        SourceTransform transform;
+        transform.Translation = translation;
+        SourceRotation &rotated = transform.Rotation.emplace();
+        rotated.Quaternion = rotation;
+        rotated.Where = m_Import.Where;
+        transform.Scale = scale;
+        return transform;
+    }
+
+    // The transform matrix holds, which it reports as content cpkg cannot build when matrix
+    // holds a shear that a translation, rotation, and scale cannot.
+    ufbx_transform Decompose(const ufbx_matrix &matrix, const std::string &described)
+    {
+        const ufbx_transform transform = ufbx_matrix_to_transform(&matrix);
+        const ufbx_matrix rebuilt = ufbx_transform_to_matrix(&transform);
+        double difference = 0.0;
+        double magnitude = 0.0;
+        for (int column = 0; column < 3; ++column)
+        {
+            for (int row = 0; row < 3; ++row)
+            {
+                difference = std::max(difference, double(std::abs(matrix.cols[column].v[row] - rebuilt.cols[column].v[row])));
+                magnitude = std::max(magnitude, double(std::abs(matrix.cols[column].v[row])));
+            }
+        }
+        if (difference > 1e-5 * magnitude)
+            m_Builder.Unsupported(m_Import.Where, "the sheared transform of " + described);
+        return transform;
+    }
+
+    //--------------------------------------------------------------------------------------------
+    // Skeletons and skins
+
+    // Finds the file's bones: the nodes it marks as bones, and those a skin deforms with, and
+    // where each was when the file's meshes were bound to them.
+    void FindBones()
+    {
+        for (const ufbx_node *pNode : m_pScene->nodes)
+        {
+            if (pNode->bone)
+                m_Bones.insert(pNode);
+        }
+        for (const ufbx_pose *pPose : m_pScene->poses)
+        {
+            for (size_t i = 0; pPose->is_bind_pose && i < pPose->bone_poses.count; ++i)
+            {
+                const ufbx_bone_pose &pose = pPose->bone_poses.data[i];
+                if (pose.bone_node)
+                    m_BindWorld.insert_or_assign(pose.bone_node, pose.bone_to_world);
+            }
+        }
+
+        // A skin's own record of where its bones were bound takes precedence over a bind pose.
+        for (const ufbx_skin_cluster *pCluster : m_pScene->skin_clusters)
+        {
+            if (pCluster->bone_node)
+            {
+                m_Bones.insert(pCluster->bone_node);
+                m_BindWorld.insert_or_assign(pCluster->bone_node, pCluster->bind_to_world);
+            }
+        }
+    }
+
+    bool IsBone(const ufbx_node *pNode) const
+    {
+        return pNode && m_Bones.count(pNode) != 0;
+    }
+
+    // Where node was when the file's meshes were bound: its bind pose, or else its transform.
+    const ufbx_matrix &BindWorld(const ufbx_node &node) const
+    {
+        const auto found = m_BindWorld.find(&node);
+        return found != m_BindWorld.end() ? found->second : node.node_to_world;
+    }
+
+    static std::string DescribeBone(const ufbx_node &bone)
+    {
+        return "the FBX bone " + Quoted(View(bone.name));
+    }
+
+    // Builds a skeleton from each tree of bones, or with "skeleton", records that every tree uses it.
+    void BuildSkeletons()
+    {
+        for (const ufbx_node *pNode : m_pScene->nodes)
+        {
+            if (!IsBone(pNode) || IsBone(pNode->parent))
+                continue;
+
+            if (m_Import.Skeleton)
+            {
+                m_SkeletonPaths.emplace(pNode, *m_Import.Skeleton);
+                MarkTree(*pNode, *pNode);
+                continue;
+            }
+
+            SourceSkeleton skeleton;
+            skeleton.Where = m_Import.Where;
+            AddBones(*pNode, *pNode, &skeleton);
+            const std::string name = CImportBuilder::FileName(SourceImportKind::Skeletons, View(pNode->name), m_SkeletonCount++);
+            SourceNamed<SourceSkeleton> &asset = m_Builder.GetBundle().Skeletons.emplace_back();
+            asset.Name = m_Builder.BuiltName(SourceImportKind::Skeletons, name);
+            asset.Value = std::move(skeleton);
+            m_SkeletonPaths.emplace(pNode, asset.Name);
+        }
+    }
+
+    // Records root as the root bone of bone and of its descendant bones.
+    void MarkTree(const ufbx_node &bone, const ufbx_node &root)
+    {
+        m_RootBones.emplace(&bone, &root);
+        for (const ufbx_node *pChild : bone.children)
+        {
+            if (IsBone(pChild))
+                MarkTree(*pChild, root);
+        }
+    }
+
+    // Adds bone and its descendant bones, depth first, to the skeleton of the tree whose root bone is root.
+    void AddBones(const ufbx_node &bone, const ufbx_node &root, SourceSkeleton *pSkeleton)
+    {
+        m_RootBones.emplace(&bone, &root);
+        SourceBone &built = pSkeleton->Bones.emplace_back();
+        built.Where = m_Import.Where;
+        built.Name.Text = std::string(View(bone.name));
+        built.Name.Where = m_Import.Where;
+        if (built.Name.Text.empty())
+            m_Builder.Error(m_Import.Where, "a bone of the FBX file has no name, which a skeleton's bones need");
+        if (&bone != &root)
+        {
+            built.Parent.emplace();
+            built.Parent->Text = std::string(View(bone.parent->name));
+            built.Parent->Where = m_Import.Where;
+        }
+
+        // Its rest transform is where it was bound, relative to its parent.
+        const ufbx_matrix parentToWorld = ufbx_matrix_invert(&BindWorld(*bone.parent));
+        const ufbx_matrix local = ufbx_matrix_mul(&parentToWorld, &BindWorld(bone));
+        built.Rest = BelowRoots(Decompose(local, DescribeBone(bone)), DescribeBone(bone));
+
+        for (const ufbx_node *pChild : bone.children)
+        {
+            if (IsBone(pChild))
+                AddBones(*pChild, root, pSkeleton);
+        }
+    }
+
+    // Builds the skin of mesh, named name in the file, which skin deforms, and returns its path.
+    std::optional<SourceString> BuildSkin(const ufbx_mesh &mesh, const ufbx_skin_deformer &skin, const std::string &name)
+    {
+        const std::string described = m_Builder.Describe(SourceImportKind::Meshes, name);
+        SourceSkin built;
+        built.Where = m_Import.Where;
+        built.BindPosesWhere = m_Import.Where;
+        const ufbx_node *pRoot = nullptr;
+        for (const ufbx_skin_cluster *pCluster : skin.clusters)
+        {
+            const ufbx_node *pBone = pCluster->bone_node;
+            if (!pBone)
+            {
+                m_Builder.Error(m_Import.Where, "a skin cluster of " + described + " deforms with no bone");
+                return std::nullopt;
+            }
+            const ufbx_node *pTree = m_RootBones.at(pBone);
+            if (pRoot && pTree != pRoot)
+            {
+                m_Builder.Unsupported(m_Import.Where, "the skin of " + described + ", which deforms with the bones of more than one skeleton,");
+                return std::nullopt;
+            }
+            pRoot = pTree;
+            SourceString &bone = built.Bones.emplace_back();
+            bone.Text = std::string(View(pBone->name));
+            bone.Where = m_Import.Where;
+
+            // A bind pose is the bone's transform when bound, in the mesh's space.
+            const ufbx_matrix boneToGeometry = ufbx_matrix_invert(&pCluster->geometry_to_bone);
+            built.BindPoses.push_back(BelowRoots(Decompose(boneToGeometry, DescribeBone(*pBone)), DescribeBone(*pBone)));
+        }
+        if (!pRoot)
+        {
+            m_Builder.Error(m_Import.Where, "the skin of " + described + " deforms with no bones");
+            return std::nullopt;
+        }
+        built.Skeleton = m_SkeletonPaths.at(pRoot);
+
+        SourceNamed<SourceSkin> &asset = m_Builder.GetBundle().Skins.emplace_back();
+        asset.Name = m_Builder.BuiltName(SourceImportKind::Skins, CImportBuilder::FileName(SourceImportKind::Skins, name, mesh.typed_id));
+        asset.Value = std::move(built);
+        m_Skins.emplace(&mesh, SkinOf{ asset.Name, pRoot });
+        return asset.Name;
+    }
+
+    // Fills the bone streams of group's vertex index of mesh, which skin deforms, with the weights
+    // the file gives it. Counts a vertex with more than 4 bones in *pOverfull.
+    static void AddWeights(const ufbx_mesh &mesh, const ufbx_skin_deformer &skin, uint32_t index, SourceMeshGroup &group, size_t *pOverfull)
+    {
+        // ufbx sorts a vertex's weights from strongest, so the 4 strongest are kept. The share of
+        // the vertex its weights leave follows the mesh instance's node.
+        const ufbx_skin_vertex &vertex = skin.vertices.data[mesh.vertex_indices.data[index]];
+        const uint32_t count = std::min(vertex.num_weights, 4u);
+        if (vertex.num_weights > 4)
+            ++*pOverfull;
+        for (uint32_t i = 0; i < 4; ++i)
+        {
+            const ufbx_skin_weight *pWeight = i < count ? &skin.weights.data[vertex.weight_begin + i] : nullptr;
+            group.BoneIndices->Values.push_back(pWeight ? pWeight->cluster_index : 0u);
+            group.BoneWeights->Values.push_back(pWeight ? float(pWeight->weight) : 0.0f);
+        }
+    }
+
+    //--------------------------------------------------------------------------------------------
     // Meshes
 
     // A vertex position or direction of the file's geometry, in its node's space when the import
@@ -388,8 +635,11 @@ private:
         for (const ufbx_mesh *pMesh : m_pScene->meshes)
         {
             const ufbx_mesh &mesh = *pMesh;
-            if (mesh.skin_deformers.count != 0)
-                continue;   // Read reported the file's skins
+            const std::string name = CImportBuilder::FileName(SourceImportKind::Meshes, View(mesh.name), mesh.typed_id);
+            const ufbx_skin_deformer *pSkin = mesh.skin_deformers.count != 0 ? mesh.skin_deformers.data[0] : nullptr;
+            if (mesh.skin_deformers.count > 1)
+                m_Builder.Unsupported(m_Import.Where, "the second skin of " + m_Builder.Describe(SourceImportKind::Meshes, name));
+            size_t overfull = 0;
 
             const bool hasUV = mesh.vertex_uv.exists;
             const bool hasTangents = hasUV && mesh.vertex_tangent.exists && mesh.vertex_bitangent.exists;
@@ -414,6 +664,11 @@ private:
                     group.UV0.emplace();
                 if (hasTangents)
                     group.Tangents.emplace();
+                if (pSkin)
+                {
+                    group.BoneIndices.emplace();
+                    group.BoneWeights.emplace();
+                }
 
                 for (const uint32_t faceIndex : faces.face_indices)
                 {
@@ -445,21 +700,30 @@ private:
                             Append(group.Tangents->Values, tangent);
                             group.Tangents->Values.push_back(handedness < 0.0f ? -1.0f : 1.0f);
                         }
+                        if (pSkin)
+                            AddWeights(mesh, *pSkin, index, group, &overfull);
                     }
                 }
             }
 
-            const std::string name = CImportBuilder::FileName(SourceImportKind::Meshes, View(mesh.name), mesh.typed_id);
+            const std::string described = m_Builder.Describe(SourceImportKind::Meshes, name);
             const SourceString builtName = m_Builder.BuiltName(SourceImportKind::Meshes, name);
             if (built.Groups.empty())
             {
-                m_Builder.Warning(m_Import.Where, m_Builder.Describe(SourceImportKind::Meshes, name) + " has no faces, and builds no mesh");
+                m_Builder.Warning(m_Import.Where, described + " has no faces, and builds no mesh");
                 continue;
+            }
+            if (overfull != 0)
+            {
+                m_Builder.Warning(m_Import.Where, described + " has " + std::to_string(overfull)
+                    + " vertex corners with more than 4 bone weights; each keeps its 4 strongest, and the rest of its weight follows the mesh's node");
             }
             SourceNamed<SourceMesh> &asset = m_Builder.GetBundle().Meshes.emplace_back();
             asset.Name = builtName;
             asset.Value = std::move(built);
             m_MeshPaths.emplace(pMesh, asset.Name);
+            if (pSkin)
+                BuildSkin(mesh, *pSkin, name);
         }
     }
 
@@ -470,38 +734,117 @@ private:
     {
         std::vector<SourceNode> roots;
         for (const ufbx_node *pNode : m_pScene->root_node->children)
-            roots.push_back(BuildNode(*pNode, true));
+            roots.push_back(IsBone(pNode) ? BuildCarrier(*pNode) : BuildNode(*pNode, true));
         m_Builder.AddNodes(std::move(roots));
+    }
+
+    // The built name of node, a node that builds a node, or a root bone that a node carries; empty
+    // for an unnamed node. Each is named once, so "rename" and the name rules apply once.
+    const std::optional<SourceString> &NodeName(const ufbx_node &node)
+    {
+        auto found = m_NodeNames.find(&node);
+        if (found == m_NodeNames.end())
+        {
+            std::optional<SourceString> name;
+            if (node.name.length != 0)
+                name = m_Builder.BuiltName(SourceImportKind::Nodes, std::string(View(node.name)));
+            found = m_NodeNames.emplace(&node, std::move(name)).first;
+        }
+        return found->second;
+    }
+
+    // A root node's local transform: its transform in the file, with the conversion to meters
+    // and Canvas's axes, the root's transform. The unit's scale folds into its scale, or else
+    // scales its translation and everything below.
+    SourceTransform RootTransform(const ufbx_transform &local)
+    {
+        const Math::FloatVector3 t = Math::RotateVectorByQuaternion(m_RootRotation, ToVector(local.translation) * float(m_Unit));
+        const Math::FloatQuaternion r = (m_RootRotation * ToQuaternion(local.rotation)).Normalize();
+        const float s = m_Folds ? float(m_Unit) : 1.0f;
+        return m_Builder.RootTransform(t, r, ToVector(local.scale) * s);
     }
 
     SourceNode BuildNode(const ufbx_node &node, bool isRoot)
     {
         SourceNode built;
         built.Where = m_Import.Where;
-        if (node.name.length != 0)
-            built.Name = m_Builder.BuiltName(SourceImportKind::Nodes, std::string(View(node.name)));
+        built.Name = NodeName(node);
         const std::string described = m_Builder.Describe(SourceImportKind::Nodes, View(node.name));
+        built.Transform = isRoot ? RootTransform(node.local_transform) : BelowRoots(node.local_transform, described);
+        Attach(node, described, &built.Attachments);
 
-        // A root node takes the conversion to meters and Canvas's axes, the root's transform; the
-        // unit's scale folds into its scale, or else scales its translation and everything below.
-        const ufbx_transform &local = node.local_transform;
-        if (isRoot)
+        for (const ufbx_node *pChild : node.children)
         {
-            const Math::FloatVector3 t = Math::RotateVectorByQuaternion(m_RootRotation, ToVector(local.translation) * float(m_Unit));
-            const Math::FloatQuaternion r = (m_RootRotation * ToQuaternion(local.rotation)).Normalize();
-            const float s = m_Folds ? float(m_Unit) : 1.0f;
-            built.Transform = m_Builder.RootTransform(t, r, ToVector(local.scale) * s);
-        }
-        else
-        {
-            const ufbx_real scale = m_PushedScale * m_Import.Scale;
-            built.Transform.Translation = ToVector(local.translation) * float(scale);
-            SourceRotation &rotation = built.Transform.Rotation.emplace();
-            rotation.Quaternion = ToQuaternion(local.rotation);
-            rotation.Where = m_Import.Where;
-            built.Transform.Scale = ToVector(local.scale);
-        }
+            if (!IsBone(pChild))
+            {
+                built.Attachments.Children.push_back(BuildNode(*pChild, false));
+                continue;
+            }
 
+            // A root bone's skeleton instance attaches to its parent node.
+            if (built.Attachments.SkeletonInstance)
+            {
+                m_Builder.Unsupported(m_Import.Where, "the second skeleton of " + described);
+                continue;
+            }
+            AttachSkeleton(*pChild, &built.Attachments);
+        }
+        return built;
+    }
+
+    // The node built to carry the skeleton instance of root, a root bone that is a root node of
+    // the file, named after it.
+    SourceNode BuildCarrier(const ufbx_node &root)
+    {
+        SourceNode built;
+        built.Where = m_Import.Where;
+        built.Name = NodeName(root);
+        built.Transform = RootTransform(ufbx_transform{ ufbx_zero_vec3, ufbx_identity_quat, ufbx_vec3{ 1, 1, 1 } });
+        AttachSkeleton(root, &built.Attachments);
+        return built;
+    }
+
+    // Attaches the skeleton instance of the tree of bones whose root bone is root to the node
+    // whose attachments pAttachments holds, with the sockets its bones need.
+    void AttachSkeleton(const ufbx_node &root, SourceAttachments *pAttachments)
+    {
+        SourceSkeletonInstance &instance = pAttachments->SkeletonInstance.emplace();
+        instance.Skeleton = m_SkeletonPaths.at(&root);
+        instance.Where = m_Import.Where;
+        AddSockets(root, pAttachments);
+    }
+
+    // Adds a socket for bone, when it carries content, and for each of its descendant bones that
+    // does, to the attachments of the node that holds their skeleton instance.
+    void AddSockets(const ufbx_node &bone, SourceAttachments *pAttachments)
+    {
+        const bool carries = bone.mesh || bone.camera || bone.light
+            || std::any_of(bone.children.begin(), bone.children.end(), [&](const ufbx_node *pChild) { return !IsBone(pChild); });
+        if (carries)
+        {
+            SourceNode &socket = pAttachments->Children.emplace_back();
+            socket.Where = m_Import.Where;
+            socket.Name = SourceString{ std::string(View(bone.name)) + "_Socket", m_Import.Where };
+            socket.Bone = SourceString{ std::string(View(bone.name)), m_Import.Where };
+            const std::string described = DescribeBone(bone);
+            Attach(bone, described, &socket.Attachments);
+            for (const ufbx_node *pChild : bone.children)
+            {
+                if (!IsBone(pChild))
+                    socket.Attachments.Children.push_back(BuildNode(*pChild, false));
+            }
+        }
+        for (const ufbx_node *pChild : bone.children)
+        {
+            if (IsBone(pChild))
+                AddSockets(*pChild, pAttachments);
+        }
+    }
+
+    // Attaches the mesh, camera, and light node holds to the node whose attachments pAttachments
+    // holds.
+    void Attach(const ufbx_node &node, const std::string &described, SourceAttachments *pAttachments)
+    {
         if (node.mesh)
         {
             if (auto mesh = m_MeshPaths.find(node.mesh); mesh != m_MeshPaths.end())
@@ -514,19 +857,28 @@ private:
                         break;
                     }
                 }
-                SourceMeshInstance &instance = built.Attachments.MeshInstances.emplace_back();
+                SourceMeshInstance &instance = pAttachments->MeshInstances.emplace_back();
                 instance.Mesh = mesh->second;
                 instance.Where = m_Import.Where;
+                if (auto skin = m_Skins.find(node.mesh); skin != m_Skins.end())
+                {
+                    // It binds to the instance of its skin's skeleton, on the root bone's parent
+                    // node, or on the node that carries the root bone.
+                    instance.Skin = skin->second.Path;
+                    const ufbx_node &root = *skin->second.Root;
+                    const ufbx_node &holder = root.parent && !root.parent->is_root ? *root.parent : root;
+                    const std::optional<SourceString> &holderName = NodeName(holder);
+                    if (holderName)
+                        instance.SkeletonInstance = holderName;
+                    else
+                        m_Builder.Unsupported(m_Import.Where, "the skinned mesh of " + described + ", whose skeleton instance is on an unnamed node,");
+                }
             }
         }
         if (node.camera)
-            built.Attachments.Camera = BuildCamera(*node.camera, described);
+            pAttachments->Camera = BuildCamera(*node.camera, described);
         if (node.light)
-            built.Attachments.Light = BuildLight(*node.light, described);
-
-        for (const ufbx_node *pChild : node.children)
-            built.Attachments.Children.push_back(BuildNode(*pChild, false));
-        return built;
+            pAttachments->Light = BuildLight(*node.light, described);
     }
 
     // A distance in the file's units, in meters with the import's "scale" applied.
@@ -599,6 +951,20 @@ private:
     std::unordered_map<std::string, SourceString> m_ImagesByKey;    // by embedded bytes or file
     std::unordered_map<const ufbx_material *, SourceString> m_MaterialPaths;
     std::unordered_map<const ufbx_mesh *, SourceString> m_MeshPaths;
+
+    std::unordered_set<const ufbx_node *> m_Bones;
+    std::unordered_map<const ufbx_node *, ufbx_matrix> m_BindWorld;          // where each bone was bound
+    std::unordered_map<const ufbx_node *, const ufbx_node *> m_RootBones;   // the root bone of each bone's tree
+    std::unordered_map<const ufbx_node *, SourceString> m_SkeletonPaths;    // by root bone
+    size_t m_SkeletonCount = 0;
+
+    struct SkinOf
+    {
+        SourceString Path;
+        const ufbx_node *Root = nullptr;    // the root bone of the bones it deforms with
+    };
+    std::unordered_map<const ufbx_mesh *, SkinOf> m_Skins;
+    std::unordered_map<const ufbx_node *, std::optional<SourceString>> m_NodeNames;
 };
 
 } // namespace

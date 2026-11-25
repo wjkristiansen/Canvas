@@ -73,10 +73,6 @@ const Json *Member(const Json &object, const char *key)
     return it == object.end() ? nullptr : &*it;
 }
 
-// Keys of an import's "names" and "rename", in SourceImportKind order.
-constexpr const char *kImportKinds[] = { "images", "materials", "meshes", "skeletons", "skins", "skeletalAnimations", "clips", "nodes" };
-static_assert(std::size(kImportKinds) == size_t(SourceImportKind::Count));
-
 // The rotation { "degrees": [x, y, z] } describes: about X by x, then Y by y, then Z by z, each
 // axis fixed in the parent space, so the quaternion is qz * qy * qx.
 Canvas::Math::FloatQuaternion QuaternionFromDegrees(const Canvas::Math::FloatVector3 &degrees)
@@ -1647,7 +1643,7 @@ private:
             if (ExpectObject(*pNames, namesPointer, { "images", "materials", "meshes", "skeletons", "skins", "skeletalAnimations", "clips", "nodes" }))
             {
                 for (size_t kind = 0; kind < std::size(kImportKinds); ++kind)
-                    ReadOptionalString(*pNames, kImportKinds[kind], namesPointer, &CSourceLoader::ReadNameTemplate, &pImport->Names[kind]);
+                    ReadOptionalString(*pNames, kImportKinds[kind].pKey, namesPointer, &CSourceLoader::ReadNameTemplate, &pImport->Names[kind]);
             }
         }
 
@@ -1658,8 +1654,8 @@ private:
             {
                 for (size_t kind = 0; kind < std::size(kImportKinds); ++kind)
                 {
-                    if (const Json *pMap = Member(*pRename, kImportKinds[kind]))
-                        ReadStringMap(*pMap, Child(renamePointer, kImportKinds[kind]), &CSourceLoader::ReadName, &pImport->Rename[kind]);
+                    if (const Json *pMap = Member(*pRename, kImportKinds[kind].pKey))
+                        ReadStringMap(*pMap, Child(renamePointer, kImportKinds[kind].pKey), &CSourceLoader::ReadName, &pImport->Rename[kind]);
                 }
             }
         }

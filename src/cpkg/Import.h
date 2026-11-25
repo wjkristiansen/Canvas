@@ -58,10 +58,13 @@ public:
     const SourceString *ReplacementImage(std::string_view name);
     const SourceString *ReplacementMaterial(std::string_view name);
 
-    // A position or direction in Canvas space, with the import's "rotation" applied, and for a
-    // position, its "scale". A direction comes out normalized.
+    // A position, direction, or rotation in Canvas space, with the import's "rotation" applied,
+    // and for a position, its "scale". A direction comes out normalized. A rotation, such as a
+    // bone's local rotation, changes basis to the space "rotation" turns, R * q * R^-1, so it
+    // turns that space's axes as q turned Canvas's.
     Canvas::Math::FloatVector3 Position(const Canvas::Math::FloatVector3 &position) const;
     Canvas::Math::FloatVector3 Direction(const Canvas::Math::FloatVector3 &direction) const;
+    Canvas::Math::FloatQuaternion Rotation(const Canvas::Math::FloatQuaternion &rotation) const;
 
     // The local transform of a root node of the file, from its transform in Canvas space, with
     // the import's "rotation" and "scale" applied about the file's origin. "scale" scales the

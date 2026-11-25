@@ -14,22 +14,28 @@ namespace Math = Canvas::Math;
 namespace
 {
 
-// Per SourceImportKind: the noun a diagnostic names the file's content of the kind by, the
-// default name template, the name of unnamed content, before its position, and the kind's key
-// in "names" and "rename".
-constexpr const char *kKindNouns[] = { "texture", "material", "mesh", "skeleton", "skin", "skeletal animation", "clip", "node" };
-constexpr const char *kDefaultTemplates[] = { "{name}.image", "{name}.material", "{name}.mesh", "{name}.skeleton", "{name}.skin", "{name}.anim", "{name}", "{name}" };
-constexpr const char *kUnnamed[] = { "Image", "Material", "Mesh", "Skeleton", "Skin", "SkeletalAnimation", "Clip", "Node" };
-constexpr const char *kKindKeys[] = { "images", "materials", "meshes", "skeletons", "skins", "skeletalAnimations", "clips", "nodes" };
-static_assert(std::size(kKindNouns) == size_t(SourceImportKind::Count));
-static_assert(std::size(kDefaultTemplates) == size_t(SourceImportKind::Count));
-static_assert(std::size(kUnnamed) == size_t(SourceImportKind::Count));
-static_assert(std::size(kKindKeys) == size_t(SourceImportKind::Count));
+// What the build does with one kind of content an import builds.
+struct KindInfo
+{
+    SourceImportKind Kind;
+    const char *pNoun;              // what a diagnostic calls the file's content of the kind
+    const char *pDefaultTemplate;   // its name template when "names" gives none
+    const char *pUnnamed;           // the name of unnamed content, before its position
+    bool Built;                     // whether an import builds it; "rename" of another is reported
+};
 
-// Per SourceImportKind: whether an import builds it; "rename" of any other kind is reported as
-// one cpkg cannot build yet.
-constexpr bool kBuiltKinds[] = { true, true, true, false, false, false, false, true };
-static_assert(std::size(kBuiltKinds) == size_t(SourceImportKind::Count));
+// Indexed by kind.
+constexpr KindInfo kKinds[] = {
+    { SourceImportKind::Images,             "texture",              "{name}.image",     "Image",                true },
+    { SourceImportKind::Materials,          "material",             "{name}.material",  "Material",             true },
+    { SourceImportKind::Meshes,             "mesh",                 "{name}.mesh",      "Mesh",                 true },
+    { SourceImportKind::Skeletons,          "skeleton",             "{name}.skeleton",  "Skeleton",             true },
+    { SourceImportKind::Skins,              "skin",                 "{name}.skin",      "Skin",                 true },
+    { SourceImportKind::SkeletalAnimations, "skeletal animation",   "{name}.anim",      "SkeletalAnimation",    false },
+    { SourceImportKind::Clips,              "clip",                 "{name}",           "Clip",                 false },
+    { SourceImportKind::Nodes,              "node",                 "{name}",           "Node",                 true },
+};
+static_assert(IsPerImportKind(kKinds));
 
 // Whether name can name an asset: CanvasPkg's name rules, and no leading '$'.
 bool IsAssetName(std::string_view name)
@@ -113,14 +119,12 @@ CImportBuilder::CImportBuilder(SourcePackage &package, SourceBundle &bundle, con
     }
 
     // What the import declares that cpkg cannot build yet
-    if (import.Skeleton)
-        Unsupported(import.Skeleton->Where, "an import's \"skeleton\"");
     if (import.Clips && !import.Clips->empty())
         Unsupported((*import.Clips)[0].Where, "an import's \"clips\"");
     for (size_t kind = 0; kind < size_t(SourceImportKind::Count); ++kind)
     {
-        if (!kBuiltKinds[kind] && !import.Rename[kind].empty())
-            Unsupported(import.Rename[kind][0].first.Where, std::string("an import's \"rename\" of \"") + kKindKeys[kind] + "\"");
+        if (!kKinds[kind].Built && !import.Rename[kind].empty())
+            Unsupported(import.Rename[kind][0].first.Where, std::string("an import's \"rename\" of \"") + kImportKinds[kind].pKey + "\"");
     }
 }
 
@@ -141,12 +145,12 @@ void CImportBuilder::Unsupported(const SourceLocation &where, const std::string 
 
 std::string CImportBuilder::FileName(SourceImportKind kind, std::string_view name, size_t index)
 {
-    return name.empty() ? kUnnamed[size_t(kind)] + std::to_string(index) : std::string(name);
+    return name.empty() ? kKinds[size_t(kind)].pUnnamed + std::to_string(index) : std::string(name);
 }
 
 std::string CImportBuilder::Describe(SourceImportKind kind, std::string_view name) const
 {
-    return std::string("the ") + m_pFormat + " " + kKindNouns[size_t(kind)] + " " + Quoted(name);
+    return std::string("the ") + m_pFormat + " " + kKinds[size_t(kind)].pNoun + " " + Quoted(name);
 }
 
 SourceString CImportBuilder::BuiltName(SourceImportKind kind, const std::string &fileName)
@@ -157,7 +161,7 @@ SourceString CImportBuilder::BuiltName(SourceImportKind kind, const std::string 
     SourceString built;
     built.Where = m_Import.Where;
     const std::optional<SourceString> &pattern = m_Import.Names[size_t(kind)];
-    const std::string_view text = pattern ? std::string_view(pattern->Text) : std::string_view(kDefaultTemplates[size_t(kind)]);
+    const std::string_view text = pattern ? std::string_view(pattern->Text) : std::string_view(kKinds[size_t(kind)].pDefaultTemplate);
     constexpr std::string_view kField = "{name}";
     for (size_t start = 0;;)
     {
@@ -195,6 +199,11 @@ Math::FloatVector3 CImportBuilder::Position(const Math::FloatVector3 &position) 
 Math::FloatVector3 CImportBuilder::Direction(const Math::FloatVector3 &direction) const
 {
     return Math::RotateVectorByQuaternion(m_Rotation, direction).Normalize();
+}
+
+Math::FloatQuaternion CImportBuilder::Rotation(const Math::FloatQuaternion &rotation) const
+{
+    return (m_Rotation * rotation * Math::Conjugate(m_Rotation)).Normalize();
 }
 
 SourceTransform CImportBuilder::RootTransform(const Math::FloatVector3 &translation, const Math::FloatQuaternion &rotation, const Math::FloatVector3 &scale) const
@@ -317,11 +326,11 @@ void CImportBuilder::Finish(bool read)
         };
         for (size_t kind = 0; kind < size_t(SourceImportKind::Count); ++kind)
         {
-            if (kBuiltKinds[kind] && (kind != size_t(SourceImportKind::Nodes) || m_Import.Nodes))
-                check(m_Import.Rename[kind], m_RenameUsed[kind], kKindNouns[kind]);
+            if (kKinds[kind].Built && (kind != size_t(SourceImportKind::Nodes) || m_Import.Nodes))
+                check(m_Import.Rename[kind], m_RenameUsed[kind], kKinds[kind].pNoun);
         }
-        check(m_Import.ReplaceImages, m_ReplaceImagesUsed, kKindNouns[size_t(SourceImportKind::Images)]);
-        check(m_Import.ReplaceMaterials, m_ReplaceMaterialsUsed, kKindNouns[size_t(SourceImportKind::Materials)]);
+        check(m_Import.ReplaceImages, m_ReplaceImagesUsed, kKinds[size_t(SourceImportKind::Images)].pNoun);
+        check(m_Import.ReplaceMaterials, m_ReplaceMaterialsUsed, kKinds[size_t(SourceImportKind::Materials)].pNoun);
         for (size_t i = 0; m_Import.Nodes && i < m_Import.Edits.size(); ++i)
         {
             if (!m_EditsUsed[i])
