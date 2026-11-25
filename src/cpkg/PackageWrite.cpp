@@ -17,11 +17,11 @@ CpkgTransform ToCpkgTransform(const SourceTransform &source)
 {
     CpkgTransform transform;
     if (source.Scale)
-        std::memcpy(transform.Scale, source.Scale->data(), sizeof(transform.Scale));
+        std::memcpy(transform.Scale, source.Scale->V, sizeof(transform.Scale));
     if (source.Rotation)
-        std::memcpy(transform.Rotation, source.Rotation->Quaternion.data(), sizeof(transform.Rotation));
+        std::memcpy(transform.Rotation, source.Rotation->Quaternion.V, sizeof(transform.Rotation));
     if (source.Translation)
-        std::memcpy(transform.Translation, source.Translation->data(), sizeof(transform.Translation));
+        std::memcpy(transform.Translation, source.Translation->V, sizeof(transform.Translation));
     return transform;
 }
 
@@ -218,7 +218,7 @@ private:
         CpkgSkyboxData header;
         header.Image = encoder.AppendText(skybox.Image.Text);
         if (skybox.Orientation)
-            std::memcpy(header.Orientation, skybox.Orientation->Quaternion.data(), sizeof(header.Orientation));
+            std::memcpy(header.Orientation, skybox.Orientation->Quaternion.V, sizeof(header.Orientation));
         header.Intensity = skybox.Intensity;
         return Append(AssetType::Skybox, asset.Name, encoder, header);
     }
@@ -228,8 +228,8 @@ private:
         const SourceMaterial &material = asset.Value;
         CEncoder<CpkgMaterialData> encoder;
         CpkgMaterialData header;
-        std::memcpy(header.BaseColorFactor, material.BaseColor.data(), sizeof(header.BaseColorFactor));
-        std::memcpy(header.EmissiveFactor, material.Emissive.data(), 3 * sizeof(float));
+        std::memcpy(header.BaseColorFactor, material.BaseColor.V, sizeof(header.BaseColorFactor));
+        std::memcpy(header.EmissiveFactor, material.Emissive.V, 3 * sizeof(float));
         header.RoughMetalAOFactor[0] = material.Roughness;
         header.RoughMetalAOFactor[1] = material.Metallic;
         header.RoughMetalAOFactor[2] = material.AmbientOcclusion;
@@ -302,8 +302,8 @@ private:
 
         if (mesh.BoundsForm == SourceBoundsForm::Declared)
         {
-            std::memcpy(header.LocalBounds.Min, mesh.Bounds.Min.data(), sizeof(header.LocalBounds.Min));
-            std::memcpy(header.LocalBounds.Max, mesh.Bounds.Max.data(), sizeof(header.LocalBounds.Max));
+            std::memcpy(header.LocalBounds.Min, mesh.Bounds.Min.V, sizeof(header.LocalBounds.Min));
+            std::memcpy(header.LocalBounds.Max, mesh.Bounds.Max.V, sizeof(header.LocalBounds.Max));
         }
         return Append(AssetType::MeshData, asset.Name, encoder, header);
     }
@@ -530,7 +530,7 @@ private:
         header.NodeIndex = asset.Reference;
         header.Type = light.Type.value_or(header.Type);
         if (light.Color)
-            std::memcpy(header.Color, light.Color->data(), 3 * sizeof(float));
+            std::memcpy(header.Color, light.Color->V, 3 * sizeof(float));
         header.Intensity = light.Intensity.value_or(header.Intensity);
         header.Flags = LightFlags::None;
         if (light.Enabled.value_or(true))
@@ -600,8 +600,8 @@ private:
         {
             CpkgWorldRegionRef &region = regions.emplace_back();
             region.Region = encoder.AppendText(source.Region.Text);
-            std::memcpy(region.StreamingBounds.Min, source.Bounds.Min.data(), sizeof(region.StreamingBounds.Min));
-            std::memcpy(region.StreamingBounds.Max, source.Bounds.Max.data(), sizeof(region.StreamingBounds.Max));
+            std::memcpy(region.StreamingBounds.Min, source.Bounds.Min.V, sizeof(region.StreamingBounds.Min));
+            std::memcpy(region.StreamingBounds.Max, source.Bounds.Max.V, sizeof(region.StreamingBounds.Max));
         }
         header.Regions = encoder.Append(regions);
 
@@ -616,7 +616,7 @@ private:
 
         if (world.ActiveCamera)
             header.ActiveCameraIndex = layout.CameraOf(layout.FindNamed(world.ActiveCamera->Text)->Index);
-        std::memcpy(header.BackgroundColor, world.BackgroundColor.data(), sizeof(header.BackgroundColor));
+        std::memcpy(header.BackgroundColor, world.BackgroundColor.V, sizeof(header.BackgroundColor));
         return Append(asset.Type, name, encoder, header);
     }
 

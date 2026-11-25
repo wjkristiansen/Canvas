@@ -334,7 +334,7 @@ private:
 
     void CheckRotation(const SourceRotation &rotation)
     {
-        const Canvas::Math::FloatQuaternion q = Quaternion(rotation.Quaternion.data());
+        const Canvas::Math::FloatQuaternion &q = rotation.Quaternion;
         if (!q.IsNormalized())
             Error(rotation.Where, "expected a unit quaternion; its squared length is " + Number(Canvas::Math::DotProduct(q, q)));
     }
@@ -539,7 +539,7 @@ private:
 
     void CheckBounds(const SourceBounds &bounds)
     {
-        for (size_t axis = 0; axis < 3; ++axis)
+        for (int axis = 0; axis < 3; ++axis)
         {
             if (!(bounds.Min[axis] <= bounds.Max[axis]))
             {

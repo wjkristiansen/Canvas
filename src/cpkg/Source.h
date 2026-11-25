@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "CanvasMath.hpp"
 #include "CanvasPkg.h"
 #include "Diagnostics.h"
 #include "JsonText.h"
@@ -85,29 +86,26 @@ struct SourceArray
     SourceLocation Where;
 };
 
-using Vec3 = std::array<float, 3>;
-using Vec4 = std::array<float, 4>;
-
 // A rotation as a quaternion, XYZW, converted from the degrees form when written that way.
 // Validate checks that it is a unit quaternion.
 struct SourceRotation
 {
-    Vec4 Quaternion = { 0.0f, 0.0f, 0.0f, 1.0f };
+    Canvas::Math::FloatQuaternion Quaternion;
     SourceLocation Where;
 };
 
 // Omitted parts are the identity, or unchanged for an edit.
 struct SourceTransform
 {
-    std::optional<Vec3> Translation;
+    std::optional<Canvas::Math::FloatVector3> Translation;
     std::optional<SourceRotation> Rotation;
-    std::optional<Vec3> Scale;
+    std::optional<Canvas::Math::FloatVector3> Scale;
 };
 
 struct SourceBounds
 {
-    Vec3 Min = {};
-    Vec3 Max = {};
+    Canvas::Math::FloatVector3 Min;
+    Canvas::Math::FloatVector3 Max;
     SourceLocation Where;
 };
 
@@ -177,8 +175,8 @@ struct SourceDisplacement
 
 struct SourceMaterial
 {
-    Vec4 BaseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
-    Vec3 Emissive = { 0.0f, 0.0f, 0.0f };
+    Canvas::Math::FloatVector4 BaseColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+    Canvas::Math::FloatVector3 Emissive;
     float Roughness = 1.0f;
     float Metallic = 0.0f;
     float AmbientOcclusion = 1.0f;
@@ -308,7 +306,7 @@ struct SourceCamera
 struct SourceLight
 {
     std::optional<Canvas::LightType> Type;
-    std::optional<Vec3> Color;
+    std::optional<Canvas::Math::FloatVector3> Color;
     std::optional<float> Intensity;
     std::optional<bool> Enabled;
     std::optional<bool> CastsShadows;
@@ -396,7 +394,7 @@ struct SourceWorld
     std::vector<SourceString> Skyboxes;
     std::optional<SourceString> DefaultSkybox;
     std::optional<SourceString> ActiveCamera;   // a node name
-    Vec4 BackgroundColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+    Canvas::Math::FloatVector4 BackgroundColor = { 0.0f, 0.0f, 0.0f, 1.0f };
     SourceLocation Where;
 };
 

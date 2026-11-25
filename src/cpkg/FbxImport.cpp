@@ -14,6 +14,7 @@ namespace CpkgTool
 {
 
 namespace fs = std::filesystem;
+namespace Math = Canvas::Math;
 
 namespace
 {
@@ -23,9 +24,14 @@ std::string_view View(const ufbx_string &text)
     return std::string_view(text.data, text.length);
 }
 
-Vec3 ToVec3(ufbx_vec3 v)
+Math::FloatVector3 ToVector(ufbx_vec3 v)
 {
     return { float(v.x), float(v.y), float(v.z) };
+}
+
+Math::FloatQuaternion ToQuaternion(ufbx_quat q)
+{
+    return { float(q.x), float(q.y), float(q.z), float(q.w) };
 }
 
 struct SceneDeleter
@@ -78,50 +84,33 @@ std::string_view FileStem(std::string_view path)
     return path;
 }
 
-// A 3x3 matrix of row vectors: its rows are the images of +X, +Y, and +Z.
-using Mat3 = std::array<Vec3, 3>;
-
-constexpr Mat3 kIdentity = { Vec3{ 1.0f, 0.0f, 0.0f }, Vec3{ 0.0f, 1.0f, 0.0f }, Vec3{ 0.0f, 0.0f, 1.0f } };
-
-Vec3 Transform(const Vec3 &v, const Mat3 &m)
+// Whether the change of basis m, for row vectors, mirrors: whether its determinant is negative.
+bool Mirrors(const Math::FloatMatrix3x3 &m)
 {
-    Vec3 result = {};
-    for (size_t row = 0; row < 3; ++row)
-    {
-        for (size_t column = 0; column < 3; ++column)
-            result[column] += v[row] * m[row][column];
-    }
-    return result;
-}
-
-float Determinant(const Mat3 &m)
-{
-    return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
-        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
-        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    return Math::DotProduct(m[0], Math::CrossProduct(m[1], m[2])) < 0.0f;
 }
 
 // The change of basis from the axes a file declares to Canvas's, which the geometry of an
 // import that builds no nodes takes. The identity for axes that name an axis twice or are
-// unknown.
-Mat3 AxisChange(const ufbx_coordinate_axes &file)
+// unknown. Its rows, for row vectors, are the images of the file's +X, +Y, and +Z.
+Math::FloatMatrix3x3 AxisChange(const ufbx_coordinate_axes &file)
 {
     const ufbx_coordinate_axis from[] = { file.right, file.up, file.front };
     const ufbx_coordinate_axis to[] = { kCanvasAxes.right, kCanvasAxes.up, kCanvasAxes.front };
-    Mat3 change = {};
+    Math::FloatMatrix3x3 change;
     bool mapped[3] = {};
     for (size_t i = 0; i < 3; ++i)
     {
         if (from[i] >= UFBX_COORDINATE_AXIS_UNKNOWN)
-            return kIdentity;
+            return Math::FloatMatrix3x3::Identity();
         const size_t axis = size_t(from[i]) / 2;
         if (mapped[axis])
-            return kIdentity;
+            return Math::FloatMatrix3x3::Identity();
         mapped[axis] = true;
 
         // The file's direction from[i] becomes Canvas's to[i].
         const float sign = size_t(from[i]) % 2 == 0 ? 1.0f : -1.0f;
-        change[axis][size_t(to[i]) / 2] = size_t(to[i]) % 2 == 0 ? sign : -sign;
+        change[int(axis)][int(to[i]) / 2] = size_t(to[i]) % 2 == 0 ? sign : -sign;
     }
     return change;
 }
@@ -158,7 +147,7 @@ public:
         m_Directory = PathOf(file.Path).parent_path();
         m_AxisChange = AxisChange(m_pScene->settings.axes);
         const ufbx_transform &root = m_pScene->root_node->local_transform;
-        m_RootRotation = root.rotation;
+        m_RootRotation = ToQuaternion(root.rotation);
         m_Unit = root.scale.x;
         m_Folds = Folds();
         m_PushedScale = m_Folds ? ufbx_real(1) : m_Unit;
@@ -167,7 +156,7 @@ public:
             m_Builder.Unsupported(m_Import.Where, "the skeletons and skins of an FBX file");
         if (!m_Import.Clips && Animates())
             m_Builder.Unsupported(m_Import.Where, "the animation of an FBX file");
-        if (m_Import.Nodes && Determinant(m_AxisChange) < 0.0f)
+        if (m_Import.Nodes && Mirrors(m_AxisChange))
             m_Builder.Unsupported(m_Import.Where, "the nodes of an FBX file in a left-handed axis system");
         BuildMaterials();
         BuildMeshes();
@@ -325,7 +314,7 @@ private:
             if (baseColor.has_value)
             {
                 const float factor = pbr.base_factor.has_value ? float(pbr.base_factor.value_real) : 1.0f;
-                for (size_t c = 0; c < 3; ++c)
+                for (int c = 0; c < 3; ++c)
                     built.BaseColor[c] = float(baseColor.value_vec4.v[c]) * factor;
             }
             if (pbr.opacity.has_value)
@@ -334,7 +323,7 @@ private:
             if (emission.has_value)
             {
                 const float factor = pbr.emission_factor.has_value ? float(pbr.emission_factor.value_real) : 1.0f;
-                for (size_t c = 0; c < 3; ++c)
+                for (int c = 0; c < 3; ++c)
                     built.Emissive[c] = float(emission.value_vec4.v[c]) * factor;
             }
             if (pbr.roughness.has_value)
@@ -372,24 +361,30 @@ private:
     // A vertex position or direction of the file's geometry, in its node's space when the import
     // builds nodes, whose transforms then hold the change of axes and "rotation", and otherwise in
     // Canvas space.
-    Vec3 Position(ufbx_vec3 v) const
+    Math::FloatVector3 Position(ufbx_vec3 v) const
     {
-        const Vec3 p = ToVec3(ufbx_vec3{ v.x * m_PushedScale, v.y * m_PushedScale, v.z * m_PushedScale });
+        const Math::FloatVector3 p = ToVector(v) * float(m_PushedScale);
         if (m_Import.Nodes)
-            return { p[0] * m_Import.Scale, p[1] * m_Import.Scale, p[2] * m_Import.Scale };
-        return m_Builder.Position(Transform(p, m_AxisChange));
+            return p * m_Import.Scale;
+        return m_Builder.Position(p * m_AxisChange);
     }
 
-    Vec3 Direction(ufbx_vec3 v) const
+    Math::FloatVector3 Direction(ufbx_vec3 v) const
     {
         if (m_Import.Nodes)
-            return ToVec3(v);
-        return m_Builder.Direction(Transform(ToVec3(v), m_AxisChange));
+            return ToVector(v);
+        return m_Builder.Direction(ToVector(v) * m_AxisChange);
+    }
+
+    // Appends the components of v to values.
+    static void Append(std::vector<float> &values, const Math::FloatVector3 &v)
+    {
+        values.insert(values.end(), std::begin(v.V), std::end(v.V));
     }
 
     void BuildMeshes()
     {
-        const bool mirrored = !m_Import.Nodes && Determinant(m_AxisChange) < 0.0f;
+        const bool mirrored = !m_Import.Nodes && Mirrors(m_AxisChange);
         for (const ufbx_mesh *pMesh : m_pScene->meshes)
         {
             const ufbx_mesh &mesh = *pMesh;
@@ -432,10 +427,9 @@ private:
                     for (size_t c = 0; c < size_t(triangles) * 3; ++c)
                     {
                         const uint32_t index = corners[c];
-                        const Vec3 position = Position(ufbx_get_vertex_vec3(&mesh.vertex_position, index));
-                        const Vec3 normal = Direction(ufbx_get_vertex_vec3(&mesh.vertex_normal, index));
-                        group.Positions.Values.insert(group.Positions.Values.end(), position.begin(), position.end());
-                        group.Normals->Values.insert(group.Normals->Values.end(), normal.begin(), normal.end());
+                        const Math::FloatVector3 normal = Direction(ufbx_get_vertex_vec3(&mesh.vertex_normal, index));
+                        Append(group.Positions.Values, Position(ufbx_get_vertex_vec3(&mesh.vertex_position, index)));
+                        Append(group.Normals->Values, normal);
                         if (hasUV)
                         {
                             // FBX's V runs up from the bottom of a texture, and Canvas's down from the top.
@@ -445,16 +439,11 @@ private:
                         }
                         if (hasTangents)
                         {
-                            const Vec3 tangent = Direction(ufbx_get_vertex_vec3(&mesh.vertex_tangent, index));
-                            const Vec3 bitangent = Direction(ufbx_get_vertex_vec3(&mesh.vertex_bitangent, index));
-                            const Vec3 cross = {
-                                normal[1] * tangent[2] - normal[2] * tangent[1],
-                                normal[2] * tangent[0] - normal[0] * tangent[2],
-                                normal[0] * tangent[1] - normal[1] * tangent[0],
-                            };
-                            const float dot = cross[0] * bitangent[0] + cross[1] * bitangent[1] + cross[2] * bitangent[2];
-                            group.Tangents->Values.insert(group.Tangents->Values.end(), tangent.begin(), tangent.end());
-                            group.Tangents->Values.push_back(dot < 0.0f ? -1.0f : 1.0f);
+                            const Math::FloatVector3 tangent = Direction(ufbx_get_vertex_vec3(&mesh.vertex_tangent, index));
+                            const Math::FloatVector3 bitangent = Direction(ufbx_get_vertex_vec3(&mesh.vertex_bitangent, index));
+                            const float handedness = Math::DotProduct(Math::CrossProduct(normal, tangent), bitangent);
+                            Append(group.Tangents->Values, tangent);
+                            group.Tangents->Values.push_back(handedness < 0.0f ? -1.0f : 1.0f);
                         }
                     }
                 }
@@ -498,20 +487,19 @@ private:
         const ufbx_transform &local = node.local_transform;
         if (isRoot)
         {
-            const ufbx_vec3 t = ufbx_quat_rotate_vec3(m_RootRotation, ufbx_vec3{ local.translation.x * m_Unit, local.translation.y * m_Unit, local.translation.z * m_Unit });
-            const ufbx_quat r = ufbx_quat_normalize(ufbx_quat_mul(m_RootRotation, local.rotation));
-            const ufbx_real s = m_Folds ? m_Unit : ufbx_real(1);
-            built.Transform = m_Builder.RootTransform(ToVec3(t), { float(r.x), float(r.y), float(r.z), float(r.w) },
-                { float(local.scale.x * s), float(local.scale.y * s), float(local.scale.z * s) });
+            const Math::FloatVector3 t = Math::RotateVectorByQuaternion(m_RootRotation, ToVector(local.translation) * float(m_Unit));
+            const Math::FloatQuaternion r = (m_RootRotation * ToQuaternion(local.rotation)).Normalize();
+            const float s = m_Folds ? float(m_Unit) : 1.0f;
+            built.Transform = m_Builder.RootTransform(t, r, ToVector(local.scale) * s);
         }
         else
         {
             const ufbx_real scale = m_PushedScale * m_Import.Scale;
-            built.Transform.Translation = Vec3{ float(local.translation.x * scale), float(local.translation.y * scale), float(local.translation.z * scale) };
+            built.Transform.Translation = ToVector(local.translation) * float(scale);
             SourceRotation &rotation = built.Transform.Rotation.emplace();
-            rotation.Quaternion = { float(local.rotation.x), float(local.rotation.y), float(local.rotation.z), float(local.rotation.w) };
+            rotation.Quaternion = ToQuaternion(local.rotation);
             rotation.Where = m_Import.Where;
-            built.Transform.Scale = ToVec3(local.scale);
+            built.Transform.Scale = ToVector(local.scale);
         }
 
         if (node.mesh)
@@ -577,7 +565,7 @@ private:
             m_Builder.Unsupported(m_Import.Where, "the volume light of " + described);
             break;
         }
-        built.Color = ToVec3(light.color);
+        built.Color = ToVector(light.color);
         built.Intensity = float(light.intensity);
         built.CastsShadows = light.cast_shadows;
         if (light.type == UFBX_LIGHT_SPOT)
@@ -601,8 +589,8 @@ private:
     const SourceImport &m_Import;
     ScenePtr m_pScene;
     fs::path m_Directory;                   // the FBX file's
-    Mat3 m_AxisChange = kIdentity;          // from the file's axes to Canvas's
-    ufbx_quat m_RootRotation = { 0.0, 0.0, 0.0, 1.0 };     // the change to Canvas's axes
+    Math::FloatMatrix3x3 m_AxisChange = Math::FloatMatrix3x3::Identity();         // from the file's axes to Canvas's
+    Math::FloatQuaternion m_RootRotation;  // the change to Canvas's axes
     ufbx_real m_Unit = 1;                     // meters per unit of the file
     bool m_Folds = false;                   // see Folds
     ufbx_real m_PushedScale = 1;              // the unit's scale on geometry and nodes below the root nodes
