@@ -531,10 +531,30 @@ private:
             CheckStreamCount(group.Tangents, 4, vertexCount);
             CheckStreamCount(group.BoneIndices, 4, vertexCount);
             CheckStreamCount(group.BoneWeights, 4, vertexCount);
+            if (group.BoneWeights)
+                CheckBoneWeights(*group.BoneWeights);
         }
 
         if (mesh.BoundsForm == SourceBoundsForm::Declared)
             CheckBounds(mesh.Bounds);
+    }
+
+    // Reports the first vertex whose bone weights are not each at least 0, with a sum of at most 1
+    // within 8 * FLT_EPSILON.
+    void CheckBoneWeights(const SourceArray<float> &weights)
+    {
+        for (size_t vertex = 0; vertex < weights.Values.size() / 4; ++vertex)
+        {
+            const float *pWeights = &weights.Values[vertex * 4];
+            const bool negative = !(pWeights[0] >= 0.0f && pWeights[1] >= 0.0f && pWeights[2] >= 0.0f && pWeights[3] >= 0.0f);
+            const float sum = pWeights[0] + pWeights[1] + pWeights[2] + pWeights[3];
+            if (negative || !(sum <= 1.0f + 8.0f * FLT_EPSILON))
+            {
+                Error(weights.Where, "expected bone weights of at least 0 with a sum of at most 1; vertex " + std::to_string(vertex)
+                    + (negative ? " has a negative weight" : "'s weights sum to " + Number(sum)));
+                return;
+            }
+        }
     }
 
     void CheckBounds(const SourceBounds &bounds)

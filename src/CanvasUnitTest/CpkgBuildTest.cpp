@@ -211,6 +211,49 @@ namespace
     // A quad of 1 m in the file's XZ plane, facing -Y, the direction its models face.
     const std::string kQuad = FbxFile(FbxMesh(100, "Quad", "0,0,0,1,0,0,1,0,1,0,0,1", "0,1,2,-4"), FbxMeshConnections(100));
 
+    // A 4x4 FBX matrix that translates by x, y, z.
+    std::string FbxTranslationMatrix(std::string_view xyz)
+    {
+        return "1,0,0,0,0,1,0,0,0,0,1,0," + std::string(xyz) + ",1";
+    }
+
+    // A bone model named name, object id + 1, translated by xyz, and its attribute, object id.
+    std::string FbxBone(int id, std::string_view name, std::string_view xyz)
+    {
+        return "\tNodeAttribute: " + std::to_string(id) + ", \"NodeAttribute::\", \"LimbNode\" {\n\t\tTypeFlags: \"Skeleton\"\n\t}\n"
+            + FbxModel(id + 1, name, "LimbNode", FbxProperty("Lcl Translation", "Lcl Translation", xyz));
+    }
+
+    // A skin cluster, object id, weighting the vertices indexes by weights to a bone bound at the
+    // translation boneWorld, of a mesh bound at the origin. Its Transform is the mesh's space
+    // relative to the bone's: the translation toBone, the negation of boneWorld.
+    std::string FbxCluster(int id, std::string_view indexes, std::string_view weights, std::string_view boneWorld, std::string_view toBone)
+    {
+        return "\tDeformer: " + std::to_string(id) + ", \"SubDeformer::\", \"Cluster\" {\n\t\tVersion: 100\n"
+            + FbxArray("Indexes", indexes) + FbxArray("Weights", weights)
+            + FbxArray("Transform", FbxTranslationMatrix(toBone)) + FbxArray("TransformLink", FbxTranslationMatrix(boneWorld)) + "\t}\n";
+    }
+
+    // A file, in meters, whose root node Armature holds the bone Hips, 1 m up, its child bone
+    // Hand, 0.5 m along +X from it, and the node Sword, on Hand, and whose mesh Body, a triangle
+    // under Armature, is skinned to Hips and Hand, its last vertex by weights that sum to 0.75.
+    // Its root node Tail is a bone of its own.
+    std::string SkinnedFbx()
+    {
+        return FbxFile(
+            FbxModel(501, "Armature", "Null")
+                + FbxBone(510, "Hips", "0,0,1") + FbxBone(520, "Hand", "0.5,0,0")
+                + FbxModel(531, "Sword", "Null", FbxProperty("Lcl Translation", "Lcl Translation", "0,0.25,0"))
+                + FbxBone(700, "Tail", "0,2,0")
+                + FbxMesh(100, "Body", "0,0,0,1,0,0,0,0,1", "0,1,-3")
+                + "\tDeformer: 600, \"Deformer::\", \"Skin\" {\n\t\tVersion: 101\n\t}\n"
+                + FbxCluster(610, "0,1,2", "1,1,0.25", "0,0,1", "0,0,-1") + FbxCluster(620, "2", "0.5", "0.5,0,1", "-0.5,0,-1"),
+            FbxConnection(501, 0) + FbxConnection(510, 511) + FbxConnection(511, 501) + FbxConnection(520, 521) + FbxConnection(521, 511)
+                + FbxConnection(531, 521) + FbxConnection(700, 701) + FbxConnection(701, 0)
+                + FbxConnection(100, 101) + FbxConnection(101, 501)
+                + FbxConnection(600, 100) + FbxConnection(610, 600) + FbxConnection(620, 600) + FbxConnection(511, 610) + FbxConnection(521, 620));
+    }
+
     // A file in centimeters whose root node Body holds a quad 1 m across and the node Lamp, and
     // whose root node Eye holds a camera with a vertical field of view of 60 degrees. With folded, it holds its geometry and Lamp's
     // translation in meters, and its root nodes are scaled by 100, as Blender writes.
@@ -1037,7 +1080,7 @@ TEST_F(CpkgBuild, ReportsValidationErrorsInDocumentOrder)
       "skyboxes": { "Day": { "image": "Brass", "orientation": [0, 0, 0, 0] }, "Night": { "image": "Missing/Sky" } },
       "meshes": {
         "Tri": { "topology": "patchList4CP", "bounds": { "min": [0, 0, 1], "max": [1, 1, 0] },
-                 "groups": [ { "material": "Plastic", "positions": [0, 0, 0, 1, 0, 0], "normals": [0, 0, 1], "boneWeights": [1, 0, 0, 0, 1, 0, 0, 0] },
+                 "groups": [ { "material": "Plastic", "positions": [0, 0, 0, 1, 0, 0], "normals": [0, 0, 1], "boneWeights": [1, 0, 0, 0, 0.75, 0.5, 0, 0] },
                              { "positions": [], "normals": [] } ] }
       }
     },
@@ -1072,6 +1115,7 @@ TEST_F(CpkgBuild, ReportsValidationErrorsInDocumentOrder)
         "levels.cpkg.json:12:30: error: a group of a skinned mesh needs \"boneIndices\" and \"boneWeights\" [/bundles/0/meshes/Tri/groups/0]\n"
         "levels.cpkg.json:12:44: error: the bundle has no asset \"Plastic\" [/bundles/0/meshes/Tri/groups/0/material]\n"
         "levels.cpkg.json:12:99: error: expected 2 vertices, as \"positions\" holds; found 1 [/bundles/0/meshes/Tri/groups/0/normals]\n"
+        "levels.cpkg.json:12:125: error: expected bone weights of at least 0 with a sum of at most 1; vertex 1's weights sum to 1.25 [/bundles/0/meshes/Tri/groups/0/boneWeights]\n"
         "levels.cpkg.json:13:30: error: a group of a \"patchList4CP\" mesh needs \"uv0\" [/bundles/0/meshes/Tri/groups/1]\n"
         "levels.cpkg.json:13:30: error: a group of a skinned mesh needs \"boneIndices\" and \"boneWeights\" [/bundles/0/meshes/Tri/groups/1]\n"
         "levels.cpkg.json:13:45: error: expected at least one vertex [/bundles/0/meshes/Tri/groups/1/positions]\n"
@@ -1479,6 +1523,129 @@ TEST_F(CpkgBuild, ImportsNodes)
 }
 
 //------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ImportsSkeletonsAndSkins)
+{
+    WriteText("goblin.fbx", SkinnedFbx());
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Goblin",
+      "imports": [
+        { "file": "goblin.fbx" },
+        { "file": "goblin.fbx", "nodes": false, "skeleton": "Hips.skeleton", "names": { "meshes": "B_{name}.mesh", "skins": "B_{name}.skin" } }
+      ]
+    }
+  ]
+}
+)");
+    const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+    ASSERT_EQ(result.Err, "");
+    CCpkgReader reader;
+    ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+    const uint32_t count = reader.GetAssetCount(0);
+
+    // Each tree of bones builds a skeleton, named after its root bone, with its bones' rest
+    // transforms where the skin bound them. The second import builds none, and its skin uses
+    // the first's skeleton.
+    const uint32_t hips = AssetIndex(reader, 0, "Hips.skeleton");
+    ASSERT_LT(hips, count);
+    ASSERT_LT(AssetIndex(reader, 0, "Tail.skeleton"), count);
+    {
+        const CPayload payload(reader, 0, hips);
+        const std::span<const CpkgSkeletonBone> bones = payload.Elements<CpkgSkeletonData>(payload.Header<CpkgSkeletonData>().Bones);
+        ASSERT_EQ(bones.size(), 2u);
+        EXPECT_EQ(payload.Text<CpkgSkeletonData>(bones[0].Name), "Hips");
+        EXPECT_EQ(bones[0].ParentIndex, -1);
+        EXPECT_NEAR(bones[0].RestTransform.Translation[2], 1.0f, 1e-6f);
+        EXPECT_EQ(payload.Text<CpkgSkeletonData>(bones[1].Name), "Hand");
+        EXPECT_EQ(bones[1].ParentIndex, 0);
+        EXPECT_NEAR(bones[1].RestTransform.Translation[0], 0.5f, 1e-6f);
+    }
+
+    // A skin's bind poses are its bones' transforms in the mesh's space when bound, and its
+    // mesh's bone streams name its bones, strongest first, with the weights the file gives them.
+    // Without nodes, the mesh's space is
+    // turned to Canvas's axes, so the file's +X is +Y.
+    for (const bool nodes : { true, false })
+    {
+        const char *pSkin = nodes ? "Body.skin" : "B_Body.skin";
+        const uint32_t skin = AssetIndex(reader, 0, pSkin);
+        ASSERT_LT(skin, count) << pSkin;
+        const CPayload payload(reader, 0, skin);
+        const CpkgMeshSkinData &data = payload.Header<CpkgMeshSkinData>();
+        EXPECT_EQ(payload.Text<CpkgMeshSkinData>(data.Skeleton), "Hips.skeleton");
+        const std::span<const CpkgSpan<char>> bones = payload.Elements<CpkgMeshSkinData>(data.Bones);
+        ASSERT_EQ(bones.size(), 2u);
+        EXPECT_EQ(payload.Text<CpkgMeshSkinData>(bones[1]), "Hand");
+        const std::span<const CpkgTransform> poses = payload.Elements<CpkgMeshSkinData>(data.BindPoses);
+        ASSERT_EQ(poses.size(), 2u);
+        EXPECT_NEAR(poses[1].Translation[nodes ? 0 : 1], 0.5f, 1e-6f) << pSkin;
+        EXPECT_NEAR(poses[1].Translation[2], 1.0f, 1e-6f) << pSkin;
+    }
+    {
+        const CPayload payload(reader, 0, AssetIndex(reader, 0, "Body.mesh"));
+        const CpkgMeshDataGroup &group = payload.Elements<CpkgMeshData>(payload.Header<CpkgMeshData>().Groups)[0];
+        const std::span<const CpkgVertexBoneIndices> indices = payload.Elements<CpkgMeshData>(group.BoneIndices);
+        const std::span<const CpkgVertexBoneWeights> weights = payload.Elements<CpkgMeshData>(group.BoneWeights);
+        ASSERT_EQ(indices.size(), 3u);
+        ASSERT_EQ(weights.size(), 3u);
+        EXPECT_EQ(indices[0].Index[0], 0u);
+        EXPECT_EQ(weights[0].Weight[0], 1.0f);
+        EXPECT_EQ(weights[0].Weight[1], 0.0f);
+        EXPECT_EQ(indices[2].Index[0], 1u);
+        EXPECT_NEAR(weights[2].Weight[0], 0.5f, 1e-6f);
+        EXPECT_EQ(indices[2].Index[1], 0u);
+        EXPECT_NEAR(weights[2].Weight[1], 0.25f, 1e-6f);
+    }
+
+    // A skeleton instance attaches to the root bone's parent node, or to a node built to carry
+    // it, and the skinned mesh instance binds to it. Bones build no nodes; the bone that holds
+    // Sword has a socket, under the skeleton instance's node, that holds it.
+    const uint32_t armature = AssetIndex(reader, 0, "Armature");
+    const uint32_t tail = AssetIndex(reader, 0, "Tail");
+    const uint32_t body = AssetIndex(reader, 0, "Body");
+    const uint32_t socket = AssetIndex(reader, 0, "Hand_Socket");
+    const uint32_t sword = AssetIndex(reader, 0, "Sword");
+    ASSERT_TRUE(armature < count && tail < count && body < count && socket < count && sword < count);
+    EXPECT_EQ(AssetIndex(reader, 0, "Hips"), count);
+    EXPECT_EQ(AssetIndex(reader, 0, "Hand"), count);
+
+    const uint32_t instance = AttachedIndex<CpkgSkeletonInstanceData>(reader, 0, AssetType::SkeletonInstance, armature);
+    ASSERT_LT(instance, count);
+    {
+        const CPayload payload(reader, 0, instance);
+        EXPECT_EQ(payload.Text<CpkgSkeletonInstanceData>(payload.Header<CpkgSkeletonInstanceData>().Skeleton), "Hips.skeleton");
+    }
+    ASSERT_LT((AttachedIndex<CpkgSkeletonInstanceData>(reader, 0, AssetType::SkeletonInstance, tail)), count);
+    {
+        const CPayload payload(reader, 0, tail);
+        EXPECT_EQ(payload.Header<CpkgTransformNodeData>().ParentIndex, -1);
+    }
+    {
+        const CPayload payload(reader, 0, socket);
+        const CpkgTransformNodeData &node = payload.Header<CpkgTransformNodeData>();
+        EXPECT_EQ(node.ParentIndex, int32_t(instance));
+        EXPECT_EQ(payload.Text<CpkgTransformNodeData>(node.ParentBone), "Hand");
+    }
+    {
+        const CPayload payload(reader, 0, sword);
+        const CpkgTransformNodeData &node = payload.Header<CpkgTransformNodeData>();
+        EXPECT_EQ(node.ParentIndex, int32_t(socket));
+        EXPECT_NEAR(node.LocalTransform.Translation[1], 0.25f, 1e-6f);
+    }
+    const uint32_t meshInstance = AttachedIndex<CpkgMeshInstanceData>(reader, 0, AssetType::MeshInstance, body);
+    ASSERT_LT(meshInstance, count);
+    {
+        const CPayload payload(reader, 0, meshInstance);
+        const CpkgMeshInstanceData &data = payload.Header<CpkgMeshInstanceData>();
+        EXPECT_EQ(data.SkeletonInstanceIndex, int32_t(instance));
+        EXPECT_EQ(payload.Text<CpkgMeshInstanceData>(data.Skin), "Body.skin");
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 TEST_F(CpkgBuild, ReportsImportNodeErrors)
 {
     WriteText("room.fbx", NodesFbx(false));
@@ -1520,7 +1687,7 @@ TEST_F(CpkgBuild, ReportsImportsItCannotBuildYet)
     {
       "name": "Props",
       "imports": [
-        { "file": "quad.fbx", "skeleton": "Hips.skeleton", "rename": { "skeletons": { "Hips": "H" } }, "clips": [ "Idle" ] }
+        { "file": "quad.fbx", "rename": { "skeletalAnimations": { "Walk": "W" } }, "clips": [ "Idle" ] }
       ]
     }
   ]
@@ -1529,9 +1696,8 @@ TEST_F(CpkgBuild, ReportsImportsItCannotBuildYet)
     const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitError);
     EXPECT_EQ(result.Err,
-        "levels.cpkg.json:8:43: error: cpkg cannot build an import's \"skeleton\" yet [/bundles/0/imports/0/skeleton]\n"
-        "levels.cpkg.json:8:87: error: cpkg cannot build an import's \"rename\" of \"skeletons\" yet [/bundles/0/imports/0/rename/skeletons/Hips]\n"
-        "levels.cpkg.json:8:115: error: cpkg cannot build an import's \"clips\" yet [/bundles/0/imports/0/clips/0]\n");
+        "levels.cpkg.json:8:67: error: cpkg cannot build an import's \"rename\" of \"skeletalAnimations\" yet [/bundles/0/imports/0/rename/skeletalAnimations/Walk]\n"
+        "levels.cpkg.json:8:95: error: cpkg cannot build an import's \"clips\" yet [/bundles/0/imports/0/clips/0]\n");
     EXPECT_FALSE(std::filesystem::exists("levels.cpkg"));
 }
 

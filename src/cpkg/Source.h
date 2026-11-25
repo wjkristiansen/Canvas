@@ -542,6 +542,40 @@ static_assert(std::size(kTextureRoles) == size_t(SourceTextureRole::Count));
 // Keys of a cubemap, in SourceImage::Files order.
 inline constexpr const char *kCubeFaces[] = { "+X", "-X", "+Y", "-Y", "+Z", "-Z" };
 
+// Whether table, which has a Kind member per row, holds one row per SourceImportKind, row i for
+// kind i, so it is indexed by kind.
+template <class TRow, size_t N>
+constexpr bool IsPerImportKind(const TRow (&table)[N])
+{
+    if (N != size_t(SourceImportKind::Count))
+        return false;
+    for (size_t kind = 0; kind < N; ++kind)
+    {
+        if (size_t(table[kind].Kind) != kind)
+            return false;
+    }
+    return true;
+}
+
+// The key of each kind in an import's "names" and "rename", indexed by kind.
+struct ImportKindKey
+{
+    SourceImportKind Kind;
+    const char *pKey;
+};
+
+inline constexpr ImportKindKey kImportKinds[] = {
+    { SourceImportKind::Images,             "images" },
+    { SourceImportKind::Materials,          "materials" },
+    { SourceImportKind::Meshes,             "meshes" },
+    { SourceImportKind::Skeletons,          "skeletons" },
+    { SourceImportKind::Skins,              "skins" },
+    { SourceImportKind::SkeletalAnimations, "skeletalAnimations" },
+    { SourceImportKind::Clips,              "clips" },
+    { SourceImportKind::Nodes,              "nodes" },
+};
+static_assert(IsPerImportKind(kImportKinds));
+
 // The name names gives value, or an empty name when it gives none.
 template <class T, size_t N>
 std::string_view EnumNameOf(const EnumName<T> (&names)[N], T value)
