@@ -1121,7 +1121,7 @@ namespace Canvas
         TVector<_Type, 3> RotateVectorByQuaternion(const TQuaternion<_Type> &q, const TVector<_Type, 3> &v)
         {
             TQuaternion<_Type> p(v.X, v.Y, v.Z, 0); // pure quaternion
-            TQuaternion<_Type> qInv = q.Conjugate();  // must be unit-length
+            TQuaternion<_Type> qInv = Conjugate(q);  // must be unit-length
             TQuaternion<_Type> rotated = q * p * qInv;
             return TVector<_Type, 3>(rotated.X, rotated.Y, rotated.Z);
         }

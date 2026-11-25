@@ -852,6 +852,12 @@ TEST(CanvasMathTest, QuaternionRotateVector)
     // The row-vector rotation matrix must turn the same way as the quaternion.
     EXPECT_TRUE(AlmostEqual(v1 * QuaternionToRotationMatrix(qZ), FloatVector4(0.0f, 1.0f, 0.0f, 0.0f)));
     EXPECT_TRUE(AlmostEqual(v2 * QuaternionToRotationMatrix(qX), FloatVector4(0.0f, 0.0f, 1.0f, 0.0f)));
+
+    // RotateVectorByQuaternion turns a 3-component vector the same way, in each precision.
+    EXPECT_TRUE(AlmostEqual(RotateVectorByQuaternion(qZ, FloatVector3(1.0f, 0.0f, 0.0f)), FloatVector3(0.0f, 1.0f, 0.0f)));
+    EXPECT_TRUE(AlmostEqual(RotateVectorByQuaternion(qX, FloatVector3(0.0f, 1.0f, 0.0f)), FloatVector3(0.0f, 0.0f, 1.0f)));
+    const auto qZDouble = TQuaternion<double>::FromEulerXYZ(0.0, 0.0, g_PI / 2.0);
+    EXPECT_TRUE(AlmostEqual(RotateVectorByQuaternion(qZDouble, DoubleVector3(1.0, 0.0, 0.0)), DoubleVector3(0.0, 1.0, 0.0)));
 }
 
 TEST(CanvasMathTest, CrossProductFloatVector4)
