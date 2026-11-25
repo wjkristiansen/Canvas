@@ -30,7 +30,6 @@ struct AssetTarget
     {
         Asset,          // an asset the package source declares; pBundle, Type, and Index say which
         OtherPackage,   // in another package
-        ByImport,       // not declared in pBundle, whose imports may build it
         NotFound,       // in pBundle, or with a null pBundle in a bundle the package lacks
     };
 
@@ -148,10 +147,18 @@ private:
     std::unordered_map<std::string_view, int32_t> m_Names;
 };
 
-// The Expand stage: reads the header of each image file, filling each SourceImage's Headers,
-// and reports a file it cannot read, one in an encoding CanvasPkg does not store, and, as a
-// warning, one whose extension names another encoding. Returns true when it reported no error.
+// The Expand stage: builds each import's content with ExpandImports, then reads the header
+// of each image, filling each SourceImage's Headers, and reports a file it cannot read, an image
+// in an encoding CanvasPkg does not store, and, as a warning, one whose extension names another
+// encoding. Returns true when it reported no error.
 bool ExpandPackageSource(SourcePackage &package, CDiagnostics &diagnostics);
+
+// Reads each import's exchange file, with the reader for the format its extension names, and adds
+// the content the import builds to the import's bundle as authored content, so the stages after
+// Expand treat it as they treat any other. Reports, at the import, a file in no format cpkg
+// reads, a file it cannot read, content it cannot build, and a key of "rename" or "replace" that
+// names no content of the file. Returns true when it reported no error.
+bool ExpandImports(SourcePackage &package, CDiagnostics &diagnostics);
 
 // The Validate stage: checks the validation rules of PackageSource.md that Load does not, and
 // reports each finding at the value that breaks the rule, in document order within each file.

@@ -345,15 +345,13 @@ private:
             CheckRotation(*transform.Rotation);
     }
 
-    // Reports a name that does not name a node of the bundle. A name the bundle lacks is not
-    // reported for a bundle with imports, which may build it. Returns the node, or null.
-    const LocalAsset *CheckNodeName(const SourceBundle &bundle, const CBundleLayout &layout, const SourceString &name)
+    // Reports a name that does not name a node of the bundle. Returns the node, or null.
+    const LocalAsset *CheckNodeName(const CBundleLayout &layout, const SourceString &name)
     {
         const LocalAsset *pNamed = layout.FindNamed(name.Text);
         if (!pNamed)
         {
-            if (bundle.Imports.empty())
-                Error(name.Where, "the bundle has no node " + Quoted(name.Text));
+            Error(name.Where, "the bundle has no node " + Quoted(name.Text));
             return nullptr;
         }
         if (!CBundleLayout::IsNode(pNamed->Type))
@@ -726,7 +724,7 @@ private:
                 CheckClip(bundleIndex, layout, *std::get<const SourceClip *>(asset.pSource));
                 break;
             case AssetType::ExportList:
-                CheckExports(bundle, layout, *std::get<const std::vector<SourceString> *>(asset.pSource));
+                CheckExports(layout, *std::get<const std::vector<SourceString> *>(asset.pSource));
                 break;
             case AssetType::WorldSettings:
                 CheckWorld(bundle, layout, *std::get<const SourceWorld *>(asset.pSource));
@@ -835,7 +833,7 @@ private:
             if (!instance.SkeletonInstance)
                 Error(instance.Where, "no node from this mesh instance's node to its root has a \"skeletonInstance\" for the skin to bind to");
             else
-                CheckSkeletonInstanceName(bundle, layout, *instance.SkeletonInstance);
+                CheckSkeletonInstanceName(layout, *instance.SkeletonInstance);
             return;
         }
 
@@ -865,9 +863,9 @@ private:
 
     // Reports a name that does not name a node of the bundle with a skeleton instance. Returns
     // that skeleton instance, or null.
-    const LocalAsset *CheckSkeletonInstanceName(const SourceBundle &bundle, const CBundleLayout &layout, const SourceString &name)
+    const LocalAsset *CheckSkeletonInstanceName(const CBundleLayout &layout, const SourceString &name)
     {
-        const LocalAsset *pNode = CheckNodeName(bundle, layout, name);
+        const LocalAsset *pNode = CheckNodeName(layout, name);
         if (!pNode)
             return nullptr;
         if (pNode->SkeletonInstance == -1)
@@ -879,10 +877,10 @@ private:
     }
 
     // Each export names a node. Load reports a repeated export.
-    void CheckExports(const SourceBundle &bundle, const CBundleLayout &layout, const std::vector<SourceString> &exports)
+    void CheckExports(const CBundleLayout &layout, const std::vector<SourceString> &exports)
     {
         for (const SourceString &name : exports)
-            CheckNodeName(bundle, layout, name);
+            CheckNodeName(layout, name);
     }
 
     void CheckClip(size_t bundleIndex, const CBundleLayout &layout, const SourceClip &clip)
@@ -892,7 +890,7 @@ private:
         {
             const SourceTrack &track = clip.Tracks[i];
             CheckTrack(track);
-            if (const LocalAsset *pNode = CheckNodeName(bundle, layout, track.Target))
+            if (const LocalAsset *pNode = CheckNodeName(layout, track.Target))
             {
                 if (pNode->Type == AssetType::ImportNode)
                     Error(track.Target.Where, Quoted(track.Target.Text) + " is an import node, which a clip track cannot animate");
@@ -929,7 +927,7 @@ private:
                 Error(binding.SkeletonInstance.Where, "the clip already binds the skeleton instance of " + Quoted(binding.SkeletonInstance.Text));
                 continue;
             }
-            const LocalAsset *pInstance = CheckSkeletonInstanceName(bundle, layout, binding.SkeletonInstance);
+            const LocalAsset *pInstance = CheckSkeletonInstanceName(layout, binding.SkeletonInstance);
             if (pInstance && animation.State == AssetTarget::Kind::Asset)
             {
                 CheckSameSkeleton(*animation.pBundle, animation.pBundle->SkeletalAnimations[animation.Index].Value.Skeleton, bundle, *pInstance,
@@ -1010,7 +1008,7 @@ private:
         }
         if (world.ActiveCamera)
         {
-            const LocalAsset *pNode = CheckNodeName(bundle, layout, *world.ActiveCamera);
+            const LocalAsset *pNode = CheckNodeName(layout, *world.ActiveCamera);
             if (pNode && layout.CameraOf(pNode->Index) == -1)
                 Error(world.ActiveCamera->Where, "the node " + Quoted(world.ActiveCamera->Text) + " has no \"camera\"");
         }
@@ -1122,7 +1120,7 @@ AssetTarget CPackageLookup::ResolveAssetPath(const SourceBundle &from, std::stri
     else if (FindNamed(pBundle->SkeletalAnimations, name, &target.Index))
         target.Type = AssetType::SkeletalAnimation;
     else
-        target.State = pBundle->Imports.empty() ? AssetTarget::Kind::NotFound : AssetTarget::Kind::ByImport;
+        target.State = AssetTarget::Kind::NotFound;
     return target;
 }
 

@@ -144,6 +144,10 @@ struct SourceImage
     uint32_t MipLevels = 1;
     std::vector<SourceFileRef> Files;   // a cubemap's in +X, -X, +Y, -Y, +Z, -Z order
     std::vector<ImageHeader> Headers;   // per file, read by Expand; Unknown for one it could not read
+
+    // For an image an import builds from a texture its exchange file embeds, the texture's encoded
+    // bytes. Files then holds one entry, with no Path, whose Written names the texture.
+    std::optional<std::string> Embedded;
     SourceLocation Where;
 };
 
@@ -413,16 +417,6 @@ enum class SourceImportKind
     Count,
 };
 
-struct SourceImportClip
-{
-    SourceString Name;
-    std::optional<SourceString> Stack;
-    std::optional<float> Start;
-    std::optional<float> End;
-    std::optional<std::array<uint32_t, 2>> Frames;
-    SourceLocation Where;
-};
-
 struct SourceNodeEdit
 {
     SourceTransform Transform;
@@ -446,7 +440,7 @@ struct SourceImport
     std::array<SourceStringMap, size_t(SourceImportKind::Count)> Rename;
     SourceStringMap ReplaceImages;
     SourceStringMap ReplaceMaterials;
-    std::optional<std::vector<SourceImportClip>> Clips;
+    std::optional<std::vector<SourceString>> Clips;   // names of clips in the file; every clip when absent
     std::vector<SourceNamed<SourceNodeEdit>> Edits;
     SourceLocation Where;
 };

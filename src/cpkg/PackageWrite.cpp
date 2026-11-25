@@ -93,9 +93,6 @@ public:
     // it was.
     bool Write(const std::string &path)
     {
-        if (!CheckBuildable())
-            return false;
-
         CStagedFile file(PathOf(path));
         const std::string staged = Utf8Of(file.GetStagedPath());
         Gem::Result result = m_Writer.Open(staged.c_str(), m_Package.PackageName.Text);
@@ -123,24 +120,6 @@ public:
     }
 
 private:
-    // Reports each bundle member this build does not write.
-    bool CheckBuildable()
-    {
-        bool buildable = true;
-        for (const SourceBundle &bundle : m_Package.Bundles)
-        {
-            auto unsupported = [&](bool present, const char *member)
-            {
-                if (!present)
-                    return;
-                ReportAt(m_Diagnostics, m_Package, Severity::Error, bundle.Where, std::string("cpkg cannot build a bundle's \"") + member + "\" yet");
-                buildable = false;
-            };
-            unsupported(!bundle.Imports.empty(), "imports");
-        }
-        return buildable;
-    }
-
     // Finishes encoder's payload with header and appends it to the package as the asset name.
     template <class THeader>
     Gem::Result Append(AssetType type, std::string_view name, CEncoder<THeader> &encoder, const THeader &header)
@@ -195,7 +174,7 @@ private:
     // Payloads
 
     // Stores each of the image's files' bytes unchanged, read again here so that the build
-    // holds one image's files at a time.
+    // holds one image's files at a time, or the bytes an imported image embeds.
     Gem::Result WriteImage(const SourceBundle &, const SourceNamed<SourceImage> &asset)
     {
         const SourceImage &image = asset.Value;
@@ -212,12 +191,19 @@ private:
         std::vector<CpkgSpan<uint8_t>> entries;
         for (const SourceFileRef &file : image.Files)
         {
-            std::string bytes;
-            if (ReadWholeFile(PathOf(file.Path), &bytes) != FileResult::Success)
+            std::string read;
+            std::string_view bytes;
+            if (image.Embedded)
+                bytes = *image.Embedded;
+            else
             {
-                ReportAt(m_Diagnostics, m_Package, Severity::Error, file.Where, "cannot read the file: \"" + file.Written + "\"");
-                m_InputFailed = true;
-                return Gem::Result::Fail;
+                if (ReadWholeFile(PathOf(file.Path), &read) != FileResult::Success)
+                {
+                    ReportAt(m_Diagnostics, m_Package, Severity::Error, file.Where, "cannot read the file: \"" + file.Written + "\"");
+                    m_InputFailed = true;
+                    return Gem::Result::Fail;
+                }
+                bytes = read;
             }
             entries.push_back(encoder.Append(std::span<const uint8_t>(reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size())));
         }

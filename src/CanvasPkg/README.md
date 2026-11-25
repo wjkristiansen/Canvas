@@ -344,6 +344,7 @@ Every payload stores values in the Canvas engine's own conventions, so they need
 - Rotations are unit quaternions stored XYZW.
 - A camera or light faces along the local +X axis of the node it attaches to, with +Y to its left and +Z up.
 - A triangle's front face has counter-clockwise winding when viewed from the side its normal points toward.
+- Texture coordinates are normalized, from 0 to 1 across an image. U increases to the right and V downward, so (0, 0) is the top-left corner of the image; for a `Texture3D` image, W increases with depth, from its first depth slice at 0. A `Texture1D` image uses U alone.
 - `CpkgVertexTangent::XYZW[3]` is +1 or -1, and the bitangent is `XYZW[3] * cross(N, T)`.
 - Angles are radians and times are seconds.
 
