@@ -79,28 +79,12 @@ static_assert(std::size(kImportKinds) == size_t(SourceImportKind::Count));
 
 // The rotation { "degrees": [x, y, z] } describes: about X by x, then Y by y, then Z by z, each
 // axis fixed in the parent space, so the quaternion is qz * qy * qx.
-Vec4 QuaternionFromDegrees(const Vec3 &degrees)
+Canvas::Math::FloatQuaternion QuaternionFromDegrees(const Canvas::Math::FloatVector3 &degrees)
 {
-    double half[3];
-    for (int i = 0; i < 3; ++i)
-        half[i] = double(degrees[i]) * (std::numbers::pi / 360.0);
-
-    const double sx = std::sin(half[0]), cx = std::cos(half[0]);
-    const double sy = std::sin(half[1]), cy = std::cos(half[1]);
-    const double sz = std::sin(half[2]), cz = std::cos(half[2]);
-
-    // qy * qx
-    const double yxX = cy * sx;
-    const double yxY = sy * cx;
-    const double yxZ = -sy * sx;
-    const double yxW = cy * cx;
-
-    // qz * (qy * qx)
-    const double x = cz * yxX - sz * yxY;
-    const double y = cz * yxY + sz * yxX;
-    const double z = cz * yxZ + sz * yxW;
-    const double w = cz * yxW - sz * yxZ;
-    return { float(x), float(y), float(z), float(w) };
+    constexpr double kRadians = std::numbers::pi / 180.0;
+    const Canvas::Math::TQuaternion<double> q = Canvas::Math::TQuaternion<double>::FromEulerXYZ(
+        degrees.X * kRadians, degrees.Y * kRadians, degrees.Z * kRadians);
+    return { float(q.X), float(q.Y), float(q.Z), float(q.W) };
 }
 
 struct Finding
@@ -204,9 +188,9 @@ private:
         bool m_WasInEdit;
     };
 
-    static constexpr Vec3 kZero3 = { 0.0f, 0.0f, 0.0f };
-    static constexpr Vec3 kOne3 = { 1.0f, 1.0f, 1.0f };
-    static constexpr Vec4 kIdentityRotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+    inline static const Canvas::Math::FloatVector3 kZero3 = { 0.0f, 0.0f, 0.0f };
+    inline static const Canvas::Math::FloatVector3 kOne3 = { 1.0f, 1.0f, 1.0f };
+    inline static const Canvas::Math::FloatQuaternion kIdentityRotation;
 
     //--------------------------------------------------------------------------------------------
     // Files
@@ -473,31 +457,33 @@ private:
         return true;
     }
 
-    template <size_t N>
-    bool ReadVector(const Json &value, const std::string &pointer, std::array<float, N> *pVector)
+    // Reads a vector or quaternion, TVec, of Canvas::Math.
+    template <class TVec>
+    bool ReadVector(const Json &value, const std::string &pointer, TVec *pVector)
     {
-        if (!value.is_array() || value.size() != N)
+        constexpr int kDim = TVec::Dim;
+        if (!value.is_array() || value.size() != kDim)
         {
-            Error(value, pointer, "expected an array of " + std::to_string(N) + " numbers");
+            Error(value, pointer, "expected an array of " + std::to_string(kDim) + " numbers");
             return false;
         }
-        std::array<float, N> vector = {};
+        TVec vector = *pVector;
         bool read = true;
-        for (size_t i = 0; i < N; ++i)
-            read = ReadNumber(value[i], Child(pointer, i), &vector[i]) && read;
+        for (int i = 0; i < kDim; ++i)
+            read = ReadNumber(value[size_t(i)], Child(pointer, size_t(i)), &vector[i]) && read;
         if (read)
             *pVector = vector;
         return read;
     }
 
     // Reads an optional member whose omission means defaultValue.
-    template <size_t N>
-    void ReadOptionalVector(const Json &object, const char *key, const std::string &pointer, const std::array<float, N> &defaultValue,
-        std::optional<std::array<float, N>> *pVector)
+    template <class TVec>
+    void ReadOptionalVector(const Json &object, const char *key, const std::string &pointer, const TVec &defaultValue,
+        std::optional<TVec> *pVector)
     {
         if (const Json *pValue = Member(object, key))
         {
-            std::array<float, N> vector = {};
+            TVec vector = defaultValue;
             if (ReadVector(*pValue, Child(pointer, key), &vector))
             {
                 *pVector = vector;
@@ -507,10 +493,10 @@ private:
     }
 
     // Reads an optional member into *pVector, which holds its default.
-    template <size_t N>
-    void ReadDefaultedVector(const Json &object, const char *key, const std::string &pointer, std::array<float, N> *pVector)
+    template <class TVec>
+    void ReadDefaultedVector(const Json &object, const char *key, const std::string &pointer, TVec *pVector)
     {
-        const std::array<float, N> defaultValue = *pVector;
+        const TVec defaultValue = *pVector;
         if (const Json *pValue = Member(object, key))
         {
             if (ReadVector(*pValue, Child(pointer, key), pVector))
@@ -518,8 +504,8 @@ private:
         }
     }
 
-    template <size_t N>
-    void ReadRequiredVector(const Json &object, const char *key, const std::string &pointer, std::array<float, N> *pVector)
+    template <class TVec>
+    void ReadRequiredVector(const Json &object, const char *key, const std::string &pointer, TVec *pVector)
     {
         if (const Json *pValue = Member(object, key))
             ReadVector(*pValue, Child(pointer, key), pVector);
@@ -717,7 +703,7 @@ private:
         if (value.is_object() && value.contains("degrees"))
         {
             ExpectObject(value, pointer, { "degrees" });
-            Vec3 degrees = {};
+            Canvas::Math::FloatVector3 degrees;
             if (!ReadVector(value["degrees"], Child(pointer, "degrees"), &degrees))
                 return false;
             pRotation->Quaternion = QuaternionFromDegrees(degrees);
@@ -1518,7 +1504,7 @@ private:
 
         const CpkgLightData defaults;
         ReadOptionalEnum(value, "type", pointer, kLightTypes, std::optional<LightType>(), &pLight->Type);
-        ReadOptionalVector(value, "color", pointer, Vec3{ defaults.Color[0], defaults.Color[1], defaults.Color[2] }, &pLight->Color);
+        ReadOptionalVector(value, "color", pointer, Canvas::Math::FloatVector3{ defaults.Color[0], defaults.Color[1], defaults.Color[2] }, &pLight->Color);
         ReadOptionalNumber(value, "intensity", pointer, defaults.Intensity, &pLight->Intensity);
         ReadOptionalBool(value, "enabled", pointer, true, &pLight->Enabled);
         ReadOptionalBool(value, "castsShadows", pointer, false, &pLight->CastsShadows);

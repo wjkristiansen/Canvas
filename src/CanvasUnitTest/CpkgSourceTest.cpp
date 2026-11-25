@@ -231,8 +231,8 @@ TEST_F(CpkgSource, LoadsEveryMember)
 
     // About X by 90 degrees, then about Z by 90 degrees: X goes to Y, and Y to Z.
     ASSERT_TRUE(props.Skyboxes[0].Value.Orientation);
-    const Vec4 &orientation = props.Skyboxes[0].Value.Orientation->Quaternion;
-    for (float component : orientation)
+    const Canvas::Math::FloatQuaternion &orientation = props.Skyboxes[0].Value.Orientation->Quaternion;
+    for (float component : orientation.V)
         EXPECT_NEAR(component, 0.5f, 1e-6f);
     EXPECT_EQ(props.Skyboxes[0].Value.Intensity, 2.0f);
 

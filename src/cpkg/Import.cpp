@@ -9,6 +9,8 @@
 namespace CpkgTool
 {
 
+namespace Math = Canvas::Math;
+
 namespace
 {
 
@@ -47,38 +49,6 @@ std::string NotANameReason(std::string_view name)
     if (name.find('\0') != std::string_view::npos)
         return "it holds a NUL";
     return "it is not valid UTF-8";
-}
-
-Vec3 Rotate(const Vec4 &q, const Vec3 &v)
-{
-    // v + 2w(u x v) + 2u x (u x v), for q = (u, w)
-    const Vec3 u = { q[0], q[1], q[2] };
-    auto cross = [](const Vec3 &a, const Vec3 &b) -> Vec3
-    {
-        return { a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0] };
-    };
-    const Vec3 uv = cross(u, v);
-    const Vec3 uuv = cross(u, uv);
-    return { v[0] + 2.0f * (q[3] * uv[0] + uuv[0]), v[1] + 2.0f * (q[3] * uv[1] + uuv[1]), v[2] + 2.0f * (q[3] * uv[2] + uuv[2]) };
-}
-
-Vec3 Normalized(const Vec3 &v)
-{
-    const float length = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-    return length > 0.0f ? Vec3{ v[0] / length, v[1] / length, v[2] / length } : v;
-}
-
-// The rotation a then b: the quaternion product b * a.
-Vec4 Then(const Vec4 &a, const Vec4 &b)
-{
-    const Vec4 q = {
-        b[3] * a[0] + b[0] * a[3] + b[1] * a[2] - b[2] * a[1],
-        b[3] * a[1] - b[0] * a[2] + b[1] * a[3] + b[2] * a[0],
-        b[3] * a[2] + b[0] * a[1] - b[1] * a[0] + b[2] * a[3],
-        b[3] * a[3] - b[0] * a[0] - b[1] * a[1] - b[2] * a[2],
-    };
-    const float length = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-    return { q[0] / length, q[1] / length, q[2] / length, q[3] / length };
 }
 
 // The node of nodes or their descendants named name, or null.
@@ -217,23 +187,22 @@ const SourceString *CImportBuilder::ReplacementMaterial(std::string_view name)
     return Find(m_Import.ReplaceMaterials, m_ReplaceMaterialsUsed, name);
 }
 
-Vec3 CImportBuilder::Position(const Vec3 &position) const
+Math::FloatVector3 CImportBuilder::Position(const Math::FloatVector3 &position) const
 {
-    const Vec3 rotated = Rotate(m_Rotation, position);
-    return { rotated[0] * m_Import.Scale, rotated[1] * m_Import.Scale, rotated[2] * m_Import.Scale };
+    return Math::RotateVectorByQuaternion(m_Rotation, position) * m_Import.Scale;
 }
 
-Vec3 CImportBuilder::Direction(const Vec3 &direction) const
+Math::FloatVector3 CImportBuilder::Direction(const Math::FloatVector3 &direction) const
 {
-    return Normalized(Rotate(m_Rotation, direction));
+    return Math::RotateVectorByQuaternion(m_Rotation, direction).Normalize();
 }
 
-SourceTransform CImportBuilder::RootTransform(const Vec3 &translation, const Vec4 &rotation, const Vec3 &scale) const
+SourceTransform CImportBuilder::RootTransform(const Math::FloatVector3 &translation, const Math::FloatQuaternion &rotation, const Math::FloatVector3 &scale) const
 {
     SourceTransform transform;
     transform.Translation = Position(translation);
     SourceRotation &rotated = transform.Rotation.emplace();
-    rotated.Quaternion = Then(rotation, m_Rotation);
+    rotated.Quaternion = (m_Rotation * rotation).Normalize();
     rotated.Where = m_Import.Where;
     transform.Scale = scale;
     return transform;

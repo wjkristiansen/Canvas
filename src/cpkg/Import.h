@@ -60,13 +60,14 @@ public:
 
     // A position or direction in Canvas space, with the import's "rotation" applied, and for a
     // position, its "scale". A direction comes out normalized.
-    Vec3 Position(const Vec3 &position) const;
-    Vec3 Direction(const Vec3 &direction) const;
+    Canvas::Math::FloatVector3 Position(const Canvas::Math::FloatVector3 &position) const;
+    Canvas::Math::FloatVector3 Direction(const Canvas::Math::FloatVector3 &direction) const;
 
     // The local transform of a root node of the file, from its transform in Canvas space, with
     // the import's "rotation" and "scale" applied about the file's origin. "scale" scales the
     // translation, and the reader scales the translations and geometry below the root nodes.
-    SourceTransform RootTransform(const Vec3 &translation, const Vec4 &rotation, const Vec3 &scale) const;
+    SourceTransform RootTransform(const Canvas::Math::FloatVector3 &translation, const Canvas::Math::FloatQuaternion &rotation,
+        const Canvas::Math::FloatVector3 &scale) const;
 
     // Adds the nodes the import builds, roots and their descendants: applies "edits" to them,
     // and attaches the roots to the node "parent" names, or else to the bundle's root nodes.
@@ -86,7 +87,7 @@ private:
     const SourceImport &m_Import;
     CDiagnostics &m_Diagnostics;
     const char *m_pFormat = "";
-    Vec4 m_Rotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+    Canvas::Math::FloatQuaternion m_Rotation;
 
     std::array<std::vector<bool>, size_t(SourceImportKind::Count)> m_RenameUsed;
     std::vector<bool> m_ReplaceImagesUsed;
