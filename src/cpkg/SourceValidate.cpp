@@ -395,7 +395,7 @@ private:
     }
 
     // Checks an image's number of files, its shape, and each file's encoding and size, from the
-    // headers Translate read.
+    // headers Expand read.
     void CheckImage(const SourceImage &image)
     {
         using Canvas::CpkgImageDimension;
