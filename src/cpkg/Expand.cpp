@@ -1,8 +1,9 @@
 //================================================================================================
 // Expand - the build's Expand stage
 //
-// Reads the header of each image file a package source names: the encoding its content begins
-// with, and its width and height, decoding no pixels. See "Images" in src/cpkg/README.md.
+// Builds each import's content (see Import.cpp), then reads the header of each image a package
+// source holds: the encoding its content begins with, and its width and height, decoding no
+// pixels. See "Images" in src/cpkg/README.md.
 //================================================================================================
 
 #include "Stages.h"
@@ -279,6 +280,7 @@ std::optional<uint32_t> Texture3DDepth(uint64_t count, uint32_t mipLevels)
 bool ExpandPackageSource(SourcePackage &package, CDiagnostics &diagnostics)
 {
     const size_t errorCount = diagnostics.GetErrorCount();
+    ExpandImports(package, diagnostics);
     for (SourceBundle &bundle : package.Bundles)
     {
         for (SourceNamed<SourceImage> &asset : bundle.Images)
@@ -293,14 +295,22 @@ bool ExpandPackageSource(SourcePackage &package, CDiagnostics &diagnostics)
                     ReportAt(diagnostics, package, severity, file.Where, message + ": " + Quoted(file.Written));
                 };
 
-                RecordInput(package, file.Path);
-                const fs::path path = PathOf(file.Path);
-                std::string bytes;
-                const FileResult read = ReadWholeFile(path, &bytes);
-                if (read != FileResult::Success)
+                std::string read;
+                std::string_view bytes;
+                fs::path path;
+                if (image.Embedded)
+                    bytes = *image.Embedded;
+                else
                 {
-                    report(Severity::Error, read == FileResult::NotFound ? "file not found" : "cannot read the file");
-                    continue;
+                    RecordInput(package, file.Path);
+                    path = PathOf(file.Path);
+                    const FileResult result = ReadWholeFile(path, &read);
+                    if (result != FileResult::Success)
+                    {
+                        report(Severity::Error, result == FileResult::NotFound ? "file not found" : "cannot read the file");
+                        continue;
+                    }
+                    bytes = read;
                 }
 
                 ImageHeader header;
@@ -319,7 +329,7 @@ bool ExpandPackageSource(SourcePackage &package, CDiagnostics &diagnostics)
                     break;
                 }
 
-                const CpkgImageEncoding named = EncodingOfExtension(path);
+                const CpkgImageEncoding named = EncodingOfExtension(image.Embedded ? PathOf(file.Written) : path);
                 if (named != CpkgImageEncoding::Unknown && named != header.Encoding)
                 {
                     report(Severity::Warning, std::string("the extension names a ") + ImageEncodingName(named) + " image, but the file holds a "

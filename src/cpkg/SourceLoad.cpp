@@ -1605,7 +1605,7 @@ private:
         return false;
     }
 
-    // A map from a name in an FBX file, any string not beginning with '$', to a value that read
+    // A map from a name in an exchange file, any string not beginning with '$', to a value that read
     // checks. The map may also hold format keys.
     void ReadStringMap(const Json &value, const std::string &pointer, StringReader read, SourceStringMap *pMap)
     {
@@ -1693,10 +1693,7 @@ private:
         if (Member(value, "clips"))
         {
             pImport->Clips.emplace();
-            ReadOptionalList(value, "clips", pointer, [&](const Json &entry, const std::string &entryPointer)
-            {
-                ReadImportClip(entry, entryPointer, &pImport->Clips->emplace_back());
-            });
+            ReadUniqueNames(value, "clips", pointer, "is already listed", &CSourceLoader::ReadString, &*pImport->Clips);
         }
 
         ReadNameMap(value, "edits", pointer, [&](SourceString name, const Json &editValue, const std::string &editPointer)
@@ -1705,42 +1702,6 @@ private:
             edit.Name = std::move(name);
             ReadNodeEdit(editValue, editPointer, &edit.Value);
         });
-    }
-
-    void ReadImportClip(const Json &value, const std::string &pointer, SourceImportClip *pClip)
-    {
-        pClip->Where = At(value, pointer);
-        if (!ExpectObject(value, pointer, { "name", "stack", "start", "end", "frames" }, { "name" }))
-            return;
-
-        ReadRequiredString(value, "name", pointer, &CSourceLoader::ReadName, &pClip->Name);
-        ReadOptionalString(value, "stack", pointer, &CSourceLoader::ReadString, &pClip->Stack);
-        for (const char *key : { "start", "end" })
-        {
-            if (const Json *pTime = Member(value, key))
-            {
-                float time = 0.0f;
-                if (ReadNumberAtLeast(*pTime, Child(pointer, key), 0.0f, true, &time))
-                    (key[0] == 's' ? pClip->Start : pClip->End) = time;
-                if (value.contains("frames"))
-                    Error(AtKey(*pTime, Child(pointer, key)), std::string("expected \"frames\" or \"") + key + "\", not both");
-            }
-        }
-
-        if (const Json *pFrames = Member(value, "frames"))
-        {
-            const std::string framesPointer = Child(pointer, "frames");
-            if (!pFrames->is_array() || pFrames->size() != 2)
-            {
-                Error(*pFrames, framesPointer, "expected [first, last] frames");
-                return;
-            }
-            std::array<uint32_t, 2> frames = {};
-            const bool read = ReadInteger((*pFrames)[0], Child(framesPointer, size_t(0)), 0, &frames[0])
-                & ReadInteger((*pFrames)[1], Child(framesPointer, size_t(1)), 0, &frames[1]);
-            if (read)
-                pClip->Frames = frames;
-        }
     }
 
     void ReadNodeEdit(const Json &value, const std::string &pointer, SourceNodeEdit *pEdit)

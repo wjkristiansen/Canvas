@@ -151,7 +151,7 @@ TEST_F(CpkgSource, LoadsEveryMember)
       "imports": [
         { "file": "art/goblin.fbx", "scale": 0.01, "nodes": false, "names": { "meshes": "G_{name}.mesh" },
           "rename": { "meshes": { "$comment": "from the artist", "Cube.001": "Body" } }, "replace": { "materials": { "Skin": "Shared/Skin" } },
-          "clips": [ { "name": "Idle", "frames": [0, 59] }, { "name": "Run", "stack": "Take 001", "start": 1, "end": 2 } ],
+          "clips": [ "Idle", "Take 001" ],
           "edits": { "$extras": null, "Armature": { "mobility": "movable", "light": { "intensity": 3 }, "children": [ { "name": "Grip", "bone": "Hand_R" } ] } } }
       ]
     },
@@ -277,8 +277,7 @@ TEST_F(CpkgSource, LoadsEveryMember)
     EXPECT_EQ(import.ReplaceMaterials[0].second.Text, "Shared/Skin");
     ASSERT_TRUE(import.Clips);
     ASSERT_EQ(import.Clips->size(), 2u);
-    EXPECT_EQ((*import.Clips)[0].Frames, (std::array<uint32_t, 2>{ 0, 59 }));
-    EXPECT_EQ((*import.Clips)[1].Stack->Text, "Take 001");
+    EXPECT_EQ((*import.Clips)[1].Text, "Take 001");
     ASSERT_EQ(import.Edits.size(), 1u);
     EXPECT_EQ(import.Edits[0].Name.Text, "Armature");
     EXPECT_FALSE(import.Edits[0].Value.Attachments.Light->Type);

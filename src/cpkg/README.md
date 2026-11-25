@@ -1,6 +1,6 @@
 # cpkg
 
-`cpkg` is the command-line tool that builds [package sources](PackageSource.md) into [CanvasPkg](../CanvasPkg/README.md) `.cpkg` files, and builds [projects](../CanvasProject/README.md). It also validates sources, inspects `.cpkg` files, imports FBX files into package sources, applies refactors, and edits project manifests. Editors, scripts, and build systems all build content by running `cpkg`, so content builds identically from each.
+`cpkg` is the command-line tool that builds [package sources](PackageSource.md) into [CanvasPkg](../CanvasPkg/README.md) `.cpkg` files, and builds [projects](../CanvasProject/README.md). It also validates sources, inspects `.cpkg` files, imports exchange files (such as FBX) into package sources, applies refactors, and edits project manifests. Editors, scripts, and build systems all build content by running `cpkg`, so content builds identically from each.
 
 `cpkg` depends on CanvasPkg for writing and reading packages, on CanvasProject for resolving package names, on [ufbx](https://github.com/bqqbarbhg/ufbx) for reading FBX files, and on [InCommand](../../deps/InCommand/readme.md) for its command line. It links no engine library. Its strings and file paths are UTF-8, converted to the platform's form only where they reach the operating system.
 
@@ -25,7 +25,7 @@ cpkg <command> [<subcommand>] [<arguments>] [<options>]
 | [`dump`](#dump) | Prints the contents of a `.cpkg` file |
 | [`unpack`](#unpack) | Writes a package source that builds a `.cpkg` file |
 | [`format`](#format) | Rewrites a package file or bundle file in the standard form |
-| [`import`](#import) | Adds an FBX import to a bundle of a package source |
+| [`import`](#import) | Adds an import of an exchange file to a bundle of a package source |
 | [`rename`](#rename-move-and-refs) | Renames an asset, node, placement, or bundle, and updates everything that refers to it |
 | [`move`](#rename-move-and-refs) | Moves a shared asset to another bundle, and updates everything that refers to it |
 | [`refs`](#rename-move-and-refs) | Lists every reference to a bundle, asset, or node |
@@ -69,7 +69,7 @@ cpkg validate <package.cpkg.json> [--project <project.cproj.json>]
 cpkg validate <project.cproj.json>
 ```
 
-Loads and validates a package, or every package a project lists by source together with the manifest, and reports the diagnostics a build would report. For a project, it also opens each prebuilt package, and checks that each `worlds` entry names a world bundle and that the built file names are unique. It runs every stage of the [pipeline](#pipeline) except Write, so it reads every file a build reads, including FBX files, because rules such as the keys of an import's `rename` depend on the file's content. It writes no file.
+Loads and validates a package, or every package a project lists by source together with the manifest, and reports the diagnostics a build would report. For a project, it also opens each prebuilt package, and checks that each `worlds` entry names a world bundle and that the built file names are unique. It runs every stage of the [pipeline](#pipeline) except Write, so it reads every file a build reads, including exchange files, because rules such as the keys of an import's `rename` depend on the file's content. It writes no file.
 
 ### dump
 
@@ -132,10 +132,10 @@ Rewrites `file`, a package file (`.cpkg.json`) or a bundle file (`.cbundle.json`
 ### import
 
 ```
-cpkg import <package.cpkg.json> <file.fbx> --bundle <name> [--bundle-file <file.cbundle.json>]
+cpkg import <package.cpkg.json> <file> --bundle <name> [--bundle-file <file.cbundle.json>]
 ```
 
-Adds an [import](PackageSource.md#imports) of the FBX file to the named bundle, with every import setting at its default, and saves the package source. When the package has no bundle of that name, `import` adds one: inline in the package file, or in a new bundle file that `--bundle-file` names, which the package file then includes. The import's file path is written relative to the JSON file that holds it. `import` validates the package after the change and reports what the import would build, such as name collisions with existing content, so the import's settings can then be adjusted in the source.
+Adds an [import](PackageSource.md#imports) of the [exchange file](PackageSource.md#exchange-formats) to the named bundle, with every import setting at its default, and saves the package source. When the package has no bundle of that name, `import` adds one: inline in the package file, or in a new bundle file that `--bundle-file` names, which the package file then includes. The import's file path is written relative to the JSON file that holds it. `import` validates the package after the change and reports what the import would build, such as name collisions with existing content, so the import's settings can then be adjusted in the source.
 
 ### rename, move, and refs
 
@@ -169,7 +169,7 @@ A build runs these stages in order:
 | Stage | Does |
 |---|---|
 | **Load** | Reads the package file and the bundle files it includes, and checks each file against [package-source.schema.json](package-source.schema.json) |
-| **Expand** | Reads each import's FBX file and applies the import's settings (see [Imports](#imports)), and reads the header of each image file |
+| **Expand** | Reads each import's exchange file and applies the import's settings (see [Imports](#imports)), and reads the header of each image file |
 | **Validate** | Checks the [validation rules](PackageSource.md#validation) of the package source, and, with a [project](#project-context), the paths into other packages |
 | **Resolve** | Turns references by name into asset indices, fills defaults, and orders each bundle's assets in CanvasPkg's [canonical order](../CanvasPkg/README.md#append-order) |
 | **Write** | Encodes each asset's payload and writes the package with `CCpkgWriter` |
@@ -190,7 +190,7 @@ The rules that depend on an asset's content, such as an image's shape, a skeleto
 
 ### Imports
 
-`cpkg` reads an FBX file with ufbx and converts its content to CanvasPkg data, in CanvasPkg's [conventions](../CanvasPkg/README.md#conventions): it converts units and axes, applies an import's `scale` and `rotation`, triangulates, generates missing normals, identifies bones, and samples animation stacks. It then applies everything else the [import](PackageSource.md#imports) declares: which content is built, its names, replacements, clip ranges, the node hierarchy's `parent`, a shared `skeleton`, and edits. `cpkg`'s FBX reading is its own, separate from CanvasFbx, which builds engine model data from FBX files for tools such as the model viewer.
+`cpkg` reads an import's exchange file, an FBX file (see [Exchange Formats](PackageSource.md#exchange-formats)), with ufbx, and converts its content to CanvasPkg data, in CanvasPkg's [conventions](../CanvasPkg/README.md#conventions): it converts units and axes, applies an import's `scale` and `rotation`, triangulates, generates missing normals, identifies bones, and samples clips. It then applies everything else the [import](PackageSource.md#imports) declares: which content is built, its names, replacements, the node hierarchy's `parent`, a shared `skeleton`, and edits.
 
 A texture an FBX file uses is either **embedded**, its encoded bytes held in the FBX file, or **external**, held in an image file the FBX file names. The bytes of an embedded texture become the built image's encoded image, as an external file's bytes do, with no file written. The build reads nothing from disk for an embedded texture; any file name the FBX file records for it serves only to [name the image](PackageSource.md#imported-names). An external texture is found at the relative path the file records, resolved against the FBX file's directory, and otherwise at the absolute path the file records. An external texture found at neither is reported as an error at the import, naming the texture and the material that uses it, unless the import replaces it.
 
@@ -210,7 +210,7 @@ The build stores image files' bytes unchanged. It identifies each file's encodin
 
 ### Dependency Files
 
-A build can write a **dependency file** naming its output and every file the build read: the package file, its bundle files, image and binary array files, FBX files and the external textures they use, and the project manifest and other packages' sources or `.cpkg` files read for validation. A build system that reads the dependency file runs the build again when any of those files changes. A build reads a new file only after a change to a file it already read, such as a package file that now includes a new bundle file, so each build's dependency file names every change that decides whether the next build runs. The exception is an [external texture](#imports) found at its absolute path: a file that later appears at its relative path changes no file the build read.
+A build can write a **dependency file** naming its output and every file the build read: the package file, its bundle files, image and binary array files, exchange files and the external textures they use, and the project manifest and other packages' sources or `.cpkg` files read for validation. A build system that reads the dependency file runs the build again when any of those files changes. A build reads a new file only after a change to a file it already read, such as a package file that now includes a new bundle file, so each build's dependency file names every change that decides whether the next build runs. The exception is an [external texture](#imports) found at its absolute path: a file that later appears at its relative path changes no file the build read.
 
 A dependency file is a Makefile-format rule, written in the subset that build systems reading such files share:
 
@@ -321,8 +321,8 @@ Every stage reports its findings as **diagnostics**, each with:
 |---|---|
 | Severity | `error`, `warning`, or `info` |
 | Message | What was found, in terms of the source |
-| File | The JSON file, FBX file, or image file the finding concerns |
-| Location | For a JSON file, a JSON Pointer to the value, with its line and column; for an FBX file, the import's location and the name of the object in the file |
+| File | The JSON file, exchange file, or image file the finding concerns |
+| Location | For a JSON file, a JSON Pointer to the value, with its line and column; for an exchange file, the import's location and the name of the object in the file |
 
 A build reports every finding it can before it stops: Load and Validate check the whole source, not only up to its first error. A source with any error builds no package. Warnings and info do not change what is built, and `--werror` treats warnings as errors.
 
@@ -332,7 +332,7 @@ A build reports every finding it can before it stops: Load and Validate check th
 <file>:<line>:<column>: <severity>: <message> [<location>]
 ```
 
-`<file>` is the JSON file the diagnostic concerns, as a path relative to the current directory, and `<line>` and `<column>` count from 1. `<location>` is the JSON Pointer to the value. A diagnostic about an FBX file is reported at the import that names the file, so its `<file>`, `<line>`, and `<column>` locate the import, and its message names the FBX file and the object in it. A diagnostic about an image file names the image file and the field that names it. Editors and build tools that recognize `file:line:column:` locations link each diagnostic to its source.
+`<file>` is the JSON file the diagnostic concerns, as a path relative to the current directory, and `<line>` and `<column>` count from 1. `<location>` is the JSON Pointer to the value. A diagnostic about an exchange file is reported at the import that names the file, so its `<file>`, `<line>`, and `<column>` locate the import, and its message names the exchange file and the object in it. A diagnostic about an image file names the image file and the field that names it. Editors and build tools that recognize `file:line:column:` locations link each diagnostic to its source.
 
 A diagnostic about a file as a whole, such as a `.cpkg` file that `dump` cannot read, has no line, column, or location:
 
@@ -365,11 +365,11 @@ Directions the current design leaves room for. None are committed plans:
 - **Authoring library**: `cpkg`'s loading, validation, and refactors offered as a library, for an editor that needs them in-process, such as to validate as content changes.
 - **Machine-readable diagnostics**: a JSON form of the diagnostics, for editors and other tools that present them.
 - **CMake module**: a `canvas_add_project()` function that declares the [build step](#build-systems) for a project manifest.
-- **Input lists**: a command that names the files a build would read without building, for build systems that declare a step's inputs before running it. It would name the files that list further inputs, such as bundle and FBX files, apart from the others, and name files that a generating step has yet to write.
+- **Input lists**: a command that names the files a build would read without building, for build systems that declare a step's inputs before running it. It would name the files that list further inputs, such as bundle and exchange files, apart from the others, and name files that a generating step has yet to write.
 - **Watch mode**: rebuilding a project as its source files change.
 - **New files**: commands that create an empty package source or project manifest.
 - **Incremental builds**: reusing the payloads of assets whose inputs are unchanged since the last build, keyed by hashes of those inputs.
 - **Image processing**: converting images in other encodings to stored ones, generating mip chains, and producing block-compressed encodings once CanvasPkg defines them.
-- **Import filters**: leaving content of an FBX file out of an import by kind or by name, such as the default camera and light some exporters add to every file.
+- **Import filters**: leaving content of an exchange file out of an import by kind or by name, such as the default camera and light some FBX exporters add to every file.
 - **Naming policy**: project-configurable naming conventions that validation reports as warnings, kept separate from the [name rules](../CanvasPkg/README.md#names) every package follows.
 - **Project editor data**: editor-only organization of a project's bundles, such as display folders (see CanvasProject's [Future Directions](../CanvasProject/README.md#future-directions)).

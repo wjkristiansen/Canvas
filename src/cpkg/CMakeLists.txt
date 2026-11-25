@@ -1,6 +1,15 @@
 # cpkg - the command-line tool that builds package sources and projects
 cmake_minimum_required(VERSION 3.24)
 
+# cpkg reads FBX exchange files with ufbx, which the deps/ufbx submodule provides.
+include(${Canvas_SOURCE_DIR}/cmake/FetchUfbx.cmake)
+if(NOT TARGET ufbx)
+    message(FATAL_ERROR
+        "cpkg: ufbx was not found.\n"
+        "  Initialize submodules:  git submodule update --init --recursive\n"
+        "  Or provide:             -DUFBX_ROOT=<path containing ufbx.h and ufbx.c>")
+endif()
+
 # Everything but main, so the unit tests can run cpkg's commands in-process.
 add_library(CpkgTool STATIC
     Build.cpp
@@ -14,7 +23,10 @@ add_library(CpkgTool STATIC
     Dump.cpp
     FileSystem.cpp
     FileSystem.h
+    FbxImport.cpp
     Format.cpp
+    Import.cpp
+    Import.h
     PackageWrite.cpp
     Project.cpp
     Project.h
@@ -51,6 +63,7 @@ target_link_libraries(CpkgTool
     PRIVATE
         InCommandLib
         InCommandHeaders
+        ufbx
 )
 
 target_precompile_headers(CpkgTool PRIVATE pch.h)

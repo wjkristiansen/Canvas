@@ -2,7 +2,7 @@
 
 A **package source** is the text form of one [CanvasPkg](../CanvasPkg/README.md) package: JSON files describing the package's bundles and assets, together with the image and binary files they name. It is what an editor saves and what can be written by hand, and the [`cpkg`](README.md) tool builds a `.cpkg` file from it. Its shape, meaning the keys of each object and the types and forms of their values, is defined by [package-source.schema.json](package-source.schema.json), and any validator that supports JSON Schema 2020-12 can check a package file or a bundle file against it. This document defines what each field means, and the rules a schema cannot express, such as references between assets and the sizes of binary array files. [`cpkg validate`](README.md#validate) checks both.
 
-A package source expresses every `AssetType`, so any package can be built from one, including a package holding [world bundles](../CanvasPkg/README.md#worlds). It mirrors the package format closely, with conveniences for authoring: a nested node tree, references by name in place of asset indices, defaults for omitted fields, alternative forms for values that are awkward to write by hand, and [imports](#imports) that bring the content of FBX files into a bundle.
+A package source expresses every `AssetType`, so any package can be built from one, including a package holding [world bundles](../CanvasPkg/README.md#worlds). It mirrors the package format closely, with conveniences for authoring: a nested node tree, references by name in place of asset indices, defaults for omitted fields, alternative forms for values that are awkward to write by hand, and [imports](#imports) that bring the content of exchange files into a bundle.
 
 ## Files
 
@@ -41,7 +41,7 @@ A bundle file belongs to the package file that includes it, and is included once
 
 **File extensions.** A package file's name ends in `.cpkg.json`, and a bundle file's in `.cbundle.json`. The `.json` ending lets text editors treat both as JSON, and the part before it lets tools recognize which file is which. The build's default output for `levels.cpkg.json` is `levels.cpkg`, beside it.
 
-**File references.** A field that names a file on disk, such as an image, a bundle file, an FBX file, or a binary array, holds a file path using `/` as its separator: absolute, or relative to the directory of the JSON file that contains the field.
+**File references.** A field that names a file on disk, such as an image, a bundle file, an exchange file, or a binary array, holds a file path using `/` as its separator: absolute, or relative to the directory of the JSON file that contains the field.
 
 **Format keys.** A key beginning with `$` belongs to this format, in every object, including a map whose keys are names. Two such keys hold content the build ignores, for the people and tools that edit a source: `$comment` holds a string, and `$extras` holds any JSON value. The package file and the bundle file also hold `$schema`. Every other key beginning with `$` is reserved.
 
@@ -389,7 +389,7 @@ A bundle's `world` member builds its `WorldSettings`:
 
 ## Imports
 
-An **import** builds the content of an FBX file into the bundle that lists it: its images, materials, meshes, skeletons, skins, and animation, and its node hierarchy with the cameras, lights, and mesh instances attached to it. The build reads the file whenever it builds the package, and the file is one of the build's inputs, so a changed FBX file is picked up by the next build. The import's settings are kept with the import rather than in the file.
+An **import** builds the content of an **exchange file**, a 3D scene file from a content creation tool, into the bundle that lists it: its images, materials, meshes, skeletons, skins, and animation, and its node hierarchy with the cameras, lights, and mesh instances attached to it. The exchange format the build reads is FBX (see [Exchange Formats](#exchange-formats)). The build reads the file whenever it builds the package, and the file is one of the build's inputs, so a changed exchange file is picked up by the next build. The import's settings are kept with the import rather than in the file.
 
 ```json
 {
@@ -400,10 +400,7 @@ An **import** builds the content of an FBX file into the bundle that lists it: i
       "scale": 0.01,
       "rename": { "meshes": { "Cube.001": "GoblinBody" } },
       "replace": { "materials": { "Skin": "Shared/Materials/GoblinSkin" } },
-      "clips": [
-        { "name": "Idle", "frames": [0, 59] },
-        { "name": "Walk", "frames": [60, 95] }
-      ],
+      "clips": [ "Idle", "Walk" ],
       "edits": {
         "Armature": {
           "mobility": "movable",
@@ -411,7 +408,7 @@ An **import** builds the content of an FBX file into the bundle that lists it: i
         }
       }
     },
-    { "file": "art/goblin_attack.fbx", "nodes": false, "skeleton": "Hips.skeleton", "clips": [ { "name": "Attack" } ] }
+    { "file": "art/goblin_attack.fbx", "nodes": false, "skeleton": "Hips.skeleton", "clips": [ "Attack" ] }
   ],
   "clips": {
     "Attack": { "skeletalAnimations": [ { "skeletonInstance": "Armature", "animation": "Attack.anim" } ] }
@@ -422,7 +419,7 @@ An **import** builds the content of an FBX file into the bundle that lists it: i
 
 | Field | Default | Meaning |
 |---|---|---|
-| `file` | Required | The FBX file |
+| `file` | Required | The exchange file: an FBX file |
 | `scale` | `1` | A uniform scale applied to the file's content, after conversion to meters |
 | `rotation` | Identity | A rotation applied to the file's content, after conversion to Canvas space |
 | `nodes` | `true` | Whether the import builds the file's node hierarchy (see [Imported Nodes](#imported-nodes)) |
@@ -431,7 +428,7 @@ An **import** builds the content of an FBX file into the bundle that lists it: i
 | `names` | See [Imported Names](#imported-names) | A name template per kind of built asset |
 | `rename` | None | Per kind, a map from a name in the file to the built asset's name |
 | `replace` | None | `materials` and `images`: a map from a name in the file to the asset path of an existing asset used in its place |
-| `clips` | One clip per animation stack | The animation clips the import builds (see [Imported Animation](#imported-animation)) |
+| `clips` | Every clip in the file | The names of the clips in the file that the import builds (see [Imported Animation](#imported-animation)) |
 | `edits` | None | A map from the built name of an imported node to an [edit](#editing-imported-nodes) of that node |
 
 A bundle may list any number of imports, of the same file or of different files. The build adds each import's content to the bundle as though it were authored there, so the bundle's assets follow CanvasPkg's [canonical order](../CanvasPkg/README.md#append-order) whatever mix of authored and imported content they come from.
@@ -441,6 +438,12 @@ A bundle may list any number of imports, of the same file or of different files.
 The build converts the file's content to CanvasPkg's [conventions](../CanvasPkg/README.md#conventions), using the unit scale and axis system the file declares, and then applies the import's `rotation` and `scale` about the file's origin. Both are baked into the built assets: `rotation` into vertex positions, normals, and tangents, node and bone transforms, inverse bind poses, and animation values; `scale` into positions and translations, bounds, inverse bind poses, animated translations, and distances such as light ranges and camera clip planes. `rotation` corrects a file whose declared axis system does not match its content; `scale` corrects a file whose declared unit does not, or resizes content on purpose.
 
 Polygons are triangulated, and normals are generated for geometry the file holds none for. This section defines what an import builds and how a source controls it; how the build reads an FBX file is described in `cpkg`'s [Imports](README.md#imports).
+
+### Exchange Formats
+
+The build reads one exchange format, FBX. An import's `file` is an FBX file, whose extension is `.fbx` in any case; a file with any other extension is reported as an error at the import.
+
+An FBX file's content maps to the terms of this section as follows. A [clip in the file](#imported-animation) is an FBX animation stack, except that the stacks Blender writes for one action, one per object and each named `object|action`, form one clip, named after the action. A texture is either embedded in the FBX file or held in an image file the FBX file names (see `cpkg`'s [Imports](README.md#imports)).
 
 ### What an Import Builds
 
@@ -457,7 +460,7 @@ Polygons are triangulated, and normals are generated for geometry the file holds
 | A bone that carries content | A socket: a `TransformNode` on the bone | None: named after the bone with `_Socket` appended |
 | A camera, light, or mesh on a node | `Camera`, `Light`, or `MeshInstance` attached to the node's `TransformNode` | None: these are unnamed local assets |
 
-A texture file's encoding is one CanvasPkg stores, such as PNG, and its image is a `Texture2D` with one mip. A texture the file embeds is stored from the embedded bytes, and an external texture from the file the FBX file names (see `cpkg`'s [Imports](README.md#imports)). A texture in any other encoding is either replaced, with `replace`, or converted to a stored encoding before the build.
+A texture file's encoding is one CanvasPkg stores, such as PNG, and its image is a `Texture2D` with one mip. A texture the file embeds is stored from the embedded bytes, and an external texture from the image file the exchange file names (see `cpkg`'s [Imports](README.md#imports)). A texture in any other encoding is either replaced, with `replace`, or converted to a stored encoding before the build.
 
 A mesh used by several nodes builds one `MeshData`, and each node that uses it gets a `MeshInstance`. A material replaced with `replace` is not built, and neither is an image that only replaced materials use.
 
@@ -478,7 +481,7 @@ Each built asset's name comes from the file. A kind's **name template** forms it
 
 A `skeletalAnimations` template may also hold `{skeleton}`, replaced by the skeleton's name in the file. It distinguishes the skeletal animations of a clip that animates more than one skeleton.
 
-The templates keep the names of different kinds from colliding where a file names them alike, as when a node and its mesh are both named `Crate`. Two imports of files with overlapping names give one of them templates such as `"Tree_{name}.mesh"`. Each `/` in a name in the file becomes `_`. An unnamed node builds an unnamed `TransformNode`. An unnamed mesh, material, clip, or texture takes the name `Mesh<n>`, `Material<n>`, `Clip<n>`, or `Image<n>`, and a skeleton whose root bone is unnamed takes the name `Skeleton<n>`, where `<n>` is its position among the file's content of that kind, counting from 0.
+The templates keep the names of different kinds from colliding where a file names them alike, as when a node and its mesh are both named `Crate`. Two imports of files with overlapping names give one of them templates such as `"Tree_{name}.mesh"`. An unnamed node builds an unnamed `TransformNode`. An unnamed mesh, material, clip, or texture takes the name `Mesh<n>`, `Material<n>`, `Clip<n>`, or `Image<n>`, and a skeleton whose root bone is unnamed takes the name `Skeleton<n>`, where `<n>` is its position among the file's content of that kind, counting from 0.
 
 `rename` and `names` are keyed by kind, using the kind names above:
 
@@ -503,20 +506,11 @@ With `skeleton`, the import builds no skeleton from the file. Its skins and skel
 
 ### Imported Animation
 
-Each entry of `clips` builds one clip from a range of an animation stack in the file:
+An exchange file holds **clips**: named animations, each of one timeline, that animate the file's nodes and bones. In an FBX file they are its animation stacks (see [Exchange Formats](#exchange-formats)). An import builds one clip from each clip in the file that `clips` lists, or from every one when `clips` is absent; `"clips": []` builds no animation. A built clip is named after the clip in the file, through the `clips` [name template](#imported-names) or `rename`.
 
-| Field | Default | Meaning |
-|---|---|---|
-| `name` | Required | The clip's name in the file, which its kind's template applies to |
-| `stack` | The file's only stack | The name of the animation stack the clip takes its keys from |
-| `start`, `end` | The stack's start and end | The clip's range in seconds |
-| `frames` | None | The clip's range as `[first, last]` frames at the file's frame rate, in place of `start` and `end` |
+The built clip starts at time 0, at the start of the clip in the file, and its `Duration` is that clip's length. Each animated property of a node builds one track, holding the keys of the clip in the file. Tracks on bones build one skeletal animation per skeleton the clip animates, and the clip binds each to the skeleton's instance.
 
-The built clip starts at time 0, at the range's start. Each animated property of a node builds one track, holding the stack's keys within the range, plus keys sampled at the range's ends where the stack has none. Its `Duration` is the range's length. Tracks on bones build one skeletal animation per skeleton the clip animates, and the clip binds each to the skeleton's instance.
-
-Tracks on every other node are **rigid animation**: the node moves as one body with everything attached to it, such as a door, a vehicle's wheels, or a prop animated in a character's hand. They are the clip's node tracks, one for each property of a node that the stack animates, and the nodes they animate are built `"movable"`. A node that the stack animates while `nodes` is false builds no track, since the import builds no nodes, and the build reports each one.
-
-Without `clips`, the import builds one clip per animation stack, covering the whole stack and named after it. `"clips": []` builds no animation.
+Tracks on every other node are **rigid animation**: the node moves as one body with everything attached to it, such as a door, a vehicle's wheels, or a prop animated in a character's hand. They are the clip's node tracks, one for each property of a node that the clip in the file animates, and the nodes they animate are built `"movable"`. A node that it animates while `nodes` is false builds no track, since the import builds no nodes, and the build reports each one.
 
 ### Editing Imported Nodes
 
@@ -545,5 +539,5 @@ The schema checks each file's shape. A package source is also valid only when it
 - **Arrays.** Each inline array's length is a multiple of its element size, and each binary array's range lies within its file. Parallel streams have equal counts, and a skin has one bind pose per bone.
 - **Images.** Each image file is a PNG, JPEG, or TIFF file, recognized by its content, and the files of one image share one encoding. An image has the number of files its shape calls for, a cube image's `arraySize` is a multiple of 6, and a `"texture3D"` image's is 1. Each file measures its mip's size, `max(1, width >> m)` by `max(1, height >> m)` for mip `m`; a `"texture1D"` image's files are 1 pixel high, and a cube image's are square. `mipLevels` is at most the length of the image's full mip chain.
 - **Values.** Each quaternion is a unit quaternion: its squared length is within `8 * FLT_EPSILON`, about `9.5e-7`, of 1, which takes about 7 significant digits in each component. The build stores it as written. Bounds have `min <= max` on every axis. A world's `defaultSkybox` is one of its `skyboxes`.
-- **Imports.** Each `file` is an FBX file the build can read. Each clip's `stack` exists, and its range lies within the stack, with its start no later than its end. Each key of `rename` and `replace` names content of its kind in the file, and each key of `edits` names a node the import builds, so a misspelled key is reported. Each built name follows the rules of [Names and References](#names-and-references) and is unique within the bundle. Each image the import builds has an encoding CanvasPkg stores. With `skeleton`, every bone a skin deforms with is a bone of that skeleton; a skeletal animation's tracks on bones the skeleton lacks are left out, and the build reports each one.
+- **Imports.** Each `file` is an FBX file the build can read. Each name in `clips` names a clip in the file. Each key of `rename` and `replace` names content of its kind in the file, and each key of `edits` names a node the import builds, so a misspelled key is reported. Each built name follows the rules of [Names and References](#names-and-references) and is unique within the bundle. Each image the import builds has an encoding CanvasPkg stores. With `skeleton`, every bone a skin deforms with is a bone of that skeleton; a skeletal animation's tracks on bones the skeleton lacks are left out, and the build reports each one.
 - **Hierarchy.** An import node's placement attaches outside that import node's own subtree. No bundle places itself, directly or through the bundles it places; a cycle through another package is checked when the build has a project. Every other rule of the [package format](../CanvasPkg/README.md) holds for the built package.

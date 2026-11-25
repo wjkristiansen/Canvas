@@ -591,39 +591,13 @@
             "materials": { "$ref": "#/$defs/replaceMap" }
           }
         },
-        "clips": { "type": "array", "items": { "$ref": "#/$defs/importClip" } },
+        "clips": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
         "edits": {
           "type": "object",
           "propertyNames": { "$ref": "#/$defs/nameKey" },
           "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
           "additionalProperties": { "$ref": "#/$defs/nodeEdit" }
         }
-      }
-    },
-
-    "importClip": {
-      "type": "object",
-      "required": ["name"],
-      "patternProperties": { "^\\$comment$": { "type": "string" }, "^\\$extras$": true },
-      "additionalProperties": false,
-      "properties": {
-        "name": { "$ref": "#/$defs/name" },
-        "stack": { "type": "string" },
-        "start": { "type": "number", "minimum": 0 },
-        "end": { "type": "number", "minimum": 0 },
-        "frames": {
-          "type": "array",
-          "items": { "type": "integer", "minimum": 0 },
-          "minItems": 2,
-          "maxItems": 2
-        }
-      },
-      "not": {
-        "required": ["frames"],
-        "anyOf": [
-          { "required": ["start"] },
-          { "required": ["end"] }
-        ]
       }
     },
 

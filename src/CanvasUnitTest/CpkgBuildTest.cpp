@@ -1,5 +1,5 @@
 //================================================================================================
-// CpkgBuildTest - Tests for cpkg's Validate and Write stages, through the build command
+// CpkgBuildTest - Tests for cpkg's Expand, Validate, and Write stages, through the build command
 //================================================================================================
 
 #include "pch.h"
@@ -95,6 +95,103 @@ namespace
         std::vector<Block> m_Blocks;
         size_t m_Size = 0;
     };
+
+    //--------------------------------------------------------------------------------------------
+    // FBX files
+
+    // An ASCII FBX array member: name, the number of values, and values.
+    std::string FbxArray(std::string_view name, std::string_view values)
+    {
+        const size_t count = size_t(std::count(values.begin(), values.end(), ',')) + 1;
+        return "\t\t" + std::string(name) + ": *" + std::to_string(count) + " {\n\t\t\ta: " + std::string(values) + "\n\t\t}\n";
+    }
+
+    // An ASCII FBX file of objects and connections, Z up with its models facing -Y, as Blender
+    // writes, in units of unitScale centimeters.
+    std::string FbxFile(std::string_view objects, std::string_view connections, int unitScale = 100)
+    {
+        return "; FBX 7.5.0 project file\n"
+            "FBXHeaderExtension:  {\n\tFBXHeaderVersion: 1003\n\tFBXVersion: 7500\n}\n"
+            "GlobalSettings:  {\n\tVersion: 1000\n\tProperties70:  {\n"
+            "\t\tP: \"UpAxis\", \"int\", \"Integer\", \"\",2\n"
+            "\t\tP: \"UpAxisSign\", \"int\", \"Integer\", \"\",1\n"
+            "\t\tP: \"FrontAxis\", \"int\", \"Integer\", \"\",1\n"
+            "\t\tP: \"FrontAxisSign\", \"int\", \"Integer\", \"\",-1\n"
+            "\t\tP: \"CoordAxis\", \"int\", \"Integer\", \"\",0\n"
+            "\t\tP: \"CoordAxisSign\", \"int\", \"Integer\", \"\",1\n"
+            "\t\tP: \"UnitScaleFactor\", \"double\", \"Number\", \"\"," + std::to_string(unitScale) + "\n"
+            "\t}\n}\n"
+            "Objects:  {\n" + std::string(objects) + "}\n"
+            "Connections:  {\n" + std::string(connections) + "}\n";
+    }
+
+    // A mesh model named name, object id + 1, and its geometry, object id, which holds the
+    // members of layers after its vertices and polygons.
+    std::string FbxMesh(int id, std::string_view name, std::string_view vertices, std::string_view polygons, std::string_view layers = "")
+    {
+        return "\tGeometry: " + std::to_string(id) + ", \"Geometry::" + std::string(name) + "\", \"Mesh\" {\n"
+            + FbxArray("Vertices", vertices) + FbxArray("PolygonVertexIndex", polygons) + std::string(layers) + "\t}\n"
+            + "\tModel: " + std::to_string(id + 1) + ", \"Model::" + std::string(name) + "\", \"Mesh\" {\n\t\tVersion: 232\n\t}\n";
+    }
+
+    // The connections of FbxMesh's model to the root and its geometry to the model.
+    std::string FbxMeshConnections(int id)
+    {
+        return "\tC: \"OO\"," + std::to_string(id + 1) + ",0\n\tC: \"OO\"," + std::to_string(id) + "," + std::to_string(id + 1) + "\n";
+    }
+
+    // A phong material named name, object id, with a diffuse color.
+    std::string FbxMaterial(int id, std::string_view name, std::string_view diffuse)
+    {
+        return "\tMaterial: " + std::to_string(id) + ", \"Material::" + std::string(name) + "\", \"\" {\n\t\tVersion: 102\n\t\tShadingModel: \"phong\"\n"
+            "\t\tProperties70:  {\n\t\t\tP: \"DiffuseColor\", \"Color\", \"\", \"A\"," + std::string(diffuse) + "\n\t\t}\n\t}\n";
+    }
+
+    // A texture named name, object id, recording file as its relative file name.
+    std::string FbxTexture(int id, std::string_view name, std::string_view file)
+    {
+        return "\tTexture: " + std::to_string(id) + ", \"Texture::" + std::string(name) + "\", \"\" {\n\t\tType: \"TextureVideoClip\"\n\t\tVersion: 202\n"
+            "\t\tFileName: \"C:/nowhere/" + std::string(file) + "\"\n\t\tRelativeFilename: \"" + std::string(file) + "\"\n\t}\n";
+    }
+
+    std::string Base64(std::string_view bytes)
+    {
+        constexpr char kDigits[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string text;
+        for (size_t i = 0; i < bytes.size(); i += 3)
+        {
+            uint32_t group = uint32_t(uint8_t(bytes[i])) << 16;
+            if (i + 1 < bytes.size())
+                group |= uint32_t(uint8_t(bytes[i + 1])) << 8;
+            if (i + 2 < bytes.size())
+                group |= uint32_t(uint8_t(bytes[i + 2]));
+            text += kDigits[(group >> 18) & 63];
+            text += kDigits[(group >> 12) & 63];
+            text += i + 1 < bytes.size() ? kDigits[(group >> 6) & 63] : '=';
+            text += i + 2 < bytes.size() ? kDigits[group & 63] : '=';
+        }
+        return text;
+    }
+
+    // A video, object id, embedding bytes and recording file as its file name.
+    std::string FbxVideo(int id, std::string_view file, std::string_view bytes)
+    {
+        return "\tVideo: " + std::to_string(id) + ", \"Video::" + std::string(file) + "\", \"Clip\" {\n\t\tType: \"Clip\"\n"
+            "\t\tFileName: \"C:/nowhere/" + std::string(file) + "\"\n\t\tRelativeFilename: \"" + std::string(file) + "\"\n"
+            "\t\tContent: , \"" + Base64(bytes) + "\"\n\t}\n";
+    }
+
+    // A quad of 1 m in the file's XZ plane, facing -Y, the direction its models face.
+    const std::string kQuad = FbxFile(FbxMesh(100, "Quad", "0,0,0,1,0,0,1,0,1,0,0,1", "0,1,2,-4"), FbxMeshConnections(100));
+
+    // The index of the asset of the bundle named name; the asset count when none is.
+    uint32_t AssetIndex(const CCpkgReader &reader, uint32_t bundle, std::string_view name)
+    {
+        uint32_t i = 0;
+        while (i < reader.GetAssetCount(bundle) && reader.GetAssetName(bundle, i) != name)
+            ++i;
+        return i;
+    }
 }
 
 //------------------------------------------------------------------------------------------------
@@ -943,24 +1040,338 @@ TEST_F(CpkgBuild, ReportsValidationErrorsInDocumentOrder)
 }
 
 //------------------------------------------------------------------------------------------------
-TEST_F(CpkgBuild, ReportsMembersItCannotBuildYet)
+TEST_F(CpkgBuild, ImportsMeshesInCanvasSpace)
 {
+    WriteText("quad.fbx", kQuad);
+    auto build = [](std::string_view settings)
+    {
+        WriteText("levels.cpkg.json", R"({ "formatVersion": 1, "packageName": "Levels", "bundles": [ { "name": "Props", "imports": [ { "file": "quad.fbx", "nodes": false)"
+            + std::string(settings) + " } ] } ] }");
+        return RunCpkg({ "build", "levels.cpkg.json" });
+    };
+
+    // The file's -Y, the direction its model faces, is Canvas's +X, and its +X, the model's left,
+    // is Canvas's +Y. Its polygon is triangulated, and its normals generated.
+    RunResult result = build("");
+    ASSERT_EQ(result.Err, "");
+    {
+        CCpkgReader reader;
+        ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+        ASSERT_EQ(reader.GetAssetCount(0), 1u);
+        EXPECT_EQ(reader.GetAssetName(0, 0), "Quad.mesh");
+        const CPayload payload(reader, 0, 0);
+        const CpkgMeshData &mesh = payload.Header<CpkgMeshData>();
+        for (size_t axis = 0; axis < 3; ++axis)
+        {
+            EXPECT_NEAR(mesh.LocalBounds.Min[axis], 0.0f, 1e-6f) << axis;
+            EXPECT_NEAR(mesh.LocalBounds.Max[axis], axis == 0 ? 0.0f : 1.0f, 1e-6f) << axis;
+        }
+        const std::span<const CpkgMeshDataGroup> groups = payload.Elements<CpkgMeshData>(mesh.Groups);
+        ASSERT_EQ(groups.size(), 1u);
+        EXPECT_EQ(groups[0].Material.Count, 0u);
+        EXPECT_EQ(groups[0].Positions.Count, 6u);
+        EXPECT_EQ(groups[0].UV0.Count, 0u);
+        for (const CpkgVertexNormal &normal : payload.Elements<CpkgMeshData>(groups[0].Normals))
+        {
+            EXPECT_NEAR(normal.XYZ[0], 1.0f, 1e-6f);
+            EXPECT_NEAR(normal.XYZ[1], 0.0f, 1e-6f);
+            EXPECT_NEAR(normal.XYZ[2], 0.0f, 1e-6f);
+        }
+    }
+
+    // "rotation" and "scale" apply after the conversion: a quarter turn about +Z turns +Y to -X,
+    // and the normal +X to +Y.
+    result = build(R"(, "scale": 2, "rotation": { "degrees": [0, 0, 90] })");
+    ASSERT_EQ(result.Err, "");
+    {
+        CCpkgReader reader;
+        ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+        const CPayload payload(reader, 0, 0);
+        const CpkgMeshData &mesh = payload.Header<CpkgMeshData>();
+        const float min[] = { -2.0f, 0.0f, 0.0f };
+        const float max[] = { 0.0f, 0.0f, 2.0f };
+        for (size_t axis = 0; axis < 3; ++axis)
+        {
+            EXPECT_NEAR(mesh.LocalBounds.Min[axis], min[axis], 1e-6f) << axis;
+            EXPECT_NEAR(mesh.LocalBounds.Max[axis], max[axis], 1e-6f) << axis;
+        }
+        const CpkgMeshDataGroup &group = payload.Elements<CpkgMeshData>(mesh.Groups)[0];
+        EXPECT_NEAR(payload.Elements<CpkgMeshData>(group.Normals)[0].XYZ[1], 1.0f, 1e-6f);
+    }
+
+    // A file in centimeters is converted to meters.
+    WriteText("quad.fbx", FbxFile(FbxMesh(100, "Quad", "0,0,0,1,0,0,1,0,1,0,0,1", "0,1,2,-4"), FbxMeshConnections(100), 1));
+    result = build("");
+    ASSERT_EQ(result.Err, "");
+    {
+        CCpkgReader reader;
+        ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+        const CPayload payload(reader, 0, 0);
+        EXPECT_NEAR(payload.Header<CpkgMeshData>().LocalBounds.Max[2], 0.01f, 1e-8f);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ImportsMaterialsAndTextures)
+{
+    const std::string bump = ImageFiles::Png(8, 8, 'b');
+    const std::string wood = ImageFiles::Png(4, 2, 'w');
+    const std::string layers =
+        "\t\tLayerElementMaterial: 0 {\n\t\t\tVersion: 101\n\t\t\tMappingInformationType: \"ByPolygon\"\n"
+        "\t\t\tReferenceInformationType: \"IndexToDirect\"\n\t\t\tMaterials: *2 {\n\t\t\t\ta: 0,1\n\t\t\t}\n\t\t}\n"
+        "\t\tLayerElementUV: 0 {\n\t\t\tVersion: 101\n\t\t\tName: \"UVMap\"\n\t\t\tMappingInformationType: \"ByPolygonVertex\"\n"
+        "\t\t\tReferenceInformationType: \"Direct\"\n\t\t\tUV: *12 {\n\t\t\t\ta: 0,0,1,0,1,1,0,0,1,1,0,1\n\t\t\t}\n\t\t}\n"
+        "\t\tLayer: 0 {\n\t\t\tVersion: 100\n"
+        "\t\t\tLayerElement:  {\n\t\t\t\tType: \"LayerElementMaterial\"\n\t\t\t\tTypedIndex: 0\n\t\t\t}\n"
+        "\t\t\tLayerElement:  {\n\t\t\t\tType: \"LayerElementUV\"\n\t\t\t\tTypedIndex: 0\n\t\t\t}\n\t\t}\n";
+    std::filesystem::create_directory("art");
+    WriteText("art/tiles.fbx", FbxFile(
+        FbxMesh(100, "Tiles", "0,0,0,1,0,0,1,0,1,0,0,1", "0,1,-3,0,2,-4", layers)
+            + FbxMaterial(200, "Red", "1,0,0") + FbxMaterial(201, "Wood", "0.5,0.25,0")
+            + FbxVideo(300, "bump.png", bump) + FbxTexture(301, "Bump", "bump.png") + FbxTexture(302, "Wood", "wood.png"),
+        FbxMeshConnections(100)
+            + "\tC: \"OO\",200,101\n\tC: \"OO\",201,101\n"
+            + "\tC: \"OP\",301,200,\"NormalMap\"\n\tC: \"OO\",300,301\n\tC: \"OP\",302,201,\"DiffuseColor\"\n"));
+    WriteText("art/wood.png", wood);
     WriteText("levels.cpkg.json", R"({
   "formatVersion": 1,
   "packageName": "Levels",
-  "bundles": [ { "name": "Village", "imports": [ { "file": "goblin.fbx" } ] } ]
+  "bundles": [ { "name": "Props", "imports": [ { "file": "art/tiles.fbx", "nodes": false, "rename": { "materials": { "Red": "Brick" } } } ] } ]
 }
 )");
 
-    RunResult result = RunCpkg({ "validate", "levels.cpkg.json" });
-    EXPECT_EQ(result.Status, CpkgTool::kExitSuccess);
-    EXPECT_EQ(result.Err, "");
+    // The embedded texture's bytes and the external texture's file are stored unchanged, and each
+    // polygon's material builds a group. The FBX file and the external texture are inputs.
+    RunResult result = RunCpkg({ "build", "levels.cpkg.json", "--depfile", "levels.d" });
+    ASSERT_EQ(result.Err, "");
+    const std::string inputs = ReadBytes("levels.d");
+    EXPECT_NE(inputs.find("/art/tiles.fbx"), std::string::npos) << inputs;
+    EXPECT_NE(inputs.find("/art/wood.png"), std::string::npos) << inputs;
+    {
+        CCpkgReader reader;
+        ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+        ASSERT_EQ(reader.GetAssetCount(0), 5u);
+        const char *names[] = { "bump.image", "wood.image", "Brick", "Wood.material", "Tiles.mesh" };
+        for (uint32_t i = 0; i < std::size(names); ++i)
+            EXPECT_EQ(reader.GetAssetName(0, i), names[i]) << i;
 
+        const std::string *pBytes[] = { &bump, &wood };
+        for (uint32_t i = 0; i < 2; ++i)
+        {
+            const CPayload payload(reader, 0, i);
+            const CpkgImageData &image = payload.Header<CpkgImageData>();
+            EXPECT_EQ(image.Encoding, CpkgImageEncoding::Png);
+            EXPECT_EQ(image.Width, i == 0 ? 8u : 4u);
+            const std::span<const CpkgSpan<uint8_t>> entries = payload.Elements<CpkgImageData>(image.Images);
+            ASSERT_EQ(entries.size(), 1u);
+            const std::span<const uint8_t> stored = payload.Elements<CpkgImageData>(entries[0]);
+            EXPECT_EQ(std::string(stored.begin(), stored.end()), *pBytes[i]) << i;
+        }
+        {
+            const CPayload payload(reader, 0, 2);
+            const CpkgMaterialData &brick = payload.Header<CpkgMaterialData>();
+            EXPECT_EQ(brick.BaseColorFactor[0], 1.0f);
+            EXPECT_EQ(brick.BaseColorFactor[1], 0.0f);
+            EXPECT_EQ(brick.BaseColorFactor[3], 1.0f);
+            EXPECT_EQ(payload.Text<CpkgMaterialData>(brick.NormalTexture), "bump.image");
+            EXPECT_EQ(brick.AlbedoTexture.Count, 0u);
+        }
+        {
+            const CPayload payload(reader, 0, 3);
+            const CpkgMaterialData &woodMaterial = payload.Header<CpkgMaterialData>();
+            EXPECT_EQ(woodMaterial.BaseColorFactor[1], 0.25f);
+            EXPECT_EQ(payload.Text<CpkgMaterialData>(woodMaterial.AlbedoTexture), "wood.image");
+        }
+        {
+            const CPayload payload(reader, 0, 4);
+            const std::span<const CpkgMeshDataGroup> groups = payload.Elements<CpkgMeshData>(payload.Header<CpkgMeshData>().Groups);
+            ASSERT_EQ(groups.size(), 2u);
+            EXPECT_EQ(payload.Text<CpkgMeshData>(groups[0].Material), "Brick");
+            EXPECT_EQ(payload.Text<CpkgMeshData>(groups[1].Material), "Wood.material");
+            EXPECT_EQ(groups[0].Positions.Count, 3u);
+            ASSERT_EQ(groups[0].UV0.Count, 3u);
+
+            // FBX's V runs up from the bottom, and Canvas's down from the top.
+            EXPECT_EQ(payload.Elements<CpkgMeshData>(groups[0].UV0)[0].UV[1], 1.0f);
+        }
+    }
+
+    // A replaced material is not built, and neither is the image only it uses, whose file the
+    // build then does not need.
+    std::filesystem::remove("art/wood.png");
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [ { "name": "Props", "materials": { "Oak": {} }, "imports": [ { "file": "art/tiles.fbx", "nodes": false, "replace": { "materials": { "Wood": "Oak" } } } ] } ]
+}
+)");
+    result = RunCpkg({ "build", "levels.cpkg.json" });
+    ASSERT_EQ(result.Err, "");
+    {
+        CCpkgReader reader;
+        ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+        ASSERT_EQ(reader.GetAssetCount(0), 4u);
+        EXPECT_EQ(AssetIndex(reader, 0, "wood.image"), 4u);
+        EXPECT_EQ(AssetIndex(reader, 0, "Wood.material"), 4u);
+        const CPayload payload(reader, 0, AssetIndex(reader, 0, "Tiles.mesh"));
+        const std::span<const CpkgMeshDataGroup> groups = payload.Elements<CpkgMeshData>(payload.Header<CpkgMeshData>().Groups);
+        ASSERT_EQ(groups.size(), 2u);
+        EXPECT_EQ(payload.Text<CpkgMeshData>(groups[1].Material), "Oak");
+    }
+
+    // An external texture found nowhere is reported.
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [ { "name": "Props", "imports": [ { "file": "art/tiles.fbx", "nodes": false } ] } ]
+}
+)");
     result = RunCpkg({ "build", "levels.cpkg.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitError);
     EXPECT_EQ(result.Err,
-        "levels.cpkg.json:4:16: error: cpkg cannot build a bundle's \"imports\" yet [/bundles/0]\n");
+        "levels.cpkg.json:4:48: error: the FBX texture \"wood\" of the FBX material \"Wood\" is not found: \"wood.png\" [/bundles/0/imports/0]\n");
+}
+
+//------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ReportsImportNames)
+{
+    WriteText("walls.fbx", FbxFile(FbxMesh(100, "wall/left", "0,0,0,1,0,0,1,0,1", "0,1,-3") + FbxMesh(200, "Crate", "0,0,0,1,0,0,1,0,1", "0,1,-3"),
+        FbxMeshConnections(100) + FbxMeshConnections(200)));
+
+    // A name in the file that cannot name an asset is an error, and so is a key of "rename" or
+    // "replace" that names nothing in the file.
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Props",
+      "materials": { "Crate.mesh": {} },
+      "imports": [ { "file": "walls.fbx", "nodes": false, "rename": { "meshes": { "Barrel": "B" } }, "replace": { "materials": { "Skin": "Crate.mesh" } } } ]
+    }
+  ]
+}
+)");
+    RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+    EXPECT_EQ(result.Err,
+        "levels.cpkg.json:8:20: error: the FBX mesh \"wall/left\" builds the name \"wall/left.mesh\", and it holds a '/'; name it with \"rename\" [/bundles/0/imports/0]\n"
+        "levels.cpkg.json:8:83: error: the FBX file has no mesh \"Barrel\" [/bundles/0/imports/0/rename/meshes/Barrel]\n"
+        "levels.cpkg.json:8:130: error: the FBX file has no material \"Skin\" [/bundles/0/imports/0/replace/materials/Skin]\n");
+
+    // A built name the bundle already uses is an error.
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Props",
+      "materials": { "Crate.mesh": {} },
+      "imports": [ { "file": "walls.fbx", "nodes": false, "rename": { "meshes": { "wall/left": "LeftWall" } } } ]
+    }
+  ]
+}
+)");
+    result = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+    EXPECT_EQ(result.Err, "levels.cpkg.json:8:20: error: the bundle already uses the name \"Crate.mesh\" [/bundles/0/imports/0]\n");
+
+    // "rename" and "names" give each a name.
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Props",
+      "materials": { "Crate.mesh": {} },
+      "imports": [ { "file": "walls.fbx", "nodes": false, "names": { "meshes": "Wall_{name}" }, "rename": { "meshes": { "wall/left": "LeftWall" } } } ]
+    }
+  ]
+}
+)");
+    result = RunCpkg({ "build", "levels.cpkg.json" });
+    ASSERT_EQ(result.Err, "");
+    CCpkgReader reader;
+    ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+    ASSERT_EQ(reader.GetAssetCount(0), 3u);
+    EXPECT_EQ(reader.GetAssetName(0, 1), "LeftWall");
+    EXPECT_EQ(reader.GetAssetName(0, 2), "Wall_Crate");
+}
+
+//------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ReportsUnreadableImports)
+{
+    WriteText("junk.fbx", "not an FBX file");
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [ { "name": "Props", "imports": [ { "file": "missing.fbx", "nodes": false }, { "file": "junk.fbx", "nodes": false }, { "file": "tree.obj", "nodes": false } ] } ]
+}
+)");
+    const RunResult result = RunCpkg({ "validate", "levels.cpkg.json" });
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+    EXPECT_EQ(result.Err,
+        "levels.cpkg.json:4:58: error: file not found: \"missing.fbx\" [/bundles/0/imports/0/file]\n"
+        "levels.cpkg.json:4:101: error: cannot read the FBX file (Unsupported version): \"junk.fbx\" [/bundles/0/imports/1/file]\n"
+        "levels.cpkg.json:4:141: error: expected an exchange file in a format cpkg reads, \".fbx\": \"tree.obj\" [/bundles/0/imports/2/file]\n");
+}
+
+//------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ReportsImportsItCannotBuildYet)
+{
+    WriteText("quad.fbx", kQuad);
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Props",
+      "nodes": [ { "name": "Root" } ],
+      "imports": [
+        { "file": "quad.fbx" },
+        { "file": "quad.fbx", "nodes": false, "parent": "Root", "skeleton": "Hips.skeleton", "names": { "meshes": "B_{name}" },
+          "rename": { "nodes": { "Quad": "Q" } }, "clips": [ "Idle" ], "edits": { "Quad": { "mobility": "movable" } } }
+      ]
+    }
+  ]
+}
+)");
+    const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+    EXPECT_EQ(result.Err,
+        "levels.cpkg.json:9:9: error: cpkg cannot build an import's nodes yet [/bundles/0/imports/0]\n"
+        "levels.cpkg.json:10:57: error: cpkg cannot build an import's \"parent\" yet [/bundles/0/imports/1/parent]\n"
+        "levels.cpkg.json:10:77: error: cpkg cannot build an import's \"skeleton\" yet [/bundles/0/imports/1/skeleton]\n"
+        "levels.cpkg.json:11:34: error: cpkg cannot build an import's \"rename\" of \"nodes\" yet [/bundles/0/imports/1/rename/nodes/Quad]\n"
+        "levels.cpkg.json:11:62: error: cpkg cannot build an import's \"clips\" yet [/bundles/0/imports/1/clips/0]\n"
+        "levels.cpkg.json:11:83: error: cpkg cannot build an import's \"edits\" yet [/bundles/0/imports/1/edits/Quad]\n");
     EXPECT_FALSE(std::filesystem::exists("levels.cpkg"));
+}
+
+//------------------------------------------------------------------------------------------------
+// Each FBX file of deps/FbxAssets builds its shared assets, or reports only what cpkg cannot
+// build yet.
+TEST_F(CpkgBuild, ImportsTheFbxAssets)
+{
+    for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(CANVAS_FBX_ASSET_DIR))
+    {
+        if (entry.path().extension() != ".fbx")
+            continue;
+        const std::string file = entry.path().generic_string();
+        WriteText("assets.cpkg.json", R"({ "formatVersion": 1, "packageName": "Assets", "bundles": [ { "name": "A", "imports": [ { "file": ")"
+            + file + R"(", "nodes": false, "clips": [] } ] } ] })");
+        const RunResult result = RunCpkg({ "build", "assets.cpkg.json" });
+        std::istringstream lines(result.Err);
+        for (std::string line; std::getline(lines, line);)
+            EXPECT_NE(line.find("error: cpkg cannot build "), std::string::npos) << file << ": " << line;
+        if (result.Err.empty())
+        {
+            EXPECT_EQ(result.Status, CpkgTool::kExitSuccess) << file;
+            CCpkgReader reader;
+            ASSERT_EQ(reader.Open("assets.cpkg"), Result::Success) << file;
+            EXPECT_GT(reader.GetAssetCount(0), 0u) << file;
+        }
+    }
 }
 
 //------------------------------------------------------------------------------------------------
