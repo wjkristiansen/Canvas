@@ -125,13 +125,40 @@ namespace
             "Connections:  {\n" + std::string(connections) + "}\n";
     }
 
-    // A mesh model named name, object id + 1, and its geometry, object id, which holds the
-    // members of layers after its vertices and polygons.
-    std::string FbxMesh(int id, std::string_view name, std::string_view vertices, std::string_view polygons, std::string_view layers = "")
+    // A property of an FBX object: name, its type, and values.
+    std::string FbxProperty(std::string_view name, std::string_view type, std::string_view values)
+    {
+        return "\t\t\tP: \"" + std::string(name) + "\", \"" + std::string(type) + "\", \"\", \"A\"," + std::string(values) + "\n";
+    }
+
+    // A model named name, object id, of type, with properties, such as FbxProperty("Lcl Translation", ...) gives.
+    std::string FbxModel(int id, std::string_view name, std::string_view type, std::string_view properties = "")
+    {
+        return "\tModel: " + std::to_string(id) + ", \"Model::" + std::string(name) + "\", \"" + std::string(type) + "\" {\n\t\tVersion: 232\n"
+            + (properties.empty() ? std::string() : "\t\tProperties70:  {\n" + std::string(properties) + "\t\t}\n") + "\t}\n";
+    }
+
+    // A camera or light attribute, object id, of class "Camera" or "Light", with properties.
+    std::string FbxAttribute(int id, std::string_view kind, std::string_view properties)
+    {
+        return "\tNodeAttribute: " + std::to_string(id) + ", \"NodeAttribute::\", \"" + std::string(kind) + "\" {\n"
+            "\t\tProperties70:  {\n" + std::string(properties) + "\t\t}\n\t\tTypeFlags: \"" + std::string(kind) + "\"\n\t}\n";
+    }
+
+    // A connection of object child to object parent; 0 is the root.
+    std::string FbxConnection(int child, int parent)
+    {
+        return "\tC: \"OO\"," + std::to_string(child) + "," + std::to_string(parent) + "\n";
+    }
+
+    // A mesh model named name, object id + 1, with model properties, and its geometry, object
+    // id, which holds the members of layers after its vertices and polygons.
+    std::string FbxMesh(int id, std::string_view name, std::string_view vertices, std::string_view polygons, std::string_view layers = "",
+        std::string_view properties = "")
     {
         return "\tGeometry: " + std::to_string(id) + ", \"Geometry::" + std::string(name) + "\", \"Mesh\" {\n"
             + FbxArray("Vertices", vertices) + FbxArray("PolygonVertexIndex", polygons) + std::string(layers) + "\t}\n"
-            + "\tModel: " + std::to_string(id + 1) + ", \"Model::" + std::string(name) + "\", \"Mesh\" {\n\t\tVersion: 232\n\t}\n";
+            + FbxModel(id + 1, name, "Mesh", properties);
     }
 
     // The connections of FbxMesh's model to the root and its geometry to the model.
@@ -184,6 +211,24 @@ namespace
     // A quad of 1 m in the file's XZ plane, facing -Y, the direction its models face.
     const std::string kQuad = FbxFile(FbxMesh(100, "Quad", "0,0,0,1,0,0,1,0,1,0,0,1", "0,1,2,-4"), FbxMeshConnections(100));
 
+    // A file in centimeters whose root node Body holds a quad 1 m across and the node Lamp, and
+    // whose root node Eye holds a camera with a vertical field of view of 60 degrees. With folded, it holds its geometry and Lamp's
+    // translation in meters, and its root nodes are scaled by 100, as Blender writes.
+    std::string NodesFbx(bool folded)
+    {
+        const std::string rootScale = folded ? FbxProperty("Lcl Scaling", "Lcl Scaling", "100,100,100") : "";
+        const std::string quad = folded ? "0,0,0,1,0,0,1,0,1,0,0,1" : "0,0,0,100,0,0,100,0,100,0,0,100";
+        return FbxFile(
+            FbxMesh(100, "Body", quad, "0,1,2,-4", "", FbxProperty("Lcl Translation", "Lcl Translation", "0,0,200") + rootScale)
+                + FbxModel(201, "Lamp", "Light", FbxProperty("Lcl Translation", "Lcl Translation", folded ? "1,0,0" : "100,0,0"))
+                + FbxAttribute(200, "Light", FbxProperty("LightType", "enum", "0") + FbxProperty("Intensity", "Number", "50")
+                    + FbxProperty("Color", "Color", "1,0.5,0.25"))
+                + FbxModel(301, "Eye", "Camera", rootScale)
+                + FbxAttribute(300, "Camera", FbxProperty("NearPlane", "Number", "10") + FbxProperty("FarPlane", "Number", "1000")
+                    + FbxProperty("ApertureMode", "enum", "2") + FbxProperty("FieldOfView", "FieldOfView", "60")),
+            FbxMeshConnections(100) + FbxConnection(201, 101) + FbxConnection(200, 201) + FbxConnection(301, 0) + FbxConnection(300, 301), 1);
+    }
+
     // The index of the asset of the bundle named name; the asset count when none is.
     uint32_t AssetIndex(const CCpkgReader &reader, uint32_t bundle, std::string_view name)
     {
@@ -191,6 +236,19 @@ namespace
         while (i < reader.GetAssetCount(bundle) && reader.GetAssetName(bundle, i) != name)
             ++i;
         return i;
+    }
+
+    // The index of the asset of type, of the bundle, that attaches to the node at nodeIndex; the
+    // asset count when none does.
+    template <class TData>
+    uint32_t AttachedIndex(const CCpkgReader &reader, uint32_t bundle, AssetType type, uint32_t nodeIndex)
+    {
+        for (uint32_t i = 0; i < reader.GetAssetCount(bundle); ++i)
+        {
+            if (reader.GetAssetType(bundle, i) == type && CPayload(reader, bundle, i).Header<TData>().NodeIndex == int32_t(nodeIndex))
+                return i;
+        }
+        return reader.GetAssetCount(bundle);
     }
 }
 
@@ -1317,6 +1375,141 @@ TEST_F(CpkgBuild, ReportsUnreadableImports)
 }
 
 //------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ImportsNodes)
+{
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Props",
+      "nodes": [ { "name": "Root" } ],
+      "imports": [
+        {
+          "file": "room.fbx",
+          "parent": "Root",
+          "rename": { "nodes": { "Eye": "Camera1" } },
+          "edits": {
+            "Body": { "mobility": "movable", "children": [ { "name": "Grip" } ] },
+            "Lamp": { "light": { "intensity": 2 } }
+          }
+        }
+      ]
+    }
+  ]
+}
+)");
+
+    // Whether the file folds its unit into its root nodes or not, the nodes build alike: in
+    // meters, with unit scale, and turned from the file's axes to Canvas's, a quarter turn
+    // about +Z.
+    for (const bool folded : { false, true })
+    {
+        WriteText("room.fbx", NodesFbx(folded));
+        const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+        ASSERT_EQ(result.Err, "") << folded;
+        CCpkgReader reader;
+        ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+        const uint32_t root = AssetIndex(reader, 0, "Root");
+        const uint32_t body = AssetIndex(reader, 0, "Body");
+        const uint32_t lamp = AssetIndex(reader, 0, "Lamp");
+        const uint32_t eye = AssetIndex(reader, 0, "Camera1");
+        const uint32_t grip = AssetIndex(reader, 0, "Grip");
+        const uint32_t count = reader.GetAssetCount(0);
+        ASSERT_TRUE(root < count && body < count && lamp < count && eye < count && grip < count) << folded;
+
+        {
+            const CPayload payload(reader, 0, body);
+            const CpkgTransformNodeData &node = payload.Header<CpkgTransformNodeData>();
+            EXPECT_EQ(node.ParentIndex, int32_t(root));
+            EXPECT_EQ(node.Mobility, CpkgMobility::Movable);
+            const CpkgTransform &transform = node.LocalTransform;
+            const float translation[] = { 0.0f, 0.0f, 2.0f };
+            const float rotation[] = { 0.0f, 0.0f, 0.70710678f, 0.70710678f };
+            for (size_t i = 0; i < 3; ++i)
+            {
+                EXPECT_NEAR(transform.Translation[i], translation[i], 1e-5f) << folded << i;
+                EXPECT_NEAR(transform.Scale[i], 1.0f, 1e-5f) << folded << i;
+            }
+            for (size_t i = 0; i < 4; ++i)
+                EXPECT_NEAR(transform.Rotation[i], rotation[i], 1e-5f) << folded << i;
+        }
+        {
+            const CPayload payload(reader, 0, lamp);
+            const CpkgTransformNodeData &node = payload.Header<CpkgTransformNodeData>();
+            EXPECT_EQ(node.ParentIndex, int32_t(body));
+            EXPECT_NEAR(node.LocalTransform.Translation[0], 1.0f, 1e-5f) << folded;
+            EXPECT_EQ(CPayload(reader, 0, grip).Header<CpkgTransformNodeData>().ParentIndex, int32_t(body));
+        }
+        {
+            const CPayload payload(reader, 0, AssetIndex(reader, 0, "Body.mesh"));
+            EXPECT_NEAR(payload.Header<CpkgMeshData>().LocalBounds.Max[2], 1.0f, 1e-5f) << folded;
+        }
+
+        const uint32_t instance = AttachedIndex<CpkgMeshInstanceData>(reader, 0, AssetType::MeshInstance, body);
+        ASSERT_LT(instance, count);
+        {
+            const CPayload payload(reader, 0, instance);
+            EXPECT_EQ(payload.Text<CpkgMeshInstanceData>(payload.Header<CpkgMeshInstanceData>().MeshData), "Body.mesh");
+        }
+
+        // The edit sets the light's intensity, and keeps the rest of what the file gives it.
+        const uint32_t light = AttachedIndex<CpkgLightData>(reader, 0, AssetType::Light, lamp);
+        ASSERT_LT(light, count);
+        {
+            const CPayload payload(reader, 0, light);
+            const CpkgLightData &data = payload.Header<CpkgLightData>();
+            EXPECT_EQ(data.Type, LightType::Point);
+            EXPECT_EQ(data.Intensity, 2.0f);
+            EXPECT_EQ(data.Color[1], 0.5f);
+        }
+
+        // The camera's clip planes are distances, converted to meters, and its vertical field of
+        // view is in radians.
+        const uint32_t camera = AttachedIndex<CpkgCameraData>(reader, 0, AssetType::Camera, eye);
+        ASSERT_LT(camera, count);
+        {
+            const CPayload payload(reader, 0, camera);
+            const CpkgCameraData &data = payload.Header<CpkgCameraData>();
+            EXPECT_NEAR(data.NearClip, 0.1f, 1e-6f) << folded;
+            EXPECT_NEAR(data.FarClip, 10.0f, 1e-5f) << folded;
+            EXPECT_NEAR(data.FovAngle, 1.04719755f, 1e-5f);
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ReportsImportNodeErrors)
+{
+    WriteText("room.fbx", NodesFbx(false));
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Props",
+      "imports": [
+        { "file": "room.fbx", "parent": "Nowhere", "edits": { "Lid": {}, "Body": { "light": { "intensity": 2 } } } },
+        { "file": "room.fbx", "nodes": false, "names": { "meshes": "B_{name}" }, "parent": "Root",
+          "rename": { "nodes": { "Body": "B" } }, "edits": { "Body": {} } }
+      ]
+    }
+  ]
+}
+)");
+    const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+    EXPECT_EQ(result.Err,
+        "levels.cpkg.json:8:41: error: the bundle has no node \"Nowhere\" [/bundles/0/imports/0/parent]\n"
+        "levels.cpkg.json:8:63: error: the import builds no node \"Lid\" [/bundles/0/imports/0/edits/Lid]\n"
+        "levels.cpkg.json:8:93: error: the node \"Body\" has no light, so the edit's light needs a \"type\" [/bundles/0/imports/0/edits/Body/light]\n"
+        "levels.cpkg.json:9:92: error: \"parent\" applies to the nodes the import builds, and it has \"nodes\": false [/bundles/0/imports/1/parent]\n"
+        "levels.cpkg.json:10:34: error: \"rename\" of \"nodes\" applies to the nodes the import builds, and it has \"nodes\": false [/bundles/0/imports/1/rename/nodes/Body]\n"
+        "levels.cpkg.json:10:62: error: \"edits\" applies to the nodes the import builds, and it has \"nodes\": false [/bundles/0/imports/1/edits/Body]\n");
+    EXPECT_FALSE(std::filesystem::exists("levels.cpkg"));
+}
+
+//------------------------------------------------------------------------------------------------
 TEST_F(CpkgBuild, ReportsImportsItCannotBuildYet)
 {
     WriteText("quad.fbx", kQuad);
@@ -1326,11 +1519,8 @@ TEST_F(CpkgBuild, ReportsImportsItCannotBuildYet)
   "bundles": [
     {
       "name": "Props",
-      "nodes": [ { "name": "Root" } ],
       "imports": [
-        { "file": "quad.fbx" },
-        { "file": "quad.fbx", "nodes": false, "parent": "Root", "skeleton": "Hips.skeleton", "names": { "meshes": "B_{name}" },
-          "rename": { "nodes": { "Quad": "Q" } }, "clips": [ "Idle" ], "edits": { "Quad": { "mobility": "movable" } } }
+        { "file": "quad.fbx", "skeleton": "Hips.skeleton", "rename": { "skeletons": { "Hips": "H" } }, "clips": [ "Idle" ] }
       ]
     }
   ]
@@ -1339,12 +1529,9 @@ TEST_F(CpkgBuild, ReportsImportsItCannotBuildYet)
     const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitError);
     EXPECT_EQ(result.Err,
-        "levels.cpkg.json:9:9: error: cpkg cannot build an import's nodes yet [/bundles/0/imports/0]\n"
-        "levels.cpkg.json:10:57: error: cpkg cannot build an import's \"parent\" yet [/bundles/0/imports/1/parent]\n"
-        "levels.cpkg.json:10:77: error: cpkg cannot build an import's \"skeleton\" yet [/bundles/0/imports/1/skeleton]\n"
-        "levels.cpkg.json:11:34: error: cpkg cannot build an import's \"rename\" of \"nodes\" yet [/bundles/0/imports/1/rename/nodes/Quad]\n"
-        "levels.cpkg.json:11:62: error: cpkg cannot build an import's \"clips\" yet [/bundles/0/imports/1/clips/0]\n"
-        "levels.cpkg.json:11:83: error: cpkg cannot build an import's \"edits\" yet [/bundles/0/imports/1/edits/Quad]\n");
+        "levels.cpkg.json:8:43: error: cpkg cannot build an import's \"skeleton\" yet [/bundles/0/imports/0/skeleton]\n"
+        "levels.cpkg.json:8:87: error: cpkg cannot build an import's \"rename\" of \"skeletons\" yet [/bundles/0/imports/0/rename/skeletons/Hips]\n"
+        "levels.cpkg.json:8:115: error: cpkg cannot build an import's \"clips\" yet [/bundles/0/imports/0/clips/0]\n");
     EXPECT_FALSE(std::filesystem::exists("levels.cpkg"));
 }
 
@@ -1359,7 +1546,7 @@ TEST_F(CpkgBuild, ImportsTheFbxAssets)
             continue;
         const std::string file = entry.path().generic_string();
         WriteText("assets.cpkg.json", R"({ "formatVersion": 1, "packageName": "Assets", "bundles": [ { "name": "A", "imports": [ { "file": ")"
-            + file + R"(", "nodes": false, "clips": [] } ] } ] })");
+            + file + R"(", "clips": [] } ] } ] })");
         const RunResult result = RunCpkg({ "build", "assets.cpkg.json" });
         std::istringstream lines(result.Err);
         for (std::string line; std::getline(lines, line);)
@@ -1370,6 +1557,17 @@ TEST_F(CpkgBuild, ImportsTheFbxAssets)
             CCpkgReader reader;
             ASSERT_EQ(reader.Open("assets.cpkg"), Result::Success) << file;
             EXPECT_GT(reader.GetAssetCount(0), 0u) << file;
+
+            // No root node carries a scale for the file's unit, only the scales authored in Blender.
+            for (uint32_t i = 0; i < reader.GetAssetCount(0); ++i)
+            {
+                if (reader.GetAssetType(0, i) != AssetType::TransformNode)
+                    continue;
+                const CPayload payload(reader, 0, i);
+                const CpkgTransformNodeData &node = payload.Header<CpkgTransformNodeData>();
+                for (size_t axis = 0; node.ParentIndex == -1 && axis < 3; ++axis)
+                    EXPECT_LT(std::abs(node.LocalTransform.Scale[axis]), 10.0f) << file << ": " << reader.GetAssetName(0, i);
+            }
         }
     }
 }
