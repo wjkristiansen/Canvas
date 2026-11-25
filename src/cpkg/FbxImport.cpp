@@ -40,8 +40,9 @@ using ScenePtr = std::unique_ptr<ufbx_scene, SceneDeleter>;
 // a model's front maps to +X and its left to +Y.
 constexpr ufbx_coordinate_axes kCanvasAxes = { UFBX_COORDINATE_AXIS_POSITIVE_Y, UFBX_COORDINATE_AXIS_POSITIVE_Z, UFBX_COORDINATE_AXIS_POSITIVE_X };
 
-// Reads the FBX file bytes holds, whose path is path. Its geometry is scaled to meters; the
-// change to Canvas's axes is in its nodes' transforms (see AxisChange).
+// Reads the FBX file bytes holds, whose path is path. Its geometry and node transforms stay in
+// the file's units and axes; the conversion to meters and Canvas's axes is the root node's
+// transform, which the reader applies (see CFbxReader::Read).
 ScenePtr LoadScene(std::string_view bytes, const std::string &path, std::string *pError)
 {
     ufbx_load_opts options = {};
@@ -53,7 +54,7 @@ ScenePtr LoadScene(std::string_view bytes, const std::string &path, std::string 
     options.target_light_axes = options.target_camera_axes;
 
     options.target_unit_meters = 1.0f;
-    options.space_conversion = UFBX_SPACE_CONVERSION_MODIFY_GEOMETRY;
+    options.space_conversion = UFBX_SPACE_CONVERSION_TRANSFORM_ROOT;
     options.geometry_transform_handling = UFBX_GEOMETRY_TRANSFORM_HANDLING_MODIFY_GEOMETRY;
     options.inherit_mode_handling = UFBX_INHERIT_MODE_HANDLING_HELPER_NODES;
     options.filename = ufbx_string{ path.data(), path.size() };
@@ -100,9 +101,9 @@ float Determinant(const Mat3 &m)
         + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
 }
 
-// The change of basis from the axes a file declares to Canvas's. ufbx applies it to a scene's
-// nodes, not to the geometry they hold, so the geometry of an import that builds no nodes takes
-// it here. The identity for axes that name an axis twice or are unknown.
+// The change of basis from the axes a file declares to Canvas's, which the geometry of an
+// import that builds no nodes takes. The identity for axes that name an axis twice or are
+// unknown.
 Mat3 AxisChange(const ufbx_coordinate_axes &file)
 {
     const ufbx_coordinate_axis from[] = { file.right, file.up, file.front };
@@ -156,17 +157,52 @@ public:
         }
         m_Directory = PathOf(file.Path).parent_path();
         m_AxisChange = AxisChange(m_pScene->settings.axes);
+        const ufbx_transform &root = m_pScene->root_node->local_transform;
+        m_RootRotation = root.rotation;
+        m_Unit = root.scale.x;
+        m_Folds = Folds();
+        m_PushedScale = m_Folds ? ufbx_real(1) : m_Unit;
 
         if (m_pScene->bones.count != 0 || m_pScene->skin_deformers.count != 0)
             m_Builder.Unsupported(m_Import.Where, "the skeletons and skins of an FBX file");
         if (!m_Import.Clips && Animates())
             m_Builder.Unsupported(m_Import.Where, "the animation of an FBX file");
+        if (m_Import.Nodes && Determinant(m_AxisChange) < 0.0f)
+            m_Builder.Unsupported(m_Import.Where, "the nodes of an FBX file in a left-handed axis system");
         BuildMaterials();
         BuildMeshes();
+        if (m_Import.Nodes)
+            BuildNodes();
         return true;
     }
 
 private:
+    // Whether the conversion to meters folds into the scale of the file's root nodes. Either way
+    // the built content is the file's: a folded unit leaves the geometry and every node below the
+    // root nodes unscaled, and otherwise the unit scales the geometry and every translation, and
+    // the root nodes keep their scale. The unit folds when that leaves the root nodes' scales
+    // nearer 1, measured as the sum of the magnitudes of their scales' logarithms, as for a file
+    // that holds geometry in meters under root nodes scaled to its declared unit.
+    bool Folds() const
+    {
+        if (m_Unit == 1)
+            return false;
+        double kept = 0.0;
+        double folded = 0.0;
+        for (const ufbx_node *pNode : m_pScene->root_node->children)
+        {
+            const ufbx_vec3 &s = pNode->local_transform.scale;
+            for (const ufbx_real axis : { s.x, s.y, s.z })
+            {
+                if (axis == 0)
+                    return false;
+                kept += std::abs(std::log(std::abs(double(axis))));
+                folded += std::abs(std::log(std::abs(double(axis) * m_Unit)));
+            }
+        }
+        return folded < kept;
+    }
+
     // Whether any animation stack of the file animates a property.
     bool Animates() const
     {
@@ -333,19 +369,27 @@ private:
     //--------------------------------------------------------------------------------------------
     // Meshes
 
+    // A vertex position or direction of the file's geometry, in its node's space when the import
+    // builds nodes, whose transforms then hold the change of axes and "rotation", and otherwise in
+    // Canvas space.
     Vec3 Position(ufbx_vec3 v) const
     {
-        return m_Builder.Position(Transform(ToVec3(v), m_AxisChange));
+        const Vec3 p = ToVec3(ufbx_vec3{ v.x * m_PushedScale, v.y * m_PushedScale, v.z * m_PushedScale });
+        if (m_Import.Nodes)
+            return { p[0] * m_Import.Scale, p[1] * m_Import.Scale, p[2] * m_Import.Scale };
+        return m_Builder.Position(Transform(p, m_AxisChange));
     }
 
     Vec3 Direction(ufbx_vec3 v) const
     {
+        if (m_Import.Nodes)
+            return ToVec3(v);
         return m_Builder.Direction(Transform(ToVec3(v), m_AxisChange));
     }
 
     void BuildMeshes()
     {
-        const bool mirrored = Determinant(m_AxisChange) < 0.0f;
+        const bool mirrored = !m_Import.Nodes && Determinant(m_AxisChange) < 0.0f;
         for (const ufbx_mesh *pMesh : m_pScene->meshes)
         {
             const ufbx_mesh &mesh = *pMesh;
@@ -426,18 +470,147 @@ private:
             SourceNamed<SourceMesh> &asset = m_Builder.GetBundle().Meshes.emplace_back();
             asset.Name = builtName;
             asset.Value = std::move(built);
+            m_MeshPaths.emplace(pMesh, asset.Name);
         }
     }
+
+    //--------------------------------------------------------------------------------------------
+    // Nodes
+
+    void BuildNodes()
+    {
+        std::vector<SourceNode> roots;
+        for (const ufbx_node *pNode : m_pScene->root_node->children)
+            roots.push_back(BuildNode(*pNode, true));
+        m_Builder.AddNodes(std::move(roots));
+    }
+
+    SourceNode BuildNode(const ufbx_node &node, bool isRoot)
+    {
+        SourceNode built;
+        built.Where = m_Import.Where;
+        if (node.name.length != 0)
+            built.Name = m_Builder.BuiltName(SourceImportKind::Nodes, std::string(View(node.name)));
+        const std::string described = m_Builder.Describe(SourceImportKind::Nodes, View(node.name));
+
+        // A root node takes the conversion to meters and Canvas's axes, the root's transform; the
+        // unit's scale folds into its scale, or else scales its translation and everything below.
+        const ufbx_transform &local = node.local_transform;
+        if (isRoot)
+        {
+            const ufbx_vec3 t = ufbx_quat_rotate_vec3(m_RootRotation, ufbx_vec3{ local.translation.x * m_Unit, local.translation.y * m_Unit, local.translation.z * m_Unit });
+            const ufbx_quat r = ufbx_quat_normalize(ufbx_quat_mul(m_RootRotation, local.rotation));
+            const ufbx_real s = m_Folds ? m_Unit : ufbx_real(1);
+            built.Transform = m_Builder.RootTransform(ToVec3(t), { float(r.x), float(r.y), float(r.z), float(r.w) },
+                { float(local.scale.x * s), float(local.scale.y * s), float(local.scale.z * s) });
+        }
+        else
+        {
+            const ufbx_real scale = m_PushedScale * m_Import.Scale;
+            built.Transform.Translation = Vec3{ float(local.translation.x * scale), float(local.translation.y * scale), float(local.translation.z * scale) };
+            SourceRotation &rotation = built.Transform.Rotation.emplace();
+            rotation.Quaternion = { float(local.rotation.x), float(local.rotation.y), float(local.rotation.z), float(local.rotation.w) };
+            rotation.Where = m_Import.Where;
+            built.Transform.Scale = ToVec3(local.scale);
+        }
+
+        if (node.mesh)
+        {
+            if (auto mesh = m_MeshPaths.find(node.mesh); mesh != m_MeshPaths.end())
+            {
+                for (size_t i = 0; i < node.materials.count; ++i)
+                {
+                    if (i >= node.mesh->materials.count || node.materials.data[i] != node.mesh->materials.data[i])
+                    {
+                        m_Builder.Unsupported(m_Import.Where, "the materials of " + described + " that differ from its mesh's");
+                        break;
+                    }
+                }
+                SourceMeshInstance &instance = built.Attachments.MeshInstances.emplace_back();
+                instance.Mesh = mesh->second;
+                instance.Where = m_Import.Where;
+            }
+        }
+        if (node.camera)
+            built.Attachments.Camera = BuildCamera(*node.camera, described);
+        if (node.light)
+            built.Attachments.Light = BuildLight(*node.light, described);
+
+        for (const ufbx_node *pChild : node.children)
+            built.Attachments.Children.push_back(BuildNode(*pChild, false));
+        return built;
+    }
+
+    // A distance in the file's units, in meters with the import's "scale" applied.
+    float Distance(double distance) const
+    {
+        return float(distance * m_Unit * m_Import.Scale);
+    }
+
+    SourceCamera BuildCamera(const ufbx_camera &camera, const std::string &described)
+    {
+        SourceCamera built;
+        built.Where = m_Import.Where;
+        if (camera.projection_mode != UFBX_PROJECTION_MODE_PERSPECTIVE)
+            m_Builder.Unsupported(m_Import.Where, "the orthographic camera of " + described);
+        built.NearClip = Distance(camera.near_plane);
+        built.FarClip = Distance(camera.far_plane);
+        if (camera.field_of_view_deg.y > 0)
+            built.FovAngle = float(camera.field_of_view_deg.y * (kPi / 180.0));
+        else if (camera.projection_mode == UFBX_PROJECTION_MODE_PERSPECTIVE)
+            m_Builder.Error(m_Import.Where, "the camera of " + described + " has no field of view");
+        return built;
+    }
+
+    SourceLight BuildLight(const ufbx_light &light, const std::string &described)
+    {
+        SourceLight built;
+        built.Where = m_Import.Where;
+        switch (light.type)
+        {
+        case UFBX_LIGHT_POINT: built.Type = Canvas::LightType::Point; break;
+        case UFBX_LIGHT_DIRECTIONAL: built.Type = Canvas::LightType::Directional; break;
+        case UFBX_LIGHT_SPOT: built.Type = Canvas::LightType::Spot; break;
+        case UFBX_LIGHT_AREA: built.Type = Canvas::LightType::Area; break;
+        default:
+            built.Type = Canvas::LightType::Point;
+            m_Builder.Unsupported(m_Import.Where, "the volume light of " + described);
+            break;
+        }
+        built.Color = ToVec3(light.color);
+        built.Intensity = float(light.intensity);
+        built.CastsShadows = light.cast_shadows;
+        if (light.type == UFBX_LIGHT_SPOT)
+        {
+            built.SpotInnerAngle = float(light.inner_angle * (kPi / 180.0));
+            built.SpotOuterAngle = float(light.outer_angle * (kPi / 180.0));
+        }
+        switch (light.decay)
+        {
+        case UFBX_LIGHT_DECAY_NONE: break;
+        case UFBX_LIGHT_DECAY_LINEAR: built.AttenuationConstant = 0.0f; built.AttenuationLinear = 1.0f; break;
+        case UFBX_LIGHT_DECAY_QUADRATIC: built.AttenuationConstant = 0.0f; built.AttenuationQuadratic = 1.0f; break;
+        default: m_Builder.Unsupported(m_Import.Where, "the cubic decay of the light of " + described); break;
+        }
+        return built;
+    }
+
+    static constexpr double kPi = 3.14159265358979323846;
 
     CImportBuilder &m_Builder;
     const SourceImport &m_Import;
     ScenePtr m_pScene;
     fs::path m_Directory;                   // the FBX file's
     Mat3 m_AxisChange = kIdentity;          // from the file's axes to Canvas's
+    ufbx_quat m_RootRotation = { 0.0, 0.0, 0.0, 1.0 };     // the change to Canvas's axes
+    ufbx_real m_Unit = 1;                     // meters per unit of the file
+    bool m_Folds = false;                   // see Folds
+    ufbx_real m_PushedScale = 1;              // the unit's scale on geometry and nodes below the root nodes
 
     std::unordered_map<const ufbx_texture *, std::optional<SourceString>> m_TexturePaths;
     std::unordered_map<std::string, SourceString> m_ImagesByKey;    // by embedded bytes or file
     std::unordered_map<const ufbx_material *, SourceString> m_MaterialPaths;
+    std::unordered_map<const ufbx_mesh *, SourceString> m_MeshPaths;
 };
 
 } // namespace

@@ -24,8 +24,10 @@ static_assert(std::size(kDefaultTemplates) == size_t(SourceImportKind::Count));
 static_assert(std::size(kUnnamed) == size_t(SourceImportKind::Count));
 static_assert(std::size(kKindKeys) == size_t(SourceImportKind::Count));
 
-// The kinds an import builds; "rename" of any later kind is reported as one cpkg cannot build yet.
-constexpr size_t kBuiltKinds = size_t(SourceImportKind::Skeletons);
+// Per SourceImportKind: whether an import builds it; "rename" of any other kind is reported as
+// one cpkg cannot build yet.
+constexpr bool kBuiltKinds[] = { true, true, true, false, false, false, false, true };
+static_assert(std::size(kBuiltKinds) == size_t(SourceImportKind::Count));
 
 // Whether name can name an asset: CanvasPkg's name rules, and no leading '$'.
 bool IsAssetName(std::string_view name)
@@ -66,6 +68,39 @@ Vec3 Normalized(const Vec3 &v)
     return length > 0.0f ? Vec3{ v[0] / length, v[1] / length, v[2] / length } : v;
 }
 
+// The rotation a then b: the quaternion product b * a.
+Vec4 Then(const Vec4 &a, const Vec4 &b)
+{
+    const Vec4 q = {
+        b[3] * a[0] + b[0] * a[3] + b[1] * a[2] - b[2] * a[1],
+        b[3] * a[1] - b[0] * a[2] + b[1] * a[3] + b[2] * a[0],
+        b[3] * a[2] + b[0] * a[1] - b[1] * a[0] + b[2] * a[3],
+        b[3] * a[3] - b[0] * a[0] - b[1] * a[1] - b[2] * a[2],
+    };
+    const float length = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    return { q[0] / length, q[1] / length, q[2] / length, q[3] / length };
+}
+
+// The node of nodes or their descendants named name, or null.
+SourceNode *FindNode(std::vector<SourceNode> &nodes, std::string_view name)
+{
+    for (SourceNode &node : nodes)
+    {
+        if (node.Name && node.Name->Text == name)
+            return &node;
+        if (SourceNode *pFound = FindNode(node.Attachments.Children, name))
+            return pFound;
+    }
+    return nullptr;
+}
+
+template <class T>
+void SetIf(std::optional<T> &target, const std::optional<T> &value)
+{
+    if (value)
+        target = value;
+}
+
 // The extension of path, in lower case, such as ".fbx".
 std::string LowerExtension(const std::string &path)
 {
@@ -91,40 +126,47 @@ CImportBuilder::CImportBuilder(SourcePackage &package, SourceBundle &bundle, con
         m_RenameUsed[kind].assign(import.Rename[kind].size(), false);
     m_ReplaceImagesUsed.assign(import.ReplaceImages.size(), false);
     m_ReplaceMaterialsUsed.assign(import.ReplaceMaterials.size(), false);
+    m_EditsUsed.assign(import.Edits.size(), false);
     if (import.Rotation)
         m_Rotation = import.Rotation->Quaternion;
 
+    // What applies only to the nodes of an import that builds none
+    if (!import.Nodes)
+    {
+        constexpr const char *kNoNodes = " applies to the nodes the import builds, and it has \"nodes\": false";
+        if (import.Parent)
+            Error(import.Parent->Where, std::string("\"parent\"") + kNoNodes);
+        for (const auto &[name, renamed] : import.Rename[size_t(SourceImportKind::Nodes)])
+            Error(name.Where, std::string("\"rename\" of \"nodes\"") + kNoNodes);
+        for (const SourceNamed<SourceNodeEdit> &edit : import.Edits)
+            Error(edit.Name.Where, std::string("\"edits\"") + kNoNodes);
+    }
+
     // What the import declares that cpkg cannot build yet
-    if (import.Nodes)
-        Unsupported(import.Where, "an import's nodes");
-    if (import.Parent)
-        Unsupported(import.Parent->Where, "an import's \"parent\"");
     if (import.Skeleton)
         Unsupported(import.Skeleton->Where, "an import's \"skeleton\"");
-    if (!import.Edits.empty())
-        Unsupported(import.Edits[0].Name.Where, "an import's \"edits\"");
     if (import.Clips && !import.Clips->empty())
         Unsupported((*import.Clips)[0].Where, "an import's \"clips\"");
-    for (size_t kind = kBuiltKinds; kind < size_t(SourceImportKind::Count); ++kind)
+    for (size_t kind = 0; kind < size_t(SourceImportKind::Count); ++kind)
     {
-        if (!import.Rename[kind].empty())
+        if (!kBuiltKinds[kind] && !import.Rename[kind].empty())
             Unsupported(import.Rename[kind][0].first.Where, std::string("an import's \"rename\" of \"") + kKindKeys[kind] + "\"");
     }
 }
 
 void CImportBuilder::Error(const SourceLocation &where, const std::string &message)
 {
-    ReportAt(m_Diagnostics, m_Package, Severity::Error, where, message);
+    m_Findings.push_back({ Severity::Error, where, message });
 }
 
 void CImportBuilder::Warning(const SourceLocation &where, const std::string &message)
 {
-    ReportAt(m_Diagnostics, m_Package, Severity::Warning, where, message);
+    m_Findings.push_back({ Severity::Warning, where, message });
 }
 
 void CImportBuilder::Unsupported(const SourceLocation &where, const std::string &what)
 {
-    m_Unsupported.emplace_back(where, "cpkg cannot build " + what + " yet");
+    Error(where, "cpkg cannot build " + what + " yet");
 }
 
 std::string CImportBuilder::FileName(SourceImportKind kind, std::string_view name, size_t index)
@@ -186,26 +228,142 @@ Vec3 CImportBuilder::Direction(const Vec3 &direction) const
     return Normalized(Rotate(m_Rotation, direction));
 }
 
+SourceTransform CImportBuilder::RootTransform(const Vec3 &translation, const Vec4 &rotation, const Vec3 &scale) const
+{
+    SourceTransform transform;
+    transform.Translation = Position(translation);
+    SourceRotation &rotated = transform.Rotation.emplace();
+    rotated.Quaternion = Then(rotation, m_Rotation);
+    rotated.Where = m_Import.Where;
+    transform.Scale = scale;
+    return transform;
+}
+
+void CImportBuilder::AddNodes(std::vector<SourceNode> roots)
+{
+    for (SourceNode &root : roots)
+        ApplyEdits(root);
+
+    std::vector<SourceNode> *pSiblings = &m_Bundle.Nodes;
+    if (m_Import.Parent)
+    {
+        SourceNode *pParent = FindNode(m_Bundle.Nodes, m_Import.Parent->Text);
+        for (size_t i = 0; !pParent && i < m_Bundle.ImportNodes.size(); ++i)
+        {
+            SourceImportNode &importNode = m_Bundle.ImportNodes[i];
+            pParent = FindNode(importNode.Attachments.Children, m_Import.Parent->Text);
+        }
+        if (!pParent)
+        {
+            Error(m_Import.Parent->Where, "the bundle has no node " + Quoted(m_Import.Parent->Text));
+            return;
+        }
+        pSiblings = &pParent->Attachments.Children;
+    }
+    for (SourceNode &root : roots)
+        pSiblings->push_back(std::move(root));
+}
+
+void CImportBuilder::ApplyEdits(SourceNode &node)
+{
+    // The children an edit adds are authored content, which no edit applies to.
+    const size_t built = node.Attachments.Children.size();
+    for (size_t i = 0; node.Name && i < m_Import.Edits.size(); ++i)
+    {
+        const SourceNamed<SourceNodeEdit> &edit = m_Import.Edits[i];
+        if (edit.Name.Text != node.Name->Text)
+            continue;
+        m_EditsUsed[i] = true;
+        const SourceNodeEdit &value = edit.Value;
+        SetIf(node.Transform.Translation, value.Transform.Translation);
+        SetIf(node.Transform.Rotation, value.Transform.Rotation);
+        SetIf(node.Transform.Scale, value.Transform.Scale);
+        SetIf(node.Mobility, value.Mobility);
+
+        SourceAttachments &attachments = node.Attachments;
+        const SourceAttachments &added = value.Attachments;
+        if (added.Camera)
+        {
+            if (!attachments.Camera)
+                attachments.Camera = added.Camera;
+            else
+            {
+                SourceCamera &camera = *attachments.Camera;
+                SetIf(camera.NearClip, added.Camera->NearClip);
+                SetIf(camera.FarClip, added.Camera->FarClip);
+                SetIf(camera.FovAngle, added.Camera->FovAngle);
+                SetIf(camera.ExposureStops, added.Camera->ExposureStops);
+            }
+        }
+        if (added.Light)
+        {
+            if (!attachments.Light)
+            {
+                if (!added.Light->Type)
+                    Error(added.Light->Where, "the node " + Quoted(node.Name->Text) + " has no light, so the edit's light needs a \"type\"");
+                attachments.Light = added.Light;
+            }
+            else
+            {
+                SourceLight &light = *attachments.Light;
+                const SourceLight &set = *added.Light;
+                SetIf(light.Type, set.Type);
+                SetIf(light.Color, set.Color);
+                SetIf(light.Intensity, set.Intensity);
+                SetIf(light.Enabled, set.Enabled);
+                SetIf(light.CastsShadows, set.CastsShadows);
+                SetIf(light.Range, set.Range);
+                SetIf(light.AttenuationConstant, set.AttenuationConstant);
+                SetIf(light.AttenuationLinear, set.AttenuationLinear);
+                SetIf(light.AttenuationQuadratic, set.AttenuationQuadratic);
+                SetIf(light.SpotInnerAngle, set.SpotInnerAngle);
+                SetIf(light.SpotOuterAngle, set.SpotOuterAngle);
+                SetIf(light.ShadowResolution, set.ShadowResolution);
+                SetIf(light.ShadowConstantBias, set.ShadowConstantBias);
+                SetIf(light.ShadowSlopeScaleBias, set.ShadowSlopeScaleBias);
+                SetIf(light.ShadowNormalOffset, set.ShadowNormalOffset);
+            }
+        }
+        attachments.MeshInstances.insert(attachments.MeshInstances.end(), added.MeshInstances.begin(), added.MeshInstances.end());
+        attachments.MeshFields.insert(attachments.MeshFields.end(), added.MeshFields.begin(), added.MeshFields.end());
+        attachments.Placements.insert(attachments.Placements.end(), added.Placements.begin(), added.Placements.end());
+        attachments.Children.insert(attachments.Children.end(), added.Children.begin(), added.Children.end());
+    }
+
+    for (size_t i = 0; i < built; ++i)
+        ApplyEdits(node.Attachments.Children[i]);
+}
+
 void CImportBuilder::Finish(bool read)
 {
-    std::stable_sort(m_Unsupported.begin(), m_Unsupported.end(), [](const auto &a, const auto &b) { return a.first.Offset < b.first.Offset; });
-    for (const auto &[where, message] : m_Unsupported)
-        Error(where, message);
-    if (!read)
-        return;
-
-    auto check = [&](const SourceStringMap &map, const std::vector<bool> &used, const char *noun)
+    if (read)
     {
-        for (size_t i = 0; i < map.size(); ++i)
+        auto check = [&](const SourceStringMap &map, const std::vector<bool> &used, const char *noun)
         {
-            if (!used[i])
-                Error(map[i].first.Where, std::string("the ") + m_pFormat + " file has no " + noun + " " + Quoted(map[i].first.Text));
+            for (size_t i = 0; i < map.size(); ++i)
+            {
+                if (!used[i])
+                    Error(map[i].first.Where, std::string("the ") + m_pFormat + " file has no " + noun + " " + Quoted(map[i].first.Text));
+            }
+        };
+        for (size_t kind = 0; kind < size_t(SourceImportKind::Count); ++kind)
+        {
+            if (kBuiltKinds[kind] && (kind != size_t(SourceImportKind::Nodes) || m_Import.Nodes))
+                check(m_Import.Rename[kind], m_RenameUsed[kind], kKindNouns[kind]);
         }
-    };
-    for (size_t kind = 0; kind < kBuiltKinds; ++kind)
-        check(m_Import.Rename[kind], m_RenameUsed[kind], kKindNouns[kind]);
-    check(m_Import.ReplaceImages, m_ReplaceImagesUsed, kKindNouns[size_t(SourceImportKind::Images)]);
-    check(m_Import.ReplaceMaterials, m_ReplaceMaterialsUsed, kKindNouns[size_t(SourceImportKind::Materials)]);
+        check(m_Import.ReplaceImages, m_ReplaceImagesUsed, kKindNouns[size_t(SourceImportKind::Images)]);
+        check(m_Import.ReplaceMaterials, m_ReplaceMaterialsUsed, kKindNouns[size_t(SourceImportKind::Materials)]);
+        for (size_t i = 0; m_Import.Nodes && i < m_Import.Edits.size(); ++i)
+        {
+            if (!m_EditsUsed[i])
+                Error(m_Import.Edits[i].Name.Where, "the import builds no node " + Quoted(m_Import.Edits[i].Name.Text));
+        }
+    }
+
+    std::stable_sort(m_Findings.begin(), m_Findings.end(), [](const Finding &a, const Finding &b) { return a.Where.Offset < b.Where.Offset; });
+    for (const Finding &finding : m_Findings)
+        ReportAt(m_Diagnostics, m_Package, finding.Level, finding.Where, finding.Message);
+    m_Findings.clear();
 }
 
 const SourceString *CImportBuilder::Find(const SourceStringMap &map, std::vector<bool> &used, std::string_view name)
