@@ -916,18 +916,16 @@ private:
         }
     }
 
-    // The skeleton "skeleton" names, when it is a skeleton of the import's bundle, against whose
+    // The skeleton "skeleton" names, when it is a skeleton of the import's package, against whose
     // bones a skeletal animation's tracks are checked; otherwise null.
-    const SourceSkeleton *SharedSkeleton() const
+    const SourceSkeleton *SharedSkeleton()
     {
         if (!m_Import.Skeleton)
             return nullptr;
-        for (const SourceNamed<SourceSkeleton> &skeleton : m_Builder.GetBundle().Skeletons)
-        {
-            if (skeleton.Name.Text == m_Import.Skeleton->Text)
-                return &skeleton.Value;
-        }
-        return nullptr;
+        const AssetTarget target = CPackageLookup(m_Builder.GetPackage()).ResolveAssetPath(m_Builder.GetBundle(), m_Import.Skeleton->Text);
+        if (target.State != AssetTarget::Kind::Asset || target.Type != Canvas::AssetType::Skeleton)
+            return nullptr;
+        return &target.pBundle->Skeletons[target.Index].Value;
     }
 
     // Adds a track to *pAnimated for each property of node that stack animates, from the keys of

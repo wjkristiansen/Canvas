@@ -1778,6 +1778,29 @@ TEST_F(CpkgBuild, ImportsClips)
 }
 
 //------------------------------------------------------------------------------------------------
+// With "skeleton", a track on a bone the named skeleton lacks is left out, wherever in the package
+// the skeleton is. The skin's bone the skeleton lacks is an error, as for any skin.
+TEST_F(CpkgBuild, ReportsTracksASharedSkeletonLacks)
+{
+    WriteText("goblin.fbx", SkinnedFbx(true));
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    { "name": "Rig", "skeletons": { "Arm": { "bones": [ { "name": "Hand" } ] } } },
+    { "name": "Moves", "imports": [ { "file": "goblin.fbx", "nodes": false, "skeleton": "Rig/Arm" } ] }
+  ]
+}
+)");
+    const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_EQ(result.Status, CpkgTool::kExitError);
+    EXPECT_EQ(result.Err,
+        "levels.cpkg.json:6:37: warning: the FBX clip \"Wave\" animates the FBX node \"Sword\", which builds no track, since the import builds no nodes [/bundles/1/imports/0]\n"
+        "levels.cpkg.json:6:37: warning: the FBX clip \"Wave\" animates the FBX bone \"Hips\", which the skeleton \"Rig/Arm\" lacks; its track is left out [/bundles/1/imports/0]\n"
+        "levels.cpkg.json:6:37: error: the skeleton \"Rig/Arm\" has no bone \"Hips\" [/bundles/1/imports/0]\n");
+}
+
+//------------------------------------------------------------------------------------------------
 TEST_F(CpkgBuild, ReportsImportNodeErrors)
 {
     WriteText("room.fbx", NodesFbx(false));
