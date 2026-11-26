@@ -21,18 +21,18 @@ struct KindInfo
     const char *pNoun;              // what a diagnostic calls the file's content of the kind
     const char *pDefaultTemplate;   // its name template when "names" gives none
     const char *pUnnamed;           // the name of unnamed content, before its position
-    bool Built;                     // whether an import builds it; "rename" of another is reported
+    bool NeedsNodes;                // whether an import builds it only when it builds nodes
 };
 
 // Indexed by kind.
 constexpr KindInfo kKinds[] = {
-    { SourceImportKind::Images,             "texture",              "{name}.image",     "Image",                true },
-    { SourceImportKind::Materials,          "material",             "{name}.material",  "Material",             true },
-    { SourceImportKind::Meshes,             "mesh",                 "{name}.mesh",      "Mesh",                 true },
-    { SourceImportKind::Skeletons,          "skeleton",             "{name}.skeleton",  "Skeleton",             true },
-    { SourceImportKind::Skins,              "skin",                 "{name}.skin",      "Skin",                 true },
+    { SourceImportKind::Images,             "texture",              "{name}.image",     "Image",                false },
+    { SourceImportKind::Materials,          "material",             "{name}.material",  "Material",             false },
+    { SourceImportKind::Meshes,             "mesh",                 "{name}.mesh",      "Mesh",                 false },
+    { SourceImportKind::Skeletons,          "skeleton",             "{name}.skeleton",  "Skeleton",             false },
+    { SourceImportKind::Skins,              "skin",                 "{name}.skin",      "Skin",                 false },
     { SourceImportKind::SkeletalAnimations, "skeletal animation",   "{name}.anim",      "SkeletalAnimation",    false },
-    { SourceImportKind::Clips,              "clip",                 "{name}",           "Clip",                 false },
+    { SourceImportKind::Clips,              "clip",                 "{name}",           "Clip",                 true },
     { SourceImportKind::Nodes,              "node",                 "{name}",           "Node",                 true },
 };
 static_assert(IsPerImportKind(kKinds));
@@ -106,25 +106,19 @@ CImportBuilder::CImportBuilder(SourcePackage &package, SourceBundle &bundle, con
     if (import.Rotation)
         m_Rotation = import.Rotation->Quaternion;
 
-    // What applies only to the nodes of an import that builds none
+    // What applies only to an import that builds nodes
     if (!import.Nodes)
     {
-        constexpr const char *kNoNodes = " applies to the nodes the import builds, and it has \"nodes\": false";
+        constexpr const char *kNoNodes = " applies only to an import that builds nodes, and this one has \"nodes\": false";
         if (import.Parent)
             Error(import.Parent->Where, std::string("\"parent\"") + kNoNodes);
-        for (const auto &[name, renamed] : import.Rename[size_t(SourceImportKind::Nodes)])
-            Error(name.Where, std::string("\"rename\" of \"nodes\"") + kNoNodes);
+        for (size_t kind = 0; kind < size_t(SourceImportKind::Count); ++kind)
+        {
+            for (size_t i = 0; kKinds[kind].NeedsNodes && i < import.Rename[kind].size(); ++i)
+                Error(import.Rename[kind][i].first.Where, std::string("\"rename\" of \"") + kImportKinds[kind].pKey + "\"" + kNoNodes);
+        }
         for (const SourceNamed<SourceNodeEdit> &edit : import.Edits)
             Error(edit.Name.Where, std::string("\"edits\"") + kNoNodes);
-    }
-
-    // What the import declares that cpkg cannot build yet
-    if (import.Clips && !import.Clips->empty())
-        Unsupported((*import.Clips)[0].Where, "an import's \"clips\"");
-    for (size_t kind = 0; kind < size_t(SourceImportKind::Count); ++kind)
-    {
-        if (!kKinds[kind].Built && !import.Rename[kind].empty())
-            Unsupported(import.Rename[kind][0].first.Where, std::string("an import's \"rename\" of \"") + kImportKinds[kind].pKey + "\"");
     }
 }
 
@@ -153,7 +147,7 @@ std::string CImportBuilder::Describe(SourceImportKind kind, std::string_view nam
     return std::string("the ") + m_pFormat + " " + kKinds[size_t(kind)].pNoun + " " + Quoted(name);
 }
 
-SourceString CImportBuilder::BuiltName(SourceImportKind kind, const std::string &fileName)
+SourceString CImportBuilder::BuiltName(SourceImportKind kind, const std::string &fileName, std::string_view skeleton)
 {
     if (const SourceString *pRenamed = Find(m_Import.Rename[size_t(kind)], m_RenameUsed[size_t(kind)], fileName))
         return *pRenamed;
@@ -162,15 +156,19 @@ SourceString CImportBuilder::BuiltName(SourceImportKind kind, const std::string 
     built.Where = m_Import.Where;
     const std::optional<SourceString> &pattern = m_Import.Names[size_t(kind)];
     const std::string_view text = pattern ? std::string_view(pattern->Text) : std::string_view(kKinds[size_t(kind)].pDefaultTemplate);
-    constexpr std::string_view kField = "{name}";
+    constexpr std::string_view kName = "{name}";
+    constexpr std::string_view kSkeleton = "{skeleton}";
+    const bool skeletal = kind == SourceImportKind::SkeletalAnimations;
     for (size_t start = 0;;)
     {
-        const size_t field = text.find(kField, start);
+        const size_t name = text.find(kName, start);
+        const size_t field = skeletal ? std::min(name, text.find(kSkeleton, start)) : name;
         built.Text += text.substr(start, field - start);
         if (field == std::string_view::npos)
             break;
-        built.Text += fileName;
-        start = field + kField.size();
+        const bool isName = field == name;
+        built.Text += isName ? std::string_view(fileName) : skeleton;
+        start = field + (isName ? kName : kSkeleton).size();
     }
 
     if (!IsAssetName(built.Text))
@@ -206,15 +204,9 @@ Math::FloatQuaternion CImportBuilder::Rotation(const Math::FloatQuaternion &rota
     return (m_Rotation * rotation * Math::Conjugate(m_Rotation)).Normalize();
 }
 
-SourceTransform CImportBuilder::RootTransform(const Math::FloatVector3 &translation, const Math::FloatQuaternion &rotation, const Math::FloatVector3 &scale) const
+Math::FloatQuaternion CImportBuilder::RootRotation(const Math::FloatQuaternion &rotation) const
 {
-    SourceTransform transform;
-    transform.Translation = Position(translation);
-    SourceRotation &rotated = transform.Rotation.emplace();
-    rotated.Quaternion = (m_Rotation * rotation).Normalize();
-    rotated.Where = m_Import.Where;
-    transform.Scale = scale;
-    return transform;
+    return (m_Rotation * rotation).Normalize();
 }
 
 void CImportBuilder::AddNodes(std::vector<SourceNode> roots)
@@ -326,7 +318,7 @@ void CImportBuilder::Finish(bool read)
         };
         for (size_t kind = 0; kind < size_t(SourceImportKind::Count); ++kind)
         {
-            if (kKinds[kind].Built && (kind != size_t(SourceImportKind::Nodes) || m_Import.Nodes))
+            if (!kKinds[kind].NeedsNodes || m_Import.Nodes)
                 check(m_Import.Rename[kind], m_RenameUsed[kind], kKinds[kind].pNoun);
         }
         check(m_Import.ReplaceImages, m_ReplaceImagesUsed, kKinds[size_t(SourceImportKind::Images)].pNoun);

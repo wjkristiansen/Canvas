@@ -51,8 +51,9 @@ public:
     std::string Describe(SourceImportKind kind, std::string_view name) const;
 
     // The built name of the content of kind that FileName names: its "rename" entry, or else its
-    // kind's name template applied to it. Reports a built name that is not a name.
-    SourceString BuiltName(SourceImportKind kind, const std::string &fileName);
+    // kind's name template applied to it, and for a skeletal animation, to the name of its
+    // skeleton in the file. Reports a built name that is not a name.
+    SourceString BuiltName(SourceImportKind kind, const std::string &fileName, std::string_view skeleton = {});
 
     // The asset path "replace" gives the image or material named name in the file, or null.
     const SourceString *ReplacementImage(std::string_view name);
@@ -66,11 +67,9 @@ public:
     Canvas::Math::FloatVector3 Direction(const Canvas::Math::FloatVector3 &direction) const;
     Canvas::Math::FloatQuaternion Rotation(const Canvas::Math::FloatQuaternion &rotation) const;
 
-    // The local transform of a root node of the file, from its transform in Canvas space, with
-    // the import's "rotation" and "scale" applied about the file's origin. "scale" scales the
-    // translation, and the reader scales the translations and geometry below the root nodes.
-    SourceTransform RootTransform(const Canvas::Math::FloatVector3 &translation, const Canvas::Math::FloatQuaternion &rotation,
-        const Canvas::Math::FloatVector3 &scale) const;
+    // A root node's rotation in Canvas space, with the import's "rotation" applied about the
+    // file's origin after it: R * q.
+    Canvas::Math::FloatQuaternion RootRotation(const Canvas::Math::FloatQuaternion &rotation) const;
 
     // Adds the nodes the import builds, roots and their descendants: applies "edits" to them,
     // and attaches the roots to the node "parent" names, or else to the bundle's root nodes.
