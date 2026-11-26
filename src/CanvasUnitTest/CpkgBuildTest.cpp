@@ -1798,6 +1798,25 @@ TEST_F(CpkgBuild, ReportsTracksASharedSkeletonLacks)
         "levels.cpkg.json:6:37: warning: the FBX clip \"Wave\" animates the FBX node \"Sword\", which builds no track, since the import builds no nodes [/bundles/1/imports/0]\n"
         "levels.cpkg.json:6:37: warning: the FBX clip \"Wave\" animates the FBX bone \"Hips\", which the skeleton \"Rig/Arm\" lacks; its track is left out [/bundles/1/imports/0]\n"
         "levels.cpkg.json:6:37: error: the skeleton \"Rig/Arm\" has no bone \"Hips\" [/bundles/1/imports/0]\n");
+
+    // A skeleton that an import of a later bundle builds is found too: every import builds the
+    // rest of its content before any builds its clips.
+    WriteText("hand.fbx", FbxFile(FbxBone(520, "Hand", "0,0,0"), FbxConnection(520, 521) + FbxConnection(521, 0)));
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    { "name": "Moves", "imports": [ { "file": "goblin.fbx", "nodes": false, "skeleton": "Rig/Hand.skeleton" } ] },
+    { "name": "Rig", "imports": [ { "file": "hand.fbx", "nodes": false } ] }
+  ]
+}
+)");
+    const RunResult later = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_EQ(later.Status, CpkgTool::kExitError);
+    EXPECT_EQ(later.Err,
+        "levels.cpkg.json:5:37: warning: the FBX clip \"Wave\" animates the FBX node \"Sword\", which builds no track, since the import builds no nodes [/bundles/0/imports/0]\n"
+        "levels.cpkg.json:5:37: warning: the FBX clip \"Wave\" animates the FBX bone \"Hips\", which the skeleton \"Rig/Hand.skeleton\" lacks; its track is left out [/bundles/0/imports/0]\n"
+        "levels.cpkg.json:5:37: error: the skeleton \"Rig/Hand.skeleton\" has no bone \"Hips\" [/bundles/0/imports/0]\n");
 }
 
 //------------------------------------------------------------------------------------------------
