@@ -125,7 +125,7 @@ Math::FloatMatrix3x3 AxisChange(const ufbx_coordinate_axes &file)
 }
 
 // Reads one import's FBX file and builds its content.
-class CFbxReader
+class CFbxReader : public CImportReader
 {
 public:
     explicit CFbxReader(CImportBuilder &builder) :
@@ -169,7 +169,6 @@ public:
         BuildMaterials();
         BuildSkeletons();
         BuildMeshes();
-        BuildClips();
         if (m_Import.Nodes)
             BuildNodes();
         return true;
@@ -798,26 +797,36 @@ private:
         return name;
     }
 
+public:
     // Builds the clips "clips" lists, or every clip in the file, with the skeletal animations of
-    // each, and records the nodes their node tracks animate.
-    void BuildClips()
+    // each, and makes the nodes their node tracks animate "movable".
+    void BuildClips() override
     {
         const std::vector<ClipInFile> clips = FindClips();
         if (!m_Import.Clips)
         {
             for (size_t index = 0; index < clips.size(); ++index)
                 BuildClip(clips[index], index);
-            return;
         }
-        for (const SourceString &listed : *m_Import.Clips)
+        else
         {
-            const auto found = std::find_if(clips.begin(), clips.end(), [&](const ClipInFile &clip) { return clip.Name == listed.Text; });
-            if (found == clips.end())
-                m_Builder.Error(listed.Where, "the FBX file has no clip " + Quoted(listed.Text));
-            else
-                BuildClip(*found, size_t(found - clips.begin()));
+            for (const SourceString &listed : *m_Import.Clips)
+            {
+                const auto found = std::find_if(clips.begin(), clips.end(), [&](const ClipInFile &clip) { return clip.Name == listed.Text; });
+                if (found == clips.end())
+                    m_Builder.Error(listed.Where, "the FBX file has no clip " + Quoted(listed.Text));
+                else
+                    BuildClip(*found, size_t(found - clips.begin()));
+            }
+        }
+        for (const ufbx_node *pNode : m_Animated)
+        {
+            if (const std::optional<SourceString> &name = NodeName(*pNode))
+                m_Builder.Animate(*name);
         }
     }
+
+private:
 
     // One property of a node or bone that a clip animates, and the track that holds its keys.
     struct AnimatedProperty
@@ -1076,8 +1085,6 @@ private:
         built.Name = NodeName(node);
         const std::string described = m_Builder.Describe(SourceImportKind::Nodes, View(node.name));
         built.Transform = Transform(node.local_transform, isRoot, described);
-        if (m_Animated.count(&node) != 0)
-            built.Mobility = Canvas::CpkgMobility::Movable;
         Attach(node, described, &built.Attachments);
 
         for (const ufbx_node *pChild : node.children)
@@ -1272,9 +1279,12 @@ private:
 } // namespace
 
 //------------------------------------------------------------------------------------------------
-bool ReadFbxImport(CImportBuilder &builder)
+std::unique_ptr<CImportReader> ReadFbxImport(CImportBuilder &builder)
 {
-    return CFbxReader(builder).Read();
+    auto pReader = std::make_unique<CFbxReader>(builder);
+    if (!pReader->Read())
+        return nullptr;
+    return pReader;
 }
 
 } // namespace CpkgTool

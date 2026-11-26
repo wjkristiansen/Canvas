@@ -234,6 +234,15 @@ void CImportBuilder::AddNodes(std::vector<SourceNode> roots)
         pSiblings->push_back(std::move(root));
 }
 
+void CImportBuilder::Animate(const SourceString &name)
+{
+    SourceNode *pNode = FindNode(m_Bundle.Nodes, name.Text);
+    for (size_t i = 0; !pNode && i < m_Bundle.ImportNodes.size(); ++i)
+        pNode = FindNode(m_Bundle.ImportNodes[i].Attachments.Children, name.Text);
+    if (pNode && !pNode->Mobility)
+        pNode->Mobility = Canvas::CpkgMobility::Movable;
+}
+
 void CImportBuilder::ApplyEdits(SourceNode &node)
 {
     // The children an edit adds are authored content, which no edit applies to.
@@ -353,18 +362,32 @@ const SourceString *CImportBuilder::Find(const SourceStringMap &map, std::vector
 bool ExpandImports(SourcePackage &package, CDiagnostics &diagnostics)
 {
     const size_t errorCount = diagnostics.GetErrorCount();
+
+    // Every import builds its content but its clips before any builds its clips, so a clip finds
+    // a skeleton "skeleton" names that an import of a later bundle builds.
+    struct Expansion
+    {
+        std::unique_ptr<CImportBuilder> pBuilder;
+        std::unique_ptr<CImportReader> pReader;
+    };
+    std::vector<Expansion> expansions;
     for (SourceBundle &bundle : package.Bundles)
     {
         for (const SourceImport &import : bundle.Imports)
         {
-            CImportBuilder builder(package, bundle, import, diagnostics);
-            bool read = false;
+            Expansion &expansion = expansions.emplace_back();
+            expansion.pBuilder = std::make_unique<CImportBuilder>(package, bundle, import, diagnostics);
             if (LowerExtension(import.File.Path) == ".fbx")
-                read = ReadFbxImport(builder);
+                expansion.pReader = ReadFbxImport(*expansion.pBuilder);
             else
-                builder.Error(import.File.Where, "expected an exchange file in a format cpkg reads, \".fbx\": " + Quoted(import.File.Written));
-            builder.Finish(read);
+                expansion.pBuilder->Error(import.File.Where, "expected an exchange file in a format cpkg reads, \".fbx\": " + Quoted(import.File.Written));
         }
+    }
+    for (Expansion &expansion : expansions)
+    {
+        if (expansion.pReader)
+            expansion.pReader->BuildClips();
+        expansion.pBuilder->Finish(expansion.pReader != nullptr);
     }
     return diagnostics.GetErrorCount() == errorCount;
 }

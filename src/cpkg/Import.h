@@ -75,6 +75,10 @@ public:
     // and attaches the roots to the node "parent" names, or else to the bundle's root nodes.
     void AddNodes(std::vector<SourceNode> roots);
 
+    // Makes the node of the bundle named name, which a built clip's node tracks animate,
+    // "movable", unless an edit declared its mobility.
+    void Animate(const SourceString &name);
+
     // Reports the import's findings in document order: those recorded, and, when the reader
     // read the file, each key of "rename" and "replace" that names no content of the file, and
     // each key of "edits" that names no node the import builds.
@@ -104,8 +108,19 @@ private:
     std::vector<Finding> m_Findings;    // Finish reports each, in document order
 };
 
-// The reader of FBX files: reads the import's file and builds its content. Returns true when it
-// read the file.
-bool ReadFbxImport(CImportBuilder &builder);
+// An import's file, read, whose clips are built once every import of the package has built the
+// rest of its content, so a clip finds a skeleton that a later import builds.
+class CImportReader
+{
+public:
+    virtual ~CImportReader() = default;
+
+    // Builds the import's clips and skeletal animations.
+    virtual void BuildClips() = 0;
+};
+
+// The reader of FBX files: reads the import's file and builds its content but its clips. Null when
+// it could not read the file.
+std::unique_ptr<CImportReader> ReadFbxImport(CImportBuilder &builder);
 
 } // namespace CpkgTool
