@@ -1835,13 +1835,18 @@ TEST_F(CpkgBuild, ReportsImportClipNames)
 }
 
 //------------------------------------------------------------------------------------------------
-// Each FBX file of deps/FbxAssets builds, with its nodes and every clip.
+// Each FBX file of deps/FbxAssets builds, with its nodes and every clip. The assets are a
+// submodule of their own; without them checked out, the test is skipped.
 TEST_F(CpkgBuild, ImportsTheFbxAssets)
 {
-    for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(CANVAS_FBX_ASSET_DIR))
+    std::error_code error;
+    std::filesystem::directory_iterator files(CANVAS_FBX_ASSET_DIR, error);
+    size_t built = 0;
+    for (const std::filesystem::directory_entry &entry : error ? std::filesystem::directory_iterator() : files)
     {
         if (entry.path().extension() != ".fbx")
             continue;
+        ++built;
         const std::string file = entry.path().generic_string();
         WriteText("assets.cpkg.json", R"({ "formatVersion": 1, "packageName": "Assets", "bundles": [ { "name": "A", "imports": [ { "file": ")"
             + file + R"(" } ] } ] })");
@@ -1865,6 +1870,8 @@ TEST_F(CpkgBuild, ImportsTheFbxAssets)
             }
         }
     }
+    if (built == 0)
+        GTEST_SKIP() << "No FBX assets available in " << CANVAS_FBX_ASSET_DIR;
 }
 
 //------------------------------------------------------------------------------------------------
