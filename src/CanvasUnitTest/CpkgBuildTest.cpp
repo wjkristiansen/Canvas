@@ -151,6 +151,40 @@ namespace
         return "\tC: \"OO\"," + std::to_string(child) + "," + std::to_string(parent) + "\n";
     }
 
+    // A connection of object child to the property named property of object parent.
+    std::string FbxPropertyConnection(int child, int parent, std::string_view property)
+    {
+        return "\tC: \"OP\"," + std::to_string(child) + "," + std::to_string(parent) + ",\"" + std::string(property) + "\"\n";
+    }
+
+    // An animation stack, object id, named name, ending at stop, in FBX time.
+    std::string FbxAnimationStack(int id, std::string_view name, std::string_view stop)
+    {
+        return "\tAnimationStack: " + std::to_string(id) + ", \"AnimStack::" + std::string(name) + "\", \"\" {\n\t\tProperties70:  {\n"
+            + FbxProperty("LocalStart", "KTime", "0") + FbxProperty("LocalStop", "KTime", stop)
+            + FbxProperty("ReferenceStart", "KTime", "0") + FbxProperty("ReferenceStop", "KTime", stop) + "\t\t}\n\t}\n";
+    }
+
+    // A curve node, object id, whose X, Y, and Z default to xyz.
+    std::string FbxCurveNode(int id, std::string_view xyz)
+    {
+        const std::string values(xyz);
+        const size_t first = values.find(',');
+        const size_t second = values.find(',', first + 1);
+        return "\tAnimationCurveNode: " + std::to_string(id) + ", \"AnimCurveNode::T\", \"\" {\n\t\tProperties70:  {\n"
+            + FbxProperty("d|X", "Number", values.substr(0, first)) + FbxProperty("d|Y", "Number", values.substr(first + 1, second - first - 1))
+            + FbxProperty("d|Z", "Number", values.substr(second + 1)) + "\t\t}\n\t}\n";
+    }
+
+    // A curve, object id, with keys at times, in FBX time, of values, every key with the
+    // interpolation flags: 4 linear, 2 constant.
+    std::string FbxCurve(int id, std::string_view times, std::string_view values, std::string_view flags)
+    {
+        return "\tAnimationCurve: " + std::to_string(id) + ", \"AnimCurve::\", \"\" {\n\t\tDefault: 0\n\t\tKeyVer: 4009\n"
+            + FbxArray("KeyTime", times) + FbxArray("KeyValueFloat", values) + FbxArray("KeyAttrFlags", flags)
+            + FbxArray("KeyAttrDataFloat", "0,0,0,0") + FbxArray("KeyAttrRefCount", "2") + "\t}\n";
+    }
+
     // A mesh model named name, object id + 1, with model properties, and its geometry, object
     // id, which holds the members of layers after its vertices and polygons.
     std::string FbxMesh(int id, std::string_view name, std::string_view vertices, std::string_view polygons, std::string_view layers = "",
@@ -237,9 +271,20 @@ namespace
     // A file, in meters, whose root node Armature holds the bone Hips, 1 m up, its child bone
     // Hand, 0.5 m along +X from it, and the node Sword, on Hand, and whose mesh Body, a triangle
     // under Armature, is skinned to Hips and Hand, its last vertex by weights that sum to 0.75.
-    // Its root node Tail is a bone of its own.
-    std::string SkinnedFbx()
+    // Its root node Tail is a bone of its own. With animated, it holds the action Wave as two
+    // stacks, as Blender writes it: "Hips|Wave", which moves Hips 1 m along +X over 1 s, and
+    // "Sword|Wave", which steps Sword from 0.25 to 0.5 along +Y at 1 s.
+    std::string SkinnedFbx(bool animated = false)
     {
+        constexpr const char *kSecond = "46186158000";
+        const std::string animation = !animated ? std::string() :
+            FbxAnimationStack(800, "Hips|Wave", kSecond) + FbxAnimationStack(810, "Sword|Wave", kSecond)
+                + "\tAnimationLayer: 801, \"AnimLayer::\", \"\" {\n\t}\n\tAnimationLayer: 811, \"AnimLayer::\", \"\" {\n\t}\n"
+                + FbxCurveNode(802, "0,0,1") + FbxCurve(803, std::string("0,") + kSecond, "0,1", "4")
+                + FbxCurveNode(812, "0,0.25,0") + FbxCurve(813, std::string("0,") + kSecond, "0.25,0.5", "2");
+        const std::string animationConnections = !animated ? std::string() :
+            FbxConnection(801, 800) + FbxConnection(802, 801) + FbxPropertyConnection(802, 511, "Lcl Translation") + FbxPropertyConnection(803, 802, "d|X")
+                + FbxConnection(811, 810) + FbxConnection(812, 811) + FbxPropertyConnection(812, 531, "Lcl Translation") + FbxPropertyConnection(813, 812, "d|Y");
         return FbxFile(
             FbxModel(501, "Armature", "Null")
                 + FbxBone(510, "Hips", "0,0,1") + FbxBone(520, "Hand", "0.5,0,0")
@@ -247,11 +292,13 @@ namespace
                 + FbxBone(700, "Tail", "0,2,0")
                 + FbxMesh(100, "Body", "0,0,0,1,0,0,0,0,1", "0,1,-3")
                 + "\tDeformer: 600, \"Deformer::\", \"Skin\" {\n\t\tVersion: 101\n\t}\n"
-                + FbxCluster(610, "0,1,2", "1,1,0.25", "0,0,1", "0,0,-1") + FbxCluster(620, "2", "0.5", "0.5,0,1", "-0.5,0,-1"),
+                + FbxCluster(610, "0,1,2", "1,1,0.25", "0,0,1", "0,0,-1") + FbxCluster(620, "2", "0.5", "0.5,0,1", "-0.5,0,-1")
+                + animation,
             FbxConnection(501, 0) + FbxConnection(510, 511) + FbxConnection(511, 501) + FbxConnection(520, 521) + FbxConnection(521, 511)
                 + FbxConnection(531, 521) + FbxConnection(700, 701) + FbxConnection(701, 0)
                 + FbxConnection(100, 101) + FbxConnection(101, 501)
-                + FbxConnection(600, 100) + FbxConnection(610, 600) + FbxConnection(620, 600) + FbxConnection(511, 610) + FbxConnection(521, 620));
+                + FbxConnection(600, 100) + FbxConnection(610, 600) + FbxConnection(620, 600) + FbxConnection(511, 610) + FbxConnection(521, 620)
+                + animationConnections);
     }
 
     // A file in centimeters whose root node Body holds a quad 1 m across and the node Lamp, and
@@ -1646,6 +1693,91 @@ TEST_F(CpkgBuild, ImportsSkeletonsAndSkins)
 }
 
 //------------------------------------------------------------------------------------------------
+TEST_F(CpkgBuild, ImportsClips)
+{
+    WriteText("goblin.fbx", SkinnedFbx(true));
+    WriteText("levels.cpkg.json", R"({
+  "formatVersion": 1,
+  "packageName": "Levels",
+  "bundles": [
+    {
+      "name": "Goblin",
+      "imports": [
+        { "file": "goblin.fbx" },
+        { "file": "goblin.fbx", "nodes": false, "skeleton": "Hips.skeleton",
+          "names": { "meshes": "B_{name}.mesh", "skins": "B_{name}.skin", "skeletalAnimations": "B_{name}.anim" } }
+      ]
+    }
+  ]
+}
+)");
+
+    // Without nodes, the import builds the skeletal animation alone, and reports the node it
+    // cannot animate.
+    const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
+    EXPECT_EQ(result.Status, CpkgTool::kExitSuccess);
+    EXPECT_EQ(result.Err,
+        "levels.cpkg.json:9:9: warning: the FBX clip \"Wave\" animates the FBX node \"Sword\", which builds no track, since the import builds no nodes [/bundles/0/imports/1]\n");
+    CCpkgReader reader;
+    ASSERT_EQ(reader.Open("levels.cpkg"), Result::Success);
+    const uint32_t count = reader.GetAssetCount(0);
+
+    // The two stacks of the action Wave build one clip, named after the action. Its bone
+    // track builds a skeletal animation for the skeleton it animates, which the clip binds to
+    // the skeleton's instance; its node track is the clip's, and the node it animates is movable.
+    const uint32_t clip = AssetIndex(reader, 0, "Wave");
+    const uint32_t wave = AssetIndex(reader, 0, "Wave.anim");
+    ASSERT_LT(clip, count);
+    ASSERT_LT(wave, count);
+    ASSERT_LT(AssetIndex(reader, 0, "B_Wave.anim"), count);
+    {
+        const CPayload payload(reader, 0, wave);
+        const CpkgSkeletalAnimationData &animation = payload.Header<CpkgSkeletalAnimationData>();
+        EXPECT_EQ(payload.Text<CpkgSkeletalAnimationData>(animation.Skeleton), "Hips.skeleton");
+        const std::span<const CpkgBoneTrack> tracks = payload.Elements<CpkgSkeletalAnimationData>(animation.Tracks);
+        ASSERT_EQ(tracks.size(), 1u);
+        EXPECT_EQ(payload.Text<CpkgSkeletalAnimationData>(tracks[0].Bone), "Hips");
+        EXPECT_EQ(tracks[0].Property, CpkgAnimationProperty::Translation);
+        const std::span<const float> times = payload.Elements<CpkgSkeletalAnimationData>(tracks[0].Times);
+        const std::span<const float> values = payload.Elements<CpkgSkeletalAnimationData>(tracks[0].Values);
+        ASSERT_EQ(times.size(), 2u);
+        EXPECT_NEAR(times[1], 1.0f, 1e-6f);
+        ASSERT_EQ(values.size(), 6u);
+        EXPECT_NEAR(values[3], 1.0f, 1e-6f);
+        EXPECT_NEAR(values[5], 1.0f, 1e-6f);
+    }
+    {
+        const CPayload payload(reader, 0, clip);
+        const CpkgAnimationClipData &data = payload.Header<CpkgAnimationClipData>();
+        EXPECT_NEAR(data.Duration, 1.0f, 1e-6f);
+        const std::span<const CpkgNodeTrack> tracks = payload.Elements<CpkgAnimationClipData>(data.Tracks);
+        ASSERT_EQ(tracks.size(), 1u);
+        EXPECT_EQ(tracks[0].Property, CpkgAnimationProperty::Translation);
+
+        // The file's step builds one key that holds until the next.
+        const std::span<const float> values = payload.Elements<CpkgAnimationClipData>(tracks[0].Values);
+        const std::span<const AnimationInterpolation> interpolations = payload.Elements<CpkgAnimationClipData>(tracks[0].Interpolations);
+        ASSERT_EQ(values.size(), 6u);
+        EXPECT_NEAR(values[1], 0.25f, 1e-6f);
+        EXPECT_NEAR(values[4], 0.5f, 1e-6f);
+        ASSERT_EQ(interpolations.size(), 2u);
+        EXPECT_EQ(interpolations[0], AnimationInterpolation::Step);
+
+        const std::span<const CpkgSkeletalAnimationBinding> bindings = payload.Elements<CpkgAnimationClipData>(data.SkeletalAnimations);
+        ASSERT_EQ(bindings.size(), 1u);
+        EXPECT_EQ(payload.Text<CpkgAnimationClipData>(bindings[0].Animation), "Wave.anim");
+    }
+    {
+        const CPayload payload(reader, 0, AssetIndex(reader, 0, "Sword"));
+        EXPECT_EQ(payload.Header<CpkgTransformNodeData>().Mobility, CpkgMobility::Movable);
+    }
+    {
+        const CPayload payload(reader, 0, AssetIndex(reader, 0, "Armature"));
+        EXPECT_EQ(payload.Header<CpkgTransformNodeData>().Mobility, CpkgMobility::Static);
+    }
+}
+
+//------------------------------------------------------------------------------------------------
 TEST_F(CpkgBuild, ReportsImportNodeErrors)
 {
     WriteText("room.fbx", NodesFbx(false));
@@ -1670,14 +1802,15 @@ TEST_F(CpkgBuild, ReportsImportNodeErrors)
         "levels.cpkg.json:8:41: error: the bundle has no node \"Nowhere\" [/bundles/0/imports/0/parent]\n"
         "levels.cpkg.json:8:63: error: the import builds no node \"Lid\" [/bundles/0/imports/0/edits/Lid]\n"
         "levels.cpkg.json:8:93: error: the node \"Body\" has no light, so the edit's light needs a \"type\" [/bundles/0/imports/0/edits/Body/light]\n"
-        "levels.cpkg.json:9:92: error: \"parent\" applies to the nodes the import builds, and it has \"nodes\": false [/bundles/0/imports/1/parent]\n"
-        "levels.cpkg.json:10:34: error: \"rename\" of \"nodes\" applies to the nodes the import builds, and it has \"nodes\": false [/bundles/0/imports/1/rename/nodes/Body]\n"
-        "levels.cpkg.json:10:62: error: \"edits\" applies to the nodes the import builds, and it has \"nodes\": false [/bundles/0/imports/1/edits/Body]\n");
+        "levels.cpkg.json:9:92: error: \"parent\" applies only to an import that builds nodes, and this one has \"nodes\": false [/bundles/0/imports/1/parent]\n"
+        "levels.cpkg.json:10:34: error: \"rename\" of \"nodes\" applies only to an import that builds nodes, and this one has \"nodes\": false [/bundles/0/imports/1/rename/nodes/Body]\n"
+        "levels.cpkg.json:10:62: error: \"edits\" applies only to an import that builds nodes, and this one has \"nodes\": false [/bundles/0/imports/1/edits/Body]\n");
     EXPECT_FALSE(std::filesystem::exists("levels.cpkg"));
 }
 
 //------------------------------------------------------------------------------------------------
-TEST_F(CpkgBuild, ReportsImportsItCannotBuildYet)
+// A name in "clips", and a "rename" key of a kind of animation, names a clip in the file.
+TEST_F(CpkgBuild, ReportsImportClipNames)
 {
     WriteText("quad.fbx", kQuad);
     WriteText("levels.cpkg.json", R"({
@@ -1696,14 +1829,13 @@ TEST_F(CpkgBuild, ReportsImportsItCannotBuildYet)
     const RunResult result = RunCpkg({ "build", "levels.cpkg.json" });
     EXPECT_EQ(result.Status, CpkgTool::kExitError);
     EXPECT_EQ(result.Err,
-        "levels.cpkg.json:8:67: error: cpkg cannot build an import's \"rename\" of \"skeletalAnimations\" yet [/bundles/0/imports/0/rename/skeletalAnimations/Walk]\n"
-        "levels.cpkg.json:8:95: error: cpkg cannot build an import's \"clips\" yet [/bundles/0/imports/0/clips/0]\n");
+        "levels.cpkg.json:8:67: error: the FBX file has no skeletal animation \"Walk\" [/bundles/0/imports/0/rename/skeletalAnimations/Walk]\n"
+        "levels.cpkg.json:8:95: error: the FBX file has no clip \"Idle\" [/bundles/0/imports/0/clips/0]\n");
     EXPECT_FALSE(std::filesystem::exists("levels.cpkg"));
 }
 
 //------------------------------------------------------------------------------------------------
-// Each FBX file of deps/FbxAssets builds its shared assets, or reports only what cpkg cannot
-// build yet.
+// Each FBX file of deps/FbxAssets builds, with its nodes and every clip.
 TEST_F(CpkgBuild, ImportsTheFbxAssets)
 {
     for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(CANVAS_FBX_ASSET_DIR))
@@ -1712,14 +1844,11 @@ TEST_F(CpkgBuild, ImportsTheFbxAssets)
             continue;
         const std::string file = entry.path().generic_string();
         WriteText("assets.cpkg.json", R"({ "formatVersion": 1, "packageName": "Assets", "bundles": [ { "name": "A", "imports": [ { "file": ")"
-            + file + R"(", "clips": [] } ] } ] })");
+            + file + R"(" } ] } ] })");
         const RunResult result = RunCpkg({ "build", "assets.cpkg.json" });
-        std::istringstream lines(result.Err);
-        for (std::string line; std::getline(lines, line);)
-            EXPECT_NE(line.find("error: cpkg cannot build "), std::string::npos) << file << ": " << line;
-        if (result.Err.empty())
+        EXPECT_EQ(result.Err, "") << file;
+        if (result.Status == CpkgTool::kExitSuccess)
         {
-            EXPECT_EQ(result.Status, CpkgTool::kExitSuccess) << file;
             CCpkgReader reader;
             ASSERT_EQ(reader.Open("assets.cpkg"), Result::Success) << file;
             EXPECT_GT(reader.GetAssetCount(0), 0u) << file;

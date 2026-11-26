@@ -43,6 +43,13 @@ struct SceneDeleter
 
 using ScenePtr = std::unique_ptr<ufbx_scene, SceneDeleter>;
 
+struct BakedDeleter
+{
+    void operator()(ufbx_baked_anim *pBaked) const { ufbx_free_baked_anim(pBaked); }
+};
+
+using BakedPtr = std::unique_ptr<ufbx_baked_anim, BakedDeleter>;
+
 // ufbx's "front" is the direction a model faces, and its "right" is the viewer's right when
 // facing the model, which is the model's left. Canvas's basis is +X forward, +Y left, +Z up, so
 // a model's front maps to +X and its left to +Y.
@@ -154,8 +161,6 @@ public:
         m_Folds = Folds();
         m_PushedScale = m_Folds ? ufbx_real(1) : m_Unit;
 
-        if (!m_Import.Clips && Animates())
-            m_Builder.Unsupported(m_Import.Where, "the animation of an FBX file");
         if (m_Import.Nodes && Mirrors(m_AxisChange))
             m_Builder.Unsupported(m_Import.Where, "the nodes of an FBX file in a left-handed axis system");
         FindBones();
@@ -164,6 +169,7 @@ public:
         BuildMaterials();
         BuildSkeletons();
         BuildMeshes();
+        BuildClips();
         if (m_Import.Nodes)
             BuildNodes();
         return true;
@@ -194,20 +200,6 @@ private:
             }
         }
         return folded < kept;
-    }
-
-    // Whether any animation stack of the file animates a property.
-    bool Animates() const
-    {
-        for (const ufbx_anim_stack *pStack : m_pScene->anim_stacks)
-        {
-            for (const ufbx_anim_layer *pLayer : pStack->layers)
-            {
-                if (pLayer->anim_props.count != 0)
-                    return true;
-            }
-        }
-        return false;
     }
 
     //--------------------------------------------------------------------------------------------
@@ -362,43 +354,63 @@ private:
     //--------------------------------------------------------------------------------------------
     // Transforms
 
-    // The local transform of a node, bone, or bind pose below the root nodes, from its transform
-    // in the file: in the space of its parent, which the root nodes' transforms place, when the
-    // import builds nodes, and otherwise turned to Canvas's axes and "rotation".
-    SourceTransform BelowRoots(const ufbx_transform &local, const std::string &described)
+    // A translation, rotation, or scale of a local transform in the file, or of a key that
+    // animates one, in Canvas's terms. The transform of a root node of the file, whose parent is
+    // the file's root, takes the conversion to meters and Canvas's axes, the root's transform,
+    // and the import's "rotation" and "scale" about the file's origin; the unit's scale folds
+    // into its scale, or else scales its translation and everything below it (see Folds). One
+    // below the root nodes is in its parent's space, which the root nodes' transforms place,
+    // when the import builds nodes, and otherwise is turned to Canvas's axes and "rotation".
+    Math::FloatVector3 Translation(ufbx_vec3 translation, bool isRoot) const
     {
-        Math::FloatVector3 translation = ToVector(local.translation) * float(m_PushedScale);
-        Math::FloatQuaternion rotation = ToQuaternion(local.rotation);
-        Math::FloatVector3 scale = ToVector(local.scale);
+        if (isRoot)
+            return m_Builder.Position(Math::RotateVectorByQuaternion(m_RootRotation, ToVector(translation) * float(m_Unit)));
+        const Math::FloatVector3 scaled = ToVector(translation) * float(m_PushedScale);
+        return m_Import.Nodes ? scaled * m_Import.Scale : m_Builder.Position(scaled * m_AxisChange);
+    }
+
+    Math::FloatQuaternion Rotation(ufbx_quat rotation, bool isRoot) const
+    {
+        if (isRoot)
+            return m_Builder.RootRotation(m_RootRotation * ToQuaternion(rotation));
         if (m_Import.Nodes)
-            translation = translation * m_Import.Scale;
-        else
+            return ToQuaternion(rotation);
+        return m_Builder.Rotation(m_RootRotation * ToQuaternion(rotation) * Math::Conjugate(m_RootRotation));
+    }
+
+    Math::FloatVector3 Scale(ufbx_vec3 scale, bool isRoot, const std::string &described)
+    {
+        if (isRoot)
+            return ToVector(scale) * (m_Folds ? float(m_Unit) : 1.0f);
+        if (m_Import.Nodes)
+            return ToVector(scale);
+
+        // The change of axes permutes the scale's axes. "rotation" turns them arbitrarily, which
+        // a scale holds only when it is uniform.
+        const Math::FloatVector3 file = ToVector(scale);
+        Math::FloatVector3 permuted;
+        for (int from = 0; from < 3; ++from)
         {
-            translation = m_Builder.Position(translation * m_AxisChange);
-            rotation = m_Builder.Rotation((m_RootRotation * rotation * Math::Conjugate(m_RootRotation)).Normalize());
-
-            // The change of axes permutes the scale's axes. "rotation" turns them arbitrarily, which
-            // a scale holds only when it is uniform.
-            Math::FloatVector3 permuted;
-            for (int from = 0; from < 3; ++from)
+            for (int to = 0; to < 3; ++to)
             {
-                for (int to = 0; to < 3; ++to)
-                {
-                    if (m_AxisChange[from][to] != 0.0f)
-                        permuted[to] = scale[from];
-                }
+                if (m_AxisChange[from][to] != 0.0f)
+                    permuted[to] = file[from];
             }
-            scale = permuted;
-            if (m_Import.Rotation && (scale.X != scale.Y || scale.X != scale.Z))
-                m_Builder.Unsupported(m_Import.Where, "the non-uniform scale of " + described + " under an import's \"rotation\"");
         }
+        if (m_Import.Rotation && (permuted.X != permuted.Y || permuted.X != permuted.Z))
+            m_Builder.Unsupported(m_Import.Where, "the non-uniform scale of " + described + " under an import's \"rotation\"");
+        return permuted;
+    }
 
+    // A local transform in the file, of a root node of the file or one below the root nodes.
+    SourceTransform Transform(const ufbx_transform &local, bool isRoot, const std::string &described)
+    {
         SourceTransform transform;
-        transform.Translation = translation;
-        SourceRotation &rotated = transform.Rotation.emplace();
-        rotated.Quaternion = rotation;
-        rotated.Where = m_Import.Where;
-        transform.Scale = scale;
+        transform.Translation = Translation(local.translation, isRoot);
+        SourceRotation &rotation = transform.Rotation.emplace();
+        rotation.Quaternion = Rotation(local.rotation, isRoot);
+        rotation.Where = m_Import.Where;
+        transform.Scale = Scale(local.scale, isRoot, described);
         return transform;
     }
 
@@ -530,7 +542,7 @@ private:
         // Its rest transform is where it was bound, relative to its parent.
         const ufbx_matrix parentToWorld = ufbx_matrix_invert(&BindWorld(*bone.parent));
         const ufbx_matrix local = ufbx_matrix_mul(&parentToWorld, &BindWorld(bone));
-        built.Rest = BelowRoots(Decompose(local, DescribeBone(bone)), DescribeBone(bone));
+        built.Rest = Transform(Decompose(local, DescribeBone(bone)), false, DescribeBone(bone));
 
         for (const ufbx_node *pChild : bone.children)
         {
@@ -568,7 +580,7 @@ private:
 
             // A bind pose is the bone's transform when bound, in the mesh's space.
             const ufbx_matrix boneToGeometry = ufbx_matrix_invert(&pCluster->geometry_to_bone);
-            built.BindPoses.push_back(BelowRoots(Decompose(boneToGeometry, DescribeBone(*pBone)), DescribeBone(*pBone)));
+            built.BindPoses.push_back(Transform(Decompose(boneToGeometry, DescribeBone(*pBone)), false, DescribeBone(*pBone)));
         }
         if (!pRoot)
         {
@@ -728,6 +740,312 @@ private:
     }
 
     //--------------------------------------------------------------------------------------------
+    // Clips
+
+    // A clip in the file: an animation stack, or the stacks of one action, each animating one
+    // object and named "object|action", as Blender writes them.
+    struct ClipInFile
+    {
+        std::string Name;
+        bool Action = false;    // whether its stacks are an action's
+        std::vector<const ufbx_anim_stack *> Stacks;
+    };
+
+    // The action of stack: the part of its name after a '|' whose part before names a node the
+    // stack animates. Empty for a stack of no action.
+    static std::string_view ActionOf(const ufbx_anim_stack &stack)
+    {
+        const std::string_view name = View(stack.name);
+        for (size_t bar = name.find('|'); bar != std::string_view::npos; bar = name.find('|', bar + 1))
+        {
+            const std::string_view object = name.substr(0, bar);
+            for (const ufbx_anim_layer *pLayer : stack.layers)
+            {
+                for (const ufbx_anim_prop &prop : pLayer->anim_props)
+                {
+                    if (prop.element->type == UFBX_ELEMENT_NODE && View(prop.element->name) == object)
+                        return name.substr(bar + 1);
+                }
+            }
+        }
+        return {};
+    }
+
+    std::vector<ClipInFile> FindClips() const
+    {
+        std::vector<ClipInFile> clips;
+        for (const ufbx_anim_stack *pStack : m_pScene->anim_stacks)
+        {
+            const std::string_view action = ActionOf(*pStack);
+            const std::string name(action.empty() ? View(pStack->name) : action);
+            auto found = std::find_if(clips.begin(), clips.end(), [&](const ClipInFile &clip) { return !action.empty() && clip.Action && clip.Name == name; });
+            if (found == clips.end())
+                found = clips.insert(clips.end(), ClipInFile{ name, !action.empty(), {} });
+            found->Stacks.push_back(pStack);
+        }
+        return clips;
+    }
+
+    // The name of the node that holds the skeleton instance of the tree whose root bone is root.
+    // None when that node is unnamed, which it reports as the content what names that cpkg cannot
+    // build.
+    std::optional<SourceString> InstanceNodeName(const ufbx_node &root, const std::string &what)
+    {
+        const ufbx_node &holder = root.parent && !root.parent->is_root ? *root.parent : root;
+        const std::optional<SourceString> &name = NodeName(holder);
+        if (!name)
+            m_Builder.Unsupported(m_Import.Where, what + ", whose skeleton instance is on an unnamed node,");
+        return name;
+    }
+
+    // Builds the clips "clips" lists, or every clip in the file, with the skeletal animations of
+    // each, and records the nodes their node tracks animate.
+    void BuildClips()
+    {
+        const std::vector<ClipInFile> clips = FindClips();
+        if (!m_Import.Clips)
+        {
+            for (size_t index = 0; index < clips.size(); ++index)
+                BuildClip(clips[index], index);
+            return;
+        }
+        for (const SourceString &listed : *m_Import.Clips)
+        {
+            const auto found = std::find_if(clips.begin(), clips.end(), [&](const ClipInFile &clip) { return clip.Name == listed.Text; });
+            if (found == clips.end())
+                m_Builder.Error(listed.Where, "the FBX file has no clip " + Quoted(listed.Text));
+            else
+                BuildClip(*found, size_t(found - clips.begin()));
+        }
+    }
+
+    // One property of a node or bone that a clip animates, and the track that holds its keys.
+    struct AnimatedProperty
+    {
+        const ufbx_node *pNode = nullptr;
+        Canvas::CpkgAnimationProperty Property = Canvas::CpkgAnimationProperty::Translation;
+        SourceTrack Track;
+    };
+
+    // Builds clip, at index among the file's clips, and its skeletal animations: one per skeleton
+    // its bone tracks animate. With "nodes" false it builds the skeletal animations alone.
+    void BuildClip(const ClipInFile &clip, size_t index)
+    {
+        const std::string name = CImportBuilder::FileName(SourceImportKind::Clips, clip.Name, index);
+        const std::string described = m_Builder.Describe(SourceImportKind::Clips, name);
+        float duration = 0.0f;
+        std::vector<AnimatedProperty> animated;
+        for (const ufbx_anim_stack *pStack : clip.Stacks)
+        {
+            ufbx_bake_opts options = {};
+            options.trim_start_time = true;
+            options.step_handling = UFBX_BAKE_STEP_HANDLING_IDENTICAL_TIME;
+            ufbx_error error = {};
+            const BakedPtr pBaked(ufbx_bake_anim(m_pScene.get(), pStack->anim, &options, &error));
+            if (!pBaked)
+            {
+                m_Builder.Error(m_Import.Where, "cannot sample " + described + " (" + std::string(View(error.description)) + ")");
+                return;
+            }
+            duration = std::max(duration, float(pBaked->playback_duration));
+            for (const ufbx_baked_node &baked : pBaked->nodes)
+            {
+                const ufbx_node &node = *m_pScene->nodes.data[baked.typed_id];
+                if (!node.is_root)
+                    AddTracks(*pStack, node, baked, described, &animated);
+            }
+        }
+
+        SourceClip built;
+        built.Where = m_Import.Where;
+        built.Duration = duration;
+        std::vector<const ufbx_node *> roots;   // of the skeletons the clip animates, in the order it first animates them
+        for (const AnimatedProperty &property : animated)
+        {
+            if (IsBone(property.pNode))
+            {
+                const ufbx_node *pRoot = m_RootBones.at(property.pNode);
+                if (std::find(roots.begin(), roots.end(), pRoot) == roots.end())
+                    roots.push_back(pRoot);
+            }
+            else
+            {
+                built.Tracks.push_back(property.Track);
+                m_Animated.insert(property.pNode);
+            }
+        }
+
+        const SourceSkeleton *pShared = SharedSkeleton();
+        for (const ufbx_node *pRoot : roots)
+        {
+            SourceSkeletalAnimation animation;
+            animation.Where = m_Import.Where;
+            animation.Skeleton = m_SkeletonPaths.at(pRoot);
+            for (const AnimatedProperty &property : animated)
+            {
+                if (!IsBone(property.pNode) || m_RootBones.at(property.pNode) != pRoot)
+                    continue;
+                if (pShared && std::none_of(pShared->Bones.begin(), pShared->Bones.end(),
+                    [&](const SourceBone &bone) { return bone.Name.Text == property.Track.Target.Text; }))
+                {
+                    m_Builder.Warning(m_Import.Where, described + " animates " + DescribeBone(*property.pNode) + ", which the skeleton "
+                        + Quoted(animation.Skeleton.Text) + " lacks; its track is left out");
+                    continue;
+                }
+                animation.Tracks.push_back(property.Track);
+            }
+
+            SourceNamed<SourceSkeletalAnimation> &asset = m_Builder.GetBundle().SkeletalAnimations.emplace_back();
+            asset.Name = m_Builder.BuiltName(SourceImportKind::SkeletalAnimations, name, View(pRoot->name));
+            asset.Value = std::move(animation);
+            if (m_Import.Nodes)
+            {
+                SourceClipBinding &binding = built.SkeletalAnimations.emplace_back();
+                binding.Where = m_Import.Where;
+                binding.Animation = asset.Name;
+                if (std::optional<SourceString> holder = InstanceNodeName(*pRoot, "the skeletal animation of " + described))
+                    binding.SkeletonInstance = *holder;
+            }
+        }
+
+        if (m_Import.Nodes)
+        {
+            SourceNamed<SourceClip> &asset = m_Builder.GetBundle().Clips.emplace_back();
+            asset.Name = m_Builder.BuiltName(SourceImportKind::Clips, name);
+            asset.Value = std::move(built);
+        }
+    }
+
+    // The skeleton "skeleton" names, when it is a skeleton of the import's bundle, against whose
+    // bones a skeletal animation's tracks are checked; otherwise null.
+    const SourceSkeleton *SharedSkeleton() const
+    {
+        if (!m_Import.Skeleton)
+            return nullptr;
+        for (const SourceNamed<SourceSkeleton> &skeleton : m_Builder.GetBundle().Skeletons)
+        {
+            if (skeleton.Name.Text == m_Import.Skeleton->Text)
+                return &skeleton.Value;
+        }
+        return nullptr;
+    }
+
+    // Adds a track to *pAnimated for each property of node that stack animates, from the keys of
+    // baked. Reports a property another stack of the clip animates too, and, with "nodes" false,
+    // a node that is not a bone, which builds no track.
+    void AddTracks(const ufbx_anim_stack &stack, const ufbx_node &node, const ufbx_baked_node &baked, const std::string &described,
+        std::vector<AnimatedProperty> *pAnimated)
+    {
+        const bool bone = IsBone(&node);
+        const bool isRoot = !bone && node.parent && node.parent->is_root;
+        const std::string nodeDescribed = bone ? DescribeBone(node) : m_Builder.Describe(SourceImportKind::Nodes, View(node.name));
+        bool reported = false;
+        constexpr Canvas::CpkgAnimationProperty kAnimated[] = {
+            Canvas::CpkgAnimationProperty::Translation, Canvas::CpkgAnimationProperty::Rotation, Canvas::CpkgAnimationProperty::Scale };
+        for (const Canvas::CpkgAnimationProperty property : kAnimated)
+        {
+            const char *pFbxProperty = property == Canvas::CpkgAnimationProperty::Translation ? UFBX_Lcl_Translation
+                : property == Canvas::CpkgAnimationProperty::Rotation ? UFBX_Lcl_Rotation : UFBX_Lcl_Scaling;
+            const bool animates = std::any_of(stack.layers.begin(), stack.layers.end(),
+                [&](const ufbx_anim_layer *pLayer) { return ufbx_find_anim_prop(pLayer, &node.element, pFbxProperty) != nullptr; });
+            if (!animates)
+                continue;
+
+            if (!bone && !m_Import.Nodes)
+            {
+                if (!reported)
+                    m_Builder.Warning(m_Import.Where, described + " animates " + nodeDescribed + ", which builds no track, since the import builds no nodes");
+                reported = true;
+                continue;
+            }
+            if (std::any_of(pAnimated->begin(), pAnimated->end(),
+                [&](const AnimatedProperty &other) { return other.pNode == &node && other.Property == property; }))
+            {
+                m_Builder.Error(m_Import.Where, "more than one animation stack of " + described + " animates the "
+                    + std::string(EnumNameOf(kProperties, property)) + " of " + nodeDescribed);
+                continue;
+            }
+
+            AnimatedProperty &added = pAnimated->emplace_back();
+            added.pNode = &node;
+            added.Property = property;
+            SourceTrack &track = added.Track;
+            track.Where = m_Import.Where;
+            track.Property = property;
+            track.Target.Where = m_Import.Where;
+            if (bone)
+                track.Target.Text = std::string(View(node.name));
+            else if (const std::optional<SourceString> &nodeName = NodeName(node))
+                track.Target = *nodeName;
+            else
+                m_Builder.Unsupported(m_Import.Where, "the animation of an unnamed FBX node");
+
+            switch (property)
+            {
+            case Canvas::CpkgAnimationProperty::Translation:
+                AddKeys(baked.translation_keys, &track, [&](ufbx_vec3 v) { return Components(Translation(v, isRoot)); });
+                break;
+            case Canvas::CpkgAnimationProperty::Rotation:
+                AddKeys(baked.rotation_keys, &track, [&](ufbx_quat q) { return Components(Rotation(q, isRoot)); });
+                break;
+            default:
+                AddKeys(baked.scale_keys, &track, [&](ufbx_vec3 v) { return Components(Scale(v, isRoot, nodeDescribed)); });
+                break;
+            }
+        }
+    }
+
+    template <class TVec>
+    static std::vector<float> Components(const TVec &v)
+    {
+        return std::vector<float>(std::begin(v.V), std::end(v.V));
+    }
+
+    // Fills *pTrack's keys from keys, converting each value with convert. A step in the file, two
+    // keys at one time, builds one key whose interpolation is "step". Each rotation key keeps to
+    // the hemisphere of the key before it, so interpolation between them takes the short way.
+    template <class TKeys, class TConvert>
+    static void AddKeys(const TKeys &keys, SourceTrack *pTrack, TConvert convert)
+    {
+        std::vector<Canvas::AnimationInterpolation> interpolations;
+        std::vector<float> &values = pTrack->Values.Values;
+        for (const auto &key : keys)
+        {
+            if (key.flags & UFBX_BAKED_KEY_STEP_LEFT)
+            {
+                // The value just before a step, which the key before it holds until the step.
+                if (!interpolations.empty())
+                    interpolations.back() = Canvas::AnimationInterpolation::Step;
+                continue;
+            }
+            std::vector<float> value = convert(key.value);
+            if (value.size() == 4 && values.size() >= 4)
+            {
+                const float *pPrevious = &values[values.size() - 4];
+                if (pPrevious[0] * value[0] + pPrevious[1] * value[1] + pPrevious[2] * value[2] + pPrevious[3] * value[3] < 0.0f)
+                {
+                    for (float &component : value)
+                        component = -component;
+                }
+            }
+            pTrack->Times.Values.push_back(float(key.time));
+            values.insert(values.end(), value.begin(), value.end());
+            interpolations.push_back(Canvas::AnimationInterpolation::Linear);
+        }
+        pTrack->Times.Where = pTrack->Where;
+        pTrack->Values.Where = pTrack->Where;
+        if (std::any_of(interpolations.begin(), interpolations.end(),
+            [](Canvas::AnimationInterpolation interpolation) { return interpolation != Canvas::AnimationInterpolation::Linear; }))
+        {
+            pTrack->Interpolations = std::move(interpolations);
+            pTrack->InterpolationPerKey = true;
+            pTrack->InterpolationWhere = pTrack->Where;
+        }
+        else
+            pTrack->Interpolations = { Canvas::AnimationInterpolation::Linear };
+    }
+
+    //--------------------------------------------------------------------------------------------
     // Nodes
 
     void BuildNodes()
@@ -753,24 +1071,15 @@ private:
         return found->second;
     }
 
-    // A root node's local transform: its transform in the file, with the conversion to meters
-    // and Canvas's axes, the root's transform. The unit's scale folds into its scale, or else
-    // scales its translation and everything below.
-    SourceTransform RootTransform(const ufbx_transform &local)
-    {
-        const Math::FloatVector3 t = Math::RotateVectorByQuaternion(m_RootRotation, ToVector(local.translation) * float(m_Unit));
-        const Math::FloatQuaternion r = (m_RootRotation * ToQuaternion(local.rotation)).Normalize();
-        const float s = m_Folds ? float(m_Unit) : 1.0f;
-        return m_Builder.RootTransform(t, r, ToVector(local.scale) * s);
-    }
-
     SourceNode BuildNode(const ufbx_node &node, bool isRoot)
     {
         SourceNode built;
         built.Where = m_Import.Where;
         built.Name = NodeName(node);
         const std::string described = m_Builder.Describe(SourceImportKind::Nodes, View(node.name));
-        built.Transform = isRoot ? RootTransform(node.local_transform) : BelowRoots(node.local_transform, described);
+        built.Transform = Transform(node.local_transform, isRoot, described);
+        if (m_Animated.count(&node) != 0)
+            built.Mobility = Canvas::CpkgMobility::Movable;
         Attach(node, described, &built.Attachments);
 
         for (const ufbx_node *pChild : node.children)
@@ -799,7 +1108,7 @@ private:
         SourceNode built;
         built.Where = m_Import.Where;
         built.Name = NodeName(root);
-        built.Transform = RootTransform(ufbx_transform{ ufbx_zero_vec3, ufbx_identity_quat, ufbx_vec3{ 1, 1, 1 } });
+        built.Transform = Transform(ufbx_transform{ ufbx_zero_vec3, ufbx_identity_quat, ufbx_vec3{ 1, 1, 1 } }, true, DescribeBone(root));
         AttachSkeleton(root, &built.Attachments);
         return built;
     }
@@ -865,13 +1174,7 @@ private:
                     // It binds to the instance of its skin's skeleton, on the root bone's parent
                     // node, or on the node that carries the root bone.
                     instance.Skin = skin->second.Path;
-                    const ufbx_node &root = *skin->second.Root;
-                    const ufbx_node &holder = root.parent && !root.parent->is_root ? *root.parent : root;
-                    const std::optional<SourceString> &holderName = NodeName(holder);
-                    if (holderName)
-                        instance.SkeletonInstance = holderName;
-                    else
-                        m_Builder.Unsupported(m_Import.Where, "the skinned mesh of " + described + ", whose skeleton instance is on an unnamed node,");
+                    instance.SkeletonInstance = InstanceNodeName(*skin->second.Root, "the skinned mesh of " + described);
                 }
             }
         }
@@ -965,6 +1268,7 @@ private:
     };
     std::unordered_map<const ufbx_mesh *, SkinOf> m_Skins;
     std::unordered_map<const ufbx_node *, std::optional<SourceString>> m_NodeNames;
+    std::unordered_set<const ufbx_node *> m_Animated;   // the nodes a built clip's node tracks animate
 };
 
 } // namespace
