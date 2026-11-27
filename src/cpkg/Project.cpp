@@ -41,12 +41,6 @@ namespace
         return file.CopyFrom(PathOf(from)) == FileResult::Success && file.Commit() == FileResult::Success;
     }
 
-    // The file name of a UTF-8 path.
-    std::string FileName(const std::string &path)
-    {
-        return Utf8Of(PathOf(path).filename());
-    }
-
     //--------------------------------------------------------------------------------------------
     // Input records
 

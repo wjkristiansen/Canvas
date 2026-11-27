@@ -572,6 +572,21 @@ TEST_F(CpkgBuild, WritesSharedAssets)
     EXPECT_EQ(ReadBytes("out.cpkg"), ReadBytes("levels.cpkg"));
 }
 
+#if defined(_WIN32)
+// Paths that differ only in case name the same file on Windows, so a diagnostic names its file
+// relative to the current directory however the command line spells it.
+TEST_F(CpkgBuild, ReportsAFileRelativeToTheCurrentDirectoryInAnyCase)
+{
+    WriteText("levels.cpkg.json", R"({ "formatVersion": 1, "packageName": "Levels", "bundles": [ { "name": "$Props" } ] })");
+    std::string directory = std::filesystem::current_path().string();
+    for (char &c : directory)
+        c = char(std::toupper(static_cast<unsigned char>(c)));
+
+    const RunResult result = RunCpkg({ "validate", directory + "/levels.cpkg.json" });
+    EXPECT_EQ(result.Err.rfind("levels.cpkg.json:", 0), 0u) << result.Err;
+}
+#endif
+
 //------------------------------------------------------------------------------------------------
 TEST_F(CpkgBuild, ReplacesOutputOnlyWithNewCompletePackage)
 {

@@ -3,6 +3,7 @@
 //================================================================================================
 
 #include "Diagnostics.h"
+#include "FileSystem.h"
 
 namespace CpkgTool
 {
@@ -83,39 +84,6 @@ void CDiagnostics::Append(std::string_view text, size_t errorCount)
 {
     m_Stream << text;
     m_ErrorCount += errorCount;
-}
-
-//------------------------------------------------------------------------------------------------
-std::string DisplayPath(std::string_view path)
-{
-    namespace fs = std::filesystem;
-    const fs::path given(std::u8string_view(reinterpret_cast<const char8_t *>(path.data()), path.size()));
-
-    std::error_code ec;
-    const fs::path current = fs::current_path(ec);
-    fs::path shown = given;
-    if (!ec)
-    {
-        const fs::path absolute = fs::absolute(given, ec);
-        if (!ec)
-            shown = absolute.lexically_normal().lexically_proximate(current);
-    }
-
-    const std::u8string utf8 = shown.generic_u8string();
-    return std::string(reinterpret_cast<const char *>(utf8.data()), utf8.size());
-}
-
-//------------------------------------------------------------------------------------------------
-std::string AbsolutePath(std::string_view path)
-{
-    namespace fs = std::filesystem;
-    const fs::path given(std::u8string_view(reinterpret_cast<const char8_t *>(path.data()), path.size()));
-    std::error_code ec;
-    fs::path absolute = fs::absolute(given, ec);
-    if (ec)
-        absolute = given;
-    const std::u8string utf8 = absolute.lexically_normal().generic_u8string();
-    return std::string(reinterpret_cast<const char *>(utf8.data()), utf8.size());
 }
 
 //------------------------------------------------------------------------------------------------

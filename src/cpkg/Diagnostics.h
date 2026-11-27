@@ -65,14 +65,6 @@ private:
     std::vector<std::string> *m_pWarningLog = nullptr;
 };
 
-// The UTF-8 path relative to the current directory, with '/' separators. A path with no
-// relative form, such as one on another drive, is returned absolute.
-std::string DisplayPath(std::string_view path);
-
-// The UTF-8 path made absolute against the current directory, with '/' separators and its "."
-// and ".." segments removed.
-std::string AbsolutePath(std::string_view path);
-
 // The text as a JSON string literal: in quotes, with '"', '\', and control characters escaped.
 // Other bytes are written unchanged.
 std::string Quoted(std::string_view text);
