@@ -77,18 +77,6 @@ void SetIf(std::optional<T> &target, const std::optional<T> &value)
         target = value;
 }
 
-// The extension of path, in lower case, such as ".fbx".
-std::string LowerExtension(const std::string &path)
-{
-    std::string extension = PathOf(path).extension().string();
-    for (char &c : extension)
-    {
-        if (c >= 'A' && c <= 'Z')
-            c = char(c - 'A' + 'a');
-    }
-    return extension;
-}
-
 } // namespace
 
 //------------------------------------------------------------------------------------------------

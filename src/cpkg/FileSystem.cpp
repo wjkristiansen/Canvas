@@ -123,6 +123,17 @@ std::string DisplayPath(std::string_view path)
     return Utf8Of(relative.empty() ? fs::path(".") : relative);
 }
 
+std::string LowerExtension(std::string_view path)
+{
+    std::string extension = Utf8Of(PathOf(path).extension());
+    for (char &c : extension)
+    {
+        if (c >= 'A' && c <= 'Z')
+            c = char(c - 'A' + 'a');
+    }
+    return extension;
+}
+
 //------------------------------------------------------------------------------------------------
 FileResult ReadWholeFile(const fs::path &path, std::string *pBytes)
 {
