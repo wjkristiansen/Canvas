@@ -1,6 +1,6 @@
 # cpkg
 
-`cpkg` is the command-line tool that builds [package sources](PackageSource.md) into [CanvasPkg](../CanvasPkg/README.md) `.cpkg` files, and builds [projects](../CanvasProject/README.md). It also validates sources, inspects `.cpkg` files, imports exchange files (such as FBX) into package sources, applies refactors, and edits project manifests. Editors, scripts, and build systems all build content by running `cpkg`, so content builds identically from each.
+`cpkg` is the command-line tool that builds [package sources](PackageSource.md) into [CanvasPkg](../CanvasPkg/README.md) `.cpkg` files, and builds [projects](../CanvasProject/README.md). It also validates sources, inspects `.cpkg` files, writes a package source that builds a given `.cpkg` file, and rewrites source files in the standard form. People and editors write package sources and project manifests, and `cpkg` reads them: the files it writes are build output, plus the sources that `unpack` and `format` write. Editors, scripts, and build systems all build content by running `cpkg`, so content builds identically from each.
 
 `cpkg` depends on CanvasPkg for writing and reading packages, on CanvasProject for resolving package names, on [ufbx](https://github.com/bqqbarbhg/ufbx) for reading FBX files, and on [InCommand](../../deps/InCommand/readme.md) for its command line. It links no engine library. Its strings and file paths are UTF-8, converted to the platform's form only where they reach the operating system.
 
@@ -15,7 +15,7 @@ A [prebuilt package](../CanvasProject/README.md#project-manifest), a `.cpkg` fil
 `cpkg` takes a command, its arguments, and options:
 
 ```
-cpkg <command> [<subcommand>] [<arguments>] [<options>]
+cpkg <command> [<arguments>] [<options>]
 ```
 
 | Command | Does |
@@ -25,11 +25,6 @@ cpkg <command> [<subcommand>] [<arguments>] [<options>]
 | [`dump`](#dump) | Prints the contents of a `.cpkg` file |
 | [`unpack`](#unpack) | Writes a package source that builds a `.cpkg` file |
 | [`format`](#format) | Rewrites a package file or bundle file in the standard form |
-| [`import`](#import) | Adds an import of an exchange file to a bundle of a package source |
-| [`rename`](#rename-move-and-refs) | Renames an asset, node, placement, or bundle, and updates everything that refers to it |
-| [`move`](#rename-move-and-refs) | Moves a shared asset to another bundle, and updates everything that refers to it |
-| [`refs`](#rename-move-and-refs) | Lists every reference to a bundle, asset, or node |
-| [`project`](#project) | Adds packages to a project manifest and removes them |
 
 Each command takes the file it works on as its first argument and recognizes it by its extension: `.cpkg.json` for a package source, `.cproj.json` for a project manifest, and `.cpkg` for a built package. File paths on the command line are absolute or relative to the current directory.
 
@@ -111,7 +106,7 @@ Rig/
 
 **Images.** Each encoded image is written verbatim to a file with its encoding's extension, `.png`, `.jpg`, or `.tif`. An image of one encoded image is written in the file form, as `<asset>.png`; a cube image of 6 slices and one mip level in the cubemap form, its faces `<asset>.+X.png` through `<asset>.-Z.png`; and any other image in the general form, its files `<asset>.0.png`, `<asset>.1.png`, and so on, in the image's order.
 
-**Values.** The source writes rotations as quaternions and each file in the [standard form](#editing-sources), so `cpkg format` leaves it unchanged.
+**Values.** The source writes rotations as quaternions and each file in the [standard form](#writing-sources), so `cpkg format` leaves it unchanged.
 
 **File names.** A bundle's directory and an asset's files are named for the bundle or asset. Each character a file name cannot hold on common file systems, a directory name's final `.` or space, and each `%`, is written as `%` and the character's two hexadecimal digits; a name a file system reserves, such as `CON`, has its first character written that way. A file name already used in its directory, as the output's file system compares names, takes the smallest suffix `~2`, `~3`, and so on, before its extension, that makes it unique.
 
@@ -123,42 +118,11 @@ Rig/
 cpkg format <file> [--check]
 ```
 
-Rewrites `file`, a package file (`.cpkg.json`) or a bundle file (`.cbundle.json`), in the [standard form](#editing-sources), and saves it only when its text changes. The files a package file includes are left as they are. `format` loads the file as `build` loads it, and saves nothing when loading reports an error.
+Rewrites `file`, a package file (`.cpkg.json`) or a bundle file (`.cbundle.json`), in the [standard form](#writing-sources), and saves it only when its text changes. The files a package file includes are left as they are. `format` loads the file as `build` loads it, and saves nothing when loading reports an error.
 
 | Option | Meaning |
 |---|---|
 | `--check` | Saves nothing, and reports the file as an error when it is not in the standard form |
-
-### import
-
-```
-cpkg import <package.cpkg.json> <file> --bundle <name> [--bundle-file <file.cbundle.json>]
-```
-
-Adds an [import](PackageSource.md#imports) of the [exchange file](PackageSource.md#exchange-formats) to the named bundle, with every import setting at its default, and saves the package source. When the package has no bundle of that name, `import` adds one: inline in the package file, or in a new bundle file that `--bundle-file` names, which the package file then includes. The import's file path is written relative to the JSON file that holds it. `import` validates the package after the change and reports what the import would build, such as name collisions with existing content, so the import's settings can then be adjusted in the source.
-
-### rename, move, and refs
-
-```
-cpkg rename <path> <new-name> (--package <package.cpkg.json> | --project <project.cproj.json>)
-cpkg move <asset-path> <bundle-path> (--package <package.cpkg.json> | --project <project.cproj.json>)
-cpkg refs <path> (--package <package.cpkg.json> | --project <project.cproj.json>)
-```
-
-Apply the [refactors](#refactors). With `--package`, `<path>` is a path within that package, such as `Village/Crate`, and the refactor updates that package. With `--project`, `<path>` begins with a project name, such as `Levels/Village/Crate`, and the refactor updates every package the project lists by source. A node or placement is named by its bundle path and its name, as an asset is. `refs` lists each reference by file, line, and column, and changes nothing.
-
-### project
-
-```
-cpkg project add <project.cproj.json> (--source <package.cpkg.json> | --package <package.cpkg>) [--name <name>] [--reference <name>=<project-name>]...
-cpkg project remove <project.cproj.json> <name>
-```
-
-`project add` adds a package entry to an authored project, by its source or, for a prebuilt package, by its `.cpkg` file. Its project name is `--name`, by default the package's declared name: the source's `packageName`, or the name in the `.cpkg` file's header. Each `--reference` adds an entry to the package's `references`. The entry's file path is written relative to the manifest.
-
-`project remove` removes the entry with that project name. When a path in another listed package still names the package, `project remove` reports each such path as an error and leaves the manifest unchanged.
-
-Both commands validate the project after the change, and save the manifest when it is valid.
 
 ## Building a Package
 
@@ -286,26 +250,13 @@ Because `cpkg` leaves unchanged output files untouched, steps that depend on the
 
 A build system can also run `cpkg build` on every build, without a dependency file, such as through a CMake custom target, which always runs. The project build then decides from its input records what to rebuild, and with nothing changed it writes nothing.
 
-## Editing Sources
+## Writing Sources
 
-The commands that change files, `import`, `rename`, `move`, and `project`, load the files they change, apply the change, validate the result, and save only the files whose content changed. A command that reports an error saves no file.
+`format` saves a package file or bundle file in the standard form, and `unpack` writes a new package source in it.
 
-**Round trip.** A save keeps each file's structure (which bundles are inline and which are included), the order of keys and array entries, `$comment` and `$extras` keys and their values as written, and the form in which each value was written: a rotation in degrees stays in degrees, and a binary array file stays a file. A change rewrites only what it changes, and each file is saved in the standard form.
+**Round trip.** A save keeps each file's structure (which bundles are inline and which are included), the order of keys and array entries, `$comment` and `$extras` keys and their values as written, and the form in which each value was written: a rotation in degrees stays in degrees, and a binary array file stays a file. Each file is saved in the standard form.
 
 **Standard form.** A file in the standard form is written in `cpkg`'s one fixed formatting. Each number written with a fraction or an exponent is written as an integer when its value is one, and otherwise in the shortest form that reads back as the same float. Each field whose default is a fixed value is omitted when it equals that default after conversion to the stored type, such as a transform's `[1, 1, 1]` scale or a rotation that is the identity in either form; a field whose default is computed, such as a mesh's `bounds`, and a field of an [edit](PackageSource.md#editing-imported-nodes), which replaces what it lists, are kept. A file already in the standard form saves byte for byte unchanged, so a change appears in a text diff as just that change.
-
-### Refactors
-
-A **refactor** changes a name or a location and updates everything that refers to it, so a source that was valid before a refactor is valid after it:
-
-| Refactor | Updates |
-|---|---|
-| Rename an asset, node, or placement | References by name within its bundle, and paths to it |
-| Rename a bundle | Paths to the bundle and to its shared assets |
-| Move a shared asset to another bundle | Paths to the asset, and references by name that become paths |
-| Find references | Reports every reference to a bundle, asset, or node, without changing anything |
-
-Without a project, a refactor updates the package being refactored. With a project, it updates every package the project lists by source, through the project names and `references` each package uses, and reports paths in packages the project lists by `.cpkg` file that still refer to the old name or location, since those packages change only where their sources are kept.
 
 ## Results
 
@@ -314,7 +265,7 @@ Every command returns a result, separate from its diagnostics, that states wheth
 | Exit status | Meaning |
 |---|---|
 | `0` | The command succeeded: it reported no error. |
-| `1` | The command reported an error. A failed project build leaves no built project in its output directory (see [Project Builds](#project-builds)), and a failed command that edits files saves none. |
+| `1` | The command reported an error. A failed project build leaves no built project in its output directory (see [Project Builds](#project-builds)), and a failed `format` or `unpack` saves no file. |
 | `2` | The command line is invalid, such as an unknown command or option or a missing argument. Nothing ran. |
 
 A caller such as a script, an editor, or a build system therefore detects a failure from the exit status alone, and stops before it uses any output of the failed command.
@@ -332,7 +283,7 @@ Every stage reports its findings as **diagnostics**, each with:
 
 A build reports every finding it can before it stops: Load and Validate check the whole source, not only up to its first error. A source with any error builds no package. Warnings and info do not change what is built, and `--werror` treats warnings as errors.
 
-`cpkg` writes diagnostics to standard error, one per line, and everything else, such as `dump` and `refs` output, to standard output:
+`cpkg` writes diagnostics to standard error, one per line, and everything else, such as `dump` output, to standard output:
 
 ```
 <file>:<line>:<column>: <severity>: <message> [<location>]
@@ -368,12 +319,11 @@ An invalid command line is reported as `cpkg: error: <message>`, with exit statu
 Directions the current design leaves room for. None are committed plans:
 
 - **Editor**: a GUI editor that opens an authored project, edits its package sources and manifest, and runs `cpkg` to validate and build them, so creators define and build a project without a text editor or a build tool.
-- **Authoring library**: `cpkg`'s loading, validation, and refactors offered as a library, for an editor that needs them in-process, such as to validate as content changes.
+- **Authoring library**: `cpkg`'s loading and validation offered as a library, for an editor that needs them in-process, such as to validate as content changes.
 - **Machine-readable diagnostics**: a JSON form of the diagnostics, for editors and other tools that present them.
 - **CMake module**: a `canvas_add_project()` function that declares the [build step](#build-systems) for a project manifest.
 - **Input lists**: a command that names the files a build would read without building, for build systems that declare a step's inputs before running it. It would name the files that list further inputs, such as bundle and exchange files, apart from the others, and name files that a generating step has yet to write.
 - **Watch mode**: rebuilding a project as its source files change.
-- **New files**: commands that create an empty package source or project manifest.
 - **Incremental builds**: reusing the payloads of assets whose inputs are unchanged since the last build, keyed by hashes of those inputs.
 - **Image processing**: converting images in other encodings to stored ones, generating mip chains, and producing block-compressed encodings once CanvasPkg defines them.
 - **Import filters**: leaving content of an exchange file out of an import by kind or by name, such as the default camera and light some FBX exporters add to every file.
