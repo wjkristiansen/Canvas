@@ -1,9 +1,11 @@
 //================================================================================================
 // FileSystem - the files cpkg reads, creates, and writes
 //
-// Every function takes std::filesystem paths, made from UTF-8 with PathOf, and returns a
-// FileResult rather than reporting: each caller words its own diagnostic. Whether two names are
-// one is decided by the file system holding them, by its own rules for names.
+// The path functions work on UTF-8 paths and read no file; AbsolutePath and DisplayPath read the
+// current directory. Every other function takes std::filesystem paths, made from UTF-8 with
+// PathOf, and returns a FileResult rather than reporting: each caller words its own diagnostic.
+// For those functions, whether two names are one is decided by the file system holding them, by
+// its own rules for names.
 //================================================================================================
 
 #pragma once
@@ -21,6 +23,18 @@ std::filesystem::path PathOf(std::string_view utf8);
 
 // The UTF-8 form of path, with '/' separators.
 std::string Utf8Of(const std::filesystem::path &path);
+
+// The file name of a UTF-8 path: the part after its last separator.
+std::string FileName(std::string_view path);
+
+// The UTF-8 path made absolute against the current directory, with '/' separators and its "."
+// and ".." segments removed.
+std::string AbsolutePath(std::string_view path);
+
+// The UTF-8 path relative to the current directory, with '/' separators, for a diagnostic. Names
+// compare as the platform's file systems compare them, ignoring case on Windows and exactly
+// elsewhere. A path with no relative form, such as one on another drive, is returned absolute.
+std::string DisplayPath(std::string_view path);
 
 enum class FileResult
 {

@@ -3,6 +3,7 @@
 //================================================================================================
 
 #include "DependencyFile.h"
+#include "FileSystem.h"
 
 namespace CpkgTool
 {

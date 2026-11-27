@@ -9,6 +9,9 @@
 #include <io.h>
 #include <process.h>
 #include <sys/stat.h>
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
 #else
 #include <fcntl.h>
 #include <unistd.h>
@@ -21,6 +24,17 @@ namespace fs = std::filesystem;
 
 namespace
 {
+    // Whether two elements of a path name the same file name: ignoring case on Windows, whose
+    // file systems compare names that way, and exactly elsewhere.
+    bool SameElement(const fs::path &a, const fs::path &b)
+    {
+#if defined(_WIN32)
+        return CompareStringOrdinal(a.c_str(), -1, b.c_str(), -1, TRUE) == CSTR_EQUAL;
+#else
+        return a == b;
+#endif
+    }
+
     // The result of an attempt to create path, which created it when created.
     FileResult MadeOrWhyNot(const fs::path &path, bool created)
     {
@@ -61,6 +75,52 @@ std::string Utf8Of(const fs::path &path)
 {
     const std::u8string text = path.generic_u8string();
     return std::string(reinterpret_cast<const char *>(text.data()), text.size());
+}
+
+std::string FileName(std::string_view path)
+{
+    return Utf8Of(PathOf(path).filename());
+}
+
+std::string AbsolutePath(std::string_view path)
+{
+    const fs::path given = PathOf(path);
+    std::error_code error;
+    fs::path absolute = fs::absolute(given, error);
+    if (error)
+        absolute = given;
+    return Utf8Of(absolute.lexically_normal());
+}
+
+std::string DisplayPath(std::string_view path)
+{
+    const fs::path given = PathOf(path);
+    std::error_code error;
+    const fs::path current = fs::current_path(error);
+    if (error)
+        return Utf8Of(given);
+    const fs::path absolute = fs::absolute(given, error);
+    if (error)
+        return Utf8Of(given);
+
+    // The elements the two paths share, compared as the file system compares names; a path on
+    // another root keeps its absolute form.
+    const fs::path normal = absolute.lexically_normal();
+    if (!SameElement(normal.root_name(), current.root_name()))
+        return Utf8Of(normal);
+    auto element = normal.begin();
+    auto currentElement = current.begin();
+    while (element != normal.end() && currentElement != current.end() && SameElement(*element, *currentElement))
+    {
+        ++element;
+        ++currentElement;
+    }
+    fs::path relative;
+    for (; currentElement != current.end(); ++currentElement)
+        relative /= "..";
+    for (; element != normal.end(); ++element)
+        relative /= *element;
+    return Utf8Of(relative.empty() ? fs::path(".") : relative);
 }
 
 //------------------------------------------------------------------------------------------------
