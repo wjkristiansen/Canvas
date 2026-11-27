@@ -172,12 +172,7 @@ const char *OtherEncoding(const CReader &reader)
 // The encoding a file extension names, or Unknown for one that names none.
 CpkgImageEncoding EncodingOfExtension(const fs::path &path)
 {
-    std::string extension = path.extension().string();
-    for (char &c : extension)
-    {
-        if (c >= 'A' && c <= 'Z')
-            c = char(c - 'A' + 'a');
-    }
+    const std::string extension = LowerExtension(Utf8Of(path));
     if (extension == ".png")
         return CpkgImageEncoding::Png;
     if (extension == ".jpg" || extension == ".jpeg")

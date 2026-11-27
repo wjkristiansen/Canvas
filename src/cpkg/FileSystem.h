@@ -36,6 +36,9 @@ std::string AbsolutePath(std::string_view path);
 // elsewhere. A path with no relative form, such as one on another drive, is returned absolute.
 std::string DisplayPath(std::string_view path);
 
+// The extension of a UTF-8 path, with ASCII letters in lower case, such as ".fbx".
+std::string LowerExtension(std::string_view path);
+
 enum class FileResult
 {
     Success,
