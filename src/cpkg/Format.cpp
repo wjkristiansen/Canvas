@@ -1,7 +1,7 @@
 //================================================================================================
 // Format - rewrites a package file or bundle file in the standard form
 //
-// The standard form of a file, as "Editing Sources" in src/cpkg/README.md describes it, is the
+// The standard form of a file, as "Writing Sources" in src/cpkg/README.md describes it, is the
 // file's JSON with each member Load found equal to its default removed, each number written with
 // a fraction or an exponent respelled, and the result laid out by JsonFormat.
 //================================================================================================
